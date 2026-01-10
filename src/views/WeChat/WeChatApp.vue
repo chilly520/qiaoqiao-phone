@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore, getRandomAvatar } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -83,14 +83,41 @@ const promptProfileAvatarUrl = () => {
 }
 
 // Long Press Helper
+// Long Press Helper
 let longPressTimer = null
+let isLongPressTriggered = false
+let startX = 0
+let startY = 0
+
 const startLongPress = (type, item, event) => {
+    isLongPressTriggered = false
+    if (event.touches && event.touches[0]) {
+        startX = event.touches[0].clientX
+        startY = event.touches[0].clientY
+    }
     longPressTimer = setTimeout(() => {
+        isLongPressTriggered = true
         openContextMenu(type, item, event)
     }, 500) // 500ms for long press
 }
+
 const clearLongPress = () => {
-    if (longPressTimer) clearTimeout(longPressTimer)
+    if (longPressTimer) {
+        clearTimeout(longPressTimer)
+        longPressTimer = null
+    }
+}
+
+const handleTouchMove = (event) => {
+    if (!longPressTimer) return
+    if (event.touches && event.touches[0]) {
+        const moveX = event.touches[0].clientX
+        const moveY = event.touches[0].clientY
+        // Tolerance: 10px
+        if (Math.abs(moveX - startX) > 10 || Math.abs(moveY - startY) > 10) {
+            clearLongPress()
+        }
+    }
 }
 
 const openContextMenu = (type, item, event) => {
@@ -127,14 +154,20 @@ const handleContextAction = (option) => {
     if (option.action === 'pin') {
         chatStore.pinChat(id)
     } else if (option.action === 'clear') {
-        chatStore.clearHistory(id)
-        triggerToast('已清除')
+        confirmMessage.value = '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)'
+        showConfirmModal.value = true
+        confirmCallback.value = () => {
+             chatStore.clearHistory(id)
+             showConfirmModal.value = false
+             triggerToast('已移除')
+        }
     } else if (option.action === 'delete') {
         confirmMessage.value = '确定要删除该好友吗？将同时删除所有记录。'
         showConfirmModal.value = true
         confirmCallback.value = () => {
              chatStore.deleteChat(id)
              showConfirmModal.value = false
+             triggerToast('已删除') // Add feedback toast
         }
     }
     showContextMenu.value = false
@@ -169,9 +202,34 @@ const confirmAddFriend = () => {
 }
 
 const openChat = (chatId) => {
+  // Prevent ghost click after long press
+  if (isLongPressTriggered) {
+      isLongPressTriggered = false
+      return
+  }
+
   chatStore.currentChatId = chatId
   // Ensure it shows in chat list when opened from contacts
   chatStore.updateCharacter(chatId, { inChatList: true })
+  
+  // Push history state so back button works
+  history.pushState({ chatOpen: true }, '')
+}
+
+const handleChatBack = () => {
+    // If we have state, go back (triggers popstate -> closes chat)
+    if (history.state?.chatOpen) {
+        history.back()
+    } else {
+        // Fallback for direct close if no state
+        chatStore.currentChatId = null
+    }
+}
+
+const handlePopState = (event) => {
+    if (chatStore.currentChatId) {
+        chatStore.currentChatId = null
+    }
 }
 
 const navigateToSettings = () => {
@@ -183,6 +241,13 @@ onMounted(() => {
   if (chatStore.chatList.length === 0) {
     chatStore.initDemoData()
   }
+
+  
+  window.addEventListener('popstate', handlePopState)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('popstate', handlePopState)
 })
 
 
@@ -201,6 +266,40 @@ const goBack = () => {
     <!-- Toast -->
     <div v-if="showToast" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm z-[100] animate-fade-in">
         {{ toastMessage }}
+    </div>
+
+    <!-- Context Menu (Restored) -->
+    <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false" @touchstart="showContextMenu = false">
+        <!-- Backdrop for click outside -->
+        <div class="absolute inset-0 bg-transparent"></div>
+        <div 
+            class="absolute bg-[#4c4c4c] rounded-lg shadow-xl py-1 min-w-[140px] animate-scale-up origin-top-left"
+            :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }"
+            @click.stop
+        >
+            <div 
+                v-for="(option, index) in contextMenuOptions" 
+                :key="index"
+                class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f] last:border-none"
+                @click="handleContextAction(option)"
+            >
+                <i :class="['fa-solid', option.icon, option.danger ? 'text-red-400' : 'text-white']"></i>
+                <span :class="['text-sm', option.danger ? 'text-red-400' : 'text-white']">{{ option.label }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 animate-fade-in" @click.self="showConfirmModal = false">
+        <div class="bg-white w-[80%] max-w-[300px] rounded-lg overflow-hidden shadow-xl animate-scale-up">
+            <div class="p-6 text-center">
+                <div class="text-base text-gray-800 font-medium mb-6">{{ confirmMessage }}</div>
+                <div class="flex gap-4 justify-center">
+                    <button class="px-6 py-2 rounded bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform" @click="showConfirmModal = false">取消</button>
+                    <button class="px-6 py-2 rounded bg-red-500 text-white font-bold active:scale-95 transition-transform" @click="confirmAction">删除</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Profile Edit Modal -->
@@ -246,9 +345,11 @@ const goBack = () => {
     <ChatWindow 
         v-if="chatStore.currentChatId" 
         class="absolute inset-0 z-20"
-        @back="chatStore.currentChatId = null"
+        @back="handleChatBack"
     />
 
+    <!-- Main App Content (Always rendered beneath, or could use v-show if needed) -->
+    <!-- Removed v-else to avoid layout issues & keep state -->
     <template v-else>
         <!-- Add Friend Modal -->
         <div v-if="showAddFriendModal" class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in" @click.self="showAddFriendModal = false">
@@ -319,7 +420,7 @@ const goBack = () => {
                   @contextmenu.prevent="openContextMenu('chat', chat, $event)"
                   @touchstart="startLongPress('chat', chat, $event)"
                   @touchend="clearLongPress"
-                  @touchmove="clearLongPress"
+                  @touchmove="handleTouchMove"
                 >
                    <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
                    <div class="relative w-12 h-12 mr-3">
@@ -347,7 +448,16 @@ const goBack = () => {
                          <i class="fa-solid fa-chevron-down transition-transform duration-200" :class="!expandFriends ? '-rotate-90' : ''"></i>
                      </div>
                      <div v-if="expandFriends">
-                         <div v-for="chat in chatStore.chatList" :key="chat.id" class="flex items-center px-4 py-2 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select" @click="openChat(chat.id)">
+                         <div 
+                           v-for="chat in chatStore.contactList" 
+                           :key="chat.id" 
+                           class="flex items-center px-4 py-2 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select" 
+                           @click="openChat(chat.id)"
+                           @contextmenu.prevent="openContextMenu('contact', chat, $event)"
+                           @touchstart="startLongPress('contact', chat, $event)"
+                           @touchend="clearLongPress"
+                           @touchmove="handleTouchMove"
+                        >
                             <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`" class="w-9 h-9 rounded bg-gray-200 mr-3">
                             <span class="text-base text-gray-900">{{ chat.name }}</span>
                          </div>
@@ -406,10 +516,14 @@ const goBack = () => {
 }
 
 /* Prevent default browser context menu on long press */
+/* Prevent default browser context menu on long press */
 .prevent-select {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
+    -webkit-touch-callout: none; /* iOS Safari */
+    -webkit-user-select: none; /* Safari */
+    -khtml-user-select: none; /* Konqueror HTML */
+    -moz-user-select: none; /* Old versions of Firefox */
+    -ms-user-select: none; /* Internet Explorer/Edge */
+    user-select: none; /* Non-prefixed version, currently supported by Chrome, Edge, Opera and Firefox */
 }
 
 @keyframes scaleUp {

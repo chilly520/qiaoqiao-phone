@@ -130,11 +130,57 @@ onUnmounted(() => {
     clearInterval(clockTimer)
   }
 })
+
+// --- Weather Logic ---
+const weatherTemp = ref('--°')
+const weatherDesc = ref('获取中')
+const weatherIconClass = ref('fa-sun')
+const weatherAqi = ref('AQI --')
+
+const fetchWeather = async () => {
+    // Priority: Real Location -> Virtual Location -> Default
+    const queryLoc = weather.value.realLocation || weather.value.virtualLocation || 'Beijing'
+    if (!queryLoc) return
+
+    try {
+        // Using wttr.in JSON API
+        const res = await fetch(`https://wttr.in/${encodeURIComponent(queryLoc)}?format=j1`)
+        if (res.ok) {
+            const data = await res.json()
+            const current = data.current_condition[0]
+            
+            weatherTemp.value = `${current.temp_C}°`
+            weatherDesc.value = current.lang_zh?.[0]?.value || current.weatherDesc?.[0]?.value || '晴'
+            
+            // Allow override of description to Chinese if possible, but wttr.in logic varies.
+            // Simple mapping for icons
+            const descLower = (current.weatherDesc?.[0]?.value || '').toLowerCase()
+            if (descLower.includes('rain') || descLower.includes('shower')) weatherIconClass.value = 'fa-cloud-rain'
+            else if (descLower.includes('cloud') || descLower.includes('overcast')) weatherIconClass.value = 'fa-cloud'
+            else if (descLower.includes('snow')) weatherIconClass.value = 'fa-snowflake'
+            else if (descLower.includes('fog') || descLower.includes('mist')) weatherIconClass.value = 'fa-smog'
+            else if (descLower.includes('thunder')) weatherIconClass.value = 'fa-bolt'
+            else weatherIconClass.value = 'fa-sun'
+            
+            // Mock AQI as wttr.in doesn't provide it easily without keys
+            weatherAqi.value = `AQI ${Math.floor(Math.random() * 50 + 20)}` 
+        }
+    } catch (e) {
+        console.error('Weather Fetch Error', e)
+        weatherDesc.value = '离线'
+    }
+}
+
+onMounted(() => {
+    fetchWeather()
+    // Refresh weather every 30 mins
+    setInterval(fetchWeather, 30 * 60 * 1000)
+})
 </script>
 
 <template>
   <!-- EXACT copy from original HTML structure -->
-  <main id="desktop" class="flex-1 w-full h-full z-10 pt-8">
+  <main id="desktop" class="flex-1 w-full h-full z-10 pt-1">
     <div class="app-pages-container" id="app-swiper"
       ref="pagesContainer"
       @mousedown="handleMouseDown"
@@ -177,12 +223,12 @@ onUnmounted(() => {
             <i class="fa-solid fa-sun"></i>
           </div>
           <div class="text-right text-4xl font-light flex flex-col items-end">
-            <i class="fa-solid fa-sun weather-icon text-yellow-500" id="desktop-weather-icon"></i>
-            <span id="desktop-temp" :style="getWidgetFontStyle">24°</span>
+            <i :class="['fa-solid weather-icon text-yellow-500', weatherIconClass]" id="desktop-weather-icon"></i>
+            <span id="desktop-temp" :style="getWidgetFontStyle">{{ weatherTemp }}</span>
           </div>
           <div>
-            <div class="text-sm" id="desktop-weather-desc" :style="getWidgetFontStyle">晴朗</div>
-            <div class="text-xs" :style="getWidgetFontStyle">AQI 35</div>
+            <div class="text-sm" id="desktop-weather-desc" :style="getWidgetFontStyle">{{ weatherDesc }}</div>
+            <div class="text-xs" :style="getWidgetFontStyle">{{ weatherAqi }}</div>
           </div>
         </div>
 

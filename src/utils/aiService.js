@@ -30,13 +30,14 @@ Current Time: ${char.virtualTime || new Date().toLocaleString('zh-CN', { hour12:
    - 指令格式：在回复的最后单独一行输出 [SET_PAT:动作:后缀]
    - 例如：[SET_PAT:敲了敲:的脑袋]
    - 重置指令：[SET_PAT:reset] (恢复默认)
+3. **主动使用**：如果你想在当前对话情境下主动“拍一拍”用户，请在回复中单独输出指令 [NUDGE]。系统会自动转换为“你在对话中拍了拍用户”的系统提示。
 
 【核心指令】
 1. 始终保持角色设定，不要跳出角色。
 2. 回复要自然、口语化，像微信聊天一样。
 3. **严格遵守输出格式**：
-   - 第一部分：**必须**输出一个 [INNER_VOICE] JSON 块，包含心声、动作、环境等。
-   - 第二部分：**直接输出**你的对话内容（Spoken Text），不要包含任何标签，也不要重复心声内容。
+   - 第一部分：**直接输出**你的对话内容（Spoken Text），不要包含任何标签，也不要重复心声内容。
+   - 第二部分：**必须**输出一个 [INNER_VOICE] JSON 块，包含心声、动作、环境等。
    - 严禁在对话内容中使用括号、星号描写动作，所有动作描写必须放在 JSON 的 "行为" 字段中。
 
 【JSON 格式定义】
@@ -44,7 +45,7 @@ Current Time: ${char.virtualTime || new Date().toLocaleString('zh-CN', { hour12:
 {
   "着装": "详细描述你当前的全身穿着",
   "环境": "描述当前具体时间地点环境 (必须基于上方的 Current Time)",
-  "status": "可选：更新你的状态，如：正在赶往宝宝所在地 / 正在认真工作中。字数控制在15字内",
+  "status": "可选：更新你的状态，如：正在赶往宝宝所在地 / 正在认真工作中 / 在线 / 离线。字数控制在15字内",
   "心声": "情绪：... 想法：...",
   "行为": "先写明【线上】或【线下】，然后描述当前动作"
 }
@@ -56,13 +57,99 @@ Current Time: ${char.virtualTime || new Date().toLocaleString('zh-CN', { hour12:
 【高级交互指令集】
 1. **资金往来**：[转账:金额:备注] 或 [红包:金额:祝福语]
 2. **多媒体**：[图片:URL] 或 [表情包:名称] 或 [语音:文本内容]
+   - **注意**：绝对不要生成虚假的图片链接。如果你无法提供真实可访问的 URL，请不要使用 [图片] 标签。
+3. **HTML 动态卡片**：如果你想发送一张制作精美的卡片（例如情书、邀请函、特殊界面），请使用以下格式：
+   [CARD]
+   {
+     "type": "html",
+     "html": "<div style='...'>你的HTML代码</div>"
+   }
+   - **注意**：请务必使用 [CARD] 前缀，并确保 JSON 格式正确且压缩为一行。HTML 中可以使用内联 CSS。
+
 `
 
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
 
-export async function generateReply(messages, char) {
+// --- API Request Queue & Rate Limiter ---
+class RequestQueue {
+    constructor(maxRate = 4, interval = 60000) {
+        this.queue = [];
+        this.isProcessing = false;
+        this.timestamps = []; // Request timestamps for rate limiting
+        this.maxRate = maxRate;
+        this.interval = interval;
+    }
+
+    // Add request to queue
+    enqueue(apiFunc, args, abortSignal) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({
+                apiFunc,
+                args,
+                abortSignal,
+                resolve,
+                reject
+            });
+            this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.isProcessing || this.queue.length === 0) return;
+
+        // Check Rate Limit
+        const now = Date.now();
+        // Filter out timestamps older than the interval
+        this.timestamps = this.timestamps.filter(t => now - t < this.interval);
+
+        if (this.timestamps.length >= this.maxRate) {
+            // Rate limited. Wait until the oldest timestamp expires.
+            const oldest = this.timestamps[0];
+            const waitTime = this.interval - (now - oldest) + 100; // +100ms buffer
+            console.log(`[RateLimit] Limit reached. Waiting ${waitTime}ms...`);
+            setTimeout(() => this.processQueue(), waitTime);
+            return;
+        }
+
+        this.isProcessing = true;
+        const task = this.queue.shift();
+
+        // Check if task was aborted while in queue
+        if (task.abortSignal && task.abortSignal.aborted) {
+            task.reject(new DOMException('Aborted', 'AbortError'));
+            this.isProcessing = false;
+            this.processQueue(); // Process next
+            return;
+        }
+
+        try {
+            // Execute
+            console.log('[RequestQueue] Processing request. Queue length:', this.queue.length);
+            this.timestamps.push(Date.now());
+            const result = await task.apiFunc(...task.args);
+            task.resolve(result);
+        } catch (error) {
+            task.reject(error);
+        } finally {
+            this.isProcessing = false;
+            // Delay next process slightly to ensure UI updates or avoid race
+            setTimeout(() => this.processQueue(), 50); 
+        }
+    }
+}
+
+const apiQueue = new RequestQueue(4, 60000); // 4 requests per 1 minute
+
+export async function generateReply(messages, char, abortSignal) {
+    // Wrapper to use Queue
+    // Pass abortSignal as 3rd arg to internal function
+    return apiQueue.enqueue(_generateReplyInternal, [messages, char, abortSignal], abortSignal);
+}
+
+// Renamed original generateReply to _generateReplyInternal
+async function _generateReplyInternal(messages, char, signal) {
     const settingsStore = useSettingsStore()
     const stickerStore = useStickerStore()
 
@@ -194,8 +281,8 @@ export async function generateReply(messages, char) {
             }
 
             // 2. Handle potential [图片:URL] and [表情包:名称] within text
-            // Regex to find either format
-            const combinedRegex = /\[(?:图片|IMAGE)[:：](https?:\/\/[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
+            // Regex to find either format (Updated to support data:image for local uploads)
+            const combinedRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
             let lastIndex = 0
             let match
             
@@ -460,7 +547,11 @@ export async function generateReply(messages, char) {
     }
 }
 
-export async function generateSummary(messages, customPrompt = '') {
+export async function generateSummary(messages, customPrompt = '', abortSignal) {
+    return apiQueue.enqueue(_generateSummaryInternal, [messages, customPrompt, abortSignal], abortSignal);
+}
+
+async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     const settingsStore = useSettingsStore()
     const config = settingsStore.currentConfig || settingsStore.apiConfig
     const { baseUrl, apiKey, model } = config || {}

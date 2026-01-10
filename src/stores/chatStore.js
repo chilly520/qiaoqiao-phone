@@ -23,6 +23,34 @@ export const useChatStore = defineStore('chat', () => {
     const chats = ref({}) // { 'char_id': { name: '...', avatar: '...', msgs: [], unreadCount: 0 } }
     const currentChatId = ref(null)
     const isTyping = ref(false)
+    const notificationEvent = ref(null) // Global notification trigger
+    const patEvent = ref(null) // Event: { chatId, target: 'ai'|'user' }
+    const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
+    
+    // AI Control
+    let currentAbortController = null;
+
+    function triggerPatEffect(chatId, target) {
+        patEvent.value = {
+            id: Date.now(),
+            chatId,
+            target
+        }
+    }
+
+    function triggerToast(message, type = 'info') {
+        toastEvent.value = { id: Date.now(), message, type }
+    }
+
+    function stopGeneration() {
+        if (currentAbortController) {
+            currentAbortController.abort()
+            currentAbortController = null
+            isTyping.value = false
+            console.log('[ChatStore] AI Generation stopped by user.')
+            triggerToast('已中断生成', 'info')
+        }
+    }
 
     // Reset unread count when switching to a chat
     watch(currentChatId, (newId) => {
@@ -49,6 +77,16 @@ export const useChatStore = defineStore('chat', () => {
             const timeA = a.lastMsg ? a.lastMsg.timestamp : 0
             const timeB = b.lastMsg ? b.lastMsg.timestamp : 0
             return timeB - timeA
+        })
+    })
+
+    const contactList = computed(() => {
+        return Object.keys(chats.value).map(key => ({
+            id: key,
+            ...chats.value[key]
+        })).sort((a, b) => {
+            // Sort contacts alphabetically or by pinyin
+            return (a.name || '').localeCompare(b.name || '', 'zh-CN')
         })
     })
 
@@ -154,6 +192,19 @@ export const useChatStore = defineStore('chat', () => {
         if (chatId !== currentChatId.value) {
             chat.unreadCount = (chat.unreadCount || 0) + 1
         }
+
+        // Trigger Global Notification (Only for AI or other users, not self)
+        if (newMsg.role !== 'user') {
+            notificationEvent.value = {
+                id: Date.now(),
+                chatId: chatId,
+                name: chat.name,
+                avatar: chat.avatar,
+                content: newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]'),
+                timestamp: Date.now()
+            }
+        }
+
 
         checkAutoSummary(chatId)
         return saveChats()
@@ -317,6 +368,8 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return false
 
+        triggerToast('正在分析上下文...', 'info')
+
         // Determine range
         let targetMsgs = []
         let rangeDesc = ''
@@ -366,6 +419,8 @@ export const useChatStore = defineStore('chat', () => {
             range: rangeDesc,
             content: summaryContent
         })
+        
+        triggerToast('总结已生成并存入记忆库', 'info')
         
         // Update index if it was an auto-summary (nextIndex was calculated)
         if (options.startIndex === undefined) {
@@ -528,6 +583,13 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. 调用 AI
         try {
+            // Stop any previous generation
+            if (currentAbortController) {
+                 stopGeneration()
+            }
+            currentAbortController = new AbortController()
+            const signal = currentAbortController.signal
+
             const charInfo = {
                 name: chat.name || '角色',
                 description: chat.prompt || '',
@@ -538,7 +600,10 @@ export const useChatStore = defineStore('chat', () => {
                 virtualTime: currentVirtualTime // 传入推算后的时间
             }
 
-            const result = await generateReply(context, charInfo)
+            const result = await generateReply(context, charInfo, signal)
+            
+            // Clear controller on success
+            currentAbortController = null
 
             if (result.error) {
                 addMessage(chatId, { role: 'system', content: `[系统错误] ${result.error}` })
@@ -588,68 +653,178 @@ export const useChatStore = defineStore('chat', () => {
                     saveChats()
                 }
 
+                // --- Handle [NUDGE] Command ---
+                const nudgeRegex = /\[NUDGE(?::(.+?))?\]/i
+                const nudgeMatch = fullContent.match(nudgeRegex)
+                if (nudgeMatch) {
+                    const modifier = nudgeMatch[1] ? nudgeMatch[1].trim() : ''
+                    const action = chat.patAction || '拍了拍'
+                    let target = 'user' // Default visual target: user needs to shake
+                    let suffix = chat.patSuffix || '我'
+
+                    // Logic: Distinguish "Pat Self" vs "Pat User"
+                    if (modifier === 'self' || modifier === '自己' || modifier === 'me') {
+                        // AI pats themselves
+                        // Msg: "Lin Shen patted himself"
+                        // Suffix adjustment logic
+                        suffix = '自己'
+                        target = 'ai' // AI avatar shakes
+                    } else if (modifier) {
+                        // Custom target currently falls back to Default/User behavior but with custom text suffix? 
+                        // Or just append modifier.
+                        // For now, let's treat explicit 'user'/'我' as default, others as text.
+                         if (modifier !== 'user' && modifier !== '我') {
+                             suffix = modifier
+                         }
+                    }
+
+                    // Heuristic: Prepend '我' if suffix starts with '的' (e.g. "的头")
+                    if (suffix.startsWith('的')) suffix = '我' + suffix
+                    
+                    // Trigger System Message
+                    addMessage(chatId, {
+                        type: 'system',
+                        content: `"${chat.name || '对方'}" ${action} ${suffix}`,
+                        isRecallTip: true
+                    })
+
+                    // Trigger Visual Feedback Signal
+                    // We need a way to tell the UI to shake. We'll use a new state property.
+                    triggerPatEffect(chatId, target)
+                }
+
                 let cleanContent = fullContent.replace(innerVoiceRegex, '')
                                               .replace(patRegex, '')
+                                              .replace(nudgeRegex, '')
                                               .trim();
                 // Clean cleanup specifically to handle hallucinated stray tags
                 cleanContent = cleanContent.replace(/\[\/?INNER_VOICE\]/gi, '').trim();
 
+                // --- Handle Image Security & Validation ---
+                // Replace phantom images with broken image placeholder
+                // Regex to find [图片:URL]
+                cleanContent = cleanContent.replace(/\[图片:(.+?)\]/gi, (match, url) => {
+                    const trimmedUrl = url.trim();
+                    // Allow legitimate http/https URLs and specific local assets
+                    const isValid = trimmedUrl.startsWith('http') || 
+                                    trimmedUrl.startsWith('data:') || 
+                                    trimmedUrl === '/broken-image.png';
+                    
+                    if (!isValid) {
+                        console.warn('[Security] Blocked invalid AI image URL:', trimmedUrl);
+                        return '[图片:/broken-image.png]'; // Force valid placeholder
+                    }
+                    return match;
+                });
+
                 console.log('[DEBUG] Content to split:', cleanContent);
 
-                // Improved Splitting Logic (Token-based protection for brackets and emojis)
-                const tokens = cleanContent.match(/(\[[^\]]+\]|\([^\)]+\)|（[^）]+）|【[^】]+】|[^\[\]\(\)（）【】!?;。！？；…\n]+|[!?;。！？；…\n]+)/g) || [];
+                // --- Improved Splitting Logic (V4) ---
+                // Goal: Protect [CARD]{...} and [表情包:...] as atomic tokens.
+                // 1. Tokenize: Extract Cards, Stickers, Parentheses, Punctuation, and Text segments.
+                const tokenRegex = /(\[CARD\]\{.*?\}|\[表情包:.*?\]|\([^\)]+\)|（[^）]+）|[!?;。！？；…\n]+|[^!?;。！？；…\n\(\)（）\[\]]+|\[[^\]]+\])/g;
+                const rawTokens = cleanContent.match(tokenRegex) || [];
                 
                 let segments = [];
                 let currentSegment = "";
 
-                tokens.forEach(token => {
-                    const isBracket = /^([\[\(（【].*[\]\)）】])$/.test(token);
-                    const isPunctuation = /^[!?;。！？；…\n]+$/.test(token);
+                for (let i = 0; i < rawTokens.length; i++) {
+                    const token = rawTokens[i].trim();
+                    if (!token) continue;
 
-                    if (isBracket) {
-                        // If we had pending text, push it first
+                    const isCard = token.startsWith('[CARD]');
+                    const isSticker = token.startsWith('[表情包:');
+                    const isPunctuation = /^[!?;。！？；…\n]+$/.test(token);
+                    const isParenthesis = /^[\(（].*[\)）]$/.test(token);
+
+                    if (isCard || isSticker) {
+                        // Protect these blocks. If there's pending text, push it first.
                         if (currentSegment.trim()) {
                             segments.push(currentSegment.trim());
                             currentSegment = "";
                         }
-                        // Brackets (Actions or Special Tags) are ALWAYS their own bubble
-                        // This handles the user's request: "prioritize splitting by brackets"
-                        segments.push(token.trim());
+                        segments.push(token);
                     } else if (isPunctuation) {
                         currentSegment += token;
                         segments.push(currentSegment.trim());
                         currentSegment = "";
+                    } else if (isParenthesis) {
+                        // Kaomoji/Action logic
+                        const prev = rawTokens[i-1];
+                        const next = rawTokens[i+1];
+                        let shouldMerge = false;
+                        
+                        if (prev && !/^[!?;/。！？；…\n\s]+$/.test(prev) && !prev.endsWith(' ')) shouldMerge = true;
+                        if (next && !/^[!?;。！？；…\n\s]+$/.test(next) && !next.startsWith(' ')) shouldMerge = true;
+                        
+                        const content = token.slice(1, -1);
+                        if (!/[\u4e00-\u9fa5a-zA-Z0-9]/.test(content)) shouldMerge = true;
+
+                        if (shouldMerge) {
+                            currentSegment += token;
+                        } else {
+                            if (currentSegment.trim()) {
+                                segments.push(currentSegment.trim());
+                                currentSegment = "";
+                            }
+                            segments.push(token);
+                        }
                     } else {
                         currentSegment += token;
                     }
-                });
-
+                }
+                
                 if (currentSegment.trim()) {
                     segments.push(currentSegment.trim());
                 }
 
-                // 4. Sequential Delivery with Typing Indicator Maintenance
-                for (let i = 0; i < segments.length; i++) {
-                    const seg = segments[i];
-                    let msgContent = seg;
+                // Final Clean: Remove empty segments
+                const finalSegments = segments.filter(s => s.trim());
+                if (finalSegments.length === 0 && cleanContent) finalSegments.push(cleanContent);
+
+                // 4. Sequential Delivery
+                for (let i = 0; i < finalSegments.length; i++) {
+                    const seg = finalSegments[i];
                     
-                    // First message carries the Inner Voice data for state updates
-                    if (i === 0 && innerVoiceBlock) {
-                        msgContent = innerVoiceBlock + '\n' + seg;
+                    // Special Handling for Segments
+                    if (seg.startsWith('[CARD]')) {
+                        // Extract JSON part
+                        const jsonStr = seg.replace('[CARD]', '').trim();
+                        try {
+                            addMessage(chatId, {
+                                role: 'ai',
+                                type: 'html', 
+                                content: jsonStr
+                            });
+                        } catch (e) {
+                             console.error('Card JSON error', e);
+                             addMessage(chatId, { role: 'ai', type: 'text', content: '[CARD Error] ' + jsonStr });
+                        }
+                    } else if (seg.startsWith('[表情包:')) {
+                        // Send as standalone message to trigger sticker rendering
+                        addMessage(chatId, { role: 'ai', content: seg });
+                    } else {
+                        // Normal text
+                        let msgContent = seg;
+                        // Attach Inner Voice to the first text message
+                        const isFirstTextMessage = segments.findIndex(s => !s.startsWith('[CARD]')) === i;
+                        if (isFirstTextMessage && innerVoiceBlock) {
+                            msgContent = innerVoiceBlock + '\n' + seg;
+                        }
+                        addMessage(chatId, { role: 'ai', content: msgContent });
                     }
                     
-                    // Add message
-                    addMessage(chatId, { role: 'ai', content: msgContent });
-                    
-                    // Artificial Delay to simulate reading/typing (except for last one)
-                    if (i < segments.length - 1) {
-                        const delay = Math.min(2500, Math.max(800, seg.length * 100)); 
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                    }
+                    // Artificial Delay between segments
+                    const delay = Math.min(2500, Math.max(800, seg.length * 100)); 
+                    await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
 
         } catch (e) {
+            isTyping.value = false
+            currentAbortController = null
+            if (e.name === 'AbortError' || e.message === 'Aborted') return
+
             const isQuotaError = e.name === 'QuotaExceededError' || e.code === 22 || e.message?.includes('quota');
             useLoggerStore().addLog('ERROR', 'AI响应处理失败', e.message)
             
@@ -674,6 +849,16 @@ export const useChatStore = defineStore('chat', () => {
             userName: "乔乔"
         }, 'char_linshen')
         addMessage('char_linshen', { role: 'ai', content: '宝宝，今天过得怎么样？有没有想我？' })
+
+        // 测试酱
+        const avatarTest = getRandomAvatar()
+        createChat('测试酱', avatarTest, {
+            prompt: "你是'测试酱'，这个'小手机系统'的专属测试员兼私人助手。你的主人是'乔乔'（女），她是这个系统的首席设计师，也是你唯一的主人。你性格活泼、听话，对主人的指令绝对服从，并且对主人充满崇拜。你的工作是协助主人测试系统的各项功能，无论主人提出什么奇怪的测试要求（如测试表情包、测试红包、测试甚至骂人），你都会开心配合。你的语气要像个可爱的女仆或忠诚的小跟班，经常叫主人'大小姐'或'主人'。",
+            userName: "乔乔",
+            activeChat: true, // 让她稍微活跃点
+            activeInterval: 120, // 2小时查一次岗
+        }, 'char_tester')
+        addMessage('char_tester', { role: 'ai', content: '大小姐，您的专属测试员——测试酱已就位！请随时吩咐我测试任何功能哦！(｀・ω・´)' })
     }
 
     function clearAllChats() {
@@ -826,10 +1011,18 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     return {
+        lastGeneratedImage: computed(() => null), // Holder if needed or verify where it was
+        notificationEvent,
+        patEvent,
+        toastEvent,
+        triggerToast,
+        stopGeneration,
+        triggerPatEffect,
         chats,
         currentChatId,
         isTyping,
         chatList,
+        contactList,
         currentChat,
         addMessage,
         updateMessage, // Assuming updateMessage exists? Check context

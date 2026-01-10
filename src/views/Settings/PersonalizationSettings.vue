@@ -200,6 +200,34 @@ const resetAll = () => {
         showToastMsg('已重置所有设置')
     }
 }
+// --- Actions : Stickers ---
+const stickerCount = computed(() => stickerStore.customStickers.length)
+
+const onStickerImport = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+        const content = ev.target.result
+        const { success, duplicate } = stickerStore.importStickersFromText(content)
+        if (duplicate > 0) {
+            showToastMsg(`成功导入 ${success} 个，跳过 ${duplicate} 个重复项`)
+        } else {
+            showToastMsg(`成功导入 ${success} 个表情包`)
+        }
+        e.target.value = '' // reset
+    }
+    reader.readAsText(file)
+}
+
+const clearStickers = () => {
+    if (confirm('确定清空所有自定义表情包吗？(无法撤销)')) {
+        stickerStore.clearAllStickers()
+        showToastMsg('已清空所有表情包')
+    }
+}
+
 </script>
 
 <template>
@@ -419,6 +447,30 @@ const resetAll = () => {
                 <button @click="deletePreset" class="setting-btn secondary text-red-500">删除预设</button>
             </div>
              <button @click="resetAll" class="setting-btn secondary w-full mt-2 text-red-600 font-bold border-red-100 bg-red-50">重置所有美化</button>
+        </div>
+
+        <!-- Sticker Management -->
+        <div class="glass-panel p-4 rounded-[20px]">
+            <h3 class="text-base font-bold text-gray-900 mb-3">表情包管理</h3>
+            <div class="text-xs text-gray-500 mb-2 leading-relaxed">
+                支持导入 .txt 文件，格式为：<br>
+                <code class="bg-gray-100 px-1 rounded">表情名称：图片URL</code><br>
+                （支持中文“：”和英文“:”）<br>
+                Word 文档请复制内容到 txt 文件后导入。
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2">
+                 <button class="setting-btn secondary relative">
+                    <i class="fa-solid fa-file-import mr-1 text-gray-500"></i>导入表情包
+                    <input type="file" @change="onStickerImport" accept=".txt" class="absolute inset-0 opacity-0 cursor-pointer">
+                </button>
+                <button @click="clearStickers" class="setting-btn secondary bg-red-50 text-red-500">
+                    <i class="fa-solid fa-trash mr-1"></i>清空表情包
+                </button>
+            </div>
+             <div class="mt-2 text-xs text-center text-gray-400">
+                当前已收录 {{ stickerCount }} 个表情包
+            </div>
         </div>
 
         <!-- Custom CSS -->

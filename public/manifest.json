@@ -8,12 +8,12 @@
   "description": "乔乔的专属小手机 App",
   "icons": [
     {
-      "src": "/pwa-192x192.jpg",
+      "src": "/pwa-192x192.jpg?v=2",
       "sizes": "192x192",
       "type": "image/jpeg"
     },
     {
-      "src": "/pwa-512x512.jpg",
+      "src": "/pwa-512x512.jpg?v=2",
       "sizes": "512x512",
       "type": "image/jpeg"
     }

@@ -30,9 +30,10 @@
               <select v-model="block.type" class="text-xs py-1 h-8 flex-1 bg-gray-50 border border-gray-200 rounded px-2 focus:bg-white focus:ring-1 focus:ring-green-500 outline-none">
                   <option value="text">文本</option>
                   <option value="image">图片/表情包 URL</option>
+                  <option value="voice">语音条</option>
+                  <option value="html">HTML 卡片</option>
                   <option value="redpacket">红包</option>
                   <option value="transfer">转账</option>
-                  <option value="voice">语音条</option>
               </select>
            </div>
 
@@ -55,6 +56,11 @@
         <button @click="save" class="flex-1 py-2.5 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 shadow-md shadow-green-500/20 transition-all active:scale-95">保存修改</button>
       </div>
     </div>
+  </div>
+
+  <!-- Toast (Independent of Modal Visibility) -->
+  <div v-if="toastVisible" class="fixed top-10 left-1/2 -translate-x-1/2 bg-black/75 text-white px-4 py-2 rounded-lg shadow-lg z-[100] text-sm font-medium animate-fade-in pointer-events-none backdrop-blur-sm">
+      <i class="fa-solid fa-circle-check text-green-400 mr-2"></i> {{ toastMessage }}
   </div>
 </template>
 
@@ -99,7 +105,7 @@ const init = () => {
 }
 
 const normalizeType = (type) => {
-    if (['redpacket', 'transfer', 'image', 'voice'].includes(type)) return type
+    if (['redpacket', 'transfer', 'image', 'voice', 'html'].includes(type)) return type
     return 'text'
 }
 
@@ -152,6 +158,11 @@ const save = () => {
             base.type = 'voice'
             base.text = b.content
             base.content = 'Voice'
+        } else if (b.type === 'html') {
+            base.type = 'html'
+            // For HTML, content is likely the JSON string or raw HTML
+            // Ensure we save it correctly as content
+            base.content = b.content
         } else if (b.type === 'redpacket') {
             base.type = 'redpacket'
             base.content = '红包'
@@ -206,9 +217,25 @@ const save = () => {
         }
     }
     
+    
     close()
+    showToast('消息已保存')
 }
 
+// Toast Logic
+const toastVisible = ref(false)
+const toastMessage = ref('')
+let toastTimer = null
+
+const showToast = (msg) => {
+    toastMessage.value = msg
+    toastVisible.value = true
+    
+    if (toastTimer) clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => {
+        toastVisible.value = false
+    }, 2000)
+}
 </script>
 
 <style scoped>
@@ -218,5 +245,16 @@ const save = () => {
 @keyframes scaleIn {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+</style>
+
+<style scoped>
+/* Toast Animation */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 </style>

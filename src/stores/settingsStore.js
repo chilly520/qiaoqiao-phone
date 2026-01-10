@@ -111,7 +111,7 @@ export const useSettingsStore = defineStore('settings', () => {
             weather: '/widgets/bg_weather.jpg'
         },
         globalFont: {
-            color: '#ffffff',
+            color: '#000000',
             shadow: '',
             url: ''
         },

@@ -118,7 +118,11 @@
             class="flex-1 border border-gray-200 rounded p-2 text-xs resize-none outline-none focus:border-green-500 mb-3"
             placeholder="示例：&#10;开心：https://example.com/1.png&#10;难过：https://example.com/2.png"
         ></textarea>
-        <button @click="handleBatchImport" class="bg-[#07c160] text-white py-2 rounded font-medium active:bg-[#06ad56]">导入</button>
+        <div class="flex gap-2">
+            <button @click="handleBatchImport" class="flex-1 bg-[#07c160] text-white py-2 rounded font-medium active:bg-[#06ad56]">导入</button>
+            <button @click="triggerTxtImport" class="flex-1 bg-blue-500 text-white py-2 rounded font-medium active:bg-blue-600">导入 TXT</button>
+        </div>
+        <input type="file" ref="txtInput" class="hidden" accept=".txt" @change="handleTxtFileChange">
     </div>
 
   </div>
@@ -138,6 +142,7 @@ const activeTab = ref('emoji')
 const activeScope = ref('global') // 'global' or chatId
 
 const fileInput = ref(null)
+const txtInput = ref(null)
 const showBatchModal = ref(false)
 const batchInput = ref('')
 
@@ -178,6 +183,26 @@ const handleFileChange = async (event) => {
         }
         event.target.value = ''
     }
+}
+
+const triggerTxtImport = () => {
+    txtInput.value.click()
+}
+
+const handleTxtFileChange = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+    
+    const reader = new FileReader()
+    reader.onload = (e) => {
+        const content = e.target.result
+        const result = stickerStore.importStickersFromText(content, activeScope.value)
+        showToast(`成功:${result.success}, 重复:${result.duplicate}, 失败:${result.failed}`)
+        showBatchModal.value = false
+        event.target.value = ''
+    }
+    reader.onerror = () => showToast('读取文件失败')
+    reader.readAsText(file)
 }
 
 const deleteSticker = (url) => {

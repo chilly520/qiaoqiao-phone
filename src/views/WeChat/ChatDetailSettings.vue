@@ -297,7 +297,9 @@
                 </select>
                 <button class="setting-btn secondary text-sm flex-1" @click="triggerStickerUpload">本地上传</button>
                 <button class="setting-btn secondary text-sm flex-1" @click="showStickerUrlInput = !showStickerUrlInput">URL上传</button>
+                <button class="setting-btn secondary text-sm flex-1" @click="triggerTxtImport">TXT导入</button>
             </div>
+            <input type="file" ref="txtInput" class="hidden" accept=".txt" @change="handleTxtImport">
             
             <!-- URL Input (Inline) -->
             <div v-if="showStickerUrlInput" class="flex gap-2 mb-2 animate-fade-in">
@@ -588,6 +590,7 @@ const fileInput = ref(null)
 const userFileInput = ref(null)
 const bgUploadInput = ref(null)
 const stickerInput = ref(null)
+const txtInput = ref(null)
 const stickerScope = ref('special_global')
 const showStickerUrlInput = ref(false)
 const stickerUrlInput = ref('')
@@ -993,7 +996,8 @@ const saveSettings = () => {
     
     if (success) {
         // 2. Add system notification if remark changed
-        if (newRemark !== undefined && newRemark !== oldRemark) {
+        // 2. Add system notification if remark changed (SKIP for new chats to avoid hiding friend request)
+        if (!props.chatData.isNew && newRemark !== undefined && newRemark !== oldRemark) {
              chatStore.addMessage(props.chatData.id, {
                  role: 'system',
                  content: `${localData.value.userName || '用户'}将你的备注改成了${newRemark || '无'}`
@@ -1053,6 +1057,23 @@ const handleStickerUrlAdd = () => {
     } else {
         showToast('添加失败或已存在')
     }
+}
+
+const triggerTxtImport = () => txtInput.value.click()
+const handleTxtImport = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    const reader = new FileReader()
+    reader.onload = (event) => {
+        const content = event.target.result
+        const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
+        const result = stickerStore.importStickersFromText(content, scope)
+        showToast(`成功:${result.success}, 重复:${result.duplicate}, 失败:${result.failed}`)
+        e.target.value = ''
+    }
+    reader.onerror = () => showToast('读取文件失败')
+    reader.readAsText(file)
 }
 
 const confirmDeleteSticker = (url) => {

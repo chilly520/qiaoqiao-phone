@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useChatStore } from '../../stores/chatStore'
 import { useWalletStore } from '../../stores/walletStore'
@@ -14,7 +14,10 @@ import MusicPlayer from '../../components/MusicPlayer.vue'
 import EmojiPicker from './EmojiPicker.vue'
 import ChatEditModal from './ChatEditModal.vue'
 import ChatHistoryModal from './ChatHistoryModal.vue'
+
+import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import { marked } from 'marked'
+import { compressImage } from '../../utils/imageUtils'
 
 // Configure Marked
 marked.setOptions({
@@ -222,6 +225,42 @@ const processMusicCommand = async (text) => {
     }
 }
 
+
+
+// --- Iframe / Card Communication Handler ---
+const handleIframeMessage = (event) => {
+    const data = event.data
+    if (data && data.type === 'QIAOQIAO_CARD_ACTION') {
+        console.log('[Card Action]', data)
+        
+        if (data.action === 'SEND_TEXT') {
+            // Validating inputs
+            if (!data.content || typeof data.content !== 'string') return
+            
+            // Send as User
+            chatStore.addMessage(chatData.value.id, {
+                role: 'user',
+                content: data.content
+            })
+            
+            // Trigger AI processing if requested
+            if (data.autoReply) {
+                setTimeout(() => {
+                    generateAIResponse()
+                }, 500)
+            }
+        }
+    }
+}
+
+onMounted(() => {
+  window.addEventListener('message', handleIframeMessage)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('message', handleIframeMessage)
+})
+
 watch(() => msgs.value.length, (newLen, oldLen) => {
     if (newLen > oldLen && newLen > 0) {
         const lastMsg = msgs.value[newLen - 1]
@@ -330,6 +369,35 @@ const handlePat = (msg) => {
     // }
 }
 
+// Visual Feedback for Command Nudges
+watch(() => chatStore.patEvent, (evt) => {
+    if (!evt || evt.chatId !== chatStore.currentChatId) return
+    
+    // Find valid targets in displayed messages
+    const targetRole = evt.target === 'ai' ? 'ai' : 'user'
+    
+    // Shake ALL visible avatars of that role? Or just the last one?
+    // Let's shake the last 3 to be safe/visible but not overwhelming? 
+    // Or just all. "All" is simpler and clearly indicates "The person is shaking".
+    displayedMsgs.value.forEach(m => {
+        if (m.role === targetRole) {
+            shakingAvatars.value.add(m.id)
+        }
+    })
+    
+    // Duration
+    setTimeout(() => {
+        displayedMsgs.value.forEach(m => {
+            if (m.role === targetRole) {
+                shakingAvatars.value.delete(m.id)
+            }
+        })
+    }, 500)
+    
+    // Haptic
+    if (navigator.vibrate) navigator.vibrate(50)
+})
+
 const handlePanelAction = (type) => {
     if (type === 'album') {
         imgUploadInput.value.click()
@@ -375,16 +443,46 @@ const confirmSend = () => {
 const handleImgUpload = (event) => {
     const file = event.target.files[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (e) => {
-        chatStore.addMessage(chatStore.currentChatId, {
-            role: 'user',
-            type: 'image',
-            content: e.target.result
-        })
-        showActionPanel.value = false
+
+    // 1. Validate
+    if (file.size > 10 * 1024 * 1024) {
+        alert('图片太大 (限制10MB)')
+        return
     }
-    reader.readAsDataURL(file)
+
+    // 2. Compress & Send
+    compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 })
+        .then(base64 => {
+             chatStore.addMessage(chatStore.currentChatId, {
+                role: 'user',
+                type: 'image',
+                content: base64
+             })
+             showActionPanel.value = false
+             scrollToBottom()
+             // Trigger AI
+             chatStore.sendMessageToAI(chatStore.currentChatId)
+        })
+        .catch(err => {
+            console.error('Compression failed', err)
+            // Fallback to raw if compression fails? Or just error.
+            // Let's try raw as fallback just in case
+            const reader = new FileReader()
+            reader.onload = (e) => {
+                 chatStore.addMessage(chatStore.currentChatId, {
+                    role: 'user',
+                    type: 'image',
+                    content: e.target.result
+                 })
+                 showActionPanel.value = false
+                 scrollToBottom()
+                 chatStore.sendMessageToAI(chatStore.currentChatId)
+            }
+            reader.readAsDataURL(file)
+        })
+
+    // Reset input
+    event.target.value = ''
 }
 
 
@@ -407,6 +505,29 @@ const closePanels = () => {
 // TTS Helper
 const ttsQueue = ref([]);
 const isSpeaking = ref(false);
+
+// Toast System
+const toastVisible = ref(false);
+const toastMessage = ref('');
+const toastType = ref('info');
+let toastTimer = null;
+
+const showToast = (msg, type = 'info') => {
+    toastMessage.value = msg;
+    toastType.value = type;
+    toastVisible.value = true;
+    
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toastVisible.value = false;
+    }, 3000);
+};
+
+watch(() => chatStore.toastEvent, (newVal) => {
+    if (newVal) {
+        showToast(newVal.message, newVal.type);
+    }
+});
 
 const processQueue = () => {
     if (isSpeaking.value || ttsQueue.value.length === 0) return;
@@ -976,6 +1097,7 @@ const openRedPacket = () => {
             const userName = chat.userName || '你'
             chatStore.addMessage(chat.id, {
                 role: 'system',
+                type: 'system',
                 content: `${userName}领取了${senderName}的红包`
             })
             
@@ -1487,6 +1609,25 @@ const cleanupCanvas = () => {
     // Remove listeners if needed
 };
 
+const handleImageError = (e) => {
+    e.target.src = '/broken-image.png';
+    e.target.onerror = null; // Prevent infinite loop if placeholder fails
+};
+
+const getHtmlContent = (content) => {
+    if (!content) return ''
+    try {
+        // Try parsing as JSON first (if it's the [CARD] format)
+        if (content.trim().startsWith('{')) {
+            const data = JSON.parse(content)
+            if (data.html) return data.html
+        }
+    } catch (e) {
+        // Not JSON, treat as raw HTML string
+    }
+    return content
+}
+
 // UI Methods
 // (Methods moved to 'Modal Logic' section above)
 const toggleVoiceEffect = () => {
@@ -1527,6 +1668,23 @@ const executeDelete = () => {
 
 <template>
   <div class="chat-window w-full h-full flex flex-col overflow-hidden relative">
+    <!-- Global Toast Notifier -->
+    <Transition name="fade">
+      <div v-if="toastVisible" 
+           class="absolute top-16 left-1/2 transform -translate-x-1/2 z-[100] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 min-w-[200px] justify-center backdrop-blur-md"
+           :class="{
+             'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 text-white': toastType === 'info',
+             'bg-gradient-to-r from-green-500/90 to-emerald-600/90 text-white': toastType === 'success',
+             'bg-gradient-to-r from-red-500/90 to-pink-600/90 text-white': toastType === 'error'
+           }"
+      >
+        <i v-if="toastType === 'info'" class="fa-solid fa-circle-info italic"></i>
+        <i v-if="toastType === 'success'" class="fa-solid fa-circle-check"></i>
+        <i v-if="toastType === 'error'" class="fa-solid fa-circle-exclamation"></i>
+        <span class="text-xs font-medium tracking-wide">{{ toastMessage }}</span>
+      </div>
+    </Transition>
+
     <!-- Combined Background Layer -->
     <div 
         class="absolute inset-0 bg-cover bg-center z-[-1] transition-all duration-300 pointer-events-none"
@@ -1707,7 +1865,7 @@ const executeDelete = () => {
      
                 <!-- Image / Emoji -->
                 <div v-else-if="msg.type === 'image' || isImageMsg(msg)" class="msg-image bg-transparent" @contextmenu.prevent="handleContextMenu(msg, $event)">
-                     <img :src="getImageSrc(msg)" class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer" @click="previewImage(getImageSrc(msg))">
+                     <img :src="getImageSrc(msg)" class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer" @click="previewImage(getImageSrc(msg))" @error="handleImageError">
                 </div>
 
                 <!-- Voice Message Branch (Unified) -->
@@ -1756,6 +1914,12 @@ const executeDelete = () => {
                         </div>
                     </div>
                 </div>
+
+                <!-- HTML Card (Interactive Iframe) -->
+                <div v-else-if="msg.type === 'html'" class="w-full max-w-[85%] mt-1" @contextmenu.prevent="handleContextMenu(msg, $event)">
+                     <SafeHtmlCard :content="getHtmlContent(msg.content)" />
+                </div>
+
      
     
                    <!-- Default Text Bubble -->
@@ -1871,8 +2035,17 @@ const executeDelete = () => {
                 ></textarea>
              </div>
 
+             <!-- Stop Btn (When Typing) -->
+             <button v-if="chatStore.isTyping" 
+                     class="mb-1 text-white bg-red-500 rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-red-600 transition-all active:scale-95 shadow-sm" 
+                     @click="chatStore.stopGeneration"
+                     title="停止生成"
+             >
+                 <i class="fa-solid fa-square text-[10px]"></i>
+             </button>
+
              <!-- Generate Btn -->
-             <button v-if="!inputVal.trim()" 
+             <button v-else-if="!inputVal.trim()" 
                      class="mb-1 text-white bg-[#07c160] rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-[#06ad56] transition-all active:scale-95 shadow-sm" 
                      @click="generateAIResponse"
              >
@@ -3047,4 +3220,17 @@ const executeDelete = () => {
 .voice-wave.wave-right {
     flex-direction: row-reverse; 
 }
+/* Toast Transitions */
+.fade-enter-active, .fade-leave-active {
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -20px);
+}
+.fade-enter-to, .fade-leave-from {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 </style>
