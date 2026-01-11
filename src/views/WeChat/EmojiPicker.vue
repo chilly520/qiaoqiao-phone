@@ -147,7 +147,8 @@ const showBatchModal = ref(false)
 const batchInput = ref('')
 
 const displayedStickers = computed(() => {
-    return stickerStore.getStickers(activeScope.value)
+    const char = chatStore.currentChat
+    return stickerStore.getStickers(activeScope.value, char?.emojis || [])
 })
 
 // Standard Emoji List (Subset)
@@ -196,8 +197,17 @@ const handleTxtFileChange = (event) => {
     const reader = new FileReader()
     reader.onload = (e) => {
         const content = e.target.result
-        const result = stickerStore.importStickersFromText(content, activeScope.value)
-        showToast(`成功:${result.success}, 重复:${result.duplicate}, 失败:${result.failed}`)
+        const res = stickerStore.importStickersFromText(content, activeScope.value)
+        
+        if (activeScope.value !== 'global' && res.newStickers?.length > 0) {
+            const char = chatStore.currentChat
+            if (char) {
+                const newEmojis = [...(char.emojis || []), ...res.newStickers]
+                chatStore.updateCharacter(char.id, { emojis: newEmojis })
+            }
+        }
+        
+        showToast(`成功:${res.success}, 重复:${res.duplicate}, 失败:${res.failed}`)
         showBatchModal.value = false
         event.target.value = ''
     }
@@ -219,41 +229,19 @@ const deleteSticker = (url) => {
     }
 }
 
-const handleStickerContext = (sticker) => {
-    // Optional
-}
-
 const handleBatchImport = () => {
     if (!batchInput.value.trim()) return
+    const res = stickerStore.importStickersFromText(batchInput.value, activeScope.value)
     
-    const lines = batchInput.value.split('\n')
-    let count = 0
-    
-    lines.forEach(line => {
-        line = line.trim()
-        if (!line) return
-        
-        // Split by standard colon or Chinese colon
-        // Use regex to split by first occurrence of : or ：
-        const separatorMatch = line.match(/[:：]/)
-        
-        if (separatorMatch) {
-            const separatorIndex = separatorMatch.index
-            const name = line.substring(0, separatorIndex).trim()
-            const url = line.substring(separatorIndex + 1).trim()
-            
-            if (url && url.startsWith('http')) {
-                const success = stickerStore.addSticker(url, name, activeScope.value)
-                if (success) count++
-            }
-        } else if (line.startsWith('http')) {
-            // Unnamed URL check
-            const success = stickerStore.addSticker(line, '', activeScope.value) // Store will generate name
-            if (success) count++
+    if (activeScope.value !== 'global' && res.newStickers?.length > 0) {
+        const char = chatStore.currentChat
+        if (char) {
+            const newEmojis = [...(char.emojis || []), ...res.newStickers]
+            chatStore.updateCharacter(char.id, { emojis: newEmojis })
         }
-    })
+    }
     
-    showToast(`成功导入 ${count} 个表情包`)
+    showToast(`导入完成: 成功${res.success}, 重复${res.duplicate}, 失败${res.failed}`)
     batchInput.value = ''
     showBatchModal.value = false
 }

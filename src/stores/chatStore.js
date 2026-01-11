@@ -754,7 +754,7 @@ export const useChatStore = defineStore('chat', () => {
                         const next = rawTokens[i+1];
                         let shouldMerge = false;
                         
-                        if (prev && !/^[!?;/。！？；…\n\s]+$/.test(prev) && !prev.endsWith(' ')) shouldMerge = true;
+                        if (prev && !/^[!?;。！？；…\n\s]+$/.test(prev) && !prev.endsWith(' ')) shouldMerge = true;
                         if (next && !/^[!?;。！？；…\n\s]+$/.test(next) && !next.startsWith(' ')) shouldMerge = true;
                         
                         const content = token.slice(1, -1);
@@ -1025,7 +1025,6 @@ export const useChatStore = defineStore('chat', () => {
         contactList,
         currentChat,
         addMessage,
-        updateMessage, // Assuming updateMessage exists? Check context
         createChat,
         deleteChat,
         pinChat,

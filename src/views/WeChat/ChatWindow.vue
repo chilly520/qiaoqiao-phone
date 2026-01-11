@@ -25,6 +25,20 @@ marked.setOptions({
     gfm: true     // GitHub Flavored Markdown
 })
 
+const props = defineProps({})
+const emit = defineEmits(['back'])
+
+const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
+const stickerStore = useStickerStore()
+const walletStore = useWalletStore()
+const favoritesStore = useFavoritesStore()
+const musicStore = useMusicStore()
+
+const route = useRoute()
+const chatData = computed(() => chatStore.currentChat)
+const msgs = computed(() => chatData.value?.msgs || [])
+
 // Status Bar Time
 const currentTime = ref('12:00')
 const updateTime = () => {
@@ -80,20 +94,6 @@ const checkNewChat = () => {
          // Once sent, openingLine remains in settings but messages are not empty.
     }
 }
-
-const props = defineProps({})
-const emit = defineEmits(['back'])
-
-const chatStore = useChatStore()
-const settingsStore = useSettingsStore()
-const stickerStore = useStickerStore()
-const walletStore = useWalletStore()
-const favoritesStore = useFavoritesStore()
-const musicStore = useMusicStore()
-
-const route = useRoute()
-const chatData = computed(() => chatStore.currentChat)
-const msgs = computed(() => chatData.value?.msgs || [])
 
 // Pagination Logic
 const visibleCount = ref(50)
@@ -696,17 +696,7 @@ const getCleanContent = (content) => {
      return clean;
 }
 
-const formatMessageContent = (content) => {
-    const clean = getCleanContent(content)
-    if (!clean) return ''
-    try {
-        // Parse Markdown to HTML
-        return marked.parse(clean)
-    } catch (e) {
-        console.error('Markdown parse error', e)
-        return clean.replace(/\n/g, '<br>')
-    }
-}
+
 
 // --- Action Handlers ---
 
@@ -1151,7 +1141,7 @@ const getImageSrc = (msg) => {
         const stickerStore = useStickerStore()
         
         // 1. Try Character Specific
-        const charStickers = stickerStore.getStickers(chatStore.currentChatId)
+        const charStickers = chatData.value?.emojis || []
         const charMatch = charStickers.find(s => s.name === name)
         if (charMatch) return charMatch.url
         
@@ -1165,6 +1155,36 @@ const getImageSrc = (msg) => {
     }
     
     return clean
+}
+
+
+const formatMessageContent = (content) => {
+    if (!content) return ''
+    
+    // 1. Get Text Only (remove cards)
+    let text = getCleanContent(content)
+    
+    // 2. Handle [表情包:名称] replacement with <img> for inline rendering in text bubbles
+    text = text.replace(/\[表情包[:：](.*?)\]/g, (match, name) => {
+        const n = name.trim()
+        // Try to find the sticker URL
+        const charStickers = chatData.value?.emojis || []
+        const charMatch = charStickers.find(s => s.name === n)
+        if (charMatch) return `<img src="${charMatch.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
+        
+        const globalStickers = stickerStore.getStickers('global')
+        const globalMatch = globalStickers.find(s => s.name === n)
+        if (globalMatch) return `<img src="${globalMatch.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
+        
+        return match
+    })
+    
+    // 3. Render Markdown
+    try {
+        return marked.parse(text)
+    } catch (e) {
+        return text
+    }
 }
 
 const previewImage = (src) => {
@@ -1606,7 +1626,6 @@ const startAnimation = () => {
 
 const cleanupCanvas = () => {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    // Remove listeners if needed
 };
 
 const handleImageError = (e) => {

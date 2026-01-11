@@ -12,7 +12,7 @@ export default defineConfig({
   server: {
     host: true,
     proxy: {
-// ... existing proxy config ...      '/v2': {
+      '/v2': {
         target: 'https://api.vkeys.cn',
         changeOrigin: true,
         secure: false

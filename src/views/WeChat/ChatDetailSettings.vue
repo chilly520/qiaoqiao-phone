@@ -287,7 +287,7 @@
             <h3 class="section-title flex justify-between items-center">
                 <span>表情包库</span>
                 <button class="px-3 py-1 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 text-sm rounded-full transition-colors">
-                    <i class="fa-solid fa-tags mr-1"></i>{{ stickerStore.getStickers(stickerScope === 'special_global' ? 'global' : props.chatData.id).length }}
+                    <i class="fa-solid fa-tags mr-1"></i>{{ stickerStore.getStickers(stickerScope === 'special_global' ? 'global' : 'special', props.chatData.emojis || []).length }}
                 </button>
             </h3>
             <div class="flex gap-2 mb-2">
@@ -310,7 +310,7 @@
             <!-- Sticker Grid in Settings -->
             <div class="grid grid-cols-4 gap-2 bg-white/50 p-2 rounded-lg border border-white/20 max-h-40 overflow-y-auto">
                 <div 
-                    v-for="s in stickerStore.getStickers(stickerScope === 'special_global' ? 'global' : props.chatData.id)" 
+                    v-for="s in stickerStore.getStickers(stickerScope === 'special_global' ? 'global' : 'special', props.chatData.emojis || [])" 
                     :key="s.url"
                     class="aspect-square bg-white rounded border border-gray-200 relative group"
                 >
@@ -319,7 +319,7 @@
                         <i class="fa-solid fa-trash text-white text-xs"></i>
                     </div>
                 </div>
-                <div v-if="stickerStore.getStickers(stickerScope === 'special_global' ? 'global' : props.chatData.id).length === 0" class="col-span-4 text-center text-xs text-gray-400 py-4">
+                <div v-if="stickerStore.getStickers(stickerScope === 'special_global' ? 'global' : 'special', props.chatData.emojis || []).length === 0" class="col-span-4 text-center text-xs text-gray-400 py-4">
                     暂无表情包
                 </div>
             </div>
@@ -1067,9 +1067,15 @@ const handleTxtImport = (e) => {
     const reader = new FileReader()
     reader.onload = (event) => {
         const content = event.target.result
-        const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
-        const result = stickerStore.importStickersFromText(content, scope)
-        showToast(`成功:${result.success}, 重复:${result.duplicate}, 失败:${result.failed}`)
+        const scope = stickerScope.value === 'special_global' ? 'global' : 'special'
+        const res = stickerStore.importStickersFromText(content, scope)
+        
+        if (scope === 'special' && res.newStickers?.length > 0) {
+            const newEmojis = [...(props.chatData.emojis || []), ...res.newStickers]
+            chatStore.updateCharacter(props.chatData.id, { emojis: newEmojis })
+        }
+        
+        showToast(`成功:${res.success}, 重复:${res.duplicate}, 失败:${res.failed}`)
         e.target.value = ''
     }
     reader.onerror = () => showToast('读取文件失败')

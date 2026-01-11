@@ -1,12 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { useChatStore } from './chatStore'
 import { compressImage } from '../utils/imageUtils'
 
 export const useStickerStore = defineStore('sticker', () => {
     const customStickers = ref([])
     const STORAGE_KEY = 'wechat_global_emojis'
-    const chatStore = useChatStore()
 
     // Load Global Stickers
     function loadStickers() {
@@ -31,14 +29,13 @@ export const useStickerStore = defineStore('sticker', () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(customStickers.value))
     }
 
-    // Get specific list based on scope ('global' or chatId)
-    function getStickers(scope) {
+    // Get specific list based on scope ('global' or a stickers list)
+    function getStickers(scope, charStickers = []) {
         if (!scope || scope === 'global') {
             return customStickers.value
         }
         // Character Specific
-        const chat = chatStore.chats[scope]
-        return chat && chat.emojis ? chat.emojis : []
+        return charStickers
     }
 
     // Add a new sticker
@@ -47,7 +44,7 @@ export const useStickerStore = defineStore('sticker', () => {
         const finalName = name?.trim() || `Sticker_${Date.now()}`
 
         // Check for duplicates (By URL Only, as requested)
-        if (targetList.some(s => s.url === url)) {
+        if (targetList && targetList.some(s => s.url === url)) {
             console.warn(`[StickerStore] Duplicate detected for URL. Skipping.`)
             return false
         }
@@ -60,15 +57,11 @@ export const useStickerStore = defineStore('sticker', () => {
         if (scope === 'global') {
             customStickers.value.push(newSticker)
             saveStickers()
+            return true
         } else {
-            // Character Scope: Update via ChatStore
-            const chat = chatStore.chats[scope]
-            if (chat) {
-                const newEmojis = [...(chat.emojis || []), newSticker]
-                chatStore.updateCharacter(scope, { emojis: newEmojis })
-            }
+            // Character Scope: Return the sticker object
+            return newSticker
         }
-        return true
     }
 
     // Process file upload
@@ -130,6 +123,7 @@ export const useStickerStore = defineStore('sticker', () => {
         let dupCount = 0
         let failCount = 0
         
+        const newStickers = []
         lines.forEach(line => {
             line = line.trim()
             if (!line) return
@@ -166,22 +160,23 @@ export const useStickerStore = defineStore('sticker', () => {
             }
             
             if (url && (url.startsWith('http') || url.startsWith('data:'))) {
-                const targetList = getStickers(scope)
-                const isDup = targetList.some(s => s.url === url)
-                
-                if (isDup) {
+                const result = addSticker(url, name, scope)
+                if (result === true) {
+                    successCount++
+                } else if (result === false) {
                     dupCount++
+                } else if (typeof result === 'object') {
+                    successCount++
+                    newStickers.push(result)
                 } else {
-                    const success = addSticker(url, name, scope)
-                    if (success) successCount++
-                    else failCount++
+                    failCount++
                 }
             } else {
                 failCount++
             }
         })
         
-        return { success: successCount, duplicate: dupCount, failed: failCount }
+        return { success: successCount, duplicate: dupCount, failed: failCount, newStickers }
     }
 
     // Initialize
