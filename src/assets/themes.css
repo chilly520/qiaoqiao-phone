@@ -357,6 +357,12 @@
     background: #0f172a !important;
 }
 
+/* 发现页面主内容区域 */
+[data-theme="dark"] .wechat-app .bg-\[#ededed\].min-h-full,
+[data-theme="dark"] .wechat-app .min-h-full {
+    background: #0f172a !important;
+}
+
 /* 设置页面 */
 [data-theme="dark"] .settings-app {
     background: #0f172a !important;
@@ -399,6 +405,37 @@
 [data-theme="dark"] .chat-window .message-list > * {
     position: relative;
     z-index: 1;
+}
+
+/* 聊天窗口底部输入区域 */
+[data-theme="dark"] .chat-window .bg-white,
+[data-theme="dark"] .chat-window .bg-gray-50,
+[data-theme="dark"] .chat-window .bg-\[#f7f7f7\],
+[data-theme="dark"] .chat-window div[class*="bg-["],
+[data-theme="dark"] .chat-window .relative.z-20 {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+/* 输入框内部图标颜色 */
+[data-theme="dark"] .chat-window i,
+[data-theme="dark"] .chat-window .text-\[\#4a4a4a\],
+[data-theme="dark"] .chat-window .text-\[\#2e2e2e\],
+[data-theme="dark"] .chat-window button {
+    color: #f1f5f9 !important;
+}
+
+/* 输入框内部容器 */
+[data-theme="dark"] .chat-window .flex-1.bg-white {
+    background-color: #334155 !important;
+    border-color: #475569 !important;
+}
+
+/* 输入框本身 */
+[data-theme="dark"] .chat-window textarea,
+[data-theme="dark"] .chat-window input {
+    background: transparent !important;
+    color: #f1f5f9 !important;
 }
 
 /* 角色设置页面 */

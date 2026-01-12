@@ -141,8 +141,8 @@ const handleTouchMove = (event) => {
     if (event.touches && event.touches[0]) {
         const moveX = event.touches[0].clientX
         const moveY = event.touches[0].clientY
-        // Tolerance: 10px
-        if (Math.abs(moveX - startX) > 10 || Math.abs(moveY - startY) > 10) {
+        // Tolerance: 30px (more relaxed for mobile)
+        if (Math.abs(moveX - startX) > 30 || Math.abs(moveY - startY) > 30) {
             clearLongPress()
         }
     }
@@ -360,7 +360,7 @@ const goBack = () => {
     />
 
     <!-- Context Menu (Restored) -->
-    <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false" @touchstart="showContextMenu = false">
+    <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false">
         <!-- Backdrop for click outside -->
         <div class="absolute inset-0 bg-transparent"></div>
         <div 
