@@ -7,7 +7,7 @@ const router = useRouter()
 const store = useSettingsStore()
 
 const goBack = () => {
-    router.push('/settings')
+    router.back()
 }
 
 // --- Modals State ---

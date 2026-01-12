@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 z-[9999] flex flex-col pt-[28px] animate-slide-in-right bg-[#f2f2f2] text-gray-800">
+  <div class="absolute inset-0 z-[9999] flex flex-col pt-[28px] animate-slide-in-right bg-[#f2f2f2] text-gray-800">
     <!-- Subpage wallpaper layer: mirrors global wallpaper so underlying app content doesn't show through -->
     <div class="absolute inset-0 bg-cover bg-center -z-10" :style="globalBgStyle"></div>
     
@@ -18,51 +18,101 @@
         <div v-if="toastMessage" class="fixed top-14 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-full text-sm z-50 animate-fade-in shadow-lg">
             {{ toastMessage }}
         </div>
-        <!-- Avatar -->
-        <div class="flex items-center gap-4">
-            <div class="w-20 h-20 bg-gray-200 border border-gray-300 flex items-center justify-center overflow-hidden rounded relative group cursor-pointer" @click="triggerAvatarUpload">
-                <img v-if="localData.avatar" :src="localData.avatar" class="w-full h-full object-cover">
-                <span v-else class="text-xs text-gray-600">头像</span>
-                <div class="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center text-white text-xs">修改</div>
-            </div>
-            <div class="flex-1 space-y-2">
-                <input v-model="localData.name" type="text" class="setting-input mb-0" placeholder="角色名字">
-                <div class="flex gap-2">
-                     <button class="setting-btn secondary text-xs py-1" @click="triggerAvatarUpload">本地上传</button>
-                     <button class="setting-btn secondary text-xs py-1" @click="promptAvatarUrl">URL上传</button>
+        <!-- Avatar & Basic Info -->
+        <div class="flex items-center gap-3 bg-white p-3 rounded-xl shadow-sm">
+            <div class="flex flex-col items-center gap-2 shrink-0">
+                <div class="relative">
+                    <div class="w-16 h-16 bg-white flex items-center justify-center overflow-hidden relative group cursor-pointer"
+                         :class="[getAvatarShapeClass(), !localData.avatarFrame ? 'border border-gray-100' : '']"
+                         @click="triggerAvatarUpload">
+                        <!-- Inner Avatar (Scaled based on frame properties) -->
+                        <div class="w-full h-full transition-all duration-300 pointer-events-none"
+                             :style="{ 
+                                 padding: localData.avatarFrame ? ((1 - (localData.avatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
+                                 transform: localData.avatarFrame ? `translate(${localData.avatarFrame.offsetX || 0}px, ${localData.avatarFrame.offsetY || 0}px)` : 'none'
+                             }">
+                            <img v-if="localData.avatar" :src="localData.avatar" class="w-full h-full object-cover">
+                            <span v-else class="text-xs text-gray-400">头像</span>
+                        </div>
+                    </div>
+                    <!-- 头像框叠加 -->
+                    <img v-if="localData.avatarFrame" :src="localData.avatarFrame.url" class="absolute inset-0 w-full h-full pointer-events-none">
                 </div>
-                <!-- WeChat ID -->
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="text-xs text-gray-500 whitespace-nowrap">微信号:</span>
-                    <input v-model="localData.wechatId" type="text" class="setting-input mb-0 py-1 text-xs font-mono text-gray-600" placeholder="wxid_...">
-                </div>
-                <!-- Hidden Input -->
-                <input type="file" ref="fileInput" class="hidden" accept="image/*" @change="handleAvatarChange">
                 
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="text-xs text-gray-600">形状:</span>
-                    <select v-model="localData.avatarShape" class="bg-white border border-gray-300 text-xs p-1 rounded outline-none">
-                        <option value="square">方形</option>
-                        <option value="circle">圆形</option>
-                    </select>
+                <!-- 头像操作按钮组 -->
+                <div class="flex gap-1.5">
+                    <!-- 形状切换按钮 -->
+                    <button class="w-5 h-5 bg-purple-100 text-purple-600 rounded flex items-center justify-center hover:bg-purple-200 transition-colors text-[10px]" 
+                            @click.stop="toggleAvatarShape"
+                            title="切换形状">
+                        <i class="fa-solid" :class="localData.avatarShape === 'circle' ? 'fa-square' : 'fa-circle'"></i>
+                    </button>
+                    <!-- 头像框选择按钮 -->
+                    <button class="w-5 h-5 bg-blue-100 text-blue-600 rounded flex items-center justify-center hover:bg-blue-200 transition-colors text-[10px]" @click.stop="showFramePicker = true">
+                        <i class="fa-solid fa-crown"></i>
+                    </button>
                 </div>
             </div>
+            
+            <div class="flex-1 min-w-0">
+                <input v-model="localData.name" type="text" class="text-base font-bold bg-transparent outline-none w-full mb-1" placeholder="角色名字">
+                <div class="text-[10px] text-gray-400 mb-2">微信号: <input v-model="localData.wechatId" type="text" class="bg-transparent outline-none font-mono text-gray-500 w-28" placeholder="wxid_..."></div>
+                <div class="flex gap-1.5 flex-wrap">
+                    <button class="text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded hover:bg-gray-100 transition-colors" @click="triggerAvatarUpload">本地</button>
+                    <button class="text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded hover:bg-gray-100 transition-colors" @click="promptAvatarUrl">URL</button>
+                    <button class="text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100 flex items-center gap-1 hover:bg-green-100 transition-colors" @click="$emit('show-profile', chatData.id)">
+                        <i class="fa-solid fa-id-card"></i>个人主页
+                    </button>
+                </div>
+            </div>
+            <input type="file" ref="fileInput" class="hidden" accept="image/*" @change="handleAvatarChange">
         </div>
 
         <!-- Persona -->
         <div>
             <h3 class="section-title">我的人设 (User Persona)</h3>
-            <input v-model="localData.userName" type="text" class="setting-input" placeholder="我的名字">
-            <textarea v-model="localData.userPersona" class="setting-input h-16 mt-2" placeholder="我的人设..."></textarea>
-            <div class="flex items-center gap-2 mt-2">
-                <div class="w-10 h-10 bg-gray-200 rounded overflow-hidden relative" @click="triggerUserAvatarUpload">
-                     <img v-if="localData.userAvatar" :src="localData.userAvatar" class="w-full h-full object-cover">
+            <div class="bg-white p-3 rounded-xl shadow-sm">
+                <div class="flex items-center gap-3 mb-3">
+                    <!-- 用户头像区域 -->
+                    <div class="flex flex-col items-center gap-2 shrink-0">
+                        <div class="relative">
+                            <div class="w-16 h-16 bg-white flex items-center justify-center overflow-hidden relative group cursor-pointer"
+                                 :class="[getAvatarShapeClass(), !localData.userAvatarFrame ? 'border border-gray-100' : '']"
+                                 @click="triggerUserAvatarUpload">
+                                <!-- Inner Avatar (Scaled based on frame properties) -->
+                                <div class="w-full h-full transition-all duration-300 pointer-events-none"
+                                     :style="{ 
+                                         padding: localData.userAvatarFrame ? ((1 - (localData.userAvatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
+                                         transform: localData.userAvatarFrame ? `translate(${localData.userAvatarFrame.offsetX || 0}px, ${localData.userAvatarFrame.offsetY || 0}px)` : 'none'
+                                     }">
+                                    <img v-if="localData.userAvatar" :src="localData.userAvatar" class="w-full h-full object-cover">
+                                    <span v-else class="text-xs text-gray-400">头像</span>
+                                </div>
+                            </div>
+                            <!-- 用户头像框 -->
+                            <img v-if="localData.userAvatarFrame" :src="localData.userAvatarFrame.url" class="absolute inset-0 w-full h-full pointer-events-none">
+                        </div>
+                        
+                        <!-- 用户操作按钮组 -->
+                        <div class="flex gap-1.5">
+                            <!-- 用户头像框选择按钮 -->
+                            <button class="w-5 h-5 bg-blue-100 text-blue-600 rounded flex items-center justify-center hover:bg-blue-200 transition-colors text-[10px]" @click.stop="showUserFramePicker = true">
+                                <i class="fa-solid fa-crown"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 用户信息 -->
+                    <div class="flex-1 min-w-0">
+                        <input v-model="localData.userName" type="text" class="text-base font-bold bg-transparent outline-none w-full mb-1" placeholder="我的名字">
+                        <div class="flex gap-1.5">
+                            <button class="text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded hover:bg-gray-100 transition-colors" @click="triggerUserAvatarUpload">本地</button>
+                            <button class="text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded hover:bg-gray-100 transition-colors" @click="promptUserAvatarUrl">URL</button>
+                        </div>
+                    </div>
+                    <input type="file" ref="userFileInput" class="hidden" accept="image/*" @change="handleUserAvatarChange">
                 </div>
-                <div class="flex gap-2 flex-1">
-                    <button class="setting-btn secondary text-xs flex-1" @click="triggerUserAvatarUpload">本地上传</button>
-                    <button class="setting-btn secondary text-xs flex-1" @click="promptUserAvatarUrl">URL上传</button>
-                </div>
-                <input type="file" ref="userFileInput" class="hidden" accept="image/*" @change="handleUserAvatarChange">
+                <textarea v-model="localData.userPersona" class="setting-input h-20" placeholder="我的人设..."></textarea>
             </div>
         </div>
 
@@ -256,6 +306,11 @@
             <div class="mb-2 flex items-center gap-2">
                 <label class="text-xs text-gray-600 w-24">自动总结条数</label>
                 <input v-model="localData.summaryLimit" type="number" class="setting-input mt-0 flex-1" placeholder="每隔多少条触发 (默认 50)">
+            </div>
+            
+            <div class="mb-2 flex items-center gap-2">
+                <label class="text-xs text-gray-600 w-24 font-bold text-blue-600">朋友圈记忆</label>
+                <input v-model="localData.momentsMemoryLimit" type="number" class="setting-input mt-0 flex-1 border-blue-100 bg-blue-50/20" placeholder="感知最近几条朋友圈">
             </div>
 
             <div class="glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20 space-y-3">
@@ -561,6 +616,36 @@
             </div>
         </div>
     </div>
+
+    <!-- Avatar Frame Pickers -->
+    <AvatarFramePicker v-if="showFramePicker" v-model="localData.avatarFrame" @close="showFramePicker = false" />
+    <AvatarFramePicker v-if="showUserFramePicker" v-model="localData.userAvatarFrame" @close="showUserFramePicker = false" />
+    <!-- Custom URL Input Modal -->
+    <div v-if="showUrlModal" class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" @click="showUrlModal = false">
+        <div class="bg-white w-[90%] max-w-[340px] rounded-2xl overflow-hidden shadow-2xl p-6 transform transition-all scale-100" @click.stop>
+            <div class="text-center font-bold text-gray-800 mb-6 text-lg">{{ urlModalTitle }}</div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] text-gray-400 block mb-1">图片URL</label>
+                    <input v-model="urlModalInput" type="text" 
+                           class="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm outline-none focus:border-blue-400 focus:bg-white transition-all" 
+                           placeholder="https://example.com/image.png">
+                </div>
+                
+                <div class="pt-2">
+                    <button class="w-full py-3 rounded-xl bg-blue-500 text-white font-bold shadow-lg shadow-blue-200 active:scale-95 transition-all" 
+                            @click="confirmUrlModal">
+                        使用此URL
+                    </button>
+                    <button class="w-full py-3 mt-2 rounded-xl bg-transparent text-gray-400 text-sm font-medium active:bg-gray-50 transition-all" 
+                            @click="showUrlModal = false">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </template>
 
 <script setup>
@@ -569,6 +654,8 @@ import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useStickerStore } from '../../stores/stickerStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
+import { useAvatarFrameStore } from '../../stores/avatarFrameStore'
+import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
 
 const props = defineProps({
   chatData: {
@@ -577,11 +664,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'show-profile'])
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const stickerStore = useStickerStore()
 const worldBookStore = useWorldBookStore()
+const frameStore = useAvatarFrameStore()
 
 // Load World Book Data
 worldBookStore.loadEntries()
@@ -595,6 +683,10 @@ const stickerScope = ref('special_global')
 const showStickerUrlInput = ref(false)
 const stickerUrlInput = ref('')
 const expandedBooks = ref([]) // IDs of expanded books
+
+// Avatar Frame Pickers
+const showFramePicker = ref(false)
+const showUserFramePicker = ref(false)
 
 // Toast & Confirm State
 const toastMessage = ref('')
@@ -785,7 +877,11 @@ const localData = ref({
     bgOpacity: 1.0,
     bgTheme: 'light',
     emojiCategories: [],
-    worldBookLinks: []
+    worldBookLinks: [],
+    momentsMemoryLimit: 5,
+    avatarShape: 'square', // 'circle' or 'square'
+    avatarFrame: null, // { id, url, name, scale, offsetX, offsetY }
+    userAvatarFrame: null
 })
 
 // Sync props
@@ -863,8 +959,9 @@ const handleAvatarChange = async (e) => {
     }
 }
 const promptAvatarUrl = () => {
-    const url = prompt('请输入头像URL')
-    if (url) localData.value.avatar = url
+    openUrlPrompt('设置角色头像', (url) => {
+        if (url) localData.value.avatar = url
+    })
 }
 
 // User Avatar Handlers
@@ -883,8 +980,28 @@ const handleUserAvatarChange = async (e) => {
     }
 }
 const promptUserAvatarUrl = () => {
-    const url = prompt('请输入用户头像URL')
-    if (url) localData.value.userAvatar = url
+    openUrlPrompt('设置我的头像', (url) => {
+        if (url) localData.value.userAvatar = url
+    })
+}
+
+const showUrlModal = ref(false)
+const urlModalTitle = ref('')
+const urlModalInput = ref('')
+const urlModalCallback = ref(null)
+
+const openUrlPrompt = (title, callback) => {
+    urlModalTitle.value = title
+    urlModalInput.value = ''
+    urlModalCallback.value = callback
+    showUrlModal.value = true
+}
+
+const confirmUrlModal = () => {
+    if (urlModalInput.value && urlModalCallback.value) {
+        urlModalCallback.value(urlModalInput.value)
+    }
+    showUrlModal.value = false
 }
 
 // Logic
@@ -1090,6 +1207,20 @@ const confirmDeleteSticker = (url) => {
     // Given user frustration, I will implementing a simple inline Confirm state if possible, or just delete.
     const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
     stickerStore.deleteSticker(url, scope)
+}
+
+// Avatar Shape and Frame Functions
+function getAvatarShapeClass() {
+    // 有头像框时强制圆形
+    if (localData.value.avatarFrame || localData.value.userAvatarFrame) {
+        return 'rounded-full'
+    }
+    // 根据设置返回形状
+    return localData.value.avatarShape === 'circle' ? 'rounded-full' : 'rounded-md'
+}
+
+function toggleAvatarShape() {
+    localData.value.avatarShape = localData.value.avatarShape === 'circle' ? 'square' : 'circle'
 }
 
 </script>

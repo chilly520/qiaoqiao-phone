@@ -113,12 +113,10 @@ const normalizeContent = (msg) => {
     if (msg.type === 'redpacket' || msg.type === 'transfer') return msg.note || ''
     if (msg.type === 'voice') return msg.text || ''
     
-    // Strip Inner Voice for editing if present
     let content = msg.content || ''
-    // Regex to remove [INNER_VOICE] ... json ... up to end of block or double newline
-    // Simplistic: Remove everything between [INNER_VOICE] and closest following empty line or end of string
-    // But usually it's at the start.
-    content = content.replace(/\[INNER_VOICE\][\s\S]*?(\n\n|$)/g, '').trim()
+    // Remove ONLY the Inner Voice block (non-greedy)
+    content = content.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '').trim()
+    
     return content
 }
 

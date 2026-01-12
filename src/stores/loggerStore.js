@@ -2,17 +2,22 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export const useLoggerStore = defineStore('logger', () => {
-    const logs = ref([])
+    // Initial load from localStorage
+    const savedLogs = localStorage.getItem('system_logs')
+    const logs = ref(savedLogs ? JSON.parse(savedLogs) : [])
+    
     const MAX_LOGS = 500
     const autoScroll = ref(true)
 
-    // Log Entry Structure: { id, time, type, title, detail }
+    const saveLogs = () => {
+        localStorage.setItem('system_logs', JSON.stringify(logs.value))
+    }
 
     const addLog = (type, title, detail = null) => {
         const entry = {
             id: Date.now() + Math.random(),
             time: new Date().toLocaleTimeString(),
-            type,
+            type: type.toUpperCase(),
             title,
             detail
         }
@@ -21,10 +26,25 @@ export const useLoggerStore = defineStore('logger', () => {
         if (logs.value.length > MAX_LOGS) {
             logs.value.shift()
         }
+        saveLogs()
+        
+        // Also mirror to console for dev convenience
+        if (type === 'error') console.error(`[LOG] ${title}`, detail)
+        else if (type === 'warn') console.warn(`[LOG] ${title}`, detail)
+        else console.log(`[LOG] ${title}`, detail)
     }
+
+    // Helper methods for semantic logging
+    const info = (title, detail) => addLog('info', title, detail)
+    const error = (title, detail) => addLog('error', title, detail)
+    const warn = (title, detail) => addLog('warn', title, detail)
+    const sys = (title, detail) => addLog('sys', title, detail)
+    const ai = (title, detail) => addLog('ai', title, detail)
+    const debug = (title, detail) => addLog('debug', title, detail)
 
     const clearLogs = () => {
         logs.value = []
+        localStorage.removeItem('system_logs')
     }
 
     const exportLogs = () => {
@@ -37,11 +57,7 @@ export const useLoggerStore = defineStore('logger', () => {
         URL.revokeObjectURL(url)
     }
 
-    // Context Analysis
     const lastContext = computed(() => {
-        // Find last log of type 'AI' (or usually 'DEBUG'/'INFO' from AI service) that contains '网络请求' or 'Request Params'
-        // In legacy code: type === 'AI' && title.includes('网络请求')
-        // In this Vue app, we need to ensure we log it this way.
         const reversed = [...logs.value].reverse()
         return reversed.find(l => (l.type === 'AI' || l.type === 'DEBUG') && (l.title.includes('网络请求') || l.title.includes('Request')))
     })
@@ -50,6 +66,12 @@ export const useLoggerStore = defineStore('logger', () => {
         logs,
         autoScroll,
         addLog,
+        info,
+        error,
+        warn,
+        sys,
+        ai,
+        debug,
         clearLogs,
         exportLogs,
         lastContext

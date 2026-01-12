@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>调试工具 - 检查聊天数据</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+
+        .chat-item {
+            background: #2d2d2d;
+            border: 1px solid #3e3e3e;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .chat-name {
+            color: #4ec9b0;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .chat-id {
+            color: #9cdcfe;
+            font-size: 14px;
+        }
+
+        .error {
+            color: #f48771;
+            background: #3f1f1f;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+
+        .success {
+            color: #4ec9b0;
+        }
+
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            max-height: 300px;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>聊天数据调试工具</h1>
+    <button onclick="checkData()">检查数据</button>
+    <button onclick="fixTestChat()">修复测试酱数据</button>
+    <button onclick="clearStorage()">清除所有数据</button>
+
+    <div id="output"></div>
+
+    <script>
+        function checkData() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<h2>正在检查...</h2>';
+
+            try {
+                const chatsData = localStorage.getItem('wechat_chats');
+                if (!chatsData) {
+                    output.innerHTML = '<div class="error">未找到聊天数据</div>';
+                    return;
+                }
+
+                const chats = JSON.parse(chatsData);
+                let html = '<h2>找到的聊天:</h2>';
+
+                for (const [id, chat] of Object.entries(chats)) {
+                    html += `<div class="chat-item">`;
+                    html += `<div class="chat-name">${chat.name || '未命名'}</div>`;
+                    html += `<div class="chat-id">ID: ${id}</div>`;
+
+                    // 检查潜在问题
+                    const issues = [];
+                    if (!chat.msgs) issues.push('缺少 msgs 数组');
+                    if (!Array.isArray(chat.msgs)) issues.push('msgs 不是数组');
+                    if (chat.msgs && chat.msgs.some(m => !m.id)) issues.push('有消息缺少 id');
+                    if (chat.msgs && chat.msgs.some(m => !m.content)) issues.push('有消息缺少 content');
+
+                    if (issues.length > 0) {
+                        html += `<div class="error">问题: ${issues.join(', ')}</div>`;
+                    } else {
+                        html += `<div class="success">✓ 数据正常</div>`;
+                    }
+
+                    html += `<div>消息数: ${chat.msgs ? chat.msgs.length : 0}</div>`;
+                    html += `<details><summary>查看完整数据</summary><pre>${JSON.stringify(chat, null, 2)}</pre></details>`;
+                    html += `</div>`;
+                }
+
+                output.innerHTML = html;
+            } catch (e) {
+                output.innerHTML = `<div class="error">错误: ${e.message}</div>`;
+            }
+        }
+
+        function fixTestChat() {
+            try {
+                const chatsData = localStorage.getItem('wechat_chats');
+                if (!chatsData) {
+                    alert('未找到聊天数据');
+                    return;
+                }
+
+                const chats = JSON.parse(chatsData);
+                const testChat = chats['char_tester'];
+
+                if (!testChat) {
+                    alert('未找到测试酱');
+                    return;
+                }
+
+                // 修复数据
+                if (!testChat.msgs) testChat.msgs = [];
+                if (!Array.isArray(testChat.msgs)) testChat.msgs = [];
+
+                // 确保所有消息都有必要的字段
+                testChat.msgs = testChat.msgs.map((msg, index) => ({
+                    id: msg.id || Date.now() + index,
+                    role: msg.role || 'ai',
+                    content: msg.content || '',
+                    timestamp: msg.timestamp || Date.now()
+                }));
+
+                // 保存
+                localStorage.setItem('wechat_chats', JSON.stringify(chats));
+                alert('测试酱数据已修复!请刷新页面');
+                checkData();
+            } catch (e) {
+                alert('修复失败: ' + e.message);
+            }
+        }
+
+        function clearStorage() {
+            if (confirm('确定要清除所有聊天数据吗?此操作不可恢复!')) {
+                localStorage.removeItem('wechat_chats');
+                alert('已清除!');
+                checkData();
+            }
+        }
+
+        // 自动检查
+        checkData();
+    </script>
+</body>
+
+</html>

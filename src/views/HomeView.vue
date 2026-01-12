@@ -2,10 +2,12 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useLoggerStore } from '../stores/loggerStore'
 import { storeToRefs } from 'pinia'
 
 const router = useRouter()
 const store = useSettingsStore()
+const logger = useLoggerStore()
 const { weather, personalization } = storeToRefs(store)
 
 const displayLocation = computed(() => {
@@ -13,7 +15,7 @@ const displayLocation = computed(() => {
 })
 
 // --- Personalization Helpers ---
-const getIconStyle = (appId) => {
+function getIconStyle(appId) {
     const iconUrl = personalization.value.icons.map[appId]
     if (iconUrl) {
         return {
@@ -25,7 +27,7 @@ const getIconStyle = (appId) => {
     return {}
 }
 
-const getCardBg = (type) => { // 'time' | 'location' | 'weather' | 'card1' | 'card2'
+function getCardBg(type) { // 'time' | 'location' | 'weather' | 'card1' | 'card2'
     const bg = personalization.value.cardBgs[type] || personalization.value.widgets[type]
     if (bg) {
         return {
@@ -47,10 +49,13 @@ const getWidgetFontStyle = computed(() => ({
     textShadow: '0 2px 8px rgba(0,0,0,0.8)'
 }))
 
-const hasCustomIcon = (appId) => !!personalization.value.icons.map[appId]
+function hasCustomIcon(appId) { 
+    return !!personalization.value.icons.map[appId]
+}
 
 // Functions matching original HTML
-const openApp = (appId) => {
+function openApp(appId) {
+  logger.info(`打开应用: ${appId}`)
   if (appId === 'wechat') {
     router.push('/wechat')
   } else if (appId === 'search') {
@@ -64,14 +69,12 @@ const openApp = (appId) => {
   }
 }
 
-// 优化：使用ref存储时间，减少DOM操作
 const currentTime = ref('00:00:00')
 const currentDate = ref('2024年1月1日 星期一')
 
 let clockTimer = null
 
-// Update clock - 优化性能
-const updateClock = () => {
+function updateClock() {
   const now = new Date()
   currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
   currentDate.value = now.toLocaleDateString('zh-CN', { 
@@ -88,7 +91,7 @@ let isDragging = false
 let startX = 0
 let scrollLeft = 0
 
-const handleMouseDown = (e) => {
+function handleMouseDown(e) {
     isDragging = true
     startX = e.pageX - pagesContainer.value.offsetLeft
     scrollLeft = pagesContainer.value.scrollLeft
@@ -96,7 +99,7 @@ const handleMouseDown = (e) => {
     pagesContainer.value.style.scrollSnapType = 'none'
 }
 
-const handleMouseLeave = () => {
+function handleMouseLeave() {
     isDragging = false
     if(pagesContainer.value) {
         pagesContainer.value.style.cursor = 'grab'
@@ -104,7 +107,7 @@ const handleMouseLeave = () => {
     }
 }
 
-const handleMouseUp = () => {
+function handleMouseUp() {
     isDragging = false
     if(pagesContainer.value) {
         pagesContainer.value.style.cursor = 'grab'
@@ -112,7 +115,7 @@ const handleMouseUp = () => {
     }
 }
 
-const handleMouseMove = (e) => {
+function handleMouseMove(e) {
     if (!isDragging) return
     e.preventDefault()
     const x = e.pageX - pagesContainer.value.offsetLeft
@@ -120,16 +123,13 @@ const handleMouseMove = (e) => {
     pagesContainer.value.scrollLeft = scrollLeft - walk
 }
 
-onMounted(() => {
-  updateClock()
-  clockTimer = setInterval(updateClock, 1000)
-})
-
-onUnmounted(() => {
-  if (clockTimer) {
-    clearInterval(clockTimer)
-  }
-})
+const currentPage = ref(0)
+function handleScroll() {
+  if (!pagesContainer.value) return
+  const scrollPos = pagesContainer.value.scrollLeft
+  const pageWidth = pagesContainer.value.offsetWidth
+  currentPage.value = Math.round(scrollPos / pageWidth)
+}
 
 // --- Weather Logic ---
 const weatherTemp = ref('--°')
@@ -137,13 +137,11 @@ const weatherDesc = ref('获取中')
 const weatherIconClass = ref('fa-sun')
 const weatherAqi = ref('AQI --')
 
-const fetchWeather = async () => {
-    // Priority: Real Location -> Virtual Location -> Default
+async function fetchWeather() {
     const queryLoc = weather.value.realLocation || weather.value.virtualLocation || 'Beijing'
     if (!queryLoc) return
 
     try {
-        // Using wttr.in JSON API
         const res = await fetch(`https://wttr.in/${encodeURIComponent(queryLoc)}?format=j1`)
         if (res.ok) {
             const data = await res.json()
@@ -152,31 +150,55 @@ const fetchWeather = async () => {
             weatherTemp.value = `${current.temp_C}°`
             weatherDesc.value = current.lang_zh?.[0]?.value || current.weatherDesc?.[0]?.value || '晴'
             
-            // Allow override of description to Chinese if possible, but wttr.in logic varies.
-            // Simple mapping for icons
             const descLower = (current.weatherDesc?.[0]?.value || '').toLowerCase()
             if (descLower.includes('rain') || descLower.includes('shower')) weatherIconClass.value = 'fa-cloud-rain'
-            else if (descLower.includes('cloud') || descLower.includes('overcast')) weatherIconClass.value = 'fa-cloud'
+            else if (descLower.includes('cloud') || descLower.includes('overcast') || descLower.includes('partly')) weatherIconClass.value = 'fa-cloud'
             else if (descLower.includes('snow')) weatherIconClass.value = 'fa-snowflake'
             else if (descLower.includes('fog') || descLower.includes('mist')) weatherIconClass.value = 'fa-smog'
             else if (descLower.includes('thunder')) weatherIconClass.value = 'fa-bolt'
             else weatherIconClass.value = 'fa-sun'
             
-            // Mock AQI as wttr.in doesn't provide it easily without keys
             weatherAqi.value = `AQI ${Math.floor(Math.random() * 50 + 20)}` 
+            logger.debug('天气更新成功', { temp: weatherTemp.value, desc: weatherDesc.value, icon: weatherIconClass.value })
+        } else {
+            logger.warn('天气获取失败', { status: res.status, statusText: res.statusText })
         }
     } catch (e) {
-        console.error('Weather Fetch Error', e)
+        logger.error('天气接口报错', { message: e.message, stack: e.stack })
         weatherDesc.value = '离线'
     }
 }
 
+function getTimeClass() {
+    const hour = new Date().getHours()
+    if (hour >= 5 && hour < 8) return 'time-morning'
+    if (hour >= 8 && hour < 12) return 'time-day'
+    if (hour >= 12 && hour < 17) return 'time-day'
+    if (hour >= 17 && hour < 19) return 'time-dusk'
+    return 'time-night'
+}
+
+function getTimeBg() {
+    const hour = new Date().getHours()
+    if (hour >= 5 && hour < 8) return 'linear-gradient(135deg, rgba(255, 154, 158, 0.12), rgba(254, 207, 239, 0.12))' 
+    if (hour >= 8 && hour < 17) return 'linear-gradient(135deg, rgba(161, 196, 253, 0.12), rgba(194, 233, 251, 0.12))' 
+    if (hour >= 17 && hour < 19) return 'linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.15))' 
+    return 'linear-gradient(135deg, rgba(36, 57, 73, 0.2), rgba(81, 127, 164, 0.2))'
+}
+
 onMounted(() => {
+    updateClock()
+    clockTimer = setInterval(updateClock, 1000)
     fetchWeather()
-    // Refresh weather every 30 mins
     setInterval(fetchWeather, 30 * 60 * 1000)
+    logger.info('主界面加载完成')
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
 })
 </script>
+
 
 <template>
   <!-- EXACT copy from original HTML structure -->
@@ -187,48 +209,107 @@ onMounted(() => {
       @mouseleave="handleMouseLeave"
       @mouseup="handleMouseUp"
       @mousemove="handleMouseMove"
+      @scroll="handleScroll"
     >
       <!-- Page 1 -->
       <div class="app-page">
-        <!-- Time Widget -->
-        <div id="widget-time" :style="getCardBg('time')"
-          class="col-span-4 glass-panel rounded-[24px] p-6 flex flex-col justify-center items-start h-40 relative overflow-hidden group">
-          <div v-if="!getCardBg('time').backgroundImage" class="absolute -right-6 -top-6 opacity-10 text-[9rem] pointer-events-none">
-            <i class="fa-regular fa-clock"></i>
+        <!-- Time Widget - Thinner and more transparent -->
+        <div id="widget-time" 
+          :class="['col-span-4 glass-panel rounded-[24px] flex flex-col justify-center items-center h-[120px] mb-3 relative overflow-hidden group text-center transition-all duration-1000 backdrop-blur-[32px] border border-white/10', getTimeClass()]"
+          :style="{ background: getTimeBg() }">
+          
+          <!-- Glow effect from other AI -->
+          <div class="glow-effect"></div>
+          
+          <!-- Shine sweep effect -->
+          <div class="absolute inset-0 pointer-events-none">
+            <div class="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-r from-transparent via-white/10 to-transparent rotate-[25deg] animate-shine"></div>
           </div>
-          <div id="clock-large" class="text-6xl font-thin tracking-tighter drop-shadow-sm" :style="getWidgetFontStyle">{{ currentTime }}</div>
-          <div id="date-large" class="text-lg mt-2 pl-1 font-medium tracking-widest" :style="getWidgetFontStyle">
-            {{ currentDate }}
+          
+          <!-- Dynamic Stars -->
+          <div v-if="new Date().getHours() >= 17 || new Date().getHours() < 7" class="absolute inset-0 pointer-events-none">
+            <div class="star s1"></div>
+            <div class="star s2"></div>
+            <div class="star s3"></div>
+          </div>
+          
+          <div class="relative z-10 flex flex-col items-center">
+            <div id="clock-large" class="text-6xl font-extralight tracking-[2px] drop-shadow-xl text-white leading-none">{{ currentTime.split(':').slice(0,2).join(':') }}</div>
+            <div id="date-large" class="text-sm mt-2 font-normal text-white/90 drop-shadow-lg tracking-wider">
+              {{ currentDate }}
+            </div>
           </div>
         </div>
 
-        <!-- Location Widget -->
-        <div id="widget-location" @click="openApp('settings')" :style="getCardBg('location')"
-          class="col-span-2 glass-panel rounded-[24px] p-5 flex flex-col justify-between h-32 relative overflow-hidden cursor-pointer">
-          <div class="flex justify-between items-start">
-            <i class="fa-solid fa-location-dot text-xl text-blue-600"></i>
-            <span class="text-[10px] bg-blue-500/30 px-2 py-1 rounded-full text-blue-50 backdrop-blur-md border border-blue-400/20">映射</span>
+        <!-- Location Widget - More horizontal and crystal clear -->
+        <div id="widget-location" @click="openApp('settings')"
+          class="col-span-2 glass-panel rounded-[24px] p-4 flex flex-col justify-between h-[115px] relative overflow-hidden cursor-pointer group backdrop-blur-[32px] border border-white/10">
+          <!-- Ultra low opacity tech gradient -->
+          <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-blue-500/10 to-cyan-400/10"></div>
+          
+          <!-- Map grid pattern -->
+          <div class="absolute inset-0 opacity-20" style="background-image: linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px); background-size: 20px 20px;"></div>
+          
+          <!-- Radar scan animation -->
+          <div class="absolute top-6 right-6 w-2 h-2 bg-white/90 rounded-full animate-radar"></div>
+          
+          <div class="flex justify-between items-start relative z-10">
+            <span class="text-2xl filter drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]">📍</span>
+            <span class="text-[10px] bg-white/20 px-2 py-1 rounded-full text-white backdrop-blur-sm border border-white/20 drop-shadow-md">定位中</span>
           </div>
-          <div>
-            <div class="text-sm" :style="getWidgetFontStyle">当前位置</div>
-            <div class="text-xl font-bold truncate" id="desktop-location-text" :style="getWidgetFontStyle">{{ displayLocation }}</div>
+          <div class="relative z-10">
+            <div class="text-[10px] text-white/70 tracking-widest uppercase">Current Location</div>
+            <div class="text-2xl font-bold text-white drop-shadow-lg mt-0.5">{{ displayLocation }}</div>
           </div>
         </div>
 
-        <!-- Weather Widget -->
-        <div id="widget-weather" :style="getCardBg('weather')"
-          class="col-span-2 glass-panel rounded-[24px] p-5 flex flex-col justify-between h-32 relative overflow-hidden">
-          <div v-if="!getCardBg('weather').backgroundImage" class="absolute -right-4 -bottom-4 text-7xl opacity-20 text-yellow-500 pointer-events-none"
-            id="desktop-weather-bg-icon">
-            <i class="fa-solid fa-sun"></i>
+        <!-- Weather Widget - Elongated and frosted -->
+        <div id="widget-weather"
+          class="col-span-2 glass-panel rounded-[24px] p-4 flex flex-col justify-between items-end h-[115px] relative overflow-hidden group backdrop-blur-[32px] border border-white/10">
+          <!-- Extreme transparency weather background -->
+          <div class="absolute inset-0 transition-all duration-1000"
+               :style="{
+                 background: weatherIconClass === 'fa-sun' ? 'linear-gradient(to bottom right, rgba(255, 237, 213, 0.12), rgba(254, 215, 170, 0.15))' :
+                            weatherIconClass === 'fa-cloud-rain' ? 'linear-gradient(to bottom right, rgba(219, 234, 254, 0.12), rgba(147, 197, 253, 0.15))' :
+                            weatherIconClass === 'fa-cloud' ? 'linear-gradient(to bottom right, rgba(224, 242, 254, 0.12), rgba(186, 230, 253, 0.15))' :
+                            weatherIconClass === 'fa-snowflake' ? 'linear-gradient(to bottom right, rgba(240, 249, 255, 0.12), rgba(224, 242, 254, 0.15))' :
+                            'linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1))'
+               }"></div>
+          
+          <!-- Animated elements container (Left side) -->
+          <div class="absolute top-4 left-4 z-0">
+             <!-- Sun -->
+             <div v-if="weatherIconClass === 'fa-sun'" class="css-sun"></div>
+             <!-- Cloud -->
+             <div v-if="weatherIconClass === 'fa-cloud' || weatherIconClass === 'fa-cloud-rain'" class="css-cloud"></div>
+             <!-- Rain drops below cloud -->
+             <div v-if="weatherIconClass === 'fa-cloud-rain'" class="absolute top-8 left-2 flex gap-2">
+                <div class="w-0.5 h-3 bg-blue-300/60 rounded-full animate-rain-drop"></div>
+                <div class="w-0.5 h-3 bg-blue-300/60 rounded-full animate-rain-drop" style="animation-delay: 0.2s"></div>
+                <div class="w-0.5 h-3 bg-blue-300/60 rounded-full animate-rain-drop" style="animation-delay: 0.4s"></div>
+             </div>
           </div>
-          <div class="text-right text-4xl font-light flex flex-col items-end">
-            <i :class="['fa-solid weather-icon text-yellow-500', weatherIconClass]" id="desktop-weather-icon"></i>
-            <span id="desktop-temp" :style="getWidgetFontStyle">{{ weatherTemp }}</span>
-          </div>
-          <div>
-            <div class="text-sm" id="desktop-weather-desc" :style="getWidgetFontStyle">{{ weatherDesc }}</div>
-            <div class="text-xs" :style="getWidgetFontStyle">{{ weatherAqi }}</div>
+          
+          <!-- Weather info split layout -->
+          <div class="relative z-10 flex flex-col justify-between h-full w-full">
+            <div class="flex justify-between items-start">
+                 <!-- Moon icon for night (Right top) -->
+                 <div class="w-full text-right">
+                   <span v-if="getTimeClass() === 'time-night'" class="text-indigo-200/50 text-xl animate-pulse"><i class="fa-solid fa-moon"></i></span>
+                 </div>
+            </div>
+            
+            <div class="flex justify-between items-end w-full">
+                <!-- Info moved to Left Bottom -->
+                <div class="flex flex-col items-start">
+                    <span class="text-sm font-semibold text-white drop-shadow-md">{{ weatherDesc }}</span>
+                    <span class="text-[9px] text-white/80 bg-black/10 px-2 py-0.5 rounded-full mt-1 border border-white/10 uppercase tracking-tighter">{{ weatherAqi }}</span>
+                </div>
+                <!-- Temperature stays on Right Bottom -->
+                <div class="flex flex-col items-end">
+                    <span class="text-5xl font-extralight text-white drop-shadow-lg leading-none">{{ weatherTemp.replace('°', '') }}<span class="text-2xl">°</span></span>
+                </div>
+            </div>
           </div>
         </div>
 
@@ -296,28 +377,34 @@ onMounted(() => {
           <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">小游戏</span>
         </div>
 
-        <!-- Custom Widget Card 1 -->
-        <div class="col-span-2 glass-panel rounded-[24px] overflow-hidden relative aspect-[1.33]">
+        <!-- Custom Widget Card 1 - Square -->
+        <div class="col-span-2 glass-panel rounded-[24px] overflow-hidden relative aspect-square backdrop-blur-[32px] border border-white/10">
           <div id="widget-overlay-card1" v-if="!getCardBg('card1').backgroundImage"
             class="absolute inset-0 flex flex-col items-center justify-center opacity-70 pointer-events-none transition-opacity duration-300">
             <i class="fa-regular fa-image text-3xl mb-2 text-white/80 drop-shadow-md"></i>
-            <span class="text-xs text-white/90 font-medium">组件 1</span>
+            <span class="text-[10px] text-white/90 font-medium uppercase tracking-widest">Widget 01</span>
           </div>
-          <div id="widget-img-card1" :style="getCardBg('card1')" class="absolute inset-0 w-full h-full pointer-events-none">
+          <div id="widget-img-card1" :style="getCardBg('card1')" class="absolute inset-0 w-full h-full pointer-events-none opacity-80">
           </div>
         </div>
 
-        <!-- Custom Widget Card 2 -->
-        <div class="col-span-2 glass-panel rounded-[24px] overflow-hidden relative aspect-[1.33]">
+        <!-- Custom Widget Card 2 - Square -->
+        <div class="col-span-2 glass-panel rounded-[24px] overflow-hidden relative aspect-square backdrop-blur-[32px] border border-white/10">
           <div id="widget-overlay-card2" v-if="!getCardBg('card2').backgroundImage"
             class="absolute inset-0 flex flex-col items-center justify-center opacity-70 pointer-events-none transition-opacity duration-300">
             <i class="fa-regular fa-star text-3xl mb-2 text-white/80 drop-shadow-md"></i>
-            <span class="text-xs text-white/90 font-medium">组件 2</span>
+            <span class="text-[10px] text-white/90 font-medium uppercase tracking-widest">Widget 02</span>
           </div>
-          <div id="widget-img-card2" :style="getCardBg('card2')" class="absolute inset-0 w-full h-full pointer-events-none">
+          <div id="widget-img-card2" :style="getCardBg('card2')" class="absolute inset-0 w-full h-full pointer-events-none opacity-80">
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Pagination Dots - Moved higher to avoid dock overlap -->
+    <div class="absolute bottom-[105px] left-0 right-0 flex justify-center gap-2 z-20 pointer-events-none">
+      <div :class="['w-1 h-1 rounded-full transition-all duration-300', currentPage === 0 ? 'bg-white scale-125 shadow-[0_0_8px_white]' : 'bg-white/20']"></div>
+      <div :class="['w-1 h-1 rounded-full transition-all duration-300', currentPage === 1 ? 'bg-white scale-125 shadow-[0_0_8px_white]' : 'bg-white/20']"></div>
     </div>
 
     <!-- Dock (Fixed Footer) -->
@@ -380,5 +467,183 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* No custom styles needed - all styles are in global style.css */
+/* Weather Animations */
+
+/* Shine sweep animation */
+@keyframes shine {
+  0% { transform: translateX(-100%) rotate(25deg); }
+  100% { transform: translateX(100%) rotate(25deg); }
+}
+
+.animate-shine {
+  animation: shine 8s linear infinite;
+}
+
+.glow-effect {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at 50% -20%, rgba(255,255,255,0.4), transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Star animations */
+.star {
+  position: absolute;
+  background: white;
+  border-radius: 50%;
+  opacity: 0.6;
+  filter: drop-shadow(0 0 2px white);
+}
+.s1 { width: 3px; height: 3px; top: 20%; left: 15%; animation: twinkle 3s infinite; }
+.s2 { width: 2px; height: 2px; top: 40%; right: 20%; animation: twinkle 4s infinite 1s; }
+.s3 { width: 2px; height: 2px; top: 70%; left: 30%; animation: twinkle 5s infinite 2s; }
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 0.8; transform: scale(1.2); }
+}
+
+/* Radar ping animation */
+@keyframes radar-ping {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.8); transform: scale(1); }
+  70% { box-shadow: 0 0 0 15px rgba(255, 255, 255, 0); transform: scale(1.1); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); transform: scale(1); }
+}
+
+.animate-radar {
+  animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* CSS Cloud */
+.css-cloud {
+  width: 50px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  position: relative;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  animation: float 4s ease-in-out infinite;
+}
+
+.css-cloud::after,
+.css-cloud::before {
+  content: '';
+  position: absolute;
+  background: inherit;
+  border-radius: 50%;
+}
+
+.css-cloud::after {
+  width: 25px;
+  height: 25px;
+  top: -15px;
+  left: 8px;
+}
+
+.css-cloud::before {
+  width: 18px;
+  height: 18px;
+  top: -10px;
+  left: 24px;
+}
+
+/* CSS Sun */
+.css-sun {
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(circle, #fde047 0%, #f59e0b 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+  position: relative;
+  animation: sun-pulse 4s ease-in-out infinite;
+}
+
+.css-sun::after {
+  content: '';
+  position: absolute;
+  top: -10px; left: -10px; right: -10px; bottom: -10px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.2);
+  filter: blur(8px);
+  z-index: -1;
+}
+
+@keyframes sun-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+/* Slow spin for sun */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+/* Pulsing glow */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+/* Floating clouds */
+@keyframes float {
+  0% { transform: translateY(0); opacity: 0.4; }
+  25% { transform: translateX(-8px) translateY(-3px); opacity: 0.6; }
+  50% { transform: translateX(-15px) translateY(-6px); opacity: 0.5; }
+  75% { transform: translateX(-8px) translateY(-3px); opacity: 0.6; }
+  100% { transform: translateY(0); opacity: 0.4; }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Rain drops */
+@keyframes rain-drop {
+  0% { transform: translateY(-10px); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100px); opacity: 0; }
+}
+
+.animate-rain-drop {
+  animation: rain-drop 1.5s linear infinite;
+}
+
+/* Snow fall */
+@keyframes snow-fall {
+  0% { transform: translateY(-10px) translateX(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(120px) translateX(10px) rotate(180deg); opacity: 0; }
+}
+
+.animate-snow-fall {
+  animation: snow-fall 3s ease-in-out infinite;
+}
+
+/* Lightning flash */
+@keyframes lightning {
+  0%, 90%, 100% { opacity: 0; }
+  92%, 94% { opacity: 0.3; }
+  93% { opacity: 0; }
+}
+
+.animate-lightning {
+  animation: lightning 5s ease-in-out infinite;
+}
+
+/* Gradient radial background */
+.bg-gradient-radial {
+  background: radial-gradient(circle, var(--tw-gradient-stops));
+}
 </style>

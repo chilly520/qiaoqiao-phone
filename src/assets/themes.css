@@ -1,0 +1,437 @@
+/* 🎨 完整主题系统 - 所到之处全面改造 */
+
+/* ================================
+   主题1: default (默认)
+   ================================ */
+[data-theme="default"] {
+    --theme: default;
+    --bg-primary: #f5f5f5;
+    --bg-secondary: #ffffff;
+    --text-primary: #000000;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+    --accent-color: #3b82f6;
+}
+
+/* ================================
+   主题2: kawaii (软萌可爱)
+   ================================ */
+[data-theme="kawaii"] {
+    /* 配色 */
+    --bg-primary: linear-gradient(135deg, #fff0f6 0%, #ffe0ee 100%);
+    --bg-secondary: linear-gradient(135deg, #ffffff 0%, #fff5f9 100%);
+    --text-primary: #5a1845;
+    --text-secondary: #b08ea5;
+    --border-color: rgba(255, 182, 193, 0.3);
+    --accent-color: #ff69b4;
+    
+    /* 圆角 */
+    --radius-sm: 1rem;
+    --radius-md: 1.5rem;
+    --radius-lg: 2rem;
+}
+
+/* 桌面背景 */
+[data-theme="kawaii"] .app-root {
+    background: linear-gradient(135deg, #fff0f6 0%, #ffe0ee 50%, #fff5fa 100%);
+}
+
+/* 桌面装饰 */
+[data-theme="kawaii"] .app-root::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        radial-gradient(circle at 20% 30%, rgba(255, 105, 180, 0.1) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(230, 173, 216, 0.1) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(255, 192, 203, 0.08) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 星星装饰（可选） */
+[data-theme="kawaii"] #wallpaper-layer::after {
+    content: '✨ ⭐ 💫 ☆ ✨';
+    position: absolute;
+    top: 60px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 16px;
+    opacity: 0.2;
+    letter-spacing: 50px;
+    animation: kawaii-float 6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes kawaii-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+/* 所有白色背景 → 粉嫩渐变 */
+[data-theme="kawaii"] .bg-white,
+[data-theme="kawaii"] .bg-gray-50 {
+    background: linear-gradient(135deg, #ffffff 0%, #fff5f9 100%);
+}
+
+/* 卡片 */
+[data-theme="kawaii"] .glass-panel {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 245, 249, 0.9) 100%);
+    border-radius: 1.5rem;
+    box-shadow: 0 4px 20px rgba(255, 105, 180, 0.15);
+    border: 1px solid rgba(255, 182, 193, 0.3);
+}
+
+/* 按钮 */
+[data-theme="kawaii"] button,
+[data-theme="kawaii"] .setting-btn {
+    border-radius: 1.2rem;
+    transition: all 0.3s ease;
+}
+
+[data-theme="kawaii"] button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 105, 180, 0.25);
+}
+
+/* 主按钮 */
+[data-theme="kawaii"] .bg-blue-500,
+[data-theme="kawaii"] .bg-green-500,
+[data-theme="kawaii"] .bg-\[#07c160\] {
+    background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%);
+}
+
+/* 次要按钮 */
+[data-theme="kawaii"] .bg-gray-200 {
+    background: linear-gradient(135deg, #ffe0ee 0%, #ffc1dd 100%);
+}
+
+/* 输入框 */
+[data-theme="kawaii"] input,
+[data-theme="kawaii"] textarea,
+[data-theme="kawaii"] select {
+    background: rgba(255, 250, 253, 0.8);
+    border: 2px solid rgba(255, 182, 193, 0.4);
+    border-radius: 1rem;
+}
+
+[data-theme="kawaii"] input:focus,
+[data-theme="kawaii"] textarea:focus,
+[data-theme="kawaii"] select:focus {
+    border-color: #ff69b4;
+    box-shadow: 0 0 20px rgba(255, 105, 180, 0.3);
+    background: #ffffff;
+}
+
+/* 滚动条 */
+[data-theme="kawaii"] ::-webkit-scrollbar {
+    width: 8px;
+}
+
+[data-theme="kawaii"] ::-webkit-scrollbar-track {
+    background: rgba(255, 240, 246, 0.5);
+    border-radius: 10px;
+}
+
+[data-theme="kawaii"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #ff69b4 0%, #ff1493 100%);
+    border-radius: 10px;
+}
+
+/* 状态栏 */
+[data-theme="kawaii"] .h-\[28px\] {
+    background: linear-gradient(180deg, rgba(255, 240, 246, 0.8) 0%, transparent 100%);
+}
+
+/* 图标柔和化 */
+[data-theme="kawaii"] i[class*="fa-"] {
+    filter: drop-shadow(0 2px 6px rgba(255, 105, 180, 0.3));
+}
+
+/* ================================
+   主题3: business (简约商务)
+   ================================ */
+[data-theme="business"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --border-color: #cbd5e1;
+    --accent-color: #3b82f6;
+}
+
+/* 桌面背景 */
+[data-theme="business"] .app-root {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+/* 卡片 */
+[data-theme="business"] .glass-panel {
+    background: #ffffff;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+}
+
+/* 按钮 */
+[data-theme="business"] button,
+[data-theme="business"] .setting-btn {
+    border-radius: 0.375rem;
+}
+
+[data-theme="business"] .bg-blue-500 {
+    background: #3b82f6;
+}
+
+[data-theme="business"] .bg-green-500,
+[data-theme="business"] .bg-\[#07c160\] {
+    background: #10b981;
+}
+
+/* 输入框 */
+[data-theme="business"] input,
+[data-theme="business"] textarea,
+[data-theme="business"] select {
+    border-radius: 0.375rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+}
+
+[data-theme="business"] input:focus,
+[data-theme="business"] textarea:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* ================================
+   主题4: dark (夜间模式)
+   ================================ */
+[data-theme="dark"] {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border-color: #334155;
+    --accent-color: #60a5fa;
+}
+
+/* 桌面背景 */
+[data-theme="dark"] .app-root {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+    color: #f1f5f9 !important;
+}
+
+/* 装饰 */
+[data-theme="dark"] .app-root::before {
+    background-image: 
+        radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.1) 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.08) 0%, transparent 40%);
+}
+
+/* 白色背景 → 深色（强制覆盖）*/
+[data-theme="dark"] .bg-white {
+    background: #1e293b !important;
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .bg-gray-50 {
+    background: #0f172a !important;
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .bg-gray-100 {
+    background: #1e293b !important;
+}
+
+/* 卡片 */
+[data-theme="dark"] .glass-panel {
+    background: rgba(30, 41, 59, 0.8) !important;
+    border: 1px solid #334155 !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* 文字颜色反转 */
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-gray-700 {
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .text-gray-600,
+[data-theme="dark"] .text-gray-500 {
+    color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .text-gray-400 {
+    color: #64748b !important;
+}
+
+[data-theme="dark"] .text-black {
+    color: #f1f5f9 !important;
+}
+
+/* 按钮 */
+[data-theme="dark"] .bg-blue-500 {
+    background: #60a5fa !important;
+}
+
+[data-theme="dark"] .bg-green-500,
+[data-theme="dark"] .bg-\[#07c160\] {
+    background: #34d399 !important;
+}
+
+/* 输入框 */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+    background: #334155 !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus {
+    background: #1e293b !important;
+    border-color: #60a5fa !important;
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+    color: #64748b !important;
+}
+
+/* 滚动条 */
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: #1e293b !important;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: #475569 !important;
+}
+
+/* 状态栏 */
+[data-theme="dark"] .h-\[28px\] {
+    background: rgba(15, 23, 42, 0.8) !important;
+}
+
+/* 边框颜色 */
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200,
+[data-theme="dark"] .border-gray-300 {
+    border-color: #334155 !important;
+}
+
+/* 聊天窗口背景 */
+[data-theme="dark"] .chat-window,
+[data-theme="dark"] .message-list {
+    background: #0f172a !important;
+}
+
+/* 设置页面 */
+[data-theme="dark"] .personalization-settings,
+[data-theme="dark"] .settings-app {
+    background: #0f172a !important;
+}
+
+/* 世界书背景 */
+[data-theme="dark"] .worldbook-app {
+    background: #0f172a !important;
+}
+
+/* 微信主界面 */
+[data-theme="dark"] .wechat-app {
+    background: #0f172a !important;
+}
+
+[data-theme="dark"] .wechat-app .bg-white,
+[data-theme="dark"] .wechat-app .bg-gray-50,
+[data-theme="dark"] .wechat-app .bg-gray-100 {
+    background: #1e293b !important;
+}
+
+[data-theme="dark"] .wechat-app .bg-\[#ededed\] {
+    background: #0f172a !important;
+}
+
+/* 设置页面 */
+[data-theme="dark"] .settings-app {
+    background: #0f172a !important;
+}
+
+[data-theme="dark"] .settings-app .bg-white,
+[data-theme="dark"] .settings-app .bg-gray-50 {
+    background: #1e293b !important;
+}
+
+/* 世界书 */
+[data-theme="dark"] .w-full.h-full.bg-\[#f2f2f7\] {
+    background: #0f172a !important;
+}
+
+[data-theme="dark"] .w-full.h-full.bg-\[#f2f2f7\] .bg-white {
+    background: #1e293b !important;
+}
+
+/* 个性化设置 */
+[data-theme="dark"] .personalization-settings {
+    background: #0f172a !important;
+}
+
+[data-theme="dark"] .personalization-settings .glass-panel {
+    background: #1e293b !important;
+}
+
+/* 聊天窗口背景 - 添加半透明黑色遮罩 */
+[data-theme="dark"] .chat-window .message-list::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, var(--wallpaper-overlay-opacity, 0.5));
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 确保消息在遮罩上方 */
+[data-theme="dark"] .chat-window .message-list > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* 角色设置页面 */
+[data-theme="dark"] .character-edit,
+[data-theme="dark"] .character-card {
+    background: #1e293b !important;
+}
+
+/* 发现页面 */
+[data-theme="dark"] .wechat-app .overflow-y-auto.bg-white {
+    background: #0f172a !important;
+}
+
+/* 底部导航栏 - 只在wechat-app内 */
+[data-theme="dark"] .wechat-app .h-\[50px\] {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+/* Header - 只在wechat-app内 */
+[data-theme="dark"] .wechat-app .h-\[44px\] {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+/* 世界书Header */
+[data-theme="dark"] .w-full.h-full.bg-\[#f2f2f7\] .h-\[44px\] {
+    background: #1e293b !important;
+}
+
+/* ================================
+   通用动画
+   ================================ */
+* {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.3s ease;
+}

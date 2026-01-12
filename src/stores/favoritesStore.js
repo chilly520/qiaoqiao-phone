@@ -19,7 +19,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
         localStorage.setItem('wechat_favorites', JSON.stringify(favorites.value))
     }
 
-    function addFavorite(msg, chatName) {
+    function addFavorite(msg, chatName, avatarUrl) {
         // Prevent duplicates? logic can be added.
         const item = {
             id: Date.now(),
@@ -29,7 +29,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
             msgTimestamp: msg.timestamp,
             savedAt: Date.now(),
             author: msg.role === 'ai' ? chatName : '我',
-            avatar: '' // Could store avatar URL if needed
+            avatar: avatarUrl || '' 
         }
         favorites.value.unshift(item)
         saveFavorites()
@@ -37,8 +37,14 @@ export const useFavoritesStore = defineStore('favorites', () => {
     }
 
     function removeFavorite(id) {
-        favorites.value = favorites.value.filter(f => f.id !== id)
-        saveFavorites()
+        // Use splice for absolute certainty
+        const idx = favorites.value.findIndex(f => f.id == id)
+        if (idx !== -1) {
+            favorites.value.splice(idx, 1)
+            saveFavorites()
+            return true
+        }
+        return false
     }
 
     // Init

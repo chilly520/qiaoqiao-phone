@@ -97,10 +97,6 @@
             <i class="fa-regular fa-heart text-xl" :class="activeTab === 'sticker' ? 'text-[#ea5f39]' : 'text-gray-500'"></i>
         </div>
 
-        <!-- Settings (Optional) -->
-        <div class="w-[50px] h-full flex items-center justify-center cursor-pointer border-l border-[#f0f0f0]">
-             <i class="fa-solid fa-gear text-gray-400 text-sm"></i>
-        </div>
     </div>
 
     <!-- Hidden Input -->

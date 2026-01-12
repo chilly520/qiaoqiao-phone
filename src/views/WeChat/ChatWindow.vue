@@ -16,8 +16,27 @@ import ChatEditModal from './ChatEditModal.vue'
 import ChatHistoryModal from './ChatHistoryModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
+import MomentShareCard from '../../components/MomentShareCard.vue'
 import { marked } from 'marked'
 import { compressImage } from '../../utils/imageUtils'
+import { generateImage } from '../../utils/aiService'
+
+const ensureString = (val) => {
+    if (typeof val === 'string') return val;
+    if (Array.isArray(val)) {
+        return val.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') {
+                return part.text || part.content || '';
+            }
+            return '';
+        }).join('');
+    }
+    if (val && typeof val === 'object') {
+        return val.text || val.content || JSON.stringify(val);
+    }
+    return String(val || '');
+}
 
 // Configure Marked
 marked.setOptions({
@@ -26,7 +45,7 @@ marked.setOptions({
 })
 
 const props = defineProps({})
-const emit = defineEmits(['back'])
+const emit = defineEmits(['back', 'show-profile'])
 
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
@@ -36,6 +55,12 @@ const favoritesStore = useFavoritesStore()
 const musicStore = useMusicStore()
 
 const route = useRoute()
+
+// Input and Voice Mode
+const inputVal = ref('')
+const textareaRef = ref(null)
+const isVoiceMode = ref(false)
+
 const chatData = computed(() => chatStore.currentChat)
 const msgs = computed(() => chatData.value?.msgs || [])
 
@@ -79,53 +104,110 @@ const handleIgnoreFriend = () => {
 }
 
 const checkNewChat = () => {
-    if (chatData.value?.isNew) {
-        showSettings.value = true
-        // Clear isNew flag
-        chatStore.updateCharacter(chatData.value.id, { isNew: false })
-    }
-    
-    // Check Opening Line Logic:
-    if (chatData.value?.openingLine && chatData.value.msgs?.length === 0) {
-         chatStore.addMessage(chatData.value.id, {
-             role: 'ai',
-             content: chatData.value.openingLine
-         })
-         // Once sent, openingLine remains in settings but messages are not empty.
+    try {
+        // Validate chatData exists
+        if (!chatData.value) {
+            console.error('[ChatWindow] chatData is null')
+            showToast('聊天数据加载失败', 'error')
+            return
+        }
+        
+        // Validate msgs array
+        if (!chatData.value.msgs) {
+            console.warn('[ChatWindow] msgs array missing, initializing')
+            chatData.value.msgs = []
+        }
+        
+        if (!Array.isArray(chatData.value.msgs)) {
+            console.error('[ChatWindow] msgs is not an array, fixing')
+            chatData.value.msgs = []
+        }
+        
+        if (chatData.value?.isNew) {
+            showSettings.value = true
+            // Clear isNew flag
+            chatStore.updateCharacter(chatData.value.id, { isNew: false })
+        }
+        
+        // Check Opening Line Logic:
+        if (chatData.value?.openingLine && chatData.value.msgs?.length === 0) {
+             chatStore.addMessage(chatData.value.id, {
+                 role: 'ai',
+                 content: chatData.value.openingLine
+             })
+             // Once sent, openingLine remains in settings but messages are not empty.
+        }
+    } catch (error) {
+        console.error('[ChatWindow] checkNewChat error:', error)
+        showToast('聊天初始化失败: ' + error.message, 'error')
     }
 }
 
-// Pagination Logic
-const visibleCount = ref(50)
+// Global Popstate listener for Settings in Window
+const handleSettingsPopState = (event) => {
+    const state = event.state || {}
+    // If we're at a state that doesn't have settingsOpen, but it WAS open, close it
+    if (!state.settingsOpen && showSettings.value) {
+        showSettings.value = false
+    }
+}
 
-watch(() => chatData.value?.id, () => {
-    // Reset when chat changes
-    const limit = parseInt(chatData.value?.displayLimit)
-    visibleCount.value = !isNaN(limit) && limit > 0 ? limit : 50
-}, { immediate: true })
+const closeSettings = () => {
+    if (history.state?.settingsOpen) {
+        history.back()
+    } else {
+        showSettings.value = false
+    }
+}
+onMounted(() => {
+    window.addEventListener('popstate', handleSettingsPopState)
+})
+onUnmounted(() => {
+    window.removeEventListener('popstate', handleSettingsPopState)
+    // Abort AI if leaving the chat to save resources and prevent background errors
+    chatStore.stopGeneration()
+})
+
+// ===== 优化后的分页逻辑 =====
+// 使用 chatStore 的全局分页管理
 
 const displayedMsgs = computed(() => {
-    const list = msgs.value
-    if (!list || list.length === 0) return []
-    if (list.length <= visibleCount.value) return list
-    return list.slice(-visibleCount.value)
+    if (!chatStore.currentChatId) return []
+    return chatStore.getDisplayedMessages(chatStore.currentChatId)
 })
 
 const hasMoreMessages = computed(() => {
-    return msgs.value.length > visibleCount.value
+    if (!chatStore.currentChatId) return false
+    return chatStore.hasMoreMessages(chatStore.currentChatId)
 })
 
 const hiddenMessageCount = computed(() => {
-    return Math.max(0, msgs.value.length - visibleCount.value)
+    const total = msgs.value.length
+    const displayed = displayedMsgs.value.length
+    return Math.max(0, total - displayed)
 })
 
 const loadMoreMessages = () => {
-    visibleCount.value += 50
+    if (!chatStore.currentChatId) return
+    chatStore.loadMoreMessages(chatStore.currentChatId)
+    console.log('[ChatWindow] Loaded more messages, total displayed:', displayedMsgs.value.length)
 }
+
+// 监听聊天切换，重置分页
+watch(() => chatStore.currentChatId, (newId) => {
+    if (newId) {
+        chatStore.resetPagination(newId)
+    }
+})
+
 const addToFavorites = (msg) => {
     // Determine author name for context
     const chatName = chatData.value.name
-    favoritesStore.addFavorite(msg, chatName)
+    const avatarUrl = msg.role === 'user' 
+        ? (settingsStore.personalization.userProfile.avatar || '/avatars/user.png')
+        : (chatData.value.avatar || '/avatars/default.png')
+
+    favoritesStore.addFavorite(msg, chatName, avatarUrl)
     alert('已收藏') 
 }
 
@@ -148,15 +230,13 @@ const exitMultiSelectMode = () => {
 
 const deleteSelectedMessages = () => {
     if (selectedMsgIds.value.size === 0) return
-    if (confirm(`确定删除选中的 ${selectedMsgIds.value.size} 条消息吗？`)) {
-        const chatId = chatStore.currentChatId
-        const chat = chatStore.chats[chatId]
-        if (chat) {
-            chat.msgs = chat.msgs.filter(m => !selectedMsgIds.value.has(m.id))
-            chatStore.saveChats()
-        }
-        exitMultiSelectMode()
+    
+    // Direct delete without confirmation as requested
+    const chatId = chatStore.currentChatId
+    if (chatId) {
+            chatStore.deleteMessages(chatId, selectedMsgIds.value)
     }
+    exitMultiSelectMode()
 }
 
 const favoriteSelectedMessages = () => {
@@ -165,7 +245,10 @@ const favoriteSelectedMessages = () => {
     const chatName = chatData.value.name
     msgs.value.forEach(msg => {
         if (selectedMsgIds.value.has(msg.id)) {
-            favoritesStore.addFavorite(msg, chatName)
+            const avatarUrl = msg.role === 'user' 
+                ? (settingsStore.personalization.userProfile.avatar || '/avatars/user.png')
+                : (chatData.value.avatar || '/avatars/default.png')
+            favoritesStore.addFavorite(msg, chatName, avatarUrl)
         }
     })
     
@@ -264,8 +347,18 @@ onUnmounted(() => {
 watch(() => msgs.value.length, (newLen, oldLen) => {
     if (newLen > oldLen && newLen > 0) {
         const lastMsg = msgs.value[newLen - 1]
-        if (lastMsg.role === 'ai') {
-            processMusicCommand(lastMsg.content)
+        
+        if (lastMsg.role === 'ai' || lastMsg.role === 'user') {
+            const contentStr = ensureString(lastMsg.content)
+            
+            // 1. Music Command (AI Only)
+            if (lastMsg.role === 'ai') processMusicCommand(contentStr)
+            
+            // 2. Draw Command (Unified)
+            const drawMatch = contentStr.match(/\[DRAW:\s*([\s\S]*?)\]/i)
+            if (drawMatch) {
+                handleDrawCommandInChat(lastMsg.id, drawMatch[1].trim())
+            }
         }
     }
 })
@@ -290,13 +383,22 @@ const computedBgStyle = computed(() => {
 })
 
 const msgContainer = ref(null)
-const textareaRef = ref(null)
-const inputVal = ref('')
 
 const currentQuote = ref(null) // New State
 const showActionPanel = ref(false)
 const showSettings = ref(false)
 const imgUploadInput = ref(null)
+
+// Settings History Sync
+watch(showSettings, (newVal) => {
+    if (newVal) {
+        // Essential: Settings is always inside a Chat in this app's current flow
+        // Guard: Only push if we aren't already in settings state
+        if (!history.state?.settingsOpen) {
+            history.pushState({ ...history.state, settingsOpen: true }, '')
+        }
+    }
+})
 
 // Modal States
 const showEditModal = ref(false)
@@ -456,17 +558,15 @@ const handleImgUpload = (event) => {
              chatStore.addMessage(chatStore.currentChatId, {
                 role: 'user',
                 type: 'image',
-                content: base64
+                // Explicitly sanitize base64 to prevent any appended text issues at source
+                content: base64.replace(/[^A-Za-z0-9+/=:,;]/g, '')
              })
              showActionPanel.value = false
              scrollToBottom()
-             // Trigger AI
-             chatStore.sendMessageToAI(chatStore.currentChatId)
+             // REMOVED: Trigger AI (Manual Send Only)
         })
         .catch(err => {
             console.error('Compression failed', err)
-            // Fallback to raw if compression fails? Or just error.
-            // Let's try raw as fallback just in case
             const reader = new FileReader()
             reader.onload = (e) => {
                  chatStore.addMessage(chatStore.currentChatId, {
@@ -476,7 +576,6 @@ const handleImgUpload = (event) => {
                  })
                  showActionPanel.value = false
                  scrollToBottom()
-                 chatStore.sendMessageToAI(chatStore.currentChatId)
             }
             reader.readAsDataURL(file)
         })
@@ -596,10 +695,57 @@ watch(msgs, (newVal, oldVal) => {
     }
 }, { deep: true })
 
+const handleDrawCommandInChat = async (msgId, prompt) => {
+    console.log('[Draw Command] Triggered:', msgId, prompt)
+    showToast('正在绘制: ' + prompt.substring(0, 10) + '...', 'info')
+    
+    const chatId = chatStore.currentChatId
+    const chat = chatStore.chats[chatId]
+    const msg = chat?.msgs.find(m => m.id === msgId)
+
+    try {
+        if (!chat) throw new Error('聊天窗口已关闭或不存在')
+        if (!msg) throw new Error('找不到对应的消息占位符')
+
+        const currentDrawingConfig = settingsStore.drawing?.value || settingsStore.drawing || { provider: 'pollinations' }
+        console.log('[Draw Command] Calling generateImage with provider:', currentDrawingConfig.provider)
+        
+        const imageUrl = await generateImage(prompt) 
+        
+        console.log('[Draw Command] Image generated successfully. URL:', imageUrl)
+        console.log('[Draw Command] Updating with chatId:', chatId, 'msgId:', msgId)
+        
+        chatStore.updateMessage(chatId, msgId, {
+            content: imageUrl,
+            type: 'image',
+            isDrawing: false
+        })
+        showToast('绘图完成', 'success')
+        
+    } catch (e) {
+        console.error('[Draw Command] Failed:', e)
+        showToast('绘图失败: ' + e.message, 'error')
+        
+        if (msg && chat) {
+             chatStore.updateMessage(chatId, msgId, {
+                 content: `(绘图失败: ${e.message})`,
+                 type: 'text',
+                 isDrawing: false
+             })
+        }
+    }
+}
+
 onMounted(() => {
-    scrollToBottom()
-    checkNewChat()
+    try {
+        scrollToBottom()
+        checkNewChat()
+    } catch (error) {
+        console.error('[ChatWindow] Mount error:', error)
+        showToast('聊天加载出错,请刷新重试', 'error')
+    }
 })
+
 
 // --- Inner Voice & Content Logic ---
 // --- Inner Voice & Content Logic ---
@@ -633,8 +779,9 @@ const cleanVoiceText = (val) => {
     return String(val);
 }
 
-const parseInnerVoice = (content) => {
-    if (!content) return null;
+const parseInnerVoice = (contentRaw) => {
+    if (!contentRaw) return null;
+    const content = ensureString(contentRaw);
     let rawObj = null;
 
     try {
@@ -688,7 +835,18 @@ const parseInnerVoice = (content) => {
     return null;
 }
 
-const getCleanContent = (content) => {
+const getCleanContent = (contentRaw) => {
+     if (!contentRaw) return '';
+     const content = ensureString(contentRaw);
+     
+     // CRITICAL: Performance shortcut for massive image/base64 data
+     if (content.length > 300) {
+         // If it's a data URL or blob, it's definitely an image, don't regex it
+         if (content.includes('data:image/') || content.includes('blob:')) return ''; 
+         // If it's just long text, still skip heavy regex if no voice marker
+         if (!content.includes('[INNER_VOICE]')) return content.trim();
+     }
+
      // Remove Inner Voice block
      let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
      // Remove Claim Tags
@@ -813,13 +971,27 @@ const sendUserMessage = async () => {
                 role: 'user', 
                 type: 'voice',
                 content: content,
-                duration: Math.ceil(content.length / 3) || 1
+                duration: Math.ceil(content.length / 3) || 1,
+                quote: currentQuote.value
              })
         } else {
              // Send as Text
-             chatStore.addMessage(chatId, { role: 'user', content: content })
+             let content = inputVal.value.trim()
+             
+             // INTERCEPT: Draw Command
+             if (content.toLowerCase().startsWith('/draw ')) {
+                 const prompt = content.substring(6).trim()
+                 content = `[DRAW: ${prompt}]`
+             }
+
+             chatStore.addMessage(chatId, { 
+                role: 'user', 
+                content: content,
+                quote: currentQuote.value
+             })
         }
         
+        currentQuote.value = null
         inputVal.value = ''
         nextTick(() => {
             if (textareaRef.value) {
@@ -828,8 +1000,14 @@ const sendUserMessage = async () => {
             scrollToBottom()
         })
         
-        // Trigger Proactive Chat Reset / Logic if needed
+        // Manual Trigger Only
     }
+}
+
+// Toggle Voice Mode
+const toggleVoiceMode = () => {
+    isVoiceMode.value = !isVoiceMode.value
+    showToast(isVoiceMode.value ? '已切换到语音模式' : '已切换到文字模式', 'info')
 }
 
 
@@ -964,12 +1142,11 @@ const confirmTransfer = () => {
 }
 
 
-
 // Voice Logic
-const isVoiceMode = ref(false)
 const getDuration = (msg) => {
     if (msg.duration) return msg.duration
-    const len = (msg.content || '').length
+    const content = ensureString(msg.content)
+    const len = content.length
     return Math.min(60, Math.max(1, Math.ceil(len / 3)))
 }
 
@@ -1018,13 +1195,6 @@ const formatTimelineTime = (timestamp) => {
     return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${timeStr}`
 }
 
-const toggleVoiceMode = () => {
-    isVoiceMode.value = !isVoiceMode.value
-    nextTick(() => {
-        if (textareaRef.value) textareaRef.value.focus()
-    })
-}
-
 const handleVoiceClick = (msg) => {
     // 1. Toggle Transcript
     msg.showTranscript = !msg.showTranscript
@@ -1043,6 +1213,40 @@ const handleVoiceClick = (msg) => {
     setTimeout(() => {
         msg.isPlaying = false
     }, duration)
+}
+
+// --- Explicit Voice Logic (Force Manual Trigger) ---
+const recognition = ref(null)
+
+const voiceStart = () => {
+    // console.log('Voice Start')
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+        recognition.value = new SpeechRecognition()
+        recognition.value.lang = 'zh-CN'
+        recognition.value.continuous = false
+        recognition.value.interimResults = true
+        
+        recognition.value.onresult = (event) => {
+            const transcript = Array.from(event.results)
+                .map(result => result[0].transcript)
+                .join('')
+            inputVal.value = transcript
+        }
+        
+        recognition.value.start()
+    }
+}
+
+const voiceEnd = () => {
+    // console.log('Voice End')
+    if (recognition.value) {
+        recognition.value.stop()
+        recognition.value = null
+    }
+    
+    // CRITICAL: DO NOT AUTO SEND
+    // logic: User speaks -> Text appears in input -> User clicks Generate
 }
 
 // Reject Payment
@@ -1074,7 +1278,6 @@ const openRedPacket = () => {
         // Add to Wallet
         walletStore.addBalance(amount, `领取红包: ${currentRedPacket.value.note || ''}`)
         
-        // Update State
         // Update State
         const chat = chatStore.chats[chatStore.currentChatId]
         const msg = chat.msgs.find(m => m.id === currentRedPacket.value.id)
@@ -1114,7 +1317,8 @@ const shouldShowTimeDivider = (currentMsg, prevMsg) => {
 
 const isMsgVisible = (msg) => {
     // Always show Pay/Image
-    if (msg.type === 'redpacket' || msg.type === 'transfer' || msg.content.includes('[红包]') || msg.content.includes('[转账]')) return true
+    const content = ensureString(msg.content)
+    if (msg.type === 'redpacket' || msg.type === 'transfer' || content.includes('[红包]') || content.includes('[转账]')) return true
     if (msg.type === 'image' || isImageMsg(msg)) return true
     
     // Check Text
@@ -1123,63 +1327,116 @@ const isMsgVisible = (msg) => {
 }
 
 const isImageMsg = (msg) => {
-    if (!msg.content) return false
-    const clean = getCleanContent(msg.content).trim()
-    return (clean.startsWith('http') && (clean.endsWith('.jpg') || clean.endsWith('.png') || clean.endsWith('.gif'))) || clean.match(/^\[(?:图片|IMAGE|表情包|STICKER)[:：](.*?)\]$/i)
+    if (!msg) return false
+    // Priority 1: Explicit Type
+    if (msg.type === 'image') return true
+    
+    // Convert to string and clean it
+    const content = ensureString(msg.content)
+    if (!content.trim()) return false
+    
+    // Priority 2: Blob/Data URL presence (very fast)
+    if (content.includes('blob:') || content.includes('data:image/')) return true
+    
+    const clean = getCleanContent(content).trim()
+    
+    // Priority 3: URL lookalikes
+    if (clean.startsWith('http')) {
+        const urlPart = clean.split('?')[0].toLowerCase()
+        if (urlPart.endsWith('.jpg') || urlPart.endsWith('.png') || urlPart.endsWith('.gif') || urlPart.endsWith('.jpeg')) {
+            return true
+        }
+    }
+    
+    // Tag check: contains [图片:...] or [表情包:...]
+    // We use a more relaxed regex without strict ^ $ to handle potential surrounding chars/newlines
+    return /\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/i.test(clean)
 }
 
 const getImageSrc = (msg) => {
-    const clean = getCleanContent(msg.content).trim()
+    const content = ensureString(msg.content).trim()
     
-    // Check if it's already a raw URL
-    if (clean.startsWith('http')) return clean
+    // 1. Direct Base64
+    if (content.startsWith('data:image/')) return content
     
-    // Extract [表情包:名称]
-    const match = clean.match(/^\[(?:图片|IMAGE|表情包|STICKER)[:：](.*?)\]$/i)
+    const clean = getCleanContent(content).trim()
+    
+    // 2. Base64 hidden in tag
+    if (clean.includes('data:image/')) {
+        const dataMatch = clean.match(/data:image\/[^\]\s]+/);
+        if (dataMatch) return dataMatch[0];
+    }
+    
+    // 3. Direct URL (including blob:)
+    if (clean.startsWith('http') || clean.startsWith('blob:')) return clean
+    
+    // 4. Extraction from tag [图片:URL] or [表情包:名称]
+    const match = clean.match(/\[(?:图片|IMAGE|表情包|STICKER)[:：](.*?)\]/i)
     if (match) {
-        const name = match[1].trim()
+        const content = match[1].trim()
+        
+        // If it's a URL (http/https/blob/data), return it directly
+        if (content.startsWith('http') || content.startsWith('blob:') || content.startsWith('data:')) {
+            return content
+        }
+        
+        // Otherwise, treat as sticker name
         const stickerStore = useStickerStore()
         
         // 1. Try Character Specific
         const charStickers = chatData.value?.emojis || []
-        const charMatch = charStickers.find(s => s.name === name)
+        const charMatch = charStickers.find(s => s.name === content)
         if (charMatch) return charMatch.url
         
         // 2. Try Global
         const globalStickers = stickerStore.getStickers('global')
-        const globalMatch = globalStickers.find(s => s.name === name)
+        const globalMatch = globalStickers.find(s => s.name === content)
         if (globalMatch) return globalMatch.url
         
         // Fallback: Show initials if not found
-        return `https://api.dicebear.com/7.x/initials/svg?seed=${name}` 
+        return `https://api.dicebear.com/7.x/initials/svg?seed=${content}` 
     }
     
     return clean
 }
 
 
-const formatMessageContent = (content) => {
-    if (!content) return ''
+const formatMessageContent = (msg) => {
+    if (!msg) return ''
+    const textRaw = ensureString(msg.content)
     
-    // 1. Get Text Only (remove cards)
-    let text = getCleanContent(content)
+    // 0. Performance: Don't parse massive image strings or blob URLs as markdown
+    if (textRaw.length > 500 && (textRaw.includes('data:image/') || textRaw.includes('blob:'))) {
+        return ''; 
+    }
+
+    let text = getCleanContent(textRaw)
     
-    // 2. Handle [表情包:名称] replacement with <img> for inline rendering in text bubbles
+    // 2. Render [DRAW:...] as loading indicator
+    // IF the message is explicitly marked as drawing, show the loader.
+    // IF it's finished (isDrawing === false), hide the loader even if tag remains.
+    if (msg.isDrawing !== false && text.toLowerCase().includes('[draw:')) {
+        text = text.replace(/\[DRAW:\s*([\s\S]*?)\]/gi, (match, prompt) => {
+            const truncated = prompt.length > 30 ? prompt.substring(0, 30) + '...' : prompt
+            return `<div class="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 my-1">
+                <i class="fa-solid fa-spinner fa-spin text-blue-500"></i>
+                <span class="text-sm text-blue-700">正在绘制: ${truncated}</span>
+            </div>`
+        })
+    }
+    
+    // ... (rest of implementation)
     text = text.replace(/\[表情包[:：](.*?)\]/g, (match, name) => {
         const n = name.trim()
-        // Try to find the sticker URL
         const charStickers = chatData.value?.emojis || []
         const charMatch = charStickers.find(s => s.name === n)
         if (charMatch) return `<img src="${charMatch.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
-        
         const globalStickers = stickerStore.getStickers('global')
         const globalMatch = globalStickers.find(s => s.name === n)
         if (globalMatch) return `<img src="${globalMatch.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
-        
         return match
     })
     
-    // 3. Render Markdown
     try {
         return marked.parse(text)
     } catch (e) {
@@ -1192,34 +1449,43 @@ const previewImage = (src) => {
 }
 
 const getPayTitle = (msg) => {
-    if (msg.type === 'transfer' || msg.content.includes('[转账]')) return `¥${msg.amount || '520.00'}`
+    if (!msg) return ''
+    const content = ensureString(msg.content)
+    if (msg.type === 'transfer' || content.includes('[转账]')) return `¥${msg.amount || '520.00'}`
     return msg.note || '恭喜发财，大吉大利'
 }
 
 const getPayDesc = (msg) => {
-    if (msg.type === 'transfer' || msg.content.includes('[转账]')) return msg.note || '转账给您'
+    if (!msg) return ''
+    const content = ensureString(msg.content)
+    if (msg.type === 'transfer' || content.includes('[转账]')) return msg.note || '转账给您'
     return '领取红包'
 }
 
 const getPayStatusText = (msg) => {
     if (msg.isRejected) return '已拒收'
+    const content = ensureString(msg.content)
     if (msg.isClaimed || msg.status === 'received') {
-        const isTransfer = msg.type === 'transfer' || msg.content.includes('[转账]')
+        const isTransfer = msg.type === 'transfer' || content.includes('[转账]')
         return isTransfer ? '已收款' : '已领取'
     }
-    if (msg.type === 'transfer' || msg.content.includes('[转账]')) return '微信转账'
+    if (msg.type === 'transfer' || content.includes('[转账]')) return '微信转账'
     return '微信红包'
 }
 
+
 const parseBubbleCss = (cssString) => {
-    if (!cssString) return {}
+    if (!cssString || typeof cssString !== 'string') return {}
     const style = {}
     cssString.split(';').forEach(rule => {
-        const [key, value] = rule.split(':')
-        if (key && value) {
+        const trimmed = rule.trim()
+        if (!trimmed) return
+        const parts = trimmed.split(':')
+        if (parts.length >= 2) {
             // Convert kebab-case to camelCase
-            const camelKey = key.trim().replace(/-([a-z])/g, g => g[1].toUpperCase())
-            style[camelKey] = value.trim()
+            const key = parts[0].trim().replace(/-([a-z])/g, g => g[1].toUpperCase())
+            const value = parts.slice(1).join(':').trim()
+            if (key && value) style[key] = value
         }
     })
     return style
@@ -1326,7 +1592,8 @@ const handleMenuAction = (action) => {
             if (selectedMsg.value) {
                 currentQuote.value = {
                     id: selectedMsg.value.id,
-                    content: getCleanContent(selectedMsg.value.content)
+                    content: getCleanContent(selectedMsg.value.content),
+                    role: selectedMsg.value.role
                 }
                 nextTick(() => {
                     const el = document.querySelector('textarea')
@@ -1686,7 +1953,14 @@ const executeDelete = () => {
 </script>
 
 <template>
-  <div class="chat-window w-full h-full flex flex-col overflow-hidden relative">
+  <div v-if="!chatData" class="w-full h-full flex items-center justify-center bg-gray-100">
+    <div class="text-center">
+      <i class="fa-solid fa-spinner fa-spin text-4xl text-gray-400 mb-4"></i>
+      <p class="text-gray-500">加载中...</p>
+    </div>
+  </div>
+  
+  <div v-else class="chat-window w-full h-full flex flex-col overflow-hidden relative">
     <!-- Global Toast Notifier -->
     <Transition name="fade">
       <div v-if="toastVisible" 
@@ -1704,6 +1978,8 @@ const executeDelete = () => {
       </div>
     </Transition>
 
+    <!-- Main Chat Content (hidden when settings is open) -->
+    <div v-if="!showSettings" class="flex flex-col h-full">
     <!-- Combined Background Layer -->
     <div 
         class="absolute inset-0 bg-cover bg-center z-[-1] transition-all duration-300 pointer-events-none"
@@ -1712,7 +1988,8 @@ const executeDelete = () => {
 
     <!-- Header -->
     <div class="h-[50px] bg-[#ededed] flex items-center justify-between px-3 border-b border-[#dcdcdc] shadow-sm z-10 relative">
-        <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14" @click="$emit('back')">
+        <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14" 
+             @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
             <i class="fa-solid fa-chevron-left text-black text-lg"></i>
         </div>
         <div class="flex-1 flex flex-col items-center justify-center z-10 overflow-hidden cursor-pointer mx-[70px] h-full" @click="openStatusEditor">
@@ -1742,6 +2019,7 @@ const executeDelete = () => {
              >
                 <i class="fa-solid fa-heart transition-all duration-300 text-pink-500 animate-heartbeat"></i>
              </div>
+
 
              <!-- Settings -->
              <div class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5" @click="showSettings = true">
@@ -1779,9 +2057,16 @@ const executeDelete = () => {
         </div>
 
         <!-- Load More (Pagination) -->
-        <div v-if="hasMoreMessages" class="w-full flex justify-center py-2 z-10">
-             <button @click="loadMoreMessages" class="text-xs text-blue-500 bg-blue-50/50 px-3 py-1 rounded hover:bg-blue-100/50 transition-colors">
-                 <i class="fa-solid fa-clock-rotate-left mr-1"></i>查看更多消息 ({{ hiddenMessageCount }}条未显示)
+        <div v-if="hasMoreMessages" class="w-full flex justify-center py-3 z-10 animate-fade-in">
+             <button 
+               @click="loadMoreMessages" 
+               class="group px-4 py-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10 hover:from-blue-500/20 hover:to-purple-500/20 border border-blue-300/30 rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+             >
+                 <i class="fa-solid fa-clock-rotate-left text-blue-500 group-hover:rotate-[-15deg] transition-transform"></i>
+                 <span class="text-sm font-medium bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                   加载更早的记录
+                 </span>
+                 <span class="text-xs text-gray-500">({{ hiddenMessageCount }}条未显示)</span>
              </button>
         </div>
 
@@ -1806,12 +2091,12 @@ const executeDelete = () => {
            </div>
 
            <!-- Multi-select Layer Wrapper -->
-           <div class="flex items-center gap-3 transition-transform duration-300"
-                :class="isMultiSelectMode ? 'translate-x-[35px]' : ''"
+           <div class="flex items-center gap-3 transition-all duration-300 relative"
+                :class="isMultiSelectMode ? 'pl-10' : ''"
            >
                 <!-- Selection Circle (Visible in Multi-select Mode) -->
                 <div v-if="isMultiSelectMode" 
-                     class="absolute left-[-35px] w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
+                     class="absolute left-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
                      :class="selectedMsgIds.has(msg.id) ? 'bg-[#07c160] border-[#07c160]' : 'border-gray-300 bg-white/10'"
                      @click.stop="toggleMessageSelection(msg.id)"
                 >
@@ -1848,20 +2133,41 @@ const executeDelete = () => {
                 class="flex gap-2 w-full"
                 :class="msg.role === 'user' ? 'flex-row-reverse' : ''"
            >
-               <!-- Avatar -->
-               <img 
-                 :src="msg.role === 'user' 
-                    ? (chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me') 
-                    : (chatData?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chatData?.name || 'AI'}`)" 
-                 class="w-10 h-10 rounded shadow-sm bg-white object-cover transition-transform"
-                 :class="{ 'animate-shake': shakingAvatars.has(msg.id) }"
-                 @dblclick="handlePat(msg)"
-               >
+               <!-- Avatar Container -->
+               <div class="relative w-10 h-10 shrink-0 cursor-pointer" @dblclick="handlePat(msg)">
+                   <!-- Inner Avatar (Resized to 80% if frame exists) -->
+                   <div class="absolute overflow-hidden bg-white shadow-sm transition-all duration-300"
+                        :class="[
+                            (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame) || chatData?.avatarShape === 'circle' ? 'rounded-full' : 'rounded',
+                            { 'animate-shake': shakingAvatars.has(msg.id) }
+                        ]"
+                        :style="{ 
+                            inset: (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame) 
+                                ? ((1 - ((msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)?.scale || 1)) / 2 * 100) + '%' 
+                                : '0',
+                            transform: (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)
+                                ? `translate(${((msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)?.offsetX || 0)}px, ${((msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)?.offsetY || 0)}px)`
+                                : 'none'
+                        }"
+                   >
+                       <img 
+                         :src="msg.role === 'user' 
+                            ? (chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me') 
+                            : (chatData?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chatData?.name || 'AI'}`)" 
+                         class="w-full h-full object-cover"
+                       >
+                   </div>
+                   <!-- Frame Overlay (100%) -->
+                   <img v-if="msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame"
+                        :src="msg.role === 'user' ? chatData?.userAvatarFrame?.url : chatData?.avatarFrame?.url"
+                        class="absolute inset-0 w-full h-full pointer-events-none z-10"
+                   >
+               </div>
     
                 <div class="flex flex-col max-w-[70%]" :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                     
                     <!-- Pay Card (Red Packet / Transfer) -->
-                    <div v-if="msg.type === 'redpacket' || msg.type === 'transfer' || msg.content.includes('[红包]') || msg.content.includes('[转账]')" 
+                    <div v-if="msg.type === 'redpacket' || msg.type === 'transfer' || (typeof msg.content === 'string' && (msg.content.includes('[红包]') || msg.content.includes('[转账]')))" 
                          class="pay-card"
                          :class="{'received': msg.isClaimed || msg.status === 'received', 'rejected': msg.isRejected}"
                          @click="handlePayClick(msg)"
@@ -1939,49 +2245,50 @@ const executeDelete = () => {
                      <SafeHtmlCard :content="getHtmlContent(msg.content)" />
                 </div>
 
+                <!-- Moments Share Card -->
+                <div v-else-if="msg.type === 'moment_card'" class="w-full mt-1" @contextmenu.prevent="handleContextMenu(msg, $event)">
+                     <MomentShareCard :data="msg.content" />
+                </div>
+
      
     
-                   <!-- Default Text Bubble -->
-                   <div v-else v-show="getCleanContent(msg.content)"
-                     @contextmenu.prevent="handleContextMenu(msg, $event)"
-                     @touchstart="startLongPress(msg, $event)" 
-                     @touchend="cancelLongPress" 
-                     @touchmove="cancelLongPress"
-                     @mousedown="startLongPress(msg, $event)" 
-                     @mouseup="cancelLongPress" 
-                     @mouseleave="cancelLongPress"
-                     class="px-3 py-2 rounded-lg text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
-                     :class="[
-                        msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left',
-                     ]"
-                     :style="{ 
-                        fontSize: (chatData?.bubbleSize || 15) + 'px',
-                        ...(chatData?.bubbleCss ? parseBubbleCss(chatData.bubbleCss) : {}) 
-                     }"
-                   >
-                      <!-- Arrow -->
-                      <div 
-                         class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                         :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#1f2937]' : 'left-[-6px] border-r-[6px] border-r-[#1a1a1a]'"
-                      ></div>
+                <!-- Default Text Bubble -->
+                <div v-else v-show="getCleanContent(msg.content)"
+                  @contextmenu.prevent="handleContextMenu(msg, $event)"
+                  @touchstart="startLongPress(msg, $event)" 
+                  @touchend="cancelLongPress" 
+                  @touchmove="cancelLongPress"
+                  @mousedown="startLongPress(msg, $event)" 
+                  @mouseup="cancelLongPress" 
+                  @mouseleave="cancelLongPress"
+                  class="px-3 py-2 rounded-lg text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
+                  :class="[
+                     msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left',
+                  ]"
+                  :style="{ 
+                     fontSize: (chatData?.bubbleSize || 15) + 'px',
+                     ...(chatData?.bubbleCss ? parseBubbleCss(chatData.bubbleCss) : {}) 
+                  }"
+                >
+                   <!-- Arrow -->
+                   <div 
+                      class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
+                      :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#1f2937]' : 'left-[-6px] border-r-[6px] border-r-[#1a1a1a]'"
+                   ></div>
 
-                       <span v-html="formatMessageContent(msg.content)"></span>
-                     </div>
-                     
-                     <!-- New External Time Stamp (Below Bubble) -->
-                     <div v-if="chatData" class="text-[10px] mt-1 px-1 select-none pointer-events-none transition-all duration-300"
-                          :class="[
-                              msg.role === 'user' ? 'text-right' : 'text-left',
-                              chatData?.bgTheme === 'dark' ? 'text-white/50' : 'text-gray-400 opacity-60'
-                          ]"
-                     >
-                         {{ formatAncientTime(msg.timestamp) }}
-                     </div>
-                 </div>
+                    <!-- Quote Reply -->
+                    <div v-if="msg.quote" class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
+                         <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方') }}</div>
+                         <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
+                    </div>
+
+                    <span v-html="formatMessageContent(msg)"></span>
+                </div>
             </div>
            </div>
         </div>
     </div>
+</div>
 
        <!-- Typing Indicator -->
        <div v-if="chatStore.isTyping" class="flex gap-2 w-full z-10 mb-2">
@@ -2031,22 +2338,21 @@ const executeDelete = () => {
         <!-- Row 2: Input Box + Actions (Bottom) -->
         <div class="flex items-end px-3 pb-3 pt-1 gap-2">
              <!-- Voice Toggle -->
-             <button class="mb-1 text-[#2e2e2e] text-[22px] hover:text-gray-600 transition-colors w-[28px] flex justify-center" @click="toggleVoiceMode">
-                <i class="fa-solid" :class="isVoiceMode ? 'fa-keyboard' : 'fa-microphone'"></i>
+             <button 
+               class="mb-1 text-[#2e2e2e] text-[22px] hover:text-gray-600 transition-colors w-[28px] flex justify-center" 
+               @click="toggleVoiceMode"
+               :title="isVoiceMode ? '切换到文字模式' : '切换到语音模式'"
+             >
+                <i class="fa-solid transition-all" :class="isVoiceMode ? 'fa-keyboard text-blue-500' : 'fa-microphone'"></i>
              </button>
 
              <!-- Input Wrapper -->
-             <div class="flex-1 bg-white rounded-lg border border-gray-300 flex items-center min-h-[38px] px-3 py-2 shadow-sm">
-                 <div v-if="isVoiceMode" 
-                      class="w-full text-center text-sm font-medium text-gray-600 py-1 cursor-pointer active:bg-gray-100 select-none rounded"
-                      @mousedown="voiceStart" @mouseup="voiceEnd" @touchstart.prevent="voiceStart" @touchend.prevent="voiceEnd"
-                 >按住 说话</div>
+             <div class="flex-1 bg-white rounded-lg border border-gray-300 flex items-center min-h-[38px] px-3 py-2 shadow-sm" :class="isVoiceMode ? 'border-blue-400' : ''">
                  <textarea 
-                    v-else
                     v-model="inputVal"
                     class="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-[15px] leading-[22px] text-gray-800 placeholder-gray-400"
                     rows="1" 
-                    placeholder="发送消息..." 
+                    :placeholder="isVoiceMode ? '输入文字，发送后将以语音形式显示...' : '发送消息...'" 
                     @keydown.enter.prevent="sendUserMessage"
                     @input="handleAutoResize"
                     ref="textareaRef"
@@ -2123,11 +2429,14 @@ const executeDelete = () => {
     <!-- Hidden Input -->
     <input type="file" ref="imgUploadInput" class="hidden" accept="image/*" @change="handleImgUpload">
 
+    </div><!-- End of Main Chat Content -->
+
     <!-- Settings Overlay -->
     <ChatDetailSettings 
         v-if="showSettings" 
         :chatData="chatData" 
-        @close="showSettings = false"
+        @close="closeSettings"
+        @show-profile="id => $emit('show-profile', id)"
     />
 
 
@@ -2182,8 +2491,17 @@ const executeDelete = () => {
                     
                     <!-- Claimed State -->
                     <div v-if="currentRedPacket?.isClaimed" class="flex items-center gap-2 bg-[#d95940]/50 p-2 rounded-lg border border-[#fcdba8]/20">
-                         <img :src="currentRedPacket?.claimedBy?.avatar || chatData?.avatar" class="w-8 h-8 rounded-full">
-                         <span class="text-[#fcdba8] text-sm">{{ currentRedPacket?.claimedBy?.name || chatData?.name }}</span>
+                     <div class="relative w-8 h-8 shrink-0">
+                         <!-- Inner Avatar -->
+                         <div class="absolute overflow-hidden rounded-full transition-all duration-300"
+                              :style="{ inset: chatData?.avatarFrame ? '10%' : '0' }"
+                         >
+                             <img :src="currentRedPacket?.claimedBy?.avatar || chatData?.avatar" class="w-full h-full object-cover">
+                         </div>
+                         <!-- Frame Overlay -->
+                         <img v-if="chatData?.avatarFrame" :src="chatData?.avatarFrame?.url" class="absolute inset-0 w-full h-full pointer-events-none z-10">
+                     </div>
+                     <span class="text-[#fcdba8] text-sm">{{ currentRedPacket?.claimedBy?.name || chatData?.name }}</span>
                          <span class="text-[#fcdba8] font-bold text-sm">¥{{ resultAmount }}</span>
                     </div>
 
@@ -2255,8 +2573,15 @@ const executeDelete = () => {
             <div class="voice-modal-body flex flex-col items-center" v-if="!showHistoryList">
                 <!-- Avatar & Meta -->
                 <div class="voice-header-group">
-                    <div class="voice-char-avatar-box">
-                         <img :src="chatData?.avatar" class="voice-char-avatar w-full h-full object-cover rounded-full">
+                    <div class="voice-char-avatar-box relative w-16 h-16">
+                         <!-- Inner Avatar -->
+                         <div class="absolute inset-0 overflow-hidden rounded-full transition-all duration-300"
+                              :style="{ padding: chatData?.avatarFrame ? '10%' : '0' }"
+                         >
+                             <img :src="chatData?.avatar" class="voice-char-avatar w-full h-full object-cover rounded-full">
+                         </div>
+                         <!-- Frame Overlay -->
+                         <img v-if="chatData?.avatarFrame" :src="chatData?.avatarFrame?.url" class="absolute inset-0 w-full h-full pointer-events-none z-10">
                     </div>
                     <div class="voice-char-name">{{ chatData?.name }}</div>
                     <div class="voice-char-meta">{{ currentInnerVoice?.mood || 'Current Mood / ...' }}</div>
@@ -2447,7 +2772,7 @@ const executeDelete = () => {
             </div>
         </div>
     </div>
-  </div>
+  </div><!-- End of v-else chat-window -->
 </template>
 
 

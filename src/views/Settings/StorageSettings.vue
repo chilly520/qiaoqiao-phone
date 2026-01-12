@@ -11,7 +11,7 @@ const chatStore = useChatStore()
 const { compressQuality } = storeToRefs(settingsStore)
 
 const goBack = () => {
-    router.push('/settings')
+    router.back()
 }
 
 // Stats
@@ -85,20 +85,15 @@ const updateCompressQuality = () => {
     settingsStore.setCompressQuality(compressQuality.value)
 }
 
-const triggerToast = (msg) => {
-    // Simple alert for now or existing toast logic
-    alert(msg) 
-}
+
 
 const compressImages = () => {
-    // Placeholder functionality as no specific compression logic was found in legacy code
-    triggerToast('功能开发中：图片压缩算法待移植')
+    chatStore.triggerToast('功能开发中：图片压缩算法待移植', 'info')
 }
 
 const clearLogs = () => {
-    // Use the specific key for logs
     localStorage.removeItem('qiaoqiao_logs')
-    triggerToast('系统日志已清理')
+    chatStore.triggerToast('系统日志已清理', 'success')
     calculateStorage()
 }
 
@@ -106,7 +101,7 @@ const clearChats = () => {
     if(confirm('确定要清空所有聊天记录吗？')) {
         chatStore.clearAllChats()
         calculateStorage()
-        triggerToast('聊天记录已清空')
+        chatStore.triggerToast('聊天记录已清空', 'success')
     }
 }
 </script>

@@ -50,6 +50,16 @@ const router = createRouter({
             component: () => import('../views/Settings/DataSettings.vue')
         },
         {
+            path: '/settings/drawing',
+            name: 'settings-drawing',
+            component: () => import('../views/Settings/DrawingSettings.vue')
+        },
+        {
+            path: '/settings/backup',
+            name: 'settings-backup',
+            component: () => import('../views/Settings/BackupSettings.vue')
+        },
+        {
             path: '/system-logs',
             name: 'system-logs',
             component: () => import('../views/System/SystemLogs.vue')
@@ -58,6 +68,11 @@ const router = createRouter({
             path: '/worldbook',
             name: 'worldbook',
             component: () => import('../views/WorldBook/WorldBookApp.vue')
+        },
+        {
+            path: '/moments/profile/:charId',
+            name: 'character-profile',
+            component: () => import('../views/WeChat/CharacterProfileView.vue')
         },
         {
             path: '/favorites',

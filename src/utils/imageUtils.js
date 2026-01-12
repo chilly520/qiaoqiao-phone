@@ -60,8 +60,8 @@ export function compressImage(file, options = {}) {
                     // Let's stick to original type but with quality param (only works for jpeg/webp)
                 }
                 
-                // Note: toDataURL's quality param only works for image/jpeg and image/webp.
-                const base64 = canvas.toDataURL(outputType, quality);
+                // Force JPEG for better compression control
+                const base64 = canvas.toDataURL('image/jpeg', quality);
                 resolve(base64);
             };
             img.onerror = (err) => reject(err);

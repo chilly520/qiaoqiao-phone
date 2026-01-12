@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const goBack = () => {
-    router.push('/')
+    router.back()
 }
 
 const openSettingsPage = (page) => {
@@ -57,6 +57,24 @@ const settingsCards = [
         iconColor: 'text-orange-600',
         subtitleColor: 'text-gray-500',
         page: 'storage'
+    },
+    {
+        title: '生图配置',
+        subtitle: 'Pollinations, Flux API',
+        icon: 'fa-solid fa-image',
+        gradient: 'from-cyan-100 to-cyan-200',
+        iconColor: 'text-cyan-600',
+        subtitleColor: 'text-gray-500',
+        page: 'drawing'
+    },
+    {
+        title: '数据备份',
+        subtitle: 'GitHub 云端, 本地导出',
+        icon: 'fa-solid fa-cloud-arrow-up',
+        gradient: 'from-indigo-100 to-indigo-200',
+        iconColor: 'text-indigo-600',
+        subtitleColor: 'text-gray-500',
+        page: 'backup'
     },
     {
         title: '数据管理',

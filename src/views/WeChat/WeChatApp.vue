@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useChatStore, getRandomAvatar } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import ChatWindow from './ChatWindow.vue'
+import MomentsView from './MomentsView.vue'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -11,8 +12,45 @@ const settingsStore = useSettingsStore()
 
 const userProfile = computed(() => settingsStore.personalization.userProfile)
 
+const ensureString = (val) => {
+    if (typeof val === 'string') return val;
+    if (Array.isArray(val)) {
+        return val.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') {
+                return part.text || part.content || '';
+            }
+            return '';
+        }).join('');
+    }
+    if (val && typeof val === 'object') {
+        return val.text || val.content || JSON.stringify(val);
+    }
+    return String(val || '');
+}
+
+// Search State
+const searchQuery = ref('')
+const showSearch = ref(false)
+
+const filteredChatList = computed(() => {
+    let list = chatStore.chatList
+    if (searchQuery.value) {
+        const q = searchQuery.value.toLowerCase()
+        list = list.filter(chat => {
+            const nameMatch = (chat.name || '').toLowerCase().includes(q)
+            const content = ensureString(chat.lastMsg?.content)
+            const contentMatch = content.toLowerCase().includes(q)
+            return nameMatch || contentMatch
+        })
+    }
+    return list
+})
+
 // State
 const currentTab = ref('chat') // 'chat', 'contacts', 'discover', 'me'
+const showMoments = ref(false)
+const momentsInitialProfileId = ref(null) // New: for direct profile jumping
 const showAddMenu = ref(false)
 const expandFriends = ref(true)
 const expandNPC = ref(false)
@@ -29,17 +67,7 @@ const showConfirmModal = ref(false)
 const confirmCallback = ref(null)
 const confirmMessage = ref('')
 
-// Toast State
-const showToast = ref(false)
-const toastMessage = ref('')
 
-const triggerToast = (msg) => {
-    toastMessage.value = msg
-    showToast.value = true
-    setTimeout(() => {
-        showToast.value = false
-    }, 2000)
-}
 
 // Profile Edit Modal State
 const showProfileEdit = ref(false)
@@ -58,7 +86,7 @@ const openProfileEdit = () => {
 const saveProfile = () => {
     settingsStore.updateUserProfile(profileForm.value)
     showProfileEdit.value = false
-    triggerToast('修改成功')
+    chatStore.triggerToast('修改成功', 'success')
 }
 
 const triggerProfileAvatarUpload = () => {
@@ -159,7 +187,7 @@ const handleContextAction = (option) => {
         confirmCallback.value = () => {
              chatStore.clearHistory(id)
              showConfirmModal.value = false
-             triggerToast('已移除')
+             chatStore.triggerToast('已移除', 'success')
         }
     } else if (option.action === 'delete') {
         confirmMessage.value = '确定要删除该好友吗？将同时删除所有记录。'
@@ -167,7 +195,7 @@ const handleContextAction = (option) => {
         confirmCallback.value = () => {
              chatStore.deleteChat(id)
              showConfirmModal.value = false
-             triggerToast('已删除') // Add feedback toast
+             chatStore.triggerToast('已删除', 'success')
         }
     }
     showContextMenu.value = false
@@ -212,23 +240,64 @@ const openChat = (chatId) => {
   // Ensure it shows in chat list when opened from contacts
   chatStore.updateCharacter(chatId, { inChatList: true })
   
-  // Push history state so back button works
-  history.pushState({ chatOpen: true }, '')
+  // Guard: Only push if we aren't already in a chat state
+  if (!history.state?.chatOpen) {
+      history.pushState({ ...history.state, chatOpen: true }, '')
+  }
+}
+
+const openProfileFromChat = (charId) => {
+    // DO NOT set currentChatId to null, layering Profile over Chat
+    momentsInitialProfileId.value = charId
+    showMoments.value = true
+    // Guard: Only push if profile isn't already marked open in history
+    if (!history.state?.profileOpen) {
+        history.pushState({ ...history.state, profileOpen: true }, '')
+    }
 }
 
 const handleChatBack = () => {
-    // If we have state, go back (triggers popstate -> closes chat)
+    console.log('[WeChatApp] handleChatBack called', { 
+        historyState: history.state,
+        currentChatId: chatStore.currentChatId 
+    })
+    
+    // Directly close the chat
+    console.log('[WeChatApp] Closing chat directly')
+    chatStore.currentChatId = null
+    
+    // If we pushed a history state, also clean it up
     if (history.state?.chatOpen) {
+        console.log('[WeChatApp] Also going back to clean history')
         history.back()
-    } else {
-        // Fallback for direct close if no state
-        chatStore.currentChatId = null
     }
 }
 
 const handlePopState = (event) => {
-    if (chatStore.currentChatId) {
+    const state = event.state || {}
+    console.log('[WeChatApp] handlePopState', { 
+        state, 
+        showMoments: showMoments.value, 
+        currentChatId: chatStore.currentChatId 
+    })
+    
+    // 1. Check Profile/Moments Layer
+    if (showMoments.value && !state.profileOpen) {
+        console.log('[WeChatApp] Closing moments')
+        showMoments.value = false
+        momentsInitialProfileId.value = null
+    }
+    
+    // 2. Check Chat Window Layer
+    // Only close chat if chatOpen is explicitly missing from state
+    if (chatStore.currentChatId && !state.chatOpen) {
+        console.log('[WeChatApp] Closing chat window')
         chatStore.currentChatId = null
+    } else {
+        console.log('[WeChatApp] NOT closing chat', { 
+            hasChatId: !!chatStore.currentChatId, 
+            stateChatOpen: state.chatOpen 
+        })
     }
 }
 
@@ -253,20 +322,42 @@ onUnmounted(() => {
 
 
 const goBack = () => {
-    if (chatStore.currentChatId) {
-        chatStore.currentChatId = null
-    } else {
-        router.push('/')
+    console.log('[WeChatApp] goBack called', {
+        historyState: history.state,
+        showMoments: showMoments.value,
+        currentChatId: chatStore.currentChatId
+    })
+    
+    // Close any open overlays first
+    if (showMoments.value) {
+        console.log('[WeChatApp] Closing moments')
+        showMoments.value = false
+        momentsInitialProfileId.value = null
+        return
     }
+    
+    if (chatStore.currentChatId) {
+        console.log('[WeChatApp] Closing chat')
+        chatStore.currentChatId = null
+        return
+    }
+    
+    // If no overlays are open, go back to home
+    console.log('[WeChatApp] Navigating to home')
+    router.back()
 }
 </script>
 
 <template>
   <div class="wechat-app w-full h-full bg-gray-100 flex flex-col relative" @click="showAddMenu = false">
-    <!-- Toast -->
-    <div v-if="showToast" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm z-[100] animate-fade-in">
-        {{ toastMessage }}
-    </div>
+
+    <!-- Chat Window Overlay -->
+    <ChatWindow 
+      v-if="chatStore.currentChatId" 
+      class="absolute inset-0 z-50"
+      @back="handleChatBack"
+      @show-profile="openProfileFromChat"
+    />
 
     <!-- Context Menu (Restored) -->
     <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false" @touchstart="showContextMenu = false">
@@ -341,16 +432,16 @@ const goBack = () => {
         </div>
     </div>
 
-    <!-- 聊天窗口 (覆盖层) -->
-    <ChatWindow 
-        v-if="chatStore.currentChatId" 
-        class="absolute inset-0 z-20"
-        @back="handleChatBack"
+    <!-- Moments View (New) -->
+    <MomentsView 
+        v-if="showMoments"
+        class="absolute inset-0 z-[10000] animate-slide-in-right"
+        :initial-profile-id="momentsInitialProfileId"
+        @back="goBack"
     />
 
-    <!-- Main App Content (Always rendered beneath, or could use v-show if needed) -->
-    <!-- Removed v-else to avoid layout issues & keep state -->
-    <template v-else>
+    <!-- Main App Content (Hide when overlays are open to prevent misalignment) -->
+    <template v-if="!chatStore.currentChatId && !showMoments">
         <!-- Add Friend Modal -->
         <div v-if="showAddFriendModal" class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in" @click.self="showAddFriendModal = false">
             <div class="bg-white w-[85%] max-w-[320px] rounded-lg overflow-hidden shadow-xl">
@@ -387,7 +478,7 @@ const goBack = () => {
             </div>
             
             <div class="flex gap-4 text-base items-center w-20 justify-end" v-if="currentTab === 'chat' || currentTab === 'contacts'">
-                <i class="fa-solid fa-magnifying-glass text-black"></i>
+                <i class="fa-solid fa-magnifying-glass text-black cursor-pointer p-2" @click="showSearch = !showSearch"></i>
                 <div class="relative flex items-center">
                     <i class="fa-solid fa-plus cursor-pointer text-black text-lg" @click.stop="toggleAddMenu"></i>
                     <!-- Add Menu Dropdown -->
@@ -411,8 +502,17 @@ const goBack = () => {
         <div class="flex-1 overflow-y-auto bg-white relative">
             <!-- Tabs (chatList, contacts, discover, me) ... keep original logic -->
             <div v-if="currentTab === 'chat'" class="h-full">
+                <!-- Search Bar -->
+                <div v-if="showSearch" class="bg-gray-100 px-2 pb-2 -mt-1 border-b border-gray-200">
+                    <div class="bg-white rounded-lg flex items-center px-3 py-1.5">
+                        <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
+                        <input v-model="searchQuery" type="text" placeholder="搜索" class="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400">
+                        <i v-if="searchQuery" class="fa-solid fa-xmark text-gray-400 ml-2 cursor-pointer" @click="searchQuery = ''"></i>
+                    </div>
+                </div>
+
                 <div 
-                  v-for="chat in chatStore.chatList" 
+                  v-for="chat in filteredChatList" 
                   :key="chat.id"
                   class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
                   :class="chat.isPinned ? 'bg-gray-50' : ''"
@@ -435,7 +535,7 @@ const goBack = () => {
                            <span class="text-xs text-gray-400">{{ chat.lastMsg ? new Date(chat.lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '' }}</span>
                        </div>
                        <div class="text-xs text-gray-500 truncate">
-                           {{ chat.lastMsg ? chat.lastMsg.content : '暂无消息' }}
+                           {{ chat.lastMsg ? ensureString(chat.lastMsg.content) : '暂无消息' }}
                        </div>
                    </div>
                 </div>
@@ -465,7 +565,13 @@ const goBack = () => {
                 </div>
             </div>
             <!-- Simplified discover/me for brevity, assuming you have original source -->
-            <div v-if="currentTab === 'discover'" class="bg-[#ededed] min-h-full pt-2">
+             <div v-if="currentTab === 'discover'" class="bg-[#ededed] min-h-full pt-2">
+                 <!-- Moments Entry -->
+                 <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50" @click="() => { showMoments = true; if(!history.state?.profileOpen) history.pushState({ ...history.state, profileOpen: true }, ''); }">
+                    <i class="fa-solid fa-camera-retro text-orange-400 text-xl"></i>
+                    <span class="text-base text-gray-900 flex-1">朋友圈</span>
+                    <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                </div>
                  <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50" @click="router.push('/favorites')">
                     <i class="fa-solid fa-star text-yellow-400 text-xl"></i>
                     <span class="text-base text-gray-900 flex-1">收藏</span>

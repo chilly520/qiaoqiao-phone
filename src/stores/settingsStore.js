@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useLoggerStore } from './loggerStore'
 
 export const useSettingsStore = defineStore('settings', () => {
-    // API配置列表 - 使用原版默认值
+    // --- 1. Core API Configs ---
     const apiConfigs = ref([
         {
             name: '默认配置',
@@ -10,84 +11,19 @@ export const useSettingsStore = defineStore('settings', () => {
             apiKey: 'pwd',
             model: 'gemini-2.5-pro-nothinking',
             temperature: 0.7,
-            maxTokens: 4096
+            maxTokens: 4096,
+            provider: 'openai'
         }
     ])
-
-    // 当前选中的配置索引
     const currentConfigIndex = ref(0)
-
-    const currentConfig = computed(() => {
-        return apiConfigs.value[currentConfigIndex.value] || null
-    })
-
-    // Alias for compatibility with aiService
+    const currentConfig = computed(() => apiConfigs.value[currentConfigIndex.value] || apiConfigs.value[0])
     const apiConfig = computed(() => currentConfig.value)
 
-    // 从localStorage加载配置
-    function loadFromStorage() {
-        const saved = localStorage.getItem('qiaoqiao_settings')
-        if (saved) {
-            try {
-                const data = JSON.parse(saved)
-                if (data.apiConfigs) {
-                    apiConfigs.value = data.apiConfigs
-                }
-                if (data.currentConfigIndex !== undefined) {
-                    currentConfigIndex.value = data.currentConfigIndex
-                }
-            } catch (e) {
-                console.error('Failed to load settings:', e)
-            }
-        }
-    }
-
-    // 保存到localStorage
-    function saveToStorage() {
-        const data = {
-            apiConfigs: apiConfigs.value,
-            currentConfigIndex: currentConfigIndex.value
-        }
-        localStorage.setItem('qiaoqiao_settings', JSON.stringify(data))
-    }
-
-    // 更新配置
-    function updateConfig(index, newConfig) {
-        if (index >= 0 && index < apiConfigs.value.length) {
-            apiConfigs.value[index] = { ...newConfig }
-            saveToStorage()
-        }
-    }
-
-    // 创建新配置
-    function createConfig(config) {
-        apiConfigs.value.push(config)
-        saveToStorage()
-        return apiConfigs.value.length - 1
-    }
-
-    // 删除配置
-    function deleteConfig(index) {
-        if (apiConfigs.value.length <= 1) {
-            return '至少需要保留一个配置'
-        }
-        if (index >= 0 && index < apiConfigs.value.length) {
-            apiConfigs.value.splice(index, 1)
-            // 如果删除的是当前配置，切换到第一个
-            if (currentConfigIndex.value >= apiConfigs.value.length) {
-                currentConfigIndex.value = apiConfigs.value.length - 1
-            }
-            saveToStorage()
-            return true
-        }
-        return false
-    }
-
-    // --- Personalization State ---
+    // --- 2. Personalization State ---
     const personalization = ref({
         wallpaper: '',
         icons: {
-            app: 'wechat', // Default selected app for preview
+            app: 'wechat',
             url: '',
             map: {
                 wechat: '/icons/wechat.png',
@@ -99,7 +35,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 worldbook: '/icons/worldbook.png',
                 reset: '/icons/reset.png',
                 syslog: '/icons/syslog.png'
-            } // Map of app -> icon URL
+            }
         },
         widgets: {
             card1: '/widgets/bg_card1.jpg',
@@ -117,133 +53,19 @@ export const useSettingsStore = defineStore('settings', () => {
         },
         globalBg: '',
         customCss: '',
+        theme: 'default', // 新增：主题选择 (default | kawaii | business)
+        wallpaperOverlayOpacity: 0.5, // 新增：夜间模式聊天壁纸遮罩透明度 (0-1)
         userProfile: {
             name: '乔乔',
             avatar: '/avatars/小猫星星眼.jpg',
             wechatId: 'admin'
         },
-        presets: [] // Array of { name, data }
+        presets: []
     })
 
-    // --- Personalization Actions ---
-
-    // Apply Wallpaper
-    function setWallpaper(url) {
-        personalization.value.wallpaper = url
-        saveToStorage()
-    }
-
-    // Apply Icon
-    function setIcon(app, url) {
-        personalization.value.icons.map[app] = url
-        saveToStorage()
-    }
-
-    // Clear Icon
-    function clearIcon(app) {
-        if (app) {
-            delete personalization.value.icons.map[app]
-        } else {
-            personalization.value.icons.map = {}
-        }
-        saveToStorage()
-    }
-
-    // Apply Widget Url
-    function setWidget(id, url) {
-        if (id in personalization.value.widgets) {
-            personalization.value.widgets[id] = url
-            saveToStorage()
-        }
-    }
-
-    // Check Widget Card Background Key
-    function setCardBg(type, url) {
-        if (type in personalization.value.cardBgs) {
-            personalization.value.cardBgs[type] = url
-            saveToStorage()
-        }
-    }
-
-    // Global Font Settings
-    function setGlobalFont(settings) {
-        personalization.value.globalFont = { ...personalization.value.globalFont, ...settings }
-        saveToStorage()
-    }
-
-    // Global Background
-    function setGlobalBg(url) {
-        personalization.value.globalBg = url
-        saveToStorage()
-    }
-
-    // Custom CSS
-    function setCustomCss(css) {
-        personalization.value.customCss = css
-        saveToStorage()
-    }
-
-    // User Profile
-    function updateUserProfile(profile) {
-        personalization.value.userProfile = { ...personalization.value.userProfile, ...profile }
-        saveToStorage()
-    }
-
-    // Presets Management
-    function savePreset(name) {
-        const data = JSON.parse(JSON.stringify(personalization.value))
-        // Remove presets array from the saved data to avoid recursion
-        delete data.presets
-
-        const existingIndex = personalization.value.presets.findIndex(p => p.name === name)
-        if (existingIndex >= 0) {
-            personalization.value.presets[existingIndex].data = data
-        } else {
-            personalization.value.presets.push({ name, data })
-        }
-        saveToStorage()
-    }
-
-    function loadPreset(name) {
-        const preset = personalization.value.presets.find(p => p.name === name)
-        if (preset) {
-            // Restore data but keep the presets list itself
-            const currentPresets = personalization.value.presets
-            personalization.value = { ...preset.data, presets: currentPresets }
-            saveToStorage()
-            return true
-        }
-        return false
-    }
-
-    function deletePreset(name) {
-        const index = personalization.value.presets.findIndex(p => p.name === name)
-        if (index >= 0) {
-            personalization.value.presets.splice(index, 1)
-            saveToStorage()
-            return true
-        }
-        return false
-    }
-
-    function resetAllPersonalization() {
-        personalization.value = {
-            wallpaper: '',
-            icons: { app: 'wechat', url: '', map: {} },
-            widgets: { card1: '', card2: '' },
-            cardBgs: { time: '', location: '', weather: '' },
-            globalFont: { color: '#166534', shadow: '0 2px 4px rgba(0,0,0,0.3)', url: '' },
-            globalBg: '',
-            customCss: '',
-            presets: personalization.value.presets // Keep presets
-        }
-        saveToStorage()
-    }
-
-
-    // --- Voice/TTS State ---
+    // --- 3. Other States ---
     const voice = ref({
-        engine: 'browser', // 'browser' | 'minimax'
+        engine: 'browser',
         minimax: {
             groupId: '',
             apiKey: '',
@@ -251,167 +73,244 @@ export const useSettingsStore = defineStore('settings', () => {
             voiceId: ''
         }
     })
-
-    // --- Weather State ---
     const weather = ref({
         virtualLocation: '',
         realLocation: ''
     })
-
-    // --- Storage State ---
     const compressQuality = ref(0.7)
+    const drawing = ref({
+        provider: 'pollinations',
+        apiKey: '',
+        model: 'flux',
+        quality: 'standard'
+    })
 
-    // --- Voice Actions ---
-    function setVoiceEngine(engine) {
-        voice.value.engine = engine
-        saveToStorage()
-    }
-
-    // ... (Minimax actions)
-
-    // --- Storage Actions ---
-    function setCompressQuality(val) {
-        compressQuality.value = typeof val === 'string' ? parseFloat(val) : val
-        saveToStorage()
-    }
-
-    // 从localStorage加载配置 (Updated)
-    const originalLoad = loadFromStorage
-    loadFromStorage = function () { // Redeclare or overwrite logic
-        const saved = localStorage.getItem('qiaoqiao_settings')
-        if (saved) {
-            try {
-                const data = JSON.parse(saved)
-                if (data.apiConfigs) apiConfigs.value = data.apiConfigs
-                if (data.currentConfigIndex !== undefined) currentConfigIndex.value = data.currentConfigIndex
-                if (data.personalization) {
-                    // Capture defaults before they are overwritten
-                    const defaultIconsMap = { ...personalization.value.icons.map }
-                    const defaultCardBgs = { ...personalization.value.cardBgs }
-                    
-                    personalization.value = { ...personalization.value, ...data.personalization }
-                    
-                    // Deep merge icons map to ensure new defaults are applied if saved map is empty or partial
-                    if (personalization.value.icons) {
-                         personalization.value.icons.map = { ...defaultIconsMap, ...(personalization.value.icons.map || {}) }
-                    }
-                    
-                    // Deep merge card backgrounds: Treat empty strings as "use default"
-                    if (personalization.value.cardBgs) {
-                        const saved = personalization.value.cardBgs
-                        personalization.value.cardBgs = {
-                            time: saved.time || defaultCardBgs.time,
-                            location: saved.location || defaultCardBgs.location,
-                            weather: saved.weather || defaultCardBgs.weather
-                        }
-                    }
-                    
-                    // Deep merge widgets (Page 2)
-                    if (personalization.value.widgets) {
-                        const savedW = personalization.value.widgets
-                        personalization.value.widgets = {
-                            card1: savedW.card1 || '/widgets/bg_card1.jpg',
-                            card2: savedW.card2 || '/widgets/bg_card2.jpg'
-                        }
-                    }
-                    
-
-                }
-                if (data.voice) {
-                    // ... existing voice load logic
-                    voice.value.engine = data.voice.engine || 'browser'
-                    if (data.voice.minimax) {
-                        voice.value.minimax = { ...voice.value.minimax, ...data.voice.minimax }
-                    }
-                }
-                if (data.weather) {
-                    weather.value = { ...weather.value, ...data.weather }
-                }
-                if (data.compressQuality !== undefined) {
-                    compressQuality.value = data.compressQuality
-                }
-            } catch (e) {
-                console.error('Failed to load settings:', e)
-            }
-        }
-    }
-
-    // 保存到localStorage (Updated)
-    const originalSave = saveToStorage
-    saveToStorage = function () {
+    // --- 4. Persistence Helpers ---
+    function saveToStorage() {
         const data = {
             apiConfigs: apiConfigs.value,
             currentConfigIndex: currentConfigIndex.value,
             personalization: personalization.value,
             voice: voice.value,
             weather: weather.value,
-            compressQuality: compressQuality.value
+            compressQuality: compressQuality.value,
+            drawing: drawing.value
         }
-        localStorage.setItem('qiaoqiao_settings', JSON.stringify(data))
+        const json = JSON.stringify(data)
+        localStorage.setItem('qiaoqiao_settings', json)
+        console.log('[SettingsStore] Saved to localStorage. JSON length:', json.length)
     }
 
-    function updateMinimaxConfig(config) {
-        voice.value.minimax = { ...voice.value.minimax, ...config }
+    function loadFromStorage() {
+        const saved = localStorage.getItem('qiaoqiao_settings')
+        if (!saved) {
+            console.log('[SettingsStore] No saved settings found in localStorage.')
+            return
+        }
+
+        try {
+            const data = JSON.parse(saved)
+            console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
+            
+            if (data.apiConfigs) apiConfigs.value = data.apiConfigs
+            if (data.currentConfigIndex !== undefined) currentConfigIndex.value = data.currentConfigIndex
+            
+            if (data.personalization) {
+                const defaultIconsMap = { ...personalization.value.icons.map }
+                const defaultCardBgs = { ...personalization.value.cardBgs }
+                const defaultWidgets = { ...personalization.value.widgets }
+                
+                personalization.value = { ...personalization.value, ...data.personalization }
+                
+                personalization.value.icons.map = { ...defaultIconsMap, ...(personalization.value.icons?.map || {}) }
+                
+                const savedBgs = personalization.value.cardBgs || {}
+                personalization.value.cardBgs = {
+                    time: savedBgs.time || defaultCardBgs.time,
+                    location: savedBgs.location || defaultCardBgs.location,
+                    weather: savedBgs.weather || defaultCardBgs.weather
+                }
+
+                const savedWidgets = personalization.value.widgets || {}
+                personalization.value.widgets = {
+                    card1: savedWidgets.card1 || defaultWidgets.card1,
+                    card2: savedWidgets.card2 || defaultWidgets.card2
+                }
+            }
+
+            if (data.voice) {
+                voice.value.engine = data.voice.engine || 'browser'
+                if (data.voice.minimax) {
+                    voice.value.minimax = { ...voice.value.minimax, ...data.voice.minimax }
+                }
+            }
+
+            if (data.weather) weather.value = { ...weather.value, ...data.weather }
+            if (data.compressQuality !== undefined) compressQuality.value = data.compressQuality
+            
+            // Critical Check for Drawing
+            if (data.drawing) {
+                console.log('[SettingsStore] Found drawing config in storage. Model:', data.drawing.model, 'HasKey:', !!data.drawing.apiKey)
+                drawing.value = { ...drawing.value, ...data.drawing }
+            }
+
+        } catch (e) {
+            console.error('[SettingsStore] Failed to load settings:', e)
+        }
+    }
+
+    // Initialize on load
+    loadFromStorage()
+
+    // --- 5. Actions ---
+
+    // API Config Actions
+    function updateConfig(index, newConfig) {
+        if (index >= 0 && index < apiConfigs.value.length) {
+            const oldName = apiConfigs.value[index].name
+            apiConfigs.value[index] = { ...newConfig }
+            saveToStorage()
+            useLoggerStore().sys(`更新API配置: ${oldName} -> ${newConfig.name}`)
+        }
+    }
+    function createConfig(config) {
+        apiConfigs.value.push(config)
+        saveToStorage()
+        return apiConfigs.value.length - 1
+    }
+    function deleteConfig(index) {
+        if (apiConfigs.value.length <= 1) return '至少需要保留一个配置'
+        if (index >= 0 && index < apiConfigs.value.length) {
+            apiConfigs.value.splice(index, 1)
+            if (currentConfigIndex.value >= apiConfigs.value.length) {
+                currentConfigIndex.value = apiConfigs.value.length - 1
+            }
+            saveToStorage()
+            return true
+        }
+        return false
+    }
+
+    // Personalization Actions
+    function setWallpaper(url) { personalization.value.wallpaper = url; saveToStorage(); }
+    function setIcon(app, url) { personalization.value.icons.map[app] = url; saveToStorage(); }
+    function clearIcon(app) { 
+        if (app) delete personalization.value.icons.map[app]; 
+        else personalization.value.icons.map = {}; 
+        saveToStorage(); 
+    }
+    function setWidget(id, url) { if (id in personalization.value.widgets) { personalization.value.widgets[id] = url; saveToStorage(); } }
+    function setCardBg(type, url) { if (type in personalization.value.cardBgs) { personalization.value.cardBgs[type] = url; saveToStorage(); } }
+    function setGlobalFont(settings) { personalization.value.globalFont = { ...personalization.value.globalFont, ...settings }; saveToStorage(); }
+    function setGlobalBg(url) { personalization.value.globalBg = url; saveToStorage(); }
+    function setCustomCss(css) { personalization.value.customCss = css; saveToStorage(); }
+    function setTheme(themeName) { personalization.value.theme = themeName; saveToStorage(); }
+    function updateUserProfile(profile) { personalization.value.userProfile = { ...personalization.value.userProfile, ...profile }; saveToStorage(); }
+
+    // Preset Actions
+    function savePreset(name) {
+        const data = JSON.parse(JSON.stringify(personalization.value))
+        delete data.presets
+        const existingIndex = personalization.value.presets.findIndex(p => p.name === name)
+        if (existingIndex >= 0) personalization.value.presets[existingIndex].data = data
+        else personalization.value.presets.push({ name, data })
+        saveToStorage()
+    }
+    function loadPreset(name) {
+        const preset = personalization.value.presets.find(p => p.name === name)
+        if (preset) {
+            const currentPresets = personalization.value.presets
+            personalization.value = { ...preset.data, presets: currentPresets }
+            saveToStorage()
+            return true
+        }
+        return false
+    }
+    function deletePreset(name) {
+        const index = personalization.value.presets.findIndex(p => p.name === name)
+        if (index >= 0) { personalization.value.presets.splice(index, 1); saveToStorage(); return true; }
+        return false
+    }
+    function resetAllPersonalization() {
+        personalization.value = {
+            wallpaper: '',
+            icons: { app: 'wechat', url: '', map: {} },
+            widgets: { card1: '', card2: '' },
+            cardBgs: { time: '', location: '', weather: '' },
+            globalFont: { color: '#000000', shadow: '', url: '' },
+            globalBg: '',
+            customCss: '',
+            presets: personalization.value.presets
+        }
         saveToStorage()
     }
 
+    // Voice & Weather Actions
+    function setVoiceEngine(engine) { voice.value.engine = engine; saveToStorage(); }
+    function updateMinimaxConfig(config) { voice.value.minimax = { ...voice.value.minimax, ...config }; saveToStorage(); }
     function resetVoiceSettings() {
         voice.value.engine = 'browser'
-        voice.value.minimax = {
-            groupId: '',
-            apiKey: '',
-            modelId: 'speech-01-turbo',
-            voiceId: ''
-        }
+        voice.value.minimax = { groupId: '', apiKey: '', modelId: 'speech-01-turbo', voiceId: '' }
         saveToStorage()
     }
+    function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
+    function setCompressQuality(val) { compressQuality.value = typeof val === 'string' ? parseFloat(val) : val; saveToStorage(); }
+    
+    // Drawing Action
+    function setDrawingConfig(config) {
+        console.log('[SettingsStore] setDrawingConfig entry:', config)
+        // Ensure we are working with a clean object
+        const cleanConfig = JSON.parse(JSON.stringify(config))
+        
+        console.log('[SettingsStore] Drawing config before update:', JSON.stringify(drawing.value))
+        drawing.value = { ...drawing.value, ...cleanConfig }
+        console.log('[SettingsStore] Drawing config after update:', JSON.stringify(drawing.value))
 
-    // --- Data Management Actions ---
-    // 获取存储的所有聊天角色列表（用于导出选择）
+        saveToStorage()
+        
+        // Immediate verification from storage
+        const stored = localStorage.getItem('qiaoqiao_settings')
+        if (stored) {
+            try {
+                const parsedStored = JSON.parse(stored)
+                console.log('[SettingsStore] Drawing config in localStorage after save:', JSON.stringify(parsedStored.drawing))
+            } catch (e) {
+                console.error('[SettingsStore] Error parsing localStorage after save:', e)
+            }
+        } else {
+            console.log('[SettingsStore] No settings found in localStorage after save.')
+        }
+        
+        // Final sanity check
+        console.log('[SettingsStore] Current drawing state after save:', JSON.stringify(drawing.value))
+    }
+
+    // Data Management
     function getChatListForExport() {
         try {
             const chatData = localStorage.getItem('qiaoqiao_chats')
-            if (chatData) {
-                return JSON.parse(chatData)
-            }
-        } catch (e) {
-            console.error('Error reading chats for export:', e)
-        }
-        return []
+            return chatData ? JSON.parse(chatData) : []
+        } catch (e) { return [] }
     }
 
     function exportData(options = {}) {
-        const exportContent = {
-            timestamp: Date.now(),
-            version: '2.0', // Updated version
-            type: 'qiaoqiao_backup'
-        }
-
-        // 1. 导出设置 (System Settings)
+        const exportContent = { timestamp: Date.now(), version: '2.0', type: 'qiaoqiao_backup' }
         if (options.settings) {
             const settings = localStorage.getItem('qiaoqiao_settings')
             if (settings) exportContent.settings = JSON.parse(settings)
         }
-
-        // 2. 导出聊天 (WeChat Data)
         if (options.wechat) {
             const chatData = localStorage.getItem('qiaoqiao_chats')
             if (chatData) {
                 let chats = JSON.parse(chatData)
-                // Filter by selected characters if specified
-                if (options.selectedChats && options.selectedChats.length > 0) {
-                    chats = chats.filter(c => options.selectedChats.includes(c.id))
-                }
+                if (options.selectedChats?.length > 0) chats = chats.filter(c => options.selectedChats.includes(c.id))
                 exportContent.chats = chats
             }
         }
-
-        // 3. Reserved for Wallet/Moments (Future Compatibility)
         if (options.wallet) {
             const wallet = localStorage.getItem('qiaoqiao_wallet')
             if (wallet) exportContent.wallet = JSON.parse(wallet)
         }
-
         return JSON.stringify(exportContent, null, 2)
     }
 
@@ -419,134 +318,53 @@ export const useSettingsStore = defineStore('settings', () => {
         try {
             const data = JSON.parse(jsonContent)
             let importCount = 0
-
-            // 1. Import Settings (Merge)
             if (data.settings) {
                 const currentSettings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
-                // Merge logic: Overwrite with imported keys, keep existing ones if not in import? 
-                // Usually settings are overwritten.
                 const mergedSettings = { ...currentSettings, ...data.settings }
                 localStorage.setItem('qiaoqiao_settings', JSON.stringify(mergedSettings))
-                loadFromStorage() // Reload to effect
+                loadFromStorage()
                 importCount++
             }
-
-            // 2. Import Chats (Merge)
             if (data.chats) {
                 const currentChats = JSON.parse(localStorage.getItem('qiaoqiao_chats') || '[]')
-                // Merge logic: Replace chat if ID exists, add if new
                 const mergedChats = [...currentChats]
-
                 data.chats.forEach(importedChat => {
                     const index = mergedChats.findIndex(c => c.id === importedChat.id)
-                    if (index !== -1) {
-                        mergedChats[index] = importedChat // Overwrite existing
-                    } else {
-                        mergedChats.push(importedChat) // Add new
-                    }
+                    if (index !== -1) mergedChats[index] = importedChat
+                    else mergedChats.push(importedChat)
                 })
-
                 localStorage.setItem('qiaoqiao_chats', JSON.stringify(mergedChats))
                 importCount++
             }
-
-            // 3. Import Wallet (Simple overwrite for now)
             if (data.wallet) {
                 localStorage.setItem('qiaoqiao_wallet', JSON.stringify(data.wallet))
                 importCount++
             }
-
-            // Fallback for Legacy Format (version 1.0)
-            if (!data.version && data.settings && typeof data.settings === 'string') {
-                localStorage.setItem('qiaoqiao_settings', data.settings)
-                loadFromStorage()
-                if (data.chat) localStorage.setItem('qiaoqiao_chats', data.chat)
-                return true
-            }
-
             return importCount > 0
-        } catch (e) {
-            console.error('Import failed:', e)
-            return false
-        }
+        } catch (e) { return false }
     }
 
-    // 重置应用数据 (Selective Reset)
     function resetAppData(options = {}) {
-        // App-specific reset (e.g., just chats)
-        if (options.wechat) {
-            localStorage.removeItem('qiaoqiao_chats')
-        }
-        if (options.wallet) {
-            localStorage.removeItem('qiaoqiao_wallet')
-        }
-        if (options.settings) {
-            localStorage.removeItem('qiaoqiao_settings')
-        }
-
-        // Reload to reflect changes
+        if (options.wechat) localStorage.removeItem('qiaoqiao_chats')
+        if (options.wallet) localStorage.removeItem('qiaoqiao_wallet')
+        if (options.settings) localStorage.removeItem('qiaoqiao_settings')
         window.location.reload()
     }
 
-    // 重置全局数据 (Factory Reset)
     function resetGlobalData() {
         localStorage.clear()
         window.location.reload()
     }
 
-    // --- Weather Actions ---
-    function setWeatherConfig(config) {
-        weather.value = { ...weather.value, ...config }
-        saveToStorage()
-    }
-
-
-
-    // Re-run load to populate personalization
-    loadFromStorage()
-
     return {
-        apiConfigs,
-        apiConfigs,
-        currentConfigIndex,
-        currentConfig,
-        apiConfig, // Export alias
-        personalization,
-        voice, // Export voice state
-        updateConfig,
-        createConfig,
-        deleteConfig,
-        saveToStorage,
-        loadFromStorage,
-        // Personalization Actions
-        setWallpaper,
-        setIcon,
-        clearIcon,
-        setWidget,
-        setCardBg,
-        setGlobalFont,
-        setGlobalBg,
-        setCustomCss,
-        updateUserProfile,
-        savePreset,
-        loadPreset,
-        deletePreset,
-        resetAllPersonalization,
-        // Voice Actions
-        setVoiceEngine,
-        updateMinimaxConfig,
-        resetVoiceSettings,
-        // Weather Actions
-        weather,
-        setWeatherConfig,
-        // Storage Actions
-        compressQuality,
-        setCompressQuality,
-        // Data Management Actions
-        exportData,
-        importData,
-        resetAppData,
-        resetGlobalData,
-        getChatListForExport
+        apiConfigs, currentConfigIndex, currentConfig, apiConfig,
+        personalization, voice, weather, compressQuality, drawing,
+        updateConfig, createConfig, deleteConfig,
+        saveToStorage, loadFromStorage,
+        setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
+        savePreset, loadPreset, deletePreset, resetAllPersonalization,
+        setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
+        setWeatherConfig, setCompressQuality, setDrawingConfig,
+        exportData, importData, resetAppData, resetGlobalData, getChatListForExport
     }
 })

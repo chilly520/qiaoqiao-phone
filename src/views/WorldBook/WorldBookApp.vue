@@ -25,7 +25,7 @@ const goBack = () => {
     if (currentBook.value) {
         currentBook.value = null // Go back to Book List
     } else {
-        router.push('/') // Go back to Desktop
+        router.back() // Go back to previous app or desktop
     }
 }
 
@@ -214,7 +214,6 @@ const exportCurrentBook = () => {
     <div class="h-[44px] bg-[#ededed] flex items-center justify-between px-3 border-b border-[#dcdcdc] shrink-0 sticky top-0 z-10">
         <div class="flex items-center gap-1 cursor-pointer" @click="goBack">
             <i class="fa-solid fa-chevron-left text-black text-lg"></i>
-            <span class="text-black text-base ml-1">{{ currentBook ? '列表' : '桌面' }}</span>
         </div>
         <div class="font-medium text-base text-black truncate max-w-[150px]">
             {{ currentBook ? currentBook.name : '世界书库' }}

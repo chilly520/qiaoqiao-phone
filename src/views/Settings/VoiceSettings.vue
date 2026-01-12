@@ -9,7 +9,7 @@ const store = useSettingsStore()
 const { voice } = storeToRefs(store)
 
 const goBack = () => {
-    router.push('/settings')
+    router.back()
 }
 
 // Local form data to prevent immediate store updates for fields like API key

@@ -2,7 +2,10 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFavoritesStore } from '../../stores/favoritesStore'
+import { useStickerStore } from '../../stores/stickerStore'
+import { useChatStore } from '../../stores/chatStore'
 import { marked } from 'marked'
+import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,6 +15,58 @@ const itemId = route.params.id
 const item = computed(() => {
     return favoritesStore.favorites.find(f => f.id == itemId)
 })
+const stickerStore = useStickerStore()
+const chatStore = useChatStore()
+
+// Combined Sticker Search Scope (Computed for efficiency)
+const allStickers = computed(() => {
+    const global = stickerStore.customStickers || []
+    const charStickers = Object.values(chatStore.chats).flatMap(c => c.emojis || [])
+    return [...global, ...charStickers]
+})
+
+// Special Content Parsing (Sticker / Card)
+const specialContent = computed(() => {
+    if (!item.value) return null
+    if (item.value.type !== 'text' && item.value.type !== 'sticker') return null
+    const content = item.value.content || ''
+
+    // 1. HTML Card
+    if (content.startsWith('[CARD]')) {
+        try {
+            const json = JSON.parse(content.replace('[CARD]', '').trim())
+            if (json.type === 'html') {
+                 return { type: 'html', html: json.html }
+            }
+        } catch (e) {
+            console.error('Invalid Card JSON', e)
+        }
+    }
+
+    // 2. Sticker
+    const stickerMatch = content.match(/\[(表情包|Sticker)\s*[:：]\s*([^\]]+)\]/i)
+    if (stickerMatch) {
+         const val = stickerMatch[2].trim()
+         if (val.startsWith('http') || val.startsWith('data:')) {
+             return { type: 'sticker', url: val }
+         }
+         // Name Lookup
+         const found = allStickers.value.find(s => s.name === val)
+         if (found) return { type: 'sticker', url: found.url }
+         
+         // Fallback
+         return { type: 'sticker_placeholder', name: val }
+    }
+    
+    return null
+})
+
+const deleteCurrentItem = () => {
+    if (confirm('确认删除这条收藏吗?')) {
+        favoritesStore.removeFavorite(itemId)
+        router.back()
+    }
+}
 
 const goBack = () => {
     router.back()
@@ -90,7 +145,9 @@ const formatDate = (ts) => {
                 <span class="font-bold text-base text-black">返回</span>
             </div>
             <div class="font-bold text-base">详情</div>
-            <div class="w-20"></div>
+            <div class="w-20 flex justify-end">
+                <i class="fa-solid fa-trash text-gray-800 cursor-pointer p-2" @click="deleteCurrentItem"></i>
+            </div>
         </div>
 
         <!-- Content -->
@@ -99,7 +156,8 @@ const formatDate = (ts) => {
             <div class="bg-white rounded-lg shadow-sm p-6 mb-4">
                  <!-- Meta -->
                  <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-                     <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500">
+                     <img v-if="item.authorAvatar || item.avatar" :src="item.authorAvatar || item.avatar" class="w-10 h-10 rounded-full bg-gray-200 object-cover">
+                     <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500">
                          {{ item.author?.[0] || '?' }}
                      </div>
                      <div>
@@ -115,7 +173,6 @@ const formatDate = (ts) => {
                      <div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-5 text-gray-200 shadow-md border border-gray-700">
                          <div class="text-center text-[#d4af37] text-sm tracking-[0.2em] mb-4 opacity-80">· 内 心 独 白 ·</div>
                          
-                         <!-- Main Thoughts -->
                          <!-- Main Thoughts -->
                          <div class="text-base leading-relaxed mb-6 font-light text-center px-4 italic">
                              <template v-if="formattedThoughts">
@@ -154,8 +211,18 @@ const formatDate = (ts) => {
                      </div>
                  </div>
 
-                 <!-- Standard Text Content (if any remains) -->
-                 <div v-if="cleanContent" class="text-gray-800 text-base leading-7 whitespace-pre-wrap" v-html="marked(cleanContent)"></div>
+                 <!-- Special Content (Card/Sticker) -->
+                 <div v-if="specialContent">
+                     <SafeHtmlCard v-if="specialContent.type === 'html'" :htmlContent="specialContent.html" />
+                     <img v-else-if="specialContent.type === 'sticker'" :src="specialContent.url" class="max-w-[150px] rounded-lg">
+                     <div v-else-if="specialContent.type === 'sticker_placeholder'" class="inline-flex items-center gap-2 bg-gray-50 px-4 py-3 rounded-lg text-gray-600 border border-gray-200">
+                         <i class="fa-regular fa-image text-lg"></i>
+                         <span class="font-medium">{{ specialContent.name }}</span>
+                     </div>
+                 </div>
+
+                 <!-- Standard Text Content (if not special) -->
+                 <div v-else-if="cleanContent" class="text-gray-800 text-base leading-7 whitespace-pre-wrap" v-html="marked(cleanContent)"></div>
 
                  <!-- Image Type -->
                  <div v-if="item.type === 'image'" class="mt-2">

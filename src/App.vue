@@ -58,6 +58,9 @@ const globalStyles = computed(() => {
         styles.background = store.personalization.globalBg
     }
     
+    // Wallpaper Overlay Opacity for Dark Mode
+    styles['--wallpaper-overlay-opacity'] = store.personalization.wallpaperOverlayOpacity || 0.5
+    
     return styles
 })
 
@@ -110,10 +113,30 @@ const handleBannerClick = () => {
     router.push('/wechat')
     showBanner.value = false
 }
+
+// --- Global Toast System ---
+const showToast = ref(false)
+const toastData = ref({ message: '', type: 'info' })
+let toastTimer = null
+
+watch(() => chatStore.toastEvent, (evt) => {
+    if (!evt) return
+    
+    // Display toast globally
+    toastData.value = { message: evt.message, type: evt.type || 'info' }
+    showToast.value = true
+    
+    if (toastTimer) clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => {
+        showToast.value = false
+    }, 3000)
+})
 </script>
 
 <template>
-  <div class="app-root w-full h-[100dvh] relative overflow-hidden flex flex-col text-gray-800" :style="globalStyles">
+  <div class="app-root w-full h-[100dvh] relative overflow-hidden flex flex-col text-gray-800" 
+       :style="globalStyles"
+       :data-theme="store.personalization.theme">
     <!-- Dynamic Styles Block -->
     <component is="style" v-if="customCss">{{ customCss }}</component>
 
@@ -151,6 +174,20 @@ const handleBannerClick = () => {
         </div>
     </div>
 
+    <!-- Global Toast Notification -->
+    <div v-if="showToast" 
+         class="fixed top-16 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[200] animate-toast-down flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30"
+         style="left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(147, 197, 253, 0.85) 0%, rgba(96, 165, 250, 0.85) 100%);"
+    >
+        <i class="text-xl text-white drop-shadow-md" :class="{
+            'fa-solid fa-circle-info': toastData.type === 'info',
+            'fa-solid fa-circle-check': toastData.type === 'success',
+            'fa-solid fa-circle-exclamation': toastData.type === 'error',
+            'fa-solid fa-triangle-exclamation': toastData.type === 'warning'
+        }"></i>
+        <span class="font-semibold text-sm text-white drop-shadow-sm">{{ toastData.message }}</span>
+    </div>
+
     <!-- Main Content Area -->
 
     <!-- Main Content Area -->
@@ -168,5 +205,13 @@ const handleBannerClick = () => {
 }
 .animate-slide-down {
     animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes toastDown {
+    from { transform: translate(-50%, -100%); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
+.animate-toast-down {
+    animation: toastDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 </style>

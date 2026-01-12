@@ -2,12 +2,14 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useChatStore } from '../../stores/chatStore'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
+const chatStore = useChatStore()
 
 const goBack = () => {
-    router.push('/')
+    router.back()
 }
 
 // 当前选中的配置索引
@@ -27,7 +29,14 @@ const formData = ref({
     apiKey: '',
     model: '',
     temperature: 0.7,
-    maxTokens: 4096
+    maxTokens: 4096,
+    // ST Defaults
+    top_p: 1.0,
+    top_k: 0,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    repetition_penalty: 1.0,
+    min_p: 0
 })
 
 // API Key 显示/隐藏控制
@@ -37,22 +46,16 @@ const showApiKey = ref(false)
 const availableModels = ref([])
 const showModelSelect = ref(false)
 
-// Toast提示
-const toastMessage = ref('')
-const showToast = ref(false)
 
-const showToastMsg = (msg) => {
-    toastMessage.value = msg
-    showToast.value = true
-    setTimeout(() => {
-        showToast.value = false
-    }, 2000)
-}
 
 // 加载当前配置到表单
 const loadConfig = () => {
     if (currentConfig.value) {
         formData.value = { ...currentConfig.value }
+        // [FIX] Auto-clamp legacy high values (e.g. 300w -> 65536)
+        if (formData.value.maxTokens > 65536) {
+             formData.value.maxTokens = 65536
+        }
     }
 }
 
@@ -62,22 +65,29 @@ loadConfig()
 // 保存配置
 const saveConfig = () => {
     settingsStore.updateConfig(currentConfigIndex.value, formData.value)
-    showToastMsg('配置已保存')
+    chatStore.triggerToast('配置已保存', 'success')
 }
 
 // 新建配置
 const newConfig = () => {
-    const newIndex = settingsStore.createConfig({
+        const newIndex = settingsStore.createConfig({
         name: '新配置',
         baseUrl: 'http://127.0.0.1:7861/v1',
         apiKey: 'pwd',
         model: 'gemini-2.5-pro-nothinking',
         temperature: 0.7,
-        maxTokens: 4096
+        maxTokens: 4096,
+        // Advanced ST Params
+        top_p: 1.0,
+        top_k: 0,
+        frequency_penalty: 0,
+        presence_penalty: 0,
+        repetition_penalty: 1.0,
+        min_p: 0
     })
     currentConfigIndex.value = newIndex
     loadConfig()
-    showToastMsg('新配置已创建')
+    chatStore.triggerToast('新配置已创建', 'success')
 }
 
 // 删除配置
@@ -86,9 +96,9 @@ const deleteConfig = () => {
         const result = settingsStore.deleteConfig(currentConfigIndex.value)
         if (result === true) {
             loadConfig()
-            showToastMsg('配置已删除')
+            chatStore.triggerToast('配置已删除', 'success')
         } else if (typeof result === 'string') {
-            showToastMsg(result)
+            chatStore.triggerToast(result, 'warning')
         }
     }
 }
@@ -96,7 +106,7 @@ const deleteConfig = () => {
 // 拉取模型列表
 const fetchModels = async () => {
     if (!formData.value.apiKey || !formData.value.baseUrl) {
-        showToastMsg('请先填写 Base URL 和 API Key')
+        chatStore.triggerToast('请先填写 Base URL 和 API Key', 'warning')
         return
     }
     
@@ -113,12 +123,12 @@ const fetchModels = async () => {
             const models = data.data || data.models || []
             availableModels.value = models.map(m => typeof m === 'string' ? m : m.id)
             showModelSelect.value = true
-            showToastMsg(`已获取 ${availableModels.value.length} 个模型`)
+            chatStore.triggerToast(`已获取 ${availableModels.value.length} 个模型`, 'success')
         } else {
-            showToastMsg('拉取失败: ' + response.statusText)
+            chatStore.triggerToast('拉取失败: ' + response.statusText, 'error')
         }
     } catch (e) {
-        showToastMsg('拉取失败: ' + e.message)
+        chatStore.triggerToast('拉取失败: ' + e.message, 'error')
     }
 }
 
@@ -290,14 +300,74 @@ const onConfigChange = () => {
                     v-model.number="formData.maxTokens" 
                     type="range" 
                     min="256" 
-                    max="3000000" 
-                    step="1000"
+                    max="65536" 
+                    step="512"
                     class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 >
                 <div class="flex justify-between text-xs text-gray-500 mt-1">
                     <span>256</span>
-                    <span>3,000,000</span>
+                    <span>65,536 (64k)</span>
                 </div>
+            </div>
+
+            <!-- 分割线 -->
+            <div class="border-t border-gray-100 my-4"></div>
+            <h3 class="text-lg font-bold text-gray-900 mb-4">高级生成参数 (SillyTavern)</h3>
+
+            <!-- Top P -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
+                    <span>Top P (核采样)</span>
+                    <span class="text-gray-500">{{ formData.top_p ?? 1.0 }}</span>
+                </label>
+                <input v-model.number="formData.top_p" type="range" min="0" max="1" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
+
+            <!-- Top K -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
+                    <span>Top K (候选数)</span>
+                    <span class="text-gray-500">{{ formData.top_k ?? 0 }}</span>
+                </label>
+                <input v-model.number="formData.top_k" type="range" min="0" max="100" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <div class="text-xs text-gray-400 mt-1">0 表示不限制</div>
+            </div>
+
+            <!-- Frequency Penalty -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
+                    <span>Frequency Penalty (频率惩罚)</span>
+                    <span class="text-gray-500">{{ formData.frequency_penalty ?? 0 }}</span>
+                </label>
+                <input v-model.number="formData.frequency_penalty" type="range" min="-2" max="2" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
+
+            <!-- Presence Penalty -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
+                    <span>Presence Penalty (存在惩罚)</span>
+                    <span class="text-gray-500">{{ formData.presence_penalty ?? 0 }}</span>
+                </label>
+                <input v-model.number="formData.presence_penalty" type="range" min="-2" max="2" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
+
+            <!-- Repetition Penalty -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
+                    <span>Repetition Penalty (重复惩罚)</span>
+                    <span class="text-gray-500">{{ formData.repetition_penalty ?? 1.0 }}</span>
+                </label>
+                <input v-model.number="formData.repetition_penalty" type="range" min="1" max="2" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <div class="text-xs text-gray-400 mt-1">1.0 表示无惩罚</div>
+            </div>
+            
+             <!-- Min P -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
+                    <span>Min P (最小概率)</span>
+                    <span class="text-gray-500">{{ formData.min_p ?? 0 }}</span>
+                </label>
+                <input v-model.number="formData.min_p" type="range" min="0" max="1" step="0.01" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
             </div>
         </div>
 
@@ -330,13 +400,7 @@ const onConfigChange = () => {
 
     </div>
 
-    <!-- Toast通知 -->
-    <div 
-        v-if="showToast"
-        class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-lg z-50 transition-all"
-    >
-        {{ toastMessage }}
-    </div>
+
 
   </div>
 </template>

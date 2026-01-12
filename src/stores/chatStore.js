@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { generateReply, generateSummary } from '../utils/aiService'
+import { generateReply, generateSummary, generateImage } from '../utils/aiService'
 import { useLoggerStore } from './loggerStore'
 import { useWorldBookStore } from './worldBookStore'
 
@@ -26,6 +26,10 @@ export const useChatStore = defineStore('chat', () => {
     const notificationEvent = ref(null) // Global notification trigger
     const patEvent = ref(null) // Event: { chatId, target: 'ai'|'user' }
     const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
+    
+    // Pagination State
+    const messagePageSize = ref(50) // 每页显示50条消息
+    const loadedMessageCounts = ref({}) // { chatId: 加载的消息数 }
     
     // AI Control
     let currentAbortController = null;
@@ -115,7 +119,8 @@ export const useChatStore = defineStore('chat', () => {
             isClaimed: msg.isClaimed || false,
             claimedBy: msg.claimedBy || null,
             claimTime: msg.claimTime || null,
-            duration: msg.duration || 0
+            duration: msg.duration || 0,
+            quote: msg.quote || null
         }
 
         // 2. Type Auto-Detection (if not specified)
@@ -188,6 +193,17 @@ export const useChatStore = defineStore('chat', () => {
         if (!chat.msgs) chat.msgs = []
         chat.msgs.push(newMsg)
         
+        // Log message action
+        const logger = useLoggerStore()
+        const logContent = typeof newMsg.content === 'string' 
+            ? newMsg.content 
+            : (Array.isArray(newMsg.content) ? '[多媒体消息]' : String(newMsg.content || ''))
+            
+        logger.info(`${newMsg.role === 'user' ? '发送' : '接收'}消息: ${chat.name}`, { 
+            type: newMsg.type, 
+            content: logContent.substring(0, 50) + (logContent.length > 50 ? '...' : '') 
+        })
+
         if (!chat.inChatList) chat.inChatList = true
         if (chatId !== currentChatId.value) {
             chat.unreadCount = (chat.unreadCount || 0) + 1
@@ -207,7 +223,8 @@ export const useChatStore = defineStore('chat', () => {
 
 
         checkAutoSummary(chatId)
-        return saveChats()
+        saveChats()
+        return newMsg
     }
 
     function updateCharacter(chatId, updates) {
@@ -257,6 +274,7 @@ export const useChatStore = defineStore('chat', () => {
                 bgTheme: 'light', // 'light' or 'dark'
                 emojis: [],
                 emojiCategories: [],
+                momentsMemoryLimit: 5,
                 // Logic State
                 emojiCategories: [],
                 // Logic State
@@ -267,7 +285,10 @@ export const useChatStore = defineStore('chat', () => {
                 inChatList: true, // Visible in chat list
                 virtualTime: options.virtualTime || '',
                 virtualTimeLastSync: options.virtualTime ? Date.now() : null,
-                timeAware: options.timeAware !== undefined ? options.timeAware : false
+                timeAware: options.timeAware !== undefined ? options.timeAware : false,
+                avatarShape: options.avatarShape || 'square',
+                avatarFrame: options.avatarFrame || null,
+                userAvatarFrame: options.userAvatarFrame || null
             }
             saveChats()
         }
@@ -489,20 +510,76 @@ export const useChatStore = defineStore('chat', () => {
         saveChats()
     }
 
-    function updateMessage(chatId, msgId, newContent) {
+    function updateMessage(chatId, msgId, updates) {
+        console.log('[ChatStore updateMessage] START:', { chatId, msgId, updates })
+        const chat = chats.value[chatId]
+        if (!chat) {
+            console.error('[ChatStore] Chat not found:', chatId)
+            return
+        }
+        
+        // Find message index
+        const idx = chat.msgs.findIndex(m => m.id === msgId)
+        if (idx === -1) {
+            console.error('[ChatStore] Message not found:', msgId)
+            return
+        }
+
+        // Create completely new message object
+        const oldMsg = chat.msgs[idx]
+        const newMsg = {
+            ...oldMsg,
+            ...(typeof updates === 'string' ? { content: updates } : updates)
+        }
+
+        console.log('[ChatStore] Old message:', oldMsg)
+        console.log('[ChatStore] New message:', newMsg)
+
+        // NUCLEAR OPTION: Completely rebuild the array
+        const newMsgs = [
+            ...chat.msgs.slice(0, idx),
+            newMsg,
+            ...chat.msgs.slice(idx + 1)
+        ]
+
+        // Triple-layer reactivity flush
+        chat.msgs = newMsgs
+        chats.value[chatId] = { ...chat, msgs: newMsgs }
+        chats.value = { ...chats.value }
+        
+        saveChats()
+        console.log('[ChatStore updateMessage] COMPLETE. State flushed 3x.')
+    }
+
+    function deleteMessages(chatId, msgIds) {
         const chat = chats.value[chatId]
         if (!chat) return
-        const msg = chat.msgs.find(m => m.id === msgId)
-        if (msg) {
-            msg.content = newContent
+        
+        const originalCount = chat.msgs.length
+        // Convert strict Set/Array to Set for lookup
+        const idsToRemove = new Set(msgIds)
+        
+        chat.msgs = chat.msgs.filter(m => !idsToRemove.has(m.id))
+        
+        if (chat.msgs.length !== originalCount) {
             saveChats()
+            return true
         }
+        return false
     }
 
     // 调用 AI 逻辑
     async function sendMessageToAI(chatId, options = {}) {
         const chat = chats.value[chatId]
         if (!chat) return
+
+        // --- Silent Sharing Interception ---
+        const lastMsg = (chat.msgs || []).slice(-1)[0]
+        if (lastMsg && lastMsg.type === 'moment_card' && !options.force) {
+            console.log('[ChatStore] Silent sharing active. AI will not reply to moment_card until next user message.')
+            isTyping.value = false // Ensure typing indicator is off
+            return
+        }
 
         isTyping.value = true
 
@@ -536,26 +613,51 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. 准备上下文：最近 20 条消息
         const context = (chat.msgs || []).slice(-20).map(m => {
-            let content = m.content
+            // Ensure content is a string for processing (handles multimodal messages)
+            let content = ""
+            if (typeof m.content === 'string') {
+                content = m.content
+            } else if (Array.isArray(m.content)) {
+                // If multimodal, extract text parts for history cleaning logic
+                content = m.content.map(p => p.text || '').join('\n')
+            } else {
+                content = String(m.content || '')
+            }
+            
+            // Format Moment Card for AI perception
+            if (m.type === 'moment_card') {
+                try {
+                    const data = JSON.parse(content)
+                    content = `[用户分享了一条朋友圈动态] 作者: ${data.author}, 文案: ${data.text}${data.image ? ' (包含一张图片)' : ''}`
+                } catch (e) {
+                    content = '[朋友圈动态]'
+                }
+            }
+
             if (m.role === 'ai') {
                  // Clean up history to prevent "Double Voice" pollution
-                 // Strategy: Keep the FIRST [INNER_VOICE]...[/INNER_VOICE] block.
-                 // Remove any subsequent [INNER_VOICE] tags or blocks from the rest.
                  const ivMatch = content.match(/^\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i)
                  if (ivMatch) {
                      const ivBlock = ivMatch[0]
                      let rest = content.substring(ivBlock.length)
-                     // Remove ANY Inner Voice tags/blocks from the "Spoken Text" part
-                     rest = rest.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '') // Remove full blocks
-                                .replace(/\[\/?INNER_VOICE\]/gi, '') // Remove stray tags
+                     rest = rest.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '')
+                                .replace(/\[\/?INNER_VOICE\]/gi, '')
                                 .trim()
-                     // Reconstruct strict format: IV + Content
                      content = ivBlock + '\n' + rest
                  }
             }
+            if (m.quote) {
+                 const quoteAuthor = m.quote.role === 'user' ? '我' : (chat.name || '对方')
+                 const quoteContent = typeof m.quote.content === 'string' 
+                    ? m.quote.content 
+                    : (Array.isArray(m.quote.content) ? m.quote.content.map(p=>p.text||'').join(' ') : String(m.quote.content || ''))
+                 content = `（引用来自 ${quoteAuthor} 的消息: "${quoteContent}"）\n${content}`
+            }
+
             return {
                 role: m.role === 'ai' ? 'assistant' : 'user',
-                content: content
+                content: content,
+                type: m.type || 'text'
             }
         })
 
@@ -564,8 +666,10 @@ export const useChatStore = defineStore('chat', () => {
         if (options.hiddenHint) {
             const lastMsg = context.length > 0 ? context[context.length - 1] : null
             if (lastMsg && lastMsg.role === 'user') {
-                // 如果最后一条是用户发的，直接追加在末尾
-                lastMsg.content += ` ${options.hiddenHint}`
+                // 如果最后一条是用户发的，直接追加在末尾 (STRICT CHECK: Text Only)
+                if (lastMsg.type === 'text' && !lastMsg.content.includes('data:image/')) {
+                    lastMsg.content += ` ${options.hiddenHint}`
+                }
             } else {
                 // 如果最后一条是 AI 发的，或者没消息，则注入一条 User 角色的隐形指令
                 context.push({
@@ -577,7 +681,11 @@ export const useChatStore = defineStore('chat', () => {
             // 手动回复时间差提示
             const userMessages = context.filter(m => m.role === 'user')
             if (userMessages.length > 0) {
-                userMessages[userMessages.length - 1].content += ` （对方间隔 ${diffMinutes} 分钟才回复您的消息）`
+                const lastUserMsg = userMessages[userMessages.length - 1]
+                // STRICT CHECK: Only append to text messages
+                if (lastUserMsg.type === 'text' && !lastUserMsg.content.includes('data:image/')) {
+                    lastUserMsg.content += ` （对方间隔 ${diffMinutes} 分钟才回复您的消息）`
+                }
             }
         }
 
@@ -590,15 +698,38 @@ export const useChatStore = defineStore('chat', () => {
             currentAbortController = new AbortController()
             const signal = currentAbortController.signal
 
+            // 朋友圈意识 (Moments Awareness) Injection
+            const momentsStore = import.meta.glob('./momentsStore.js', { eager: true })['./momentsStore.js'].useMomentsStore()
+            let momentsAwareness = ''
+            if (chat.momentsMemoryLimit > 0 && momentsStore) {
+                 const recent = momentsStore.sortedMoments.slice(0, chat.momentsMemoryLimit)
+                 if (recent.length > 0) {
+                     const list = recent.map(m => {
+                         const author = m.authorId === 'user' ? (chat.userName || '用户') : (chats.value[m.authorId]?.name || '神秘人')
+                         return `- ${author}: ${m.content}`
+                     }).join('\n')
+                     momentsAwareness = `\n\n【朋友圈动态感知】\n你刚刚刷朋友圈看到了：\n${list}\n(你可以根据氛围决定是否提起)`
+                 }
+            }
+
             const charInfo = {
                 name: chat.name || '角色',
-                description: chat.prompt || '',
+                description: (chat.prompt || '') + momentsAwareness,
                 userName: chat.userName || '用户',
                 userPersona: chat.userPersona || '',
                 worldBookLinks: chat.worldBookLinks,
                 emojis: chat.emojis,
-                virtualTime: currentVirtualTime // 传入推算后的时间
+                virtualTime: currentVirtualTime,
+                canDraw: true
             }
+
+            // Inject Drawing Capability Hint globally if not explicitly disabled
+            const drawingHint = `\n\n【生图功能激活】\n你可以通过指令 [DRAW: 英文提示词] 直接在聊天中发送图片给用户。
+例如：你想给用户发张自拍，可以说：“等等，我给你发张自拍 [DRAW: a cute anime girl taking a selfie, looking at camera]”
+请注意：
+1. 提示词必须是英文。
+2. 只有在真正需要发图时才使用该指令。`
+            charInfo.description += drawingHint
 
             const result = await generateReply(context, charInfo, signal)
             
@@ -653,6 +784,25 @@ export const useChatStore = defineStore('chat', () => {
                     saveChats()
                 }
 
+                // --- Handle [REPLY] Command ---
+                const replyRegex = /\[REPLY[:：]\s*(.+?)\s*\]/i
+                const replyMatch = fullContent.match(replyRegex)
+                let aiQuote = null
+                if (replyMatch) {
+                    const keyword = replyMatch[1].trim()
+                    // Search for the most recent message containing this keyword (excluding current)
+                    const matchMsg = [...chat.msgs].reverse().find(m => 
+                        m.content && m.content.toLowerCase().includes(keyword.toLowerCase()) && m.role === 'user'
+                    )
+                    if (matchMsg) {
+                        aiQuote = {
+                            id: matchMsg.id,
+                            content: matchMsg.content,
+                            role: matchMsg.role
+                        }
+                    }
+                }
+
                 // --- Handle [NUDGE] Command ---
                 const nudgeRegex = /\[NUDGE(?::(.+?))?\]/i
                 const nudgeMatch = fullContent.match(nudgeRegex)
@@ -693,12 +843,80 @@ export const useChatStore = defineStore('chat', () => {
                     triggerPatEffect(chatId, target)
                 }
 
+                // --- Handle [MOMENT] Command (Chat-to-Moments) ---
+                const momentRegex = /\[MOMENT\]([\s\S]*?)\[\/MOMENT\]/i
+                const momentMatch = fullContent.match(momentRegex)
+                if (momentMatch) {
+                    try {
+                        const jsonStr = momentMatch[1]
+                        const momentData = JSON.parse(jsonStr)
+                        
+                        if (momentData && momentData.content) {
+                            // Call Moments Store to add
+                            // We need to import aiService to generate images if needed? 
+                            // Actually momentsStore.addMoment mainly takes raw data.
+                            // If imagePrompt exists, we might need to resolve it.
+                            // But for simplicity, we let momentsStore handle or we do it here.
+                            // Let's assume we pass it to addMoment and let it handle or we enhance it here.
+                            // Wait, momentsStore.addMoment expects { content, images: [] }
+                            
+                            const newMoment = {
+                                authorId: chatId, // The character ID
+                                content: momentData.content,
+                                images: [],
+                                imageDescriptions: []
+                            }
+
+                            if (momentData.imagePrompt) {
+                                // Use the centralized generateImage service instead of hardcoded URLs
+                                const imageUrl = await generateImage(momentData.imagePrompt)
+                                newMoment.images.push(imageUrl)
+                                if (momentData.imageDescription) {
+                                    newMoment.imageDescriptions.push(momentData.imageDescription)
+                                }
+                            }
+
+                            momentsStore.addMoment(newMoment)
+                            
+                            // Feedback in Chat
+                            addMessage(chatId, {
+                                type: 'system',
+                                content: `"${chat.name}" 发布了一条朋友圈`,
+                                isRecallTip: true
+                            })
+                        }
+                    } catch (e) {
+                         console.error('[ChatStore] Failed to parse [MOMENT]', e)
+                    }
+                }
+
+                // --- Handle [SET_AVATAR] Command ---
+                const setAvatarRegex = /\[SET_AVATAR[:：]\s*(.+?)\s*\]/i
+                const avatarMatch = fullContent.match(setAvatarRegex)
+                if (avatarMatch) {
+                    const newAvatarUrl = avatarMatch[1].trim()
+                    if (newAvatarUrl) {
+                        chat.avatar = newAvatarUrl
+                        saveChats()
+                        triggerToast('对方更换了头像', 'info')
+                    }
+                }
+
+
+
                 let cleanContent = fullContent.replace(innerVoiceRegex, '')
                                               .replace(patRegex, '')
                                               .replace(nudgeRegex, '')
+                                              .replace(momentRegex, '')
+                                              .replace(replyRegex, '') // Remove reply tag from clean content
+                                              .replace(setAvatarRegex, '') // Remove avatar tag from clean content
+                                              // DO NOT remove [DRAW:] here - let ChatWindow.vue handle it
                                               .trim();
                 // Clean cleanup specifically to handle hallucinated stray tags
                 cleanContent = cleanContent.replace(/\[\/?INNER_VOICE\]/gi, '').trim();
+                cleanContent = cleanContent.replace(/\[\/?MOMENT\]/gi, '').trim(); // Extra cleanup
+                cleanContent = cleanContent.replace(/\[\/?REPLY\]/gi, '').trim();  // Extra cleanup
+                cleanContent = cleanContent.replace(/\[\/?SET_AVATAR\]/gi, '').trim(); // Extra cleanup
 
                 // --- Handle Image Security & Validation ---
                 // Replace phantom images with broken image placeholder
@@ -722,7 +940,7 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Improved Splitting Logic (V4) ---
                 // Goal: Protect [CARD]{...} and [表情包:...] as atomic tokens.
                 // 1. Tokenize: Extract Cards, Stickers, Parentheses, Punctuation, and Text segments.
-                const tokenRegex = /(\[CARD\]\{.*?\}|\[表情包:.*?\]|\([^\)]+\)|（[^）]+）|[!?;。！？；…\n]+|[^!?;。！？；…\n\(\)（）\[\]]+|\[[^\]]+\])/g;
+                const tokenRegex = /(\[CARD\]\{.*?\}|\[DRAW:.*?\]|\[表情包:.*?\]|\([^\)]+\)|（[^）]+）|[!?;。！？；…\n]+|[^!?;。！？；…\n\(\)（）\[\]]+|\[[^\]]+\])/g;
                 const rawTokens = cleanContent.match(tokenRegex) || [];
                 
                 let segments = [];
@@ -733,11 +951,12 @@ export const useChatStore = defineStore('chat', () => {
                     if (!token) continue;
 
                     const isCard = token.startsWith('[CARD]');
+                    const isDraw = token.startsWith('[DRAW:');
                     const isSticker = token.startsWith('[表情包:');
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(token);
                     const isParenthesis = /^[\(（].*[\)）]$/.test(token);
 
-                    if (isCard || isSticker) {
+                    if (isCard || isSticker || isDraw) {
                         // Protect these blocks. If there's pending text, push it first.
                         if (currentSegment.trim()) {
                             segments.push(currentSegment.trim());
@@ -794,15 +1013,16 @@ export const useChatStore = defineStore('chat', () => {
                             addMessage(chatId, {
                                 role: 'ai',
                                 type: 'html', 
-                                content: jsonStr
+                                content: jsonStr,
+                                quote: i === 0 ? aiQuote : null
                             });
                         } catch (e) {
                              console.error('Card JSON error', e);
-                             addMessage(chatId, { role: 'ai', type: 'text', content: '[CARD Error] ' + jsonStr });
+                             addMessage(chatId, { role: 'ai', type: 'text', content: '[CARD Error] ' + jsonStr, quote: i === 0 ? aiQuote : null });
                         }
                     } else if (seg.startsWith('[表情包:')) {
                         // Send as standalone message to trigger sticker rendering
-                        addMessage(chatId, { role: 'ai', content: seg });
+                        addMessage(chatId, { role: 'ai', content: seg, quote: i === 0 ? aiQuote : null });
                     } else {
                         // Normal text
                         let msgContent = seg;
@@ -811,7 +1031,39 @@ export const useChatStore = defineStore('chat', () => {
                         if (isFirstTextMessage && innerVoiceBlock) {
                             msgContent = innerVoiceBlock + '\n' + seg;
                         }
-                        addMessage(chatId, { role: 'ai', content: msgContent });
+
+                        // Create the message first (shows as DRAWING if it contains [DRAW:])
+                        const newMsg = addMessage(chatId, { 
+                            role: 'ai', 
+                            content: msgContent,
+                            quote: i === 0 ? aiQuote : null
+                        });
+
+                        // If the segment contains [DRAW:], trigger the actual generation
+                        if (seg.includes('[DRAW:')) {
+                            const drawMatch = seg.match(/\[DRAW:\s*([\s\S]*?)\]/i);
+                            if (drawMatch) {
+                                const prompt = drawMatch[1].trim();
+                                // Run in background or wait? 
+                                // To keep the sequence natural, we'll wait for the drawing or at least let it proceed.
+                                // But if we want it to be separate bubbles (which the user asked for), 
+                                // the splitting logic already ensures [DRAW:] is its own segment.
+                                (async () => {
+                                    try {
+                                        const imageUrl = await generateImage(prompt);
+                                        // Update the message we just added
+                                        updateMessage(chatId, newMsg.id, {
+                                            content: seg.replace(drawMatch[0], `[图片:${imageUrl}]`)
+                                        });
+                                    } catch (err) {
+                                        console.error('In-chat drawing failed:', err);
+                                        updateMessage(chatId, newMsg.id, {
+                                            content: seg.replace(drawMatch[0], '(绘画失败，请检查 API 设置)')
+                                        });
+                                    }
+                                })();
+                            }
+                        }
                     }
                     
                     // Artificial Delay between segments
@@ -824,11 +1076,16 @@ export const useChatStore = defineStore('chat', () => {
             isTyping.value = false
             currentAbortController = null
             if (e.name === 'AbortError' || e.message === 'Aborted') return
-
-            const isQuotaError = e.name === 'QuotaExceededError' || e.code === 22 || e.message?.includes('quota');
+            
+            // [FIX] Distinguish between LocalStorage Quota (DOMException) and API Quota (Network 429)
+            // LocalStorage quota errors strictly have name 'QuotaExceededError' or code 22.
+            // API errors might have 'Quota' in the message text. We should NOT swallow API errors.
+            const isStorageQuota = e.name === 'QuotaExceededError' || e.code === 22;
+            
             useLoggerStore().addLog('ERROR', 'AI响应处理失败', e.message)
             
-            if (!isQuotaError) {
+            if (!isStorageQuota) {
+                // Display API errors (including API quota/limit errors) to user
                 addMessage(chatId, { role: 'system', content: `请求失败: ${e.message}` })
             } else {
                 console.error('[Storage] Intercepted storage error during AI response. Vacuum should have triggered.');
@@ -996,6 +1253,7 @@ export const useChatStore = defineStore('chat', () => {
                     if (c.isOnline === undefined) c.isOnline = true
                     // Identity Fields
                     if (c.remark === undefined) c.remark = c.nickname || ''
+                    if (c.momentsMemoryLimit === undefined) c.momentsMemoryLimit = 5
                 })
             } catch (e) {
                 console.error('Failed to load chats', e)
@@ -1010,14 +1268,70 @@ export const useChatStore = defineStore('chat', () => {
         saveChats() // Persist initial demo data
     }
 
+    // Add system message to current chat context
+    function addSystemMessage(content) {
+        if (!currentChatId.value) return
+        const chat = chats[currentChatId.value]
+        if (!chat) return
+        
+        addMessage(currentChatId.value, {
+            role: 'system',
+            content: content,
+            timestamp: Date.now()
+        })
+    }
+
+    // Pagination Functions
+    function getDisplayedMessages(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat || !chat.msgs) return []
+        
+        const totalMsgs = chat.msgs.length
+        const loadedCount = loadedMessageCounts.value[chatId] || messagePageSize.value
+        
+        // 从末尾开始取消息（最新的消息在后面）
+        const start = Math.max(0, totalMsgs - loadedCount)
+        return chat.msgs.slice(start)
+    }
+
+    function loadMoreMessages(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat) return false
+        
+        const totalMsgs = chat.msgs.length
+        const currentLoaded = loadedMessageCounts.value[chatId] || messagePageSize.value
+        
+        // 每次加载50条
+        const newLoaded = Math.min(totalMsgs, currentLoaded + messagePageSize.value)
+        loadedMessageCounts.value[chatId] = newLoaded
+        
+        console.log(`[Pagination] Loaded ${newLoaded}/${totalMsgs} messages for ${chatId}`)
+        return newLoaded < totalMsgs // 返回是否还有更多
+    }
+
+    function resetPagination(chatId) {
+        loadedMessageCounts.value[chatId] = messagePageSize.value
+    }
+
+    function hasMoreMessages(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat || !chat.msgs) return false
+        
+        const totalMsgs = chat.msgs.length
+        const loadedCount = loadedMessageCounts.value[chatId] || messagePageSize.value
+        return totalMsgs > loadedCount
+    }
+
+    // ==========================================================
+    // EXPORTS
+    // ==========================================================
     return {
-        lastGeneratedImage: computed(() => null), // Holder if needed or verify where it was
         notificationEvent,
         patEvent,
         toastEvent,
         triggerToast,
-        stopGeneration,
         triggerPatEffect,
+        stopGeneration,
         chats,
         currentChatId,
         isTyping,
@@ -1025,22 +1339,27 @@ export const useChatStore = defineStore('chat', () => {
         contactList,
         currentChat,
         addMessage,
+        updateMessage,
         createChat,
         deleteChat,
+        deleteMessage,
+        deleteMessages,
         pinChat,
         clearHistory,
         clearAllChats,
         checkProactive,
         summarizeHistory,
-        createChat,
         updateCharacter,
         initDemoData,
         sendMessageToAI,
-        clearAllChats,
-        clearHistory,
         saveChats,
         getTokenCount,
         getTokenBreakdown,
-        summarizeHistory
+        addSystemMessage,
+        // Pagination
+        getDisplayedMessages,
+        loadMoreMessages,
+        resetPagination,
+        hasMoreMessages
     }
 })

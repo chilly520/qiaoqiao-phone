@@ -9,7 +9,7 @@ const store = useSettingsStore()
 const { weather } = storeToRefs(store)
 
 const goBack = () => {
-    router.push('/settings')
+    router.back()
 }
 
 // Local inputs for editing
