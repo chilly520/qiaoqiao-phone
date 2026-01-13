@@ -1,329 +1,416 @@
+<template>
+    <div class="data-settings w-full h-full bg-gray-50 flex flex-col">
+        <!-- Header -->
+        <div class="h-[56px] bg-white flex items-center justify-between px-4 border-b border-gray-100 flex-shrink-0">
+            <div class="flex items-center gap-3 cursor-pointer" @click="handleGoBack">
+                <i class="fa-solid fa-chevron-left text-lg text-gray-700"></i>
+                <span
+                    class="font-black text-xl bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">资产数据管理</span>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-24">
+
+            <!-- Assets Migration Card -->
+            <div class="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 relative overflow-hidden group">
+                <div
+                    class="absolute -right-4 -top-4 text-blue-500/5 rotate-12 transition-transform group-hover:scale-110">
+                    <i class="fa-solid fa-cloud-arrow-up text-9xl"></i>
+                </div>
+
+                <div class="flex items-center gap-4 mb-6 relative z-10">
+                    <div
+                        class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-blue-200">
+                        <i class="fa-solid fa-database text-lg"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-black text-gray-900">备份与导出</h4>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">System Assets Export
+                        </p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 relative z-10">
+                    <button @click="handleOpenExport"
+                        class="w-full flex items-center justify-center gap-3 py-4.5 rounded-2xl bg-gray-900 text-white font-black text-sm hover:shadow-2xl hover:bg-black transition-all active:scale-[0.98]">
+                        <i class="fa-solid fa-file-export"></i> 导出全系统资产包
+                    </button>
+                    <p class="text-center text-[10px] text-gray-400 font-medium">生成包含聊天、朋友圈、设置在内的加密备份</p>
+                </div>
+            </div>
+
+            <!-- Import Card -->
+            <div class="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100 group relative">
+                <div class="flex items-center gap-4 mb-6">
+                    <div
+                        class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-xl shadow-emerald-200">
+                        <i class="fa-solid fa-file-shield text-lg"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-black text-gray-900">数据还原</h4>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Restore Memory Package
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                    <button @click="handleTriggerFile"
+                        class="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-100 transition-all">
+                        <i class="fa-solid fa-paperclip"></i> {{ importFile ? '更换备份文件' : '选取 JSON 备份' }}
+                    </button>
+
+                    <div v-if="importFile"
+                        class="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between mb-1">
+                        <span class="text-[11px] text-emerald-700 truncate max-w-[70%] font-bold">{{ importFile.name
+                            }}</span>
+                        <span
+                            class="text-[10px] text-emerald-500 px-2 py-0.5 bg-white rounded-full border border-emerald-100 font-black">
+                            {{ (importFile.size / 1024).toFixed(1) }} KB
+                        </span>
+                    </div>
+
+                    <button :disabled="!importFile" @click="processImport"
+                        class="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-emerald-500 text-white font-black hover:bg-emerald-600 transition-all active:scale-[0.98] disabled:opacity-20 disabled:grayscale shadow-lg shadow-emerald-100">
+                        <i class="fa-solid fa-circle-check"></i> 确认并覆盖还原
+                    </button>
+                </div>
+                <input type="file" ref="fileInputEl" accept=".json" class="hidden" @change="onFileChanged">
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="bg-red-50/30 rounded-[32px] p-6 shadow-sm border border-red-100/50">
+                <div class="flex items-center gap-4 mb-6">
+                    <div
+                        class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center text-white shadow-xl shadow-red-200">
+                        <i class="fa-solid fa-skull-crossbones text-lg"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-black text-gray-900">危险操作区</h4>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Irreversible
+                            Destruction</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <button @click="initResetApp"
+                        class="flex flex-col items-center justify-center gap-2 py-5 rounded-2xl bg-white border border-red-100 text-rose-600 font-black hover:bg-red-50 transition-all active:scale-95 shadow-sm">
+                        <i class="fa-solid fa-rotate-left text-xl"></i>
+                        <span class="text-[11px]">重置应用</span>
+                    </button>
+                    <button @click="initPurgeAll"
+                        class="flex flex-col items-center justify-center gap-2 py-5 rounded-2xl bg-rose-600 text-white font-black hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-100">
+                        <i class="fa-solid fa-dumpster-fire text-xl"></i>
+                        <span class="text-[11px]">彻底清空</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Export Selection Modal -->
+        <Transition name="slide-up">
+            <div v-if="modalStates.export"
+                class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6"
+                @click.self="modalStates.export = false">
+                <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+                <div
+                    class="bg-white w-full max-w-lg rounded-t-[44px] sm:rounded-[44px] overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
+                    <div class="p-8 border-b border-gray-50 flex items-center justify-between bg-white shrink-0">
+                        <div>
+                            <h3 class="text-2xl font-black text-gray-900 leading-tight">全系统资产导出</h3>
+                            <p class="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Multi-Asset Export
+                                Hub</p>
+                        </div>
+                        <button @click="modalStates.export = false"
+                            class="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-90 transition-all">
+                            <i class="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar bg-gray-50/30">
+                        <!-- Bulk Actions -->
+                        <div class="flex gap-2">
+                            <button @click="updateAllExport(true)"
+                                class="flex-1 py-3.5 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:bg-indigo-100">全选资源</button>
+                            <button @click="updateAllExport(false)"
+                                class="flex-1 py-3.5 bg-white text-gray-400 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-gray-100 transition-all active:bg-gray-50">清空选择</button>
+                        </div>
+
+                        <!-- Asset Grid -->
+                        <div class="grid grid-cols-1 gap-4">
+                            <div v-for="asset in assetOptions" :key="asset.id"
+                                class="group relative flex items-center gap-5 p-5 rounded-[32px] border-2 transition-all cursor-pointer overflow-hidden"
+                                :class="asset.enabled ? 'bg-white border-blue-500 shadow-xl shadow-blue-500/5' : 'bg-white/50 border-gray-100 opacity-60'"
+                                @click="asset.enabled = !asset.enabled">
+
+                                <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition-all relative z-10"
+                                    :class="asset.color">
+                                    <i :class="asset.icon"></i>
+                                </div>
+
+                                <div class="flex-1 relative z-10">
+                                    <div class="font-black text-gray-800 text-lg leading-tight">{{ asset.name }}</div>
+                                    <div class="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-tight">{{
+                                        asset.desc }}</div>
+                                </div>
+
+                                <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 z-10"
+                                    :class="asset.enabled ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-200' : 'border-gray-200 bg-white'">
+                                    <i v-if="asset.enabled"
+                                        class="fa-solid fa-check text-white text-[10px] font-black"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-8 bg-white border-t border-gray-50 flex gap-4 shrink-0">
+                        <button @click="executeExport"
+                            class="w-full py-5 bg-black text-white rounded-[28px] font-black text-lg shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-3">
+                            <i class="fa-solid fa-download"></i>
+                            生成全量导出包
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
+        <!-- Safety Confirmation Modal -->
+        <Transition name="fade">
+            <div v-if="modalStates.confirm"
+                class="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-8">
+                <div class="bg-white w-full max-w-sm rounded-[48px] p-10 shadow-2xl text-center">
+                    <div
+                        class="w-24 h-24 bg-rose-50 text-rose-500 rounded-[32px] flex items-center justify-center text-4xl mx-auto mb-8 shadow-xl shadow-rose-100">
+                        <i class="fa-solid fa-triangle-exclamation animate-pulse"></i>
+                    </div>
+                    <h3 class="text-2xl font-black text-gray-900 mb-3">确定执行核心重置？</h3>
+                    <p class="text-xs text-gray-400 mb-10 px-4 leading-relaxed font-bold uppercase tracking-tighter">
+                        对应数据将<span class="text-rose-500">永久销毁</span>，这是不可撤销的原子级物理操作。
+                    </p>
+
+                    <div class="flex flex-col gap-4">
+                        <button @click="processAtomicReset"
+                            class="w-full py-5 bg-rose-500 text-white rounded-[24px] font-black shadow-xl shadow-rose-200 active:scale-95 transition-all text-sm">
+                            是的，确认永久删除
+                        </button>
+                        <button @click="modalStates.confirm = false"
+                            class="w-full py-4 text-gray-400 font-black text-xs uppercase tracking-widest hover:text-gray-600">
+                            取消操作
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+    </div>
+</template>
+
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useChatStore } from '@/stores/chatStore'
+import { useMomentsStore } from '@/stores/momentsStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useStickerStore } from '@/stores/stickerStore'
+import { useWorldBookStore } from '@/stores/worldBookStore'
 
 const router = useRouter()
-const store = useSettingsStore()
+const chatStore = useChatStore()
+const momentsStore = useMomentsStore()
+const settingsStore = useSettingsStore()
+const stickerStore = useStickerStore()
+const worldBookStore = useWorldBookStore()
 
-const goBack = () => {
-    router.back()
-}
+const handleGoBack = () => router.back()
 
-// --- Modals State ---
-const showExportModal = ref(false)
-const showResetAppModal = ref(false)
-const showResetGlobalModal = ref(false)
-
-// --- Export Logic ---
-const exportSelection = ref({
-    settings: true,
-    wechat: true,
-    selectedChats: [], // IDs of selected chats
-    wallet: true,
-    moments: true,
-    npcs: true,
-    profile: true
+// --- UI State ---
+const modalStates = reactive({
+    export: false,
+    confirm: false,
+    resetType: '' // 'app' or 'global'
 })
 
-const chatList = ref([])
+// --- Export Configuration ---
+const assetOptions = ref([
+    { id: 'chats', name: '角色与聊天', desc: `${Object.keys(chatStore.chats || {}).length} 个生命体记忆`, icon: 'fa-solid fa-robot', color: 'bg-emerald-100 text-emerald-600', enabled: true },
+    { id: 'moments', name: '朋友圈动态', desc: `${(momentsStore.moments || []).length} 条社交时空片段`, icon: 'fa-solid fa-camera-retro', color: 'bg-orange-100 text-orange-600', enabled: true },
+    { id: 'settings', name: '系统核心参数', desc: 'API配置与自动化逻辑', icon: 'fa-solid fa-sliders', color: 'bg-blue-100 text-blue-600', enabled: true },
+    { id: 'decoration', name: '环境美化配置', desc: '壁纸及全局视觉样式', icon: 'fa-solid fa-palette', color: 'bg-purple-100 text-purple-600', enabled: true },
+    { id: 'worldbook', name: '世界书设定', desc: `${worldBookStore.books?.length || 0} 个逻辑定义单元`, icon: 'fa-solid fa-book-sparkles', color: 'bg-indigo-100 text-indigo-600', enabled: true },
+    { id: 'stickers', name: '私有表情仓库', desc: `${stickerStore.stickers?.length || 0} 个静态/动态资源`, icon: 'fa-solid fa-icons', color: 'bg-amber-100 text-amber-600', enabled: true }
+])
 
-const openExportModal = () => {
-    // Load chats for selection
-    const chats = store.getChatListForExport ? store.getChatListForExport() : []
-    chatList.value = chats
-    // Default select all chats
-    exportSelection.value.selectedChats = chats.map(c => c.id)
-    showExportModal.value = true
+const updateAllExport = (val) => {
+    assetOptions.value.forEach(opt => opt.enabled = val)
 }
 
-const toggleAllChats = (e) => {
-    if (e.target.checked) {
-        exportSelection.value.selectedChats = chatList.value.map(c => c.id)
-    } else {
-        exportSelection.value.selectedChats = []
+const handleOpenExport = () => {
+    modalStates.export = true
+}
+
+const executeExport = () => {
+    const backup = {
+        version: '2.0',
+        timestamp: Date.now(),
+        type: 'qiaoqiao_full_migration',
+        data: {}
+    }
+
+    const activeIds = assetOptions.value.filter(o => o.enabled).map(o => o.id)
+
+    if (activeIds.includes('chats')) backup.data.chats = chatStore.chats
+    if (activeIds.includes('moments')) backup.data.moments = momentsStore.moments
+    if (activeIds.includes('settings')) {
+        backup.data.apiConfigs = settingsStore.apiConfigs
+        backup.data.currentConfigIndex = settingsStore.currentConfigIndex
+        backup.data.personalization = { ...settingsStore.personalization }
+        backup.data.voice = settingsStore.voice
+        backup.data.weather = settingsStore.weather
+        backup.data.drawing = settingsStore.drawing
+    }
+    if (activeIds.includes('decoration')) {
+        backup.data.customCss = settingsStore.personalization.customCss
+        backup.data.theme = settingsStore.personalization.theme
+        backup.data.wallpaper = settingsStore.personalization.wallpaper
+    }
+    if (activeIds.includes('worldbook')) backup.data.worldbook = worldBookStore.books
+    if (activeIds.includes('stickers')) backup.data.stickers = stickerStore.stickers
+
+    try {
+        const jsonStr = JSON.stringify(backup, null, 2)
+        const blob = new window.Blob([jsonStr], { type: 'application/json' })
+        const url = window.URL.createObjectURL(blob)
+        const anchor = window.document.createElement('a')
+        anchor.href = url
+        anchor.download = `QiaoQiao_FullAsset_${new Date().toISOString().split('T')[0]}.json`
+        window.document.body.appendChild(anchor)
+        anchor.click()
+        window.document.body.removeChild(anchor)
+        window.URL.revokeObjectURL(url)
+
+        modalStates.export = false
+        chatStore.triggerToast('✅ 数据导出成功', 'success')
+    } catch (e) {
+        chatStore.triggerToast('导出失败: ' + e.message, 'error')
     }
 }
 
-const handleExport = () => {
-    // Close modal
-    showExportModal.value = false
-    
-    // Call store export with options
-    const jsonStr = store.exportData({
-        settings: exportSelection.value.settings,
-        wechat: exportSelection.value.wechat,
-        selectedChats: exportSelection.value.wechat ? exportSelection.value.selectedChats : [],
-        wallet: exportSelection.value.wallet
-        // Add others as implemented
-    })
-    
-    const blob = new Blob([jsonStr], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `qiaoqiao_backup_${new Date().toISOString().slice(0,19).replace(/T|:/g,'-')}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    triggerToast('数据已导出')
+// --- Import Logic ---
+const fileInputEl = ref(null)
+const importFile = ref(null)
+const importPayload = ref(null)
+
+const handleTriggerFile = () => {
+    if (fileInputEl.value) fileInputEl.value.click()
 }
 
-// --- Import ---
-const triggerFileInput = () => {
-    fileInput.value.click()
-}
-
-const handleFileSelect = (event) => {
+const onFileChanged = (event) => {
     const file = event.target.files[0]
-    if (file) {
-        selectedFile.value = file
-        triggerToast(`已选择文件: ${file.name}`)
-    }
-}
+    if (!file) return
+    importFile.value = file
 
-const handleImport = async () => {
-    if (!selectedFile.value) {
-        alert('请先选择备份文件')
-        return
-    }
-    const reader = new FileReader()
-    reader.onload = async (e) => {
-        const content = e.target.result
-        const success = await store.importData(content)
-        if (success) {
-            alert('数据导入成功！即将刷新页面...')
-            window.location.reload()
-        } else {
-            alert('数据导入失败，请检查文件格式。')
+    const reader = new window.FileReader()
+    reader.onload = (e) => {
+        try {
+            importPayload.value = JSON.parse(e.target.result)
+            chatStore.triggerToast('文件校验通过', 'success')
+        } catch (err) {
+            chatStore.triggerToast('无效的备份文件', 'error')
+            importFile.value = null
         }
     }
-    reader.readAsText(selectedFile.value)
+    reader.readAsText(file)
 }
 
-// --- Reset Logic ---
-const resetSelection = ref({
+const processImport = async () => {
+    if (!importPayload.value) return
+
+    const backup = importPayload.value
+    const data = backup.data || backup // Fallback v1
+
+    try {
+        if (data.chats) {
+            chatStore.chats = data.chats
+            chatStore.saveChats()
+        }
+        if (data.moments) momentsStore.moments = data.moments
+        if (data.apiConfigs) settingsStore.apiConfigs = data.apiConfigs
+        if (data.personalization) settingsStore.personalization = data.personalization
+        if (data.worldbook) worldBookStore.books = data.worldbook
+        if (data.stickers) stickerStore.stickers = data.stickers
+
+        if (settingsStore.saveToStorage) settingsStore.saveToStorage()
+
+        chatStore.triggerToast('🚀 物理还原完成，正在重载核心...', 'success')
+
+        window.setTimeout(() => {
+            window.location.reload()
+        }, 1500)
+    } catch (e) {
+        chatStore.triggerToast('导入过程发生异常', 'error')
+    }
+}
+
+// --- Atomic Reset Logic ---
+const resetConfig = reactive({
     settings: false,
     wechat: true,
     wallet: false
 })
 
-const handleResetApp = () => {
-    // Show Modal
-    showResetAppModal.value = true
+const initResetApp = () => {
+    modalStates.resetType = 'app'
+    modalStates.confirm = true
 }
 
-const confirmResetApp = () => {
-    showResetAppModal.value = false
-    store.resetAppData({
-        settings: resetSelection.value.settings,
-        wechat: resetSelection.value.wechat,
-        wallet: resetSelection.value.wallet
-    })
-    triggerToast('应用数据已重置')
+const initPurgeAll = () => {
+    modalStates.resetType = 'global'
+    modalStates.confirm = true
 }
 
-const handleResetGlobal = () => {
-    // Show Modal
-    showResetGlobalModal.value = true
-}
-
-const confirmResetGlobal = () => {
-    showResetGlobalModal.value = false
-    store.resetGlobalData() // Will reload page
-}
-
-// Toast
-const showToast = ref(false)
-const toastMessage = ref('')
-const triggerToast = (msg) => {
-    toastMessage.value = msg
-    showToast.value = true
-    setTimeout(() => { showToast.value = false }, 2000)
+const processAtomicReset = () => {
+    modalStates.confirm = false
+    if (modalStates.resetType === 'app') {
+        settingsStore.resetAppData({
+            settings: resetConfig.settings,
+            wechat: resetConfig.wechat,
+            wallet: resetConfig.wallet
+        })
+        chatStore.triggerToast('应用数据已重置完成', 'success')
+    } else {
+        settingsStore.resetGlobalData()
+        // resetGlobalData handles its own toast or reload
+    }
 }
 </script>
 
-<template>
-  <div class="data-settings w-full h-full bg-gray-50 flex flex-col">
-    <!-- Header -->
-    <div class="h-[56px] bg-white flex items-center justify-between px-4 border-b border-gray-100 flex-shrink-0">
-       <div class="flex items-center gap-3 cursor-pointer" @click="goBack">
-           <i class="fa-solid fa-chevron-left text-lg"></i>
-           <span class="font-bold text-xl">数据管理</span>
-       </div>
-    </div>
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+    width: 0px;
+}
 
-    <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-6">
-        
-        <!-- Export -->
-        <div class="glass-panel p-5 rounded-[20px] bg-white shadow-sm">
-             <h4 class="text-lg font-bold text-gray-900 mb-3">导出数据</h4>
-             <button @click="openExportModal" class="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-blue-50 text-blue-600 font-medium hover:bg-blue-100 transition">
-                 <i class="fa-solid fa-download"></i> 导出全局数据
-             </button>
-        </div>
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
+}
 
-        <!-- Import -->
-        <div class="glass-panel p-5 rounded-[20px] bg-white shadow-sm">
-             <h4 class="text-lg font-bold text-gray-900 mb-3">导入数据</h4>
-             <div class="flex gap-3">
-                 <button @click="triggerFileInput" class="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition">
-                     <i class="fa-solid fa-upload"></i> {{ selectedFile ? '更换文件' : '选择文件' }}
-                 </button>
-                 <button @click="handleImport" class="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl bg-green-50 text-green-600 font-medium hover:bg-green-100 transition">
-                     <i class="fa-solid fa-check"></i> 开始导入
-                 </button>
-             </div>
-             <div v-if="selectedFile" class="mt-2 text-xs text-center text-gray-500 truncate">
-                 已选: {{ selectedFile.name }}
-             </div>
-             <input type="file" ref="fileInput" accept=".json" class="hidden" @change="handleFileSelect">
-        </div>
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
 
-        <!-- Reset -->
-        <div class="glass-panel p-5 rounded-[20px] bg-white shadow-sm">
-             <h4 class="text-lg font-bold text-gray-900 mb-3">重置数据</h4>
-             <div class="flex gap-3">
-                 <button @click="handleResetApp" class="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl bg-orange-50 text-orange-600 font-medium hover:bg-orange-100 transition">
-                     <i class="fa-solid fa-rotate-left"></i> 重置应用数据
-                 </button>
-                 <button @click="handleResetGlobal" class="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl bg-red-50 text-red-600 font-medium hover:bg-red-100 transition">
-                     <i class="fa-solid fa-database"></i> 重置全局数据
-                 </button>
-             </div>
-        </div>
+.slide-up-enter-active,
+.slide-up-leave-active {
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
-    </div>
+.slide-up-enter-from,
+.slide-up-leave-to {
+    transform: translateY(100%);
+    opacity: 0;
+}
 
-    <!-- Toast -->
-    <div v-if="showToast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-2 rounded-full text-sm shadow-lg z-50">
-        {{ toastMessage }}
-    </div>
-
-    <!-- Export Modal -->
-    <div v-if="showExportModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="bg-blue-900/90 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-6 w-[90vw] max-w-md shadow-2xl">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-white">导出数据</h3>
-                <button @click="showExportModal = false" class="text-white/80 hover:text-white text-xl">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            
-            <div class="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                <h4 class="text-lg font-semibold text-blue-200">选择要导出的应用数据</h4>
-                
-                <!-- WeChat -->
-                <div class="bg-white/10 p-3 rounded-xl border border-white/5">
-                    <div class="flex items-center gap-3 mb-2">
-                        <input type="checkbox" id="exp-wechat" v-model="exportSelection.wechat" class="w-5 h-5 rounded accent-blue-400">
-                        <label for="exp-wechat" class="text-white font-semibold">微信 (聊天记录)</label>
-                    </div>
-                    <div v-if="exportSelection.wechat && chatList.length > 0" class="pl-8 space-y-2">
-                        <div class="flex items-center gap-3">
-                             <input type="checkbox" @change="toggleAllChats" :checked="exportSelection.selectedChats.length === chatList.length" class="w-4 h-4 rounded accent-blue-400">
-                             <span class="text-white/80 text-sm italic">全选 / 只有选中的角色会被导出</span>
-                        </div>
-                        <div v-for="chat in chatList" :key="chat.id" class="flex items-center gap-3">
-                            <input type="checkbox" :value="chat.id" v-model="exportSelection.selectedChats" class="w-4 h-4 rounded accent-blue-400">
-                            <label class="text-white/80 text-sm">{{ chat.name || chat.nickname || '未命名' }} ({{ chat.msgs ? chat.msgs.length : 0 }}条)</label>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Wallet -->
-                <div class="bg-white/10 p-3 rounded-xl border border-white/5">
-                     <div class="flex items-center gap-3">
-                        <input type="checkbox" id="exp-wallet" v-model="exportSelection.wallet" class="w-5 h-5 rounded accent-blue-400">
-                        <label for="exp-wallet" class="text-white font-semibold">钱包与交易记录</label>
-                    </div>
-                </div>
-
-                <!-- Settings -->
-                <div class="bg-white/10 p-3 rounded-xl border border-white/5">
-                     <div class="flex items-center gap-3">
-                        <input type="checkbox" id="exp-settings" v-model="exportSelection.settings" class="w-5 h-5 rounded accent-blue-400">
-                        <label for="exp-settings" class="text-white font-semibold">系统设置</label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex gap-3 mt-6">
-                <button @click="showExportModal = false" class="flex-1 p-3 rounded-xl bg-white/10 text-white hover:bg-white/20 transition">取消</button>
-                <button @click="handleExport" class="flex-1 p-3 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-lg shadow-blue-500/30 transition">确认导出</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Reset App Modal -->
-    <div v-if="showResetAppModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="bg-blue-900/90 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-6 w-[90vw] max-w-md shadow-2xl">
-             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-white">重置应用数据</h3>
-                <button @click="showResetAppModal = false" class="text-white/80 hover:text-white text-xl">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            
-            <div class="space-y-4">
-                <div class="text-red-300 font-medium text-center p-3 bg-red-900/20 rounded-xl border border-red-500/20">
-                    <i class="fa-solid fa-triangle-exclamation mr-2"></i> 数据一旦重置将无法恢复！
-                </div>
-                
-                <div class="space-y-3">
-                     <div class="bg-white/10 p-3 rounded-xl flex items-center gap-3">
-                        <input type="checkbox" id="rst-wechat" v-model="resetSelection.wechat" class="w-5 h-5 rounded accent-red-400">
-                        <label for="rst-wechat" class="text-white font-semibold">微信 (清空聊天记录)</label>
-                    </div>
-                     <div class="bg-white/10 p-3 rounded-xl flex items-center gap-3">
-                        <input type="checkbox" id="rst-settings" v-model="resetSelection.settings" class="w-5 h-5 rounded accent-red-400">
-                        <label for="rst-settings" class="text-white font-semibold">系统设置 (恢复默认)</label>
-                    </div>
-                     <div class="bg-white/10 p-3 rounded-xl flex items-center gap-3">
-                        <input type="checkbox" id="rst-wallet" v-model="resetSelection.wallet" class="w-5 h-5 rounded accent-red-400">
-                        <label for="rst-wallet" class="text-white font-semibold">钱包数据</label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex gap-3 mt-6">
-                 <button @click="showResetAppModal = false" class="flex-1 p-3 rounded-xl bg-white/10 text-white hover:bg-white/20 transition">取消</button>
-                 <button @click="confirmResetApp" class="flex-1 p-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 shadow-lg shadow-red-500/30 transition">确认重置</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Reset Global Modal -->
-    <div v-if="showResetGlobalModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="bg-blue-900/90 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-6 w-[90vw] max-w-md shadow-2xl">
-             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-white">重置全局数据</h3>
-                <button @click="showResetGlobalModal = false" class="text-white/80 hover:text-white text-xl">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            
-            <div class="space-y-6 text-center">
-                <div class="text-red-400 font-bold text-xl p-4 bg-red-900/20 rounded-xl border border-red-500/30 animate-pulse">
-                    <i class="fa-solid fa-radiation mr-2"></i> 极度危险
-                </div>
-                
-                <p class="text-white/80 leading-relaxed">
-                    此操作将清除浏览器中保存的<span class="text-red-400 font-bold">所有数据</span>，包括所有聊天记录、设置、API Key、钱包数据和所有已安装应用的全部状态。
-                    <br><br>
-                    操作立即生效且无法撤销！
-                </p>
-                
-                <div class="flex gap-3 mt-6">
-                     <button @click="showResetGlobalModal = false" class="flex-1 p-3 rounded-xl bg-white/10 text-white hover:bg-white/20 transition">我再想想</button>
-                     <button @click="confirmResetGlobal" class="flex-1 p-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 shadow-lg shadow-red-600/30 transition">
-                         <i class="fa-solid fa-trash-can mr-2"></i> 确认重置
-                     </button>
-                </div>
-            </div>
-        </div>
-    </div>
-  </div>
-</template>
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+</style>

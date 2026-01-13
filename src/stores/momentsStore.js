@@ -1,15 +1,9 @@
-import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import { defineStore } from 'pinia'
 import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
-import { 
-    generateMomentContent, 
-    generateMomentComment, 
-    generateBatchInteractions,
-    generateReplyToComment,
-    generateBatchMomentsWithInteractions
-} from '../utils/aiService'
+import { generateMomentContent, generateBatchMomentsWithInteractions, generateBatchInteractions, generateReplyToComment } from '../utils/aiService'
 
 export const useMomentsStore = defineStore('moments', () => {
     const chatStore = useChatStore()
@@ -20,23 +14,18 @@ export const useMomentsStore = defineStore('moments', () => {
     const moments = ref(JSON.parse(localStorage.getItem('wechat_moments') || '[]'))
     const lastGenerateTime = ref(parseInt(localStorage.getItem('wechat_moments_last_gen') || '0'))
     const notifications = ref(JSON.parse(localStorage.getItem('wechat_moments_notifications') || '[]'))
-    
+    const topMoments = ref(JSON.parse(localStorage.getItem('wechat_moments_top') || '[]')) // IDs of pinned moments (max 3)
+    const summoningIds = ref(new Set()) // Track moments currently being interacted by AI
+
     // Configs
     const config = ref({
-        enabledCharacters: [], // 允许发布角色的ID列表
-        enabledWorldBookEntries: [], // 选中的世界书词条ID列表
-        autoGenerateInterval: 0, // 默认为0 (关闭)，避免API额度超标
-        customPrompt: '', // 自定义提示词
-        lastSyncProfile: { name: '', avatar: '' }
+        autoGenerateInterval: 30, // minutes
+        enabledCharacters: [], // Array of char IDs allowed to post
+        enabledWorldBookEntries: [], // Array of world book entries allowed to affect moments
+        customPrompt: ''
     })
 
-    // Load initial config
-    const savedConfig = localStorage.getItem('wechat_moments_config')
-    if (savedConfig) {
-        config.value = { ...config.value, ...JSON.parse(savedConfig) }
-    }
-
-    // --- Persistence ---
+    // Persistence
     watch(moments, (val) => {
         localStorage.setItem('wechat_moments', JSON.stringify(val))
     }, { deep: true })
@@ -45,52 +34,82 @@ export const useMomentsStore = defineStore('moments', () => {
         localStorage.setItem('wechat_moments_notifications', JSON.stringify(val))
     }, { deep: true })
 
+    watch(topMoments, (val) => {
+        localStorage.setItem('wechat_moments_top', JSON.stringify(val))
+    }, { deep: true })
+
     watch(config, (val) => {
         localStorage.setItem('wechat_moments_config', JSON.stringify(val))
     }, { deep: true })
 
     // --- Getters ---
     const sortedMoments = computed(() => {
-        return [...moments.value].sort((a, b) => b.timestamp - a.timestamp)
+        const all = [...moments.value]
+        // Sort by Pinned First, then by Timestamp
+        return all.sort((a, b) => {
+            const aPinned = topMoments.value.includes(a.id)
+            const bPinned = topMoments.value.includes(b.id)
+            if (aPinned && !bPinned) return -1
+            if (!aPinned && bPinned) return 1
+            return b.timestamp - a.timestamp
+        })
     })
 
     // --- Actions ---
-    function addMoment(momentData) {
-        const newMoment = {
-            id: momentData.id || 'm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-            authorId: momentData.authorId || 'user',
-            content: momentData.content || '',
-            images: momentData.images || [],
-            stickers: momentData.stickers || [],
-            imageDescriptions: momentData.imageDescriptions || [],
-            html: momentData.html || null,
-            timestamp: momentData.timestamp || Date.now(),
-            likes: [],
-            comments: []
-        }
-        moments.value.push(newMoment)
-        
-        // Auto-trigger AI interactions for any new moment
-        setTimeout(() => {
-            triggerAIInteractions(newMoment.id)
-        }, 3000 + Math.random() * 5000) // Random delay for natural feel
 
-        return newMoment
+    function addMoment(data, options = {}) {
+        const id = 'm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+        const moment = {
+            id,
+            authorId: data.authorId,
+            content: data.content,
+            images: data.images || [],
+            imageDescriptions: data.imageDescriptions || [],
+            stickers: data.stickers || [],
+            location: data.location || '',
+            html: data.html || null,
+            timestamp: Date.now(),
+            likes: [], // Store display names
+            comments: [],
+            visibility: data.visibility || 'public',
+            visibleIds: data.visibleIds || [],
+            baseLikeCount: Math.floor(Math.random() * 5000) + 10 // Simulating popularity
+        }
+
+        moments.value.push(moment)
+
+        if (!options.skipAutoInteraction && data.authorId === 'user') {
+            // New user post triggers AI thinking/interactions
+            triggerAIInteractions(id)
+        }
+
+        return moment
     }
 
     function updateMoment(id, updates) {
-        const index = moments.value.findIndex(m => m.id === id)
-        if (index !== -1) {
-            moments.value[index] = { ...moments.value[index], ...updates, timestamp: Date.now() } // Refresh timestamp on edit? Or keep?
-            // Usually, editing might refresh the order if it's based on timestamp, but WeChat keeps it.
-            // Let's NOT refresh timestamp to keep position in feed, but maybe add an 'edited' flag?
-            // Actually, user might want it to jump up. Let's keep original timestamp but update content.
-            moments.value[index] = { ...moments.value[index], ...updates }
+        const idx = moments.value.findIndex(m => m.id === id)
+        if (idx > -1) {
+            moments.value[idx] = { ...moments.value[idx], ...updates }
         }
     }
 
     function deleteMoment(id) {
         moments.value = moments.value.filter(m => m.id !== id)
+        topMoments.value = topMoments.value.filter(tid => tid !== id)
+    }
+
+    function toggleTopMoment(id) {
+        if (topMoments.value.includes(id)) {
+            topMoments.value = topMoments.value.filter(tid => tid !== id)
+            return false // Unpinned
+        } else {
+            // Pin limit: 3. FIFO if exceeded.
+            if (topMoments.value.length >= 3) {
+                topMoments.value.shift()
+            }
+            topMoments.value.push(id)
+            return true // Pinned
+        }
     }
 
     function clearAllMoments() {
@@ -101,28 +120,71 @@ export const useMomentsStore = defineStore('moments', () => {
         moments.value = moments.value.filter(m => m.authorId !== charId)
     }
 
-    function addLike(momentId, authorName) {
-        const moment = moments.value.find(m => m.id === momentId)
-        if (moment && !moment.likes.includes(authorName)) {
-            moment.likes.push(authorName)
-            
-            // Notify User if it's their moment
-            if (moment.authorId === 'user' && authorName !== settingsStore.personalization.userProfile.name) {
-                // Determine Actor info
-                let actorAvatar = ''
-                const msgStore = chatStore.chats
-                const realChar = Object.values(msgStore).find(c => c.name === authorName)
-                if (realChar) {
-                    actorAvatar = realChar.avatar
-                } else {
-                     const hash = authorName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-                     actorAvatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`
-                }
+    function clearMyMoments() {
+        moments.value = moments.value.filter(m => m.authorId !== 'user')
+    }
 
+    function canInteractWithMoment(moment, authorNameOrId) {
+        if (!moment) return false
+        const userName = settingsStore.personalization.userProfile.name
+        const isUser = authorNameOrId === 'user' || authorNameOrId === userName
+
+        // Private: No one can interact
+        if (moment.visibility === 'private') return false
+        // Public: Everyone can interact
+        if (moment.visibility === 'public') return true
+        // For Partial/Exclude, find the character ID
+        if (isUser) return true // Author can always interact with their own non-private post
+
+        const char = Object.values(chatStore.chats).find(c => c.name === authorNameOrId || c.id === authorNameOrId)
+        if (!char) return true // Virtual NPCs are generally allowed unless we strictly define them
+
+        if (moment.visibility === 'partial') {
+            return moment.visibleIds.includes(char.id)
+        }
+        if (moment.visibility === 'exclude') {
+            return !moment.visibleIds.includes(char.id)
+        }
+        return true
+    }
+
+    function addLike(momentId, authorNameOrId, fallbackName = null) {
+        const moment = moments.value.find(m => m.id === momentId)
+        if (!moment) return
+
+        if (!canInteractWithMoment(moment, authorNameOrId)) return
+
+        let realChar = null
+        if (authorNameOrId !== 'user') {
+            realChar = Object.values(chatStore.chats).find(c => c.id === authorNameOrId || c.name === authorNameOrId || (c.remark && c.remark === authorNameOrId))
+        }
+
+        let displayName = fallbackName || authorNameOrId
+        if (realChar) {
+            displayName = realChar.remark || realChar.name
+        } else if (typeof authorNameOrId === 'string' && (authorNameOrId.startsWith('virtual') || authorNameOrId.includes('-') || /^[a-z0-9]{15,}$/.test(authorNameOrId))) {
+            // Strictly detect/filter out garbage IDs like virtual-123 or technical hashes
+            displayName = (fallbackName && !fallbackName.includes('-')) ? fallbackName : '神秘好友'
+        } else if (authorNameOrId === 'user') {
+            displayName = settingsStore.personalization.userProfile.name
+        }
+
+        // Final safety check: if displayName still looks like garbage, fallback to '神秘好友'
+        if (displayName && (displayName.startsWith('virtual') || /^[a-zA-Z0-9-]{15,}$/.test(displayName))) {
+            displayName = '神秘好友'
+        }
+
+        if (!moment.likes) moment.likes = []
+        if (!moment.likes.includes(displayName)) {
+            moment.likes.push(displayName)
+
+            // Notify User if it's their moment
+            const userName = settingsStore.personalization.userProfile.name
+            if (moment.authorId === 'user' && authorNameOrId !== 'user' && authorNameOrId !== userName) {
                 addNotification({
                     type: 'like',
-                    actorName: authorName,
-                    actorAvatar: actorAvatar,
+                    actorName: displayName,
+                    actorAvatar: realChar ? realChar.avatar : `https://api.dicebear.com/7.x/notionists/svg?seed=${authorNameOrId}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
                     content: '赞了你的动态',
                     momentId: moment.id,
                     momentImage: moment.images[0] || null,
@@ -134,288 +196,77 @@ export const useMomentsStore = defineStore('moments', () => {
 
     function removeLike(momentId, authorId) {
         const moment = moments.value.find(m => m.id === momentId)
-        if (moment) {
-            moment.likes = moment.likes.filter(id => id !== authorId)
+        const userName = settingsStore.personalization.userProfile.name
+        const target = authorId === 'user' ? userName : authorId
+        if (moment && moment.likes) {
+            moment.likes = moment.likes.filter(n => n !== target)
         }
     }
 
     function addComment(momentId, comment) {
         const moment = moments.value.find(m => m.id === momentId)
-        if (moment) {
-            moment.comments.push({
-                id: 'c-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                authorId: comment.authorId,
-                authorName: comment.authorName || (comment.authorId === 'user' ? settingsStore.personalization.userProfile.name : ''),
-                authorAvatar: comment.authorAvatar || '', // Store avatar
-                content: comment.content,
-                timestamp: Date.now(),
-                replyTo: comment.replyTo || null,
-                isVirtual: comment.isVirtual || false
-            })
+        if (!moment) return
 
-            // Notification Logic using authorAvatar directly
-            const isReplyToUser = comment.replyTo === 'user'
+        // Duplicate check: prevent identical comments in the same moment
+        const isDuplicate = moment.comments.some(c => c.content.trim() === comment.content.trim())
+        if (isDuplicate) return
+
+        // Resolve real contact info
+        let realChar = Object.values(chatStore.chats).find(c => c.id === comment.authorId || c.name === comment.authorName)
+        const finalAuthorName = realChar ? (realChar.remark || realChar.name) : (comment.authorName || '神秘好友')
+        const finalAuthorAvatar = realChar ? realChar.avatar : (comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${comment.authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`)
+
+        moment.comments.push({
+            id: 'c-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+            authorId: realChar ? realChar.id : (comment.authorId || 'virtual-' + Date.now()),
+            authorName: finalAuthorName,
+            authorAvatar: finalAuthorAvatar,
+            content: comment.content,
+            timestamp: Date.now(),
+            replyTo: comment.replyTo || null,
+            isVirtual: !realChar && (comment.isVirtual || false)
+        })
+
+        // Notification Logic
+        if (comment.authorId !== 'user') {
+            const isReplyToUser = comment.replyTo === 'user' || comment.replyTo === settingsStore.personalization.userProfile.name
             const isUserMoment = moment.authorId === 'user'
-            
-            // If someone other than user is commenting
-            if (comment.authorId !== 'user') {
-                if (isReplyToUser || (isUserMoment && !comment.replyTo)) {
-                    addNotification({
-                        type: 'comment',
-                        actorName: comment.authorName,
-                        content: comment.content,
-                        momentId: moment.id,
-                        momentImage: moment.images[0] || null,
-                        timestamp: Date.now()
-                    })
-                }
-            }
+            const userInteracted = moment.likes.includes(settingsStore.personalization.userProfile.name) ||
+                moment.comments.some(c => c.authorId === 'user')
 
-            // 如果是用户发的评论，触发 AI 回复 (AI Reply Logic)
-            if (comment.authorId === 'user') {
-                 triggerCommentReply(moment.id, comment)
+            if (isReplyToUser || (isUserMoment && !comment.replyTo)) {
+                addNotification({
+                    type: 'comment',
+                    actorName: finalAuthorName,
+                    actorAvatar: finalAuthorAvatar,
+                    content: comment.content,
+                    momentId: moment.id,
+                    momentImage: moment.images[0] || null,
+                    timestamp: Date.now()
+                })
+            } else if (userInteracted && !isUserMoment) {
+                addNotification({
+                    type: 'related_comment',
+                    actorName: finalAuthorName,
+                    actorAvatar: finalAuthorAvatar,
+                    content: `也评论了 ${moment.authorId === 'user' ? '你' : (chatStore.chats[moment.authorId]?.name || '好友')} 的动态: ${comment.content}`,
+                    momentId: moment.id,
+                    momentImage: moment.images[0] || null,
+                    timestamp: Date.now()
+                })
             }
+        }
+
+        // Trigger AI Reply
+        if (comment.authorId === 'user') {
+            triggerCommentReply(moment.id, comment)
         }
     }
 
     function deleteComment(momentId, commentId) {
         const moment = moments.value.find(m => m.id === momentId)
-        if (moment) {
+        if (moment && moment.comments) {
             moment.comments = moment.comments.filter(c => c.id !== commentId)
-        }
-    }
-
-    // New: Trigger AI Reply to User Comment
-    async function triggerCommentReply(momentId, userComment) {
-        const moment = moments.value.find(m => m.id === momentId)
-        if (!moment) return
-
-        // 1. Determine who should reply
-        // Implementation:
-        // - If moment author is AI, they should reply with high probability (80%)
-        // - Other characters (friends) might pile on (20% specific, or 1 random friend)
-        
-        const potentialRepliers = []
-        
-        // A. Moment Author (if not user)
-        if (moment.authorId !== 'user' && chatStore.chats[moment.authorId]) {
-             potentialRepliers.push({
-                 id: moment.authorId,
-                 priority: 'high', // Author is most likely to reply
-                 char: chatStore.chats[moment.authorId]
-             })
-        }
-
-        // B. Other characters (Random Friends)
-        const otherChars = Object.keys(chatStore.chats).filter(id => id !== moment.authorId && id !== 'user')
-        if (otherChars.length > 0) {
-            // Pick 1 random friend to potentially reply
-            const randomFriendId = otherChars[Math.floor(Math.random() * otherChars.length)]
-            potentialRepliers.push({
-                id: randomFriendId,
-                priority: 'low',
-                char: chatStore.chats[randomFriendId]
-            })
-        }
-
-        // 2. Process Repliers (Serialized to prevent API spike)
-        // Sort by priority to ensure high priority replies first
-        potentialRepliers.sort((a, b) => (a.priority === 'high' ? -1 : 1))
-
-        // Create a detached async process
-        ;(async () => {
-            for (const replier of potentialRepliers) {
-                // Chance check
-                const chance = replier.priority === 'high' ? 0.8 : 0.3
-                if (Math.random() > chance) continue
-
-                // Delay for realism AND rate limiting spacing
-                const delay = 2000 + Math.random() * 3000
-                await new Promise(r => setTimeout(r, delay))
-
-                try {
-                    const char = replier.char
-                    const reply = await generateReplyToComment({
-                        name: char.name,
-                        persona: char.prompt,
-                        worldContext: (char.tags || []).join(', ')
-                    }, {
-                        authorName: moment.authorId === 'user' ? settingsStore.personalization.userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
-                        content: moment.content,
-                        visualContext: moment.imageDescriptions.join('; ')
-                    }, {
-                        authorName: settingsStore.personalization.userProfile.name,
-                        content: userComment.content
-                    })
-
-                    if (reply) {
-                        addComment(momentId, {
-                            authorId: replier.id,
-                            authorName: char.name,
-                            content: reply,
-                            replyTo: userComment.authorName || '用户'
-                        })
-                    }
-                } catch (e) {
-                    console.error('[Moments] Reply generation failed', e)
-                }
-            }
-        })()
-    }
-
-    // --- AI Integration ---
-    async function triggerSingleCharacterMoment(charId) {
-        const chat = chatStore.chats[charId]
-        if (!chat) return
-
-        try {
-            // Check WorldBook for custom prompts/logic
-            // Automatic World Book Sensing Logic
-            let worldContext = ''
-            const charName = chat.name
-            
-            // Search criteria: Tags include charName or '朋友圈', or title/content includes charName
-            const matchedEntries = []
-            worldBookStore.books.forEach(book => {
-                book.entries.forEach(entry => {
-                    const tags = entry.tags || []
-                    const isMentioned = entry.name.includes(charName) || entry.content.includes(charName)
-                    const isTagged = tags.includes(charName) || tags.includes('朋友圈')
-                    
-                    if (isMentioned || isTagged) {
-                        matchedEntries.push(`${entry.name}: ${entry.content}`)
-                    }
-                })
-            })
-            
-            // Also include manually selected ones if any (fallback/additive)
-            if (config.value.enabledWorldBookEntries.length > 0) {
-                worldBookStore.books.forEach(book => {
-                    book.entries.forEach(entry => {
-                        if (config.value.enabledWorldBookEntries.includes(entry.id) && !matchedEntries.includes(`${entry.name}: ${entry.content}`)) {
-                            matchedEntries.push(`${entry.name}: ${entry.content}`)
-                        }
-                    })
-                })
-            }
-            
-            worldContext = matchedEntries.join('\n')
-
-            const result = await generateMomentContent({
-                name: chat.name,
-                persona: chat.prompt,
-                worldContext,
-                customPrompt: config.value.customPrompt
-            })
-
-            if (result && result.content) {
-                const moment = addMoment({
-                    authorId: charId,
-                    content: result.content,
-                    images: result.images || [],
-                    imageDescriptions: result.imageDescriptions || []
-                })
-                return moment
-            }
-        } catch (e) {
-            console.error('[MomentsStore] AI Moment Generation Failed', e)
-        }
-    }
-
-    async function batchGenerateAIMoments(count = 2) {
-        const candidates = Object.keys(chatStore.chats).filter(id => 
-            config.value.enabledCharacters.length === 0 || config.value.enabledCharacters.includes(id)
-        )
-        
-        if (candidates.length === 0) {
-            chatStore.triggerToast('没有可用的角色', 'error')
-            return
-        }
-
-        // Toast: Start
-        chatStore.triggerToast(`开始生成 ${count} 条朋友圈...`, 'info')
-        
-        try {
-            // Build character array with full info
-            const characters = candidates.map(id => ({
-                id,
-                name: chatStore.chats[id].name,
-                persona: chatStore.chats[id].prompt
-            }))
-            
-            // Gather world context
-            let worldContext = ''
-            if (config.value.enabledWorldBookEntries.length > 0) {
-                const matchedEntries = []
-                worldBookStore.books.forEach(book => {
-                    book.entries.forEach(entry => {
-                        if (config.value.enabledWorldBookEntries.includes(entry.id)) {
-                            matchedEntries.push(`${entry.name}: ${entry.content}`)
-                        }
-                    })
-                })
-                worldContext = matchedEntries.join('\n')
-            }
-            
-            // Call new batch API
-            const momentsData = await generateBatchMomentsWithInteractions({
-                characters,
-                worldContext,
-                customPrompt: config.value.customPrompt,
-                count
-            })
-            
-            // Add moments and apply interactions
-            let successCount = 0
-            for (const data of momentsData) {
-                try {
-                    // Add the moment first
-                    const moment = addMoment({
-                        authorId: data.authorId,
-                        content: data.content,
-                        images: data.images || [],
-                        imageDescriptions: data.imageDescriptions || []
-                    })
-                    
-                    // Apply interactions directly (no more separate AI call)
-                    if (data.interactions && data.interactions.length > 0) {
-                        // Add delay for realism
-                        await new Promise(r => setTimeout(r, 500))
-                        
-                        for (const interaction of data.interactions) {
-                            // Small delays between interactions
-                            await new Promise(r => setTimeout(r, 300 + Math.random() * 500))
-                            
-                            if (interaction.type === 'like') {
-                                addLike(moment.id, interaction.authorName)
-                            } else if (interaction.type === 'comment' && interaction.content) {
-                                // Find authorId by name
-                                const authorChar = Object.values(chatStore.chats).find(c => c.name === interaction.authorName)
-                                const authorId = authorChar ? authorChar.id :  'virtual-' + Date.now()
-                                
-                                addComment(moment.id, {
-                                    authorId,
-                                    authorName: interaction.authorName,
-                                    content: interaction.content,
-                                    replyTo: interaction.replyTo || null,
-                                    isVirtual: !authorChar
-                                })
-                            }
-                        }
-                    }
-                    
-                    successCount++
-                } catch (e) {
-                    console.error('[Moments] Failed to add moment:', e)
-                }
-            }
-            
-            // Toast: Complete
-            chatStore.triggerToast(`生成完成！成功创建 ${successCount} 条朋友圈`, 'success')
-            
-        } catch (e) {
-            console.error('[Moments] Batch generation failed:', e)
-            chatStore.triggerToast('生成失败: ' + e.message, 'error')
         }
     }
 
@@ -423,82 +274,67 @@ export const useMomentsStore = defineStore('moments', () => {
         const moment = moments.value.find(m => m.id === momentId)
         if (!moment) return
 
-        // Toast: Start
+        if (summoningIds.value.has(momentId)) return
+        summoningIds.value.add(momentId)
+
         chatStore.triggerToast('正在召唤朋友前来互动...', 'info')
 
-        // Include ALL characters (including author for replying to existing comments)
         const allCharIds = Object.keys(chatStore.chats)
         if (allCharIds.length === 0) {
-            chatStore.triggerToast('没有可用的角色', 'error')
+            summoningIds.value.delete(momentId)
             return
         }
 
-        // 获取历史记录作为上下文 (最近50个动态，包括完整的评论区)
-        const historicalMoments = sortedMoments.value
-            .slice(0, 50)
-            .map(m => ({
-                id: m.id,
-                authorName: m.authorId === 'user' ? (settingsStore.personalization.userProfile.name || '我') : (chatStore.chats[m.authorId]?.name || '神秘人'),
-                content: m.content,
-                likes: m.likes.join(', '),
-                comments: m.comments.map(c => `${c.authorName}: ${c.content}`).join('; ')
-            }))
+        const historicalMoments = sortedMoments.value.slice(0, 30).map(m => ({
+            id: m.id,
+            authorName: m.authorId === 'user' ? settingsStore.personalization.userProfile.name : (chatStore.chats[m.authorId]?.name || '神秘人'),
+            content: m.content
+        }))
 
-        // 构造角色信息列表（使用完整人设，包括作者本人）
         const charInfos = allCharIds.map(id => {
             const chat = chatStore.chats[id]
             return {
                 id,
                 name: chat.name,
-                persona: chat.prompt, // Full persona from chatStore
+                persona: chat.prompt,
+                recentChats: (chat.msgs || []).slice(-10).map(m => m.content).join(' '),
                 worldContext: (chat.tags || []).join(', ')
             }
-        })
-        
-        // Add user's persona so AI knows who the user is
-        const userProfile = settingsStore.personalization.userProfile
-        charInfos.push({
-            id: 'user',
-            name: userProfile.name || '我',
-            persona: settingsStore.personalization.userPersona || `我的名字是${userProfile.name}`,
-            worldContext: ''
-        })
+        }).filter(char => canInteractWithMoment(moment, char.id))
 
-        // 构造当前朋友圈的上下文（包括已有的评论）
-        const currentMomentContext = {
-            authorName: moment.authorId === 'user' ? settingsStore.personalization.userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
+        const userProfile = {
+            name: settingsStore.personalization.userProfile.name,
+            signature: settingsStore.personalization.userProfile.signature,
+            persona: settingsStore.personalization.userProfile.persona || '一位普通的用户',
+            pinnedMoments: moments.value.filter(m => topMoments.value.includes(m.id)).slice(0, 3)
+        }
+
+        const currentContext = {
+            authorName: moment.authorId === 'user' ? userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
             content: moment.content,
+            location: moment.location || '',
             visualContext: moment.imageDescriptions.join('; '),
-            existingComments: moment.comments.map(c => ({
-                authorName: c.authorName,
-                content: c.content,
-                replyTo: c.replyTo
-            }))
+            existingComments: moment.comments.map(c => ({ authorName: c.authorName, content: c.content, replyTo: c.replyTo }))
         }
 
         try {
-            // 生成批量互动（包含现有角色 + 虚拟NPC）
-            const interactions = await generateBatchInteractions(
-                currentMomentContext,
-                charInfos,
-                historicalMoments
-            )
-            
+            moment.baseLikeCount += Math.floor(Math.random() * 30) + 5
+            const interactions = await generateBatchInteractions(currentContext, charInfos, historicalMoments, userProfile)
+
             for (const interaction of interactions) {
-                // 模拟人类交互的随机延迟
-                await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000))
-                
-                // 处理虚拟NPC头像 (Virtual Avatar)
-                let avatarUrl = ''
+                await new Promise(r => setTimeout(r, 800 + Math.random() * 1500))
+
+                let avatarUrl = interaction.authorAvatar || ''
                 if (interaction.isVirtual) {
-                    avatarUrl = `https://api.dicebear.com/7.x/notionists/svg?seed=${interaction.authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`
+                    const catAvatars = ['/avatars/小猫举爪.jpg', '/avatars/小猫星星眼.jpg', '/avatars/小猫开心.jpg', '/avatars/小猫挥手.jpg']
+                    avatarUrl = catAvatars[Math.floor(Math.random() * catAvatars.length)]
                 }
 
                 if (interaction.type === 'like') {
-                    addLike(momentId, interaction.authorName)
+                    addLike(momentId, interaction.authorId || interaction.authorName, interaction.authorName)
                 } else if (interaction.type === 'comment' && interaction.content) {
                     addComment(momentId, {
-                        authorId: interaction.authorId || 'virtual-' + Date.now(),
+                        authorId: interaction.authorId,
                         authorName: interaction.authorName,
                         authorAvatar: avatarUrl,
                         content: interaction.content,
@@ -507,79 +343,109 @@ export const useMomentsStore = defineStore('moments', () => {
                     })
                 }
             }
-            
-            // Toast: Success
             chatStore.triggerToast('召唤成功！', 'success')
         } catch (e) {
-            console.error('[MomentsStore] Batch interactions failed', e)
-            chatStore.triggerToast('召唤失败: ' + e.message, 'error')
+            console.error('[MomentsStore] Summon failed', e)
+        } finally {
+            summoningIds.value.delete(momentId)
         }
     }
 
-    function saveConfig(newConfig) {
-        config.value = { ...config.value, ...newConfig }
-        localStorage.setItem('wechat_moments_config', JSON.stringify(config.value))
-        
-        // Restart timer if interval changed
-        startAutoGeneration()
+    async function triggerCommentReply(momentId, userComment) {
+        const moment = moments.value.find(m => m.id === momentId)
+        if (!moment) return
+
+        const potentialRepliers = []
+        if (moment.authorId !== 'user' && chatStore.chats[moment.authorId]) {
+            potentialRepliers.push({ id: moment.authorId, priority: 'high', char: chatStore.chats[moment.authorId] })
+        }
+
+        if (potentialRepliers.length === 0) return
+
+        const replier = potentialRepliers[0]
+        if (Math.random() > 0.8) return
+
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000))
+
+        try {
+            const reply = await generateReplyToComment({
+                name: replier.char.name,
+                persona: replier.char.prompt,
+                worldContext: (replier.char.tags || []).join(', ')
+            }, {
+                authorName: moment.authorId === 'user' ? settingsStore.personalization.userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
+                content: moment.content,
+                visualContext: moment.imageDescriptions.join('; ')
+            }, {
+                authorName: settingsStore.personalization.userProfile.name,
+                content: userComment.content
+            })
+
+            if (reply) {
+                addComment(momentId, {
+                    authorId: replier.id,
+                    authorName: replier.char.name,
+                    content: reply,
+                    replyTo: userComment.authorName || '用户'
+                })
+            }
+        } catch (e) { /* silent */ }
     }
 
-    // --- Auto Generate Loop ---
-    // (Managed by startAutoGeneration below)
-
-    // --- Lifecycle / Persistence ---
+    // Auto Gen Loop
     let autoGenTimer = null
     function startAutoGeneration() {
         if (autoGenTimer) clearInterval(autoGenTimer)
-        
         const intervalMs = config.value.autoGenerateInterval * 60 * 1000
         if (intervalMs <= 0) return
-
         autoGenTimer = setInterval(() => {
-            console.log('[Moments] Triggering scheduled AI check...')
-            if (Math.random() > 0.5) { // Chance-based to feel more natural
-                batchGenerateAIMoments(1)
-            }
+            if (Math.random() > 0.6) batchGenerateAIMoments(1)
         }, intervalMs)
     }
 
-    // Start on store init
-    startAutoGeneration()
+    async function batchGenerateAIMoments(count = 1, specificCharacters = null) {
+        const candidates = specificCharacters || Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.length === 0 || config.value.enabledCharacters.includes(id))
+        if (candidates.length === 0) return
 
-    // --- Notifications Helper ---
+        const chars = candidates.map(id => ({ id, name: chatStore.chats[id].name, persona: chatStore.chats[id].prompt, recentChats: '' }))
+        try {
+            const momentsData = await generateBatchMomentsWithInteractions({
+                characters: chars,
+                worldContext: '',
+                userProfile: { name: settingsStore.personalization.userProfile.name, signature: settingsStore.personalization.userProfile.signature },
+                count
+            })
+
+            for (const data of momentsData) {
+                const moment = addMoment({ authorId: data.authorId, content: data.content, location: data.location, images: data.images }, { skipAutoInteraction: true })
+                if (data.interactions) {
+                    for (const inter of data.interactions) {
+                        if (inter.type === 'like') addLike(moment.id, inter.authorName)
+                        else if (inter.type === 'comment') addComment(moment.id, { authorName: inter.authorName, content: inter.content, isVirtual: inter.isVirtual })
+                    }
+                }
+            }
+        } catch (e) { console.error(e) }
+    }
+
     function addNotification(payload) {
-        notifications.value.unshift({
-            id: 'n-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-            isRead: false,
-            ...payload
-        })
+        notifications.value.unshift({ id: 'n-' + Date.now(), isRead: false, ...payload })
     }
 
     function markNotificationsRead() {
         notifications.value.forEach(n => n.isRead = true)
     }
 
+    startAutoGeneration()
+
     return {
-        moments,
-        notifications,
+        moments, notifications, topMoments, summoningIds,
         unreadCount: computed(() => notifications.value.filter(n => !n.isRead).length),
-        config,
-        sortedMoments,
-        addMoment,
-        updateMoment,
-        deleteMoment,
-        clearAllMoments,
-        clearCharacterMoments,
-        addLike,
-        removeLike,
-        addComment,
-        deleteComment,
-        triggerSingleCharacterMoment,
-        batchGenerateAIMoments,
-        triggerAIInteractions,
-        saveConfig,
-        startAutoGeneration,
-        addNotification,
-        markNotificationsRead
+        config, sortedMoments,
+        addMoment, updateMoment, deleteMoment, toggleTopMoment,
+        clearAllMoments, clearCharacterMoments,
+        addLike, removeLike, addComment, deleteComment,
+        triggerAIInteractions, markNotificationsRead,
+        clearMyMoments, startAutoGeneration
     }
 })

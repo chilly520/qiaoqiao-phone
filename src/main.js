@@ -29,22 +29,22 @@ app.config.errorHandler = (err, vm, info) => {
     logger.error('Vue Error', { error: err.message, stack: err.stack, info })
 }
 
-// --- Navigation Logging ---
-router.afterEach((to, from) => {
-    if (from.path !== to.path) {
-        logger.sys(`页面跳转: ${from.path} -> ${to.path}`, { 
-            name: to.name,
-            params: to.params,
-            query: to.query
-        })
-    }
-})
+// --- Navigation Logging (Disabled for noise reduction) ---
+// router.afterEach((to, from) => {
+//     if (from.path !== to.path) {
+//         logger.sys(`页面跳转: ${from.path} -> ${to.path}`, { 
+//             name: to.name,
+//             params: to.params,
+//             query: to.query
+//         })
+//     }
+// })
 
-// Initial System Info
-logger.sys('系统启动', {
-    userAgent: navigator.userAgent,
-    screen: `${window.screen.width}x${window.screen.height}`,
-    platform: navigator.platform
-})
+// Initial System Info (Disabled for noise reduction)
+// logger.sys('系统启动', {
+//     userAgent: navigator.userAgent,
+//     screen: `${window.screen.width}x${window.screen.height}`,
+//     platform: navigator.platform
+// })
 
 app.mount('#app')

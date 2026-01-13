@@ -3,12 +3,14 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore, getRandomAvatar } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useMomentsStore } from '../../stores/momentsStore'
 import ChatWindow from './ChatWindow.vue'
 import MomentsView from './MomentsView.vue'
 
 const router = useRouter()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+const momentsStore = useMomentsStore()
 
 const userProfile = computed(() => settingsStore.personalization.userProfile)
 
@@ -155,15 +157,15 @@ const openContextMenu = (type, item, event) => {
     // If touch event, use touches[0]
     const clientX = event.touches ? event.touches[0].clientX : event.clientX
     const clientY = event.touches ? event.touches[0].clientY : event.clientY
-    
+
     // Boundary check (keep within screen)
     let x = clientX
     let y = clientY
     // Add simple offset
-    
+
     contextMenuPos.value = { x, y }
     contextMenuTarget.value = { type, id: item.id }
-    
+
     if (type === 'chat') {
         const isPinned = item.isPinned
         contextMenuOptions.value = [
@@ -185,17 +187,17 @@ const handleContextAction = (option) => {
         confirmMessage.value = '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)'
         showConfirmModal.value = true
         confirmCallback.value = () => {
-             chatStore.clearHistory(id)
-             showConfirmModal.value = false
-             chatStore.triggerToast('已移除', 'success')
+            chatStore.clearHistory(id)
+            showConfirmModal.value = false
+            chatStore.triggerToast('已移除', 'success')
         }
     } else if (option.action === 'delete') {
         confirmMessage.value = '确定要删除该好友吗？将同时删除所有记录。'
         showConfirmModal.value = true
         confirmCallback.value = () => {
-             chatStore.deleteChat(id)
-             showConfirmModal.value = false
-             chatStore.triggerToast('已删除', 'success')
+            chatStore.deleteChat(id)
+            showConfirmModal.value = false
+            chatStore.triggerToast('已删除', 'success')
         }
     }
     showContextMenu.value = false
@@ -223,49 +225,45 @@ const confirmAddFriend = () => {
     if (!newFriendName.value.trim()) return
     const name = newFriendName.value
     showAddFriendModal.value = false
-    
+
     const newChat = chatStore.createChat(name)
     chatStore.currentChatId = newChat.id
     newChat.isNew = true
 }
 
 const openChat = (chatId) => {
-  // Prevent ghost click after long press
-  if (isLongPressTriggered) {
-      isLongPressTriggered = false
-      return
-  }
+    // Prevent ghost click after long press
+    if (isLongPressTriggered) {
+        isLongPressTriggered = false
+        return
+    }
 
-  chatStore.currentChatId = chatId
-  // Ensure it shows in chat list when opened from contacts
-  chatStore.updateCharacter(chatId, { inChatList: true })
-  
-  // Guard: Only push if we aren't already in a chat state
-  if (!history.state?.chatOpen) {
-      history.pushState({ ...history.state, chatOpen: true }, '')
-  }
-}
+    chatStore.currentChatId = chatId
+    // Ensure it shows in chat list when opened from contacts
+    chatStore.updateCharacter(chatId, { inChatList: true })
 
-const openProfileFromChat = (charId) => {
-    // DO NOT set currentChatId to null, layering Profile over Chat
-    momentsInitialProfileId.value = charId
-    showMoments.value = true
-    // Guard: Only push if profile isn't already marked open in history
-    if (!history.state?.profileOpen) {
-        history.pushState({ ...history.state, profileOpen: true }, '')
+    // Guard: Only push if we aren't already in a chat state
+    const currentState = history.state || {}
+    if (!currentState.chatOpen) {
+        history.pushState({ ...currentState, chatOpen: true }, '')
     }
 }
 
+const openProfileFromChat = (charId) => {
+    // Navigate to dedicated Character Profile View
+    router.push({ name: 'character-profile', params: { charId } })
+}
+
 const handleChatBack = () => {
-    console.log('[WeChatApp] handleChatBack called', { 
+    console.log('[WeChatApp] handleChatBack called', {
         historyState: history.state,
-        currentChatId: chatStore.currentChatId 
+        currentChatId: chatStore.currentChatId
     })
-    
+
     // Directly close the chat
     console.log('[WeChatApp] Closing chat directly')
     chatStore.currentChatId = null
-    
+
     // If we pushed a history state, also clean it up
     if (history.state?.chatOpen) {
         console.log('[WeChatApp] Also going back to clean history')
@@ -275,28 +273,28 @@ const handleChatBack = () => {
 
 const handlePopState = (event) => {
     const state = event.state || {}
-    console.log('[WeChatApp] handlePopState', { 
-        state, 
-        showMoments: showMoments.value, 
-        currentChatId: chatStore.currentChatId 
+    console.log('[WeChatApp] handlePopState', {
+        state,
+        showMoments: showMoments.value,
+        currentChatId: chatStore.currentChatId
     })
-    
+
     // 1. Check Profile/Moments Layer
     if (showMoments.value && !state.profileOpen) {
         console.log('[WeChatApp] Closing moments')
         showMoments.value = false
         momentsInitialProfileId.value = null
     }
-    
+
     // 2. Check Chat Window Layer
     // Only close chat if chatOpen is explicitly missing from state
     if (chatStore.currentChatId && !state.chatOpen) {
         console.log('[WeChatApp] Closing chat window')
         chatStore.currentChatId = null
     } else {
-        console.log('[WeChatApp] NOT closing chat', { 
-            hasChatId: !!chatStore.currentChatId, 
-            stateChatOpen: state.chatOpen 
+        console.log('[WeChatApp] NOT closing chat', {
+            hasChatId: !!chatStore.currentChatId,
+            stateChatOpen: state.chatOpen
         })
     }
 }
@@ -307,12 +305,12 @@ const navigateToSettings = () => {
 
 // 初始化演示数据
 onMounted(() => {
-  if (chatStore.chatList.length === 0) {
-    chatStore.initDemoData()
-  }
+    if (chatStore.chatList.length === 0) {
+        chatStore.initDemoData()
+    }
 
-  
-  window.addEventListener('popstate', handlePopState)
+
+    window.addEventListener('popstate', handlePopState)
 })
 
 onUnmounted(() => {
@@ -327,7 +325,7 @@ const goBack = () => {
         showMoments: showMoments.value,
         currentChatId: chatStore.currentChatId
     })
-    
+
     // Close any open overlays first
     if (showMoments.value) {
         console.log('[WeChatApp] Closing moments')
@@ -335,13 +333,13 @@ const goBack = () => {
         momentsInitialProfileId.value = null
         return
     }
-    
+
     if (chatStore.currentChatId) {
         console.log('[WeChatApp] Closing chat')
         chatStore.currentChatId = null
         return
     }
-    
+
     // If no overlays are open, go back to home
     console.log('[WeChatApp] Navigating to home')
     router.back()
@@ -349,269 +347,303 @@ const goBack = () => {
 </script>
 
 <template>
-  <div class="wechat-app w-full h-full bg-gray-100 flex flex-col relative" @click="showAddMenu = false">
+    <div class="wechat-app w-full h-full bg-gray-100 flex flex-col relative" @click="showAddMenu = false">
 
-    <!-- Chat Window Overlay -->
-    <ChatWindow 
-      v-if="chatStore.currentChatId" 
-      class="absolute inset-0 z-50"
-      @back="handleChatBack"
-      @show-profile="openProfileFromChat"
-    />
+        <!-- Chat Window Overlay -->
+        <ChatWindow v-if="chatStore.currentChatId" class="absolute inset-0 z-50" @back="handleChatBack"
+            @show-profile="openProfileFromChat" />
 
-    <!-- Context Menu (Restored) -->
-    <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false">
-        <!-- Backdrop for click outside -->
-        <div class="absolute inset-0 bg-transparent"></div>
-        <div 
-            class="absolute bg-[#4c4c4c] rounded-lg shadow-xl py-1 min-w-[140px] animate-scale-up origin-top-left"
-            :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }"
-            @click.stop
-        >
-            <div 
-                v-for="(option, index) in contextMenuOptions" 
-                :key="index"
-                class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f] last:border-none"
-                @click="handleContextAction(option)"
-            >
-                <i :class="['fa-solid', option.icon, option.danger ? 'text-red-400' : 'text-white']"></i>
-                <span :class="['text-sm', option.danger ? 'text-red-400' : 'text-white']">{{ option.label }}</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Confirm Modal -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 animate-fade-in" @click.self="showConfirmModal = false">
-        <div class="bg-white w-[80%] max-w-[300px] rounded-lg overflow-hidden shadow-xl animate-scale-up">
-            <div class="p-6 text-center">
-                <div class="text-base text-gray-800 font-medium mb-6">{{ confirmMessage }}</div>
-                <div class="flex gap-4 justify-center">
-                    <button class="px-6 py-2 rounded bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform" @click="showConfirmModal = false">取消</button>
-                    <button class="px-6 py-2 rounded bg-red-500 text-white font-bold active:scale-95 transition-transform" @click="confirmAction">删除</button>
+        <!-- Context Menu (Restored) -->
+        <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false">
+            <!-- Backdrop for click outside -->
+            <div class="absolute inset-0 bg-transparent"></div>
+            <div class="absolute bg-[#4c4c4c] rounded-lg shadow-xl py-1 min-w-[140px] animate-scale-up origin-top-left"
+                :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }" @click.stop>
+                <div v-for="(option, index) in contextMenuOptions" :key="index"
+                    class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f] last:border-none"
+                    @click="handleContextAction(option)">
+                    <i :class="['fa-solid', option.icon, option.danger ? 'text-red-400' : 'text-white']"></i>
+                    <span :class="['text-sm', option.danger ? 'text-red-400' : 'text-white']">{{ option.label }}</span>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Profile Edit Modal -->
-    <div v-if="showProfileEdit" class="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 animate-fade-in" @click.self="showProfileEdit = false">
-        <div class="bg-white w-[85%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl animate-scale-up">
-            <div class="p-5">
-                <div class="text-center font-bold text-gray-800 mb-6">修改个人信息</div>
-                
-                <div class="flex flex-col items-center gap-4 mb-6">
-                    <div class="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer" @click="triggerProfileAvatarUpload">
-                        <img :src="profileForm.avatar" class="w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <i class="fa-solid fa-camera text-white"></i>
+        <!-- Confirm Modal -->
+        <div v-if="showConfirmModal"
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 animate-fade-in"
+            @click.self="showConfirmModal = false">
+            <div class="bg-white w-[80%] max-w-[300px] rounded-lg overflow-hidden shadow-xl animate-scale-up">
+                <div class="p-6 text-center">
+                    <div class="text-base text-gray-800 font-medium mb-6">{{ confirmMessage }}</div>
+                    <div class="flex gap-4 justify-center">
+                        <button
+                            class="px-6 py-2 rounded bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform"
+                            @click="showConfirmModal = false">取消</button>
+                        <button
+                            class="px-6 py-2 rounded bg-red-500 text-white font-bold active:scale-95 transition-transform"
+                            @click="confirmAction">删除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Edit Modal -->
+        <div v-if="showProfileEdit"
+            class="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 animate-fade-in"
+            @click.self="showProfileEdit = false">
+            <div class="bg-white w-[85%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl animate-scale-up">
+                <div class="p-5">
+                    <div class="text-center font-bold text-gray-800 mb-6">修改个人信息</div>
+
+                    <div class="flex flex-col items-center gap-4 mb-6">
+                        <div class="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer"
+                            @click="triggerProfileAvatarUpload">
+                            <img :src="profileForm.avatar" class="w-full h-full object-cover">
+                            <div
+                                class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <i class="fa-solid fa-camera text-white"></i>
+                            </div>
+                            <input type="file" ref="profileFileInput" class="hidden" accept="image/*"
+                                @change="handleProfileAvatarChange">
                         </div>
-                        <input type="file" ref="profileFileInput" class="hidden" accept="image/*" @change="handleProfileAvatarChange">
+                        <div class="flex gap-2">
+                            <button class="text-xs text-blue-500"
+                                @click="profileForm.avatar = getRandomAvatar()">随机换一张</button>
+                            <button class="text-xs text-blue-500" @click="promptProfileAvatarUrl">URL上传</button>
+                        </div>
                     </div>
-                    <div class="flex gap-2">
-                        <button class="text-xs text-blue-500" @click="profileForm.avatar = getRandomAvatar()">随机换一张</button>
-                        <button class="text-xs text-blue-500" @click="promptProfileAvatarUrl">URL上传</button>
-                    </div>
-                </div>
 
-                <div class="space-y-4">
-                    <div class="border-b border-gray-100 py-2">
-                        <label class="text-[10px] text-gray-400 block mb-1">名字</label>
-                        <input v-model="profileForm.name" type="text" class="w-full text-base font-bold outline-none placeholder-gray-300 text-black" placeholder="点击设置名字">
+                    <div class="space-y-4">
+                        <div class="border-b border-gray-100 py-2">
+                            <label class="text-[10px] text-gray-400 block mb-1">名字</label>
+                            <input v-model="profileForm.name" type="text"
+                                class="w-full text-base font-bold outline-none placeholder-gray-300 text-black"
+                                placeholder="点击设置名字">
+                        </div>
+                        <div class="border-b border-gray-100 py-2">
+                            <label class="text-[10px] text-gray-400 block mb-1">微信号</label>
+                            <input v-model="profileForm.wechatId" type="text"
+                                class="w-full text-base outline-none text-gray-600 font-mono" placeholder="点击设置微信号">
+                        </div>
                     </div>
-                    <div class="border-b border-gray-100 py-2">
-                        <label class="text-[10px] text-gray-400 block mb-1">微信号</label>
-                        <input v-model="profileForm.wechatId" type="text" class="w-full text-base outline-none text-gray-600 font-mono" placeholder="点击设置微信号">
-                    </div>
-                </div>
 
-                <div class="flex gap-3 mt-8">
-                    <button class="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform" @click="showProfileEdit = false">取消</button>
-                    <button class="flex-1 py-3 rounded-lg bg-[#07c160] text-white font-bold active:scale-95 transition-transform" @click="saveProfile">保存</button>
+                    <div class="flex gap-3 mt-8">
+                        <button
+                            class="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform"
+                            @click="showProfileEdit = false">取消</button>
+                        <button
+                            class="flex-1 py-3 rounded-lg bg-[#07c160] text-white font-bold active:scale-95 transition-transform"
+                            @click="saveProfile">保存</button>
+                    </div>
                 </div>
             </div>
         </div>
+
+        <!-- Moments View (New) -->
+        <MomentsView v-if="showMoments" class="fixed inset-0 z-[99999]"
+            style="top: 0; left: 0; width: 100vw; height: 100vh; background-color: #ededed;"
+            :initial-profile-id="momentsInitialProfileId" @back="goBack" />
+
+        <!-- Main App Content (Hide when overlays are open to prevent misalignment) -->
+        <template v-if="!chatStore.currentChatId && !showMoments">
+            <!-- Add Friend Modal -->
+            <div v-if="showAddFriendModal"
+                class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in"
+                @click.self="showAddFriendModal = false">
+                <div class="bg-white w-[85%] max-w-[320px] rounded-lg overflow-hidden shadow-xl">
+                    <div class="p-6">
+                        <div class="text-lg font-bold text-gray-900 mb-2">添加新朋友</div>
+                        <div class="text-xs text-gray-500 mb-4">创建后还可以为Ta设置头像和人设哦</div>
+                        <input type="text" v-model="newFriendName" placeholder="请输入名字"
+                            class="w-full h-10 border-b-2 border-green-500 outline-none text-base bg-transparent mb-6 placeholder-gray-300"
+                            @keydown.enter="confirmAddFriend" autoFocus>
+                        <div class="flex justify-end gap-4">
+                            <button class="text-gray-500 font-medium text-sm"
+                                @click="showAddFriendModal = false">取消</button>
+                            <button
+                                class="bg-[#07c160] text-white px-6 py-2 rounded font-medium text-sm active:bg-[#06ad56]"
+                                @click="confirmAddFriend">确定</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Header -->
+            <div
+                class="h-[44px] bg-gray-100 flex items-center justify-between px-4 border-b border-gray-300 z-10 shrink-0 select-none">
+                <div class="flex items-center gap-1 cursor-pointer w-20" @click="goBack" v-if="currentTab === 'chat'">
+                    <i class="fa-solid fa-chevron-left text-black"></i>
+                    <span class="font-bold text-base text-black">微信</span>
+                </div>
+                <div v-else class="font-bold text-base flex-1 text-center relative text-black">
+                    <span v-if="currentTab !== 'chat'"
+                        class="absolute left-4 top-1/2 -translate-y-1/2 cursor-pointer font-normal" @click="goBack">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </span>
+                    {{ currentTab === 'contacts' ? '通讯录' : (currentTab === 'discover' ? '发现' : (currentTab === 'me' ? ''
+                        : '')) }}
+                </div>
+
+                <div class="flex gap-4 text-base items-center w-20 justify-end"
+                    v-if="currentTab === 'chat' || currentTab === 'contacts'">
+                    <i class="fa-solid fa-magnifying-glass text-black cursor-pointer p-2"
+                        @click="showSearch = !showSearch"></i>
+                    <div class="relative flex items-center">
+                        <i class="fa-solid fa-plus cursor-pointer text-black text-lg" @click.stop="toggleAddMenu"></i>
+                        <!-- Add Menu Dropdown -->
+                        <div v-if="showAddMenu"
+                            class="absolute top-9 right-[-8px] w-36 bg-[#4c4c4c] rounded-lg shadow-xl z-50 py-1"
+                            @click.stop>
+                            <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f]"
+                                @click="handleAddAction('group')">
+                                <i class="fa-solid fa-comment-dots text-white"></i>
+                                <span class="text-white text-sm">发起群聊</span>
+                            </div>
+                            <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer"
+                                @click="handleAddAction('friend')">
+                                <i class="fa-solid fa-user-plus text-white"></i>
+                                <span class="text-white text-sm">添加朋友</span>
+                            </div>
+                            <div
+                                class="absolute -top-1 right-3 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#4c4c4c]">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div v-else class="w-20"></div>
+            </div>
+
+            <!-- MAIN CONTENT AREA -->
+            <div class="flex-1 overflow-y-auto bg-white relative">
+                <!-- Tabs (chatList, contacts, discover, me) ... keep original logic -->
+                <div v-if="currentTab === 'chat'" class="h-full">
+                    <!-- Search Bar -->
+                    <div v-if="showSearch" class="bg-gray-100 px-2 pb-2 -mt-1 border-b border-gray-200">
+                        <div class="bg-white rounded-lg flex items-center px-3 py-1.5">
+                            <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
+                            <input v-model="searchQuery" type="text" placeholder="搜索"
+                                class="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400">
+                            <i v-if="searchQuery" class="fa-solid fa-xmark text-gray-400 ml-2 cursor-pointer"
+                                @click="searchQuery = ''"></i>
+                        </div>
+                    </div>
+
+                    <div v-for="chat in filteredChatList" :key="chat.id"
+                        class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
+                        :class="chat.isPinned ? 'bg-gray-50' : ''" @click="openChat(chat.id)"
+                        @contextmenu.prevent="openContextMenu('chat', chat, $event)"
+                        @touchstart="startLongPress('chat', chat, $event)" @touchend="clearLongPress"
+                        @touchmove="handleTouchMove">
+                        <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
+                        <div class="relative w-12 h-12 mr-3">
+                            <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
+                                class="w-full h-full rounded-lg object-cover bg-gray-200">
+                            <div v-if="chat.unreadCount > 0"
+                                class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
+                                {{ chat.unreadCount > 99 ? '99+' : chat.unreadCount }}
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
+                                <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
+                                    Date(chat.lastMsg.timestamp).toLocaleTimeString([], {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    }) : '' }}</span>
+                            </div>
+                            <div class="text-xs text-gray-500 truncate">
+                                {{ chat.lastMsg ? ensureString(chat.lastMsg.content) : '暂无消息' }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- ... keep other tabs same as original ... -->
+                <div v-if="currentTab === 'contacts'" class="bg-[#ededed] min-h-full">
+                    <div class="bg-white mb-2">
+                        <div class="px-4 py-2 bg-gray-50 text-xs text-gray-500 font-bold flex justify-between items-center cursor-pointer"
+                            @click="expandFriends = !expandFriends">
+                            <span>好友</span>
+                            <i class="fa-solid fa-chevron-down transition-transform duration-200"
+                                :class="!expandFriends ? '-rotate-90' : ''"></i>
+                        </div>
+                        <div v-if="expandFriends">
+                            <div v-for="chat in chatStore.contactList" :key="chat.id"
+                                class="flex items-center px-4 py-2 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select"
+                                @click="openChat(chat.id)"
+                                @contextmenu.prevent="openContextMenu('contact', chat, $event)"
+                                @touchstart="startLongPress('contact', chat, $event)" @touchend="clearLongPress"
+                                @touchmove="handleTouchMove">
+                                <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
+                                    class="w-9 h-9 rounded bg-gray-200 mr-3">
+                                <span class="text-base text-gray-900">{{ chat.name }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Simplified discover/me for brevity, assuming you have original source -->
+                <div v-if="currentTab === 'discover'" class="bg-[#ededed] min-h-full pt-2">
+                    <!-- Moments Entry -->
+                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                        @click="() => {
+                            showMoments = true;
+                            const currentState = history.state || {};
+                            if (!currentState.profileOpen) history.pushState({ ...currentState, profileOpen: true }, '');
+                        }">
+                        <i class="fa-solid fa-camera-retro text-orange-400 text-xl"></i>
+                        <span class="text-base text-gray-900 flex-1">朋友圈</span>
+                        <div v-if="momentsStore.unreadCount > 0" class="w-2 h-2 bg-red-500 rounded-full mr-1"></div>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
+                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                        @click="router.push('/favorites')">
+                        <i class="fa-solid fa-star text-yellow-400 text-xl"></i>
+                        <span class="text-base text-gray-900 flex-1">收藏</span>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
+                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                        @click="router.push('/worldbook')">
+                        <i class="fa-solid fa-book-journal-whills text-purple-500 text-xl"></i>
+                        <span class="text-base text-gray-900 flex-1">世界书</span>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
+                </div>
+                <div v-if="currentTab === 'me'" class="bg-[#ededed] min-h-full">
+                    <div class="bg-white pt-12 pb-8 px-6 flex items-center gap-4 mb-2 active:bg-gray-50 transition-colors cursor-pointer"
+                        @click="openProfileEdit">
+                        <div class="w-16 h-16 rounded overflow-hidden bg-gray-200 shadow-sm border border-gray-100">
+                            <img :src="userProfile.avatar" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-bold text-xl text-gray-900 mb-1">{{ userProfile.name }}</div>
+                            <div class="text-sm text-gray-500">微信号: {{ userProfile.wechatId }}</div>
+                        </div>
+                        <i class="fa-solid fa-qrcode text-gray-300 mr-2"></i>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
+                    <div class="bg-white px-4 py-3 flex items-center gap-3 mt-2 cursor-pointer active:bg-gray-50"
+                        @click="navigateToSettings">
+                        <i class="fa-solid fa-gear text-blue-500 text-xl"></i>
+                        <span class="text-base text-gray-900 flex-1">设置</span>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Tab Bar -->
+            <div
+                class="h-[50px] bg-[#f7f7f7] border-t border-gray-200 flex items-center justify-around text-[10px] pb-1 shrink-0 z-10">
+                <div v-for="tab in ['chat', 'contacts', 'discover', 'me']" :key="tab"
+                    class="flex flex-col items-center gap-1 cursor-pointer w-full h-full justify-center"
+                    :class="currentTab === tab ? 'text-[#07c160]' : 'text-gray-500'" @click="currentTab = tab">
+                    <i class="text-xl"
+                        :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
+                    <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
+                        }}</span>
+                </div>
+            </div>
+        </template>
     </div>
-
-    <!-- Moments View (New) -->
-    <MomentsView 
-        v-if="showMoments"
-        class="absolute inset-0 z-[10000] animate-slide-in-right"
-        :initial-profile-id="momentsInitialProfileId"
-        @back="goBack"
-    />
-
-    <!-- Main App Content (Hide when overlays are open to prevent misalignment) -->
-    <template v-if="!chatStore.currentChatId && !showMoments">
-        <!-- Add Friend Modal -->
-        <div v-if="showAddFriendModal" class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in" @click.self="showAddFriendModal = false">
-            <div class="bg-white w-[85%] max-w-[320px] rounded-lg overflow-hidden shadow-xl">
-                <div class="p-6">
-                    <div class="text-lg font-bold text-gray-900 mb-2">添加新朋友</div>
-                    <div class="text-xs text-gray-500 mb-4">创建后还可以为Ta设置头像和人设哦</div>
-                    <input 
-                        type="text" 
-                        v-model="newFriendName" 
-                        placeholder="请输入名字" 
-                        class="w-full h-10 border-b-2 border-green-500 outline-none text-base bg-transparent mb-6 placeholder-gray-300"
-                        @keydown.enter="confirmAddFriend"
-                        autoFocus
-                    >
-                    <div class="flex justify-end gap-4">
-                        <button class="text-gray-500 font-medium text-sm" @click="showAddFriendModal = false">取消</button>
-                        <button class="bg-[#07c160] text-white px-6 py-2 rounded font-medium text-sm active:bg-[#06ad56]" @click="confirmAddFriend">确定</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Header -->
-        <div class="h-[44px] bg-gray-100 flex items-center justify-between px-4 border-b border-gray-300 z-10 shrink-0 select-none">
-            <div class="flex items-center gap-1 cursor-pointer w-20" @click="goBack" v-if="currentTab === 'chat'">
-                <i class="fa-solid fa-chevron-left text-black"></i>
-                <span class="font-bold text-base text-black">微信</span>
-            </div>
-            <div v-else class="font-bold text-base flex-1 text-center relative text-black">
-                <span v-if="currentTab !== 'chat'" class="absolute left-4 top-1/2 -translate-y-1/2 cursor-pointer font-normal" @click="goBack">
-                    <i class="fa-solid fa-chevron-left"></i>
-                </span>
-                {{ currentTab === 'contacts' ? '通讯录' : (currentTab === 'discover' ? '发现' : (currentTab === 'me' ? '' : '')) }}
-            </div>
-            
-            <div class="flex gap-4 text-base items-center w-20 justify-end" v-if="currentTab === 'chat' || currentTab === 'contacts'">
-                <i class="fa-solid fa-magnifying-glass text-black cursor-pointer p-2" @click="showSearch = !showSearch"></i>
-                <div class="relative flex items-center">
-                    <i class="fa-solid fa-plus cursor-pointer text-black text-lg" @click.stop="toggleAddMenu"></i>
-                    <!-- Add Menu Dropdown -->
-                    <div v-if="showAddMenu" class="absolute top-9 right-[-8px] w-36 bg-[#4c4c4c] rounded-lg shadow-xl z-50 py-1" @click.stop>
-                        <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f]" @click="handleAddAction('group')">
-                            <i class="fa-solid fa-comment-dots text-white"></i>
-                            <span class="text-white text-sm">发起群聊</span>
-                        </div>
-                        <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer" @click="handleAddAction('friend')">
-                            <i class="fa-solid fa-user-plus text-white"></i>
-                            <span class="text-white text-sm">添加朋友</span>
-                        </div>
-                        <div class="absolute -top-1 right-3 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#4c4c4c]"></div>
-                    </div>
-                </div>
-            </div>
-            <div v-else class="w-20"></div>
-        </div>
-
-        <!-- MAIN CONTENT AREA -->
-        <div class="flex-1 overflow-y-auto bg-white relative">
-            <!-- Tabs (chatList, contacts, discover, me) ... keep original logic -->
-            <div v-if="currentTab === 'chat'" class="h-full">
-                <!-- Search Bar -->
-                <div v-if="showSearch" class="bg-gray-100 px-2 pb-2 -mt-1 border-b border-gray-200">
-                    <div class="bg-white rounded-lg flex items-center px-3 py-1.5">
-                        <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
-                        <input v-model="searchQuery" type="text" placeholder="搜索" class="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400">
-                        <i v-if="searchQuery" class="fa-solid fa-xmark text-gray-400 ml-2 cursor-pointer" @click="searchQuery = ''"></i>
-                    </div>
-                </div>
-
-                <div 
-                  v-for="chat in filteredChatList" 
-                  :key="chat.id"
-                  class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
-                  :class="chat.isPinned ? 'bg-gray-50' : ''"
-                  @click="openChat(chat.id)"
-                  @contextmenu.prevent="openContextMenu('chat', chat, $event)"
-                  @touchstart="startLongPress('chat', chat, $event)"
-                  @touchend="clearLongPress"
-                  @touchmove="handleTouchMove"
-                >
-                   <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
-                   <div class="relative w-12 h-12 mr-3">
-                       <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`" class="w-full h-full rounded-lg object-cover bg-gray-200">
-                       <div v-if="chat.unreadCount > 0" class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
-                         {{ chat.unreadCount > 99 ? '99+' : chat.unreadCount }}
-                       </div>
-                   </div>
-                   <div class="flex-1 min-w-0">
-                       <div class="flex justify-between items-center mb-1">
-                           <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
-                           <span class="text-xs text-gray-400">{{ chat.lastMsg ? new Date(chat.lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '' }}</span>
-                       </div>
-                       <div class="text-xs text-gray-500 truncate">
-                           {{ chat.lastMsg ? ensureString(chat.lastMsg.content) : '暂无消息' }}
-                       </div>
-                   </div>
-                </div>
-            </div>
-            <!-- ... keep other tabs same as original ... -->
-             <div v-if="currentTab === 'contacts'" class="bg-[#ededed] min-h-full">
-                <div class="bg-white mb-2">
-                     <div class="px-4 py-2 bg-gray-50 text-xs text-gray-500 font-bold flex justify-between items-center cursor-pointer" @click="expandFriends = !expandFriends">
-                         <span>好友</span>
-                         <i class="fa-solid fa-chevron-down transition-transform duration-200" :class="!expandFriends ? '-rotate-90' : ''"></i>
-                     </div>
-                     <div v-if="expandFriends">
-                         <div 
-                           v-for="chat in chatStore.contactList" 
-                           :key="chat.id" 
-                           class="flex items-center px-4 py-2 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select" 
-                           @click="openChat(chat.id)"
-                           @contextmenu.prevent="openContextMenu('contact', chat, $event)"
-                           @touchstart="startLongPress('contact', chat, $event)"
-                           @touchend="clearLongPress"
-                           @touchmove="handleTouchMove"
-                        >
-                            <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`" class="w-9 h-9 rounded bg-gray-200 mr-3">
-                            <span class="text-base text-gray-900">{{ chat.name }}</span>
-                         </div>
-                     </div>
-                </div>
-            </div>
-            <!-- Simplified discover/me for brevity, assuming you have original source -->
-             <div v-if="currentTab === 'discover'" class="bg-[#ededed] min-h-full pt-2">
-                 <!-- Moments Entry -->
-                 <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50" @click="() => { showMoments = true; if(!history.state?.profileOpen) history.pushState({ ...history.state, profileOpen: true }, ''); }">
-                    <i class="fa-solid fa-camera-retro text-orange-400 text-xl"></i>
-                    <span class="text-base text-gray-900 flex-1">朋友圈</span>
-                    <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
-                </div>
-                 <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50" @click="router.push('/favorites')">
-                    <i class="fa-solid fa-star text-yellow-400 text-xl"></i>
-                    <span class="text-base text-gray-900 flex-1">收藏</span>
-                    <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
-                </div>
-                 <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50" @click="router.push('/worldbook')">
-                    <i class="fa-solid fa-book-journal-whills text-purple-500 text-xl"></i>
-                    <span class="text-base text-gray-900 flex-1">世界书</span>
-                    <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
-                </div>
-            </div>
-            <div v-if="currentTab === 'me'" class="bg-[#ededed] min-h-full">
-                <div class="bg-white pt-12 pb-8 px-6 flex items-center gap-4 mb-2 active:bg-gray-50 transition-colors cursor-pointer" @click="openProfileEdit">
-                     <div class="w-16 h-16 rounded overflow-hidden bg-gray-200 shadow-sm border border-gray-100">
-                         <img :src="userProfile.avatar" class="w-full h-full object-cover">
-                     </div>
-                     <div class="flex-1">
-                         <div class="font-bold text-xl text-gray-900 mb-1">{{ userProfile.name }}</div>
-                         <div class="text-sm text-gray-500">微信号: {{ userProfile.wechatId }}</div>
-                     </div>
-                     <i class="fa-solid fa-qrcode text-gray-300 mr-2"></i>
-                     <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
-                </div>
-                <div class="bg-white px-4 py-3 flex items-center gap-3 mt-2 cursor-pointer active:bg-gray-50" @click="navigateToSettings">
-                     <i class="fa-solid fa-gear text-blue-500 text-xl"></i>
-                     <span class="text-base text-gray-900 flex-1">设置</span>
-                     <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
-                </div>
-            </div>
-        </div>
-
-        <!-- Bottom Tab Bar -->
-        <div class="h-[50px] bg-[#f7f7f7] border-t border-gray-200 flex items-center justify-around text-[10px] pb-1 shrink-0 z-10">
-          <div v-for="tab in ['chat', 'contacts', 'discover', 'me']" :key="tab" class="flex flex-col items-center gap-1 cursor-pointer w-full h-full justify-center" :class="currentTab === tab ? 'text-[#07c160]' : 'text-gray-500'" @click="currentTab = tab">
-            <i class="text-xl" :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
-            <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我' }}</span>
-          </div>
-        </div>
-    </template>
-  </div>
 </template>
 
 <style scoped>
@@ -624,20 +656,33 @@ const goBack = () => {
 /* Prevent default browser context menu on long press */
 /* Prevent default browser context menu on long press */
 .prevent-select {
-    -webkit-touch-callout: none; /* iOS Safari */
-    -webkit-user-select: none; /* Safari */
-    -khtml-user-select: none; /* Konqueror HTML */
-    -moz-user-select: none; /* Old versions of Firefox */
-    -ms-user-select: none; /* Internet Explorer/Edge */
-    user-select: none; /* Non-prefixed version, currently supported by Chrome, Edge, Opera and Firefox */
+    -webkit-touch-callout: none;
+    /* iOS Safari */
+    -webkit-user-select: none;
+    /* Safari */
+    -khtml-user-select: none;
+    /* Konqueror HTML */
+    -moz-user-select: none;
+    /* Old versions of Firefox */
+    -ms-user-select: none;
+    /* Internet Explorer/Edge */
+    user-select: none;
+    /* Non-prefixed version, currently supported by Chrome, Edge, Opera and Firefox */
 }
 
 @keyframes scaleUp {
-    from { transform: scale(0.9); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
+
 .animate-scale-up {
     animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 </style>
-

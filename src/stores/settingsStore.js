@@ -58,7 +58,8 @@ export const useSettingsStore = defineStore('settings', () => {
         userProfile: {
             name: '乔乔',
             avatar: '/avatars/小猫星星眼.jpg',
-            wechatId: 'admin'
+            wechatId: 'admin',
+            signature: '对方很懒，什么都没有留下'
         },
         presets: []
     })
@@ -111,19 +112,19 @@ export const useSettingsStore = defineStore('settings', () => {
         try {
             const data = JSON.parse(saved)
             console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
-            
+
             if (data.apiConfigs) apiConfigs.value = data.apiConfigs
             if (data.currentConfigIndex !== undefined) currentConfigIndex.value = data.currentConfigIndex
-            
+
             if (data.personalization) {
                 const defaultIconsMap = { ...personalization.value.icons.map }
                 const defaultCardBgs = { ...personalization.value.cardBgs }
                 const defaultWidgets = { ...personalization.value.widgets }
-                
+
                 personalization.value = { ...personalization.value, ...data.personalization }
-                
+
                 personalization.value.icons.map = { ...defaultIconsMap, ...(personalization.value.icons?.map || {}) }
-                
+
                 const savedBgs = personalization.value.cardBgs || {}
                 personalization.value.cardBgs = {
                     time: savedBgs.time || defaultCardBgs.time,
@@ -147,7 +148,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
             if (data.weather) weather.value = { ...weather.value, ...data.weather }
             if (data.compressQuality !== undefined) compressQuality.value = data.compressQuality
-            
+
             // Critical Check for Drawing
             if (data.drawing) {
                 console.log('[SettingsStore] Found drawing config in storage. Model:', data.drawing.model, 'HasKey:', !!data.drawing.apiKey)
@@ -194,10 +195,10 @@ export const useSettingsStore = defineStore('settings', () => {
     // Personalization Actions
     function setWallpaper(url) { personalization.value.wallpaper = url; saveToStorage(); }
     function setIcon(app, url) { personalization.value.icons.map[app] = url; saveToStorage(); }
-    function clearIcon(app) { 
-        if (app) delete personalization.value.icons.map[app]; 
-        else personalization.value.icons.map = {}; 
-        saveToStorage(); 
+    function clearIcon(app) {
+        if (app) delete personalization.value.icons.map[app];
+        else personalization.value.icons.map = {};
+        saveToStorage();
     }
     function setWidget(id, url) { if (id in personalization.value.widgets) { personalization.value.widgets[id] = url; saveToStorage(); } }
     function setCardBg(type, url) { if (type in personalization.value.cardBgs) { personalization.value.cardBgs[type] = url; saveToStorage(); } }
@@ -255,19 +256,19 @@ export const useSettingsStore = defineStore('settings', () => {
     }
     function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
     function setCompressQuality(val) { compressQuality.value = typeof val === 'string' ? parseFloat(val) : val; saveToStorage(); }
-    
+
     // Drawing Action
     function setDrawingConfig(config) {
         console.log('[SettingsStore] setDrawingConfig entry:', config)
         // Ensure we are working with a clean object
         const cleanConfig = JSON.parse(JSON.stringify(config))
-        
+
         console.log('[SettingsStore] Drawing config before update:', JSON.stringify(drawing.value))
         drawing.value = { ...drawing.value, ...cleanConfig }
         console.log('[SettingsStore] Drawing config after update:', JSON.stringify(drawing.value))
 
         saveToStorage()
-        
+
         // Immediate verification from storage
         const stored = localStorage.getItem('qiaoqiao_settings')
         if (stored) {
@@ -280,7 +281,7 @@ export const useSettingsStore = defineStore('settings', () => {
         } else {
             console.log('[SettingsStore] No settings found in localStorage after save.')
         }
-        
+
         // Final sanity check
         console.log('[SettingsStore] Current drawing state after save:', JSON.stringify(drawing.value))
     }

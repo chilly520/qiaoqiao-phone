@@ -24,7 +24,7 @@ onMounted(() => {
     timer = setInterval(updateTime, 1000)
 })
 onUnmounted(() => {
-    if(timer) clearInterval(timer)
+    if (timer) clearInterval(timer)
 })
 
 // --- Personalization Bindings ---
@@ -42,13 +42,13 @@ const wallpaperStyle = computed(() => {
 const globalStyles = computed(() => {
     const font = store.personalization.globalFont
     const styles = {}
-    
+
     // Global Font Color
     if (font.color) {
         styles.color = font.color
-        styles['--global-text-color'] = font.color 
+        styles['--global-text-color'] = font.color
     }
-    
+
     // Global Text Shadow
     if (font.shadow) {
         styles.textShadow = font.shadow
@@ -57,10 +57,10 @@ const globalStyles = computed(() => {
     if (store.personalization.globalBg) {
         styles.background = store.personalization.globalBg
     }
-    
+
     // Wallpaper Overlay Opacity for Dark Mode
     styles['--wallpaper-overlay-opacity'] = store.personalization.wallpaperOverlayOpacity || 0.5
-    
+
     return styles
 })
 
@@ -80,7 +80,7 @@ const statusBarStyle = computed(() => {
     return {
         color: '#000000',
         textShadow: 'none',
-        backgroundColor: '#ededed' 
+        backgroundColor: '#ededed'
     }
 })
 
@@ -91,14 +91,14 @@ let bannerTimer = null
 
 watch(() => chatStore.notificationEvent, (evt) => {
     if (!evt) return
-    
+
     const isViewingChat = route.name === 'wechat' && chatStore.currentChatId === evt.chatId
     if (isViewingChat && document.visibilityState === 'visible') return
 
     // Trigger Banner
     bannerData.value = evt
     showBanner.value = true
-    
+
     if (bannerTimer) clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => {
         showBanner.value = false
@@ -107,9 +107,9 @@ watch(() => chatStore.notificationEvent, (evt) => {
 
 const handleBannerClick = () => {
     if (!bannerData.value) return
-    
+
     // Navigate to Chat
-    chatStore.setCurrentChat(bannerData.value.chatId)
+    chatStore.currentChatId = bannerData.value.chatId
     router.push('/wechat')
     showBanner.value = false
 }
@@ -121,11 +121,11 @@ let toastTimer = null
 
 watch(() => chatStore.toastEvent, (evt) => {
     if (!evt) return
-    
+
     // Display toast globally
     toastData.value = { message: evt.message, type: evt.type || 'info' }
     showToast.value = true
-    
+
     if (toastTimer) clearTimeout(toastTimer)
     toastTimer = setTimeout(() => {
         showToast.value = false
@@ -134,83 +134,101 @@ watch(() => chatStore.toastEvent, (evt) => {
 </script>
 
 <template>
-  <div class="app-root w-full h-[100dvh] relative overflow-hidden flex flex-col text-gray-800" 
-       :style="globalStyles"
-       :data-theme="store.personalization.theme">
-    <!-- Dynamic Styles Block -->
-    <component is="style" v-if="customCss">{{ customCss }}</component>
+    <div class="app-root w-full h-[100dvh] relative overflow-hidden flex flex-col text-gray-800" :style="globalStyles"
+        :data-theme="store.personalization.theme">
+        <!-- Dynamic Styles Block -->
+        <component is="style" v-if="customCss">{{ customCss }}</component>
 
-    <!-- Wallpaper Layer (from original HTML) -->
-    <div id="wallpaper-layer" :style="wallpaperStyle"></div>
-    
-    <!-- Global Status Bar -->
-    <div class="h-[28px] w-full flex justify-between items-center px-5 z-[100] relative select-none shrink-0 transition-colors duration-300"
-         :style="statusBarStyle"
-    >
-        <span class="font-bold text-[13px] tracking-wide">{{ currentTime }}</span>
-        <div class="flex items-center gap-1.5">
-            <i class="fa-solid fa-signal" :class="statusBarStyle.color === '#ffffff' ? 'text-[11px]' : 'text-[11px] opacity-80'"></i>
-            <i class="fa-solid fa-wifi" :class="statusBarStyle.color === '#ffffff' ? 'text-[12px]' : 'text-[12px] opacity-80'"></i>
-            <span class="text-[12px] font-bold ml-1">100%</span>
-            <i class="fa-solid fa-battery-full" :class="statusBarStyle.color === '#ffffff' ? 'text-[14px]' : 'text-[14px] opacity-80'"></i>
-        </div>
-    </div>
+        <!-- Wallpaper Layer (from original HTML) -->
+        <div id="wallpaper-layer" :style="wallpaperStyle"></div>
 
-    <!-- Notification Banner -->
-    <div v-if="showBanner && bannerData" 
-         class="fixed top-2 left-1/2 -translate-x-1/2 w-[95%] max-w-sm bg-[#90c7f0]/95 backdrop-blur-md shadow-2xl rounded-2xl z-[200] p-4 flex items-center gap-4 cursor-pointer animate-slide-down border border-white/20"
-         @click="handleBannerClick"
-    >
-        <div class="w-12 h-12 rounded-lg bg-white/20 overflow-hidden shrink-0 border border-white/30 shadow-inner">
-             <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
-             <div v-else class="w-full h-full flex items-center justify-center text-white/70"><i class="fa-solid fa-user"></i></div>
-        </div>
-        <div class="flex-1 min-w-0 flex flex-col justify-center">
-            <div class="flex justify-between items-baseline mb-0.5">
-                <span class="font-bold text-gray-800 text-[15px] truncate text-shadow-sm">{{ bannerData.name }}</span>
-                <span class="text-[11px] text-gray-600/80">现在</span>
+        <!-- Global Status Bar -->
+        <div class="h-[28px] w-full flex justify-between items-center px-5 z-[100] relative select-none shrink-0 transition-colors duration-300"
+            :style="statusBarStyle">
+            <span class="font-bold text-[13px] tracking-wide">{{ currentTime }}</span>
+            <div class="flex items-center gap-1.5">
+                <i class="fa-solid fa-signal"
+                    :class="statusBarStyle.color === '#ffffff' ? 'text-[11px]' : 'text-[11px] opacity-80'"></i>
+                <i class="fa-solid fa-wifi"
+                    :class="statusBarStyle.color === '#ffffff' ? 'text-[12px]' : 'text-[12px] opacity-80'"></i>
+                <span class="text-[12px] font-bold ml-1">100%</span>
+                <i class="fa-solid fa-battery-full"
+                    :class="statusBarStyle.color === '#ffffff' ? 'text-[14px]' : 'text-[14px] opacity-80'"></i>
             </div>
-            <p class="text-[13px] text-gray-700 leading-snug truncate opacity-90 font-medium">{{ bannerData.content }}</p>
+        </div>
+
+        <!-- Notification Banner -->
+        <div v-if="showBanner && bannerData"
+            class="fixed top-6 left-1/2 max-w-sm w-[90%] bg-[#90c7f0]/95 backdrop-blur-md shadow-2xl rounded-2xl z-[200] p-4 flex items-center gap-4 cursor-pointer animate-slide-down border border-white/20"
+            @click="handleBannerClick">
+            <div class="w-12 h-12 rounded-lg bg-white/20 overflow-hidden shrink-0 border border-white/30 shadow-inner">
+                <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
+                <div v-else class="w-full h-full flex items-center justify-center text-white/70"><i
+                        class="fa-solid fa-user"></i></div>
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col justify-center">
+                <div class="flex justify-between items-baseline mb-0.5">
+                    <span class="font-bold text-gray-800 text-[15px] truncate text-shadow-sm">{{ bannerData.name
+                        }}</span>
+                    <span class="text-[11px] text-gray-600/80">现在</span>
+                </div>
+                <p class="text-[13px] text-gray-700 leading-snug truncate opacity-90 font-medium">{{ bannerData.content
+                    }}</p>
+            </div>
+        </div>
+
+        <!-- Global Toast Notification -->
+        <div v-if="showToast"
+            class="fixed top-16 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[200] animate-toast-down flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30"
+            style="left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(147, 197, 253, 0.85) 0%, rgba(96, 165, 250, 0.85) 100%);">
+            <i class="text-xl text-white drop-shadow-md" :class="{
+                'fa-solid fa-circle-info': toastData.type === 'info',
+                'fa-solid fa-circle-check': toastData.type === 'success',
+                'fa-solid fa-circle-exclamation': toastData.type === 'error',
+                'fa-solid fa-triangle-exclamation': toastData.type === 'warning'
+            }"></i>
+            <span class="font-semibold text-sm text-white drop-shadow-sm">{{ toastData.message }}</span>
+        </div>
+
+        <!-- Main Content Area -->
+
+        <!-- Main Content Area -->
+        <div class="flex-1 w-full h-full overflow-hidden relative z-10 flex flex-col">
+            <!-- 使用key强制组件重新渲染 -->
+            <RouterView :key="routeKey" />
         </div>
     </div>
-
-    <!-- Global Toast Notification -->
-    <div v-if="showToast" 
-         class="fixed top-16 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[200] animate-toast-down flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30"
-         style="left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(147, 197, 253, 0.85) 0%, rgba(96, 165, 250, 0.85) 100%);"
-    >
-        <i class="text-xl text-white drop-shadow-md" :class="{
-            'fa-solid fa-circle-info': toastData.type === 'info',
-            'fa-solid fa-circle-check': toastData.type === 'success',
-            'fa-solid fa-circle-exclamation': toastData.type === 'error',
-            'fa-solid fa-triangle-exclamation': toastData.type === 'warning'
-        }"></i>
-        <span class="font-semibold text-sm text-white drop-shadow-sm">{{ toastData.message }}</span>
-    </div>
-
-    <!-- Main Content Area -->
-
-    <!-- Main Content Area -->
-    <div class="flex-1 w-full h-full overflow-hidden relative z-10 flex flex-col">
-        <!-- 使用key强制组件重新渲染 -->
-        <RouterView :key="routeKey" />
-    </div>
-  </div>
 </template>
 
 <style>
 @keyframes slideDown {
-    from { transform: translate(-50%, -120%); opacity: 0; }
-    to { transform: translate(-50%, 0); opacity: 1; }
+    from {
+        transform: translate(-50%, -120%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
 }
+
 .animate-slide-down {
     animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes toastDown {
-    from { transform: translate(-50%, -100%); opacity: 0; }
-    to { transform: translate(-50%, 0); opacity: 1; }
+    from {
+        transform: translate(-50%, -100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
 }
+
 .animate-toast-down {
     animation: toastDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

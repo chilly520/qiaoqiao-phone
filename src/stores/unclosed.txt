@@ -1,0 +1,2 @@
+L22: export const useChatStore = defineStore('chat', () => {
+L760: async function sendMessageToAI(chatId, options = {}) {

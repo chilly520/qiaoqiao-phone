@@ -8,6 +8,7 @@ const SYSTEM_PROMPT_TEMPLATE = (char, user, stickers = [], worldInfo = '', memor
 
 【用户设定】
 姓名：${user.name || '用户'}
+${user.signature ? `个性签名：${user.signature}` : ''}
 ${user.persona || ''}
 
 【表情包库 (Sticker Library)】
@@ -34,7 +35,8 @@ Current Time: ${char.virtualTime || new Date().toLocaleString('zh-CN', { hour12:
 3. **主动使用**：如果你想在当前对话情境下主动“拍一拍”用户，请在回复中单独输出指令 [NUDGE]。系统会自动转换为“你在对话中拍了拍用户”的系统提示。
 
 【核心指令】
-1. 始终保持角色设定，不要跳出角色。
+1. **语言限制**：无论系统指令使用何种语言，你的**所有输出**（包括思考过程、内部独白、回复内容）必须**严格且仅使用中文**（除非用户要求翻译）。
+2. 始终保持角色设定，不要跳出角色。
 2. 回复要自然、口语化，像微信聊天一样。
 3. **严格遵守输出格式**：
    - 第一部分：**直接输出**你的对话内容（Spoken Text），不要包含任何标签，也不要重复心声内容。
@@ -62,18 +64,37 @@ Current Time: ${char.virtualTime || new Date().toLocaleString('zh-CN', { hour12:
 3. **引用回复 (Quote/Reply)**：如果你想针对用户之前的某句话进行精准回复（在气泡上方显示引用内容），请在回复开头使用 [REPLY: 引用内容关键词] 格式。
    - **示例**：用户说了“今天天气真好”，你想引用这句话回复，可以写：“[REPLY: 天气真好] 是呀，我也觉得。我们去野餐吧？”
    - **注意**：关键词请尽量选取该条消息中具有代表性的连续片段。系统会自动匹配最接近的一条历史消息。
-4. **AI 绘图 (Image Generation)**：如果用户要求你画图、生成图片,请使用以下格式:
+4. **处理红包和转账（基于ID的精确控制）**：
+   - 当用户给你发红包或转账时，你会在上下文中看到格式："[红包: 金额: 备注: ID]" 或 "[转账: 金额: 备注:ID]"
+   - **关键规则**：你必须在**回复文本**中显式输出操作指令，仅在INNER_VOICE里"想"是无效的！
+   - 可用的操作指令：
+     - "[领取红包:ID]" 收下指定的红包（钱会进入你的账户）
+     - "[退回红包:ID]" 礼貌拒绝指定的红包
+     - "[领取转账:ID]" 收下指定的转账
+     - "[拒收转账:ID]" 拒绝指定的转账
+   - **正确示例**（会生效）：
+     谢谢老板！[领取红包:PAY-12345]
+     我不能收这么贵重的礼物。[拒收转账:PAY-67890]
+     [INNER_VOICE] {...} [/INNER_VOICE]
+   - **错误示例**（不会生效）：
+     谢谢老板！
+     [INNER_VOICE]
+     {"心声": "我要领取红包"}  ← 只想不做，无效！
+     [/INNER_VOICE]
+   - **注意**：必须使用准确的 ID（从上下文复制），不要自己编造。如果你想发红包给用户，使用格式 "[红包: 金额:祝福语]"，系统会自动生成 ID。
+5. **AI 绘图 (Image Generation)**：如果用户要求你画图、生成图片,请使用以下格式:
    [DRAW: 英文提示词]
    - **示例**：用户说"画一只猫" → 你回复 [DRAW: a cute cat]
    - **注意**：提示词必须用英文,尽可能详细描述画面内容、风格、氛围等。系统会自动调用生图服务并将结果显示为图片。
    - **严禁**：不要在 [DRAW:] 后面再写其他文字,这个标签应该单独成行或作为回复的一部分。
-5. **HTML 动态卡片**：如果你想发送一张制作精美的卡片（例如情书、邀请函、特殊界面），请使用以下格式：
+6. **HTML 动态卡片**：如果你想发送一张制作精美的卡片（例如情书、邀请函、特殊界面），请使用以下格式：
    [CARD]
    {
      "type": "html",
      "html": "<div style='...'>你的HTML代码</div>"
    }
    - **注意**：请务必使用 [CARD] 前缀，并确保 JSON 格式正确且压缩为一行。HTML 中可以使用内联 CSS。
+   - **宽度限制**：HTML 卡片在聊天气泡中的最大渲染宽度为 **300px**。请务必确保你的 CSS 样式适配此宽度 (max-width: 100%)，避免内容溢出或排版混乱。
 6. **发布朋友圈 (Publish Moment)**：如果用户让你发朋友圈，或者你想主动分享生活动态，请使用以下格式：
    [MOMENT]
    {
@@ -106,7 +127,7 @@ class RequestQueue {
         this.timestamps = []; // Request timestamps for rate limiting
         this.maxRate = maxRate;
         this.interval = interval;
-        
+
         // Circuit Breaker for 429
         this.isRateLimited = false;
         this.retryAfter = 0;
@@ -147,7 +168,7 @@ class RequestQueue {
                 // Still in cooldown
                 const remaining = Math.ceil((this.retryAfter - now) / 1000);
                 if (Math.random() > 0.9) { // Log occasionally to avoid spam
-                     console.log(`[RateLimit] Circuit Breaker Active. Waiting ${remaining}s...`);
+                    console.log(`[RateLimit] Circuit Breaker Active. Waiting ${remaining}s...`);
                 }
                 setTimeout(() => this.processQueue(), 5000); // Check again in 5s
                 return;
@@ -187,25 +208,25 @@ class RequestQueue {
             console.log('[RequestQueue] Processing request. Queue length:', this.queue.length);
             this.timestamps.push(Date.now());
             const result = await task.apiFunc(...task.args);
-            
+
             // Critical check for 429 in result (if apiFunc catches it)
             if (result && result.error && (result.error.includes('429') || result.error.replace(/\s/g, '').includes('QuotaExceeded') || result.error.includes('Too Many Requests'))) {
                 this.triggerRateLimit(300000); // 5 mins
             }
-            
+
             task.resolve(result);
         } catch (error) {
-             // Handle raw throw (if apiFunc didn't catch)
-             if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
-                 this.triggerRateLimit(300000);
-             }
-             
-             // Log error to System Logs UI
-             const logger = useLoggerStore();
-             if (logger) {
-                 logger.addLog('ERROR', `API Request Failed: ${error.message}`, error);
-             }
-             
+            // Handle raw throw (if apiFunc didn't catch)
+            if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
+                this.triggerRateLimit(300000);
+            }
+
+            // Log error to System Logs UI
+            const logger = useLoggerStore();
+            if (logger) {
+                logger.addLog('ERROR', `API Request Failed: ${error.message}`, error);
+            }
+
             task.reject(error);
         } finally {
             this.isProcessing = false;
@@ -236,7 +257,7 @@ async function _generateReplyInternal(messages, char, signal) {
 
     // Merge valid stickers and filter empty names
     const availableStickers = [
-        ...(globalStickers || []), 
+        ...(globalStickers || []),
         ...(charStickers || [])
     ].filter(s => s && s.name)
 
@@ -244,12 +265,12 @@ async function _generateReplyInternal(messages, char, signal) {
     // Mismatch fix: Store uses 'baseUrl', Service expected 'apiUrl'
     const { baseUrl, apiKey, model, temperature, maxTokens } = config || {}
     const apiUrl = baseUrl // Map baseUrl to apiUrl
-    
+
     // Provider Detection (Matches HTML Logic)
     let provider = config.provider || 'openai'
     if (!config.provider && apiUrl) {
         if (apiUrl.includes('googleapis.com') || apiUrl.includes('gemini')) {
-             provider = 'gemini'
+            provider = 'gemini'
         }
     }
 
@@ -319,8 +340,8 @@ async function _generateReplyInternal(messages, char, signal) {
         // Take top 10 recent memories
         const recentMemories = char.memory.slice(0, 10)
         memoryText = recentMemories.map(m => {
-             const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
-             return `- ${content}`
+            const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
+            return `- ${content}`
         }).join('\n')
     }
 
@@ -328,7 +349,7 @@ async function _generateReplyInternal(messages, char, signal) {
     // 如果传入的消息中已经包含了 System Prompt (例如朋友圈生成)，则跳过默认模板
     let systemMsg = null
     const hasCustomSystem = messages && messages.length > 0 && messages[0].role === 'system'
-    
+
     if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
         systemMsg = {
@@ -342,7 +363,7 @@ async function _generateReplyInternal(messages, char, signal) {
     // Process messages for Vision API (Multimodal)
     // Convert [图片:URL] or [表情包:名称] to { type: "image_url", image_url: { url: "..." } }
     // OPTIMIZATION: Only send the LAST 5 images to the AI to prevent massive payloads.
-    
+
     // 1. First, count total images to determine the cutoff index
     let totalImagesCount = 0
     const visionLimit = 5
@@ -351,7 +372,7 @@ async function _generateReplyInternal(messages, char, signal) {
     messages.forEach(msg => {
         if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) return
         const content = msg.content || ''
-        
+
         if (typeof content === 'string') {
             if (content.startsWith('data:image/')) {
                 totalImagesCount++
@@ -369,28 +390,31 @@ async function _generateReplyInternal(messages, char, signal) {
 
     const formattedMessages = (messages || []).map(msg => {
         if (!msg) return { role: 'user', content: '' }
-        
+
         // Only process User/AI messages for AI Vision perception
         if (msg.role === 'user' || msg.role === 'assistant') {
             let content = msg.content || ''
-            
+
             // 1. Check if the content is a raw base64 image string (untagged)
             if (typeof content === 'string' && content.startsWith('data:image/')) {
                 const isVisionEnabled = currentImageIndex >= visionStartIndex
                 currentImageIndex++
 
                 if (isVisionEnabled) {
+                    const imageId = msg.id || 'curr';
+                    const refText = ` [Image Reference ID: ${imageId}] `;
+
                     return {
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
-                            { type: 'text', text: msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）' },
+                            { type: 'text', text: (msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）') + refText },
                             { type: 'image_url', image_url: { url: content } }
                         ]
                     }
                 } else {
                     // Placeholder for older images
                     return {
-                        role: msg.role, 
+                        role: msg.role,
                         content: `[图片: (历史图片已省略以节省流量)]`
                     }
                 }
@@ -398,7 +422,7 @@ async function _generateReplyInternal(messages, char, signal) {
 
             const allStickers = [...globalStickers, ...charStickers]
             const contentParts = []
-            
+
             // 2. Check if the message is a raw sticker URL (exact match)
             // Note: Stickers are typically small URLs, but we treat them as images for consistency
             const matchedSticker = allStickers.find(s => s.url === content.trim())
@@ -415,7 +439,7 @@ async function _generateReplyInternal(messages, char, signal) {
                         ]
                     }
                 } else {
-                     return {
+                    return {
                         role: msg.role,
                         content: `[表情包: ${matchedSticker.name}]` // Just keep text
                     }
@@ -427,7 +451,7 @@ async function _generateReplyInternal(messages, char, signal) {
             const combinedRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
             let lastIndex = 0
             let match
-            
+
             // Reset regex
             combinedRegex.lastIndex = 0
 
@@ -447,6 +471,18 @@ async function _generateReplyInternal(messages, char, signal) {
                 if (match[1]) {
                     // Match group 1: [图片:URL]
                     if (isVisionEnabled) {
+                        // Text Injection for Context Reference (Set Avatar support)
+                        // Use Reference ID for ALL images to save massive tokens
+                        // AI can use [SET_AVATAR: <ID>] to reference this image
+                        const imageId = msg.id || 'curr';
+                        contentParts.push({ type: 'text', text: ` [Image Reference ID: ${imageId}] ` });
+
+                        // Optional: Still provide clean URLs for non-base64 (external links)
+                        if (!match[1].startsWith('data:')) {
+                            contentParts.push({ type: 'text', text: ` [Image URL: ${match[1]}] ` });
+                        }
+
+                        // Vision API always gets the image (controlled by visionLimit=5)
                         contentParts.push({ type: 'image_url', image_url: { url: match[1] } })
                     } else {
                         contentParts.push({ type: 'text', text: `[图片: ${match[1].startsWith('data:') ? '(历史图片)' : match[1]}]` })
@@ -455,19 +491,19 @@ async function _generateReplyInternal(messages, char, signal) {
                     // Match group 2: [表情包:名称]
                     const stickerName = match[2].trim()
                     const sticker = allStickers.find(s => s.name === stickerName)
-                    
+
                     if (sticker) {
-                         if (isVisionEnabled) {
+                        if (isVisionEnabled) {
                             contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                             contentParts.push({ type: 'image_url', image_url: { url: sticker.url } })
-                         } else {
+                        } else {
                             contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
-                         }
+                        }
                     } else {
                         // Sticker not found, treat as text
                         // Decrement index because we didn't actually process a real image/sticker that the AI "sees" as visual
-                         currentImageIndex-- 
-                         contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
+                        currentImageIndex--
+                        contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                     }
                 }
 
@@ -487,7 +523,7 @@ async function _generateReplyInternal(messages, char, signal) {
                 return { role: msg.role === 'assistant' ? 'assistant' : 'user', content: contentParts }
             }
         }
-        
+
         // Default: return message as-is
         return msg
     })
@@ -520,15 +556,15 @@ async function _generateReplyInternal(messages, char, signal) {
         }
         // Native Gemini uses ?key= API_KEY
         if (!endpoint.includes('key=')) {
-           const separator = endpoint.includes('?') ? '&' : '?'
-           endpoint = `${endpoint}${separator}key=${apiKey}`
+            const separator = endpoint.includes('?') ? '&' : '?'
+            endpoint = `${endpoint}${separator}key=${apiKey}`
         }
 
         // 2. Payload Construction (Messages -> Contents)
         // Extract System Prompt from first message if exists
         let systemInstruction = undefined
-        const contentMessages = [ ...fullMessages ]
-        
+        const contentMessages = [...fullMessages]
+
         // Check if first message is system
         if (contentMessages.length > 0 && contentMessages[0].role === 'system') {
             systemInstruction = { parts: [{ text: contentMessages[0].content }] }
@@ -540,7 +576,7 @@ async function _generateReplyInternal(messages, char, signal) {
             // Gemini uses 'model' instead of 'assistant'
             if (role === 'system') return null // Should be handled above, but just in case
             if (role === 'assistant') role = 'model'
-            
+
             let parts = []
             if (typeof msg.content === 'string') {
                 parts = [{ text: msg.content }]
@@ -611,23 +647,39 @@ async function _generateReplyInternal(messages, char, signal) {
         // We MUST merge the system prompt into the first User message for these models.
         let finalMessages = [...fullMessages];
         const isGeminiModel = model.toLowerCase().includes('gemini') || model.toLowerCase().includes('goog');
-        
+
         if (isGeminiModel && finalMessages.length > 0 && finalMessages[0].role === 'system') {
             const systemContent = finalMessages[0].content;
-            // Find first user message
-            const firstUserIdx = finalMessages.findIndex(m => m.role === 'user');
-            
-            if (firstUserIdx !== -1) {
-                // Merge System into User
-                const userMsg = finalMessages[firstUserIdx];
-                if (typeof userMsg.content === 'string') {
-                    userMsg.content = `[System Instructions]\n${systemContent}\n\n[User Message]\n${userMsg.content}`;
-                } else if (Array.isArray(userMsg.content)) {
-                    // Prepend text part
-                    userMsg.content.unshift({ type: 'text', text: `[System Instructions]\n${systemContent}\n\n` });
+
+            // STRATEGY: Ensure System Prompt is ALWAYS at the very top (Index 0).
+            // Instead of searching for the first user message (which might be deep in history after Assistant greetings),
+            // we convert the System message directly into a User message at Index 0.
+
+            finalMessages[0] = { role: 'user', content: `[System Instructions]\n${systemContent}` };
+
+            // Optimization: If the immediate next message is ALSO User, merge them to avoid "User, User" sequence
+            // (Many models perform better with strictly alternating User/Assistant roles)
+            if (finalMessages.length > 1 && finalMessages[1].role === 'user') {
+                const nextUserMsg = finalMessages[1];
+                // Append next user content to our new "System-User" message
+                // Handle multimodal arrays if necessary (simple text merge for now)
+                const nextContent = typeof nextUserMsg.content === 'string' ? nextUserMsg.content : (Array.isArray(nextUserMsg.content) ? nextUserMsg.content.map(c => c.text || '').join('\n') : '');
+
+                finalMessages[0].content += `\n\n[User Message]\n${nextContent}`;
+
+                // If the next msg had images, we should technically preserve them. 
+                // For safety/simplicity in this specific patch, we assume text-heavy merges or risk formatting.
+                // Ideally, if next is array, we convert [0] to array and push.
+                if (Array.isArray(nextUserMsg.content)) {
+                    // Convert our current string to array
+                    finalMessages[0].content = [{ type: 'text', text: finalMessages[0].content }];
+                    // Append non-text parts (images) from next msg
+                    const images = nextUserMsg.content.filter(c => c.type === 'image_url');
+                    if (images.length > 0) finalMessages[0].content.push(...images);
                 }
-                // Remove original system message
-                finalMessages = finalMessages.filter((_, i) => i !== 0);
+
+                // Remove the merged message
+                finalMessages.splice(1, 1);
             }
         }
 
@@ -638,7 +690,7 @@ async function _generateReplyInternal(messages, char, signal) {
         let safeMaxTokens = Number(maxTokens) || 4096
         if (safeMaxTokens > 65536) safeMaxTokens = 65536 // Keep global 64k safety, but revert 8k limit
 
-        
+
         reqBody = {
             model: model,
             messages: finalMessages,
@@ -655,25 +707,25 @@ async function _generateReplyInternal(messages, char, signal) {
             ...(config.repetition_penalty !== undefined && Number(config.repetition_penalty) !== 1.0 && { repetition_penalty: Number(config.repetition_penalty) }),
             ...(config.min_p !== undefined && Number(config.min_p) > 0 && { min_p: Number(config.min_p) }),
         }
-        
+
         // Remove thinking_budget if present
         // STRATEGY CHANGE: Aggressive deletion of all known 'thinking' parameters
         // to prevent Proxy injection or API rejection.
         const forbiddenKeys = [
             'thinking_budget', 'thinking_config', 'reasoning_budget', 'budget',
-            'thinking_mode', 'thinking_level', 'parallel_tool_calls', 'tool_choice', 
+            'thinking_mode', 'thinking_level', 'parallel_tool_calls', 'tool_choice',
             'generationConfig', 'extra_body', 'response_format'
         ]
-        
+
         forbiddenKeys.forEach(key => {
             if (reqBody[key] !== undefined) delete reqBody[key]
         })
-        
+
         // Double check: If model has "nothinking", we definitely want to scrub everything.
         if (model.includes('nothinking')) {
-             // Maybe the proxy sees "nothinking" and TRIES to set budget=0. 
-             // We can't stop the proxy from modifying our request, 
-             // but we can try to send a clean one.
+            // Maybe the proxy sees "nothinking" and TRIES to set budget=0. 
+            // We can't stop the proxy from modifying our request, 
+            // but we can try to send a clean one.
         }
     }
 
@@ -686,7 +738,7 @@ async function _generateReplyInternal(messages, char, signal) {
         provider,
         endpoint,
         payload: reqBody,
-        hasCustomSystem: fullMessages.length > 0 && fullMessages[0].role === 'system' 
+        hasCustomSystem: fullMessages.length > 0 && fullMessages[0].role === 'system'
     })
 
     try {
@@ -708,58 +760,58 @@ async function _generateReplyInternal(messages, char, signal) {
             }
             // Hint for 503 Token/Service Error
             if (response.status === 503) {
-                 if (errText.includes('Token') || errText.includes('refresh')) {
-                     errorMsg += ' (提示: 代理服务的 Token 刷新失败。这不是代码问题，而是您的 API Key 或代理服务器内部账号过期，请尝试更换 Key 或模型。)'
-                 } else {
-                     errorMsg += ' (提示: 服务暂时不可用，请稍后重试。)'
-                 }
+                if (errText.includes('Token') || errText.includes('refresh')) {
+                    errorMsg += ' (提示: 代理服务的 Token 刷新失败。这不是代码问题，而是您的 API Key 或代理服务器内部账号过期，请尝试更换 Key 或模型。)'
+                } else {
+                    errorMsg += ' (提示: 服务暂时不可用，请稍后重试。)'
+                }
             }
             // Hint for Thinking Budget 400
             if (response.status === 400) {
-                 if (errText.includes('thinking_budget')) {
-                     errorMsg += ' (提示: 检测到模型代理注入了不支持的参数 thinking_budget。请尝试更换不带 "nothinking" 后缀的模型名称。)'
-                 } else {
-                     // AUTO-RETRY LOGIC for General 400 (likely image corruption)
-                     console.warn('[AI Service] 400 Error detected. Attempting text-only fallback...', errText)
-                     
-                     // 1. Strip images from payload
-                     const textOnlyBody = JSON.parse(JSON.stringify(reqBody))
-                     if (textOnlyBody.contents) {
-                         // Gemini Format
-                         textOnlyBody.contents.forEach(c => {
-                             if (c.parts) c.parts = c.parts.filter(p => !p.inline_data && !p.image_url)
-                         })
-                     } else if (textOnlyBody.messages) {
-                         // OpenAI Format
-                         textOnlyBody.messages.forEach(m => {
-                             if (Array.isArray(m.content)) {
-                                 m.content = m.content.filter(c => c.type === 'text')
-                             }
-                         })
-                     }
-                     
-                     // 2. Add System Note
-                     useLoggerStore().addLog('AI', '⚠️ 400错误自动重试 (转纯文本模式)', { originalError: errText })
+                if (errText.includes('thinking_budget')) {
+                    errorMsg += ' (提示: 检测到模型代理注入了不支持的参数 thinking_budget。请尝试更换不带 "nothinking" 后缀的模型名称。)'
+                } else {
+                    // AUTO-RETRY LOGIC for General 400 (likely image corruption)
+                    console.warn('[AI Service] 400 Error detected. Attempting text-only fallback...', errText)
 
-                     // 3. Retry Request
-                     const retryResp = await fetch(endpoint, {
+                    // 1. Strip images from payload
+                    const textOnlyBody = JSON.parse(JSON.stringify(reqBody))
+                    if (textOnlyBody.contents) {
+                        // Gemini Format
+                        textOnlyBody.contents.forEach(c => {
+                            if (c.parts) c.parts = c.parts.filter(p => !p.inline_data && !p.image_url)
+                        })
+                    } else if (textOnlyBody.messages) {
+                        // OpenAI Format
+                        textOnlyBody.messages.forEach(m => {
+                            if (Array.isArray(m.content)) {
+                                m.content = m.content.filter(c => c.type === 'text')
+                            }
+                        })
+                    }
+
+                    // 2. Add System Note
+                    useLoggerStore().addLog('AI', '⚠️ 400错误自动重试 (转纯文本模式/SystemOrder)', { originalError: errText })
+
+                    // 3. Retry Request
+                    const retryResp = await fetch(endpoint, {
                         method: 'POST',
                         headers: reqHeaders,
                         body: JSON.stringify(textOnlyBody)
-                     })
-                     
-                     if (retryResp.ok) {
-                         data = await retryResp.json() // [FIX] Assign to data, don't return raw
-                     } else {
-                         // If retry also failed, capture that error
-                         const retryErrText = await retryResp.text()
-                         console.warn('[AI Service] Text-only retry failed:', retryErrText)
-                         errorMsg += `\n(自动重试也失败了: ${retryErrText})`
-                         throw new Error(errorMsg)
-                     }
-                 }
+                    })
+
+                    if (retryResp.ok) {
+                        data = await retryResp.json() // [FIX] Assign to data, don't return raw
+                    } else {
+                        // If retry also failed, capture that error
+                        const retryErrText = await retryResp.text()
+                        console.warn('[AI Service] Text-only retry failed:', retryErrText)
+                        errorMsg += `\n(自动重试也失败了: ${retryErrText})`
+                        throw new Error(errorMsg)
+                    }
+                }
             } else {
-                 throw new Error(errorMsg)
+                throw new Error(errorMsg)
             }
         } else {
             data = await response.json()
@@ -810,8 +862,8 @@ async function _generateReplyInternal(messages, char, signal) {
                 // Robust Cleanup: Remove Markdown code blocks (```json ... ```)
                 // Also handles standard ```
                 jsonStr = jsonStr.replace(/^```json\s*/i, '')
-                                 .replace(/^```\s*/, '')
-                                 .replace(/\s*```$/, '')
+                    .replace(/^```\s*/, '')
+                    .replace(/\s*```$/, '')
 
                 innerVoice = JSON.parse(jsonStr)
             } catch (e) {
@@ -843,75 +895,75 @@ async function _generateReplyInternal(messages, char, signal) {
         // [AUTO-FIX] Smart Retry for Proxy Injection
         // If error is 400 and related to thinking_budget AND model has 'nothinking', try stripping it.
         if (error.message && error.message.includes('thinking_budget')) {
-             // Aggressive Clean: Remove prefix (e.g. "channel/") AND "nothinking"
-             // Example: "流式抗截断/gemini-2.5-pro-nothinking" -> "gemini-2.5-pro"
-             const baseName = model.split('/').pop() 
-             const cleanModel = baseName.replace(/[-_.]?nothinking[-_.]?/i, '')
-             
-             // Check if we actually changed the model to avoid infinite retry of same thing
-             if (cleanModel !== model) {
-                 useLoggerStore().addLog('WARN', `检测到代理注入异常，尝试『根源净化』(去除前缀+后缀: ${cleanModel}) 并重置Token限制...`, { from: model, to: cleanModel })
-                 
-                 // Deep clone messages or use fullMessages if available in scope?? 
-                 // We need to re-call _generateReplyInternal but we need arguments.
-                 // Actually we can just re-fetch here if we update reqBody.
-                 
-                 // Update reqBody
-                 reqBody.model = cleanModel
-                 // [FIX] Cap max_tokens to safe limit (8192) because standard Gemini models don't support >65536 output, 
-                 // and user settings might be huge (e.g. 2999256).
-                 reqBody.max_tokens = 8192 
-                 
-                 try {
-                     const retryResponse = await fetch(endpoint, {
+            // Aggressive Clean: Remove prefix (e.g. "channel/") AND "nothinking"
+            // Example: "流式抗截断/gemini-2.5-pro-nothinking" -> "gemini-2.5-pro"
+            const baseName = model.split('/').pop()
+            const cleanModel = baseName.replace(/[-_.]?nothinking[-_.]?/i, '')
+
+            // Check if we actually changed the model to avoid infinite retry of same thing
+            if (cleanModel !== model) {
+                useLoggerStore().addLog('WARN', `检测到代理注入异常，尝试『根源净化』(去除前缀+后缀: ${cleanModel}) 并重置Token限制...`, { from: model, to: cleanModel })
+
+                // Deep clone messages or use fullMessages if available in scope?? 
+                // We need to re-call _generateReplyInternal but we need arguments.
+                // Actually we can just re-fetch here if we update reqBody.
+
+                // Update reqBody
+                reqBody.model = cleanModel
+                // [FIX] Cap max_tokens to safe limit (8192) because standard Gemini models don't support >65536 output, 
+                // and user settings might be huge (e.g. 2999256).
+                reqBody.max_tokens = 8192
+
+                try {
+                    const retryResponse = await fetch(endpoint, {
                         method: 'POST',
                         headers: reqHeaders,
                         body: JSON.stringify(reqBody)
-                     })
-                     
-                     if (!retryResponse.ok) {
-                         const retryErrText = await retryResponse.text()
-                         throw new Error(`Retry Failed ${retryResponse.status}: ${retryErrText}`)
-                     }
-                     
-                     const retryData = await retryResponse.json()
-                     useLoggerStore().addLog('AI', '自动重试成功 (Retry Success)', retryData)
-                     
-                     // ... Duplicate parsing logic ...
-                     // To avoid code duplication, we return a recursive call? 
-                     // No, internal function signature is strictly messages/char/signal.
-                     // We can't change 'char' easily here.
-                     
-                     // Minimal parse for success case
-                     let rawRetry = ''
-                     if (retryData.choices && retryData.choices.length > 0) {
+                    })
+
+                    if (!retryResponse.ok) {
+                        const retryErrText = await retryResponse.text()
+                        throw new Error(`Retry Failed ${retryResponse.status}: ${retryErrText}`)
+                    }
+
+                    const retryData = await retryResponse.json()
+                    useLoggerStore().addLog('AI', '自动重试成功 (Retry Success)', retryData)
+
+                    // ... Duplicate parsing logic ...
+                    // To avoid code duplication, we return a recursive call? 
+                    // No, internal function signature is strictly messages/char/signal.
+                    // We can't change 'char' easily here.
+
+                    // Minimal parse for success case
+                    let rawRetry = ''
+                    if (retryData.choices && retryData.choices.length > 0) {
                         rawRetry = retryData.choices[0].message?.content || ''
-                     } else if (retryData.candidates && retryData.candidates.length > 0) {
+                    } else if (retryData.candidates && retryData.candidates.length > 0) {
                         const parts = retryData.candidates[0].content?.parts || []
                         if (parts.length > 0) rawRetry = parts[0].text || ''
-                     }
-                     
-                     // Post-process
-                     let content = rawRetry
-                     let innerVoice = null
-                     const ivMatch = content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
-                     if (ivMatch) {
+                    }
+
+                    // Post-process
+                    let content = rawRetry
+                    let innerVoice = null
+                    const ivMatch = content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
+                    if (ivMatch) {
                         try {
                             let jsonStr = ivMatch[1].trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
                             innerVoice = JSON.parse(jsonStr)
-                        } catch (e) {}
-                     }
-                     content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
-                     
-                     return { content, innerVoice, raw: rawRetry }
+                        } catch (e) { }
+                    }
+                    content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
 
-                 } catch (retryErr) {
-                     useLoggerStore().addLog('ERROR', '自动重试失败', retryErr.message)
-                     // Fall through to return original error
-                 }
-             }
+                    return { content, innerVoice, raw: rawRetry }
+
+                } catch (retryErr) {
+                    useLoggerStore().addLog('ERROR', '自动重试失败', retryErr.message)
+                    // Fall through to return original error
+                }
+            }
         }
-        
+
         return { error: error.message }
     }
 }
@@ -930,74 +982,86 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     let provider = config.provider || 'openai'
     if (!config.provider && apiUrl) {
         if (apiUrl.includes('googleapis.com') || apiUrl.includes('gemini')) {
-             provider = 'gemini'
+            provider = 'gemini'
         }
     }
 
-    if (!config || !apiKey) return 'API未配置'
+    if (!config || !apiKey || !model) return 'API未配置 (检查Key/模型/基础URL)'
 
     // System Prompt (The instruction to summarize)
     const systemContent = customPrompt || '请简要总结上述对话的主要内容和关键信息，作为长期记忆归档。请保持客观，不要使用第一人称。'
-    
+
     // --- PROVIDER SWITCHING LOGIC ---
     let endpoint = apiUrl || ''
     let reqHeaders = { 'Content-Type': 'application/json' }
     let reqBody = {}
 
-    useLoggerStore().addLog('AI', '生成总结 (Request)', { messagesCount: messages.length, provider })
-
     if (provider === 'gemini') {
-         // --- GEMINI NATIVE MODE ---
-         // 1. URL
-         if (!endpoint.includes(':generateContent')) {
-             endpoint = endpoint.replace(/\/$/, '')
-             if (!endpoint.includes('/models/')) {
-                 endpoint = `${endpoint}/v1beta/models/${model}:generateContent`
-             } else {
-                 endpoint = `${endpoint}:generateContent`
-             }
-         }
-         if (!endpoint.includes('key=')) {
+        // --- GEMINI NATIVE MODE ---
+        // 1. URL
+        if (!endpoint.includes(':generateContent')) {
+            endpoint = endpoint.replace(/\/$/, '')
+            if (!endpoint.includes('/models/')) {
+                endpoint = `${endpoint}/v1beta/models/${model}:generateContent`
+            } else {
+                endpoint = `${endpoint}:generateContent`
+            }
+        }
+        if (!endpoint.includes('key=')) {
             const separator = endpoint.includes('?') ? '&' : '?'
             endpoint = `${endpoint}${separator}key=${apiKey}`
-         }
+        }
 
-         // 2. Body
-         // System Instruction for the Task
-         const systemInstruction = { parts: [{ text: systemContent }] }
-         
-         // Convert History to Contents
-         const geminiContents = messages.map(msg => {
-             let role = msg.role
-             if (role === 'system') return null // Skip system msgs in history for Gemini (or merge them, but skip is safer for strict validaton)
-             if (role === 'assistant' || role === 'ai') role = 'model'
-             if (role !== 'user' && role !== 'model') role = 'user' // Fallback
-             
-             let text = ''
-             if (typeof msg.content === 'string') text = msg.content
-             else if (Array.isArray(msg.content)) text = msg.content.map(p => p.text || '').join('\n')
-             else text = JSON.stringify(msg.content)
+        // 2. Body
+        // System Instruction for the Task
+        const systemInstruction = { parts: [{ text: systemContent }] }
 
-             return {
-                 role: role,
-                 parts: [{ text: text }]
-             }
-         }).filter(c => c)
+        // Convert History to Contents
+        // Convert History to Contents (Robust for Gemini: alternate user/model + start with user)
+        const geminiContents = []
+        messages.forEach(msg => {
+            let role = msg.role
+            if (role === 'system') return // Skip system msgs in history for Gemini
+            if (role === 'assistant' || role === 'ai') role = 'model'
+            if (role !== 'user' && role !== 'model') role = 'user' // Fallback
 
-         reqBody = {
-             contents: geminiContents,
-             system_instruction: systemInstruction,
-             generationConfig: {
-                 temperature: 0.3,
-                 maxOutputTokens: 1000,
-             },
-             safetySettings: [
-                 { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                 { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                 { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                 { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-             ]
-         }
+            let text = ''
+            if (typeof msg.content === 'string') text = msg.content
+            else if (Array.isArray(msg.content)) text = msg.content.map(p => p.text || '').join('\n')
+            else text = JSON.stringify(msg.content)
+
+            if (!text.trim()) return
+
+            if (geminiContents.length > 0 && geminiContents[geminiContents.length - 1].role === role) {
+                // Combine consecutive same-role messages for Gemini
+                geminiContents[geminiContents.length - 1].parts[0].text += '\n' + text
+            } else {
+                geminiContents.push({
+                    role: role,
+                    parts: [{ text: text }]
+                })
+            }
+        })
+
+        // Ensure history starts with user (Gemini requirement)
+        if (geminiContents.length > 0 && geminiContents[0].role === 'model') {
+            geminiContents.unshift({ role: 'user', parts: [{ text: '...' }] })
+        }
+
+        reqBody = {
+            contents: geminiContents,
+            system_instruction: systemInstruction,
+            generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 1000,
+            },
+            safetySettings: [
+                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+            ]
+        }
 
     } else {
         // --- OPENAI MODE ---
@@ -1027,17 +1091,27 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
         }
     }
 
+    // [MOVED & ENHANCED LOG]
+    useLoggerStore().addLog('AI', '生成总结 (Request)', {
+        messagesCount: messages.length,
+        provider,
+        model,
+        endpoint,
+        // Clone to avoid mutation issues if any
+        requestBody: JSON.parse(JSON.stringify(reqBody))
+    })
+
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: reqHeaders,
             body: JSON.stringify(reqBody)
         })
-        
+
         if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`)
 
         const data = await response.json()
-        
+
         // Parse Response (Robust)
         let content = ''
         if (data.choices && data.choices.length > 0) {
@@ -1045,8 +1119,11 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
         } else if (data.candidates && data.candidates.length > 0) {
             content = data.candidates[0].content?.parts?.[0]?.text || ''
         }
-        
-        if (!content) throw new Error('Empty Content')
+
+        if (!content) {
+            useLoggerStore().addLog('WARN', '总结结果为空 (Raw Response)', data)
+            throw new Error('Empty Content (Check Raw Response)')
+        }
 
         useLoggerStore().addLog('AI', '总结结果 (Response)', { content })
         return content
@@ -1058,6 +1135,33 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     }
 }
 
+/**
+ * 将中文提示词翻译/扩充为英文生图提示词
+ * @param {String} text 中文描述
+ */
+export async function translateToEnglish(text) {
+    if (!text || !/[^\x00-\xff]/.test(text)) return text // No chinese, return as is
+
+    const systemPrompt = `You are a professional image generation prompt engineer. 
+Your task is to translate the user's Chinese description into a highly detailed, descriptive English prompt for drawing models like DALL-E 3 or Flux.
+Maintain the original meaning, but add relevant visual keywords (lighting, texture, style) to make it look artistic.
+Strictly output ONLY the English prompt text without any explanations.`
+
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Translate and expand this to a drawing prompt: ${text}` }
+    ]
+
+    try {
+        const result = await _generateReplyInternal(messages, { name: 'Translator' }, null)
+        if (result.error) return text
+        return result.content || text
+    } catch (e) {
+        console.error('Translation failed:', e)
+        return text
+    }
+}
+
 // --- Moments Feature AI Logic ---
 
 /**
@@ -1065,29 +1169,39 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
  * @param {Object} options { name, persona, worldContext, customPrompt }
  */
 export async function generateMomentContent(options) {
-    const { name, persona, worldContext, customPrompt } = options
-    
+    const { name, persona, worldContext, recentChats, customPrompt } = options
+
     const systemPrompt = `你现在是【${name}】。
 你的设定：${persona}。
 
+${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)】\n${recentChats}\n` : ''}
+
 【任务】
-请发布一条朋友圈动态。可以包含心情感悟、生活趣事、或是想对某人（乔乔）说的话。
+1. 发布一条朋友圈动态。可以包含心情感悟、生活趣事、或是想对某人（乔乔）说的话。
+2. 为这条动态生成 3-5 条社交互动（点赞或评论），互动者应该是通讯录中的好友或虚构合理的NPC。
+
 回复必须是一个 JSON 对象，格式如下：
 {
   "content": "朋友圈文字内容",
-  "imagePrompt": "如果有配图需求，请提供英文生图提示词（不需要包含风格词，系统会自动增强）。如果没有配图请留空。",
-  "imageDescription": "对图片的中文描述，帮助你自己以后记忆和理解这张图的内容。"
+  "location": "地理位置（可选，如：‘上海·某某咖啡厅’）",
+  "imagePrompt": "英文生图提示词（可选）",
+  "imageDescription": "图片描述（可选）",
+  "interactions": [
+    { "type": "like", "authorName": "名字", "isVirtual": true/false },
+    { "type": "comment", "authorName": "名字", "content": "内容", "replyTo": "谁", "isVirtual": true/false }
+  ]
 }
 
 【严格约束】
 1. 语言自然、生活化，不要像 AI。
 2. 如果有图片提示词，**必须**是关于场景、物品或角色的描述。
 3. 如果涉及到人物形象，系统将强制使用“日漫/少女漫”风格。
+4. 【严禁】不要生成任何代表用户的互动内容（点赞或评论）。
 ${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
 ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
 
     const messages = [{ role: 'system', content: systemPrompt }]
-    
+
     try {
         const result = await _generateReplyInternal(messages, { name }, null)
         if (result.error) throw new Error(result.error)
@@ -1095,12 +1209,14 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
         // Parse the JSON from AI response
         const jsonMatch = result.content.match(/\{[\s\S]*\}/)
         if (!jsonMatch) throw new Error('AI Response is not a valid JSON')
-        
+
         const data = JSON.parse(jsonMatch[0])
         const finalResult = {
             content: data.content,
+            location: data.location || '',
             images: [],
-            imageDescriptions: []
+            imageDescriptions: [],
+            interactions: data.interactions || []
         }
 
         if (data.imagePrompt) {
@@ -1123,29 +1239,38 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
  * @param {Object} options { characters: [{id, name, persona}], worldContext, customPrompt, count }
  */
 export async function generateBatchMomentsWithInteractions(options) {
-    const { characters, worldContext, customPrompt, count = 3 } = options
-    
-    // Build character list for prompt
+    const { characters, worldContext, customPrompt, userProfile, count = 3 } = options
+
+    // Build character list for prompt with detailed persona and chat history
     const charList = characters.map((c, idx) => {
         const bio = localStorage.getItem(`char_bio_${c.id}`) || ''
         const bioText = bio ? `\n   个性签名：${bio}` : ''
-        return `${idx + 1}. ${c.name}：${c.persona.substring(0, 150)}...${bioText}`
-    }).join('\n')
-    
-    // Include user's bio if available
-    const userBio = localStorage.getItem('char_bio_user') || ''
-    const userBioText = userBio ? `\n\n用户的个性签名：${userBio}` : ''
-    
-    const systemPrompt = `你是一个社交网络模拟器。
+        const chatText = c.recentChats ? `\n   最近聊天记录(参考): ${c.recentChats.substring(0, 800).replace(/\n/g, ' ')}...` : ''
+        return `${idx + 1}. 【${c.name}】(ID: ${c.id})\n   人设：${c.persona.substring(0, 1000)}${bioText}${chatText}`
+    }).join('\n\n')
+
+    // Include user's bio and pinned moments if available
+    let userContextText = userProfile?.name ? `\n\n【当前用户 (${userProfile.name}) 资料】` : ""
+    if (userProfile?.signature) userContextText += `\n个性签名：${userProfile.signature}`
+    if (userProfile?.pinnedMoments?.length > 0) {
+        userContextText += `\n置顶动态：\n` + userProfile.pinnedMoments.map((m, i) => `${i + 1}. ${m.content}`).join('\n')
+    }
+    if (userProfile?.persona) userContextText += `\n背景设定：${userProfile.persona}`
+
+    const systemPrompt = `你是一个社交网络模拟器。以下是可供选择的发帖角色及互动好友列表：
+${charList}
+${userContextText}
     
 【任务】
-为以下角色生成 ${count} 条朋友圈动态，每条动态需要包含：
-1. 发布者（从角色列表中选择）
+请从上述列表中挑选角色，生成 ${count} 条朋友圈动态。每条动态需要包含：
+1. 发布者（必须从上述 ID 列表中选择正确的 authorId）
 2. 朋友圈内容
 3. 配图（可选）
 4. 社交互动（点赞、评论、回复）
 
-【你需要从这些角色中挑选${count}个，分别生成一条朋友圈，并为每条朋友圈配备 3-6 个社交互动（点赞 30% / 评论 70%）。
+【要求】
+1. 你需要从这些角色中挑选 ${count} 个，分别生成一条朋友圈，并为每条朋友圈配备 3-6 个社交互动（点赞 30% / 评论 70%）。
+2. 点赞和评论者必须是角色列表中的人或虚拟NPC。
 
 【输出格式】必须是一个 JSON 数组：
 \`\`\`json
@@ -1153,6 +1278,7 @@ export async function generateBatchMomentsWithInteractions(options) {
   {
     "authorId": "角色ID（从输入中选择）",
     "content": "朋友圈文字内容",
+    "location": "地理位置（可选）",
     "imagePrompt": "英文图片生成提示词（可选，如果需要配图）",
     "imageDescription": "图片描述（可选）",
     "html": "HTML格式内容（可选，用于特殊排版如诗歌）",
@@ -1180,6 +1306,8 @@ export async function generateBatchMomentsWithInteractions(options) {
 3. 70% 配图朋友圈
 4. 语言自然、生活化
 5. imagePrompt 如果提供，必须是英文
+6. 【严禁】绝对不要生成任何代表用户（User/我）的点赞、评论或回复。点赞和评论者必须是角色列表中的人或虚拟NPC。
+
 ${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
 ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}
 ${userBioText}
@@ -1187,7 +1315,7 @@ ${userBioText}
 请直接返回 JSON 数组，不要有其他文字。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
-    
+
     try {
         const result = await _generateReplyInternal(messages, { name: 'MomentsGenerator' }, null)
         if (result.error) throw new Error(result.error)
@@ -1195,21 +1323,22 @@ ${userBioText}
         // Parse JSON array from AI response
         const jsonMatch = result.content.match(/\[[\s\S]*\]/)
         if (!jsonMatch) throw new Error('AI Response is not a valid JSON array')
-        
+
         const momentsData = JSON.parse(jsonMatch[0])
-        
+
         // Process each moment: generate images if needed
         const processedMoments = []
         for (const data of momentsData) {
             const processed = {
                 authorId: data.authorId,
                 content: data.content,
+                location: data.location || '',
                 images: [],
                 imageDescriptions: [],
                 html: data.html || null,
                 interactions: data.interactions || []
             }
-            
+
             // Generate image only if imagePrompt is provided
             if (data.imagePrompt && data.imagePrompt.trim()) {
                 try {
@@ -1222,10 +1351,10 @@ ${userBioText}
                     console.warn('[Batch Moments] Image generation failed for:', data.imagePrompt, e)
                 }
             }
-            
+
             processedMoments.push(processed)
         }
-        
+
         return processedMoments
 
     } catch (e) {
@@ -1246,7 +1375,7 @@ export async function generateImage(prompt) {
     let provider = drawingVal.provider || 'pollinations'
     let apiKey = (drawingVal.apiKey || '').trim()
     let model = drawingVal.model || 'flux'
-    
+
     // REDUNDANT FALLBACK: If store seems empty, try reading directly from localStorage
     if (!apiKey) {
         try {
@@ -1261,15 +1390,15 @@ export async function generateImage(prompt) {
                 }
             }
         } catch (e) {
-             console.error('[AI Image] LocalStorage fallback failed')
+            console.error('[AI Image] LocalStorage fallback failed')
         }
     }
-    
+
     console.log(`[AI Image] Final Config - Provider: ${provider}, Model: ${model}, Has Key: ${!!apiKey}`)
     if (!apiKey && provider === 'pollinations') {
         console.warn('[AI Image] API Key is missing for Pollinations. Using anonymous endpoint (Limited).')
     }
-    
+
     // ... existing prompt logic ...
     const p = prompt.toLowerCase()
     const isCouple = /\b(couple|kiss|hug|together|holding hands|intimate|romantic|with each other|kissing|hugging|cuddling)\b/.test(p)
@@ -1285,7 +1414,7 @@ export async function generateImage(prompt) {
     if (isCouple) {
         enhancedPrompt = `masterpiece, best quality, (flat cell shading anime:1.2), (side profile view:1.4), (pure side-on interaction:1.3), ${prompt}, (two distinct individuals), (each person has two hands), (no extra limbs), (slender lanky builds), (narrow sloping shoulders), detailed profiles, sharp lineart, 8k`
     } else if (isMale) {
-        const muscleStyle = hasAbs 
+        const muscleStyle = hasAbs
             ? "(maniacally thin silhouette:1.4), (sloping narrow shoulders:1.5), (twig-like arms:1.5), (no muscle bulk), (flat stomach with faint grey abdominal lines:1.3), (zero bicep definition), lanky boyish body"
             : "(extremely skinny androgynous youth:1.4, malnourished-thin frame:1.3, narrow shoulders, flat chest, paper-thin)"
         enhancedPrompt = `masterpiece, best quality, (flat shoujo anime style), (delicate pretty boy face:1.3), (sparkling eyes), ${muscleStyle}, ${prompt}, (long thin fingers), clean lineart, 8k`
@@ -1294,7 +1423,7 @@ export async function generateImage(prompt) {
     } else {
         enhancedPrompt = `masterpiece, best quality, highres, photorealistic, ${prompt}, highly detailed texture, cinematic lighting, sharp focus, 8k`
     }
-    
+
     const seed = Math.floor(Math.random() * 1000000)
 
     if (provider === 'pollinations') {
@@ -1303,10 +1432,10 @@ export async function generateImage(prompt) {
             console.warn('[AI Image] Using Anonymous Pollinations (May show placeholder!)')
             return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}&negative=${encodeURIComponent(negativeBoost)}`
         }
-        
+
         // Mode 2: Pollinations with Auth Key
         console.log('[AI Image] Attempting Authenticated Pollinations Generation...')
-        
+
         // SECURITY / ARCHITECTURE CHECK:
         if (apiKey.startsWith('sk_')) {
             console.error('[AI Image] DETECTED SECRET KEY (sk_). These keys are meant for SERVERS only and will be BLOCKED by Pollinations anti-bot (Turnstile) in a browser.')
@@ -1316,17 +1445,17 @@ export async function generateImage(prompt) {
         try {
             const host = 'gen.pollinations.ai'
             const path = 'image'
-            
-            // SANITIZATION: Path parameters (the prompt) are very sensitive to special characters like commas in certain proxies.
-            // Replace commas and special characters with spaces/safe chars to ensure 200 OK.
+
+            // SANITIZATION: Heavily sanitize the prompt for URL safety.
+            // URL params are extremely fragile for prompt text.
             const safePrompt = enhancedPrompt
-                .replace(/[,，]/g, ' ') // Replace all commas with spaces
-                .replace(/[#?%]/g, '')  // Remove characters that act as URL control chars
-                .replace(/\s+/g, ' ')   // Collapse multiple spaces
+                .replace(/[,，:：\n\r]/g, ' ') // CRITICAL: Stop commas/colons breaking URL structure
+                .replace(/[#?%&]/g, '')        // Remove strict URL control chars
+                .replace(/\s+/g, ' ')          // Collapse spaces
                 .trim()
-            
+
             const url = `https://${host}/${path}/${encodeURIComponent(safePrompt)}?model=${model || 'flux'}&seed=${seed}&width=1024&height=1024&nologo=true&key=${apiKey}`
-            
+
             console.log('[AI Image] Requesting (Sanitized):', url.replace(apiKey, 'REDACTED'))
 
             // DOUBLE LAYER AUTH: Some Pollinations gateways prefer query param, others prefer header. 
@@ -1336,20 +1465,20 @@ export async function generateImage(prompt) {
                     'Authorization': `Bearer ${apiKey}`
                 }
             })
-            
+
             if (!response.ok) {
                 const errText = await response.text()
-                
+
                 if (response.status === 401) {
                     throw new Error('密钥校验失败 (401)。这通常意味着您的 pk_ 密钥额度已耗尽 (官方免费版仅 1张/小时) 或由于提示词违规被拦截。')
                 }
-                
+
                 if (response.status === 403 || errText.includes('Turnstile') || errText.includes('token')) {
                     throw new Error('被官方人机验证拦截 (Turnstile 403)。即使带了 Key 也可能由于 IP 被风控。建议改用 SiliconFlow。')
                 }
                 throw new Error(`API 响应异常 ${response.status}: ${errText.substring(0, 100)}`)
             }
-            
+
             const contentType = response.headers.get('content-type') || ''
             if (!contentType.includes('image')) {
                 const text = await response.text();
@@ -1361,7 +1490,7 @@ export async function generateImage(prompt) {
             }
 
             const blob = await response.blob()
-            
+
             // Convert to Base64 with aggressive compression for persistence
             return new Promise((resolve, reject) => {
                 const reader = new FileReader()
@@ -1400,7 +1529,7 @@ export async function generateImage(prompt) {
                     height: 1024
                 })
             })
-            
+
             if (!response.ok) {
                 const err = await response.text()
                 throw new Error(err)
@@ -1420,33 +1549,43 @@ export async function generateImage(prompt) {
 
 /**
  * 生成朋友圈动态的批量互动（3-5条点赞/评论）
- * @param {Object} moment 目标动态
- * @param {Array} charInfos 备选互动角色列表
- * @param {Array} historicalMoments 历史朋友圈列表（最多50条）
- */
-/**
- * 生成朋友圈动态的批量互动（3-5条点赞/评论）
  * 包含：已有角色 + 虚拟NPC（亲戚、同事等）
  * @param {Object} moment 目标动态
  * @param {Array} charInfos 备选互动角色列表
  * @param {Array} historicalMoments 历史朋友圈列表
+ * @param {Object} userProfile 用户个人资料
  */
-export async function generateBatchInteractions(moment, charInfos, historicalMoments = []) {
+export async function generateBatchInteractions(moment, charInfos, historicalMoments = [], userProfile = {}) {
     // 1. 构建提示词
-    const historyStr = historicalMoments.length > 0 
+    const historyStr = historicalMoments.length > 0
         ? "【朋友圈热点背景（参考）】\n" + historicalMoments.map(m => `ID: ${m.id} | 作者: ${m.authorName} | 内容: ${m.content} | 互动: 点赞[${m.likes}], 评论[${m.comments}]`).join('\n')
         : ""
-    
+
     // 简化现有角色信息，减少Token
-    const friendsList = charInfos.map((c, index) => `${index + 1}. ${c.name}, 人设: ${c.persona.substring(0, 100)}...`).join('\n')
+    const friendsList = charInfos.map((c, index) => {
+        const chatSnippet = c.recentChats ? ` | 最近聊天: ${c.recentChats.substring(0, 300).replace(/\n/g, ' ')}` : ''
+        return `${index + 1}. ${c.name}, 人设: ${c.persona.substring(0, 100)}...${chatSnippet}`
+    }).join('\n')
+
+    let userInformation = ""
+    if (userProfile.name) {
+        userInformation = `\n【当前用户（你互动的对象）资料】\n名字: ${userProfile.name}\n`
+        if (userProfile.signature) userInformation += `个性签名: ${userProfile.signature}\n`
+        if (userProfile.pinnedMoments?.length > 0) {
+            userInformation += `置顶动态: \n` + userProfile.pinnedMoments.map((m, i) => `- ${m.content}`).join('\n') + "\n"
+        }
+        userInformation += `背景设定: ${userProfile.persona || '一位普通用户'}\n`
+    }
 
     const systemPrompt = `你是朋友圈生成助手。以下是通讯录现有的角色：
 ${friendsList}
+${userInformation}
 
 【任务】
 请根据人设和格式，为下面的朋友圈动态生成 3-6 条互动（点赞或评论）。
 动态作者：${moment.authorName}
 动态内容：${moment.content}
+${moment.location ? `发布位置：${moment.location}` : ''}
 ${moment.visualContext ? `图片内容：${moment.visualContext}` : ''}
 
 ${historyStr}
@@ -1459,8 +1598,11 @@ ${historyStr}
 【生成要求】
 1. 总共生成 3 到 6 条互动。
 2. 混合点赞和评论（点赞占30%，评论占70%）。
-3. 评论内容要短，口语化，像微信回复。
-4. **必须**返回一个 JSON 数组，格式如下：
+3. 评论内容要短，口语化，像微信回复。不要重复，要有互动感。
+4. 【严禁】绝对不要生成任何代表用户（User/我）的点赞、评论或回复。所有的点赞和评论者必须是其他角色或虚拟NPC。
+5. 【去重】生成的互动角色必须**互不相同**（Unique Characters）。同一角色不能在同一条动态下点赞又评论。
+6. 【多样性】产生的评论内容必须各异，不要有雷同的语气词或观点。
+7. **必须**返回一个 JSON 数组，格式如下：
 [
   { "type": "like", "authorName": "名字", "isVirtual": true/false, "authorId": "ID或null" },
   { "type": "comment", "authorName": "名字", "content": "评论内容", "isVirtual": true/false, "authorId": "ID或null" }
@@ -1473,12 +1615,12 @@ ${historyStr}
         // Parse JSON
         const jsonMatch = result.content.match(/\[[\s\S]*\]/)
         if (!jsonMatch) return []
-        
+
         const interactions = JSON.parse(jsonMatch[0])
         return interactions.map(item => ({
             ...item,
             // Ensure ID is matched if it's an existing char
-            authorId: item.isVirtual ? `virtual-${Date.now()}-${Math.random().toString(36).substr(2,5)}` : (item.authorId || charInfos.find(c => c.name === item.authorName)?.id || null)
+            authorId: item.isVirtual ? `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` : (item.authorId || charInfos.find(c => c.name === item.authorName)?.id || null)
         }))
 
     } catch (e) {
@@ -1515,11 +1657,11 @@ ${historicalContext ? `\n${historicalContext}` : ''}
 5. 直接输出评论文字，不要包含任何标签或多余解释。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
-    
+
     try {
         const result = await _generateReplyInternal(messages, { name }, null)
         if (result.error) return null
-        
+
         // Cleanup response (sometimes AI adds quotes or prefixes)
         let comment = result.content.replace(/^["'](.*)["']$/, '$1').replace(/^评论[：:]\s*/, '').trim()
         return comment
@@ -1554,11 +1696,11 @@ ${worldContext ? `当前世界背景：${worldContext}` : ''}
 3. 直接输出回复内容，不要包含任何标签。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
-    
+
     try {
         const result = await _generateReplyInternal(messages, { name }, null)
         if (result.error) return null
-        
+
         // Cleanup
         let reply = result.content.replace(/^["'](.*)["']$/, '$1').replace(/^回复[：:]\s*/, '').trim()
         return reply
@@ -1605,20 +1747,20 @@ export async function generateCompleteProfile(character) {
 直接输出JSON，不要任何额外说明。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
-    
+
     try {
         const result = await _generateReplyInternal(messages, { name: '主页生成' }, null)
         if (result.error) throw new Error(result.content)
-        
+
         // Parse JSON
         let jsonText = result.content.trim()
         const jsonMatch = jsonText.match(/```(?:json)?\s*({[\s\S]*?})\s*```/) || jsonText.match(/({[\s\S]*?})/)
         if (jsonMatch) {
             jsonText = jsonMatch[1]
         }
-        
+
         const profileData = JSON.parse(jsonText)
-        
+
         // Generate background image
         let backgroundUrl = null
         if (profileData.backgroundPrompt) {
@@ -1628,7 +1770,7 @@ export async function generateCompleteProfile(character) {
                 console.warn('[Profile] Background generation failed:', e)
             }
         }
-        
+
         // Generate images for pinned moments
         const processedMoments = []
         for (const data of (profileData.pinnedMoments || []).slice(0, 3)) {
@@ -1638,7 +1780,7 @@ export async function generateCompleteProfile(character) {
                 imageDescriptions: data.imageDescription ? [data.imageDescription] : [],
                 html: data.html || null
             }
-            
+
             if (data.imagePrompt) {
                 try {
                     const imageUrl = await generateImage(data.imagePrompt)
@@ -1647,16 +1789,16 @@ export async function generateCompleteProfile(character) {
                     console.warn('[Profile] Moment image generation failed:', e)
                 }
             }
-            
+
             processedMoments.push(processed)
         }
-        
+
         return {
             pinnedMoments: processedMoments,
             backgroundUrl: backgroundUrl,
             bio: profileData.bio || ''
         }
-        
+
     } catch (e) {
         console.error('[aiService] generateCompleteProfile failed', e)
         throw e
