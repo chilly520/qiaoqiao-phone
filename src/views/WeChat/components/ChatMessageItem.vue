@@ -804,7 +804,7 @@ function cancelLongPress() {
     }
 }
 
-// Helper for SafeHtmlCard (Super Salvage Version)
+// Helper for SafeHtmlCard - 只接受特定JSON格式的HTML
 function getHtmlContent(content) {
     if (!content) return ''
     let cleaned = ''
@@ -819,70 +819,33 @@ function getHtmlContent(content) {
         cleaned = cleaned.replace(/\[\/CARD\]$/gi, '').trim();
         cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
 
-        // 3. Handle escaped quotes and newlines - ALWAYS do this first!
-        if (cleaned.includes('\\n')) cleaned = cleaned.replace(/\\n/g, '\n');
-        if (cleaned.includes('\\t')) cleaned = cleaned.replace(/\\t/g, '\t');
-        if (cleaned.includes('\\r')) cleaned = cleaned.replace(/\\r/g, '\r');
-        // UNESCAPE ALL QUOTES first - this is crucial for HTML to render properly
-        if (cleaned.includes('\\"')) cleaned = cleaned.replace(/\\"/g, '"');
-
-        // 4. Powerful Regex to handle JSON-wrapped HTML with unescaped stuff
-        // Look for the "html" key and capture everything until the final closure or common JSON delimiters
-        const jsonHtmlRegex = /"html"\s*:\s*"([\s\S]*?)"\s*(?:\}\s*$|,\s*"[^"]*"\s*:)/i;
-        let match = cleaned.match(jsonHtmlRegex);
-
-        // If not matched at end, try a looser match that just looks for "html": "..."
-        if (!match) match = cleaned.match(/"html"\s*:\s*"([\s\S]*?)"\s*(?:\}|$)/i);
-
-        if (match) {
-            let body = match[1];
-
-            // DEEP UNESCAPE: Crucial for JS scripts to work inside JSON strings
-            if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
-            if (body.includes('\\n')) body = body.replace(/\\n/g, '\n');
-            if (body.includes('\\t')) body = body.replace(/\\t/g, '\t');
-            if (body.includes('\\/')) body = body.replace(/\\\//g, '/');
-            if (body.includes('\\r')) body = body.replace(/\\r/g, '\r');
-
-            if (body.includes('<') && body.includes('>')) return body.trim();
+        // 3. 只接受JSON格式的HTML，拒绝直接HTML字符串
+        // 检查是否为有效的JSON格式
+        if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
+            return ''; // 不是JSON格式，返回空字符串，不渲染
         }
 
-        // 5. Handle direct HTML content (when [CARD] is followed by HTML instead of JSON)
-        if (cleaned.includes('<') && cleaned.includes('>')) {
-            let body = cleaned;
-            // Remove any JSON wrapper if present
-            if (body.startsWith('{') && body.endsWith('}')) {
-                // Try to find HTML inside JSON
-                const htmlMatch = body.match(/(<[\s\S]*>)/);
-                if (htmlMatch && htmlMatch[1]) {
-                    body = htmlMatch[1];
-                    // Ensure quotes are unescaped in extracted HTML
-                    if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
-                } else {
-                    // If no HTML found inside JSON, try to extract just the HTML part
-                    const htmlOnlyMatch = body.match(/"([\s\S]*?<[\s\S]*?>[\s\S]*?)"/);
-                    if (htmlOnlyMatch && htmlOnlyMatch[1]) {
-                        body = htmlOnlyMatch[1];
-                        if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
-                    }
-                }
+        // 4. 解析JSON，只接受包含html字段的JSON
+        let jsonData;
+        try {
+            jsonData = JSON.parse(cleaned);
+        } catch (e) {
+            return ''; // JSON解析失败，返回空字符串，不渲染
+        }
+
+        // 5. 只接受包含html字段的JSON，且html字段必须是字符串且包含有效HTML标签
+        if (jsonData.html && typeof jsonData.html === 'string') {
+            const htmlContent = jsonData.html;
+            // 检查是否包含有效HTML标签
+            if (htmlContent.includes('<') && htmlContent.includes('>')) {
+                return htmlContent.trim();
             }
-            return body.trim();
-        }
-
-        // 6. Fallback: Naked Tag Extraction (The "Tag-to-Tag" method)
-        const firstTag = cleaned.indexOf('<');
-        const lastTag = cleaned.lastIndexOf('>');
-        if (firstTag !== -1 && lastTag !== -1 && lastTag > firstTag) {
-            let extracted = cleaned.substring(firstTag, lastTag + 1);
-            if (extracted.includes('\\"')) extracted = extracted.replace(/\\"/g, '"');
-            return extracted;
         }
 
     } catch (e) {
-        console.error('[ChatMessageItem] Super Salvage global error:', e)
+        console.error('[ChatMessageItem] HTML渲染错误:', e)
     }
-    return cleaned
+    return '' // 默认返回空字符串，不渲染
 }
 
 </script>
