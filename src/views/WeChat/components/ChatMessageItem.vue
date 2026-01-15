@@ -804,7 +804,7 @@ function cancelLongPress() {
     }
 }
 
-// Helper for SafeHtmlCard - 只接受特定JSON格式的HTML
+// Helper for SafeHtmlCard - 宽松处理各种HTML格式
 function getHtmlContent(content) {
     if (!content) return ''
     let cleaned = ''
@@ -817,42 +817,40 @@ function getHtmlContent(content) {
         // 2. Remove [CARD] and [/CARD] tags if present
         cleaned = cleaned.replace(/^\[CARD\]/gi, '').trim();
         cleaned = cleaned.replace(/\[\/CARD\]$/gi, '').trim();
+        // 3. Remove [INNER_VOICE] tags and content
         cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
 
-        // 3. 检查是否为有效的JSON格式
-        if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
-            return ''; // 不是JSON格式，返回空字符串，不渲染
-        }
-
-        // 4. 解析JSON，只接受包含html字段或type字段为html的JSON
-        let jsonData;
-        try {
-            jsonData = JSON.parse(cleaned);
-        } catch (e) {
-            console.error('[ChatMessageItem] JSON解析失败:', e);
-            return ''; // JSON解析失败，返回空字符串，不渲染
-        }
-
-        // 5. 接受三种格式：
-        //    a. { "html": "<div>...</div>" } - 简化格式
-        //    b. { "type": "html", "html": "<div>...</div>" } - 完整格式（提示词中定义的格式）
-        //    c. { "html": "<div>...</div>", "type": "html" } - 任意顺序
-        if (jsonData.html && typeof jsonData.html === 'string') {
-            const htmlContent = jsonData.html;
-            // 检查是否包含有效HTML标签
-            if (htmlContent.includes('<') && htmlContent.includes('>')) {
-                return htmlContent.trim();
+        // 4. Try to extract JSON from the cleaned content
+        let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                let jsonData = JSON.parse(jsonMatch[0]);
+                if (jsonData.html && typeof jsonData.html === 'string') {
+                    return jsonData.html.trim();
+                } else if (jsonData.content && typeof jsonData.content === 'string') {
+                    // 支持content字段
+                    return jsonData.content.trim();
+                }
+            } catch (e) {
+                // JSON解析失败，尝试直接处理
+                console.warn('[ChatMessageItem] JSON解析失败，尝试直接处理HTML:', e);
             }
         }
-        // 接受只有type=html的格式，用于空HTML卡片
-        else if (jsonData.type === 'html') {
-            return '<div>卡片已发送</div>';
+
+        // 5. 直接检查是否包含HTML标签，如果有就返回
+        if (cleaned.includes('<') && cleaned.includes('>')) {
+            return cleaned;
         }
 
+        // 6. 兜底：如果没有HTML标签，至少返回内容本身，避免空白气泡
+        return cleaned;
+
     } catch (e) {
-        console.error('[ChatMessageItem] HTML渲染错误:', e)
+        console.error('[ChatMessageItem] HTML渲染错误:', e);
+        // 出错时至少返回原始内容，避免空白气泡
+        return content || '';
     }
-    return '' // 默认返回空字符串，不渲染
+    return content || ''; // 默认返回原始内容，避免空白气泡
 }
 
 </script>
