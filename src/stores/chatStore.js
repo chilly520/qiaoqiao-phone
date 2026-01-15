@@ -306,15 +306,20 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.isClaimed = false
                     newMsg.isRejected = false
                     newMsg.content = ''
-                } else if (/\\?\[\s*FAMILY_CARD/i.test(newMsg.content)) {
+                } else if (/[\\]?\[\s*FAMILY_CARD/i.test(newMsg.content)) {
                     // NEW: Auto-detect Family Card
-                    newMsg.type = 'family_card'
-                    newMsg.isClaimed = false
-                    newMsg.isRejected = false
-                    // Add paymentId for family cards to enable ID-based operations
-                    newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                    // Do NOT clear content, because Family Card needs the tag for data parsing (amount, text, etc)
-                    // The ChatMessageItem will handle the mixed text display.
+                    // Only match if it's a proper [FAMILY_CARD] tag, not random text in HTML
+                    const content = ensureString(newMsg.content).toUpperCase()
+                    // Check that it's not an HTML message with family card keyword in content
+                    if (!content.includes('<HTML') && !content.includes('<DIV') && !content.includes('<SPAN')) {
+                        newMsg.type = 'family_card'
+                        newMsg.isClaimed = false
+                        newMsg.isRejected = false
+                        // Add paymentId for family cards to enable ID-based operations
+                        newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                        // Do NOT clear content, because Family Card needs the tag for data parsing (amount, text, etc)
+                        // The ChatMessageItem will handle the mixed text display.
+                    }
                 }
             }
         }

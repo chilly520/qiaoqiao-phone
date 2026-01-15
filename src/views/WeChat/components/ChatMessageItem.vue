@@ -446,28 +446,24 @@ const isFamilyCard = computed(() => {
     // Priority: use message type (set by store)
     if (props.msg.type === 'family_card') return true
 
-    // Check if HTML content actually contains family card
-    if (props.msg.type === 'html' && props.msg.role === 'ai') {
-        const content = ensureString(props.msg.content).toUpperCase()
-        return content.includes('FAMILY_CARD')
-    }
+    // Do NOT check HTML messages for family card keywords - they should be handled by msg.type
+    if (props.msg.type === 'html') return false
 
-    // EXTREME Fallback: just check for the keyword. 
+    // Check for family card tags in text content
     const content = ensureString(props.msg.content).toUpperCase()
-    if (content.includes('FAMILY_CARD')) return true
-
-    return false
+    // Only match proper [FAMILY_CARD] tags, not random strings containing the keyword
+    return /[\\]?\[\s*FAMILY_CARD/i.test(content)
 })
 
 const isFamilyCardApply = computed(() => {
     const content = ensureString(props.msg.content)
-    return /\\?\[\s*FAMILY_CARD_APPLY/i.test(content)
+    return /[\\]?\[\s*FAMILY_CARD_APPLY/i.test(content)
 })
 
 const isFamilyCardReject = computed(() => {
     const c = ensureString(props.msg.content)
     // Regular check OR HTML JSON check
-    return /\\?\[\s*FAMILY_CARD_REJECT/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
+    return /[\\]?\[\s*FAMILY_CARD_REJECT/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
 })
 
 const familyCardData = computed(() => {
@@ -811,8 +807,9 @@ function cancelLongPress() {
 // Helper for SafeHtmlCard (Super Salvage Version)
 function getHtmlContent(content) {
     if (!content) return ''
+    let cleaned = ''
     try {
-        let cleaned = content.trim()
+        cleaned = content.trim()
 
         // 1. Pre-cleanup: Remove markdown backticks
         cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim()
