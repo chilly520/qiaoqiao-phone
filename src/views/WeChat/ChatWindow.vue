@@ -514,8 +514,15 @@ const saveStatus = () => {
 
 // Nudge / Pat Logic
 const shakingAvatars = ref(new Set())
+let avatarClickTimer = null
 
 const handlePat = (msg) => {
+    // Cancel any pending single click
+    if (avatarClickTimer) {
+        clearTimeout(avatarClickTimer)
+        avatarClickTimer = null
+    }
+    
     // 1. Visual Response
     shakingAvatars.value.add(msg.id)
     setTimeout(() => shakingAvatars.value.delete(msg.id), 500)
@@ -537,6 +544,29 @@ const handlePat = (msg) => {
     // if (msg.role === 'ai') {
     //     chatStore.sendMessageToAI(chatData.value.id, { hiddenHint: '[System: 拍一拍]' })
     // }
+}
+
+// Handle Avatar Click with double-click prevention
+const handleAvatarClick = (msg) => {
+    // Cancel any existing timer
+    if (avatarClickTimer) {
+        clearTimeout(avatarClickTimer)
+    }
+    
+    // Set a timer to handle the single click after a short delay
+    avatarClickTimer = setTimeout(() => {
+        // If it's a friend request or system message, ignore
+        if (msg.isSystem || msg.type === 'system') return;
+
+        // Navigate to Character Info Card
+        // If user, go to user profile (using 'user' ID or whatever logic you prefer)
+        // Here we assume 'user' is a valid ID for the user profile, or we handle it.
+        const targetId = msg.role === 'user' ? 'user' : chatStore.currentChatId;
+        router.push({ name: 'character-info', params: { charId: targetId } });
+        
+        // Clear the timer reference
+        avatarClickTimer = null
+    }, 300) // 300ms delay - typical double-click timeout
 }
 
 // Visual Feedback for Command Nudges
@@ -572,8 +602,10 @@ watch(() => chatStore.patEvent, (evt) => {
 const showFamilyCardModal = ref(false)
 const familyCardActionType = ref('') // 'apply' or 'send'
 const showFamilyCardSendModal = ref(false)
+const showFamilyCardApplyModal = ref(false)
 const familyCardAmount = ref('5200')
 const familyCardNote = ref('我的钱就是你的钱')
+const familyCardApplyNote = ref('送我一张亲属卡好不好？以后你来管家~')
 
 const handlePanelAction = (type) => {
     if (type === 'album') {
@@ -594,18 +626,9 @@ const handlePanelAction = (type) => {
 const handleFamilyCardAction = (actionType) => {
     familyCardActionType.value = actionType
     if (actionType === 'apply') {
-        // Apply for family card
-        const defaultText = '送我一张亲属卡好不好？以后你来管家~'
-        chatStore.addMessage(chatData.value.id, {
-            role: 'user',
-            type: 'text',
-            content: `[FAMILY_CARD_APPLY:${defaultText}]`
-        })
+        // Show family card apply modal
         showFamilyCardModal.value = false
-        // Auto-send AI response after delay
-        setTimeout(() => {
-            generateAIResponse()
-        }, 500)
+        showFamilyCardApplyModal.value = true
     } else if (actionType === 'send') {
         // Show family card send modal
         showFamilyCardModal.value = false
@@ -633,6 +656,30 @@ const confirmSendFamilyCard = () => {
     // Clear form fields
     familyCardAmount.value = '5200'
     familyCardNote.value = '我的钱就是你的钱'
+    
+    // DO NOT auto-call API - remove the timeout generateAIResponse call
+    // User requested that card is just mounted on message without auto API call
+}
+
+// Handle applying for family card after user fills form
+const confirmApplyFamilyCard = () => {
+    if (!familyCardApplyNote.value.trim()) {
+        showToast('请输入申请备注', 'error')
+        return
+    }
+    
+    // Send family card apply message
+    chatStore.addMessage(chatData.value.id, {
+        role: 'user',
+        type: 'text',
+        content: `[FAMILY_CARD_APPLY:${familyCardApplyNote.value}]`
+    })
+    
+    // Close modal
+    showFamilyCardApplyModal.value = false
+    
+    // Clear form fields
+    familyCardApplyNote.value = '送我一张亲属卡好不好？以后你来管家~'
     
     // DO NOT auto-call API - remove the timeout generateAIResponse call
     // User requested that card is just mounted on message without auto API call
@@ -746,9 +793,10 @@ const closePanels = () => {
 // Inner Voice Parsing
 // (Function definitions moved below)
 
-// TTS Helper
+// TTS Helper - 按照气泡顺序朗读
 const ttsQueue = ref([]);
 const isSpeaking = ref(false);
+const spokenMsgIds = new Set(); // 已朗读的消息ID，避免重复朗读
 
 // Toast System
 const toastVisible = ref(false);
@@ -772,9 +820,15 @@ const processQueue = () => {
     if (isSpeaking.value || ttsQueue.value.length === 0) return;
 
     isSpeaking.value = true;
-    const text = ttsQueue.value.shift();
+    const queueItem = ttsQueue.value.shift();
+    const { text, msgId } = queueItem;
 
     speakOne(text, () => {
+        // 标记消息为已朗读
+        if (msgId) {
+            spokenMsgIds.add(msgId);
+        }
+        
         isSpeaking.value = false;
         // Pause slightly between bubbles
         setTimeout(processQueue, 500);
@@ -828,9 +882,15 @@ const speakOne = (text, onEnd) => {
     window.speechSynthesis.speak(utterance);
 };
 
-const speakMessage = (text) => {
+const speakMessage = (text, msgId = null) => {
     if (!text) return;
-    ttsQueue.value.push(text);
+    
+    // 如果提供了消息ID，检查是否已经朗读过
+    if (msgId && spokenMsgIds.has(msgId)) {
+        return;
+    }
+    
+    ttsQueue.value.push({ text, msgId });
     processQueue();
 }
 
@@ -838,25 +898,47 @@ watch(() => chatStore.isTyping, (isTyping) => {
     if (isTyping) {
         // AI is generating... scroll to bottom
         setTimeout(() => scrollToBottom(), 50);
-    } else {
-        // AI finished generating. Check for unread messages if Auto Read is ON.
-        if (chatData.value?.autoRead) { // Check switch only (capability is usually true)
-            // Get last few messages to be safe
-            const recentMsgs = msgs.value.slice(-3);
-            recentMsgs.forEach(msg => {
-                // If it's AI, valid content, and NOT played yet
-                if (msg.role === 'ai' && !msg._ttsPlayed && msg.content) {
-                    speakMessage(msg.content);
-                    msg._ttsPlayed = true;
-                }
-            });
-        }
     }
 })
 
 watch(msgs, (newVal, oldVal) => {
     if (newVal.length > (oldVal?.length || 0)) {
         scrollToBottom()
+        
+        // AI finished generating. Check for unread messages if Auto Read is ON.
+        if (chatData.value?.autoRead) { // Check switch only (capability is usually true)
+            // 只处理新添加的消息
+            const newMsgCount = newVal.length - (oldVal?.length || 0);
+            if (newMsgCount > 0) {
+                // 获取新添加的消息，按照顺序处理
+                const newlyAddedMsgs = newVal.slice(-newMsgCount);
+                
+                // 等待DOM更新完成，确保气泡已经渲染在界面上
+                nextTick(() => {
+                    newlyAddedMsgs.forEach(msg => {
+                        // 只朗读AI消息，不朗读用户消息
+                        if (
+                            msg.role === 'ai' && 
+                            msg.content && 
+                            !spokenMsgIds.has(msg.id) &&
+                            // 只朗读文本类型消息，过滤掉特殊类型
+                            msg.type !== 'image' &&
+                            msg.type !== 'sticker' &&
+                            msg.type !== 'family_card' &&
+                            msg.type !== 'redpacket' &&
+                            msg.type !== 'transfer' &&
+                            msg.type !== 'voice'
+                        ) {
+                            // 清理文本内容，只保留需要朗读的部分
+                            const cleanText = getCleanSpeechText(msg.content);
+                            if (cleanText) {
+                                speakMessage(cleanText, msg.id);
+                            }
+                        }
+                    });
+                });
+            }
+        }
     }
 }, { deep: true })
 
@@ -944,16 +1026,7 @@ const cleanVoiceText = (val) => {
     return String(val);
 }
 
-const handleAvatarClick = (msg) => {
-    // If it's a friend request or system message, ignore
-    if (msg.isSystem || msg.type === 'system') return;
 
-    // Navigate to Character Info Card
-    // If user, go to user profile (using 'user' ID or whatever logic you prefer)
-    // Here we assume 'user' is a valid ID for the user profile, or we handle it.
-    const targetId = msg.role === 'user' ? 'user' : chatStore.currentChatId;
-    router.push({ name: 'character-info', params: { charId: targetId } });
-}
 
 const parseInnerVoice = (contentRaw) => {
     if (!contentRaw) return null;
@@ -1388,28 +1461,40 @@ const navigateToWallet = () => {
 // Helper methods for Rich Messages
 // (shakingAvatars etc defined above)
 
-const handleVoiceClick = (msg) => {
-    // 1. Toggle Transcript (AI only usually, or both?)
-    msg.showTranscript = !msg.showTranscript
+const handleVoiceClick = ({ msg, showTranscript }) => {
+    // 1. Update transcript visibility from child component
+    msg.showTranscript = showTranscript
 
-    // 2. Animation
-    msg.isPlaying = true
-    const duration = (msg.duration || Math.ceil(ensureString(msg.content).length / 3) || 1) * 1000
+    // 2. Handle TTS based on transcript visibility
+    if (showTranscript) {
+        // 展开时开始朗读
+        msg.isPlaying = true
+        const duration = (msg.duration || Math.ceil(ensureString(msg.content).length / 3) || 1) * 1000
 
-    if (msg.role === 'ai') {
-        const text = getCleanContent(msg.content)
-        speakMessage(text)
-        if (msg.isPlayed === false) {
+        if (msg.role === 'ai') {
+            const text = getCleanSpeechText(msg.content)
+            // 移除spokenMsgIds检查，允许重复朗读
+            ttsQueue.value.push({ text, msgId: msg.id });
+            processQueue();
+            // 确保设置isPlayed为true并更新到聊天存储
+            msg.isPlayed = true
             chatStore.updateMessage(chatData.value.id, msg.id, { isPlayed: true })
+        } else {
+            // User voice fallback
+            showToast('暂不支持播放用户语音', 'info')
         }
-    } else {
-        // User voice fallback
-        showToast('暂不支持播放用户语音', 'info')
-    }
 
-    setTimeout(() => {
+        setTimeout(() => {
+            msg.isPlaying = false
+        }, duration)
+    } else {
+        // 关闭时停止朗读
         msg.isPlaying = false
-    }, duration)
+        // 取消当前的TTS播放
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel()
+        }
+    }
 }
 
 const handlePayClick = (msg) => {
@@ -2212,6 +2297,38 @@ onUnmounted(() => {
                             class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all" 
                             :disabled="!familyCardAmount || parseFloat(familyCardAmount) <= 0">
                             发送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Apply Family Card Form Modal -->
+        <div v-if="showFamilyCardApplyModal" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
+                <h3 class="text-lg font-bold text-center mb-6">申请亲属卡</h3>
+                
+                <div class="space-y-5">
+                    <!-- Note Input -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">申请留言</label>
+                        <textarea v-model="familyCardApplyNote" 
+                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            placeholder="例如：送我一张亲属卡好不好？以后你来管家~" 
+                            rows="3" maxlength="100"></textarea>
+                        <div class="text-xs text-gray-500 mt-1">写下你想要申请亲属卡的理由吧</div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex gap-3 pt-2">
+                        <button @click="showFamilyCardApplyModal = false" 
+                            class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                            取消
+                        </button>
+                        <button @click="confirmApplyFamilyCard" 
+                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all" 
+                            :disabled="!familyCardApplyNote.trim()">
+                            发送申请
                         </button>
                     </div>
                 </div>
@@ -3226,65 +3343,101 @@ onUnmounted(() => {
     font-family: "Songti SC", "SimSun", serif;
 }
 
-/* Voice Wave Animation */
+/* Voice Wave Animation - Improved Sound Wave Effect */
 .voice-wave {
     display: flex;
     align-items: center;
     gap: 3px;
-    height: 14px;
+    height: 16px;
 }
 
 .voice-wave .bar {
-    width: 2.5px;
-    border-radius: 1px;
-    background-color: currentColor;
-    transition: height 0.2s;
+    width: 3px;
+    border-radius: 2px;
+    background-color: currentColor; /* 声纹颜色与气泡文字颜色一致 */
+    transition: height 0.2s, opacity 0.2s;
+    opacity: 0.8;
 }
 
+/* Static wave heights - More natural distribution */
 .voice-wave .bar1 {
-    height: 6px;
-}
-
-.voice-wave .bar2 {
-    height: 10px;
-}
-
-.voice-wave .bar3 {
-    height: 14px;
-}
-
-.voice-wave.playing .bar {
-    animation: voice-wave-anim 0.8s infinite ease-in-out;
-}
-
-.voice-wave.playing .bar1 {
+    height: 5px;
     animation-delay: 0s;
 }
 
-.voice-wave.playing .bar2 {
+.voice-wave .bar2 {
+    height: 12px;
     animation-delay: 0.1s;
 }
 
-.voice-wave.playing .bar3 {
+.voice-wave .bar3 {
+    height: 16px;
     animation-delay: 0.2s;
 }
 
-@keyframes voice-wave-anim {
+.voice-wave .bar4 {
+    height: 9px;
+    animation-delay: 0.3s;
+}
 
-    0%,
-    100% {
-        height: 6px;
+.voice-wave .bar5 {
+    height: 14px;
+    animation-delay: 0.4s;
+}
+
+/* Playing animation - More realistic sound wave effect */
+.voice-wave.playing .bar {
+    animation: voice-wave-anim 0.6s infinite ease-in-out;
+}
+
+@keyframes voice-wave-anim {
+    0%, 100% {
+        height: 5px;
         opacity: 0.5;
     }
-
+    10% {
+        height: 10px;
+        opacity: 0.7;
+    }
+    20% {
+        height: 16px;
+        opacity: 0.9;
+    }
+    30% {
+        height: 12px;
+        opacity: 0.8;
+    }
+    40% {
+        height: 8px;
+        opacity: 0.7;
+    }
     50% {
         height: 14px;
         opacity: 1;
     }
+    60% {
+        height: 6px;
+        opacity: 0.6;
+    }
+    70% {
+        height: 11px;
+        opacity: 0.8;
+    }
+    80% {
+        height: 7px;
+        opacity: 0.7;
+    }
+    90% {
+        height: 13px;
+        opacity: 0.9;
+    }
 }
 
+/* Enhanced playing effect */
 .voice-playing-effect {
-    box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    transform: scale(1.02);
+    transition: all 0.3s ease;
 }
 
 .voice-wave.wave-left {

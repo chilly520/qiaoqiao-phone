@@ -349,6 +349,7 @@ export const useChatStore = defineStore('chat', () => {
             const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
 
             if (!isToxic) {
+                // App internal notification event
                 notificationEvent.value = {
                     id: Date.now(),
                     chatId: chatId,
@@ -357,6 +358,10 @@ export const useChatStore = defineStore('chat', () => {
                     content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
                     timestamp: Date.now()
                 }
+                
+                // Browser notification using notification service
+                // Extract to separate function to avoid async/await in sync function
+                sendBrowserNotification(chatId, chat, newMsg)
             }
         }
 
@@ -769,6 +774,39 @@ export const useChatStore = defineStore('chat', () => {
         saveChats()
     }
 
+    // Send browser notification for new messages
+    async function sendBrowserNotification(chatId, chat, newMsg) {
+        try {
+            // Only send notification if app is in background or different chat
+            if (typeof window === 'undefined' || chatId === currentChatId.value) {
+                return
+            }
+            
+            // Import notification service dynamically to avoid circular dependencies
+            const { notificationService } = await import('../utils/notificationService')
+            
+            // Check if notification permission is granted
+            if (notificationService.hasPermission()) {
+                const notificationContent = newMsg.type === 'family_card' ? '[亲属卡]' : 
+                                         (newMsg.type === 'image' ? '[图片]' : 
+                                         (newMsg.content || '[消息]'))
+                
+                notificationService.sendNotification(chat.name, {
+                    body: notificationContent,
+                    icon: chat.avatar || '/pwa-192x192.jpg',
+                    badge: '/pwa-192x192.jpg',
+                    data: {
+                        chatId: chatId,
+                        type: 'chat_message'
+                    },
+                    duration: 8000
+                })
+            }
+        } catch (error) {
+            console.error('Failed to send browser notification:', error)
+        }
+    }
+
     function updateMessage(chatId, msgId, updates) {
         console.log('[ChatStore updateMessage] START:', { chatId, msgId, updates })
         const chat = chats.value[chatId]
@@ -948,7 +986,11 @@ export const useChatStore = defineStore('chat', () => {
                 const lastUserMsg = userMessages[userMessages.length - 1]
                 // STRICT CHECK: Only append to text messages
                 if (lastUserMsg.type === 'text' && !lastUserMsg.content.includes('data:image/')) {
-                    lastUserMsg.content += ` （对方间隔 ${diffMinutes} 分钟才回复您的消息）`
+                    // 转换为小时和分钟格式
+                    const hours = Math.floor(diffMinutes / 60);
+                    const mins = diffMinutes % 60;
+                    const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
+                    lastUserMsg.content += ` （对方已经${timeStr}没有理你了）`
                 }
             }
         }
@@ -1052,17 +1094,22 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Clean content by removing ALL inner voice blocks for display/splitting
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
-                // Clean content by removing ALL inner voice blocks for display/splitting
-                // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
                 const innerVoiceRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi;
 
-                // Extract the FIRST block to save as the "Canonical" inner voice
-                const firstMatch = fullContent.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i);
-                const innerVoiceBlock = firstMatch ? firstMatch[0] : '';
+                // Extract ALL inner voice blocks
+                const allVoiceBlocks = [...fullContent.matchAll(innerVoiceRegex)];
+                // Take the first block as the canonical inner voice
+                const innerVoiceBlock = allVoiceBlocks.length > 0 ? allVoiceBlocks[0][0] : '';
+                
+                // Remove ALL inner voice blocks from the content to get pure dialogue
+                const pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
+                
+                // Reconstruct the full content with proper order: dialogue first, then inner voice
+                const properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
 
                 // --- Handle [SET_PAT] Command ---
                 const patRegex = /\[SET_PAT:(.+?)(?::(.+?))?\]/i
-                const patMatch = fullContent.match(patRegex)
+                const patMatch = properlyOrderedContent.match(patRegex)
                 if (patMatch) {
                     const newAction = patMatch[1].trim()
                     if (newAction.toLowerCase() === 'reset') {
@@ -1078,7 +1125,7 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Handle Quote (REPLY) ---
                 // Remove ^ to allow REPLY tag to be anywhere (e.g. after Inner Voice)
                 const replyRegex = /\[REPLY:\s*(.*?)\]/i;
-                const replyMatch = fullContent.match(replyRegex);
+                const replyMatch = properlyOrderedContent.match(replyRegex);
                 let aiQuote = null;
                 if (replyMatch && chat.msgs) {
                     const keyword = replyMatch[1].trim();
@@ -1098,7 +1145,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Handle [NUDGE] Command (Updated) ---
                 const nudgeRegex = /\[(NUDGE(?:_SELF)?)(?::(.+?))?\]/i;
-                const nudgeMatch = fullContent.match(nudgeRegex);
+                const nudgeMatch = properlyOrderedContent.match(nudgeRegex);
                 if (nudgeMatch) {
                     const command = nudgeMatch[1].toUpperCase();
                     const modifier = nudgeMatch[2] ? nudgeMatch[2].trim() : '';
@@ -1140,7 +1187,7 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
                 // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
                 const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
-                const momentMatch = fullContent.match(momentRegex);
+                const momentMatch = properlyOrderedContent.match(momentRegex);
                 if (momentMatch) {
                     try {
                         let jsonStr = momentMatch[1].trim()
@@ -1197,13 +1244,13 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Handle Active Interactions [LIKE], [COMMENT], [REPLY] ---
                 const likeRegex = /\[LIKE[:：]\s*(m-[^\]]+)\]/gi;
                 let likeMatch;
-                while ((likeMatch = likeRegex.exec(fullContent)) !== null) {
+                while ((likeMatch = likeRegex.exec(properlyOrderedContent)) !== null) {
                     momentsStore.addLike(likeMatch[1], chatId, chat.name);
                 }
 
                 const commentRegex = /\[COMMENT[:：]\s*(m-[^\]]+)[:：]\s*([\s\S]+?)\]/gi;
                 let commentMatch;
-                while ((commentMatch = commentRegex.exec(fullContent)) !== null) {
+                while ((commentMatch = commentRegex.exec(properlyOrderedContent)) !== null) {
                     momentsStore.addComment(commentMatch[1], {
                         authorId: chatId,
                         authorName: chat.name,
@@ -1213,7 +1260,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 const momentActionReplyRegex = /\[REPLY[:：]\s*(m-[^\]]+)[:：]\s*(c-[^\]]+)[:：]\s*([\s\S]+?)\]/gi;
                 let momentActionReplyMatch;
-                while ((momentActionReplyMatch = momentActionReplyRegex.exec(fullContent)) !== null) {
+                while ((momentActionReplyMatch = momentActionReplyRegex.exec(properlyOrderedContent)) !== null) {
                     const momentId = momentActionReplyMatch[1];
                     const commentId = momentActionReplyMatch[2];
                     const content = momentActionReplyMatch[3].trim();
@@ -1235,7 +1282,7 @@ export const useChatStore = defineStore('chat', () => {
                 const familyCardRegex = /\[FAMILY_CARD(?:_APPLY)?:[\s\S]*?\]/gi;
                 const familyCardMatches = [];
                 let familyCardMatch;
-                while ((familyCardMatch = familyCardRegex.exec(fullContent)) !== null) {
+                while ((familyCardMatch = familyCardRegex.exec(properlyOrderedContent)) !== null) {
                     familyCardMatches.push(familyCardMatch[0]);
                 }
 
@@ -1244,7 +1291,7 @@ export const useChatStore = defineStore('chat', () => {
                 let avatarMatch;
                 // Loop to find the last valid avatar command (or first? let's stick to first for now but consume all)
                 // Actually, let's just use the first valid one we find
-                const firstAvatarMatch = setAvatarRegex.exec(fullContent);
+                const firstAvatarMatch = setAvatarRegex.exec(properlyOrderedContent);
 
                 if (firstAvatarMatch) {
                     try {
@@ -1332,7 +1379,7 @@ export const useChatStore = defineStore('chat', () => {
                 const rejectRegex = /\[(拒收|退回)(红包|转账):([^\]]+)\]/g;
 
                 // --- Improved Content Cleaning ---
-                let cleanContent = fullContent.replace(innerVoiceRegex, '')
+                let cleanContent = properlyOrderedContent.replace(innerVoiceRegex, '')
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
                     .replace(momentRegex, '')
@@ -1488,7 +1535,8 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Improved Splitting Logic (V7 - Fixed for FAMILY_CARD) ---
                 // FIX: Support Multiline Family Card and REJECT tags in Split Regex
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[表情包:.*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\([^\)]+\)|（[^）]+）|\[[^\]]+\]|[!?;。！？；…\n]+)/;
+                // FIX: Exclude INNER_VOICE tags from bracket matching to prevent message truncation
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[表情包:.*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\([^\)]+\)|（[^）]+）|\[(?!INNER_VOICE|\/INNER_VOICE)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 let segments = [];

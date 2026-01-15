@@ -902,6 +902,14 @@
             </div>
         </div>
     </div>
+
+    <!-- Avatar Cropper Modal -->
+    <AvatarCropper
+        v-if="showAvatarCropper || showUserAvatarCropper"
+        :image-src="cropperImageSrc"
+        @crop="handleCropComplete"
+        @cancel="handleCropCancel"
+    />
 </template>
 
 <script setup>
@@ -911,6 +919,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
 import { useAvatarFrameStore } from '../../stores/avatarFrameStore'
 import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
+import AvatarCropper from '../../components/AvatarCropper.vue'
 import { weatherService } from '../../utils/weatherService'
 
 const props = defineProps({
@@ -937,6 +946,12 @@ const expandedBooks = ref([]) // IDs of expanded books
 // Avatar Frame Pickers
 const showFramePicker = ref(false)
 const showUserFramePicker = ref(false)
+
+// Avatar Cropper
+const showAvatarCropper = ref(false)
+const showUserAvatarCropper = ref(false)
+const cropperImageSrc = ref('')
+const currentAvatarType = ref('character') // 'character' or 'user'
 
 // Toast & Confirm State
 const toastMessage = ref('')
@@ -1412,14 +1427,17 @@ const handleAvatarChange = async (e) => {
     const file = e.target.files[0]
     if (file) {
         try {
-            const compressed = await compressImage(file, 200, 0.6) // Avatars can be small
-            localData.value.avatar = compressed
-        } catch (err) {
-            console.error('Compression failed', err)
-            // Fallback
+            // Read file as data URL to show in cropper
             const reader = new FileReader()
-            reader.onload = (e) => localData.value.avatar = e.target.result
+            reader.onload = (e) => {
+                cropperImageSrc.value = e.target.result
+                currentAvatarType.value = 'character'
+                showAvatarCropper.value = true
+            }
             reader.readAsDataURL(file)
+        } catch (err) {
+            console.error('Failed to read file', err)
+            showToast('文件读取失败')
         }
     }
 }
@@ -1435,12 +1453,17 @@ const handleUserAvatarChange = async (e) => {
     const file = e.target.files[0]
     if (file) {
         try {
-            const compressed = await compressImage(file, 200, 0.6)
-            localData.value.userAvatar = compressed
-        } catch (err) {
+            // Read file as data URL to show in cropper
             const reader = new FileReader()
-            reader.onload = (e) => localData.value.userAvatar = e.target.result
+            reader.onload = (e) => {
+                cropperImageSrc.value = e.target.result
+                currentAvatarType.value = 'user'
+                showUserAvatarCropper.value = true
+            }
             reader.readAsDataURL(file)
+        } catch (err) {
+            console.error('Failed to read file', err)
+            showToast('文件读取失败')
         }
     }
 }
@@ -1448,6 +1471,44 @@ const promptUserAvatarUrl = () => {
     openUrlPrompt('设置我的头像', (url) => {
         if (url) localData.value.userAvatar = url
     })
+}
+
+// Avatar Cropper Handlers
+const handleCropComplete = async (croppedImage) => {
+    // Compress the cropped image for better performance
+    try {
+        // Convert data URL to blob
+        const blob = await (await fetch(croppedImage)).blob()
+        // Compress the cropped image
+        const compressed = await compressImage(blob, 200, 0.6)
+        
+        // Set the avatar based on type
+        if (currentAvatarType.value === 'character') {
+            localData.value.avatar = compressed
+            showAvatarCropper.value = false
+        } else {
+            localData.value.userAvatar = compressed
+            showUserAvatarCropper.value = false
+        }
+        
+        showToast('头像设置成功')
+    } catch (err) {
+        console.error('Compression failed', err)
+        // Fallback: use the cropped image directly
+        if (currentAvatarType.value === 'character') {
+            localData.value.avatar = croppedImage
+            showAvatarCropper.value = false
+        } else {
+            localData.value.userAvatar = croppedImage
+            showUserAvatarCropper.value = false
+        }
+        showToast('头像设置成功')
+    }
+}
+
+const handleCropCancel = () => {
+    showAvatarCropper.value = false
+    showUserAvatarCropper.value = false
 }
 
 const handleShowProfile = () => {

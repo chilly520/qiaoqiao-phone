@@ -126,7 +126,10 @@ const normalizeContent = (msg) => {
         return msg.content || `[${msg.type}:${msg.amount}:${msg.note}:${msg.paymentId || 'NO-ID'}]`
     }
 
-    if (msg.type === 'voice') return msg.text || ''
+    if (msg.type === 'voice') {
+        // For voice messages, return the actual content instead of msg.text
+        return msg.content || ''
+    }
 
     let content = msg.content || ''
 
@@ -181,7 +184,7 @@ const save = () => {
         } else if (b.type === 'voice') {
             base.type = 'voice'
             base.text = b.content
-            base.content = 'Voice'
+            base.content = b.content
         } else if (b.type === 'html') {
             base.type = 'html'
             // For HTML, content is likely the JSON string or raw HTML

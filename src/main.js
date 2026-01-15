@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useLoggerStore } from './stores/loggerStore'
+import { notificationService } from './utils/notificationService'
 import './style.css'
 import '@fortawesome/fontawesome-free/css/all.css'
 import './assets/themes.css' // 主题系统
@@ -48,3 +49,25 @@ app.config.errorHandler = (err, vm, info) => {
 // })
 
 app.mount('#app')
+
+// Initialize Notification Service
+const initNotificationService = async () => {
+    try {
+        // Register Service Worker for PWA functionality
+        if (notificationService.isServiceWorkerSupported()) {
+            await notificationService.registerServiceWorker()
+            logger.sys('Service Worker 注册成功')
+        }
+        
+        // Request notification permission
+        const hasPermission = await notificationService.requestPermission()
+        logger.sys(`通知权限: ${hasPermission ? '已授予' : '已拒绝'}`)
+    } catch (error) {
+        logger.error('通知服务初始化失败', { error: error.message })
+    }
+}
+
+initNotificationService()
+
+// Provide notification service globally for easy access
+app.provide('notificationService', notificationService)

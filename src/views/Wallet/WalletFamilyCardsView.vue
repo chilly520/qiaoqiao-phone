@@ -183,9 +183,8 @@ const confirmApply = () => {
 }
 
 const viewCardDetail = (card) => {
-    // Show details (transactions, limit, etc.)
-    // For now simple toast
-    chatStore.triggerToast(`查看: ${getCharName(card.fromCharId)} 的亲属卡`, 'info')
+    // Navigate to card detail page showing transactions
+    router.push(`/wallet/family-cards/${card.id}`)
 }
 </script>
 

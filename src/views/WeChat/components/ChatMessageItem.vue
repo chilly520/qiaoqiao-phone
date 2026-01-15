@@ -164,25 +164,25 @@
                             <div class="flex items-center gap-2" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
                                 <div class="h-10 rounded-lg flex items-center px-4 cursor-pointer relative shadow-sm min-w-[80px]"
                                     :class="[
-                                        msg.role === 'user' ? 'bg-[#2e2e2e] text-white flex-row-reverse' : 'bg-black text-[#d4af37]',
-                                        msg.isPlaying ? 'voice-playing-effect' : ''
+                                        msg.role === 'user' ? 'bg-[#2e2e2e] text-white flex-row-reverse' : 'bg-black text-[#e6dcc0]',
+                                        (msg.isPlaying || false) ? 'voice-playing-effect' : ''
                                     ]"
                                     :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px' }"
                                     @click="toggleVoice" @contextmenu.prevent="emitContextMenu">
 
-                                    <!-- Wave Animation -->
+                                    <!-- Wave Animation - Enhanced Sound Wave with 5 bars -->
                                     <div class="voice-wave"
-                                        :class="[msg.isPlaying ? 'playing' : '', msg.role === 'user' ? 'wave-right' : 'wave-left']">
-                                        <div class="bar bar1"
-                                            :class="msg.role === 'user' ? 'bg-white' : 'bg-[#d4af37]'"></div>
-                                        <div class="bar bar2"
-                                            :class="msg.role === 'user' ? 'bg-white' : 'bg-[#d4af37]'"></div>
-                                        <div class="bar bar3"
-                                            :class="msg.role === 'user' ? 'bg-white' : 'bg-[#d4af37]'"></div>
+                                        :class="[(msg.isPlaying || false) ? 'playing' : '', msg.role === 'user' ? 'wave-right' : 'wave-left']">
+                                        <div class="bar bar1"></div>
+                                        <div class="bar bar2"></div>
+                                        <div class="bar bar3"></div>
+                                        <div class="bar bar4"></div>
+                                        <div class="bar bar5"></div>
                                     </div>
-                                    <!-- Arrow -->
+                                    <!-- Arrow - Hidden as per user request -->
                                     <div class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                        :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#2e2e2e]' : 'left-[-6px] border-r-[6px] border-r-black'">
+                                        :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#2e2e2e]' : 'left-[-6px] border-r-[6px] border-r-black'"
+                                        style="display: none;">
                                     </div>
                                     <span class="text-[10px] font-bold opacity-70"
                                         :class="msg.role === 'user' ? 'mr-0 ml-1' : 'ml-1 mr-0'">{{ getDuration(msg)
@@ -773,8 +773,17 @@ function previewImage(src) {
 
 function toggleVoice() {
     localShowTranscript.value = !localShowTranscript.value
-    // Trigger play in parent
-    emit('play-voice', props.msg)
+    // Only play voice for AI messages, not user's own voice messages
+    if (props.msg.role !== 'user') {
+        emit('play-voice', {
+            msg: props.msg,
+            showTranscript: localShowTranscript.value
+        })
+    }
+    // Ensure isPlaying is properly initialized
+    if (props.msg.isPlaying === undefined) {
+        props.msg.isPlaying = false
+    }
 }
 
 function emitContextMenu(event) {
@@ -805,7 +814,12 @@ function getHtmlContent(content) {
         // 1. Pre-cleanup: Remove markdown backticks
         cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim()
 
-        // 2. Powerful Regex to handle JSON-wrapped HTML with unescaped stuff
+        // 2. Remove [CARD] prefix if present
+        if (cleaned.startsWith('[CARD]')) {
+            cleaned = cleaned.substring('[CARD]'.length).trim();
+        }
+
+        // 3. Powerful Regex to handle JSON-wrapped HTML with unescaped stuff
         // Look for the "html" key and capture everything until the final closure or common JSON delimiters
         const jsonHtmlRegex = /"html"\s*:\s*"([\s\S]*?)"\s*(?:\}\s*$|,\s*"[^"]*"\s*:)/i;
         let match = cleaned.match(jsonHtmlRegex);
@@ -826,7 +840,25 @@ function getHtmlContent(content) {
             if (body.includes('<') && body.includes('>')) return body.trim();
         }
 
-        // 3. Fallback: Naked Tag Extraction (The "Tag-to-Tag" method)
+        // 4. Handle direct HTML content (when [CARD] is followed by HTML instead of JSON)
+        if (cleaned.includes('<') && cleaned.includes('>')) {
+            let body = cleaned;
+            // Remove any JSON wrapper if present
+            if (body.startsWith('{') && body.endsWith('}')) {
+                // Try to find HTML inside JSON
+                const htmlMatch = body.match(/([\s\S]*?)(<[\s\S]*>)([\s\S]*?)/);
+                if (htmlMatch && htmlMatch[2]) {
+                    body = htmlMatch[2];
+                }
+            }
+            // Unescape HTML if needed
+            if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
+            if (body.includes('\\n')) body = body.replace(/\\n/g, '\n');
+            if (body.includes('\\t')) body = body.replace(/\\t/g, '\t');
+            return body.trim();
+        }
+
+        // 5. Fallback: Naked Tag Extraction (The "Tag-to-Tag" method)
         const firstTag = cleaned.indexOf('<');
         const lastTag = cleaned.lastIndexOf('>');
         if (firstTag !== -1 && lastTag !== -1 && lastTag > firstTag) {
@@ -851,9 +883,9 @@ function getHtmlContent(content) {
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     color: #e5e7eb;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
     font-family: 'Noto Serif SC', serif;
-    font-weight: 400;
+    font-weight: 300;
     letter-spacing: 0.5px;
     border-radius: 12px 2px 12px 12px;
 }
@@ -863,11 +895,51 @@ function getHtmlContent(content) {
     border: 1px solid rgba(212, 175, 55, 0.2);
     border-top: 1px solid rgba(212, 175, 55, 0.4);
     color: #e6dcc0;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.6);
     font-family: 'Noto Serif SC', serif;
-    font-weight: 400;
+    font-weight: 300;
     letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     border-radius: 2px 12px 12px 12px;
+}
+
+/* Voice bubble styles for Wujin theme */
+/* For AI messages (left side) */
+.h-10.rounded-lg.flex.items-center.px-4.cursor-pointer.relative.shadow-sm.min-w-\[80px\]:not(.bg-\[\#2e2e2e\]) {
+    background: radial-gradient(circle at top left, #2a2520 0%, #0e0e10 100%) !important;
+    border: 1px solid rgba(212, 175, 55, 0.2) !important;
+    border-top: 1px solid rgba(212, 175, 55, 0.4) !important;
+    color: #e6dcc0 !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.6) !important;
+    font-family: 'Noto Serif SC', serif !important;
+    font-weight: 300 !important;
+    letter-spacing: 0.5px !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8) !important;
+    border-radius: 2px 12px 12px 12px !important;
+}
+
+/* For user messages (right side) */
+.h-10.rounded-lg.flex.items-center.px-4.cursor-pointer.relative.shadow-sm.min-w-\[80px\].bg-\[\#2e2e2e\] {
+    background: radial-gradient(circle at top right, #374151 0%, #1f2937 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #e5e7eb !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
+    font-family: 'Noto Serif SC', serif !important;
+    font-weight: 300 !important;
+    letter-spacing: 0.5px !important;
+    border-radius: 12px 2px 12px 12px !important;
+}
+
+/* Voice arrow styles */
+/* For AI messages (left side) */
+.absolute.top-3.w-0.h-0.border-y-\[6px\].border-y-transparent.border-r-\[6px\].border-r-black {
+    border-right-color: #0e0e10 !important;
+}
+
+/* For user messages (right side) */
+.absolute.top-3.w-0.h-0.border-y-\[6px\].border-y-transparent.border-l-\[6px\].border-l-\[\#2e2e2e\] {
+    border-left-color: #1f2937 !important;
 }
 
 .voice-wave {
@@ -878,37 +950,41 @@ function getHtmlContent(content) {
 
 .bar {
     width: 3px;
-    height: 10px;
-    border-radius: 99px;
+    border-radius: 2px;
+    background-color: currentColor;
+    opacity: 0.8;
     animation: none;
 }
 
-.voice-playing-effect .bar {
-    animation: sound-wave 1s infinite ease-in-out;
+/* Individual bar heights */
+.bar1 { height: 5px; }
+.bar2 { height: 12px; }
+.bar3 { height: 16px; }
+.bar4 { height: 9px; }
+.bar5 { height: 14px; }
+
+/* Animation when playing */
+.voice-wave.playing .bar {
+    animation: voice-wave-anim 1s infinite ease-in-out;
 }
 
-.voice-playing-effect .bar1 {
-    animation-delay: 0s;
+/* Fix for voice playing effect */
+.voice-playing-effect {
+    animation: none !important;
 }
 
-.voice-playing-effect .bar2 {
-    animation-delay: 0.2s;
-}
+.voice-wave.playing .bar1 { animation-delay: 0s; }
+.voice-wave.playing .bar2 { animation-delay: 0.1s; }
+.voice-wave.playing .bar3 { animation-delay: 0.2s; }
+.voice-wave.playing .bar4 { animation-delay: 0.3s; }
+.voice-wave.playing .bar5 { animation-delay: 0.4s; }
 
-.voice-playing-effect .bar3 {
-    animation-delay: 0.4s;
-}
-
-@keyframes sound-wave {
-
-    0%,
-    100% {
-        height: 6px;
-    }
-
-    50% {
-        height: 16px;
-    }
+/* Realistic wave animation */
+@keyframes voice-wave-anim {
+    0%, 100% { height: 5px; opacity: 0.5; }
+    20% { height: 16px; opacity: 0.9; }
+    50% { height: 14px; opacity: 1; }
+    90% { height: 13px; opacity: 0.9; }
 }
 
 .pay-card {

@@ -12,7 +12,7 @@ export const useLoggerStore = defineStore('logger', () => {
         localStorage.removeItem('system_logs')
     }
 
-    const MAX_LOGS = 20 // Keep it very small to save space
+    const MAX_LOGS = 50 // Increased to keep more logs
     const autoScroll = ref(true)
 
     const saveLogs = () => {
@@ -38,11 +38,11 @@ export const useLoggerStore = defineStore('logger', () => {
 
         let maxDetailLength
         if (isCriticalAI) {
-            maxDetailLength = 50000 // Cap critical logs at 50k chars to prevent storage crash
+            maxDetailLength = 200000 // Increased to 200k chars for complete network request context
         } else if (isAIRelated) {
-            maxDetailLength = 10000 // 10k for other AI logs
+            maxDetailLength = 50000 // Increased to 50k for other AI logs
         } else {
-            maxDetailLength = 800 // 800 for general logs
+            maxDetailLength = 1000 // 1k for general logs
         }
 
         // Truncate overly large details to prevent storage bloat

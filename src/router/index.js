@@ -109,6 +109,11 @@ const router = createRouter({
             path: '/wallet/family-cards',
             name: 'wallet-family-cards',
             component: () => import('../views/Wallet/WalletFamilyCardsView.vue')
+        },
+        {
+            path: '/wallet/family-cards/:id',
+            name: 'wallet-family-card-detail',
+            component: () => import('../views/Wallet/WalletFamilyCardDetail.vue')
         }
     ]
 })

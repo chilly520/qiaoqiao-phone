@@ -196,23 +196,23 @@ watch(() => chatStore.toastEvent, (evt) => {
             class="fixed top-2 left-4 right-4 z-[5000] cursor-pointer animate-slide-down" @click="handleBannerClick">
             <!-- Banner Container -->
             <div
-                class="w-full bg-[#8ec5fc]/90 backdrop-blur-xl shadow-xl rounded-[28px] p-4 flex items-center gap-4 border border-white/10 ring-1 ring-black/5">
+                class="w-full bg-[#8ec5fc]/90 backdrop-blur-xl shadow-lg rounded-[16px] p-3 flex items-center gap-3 border border-white/10 ring-1 ring-black/5">
                 <!-- Avatar (Rounded Square - iOS Style) -->
-                <div class="w-[52px] h-[52px] rounded-[14px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
+                <div class="w-[40px] h-[40px] rounded-[10px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
                     <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
                     <div v-else class="w-full h-full bg-[#e1e1e1] flex items-center justify-center">
-                        <i class="fa-solid fa-user text-white text-lg"></i>
+                        <i class="fa-solid fa-user text-white text-base"></i>
                     </div>
                 </div>
 
                 <!-- Content -->
                 <div class="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                     <div class="flex items-center justify-between w-full">
-                        <span class="text-[17px] font-semibold text-[#1c1c1e] truncate">{{ bannerData.title }}</span>
+                        <span class="text-[15px] font-semibold text-[#1c1c1e] truncate">{{ bannerData.title }}</span>
                         <span
-                            class="text-[13px] text-[#1c1c1e]/40 font-medium whitespace-nowrap tracking-tight">现在</span>
+                            class="text-[12px] text-[#1c1c1e]/40 font-medium whitespace-nowrap tracking-tight">现在</span>
                     </div>
-                    <div class="text-[15px] text-[#1c1c1e]/70 truncate leading-tight font-normal">{{ bannerData.content
+                    <div class="text-[13px] text-[#1c1c1e]/70 truncate leading-tight font-normal">{{ bannerData.content
                     }}</div>
                 </div>
             </div>

@@ -140,7 +140,7 @@
                                     <div class="text-xs text-gray-500">{{ card.ownerName }} - ¥{{ card.amount }}</div>
                                 </div>
                             </div>
-                            <input type="radio" v-model="walletStore.paymentSettings.selectedCardId" :value="card.id" class="text-[#07c160]">
+                            <input type="radio" v-model="walletStore.paymentSettings.selectedCardId" :value="card.id" class="text-[#07c160]" @change="changeDefaultMethod('family')">
                         </div>
                     </div>
                 </div>
@@ -169,7 +169,7 @@
                                     <div class="text-xs text-gray-500">**** **** **** {{ card.number.slice(-4) }}</div>
                                 </div>
                             </div>
-                            <input type="radio" v-model="walletStore.paymentSettings.selectedCardId" :value="card.id" class="text-[#07c160]">
+                            <input type="radio" v-model="walletStore.paymentSettings.selectedCardId" :value="card.id" class="text-[#07c160]" @change="changeDefaultMethod('bank')">
                         </div>
                     </div>
                 </div>
