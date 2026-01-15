@@ -921,7 +921,7 @@ watch(msgs, (newVal, oldVal) => {
                             msg.role === 'ai' && 
                             msg.content && 
                             !spokenMsgIds.has(msg.id) &&
-                            // 只朗读文本类型消息，过滤掉特殊类型
+                            // 只朗读文本和HTML类型消息，过滤掉特殊类型
                             msg.type !== 'image' &&
                             msg.type !== 'sticker' &&
                             msg.type !== 'family_card' &&
@@ -930,7 +930,30 @@ watch(msgs, (newVal, oldVal) => {
                             msg.type !== 'voice'
                         ) {
                             // 清理文本内容，只保留需要朗读的部分
-                            const cleanText = getCleanSpeechText(msg.content);
+                            let textToRead = msg.content;
+                            
+                            // 处理HTML类型消息，提取其中的纯文本内容
+                            if (msg.type === 'html') {
+                                // 先移除HTML标签，只保留纯文本
+                                const tempDiv = document.createElement('div');
+                                // 尝试获取HTML内容
+                                let htmlContent = textToRead;
+                                // 如果是JSON格式，尝试解析
+                                if (textToRead.startsWith('{') && textToRead.endsWith('}')) {
+                                    try {
+                                        const jsonData = JSON.parse(textToRead);
+                                        if (jsonData.html) {
+                                            htmlContent = jsonData.html;
+                                        }
+                                    } catch (e) {
+                                        // 如果不是有效的JSON，直接处理
+                                    }
+                                }
+                                tempDiv.innerHTML = htmlContent;
+                                textToRead = tempDiv.textContent || tempDiv.innerText || '';
+                            }
+                            
+                            const cleanText = getCleanSpeechText(textToRead);
                             if (cleanText) {
                                 speakMessage(cleanText, msg.id);
                             }
