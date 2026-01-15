@@ -819,8 +819,7 @@ function getHtmlContent(content) {
         cleaned = cleaned.replace(/\[\/CARD\]$/gi, '').trim();
         cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
 
-        // 3. 只接受JSON格式的HTML，拒绝直接HTML字符串
-        // 检查是否为有效的JSON格式
+        // 3. 检查是否为有效的JSON格式
         if (!cleaned.startsWith('{') || !cleaned.endsWith('}')) {
             return ''; // 不是JSON格式，返回空字符串，不渲染
         }
@@ -830,12 +829,14 @@ function getHtmlContent(content) {
         try {
             jsonData = JSON.parse(cleaned);
         } catch (e) {
+            console.error('[ChatMessageItem] JSON解析失败:', e);
             return ''; // JSON解析失败，返回空字符串，不渲染
         }
 
-        // 5. 接受两种格式：
+        // 5. 接受三种格式：
         //    a. { "html": "<div>...</div>" } - 简化格式
         //    b. { "type": "html", "html": "<div>...</div>" } - 完整格式（提示词中定义的格式）
+        //    c. { "html": "<div>...</div>", "type": "html" } - 任意顺序
         if (jsonData.html && typeof jsonData.html === 'string') {
             const htmlContent = jsonData.html;
             // 检查是否包含有效HTML标签
