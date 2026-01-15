@@ -804,54 +804,63 @@ function cancelLongPress() {
     }
 }
 
-// Helper for SafeHtmlCard - 还原原始HTML渲染逻辑
+// Helper for SafeHtmlCard - 处理完整的[CARD]格式
 function getHtmlContent(content) {
     if (!content) return ''
     try {
-        // 1. 直接处理原始内容，不做过度清洗
-        let cleaned = content;
+        let processed = content;
+        
+        // 1. 移除[INNER_VOICE]标签和内容（包括换行符）
+        processed = processed.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
         
         // 2. 移除所有[CARD]和[/CARD]标签
-        cleaned = cleaned.replace(/\[CARD\]/gi, '').trim();
-        cleaned = cleaned.replace(/\[\/CARD\]/gi, '').trim();
+        processed = processed.replace(/\[CARD\]/gi, '').trim();
+        processed = processed.replace(/\[\/CARD\]/gi, '').trim();
         
-        // 3. 移除[INNER_VOICE]标签和内容
-        cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+        // 3. 移除markdown反引号
+        processed = processed.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
         
-        // 4. 移除markdown反引号
-        cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
+        // 4. 直接尝试解析整个处理后的内容为JSON
+        let jsonData = JSON.parse(processed);
+        if (jsonData.html && typeof jsonData.html === 'string') {
+            return jsonData.html;
+        } else if (jsonData.content && typeof jsonData.content === 'string') {
+            return jsonData.content;
+        }
         
-        // 5. 处理转义字符和换行符
-        // 替换转义的双引号
-        cleaned = cleaned.replace(/\\"/g, '"');
-        // 替换转义的单引号
-        cleaned = cleaned.replace(/\\'/g, "'");
-        // 替换转义的换行符
-        cleaned = cleaned.replace(/\\n/g, '');
-        // 替换转义的反斜杠
-        cleaned = cleaned.replace(/\\\\/g, '\\');
+        // 5. 如果JSON解析成功但没有html或content字段，尝试直接返回
+        return processed;
         
-        // 6. 尝试提取JSON
-        let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try {
+    } catch (e) {
+        console.warn('[ChatMessageItem] 直接JSON解析失败，尝试提取JSON片段:', e);
+        try {
+            // 6. 尝试提取JSON片段
+            let cleaned = content;
+            
+            // 重新处理原始内容
+            cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+            cleaned = cleaned.replace(/\[CARD\]/gi, '').trim();
+            cleaned = cleaned.replace(/\[\/CARD\]/gi, '').trim();
+            cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
+            
+            // 提取JSON对象
+            let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
                 let jsonData = JSON.parse(jsonMatch[0]);
                 if (jsonData.html && typeof jsonData.html === 'string') {
                     return jsonData.html;
                 } else if (jsonData.content && typeof jsonData.content === 'string') {
                     return jsonData.content;
                 }
-            } catch (e) {
-                console.warn('[ChatMessageItem] JSON解析失败，尝试直接返回:', e);
             }
+            
+            // 7. 兜底：直接返回处理后的内容
+            return cleaned;
+            
+        } catch (e2) {
+            console.error('[ChatMessageItem] 所有解析尝试都失败了:', e2);
+            return content;
         }
-        
-        // 7. 直接返回处理后的内容
-        return cleaned;
-        
-    } catch (e) {
-        console.error('[ChatMessageItem] HTML渲染错误:', e);
-        return content;
     }
     return content;
 }
