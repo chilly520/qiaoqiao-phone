@@ -2,7 +2,7 @@
 import { useLoggerStore } from '../../stores/loggerStore'
 
 export class RequestQueue {
-    constructor(maxRate = 5, interval = 1100) {
+    constructor(maxRate = 8, interval = 10000) {
         this.queue = [];
         this.isProcessing = false;
         this.timestamps = []; // Request timestamps for rate limiting

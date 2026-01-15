@@ -1,4 +1,4 @@
-﻿import { useSettingsStore } from '../stores/settingsStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
@@ -10,7 +10,7 @@ import { weatherService } from './weatherService'
 import { SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
 import { RequestQueue } from './ai/requestQueue'
 
-const apiQueue = new RequestQueue(4, 60000); // 4 requests per 1 minute
+const apiQueue = new RequestQueue(8, 10000); // 8 requests per 10 seconds
 
 export async function generateReply(messages, char, abortSignal) {
     // Wrapper to use Queue
@@ -208,12 +208,12 @@ async function _generateReplyInternal(messages, char, signal) {
     }
 
     if (!config) {
-        return { error: '未找到有效的 API 配置', internalError: 'Config is null' }
-    }
+            return { error: '未找到有效的 API 配置', internalError: 'Config is null', request: {} }
+        }
 
-    if (!apiKey) {
-        return { error: '请先在设置中配置 API Key' }
-    }
+        if (!apiKey) {
+            return { error: '请先在设置中配置 API Key', request: {} }
+        }
 
     // Use user info passed in 'char' object (per-chat settings) or global user profile
     const realUserProfile = settingsStore.personalization?.userProfile || {};
@@ -831,9 +831,25 @@ async function _generateReplyInternal(messages, char, signal) {
             // Check for safety/finish reason
             const finishReason = data.choices?.[0]?.finish_reason || data.candidates?.[0]?.finishReason
             if (finishReason === 'safety' || finishReason === 'content_filter') {
-                return { error: '内容被AI安全策略拦截 (Safety Filter)' }
+                return { 
+                error: '内容被AI安全策略拦截 (Safety Filter)',
+                request: {
+                    provider,
+                    endpoint,
+                    headers: reqHeaders,
+                    body: reqBody
+                }
             }
-            return { error: 'AI返回了空内容，请检查日志 (Raw Data)' }
+            }
+            return { 
+                error: 'AI返回了空内容，请检查日志 (Raw Data)',
+                request: {
+                    provider,
+                    endpoint,
+                    headers: reqHeaders,
+                    body: reqBody
+                }
+            }
         }
 
         // Log Token Usage
@@ -877,10 +893,16 @@ async function _generateReplyInternal(messages, char, signal) {
         content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
 
         return {
-            content,
-            innerVoice,
-            raw: rawContent
-        }
+                content,
+                innerVoice,
+                raw: rawContent,
+                request: {
+                    provider,
+                    endpoint,
+                    headers: reqHeaders,
+                    body: reqBody
+                }
+            }
 
     } catch (error) {
         console.error('AI Generation Failed:', error)
