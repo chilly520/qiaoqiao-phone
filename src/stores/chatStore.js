@@ -1666,6 +1666,9 @@ export const useChatStore = defineStore('chat', () => {
                             // ESCAPE FIX: Unescape JSON quotes
                             jsonStr = jsonStr.replace(/\\"/g, '"');
                             msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: jsonStr, quote: i === 0 ? aiQuote : null });
+                        } else if (msgContent.startsWith('<') && msgContent.includes('>') && (msgContent.includes('style=') || msgContent.includes('class='))) {
+                            // 直接检测HTML内容，设置为html类型
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: msgContent, quote: i === 0 ? aiQuote : null });
                         } else if (msgContent.startsWith('[表情包:')) {
                             msgAdded = addMessage(chatId, { role: 'ai', content: msgContent, quote: i === 0 ? aiQuote : null });
                         } else if (msgContent.startsWith('[语音:')) {
