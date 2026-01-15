@@ -38,8 +38,21 @@ const isUser = computed(() => {
 })
 const author = computed(() => {
     if (isUser.value) return settingsStore.personalization.userProfile
-    const id = props.moment?.authorId
-    return (id && chatStore.chats[id]) ? chatStore.chats[id] : { name: '神秘人', avatar: '' }
+    const authorId = props.moment?.authorId
+    if (!authorId) {
+        return { name: '神秘人', avatar: '' }
+    }
+    // 首先尝试通过ID查找
+    if (chatStore.chats[authorId]) {
+        return chatStore.chats[authorId]
+    }
+    // 如果通过ID找不到，尝试通过名称查找
+    const char = Object.values(chatStore.chats).find(c => c.name === authorId)
+    if (char) {
+        return char
+    }
+    // 如果都找不到，使用authorId作为名称，确保显示正确的作者名
+    return { name: authorId, avatar: '' }
 })
 
 const isLiked = computed(() => (props.moment?.likes || []).includes(settingsStore.personalization.userProfile.name))
@@ -72,12 +85,30 @@ const likeNames = computed(() => {
 
 const getAuthorName = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.name
-    return chatStore.chats[id]?.name || '神秘人'
+    // 首先尝试通过ID查找
+    if (chatStore.chats[id]) {
+        return chatStore.chats[id].name
+    }
+    // 如果通过ID找不到，尝试通过名称查找
+    const char = Object.values(chatStore.chats).find(c => c.name === id)
+    if (char) {
+        return char.name
+    }
+    return id || '神秘人'
 }
 
 const getAuthorAvatar = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.avatar
-    return chatStore.chats[id]?.avatar || ''
+    // 首先尝试通过ID查找
+    if (chatStore.chats[id]) {
+        return chatStore.chats[id].avatar
+    }
+    // 如果通过ID找不到，尝试通过名称查找
+    const char = Object.values(chatStore.chats).find(c => c.name === id)
+    if (char) {
+        return char.avatar
+    }
+    return ''
 }
 
 // --- Content Parsing (Stickers) ---
