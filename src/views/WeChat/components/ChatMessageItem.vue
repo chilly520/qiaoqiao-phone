@@ -825,7 +825,7 @@ function getHtmlContent(content) {
             return ''; // 不是JSON格式，返回空字符串，不渲染
         }
 
-        // 4. 解析JSON，只接受包含html字段的JSON
+        // 4. 解析JSON，只接受包含html字段或type字段为html的JSON
         let jsonData;
         try {
             jsonData = JSON.parse(cleaned);
@@ -833,13 +833,19 @@ function getHtmlContent(content) {
             return ''; // JSON解析失败，返回空字符串，不渲染
         }
 
-        // 5. 只接受包含html字段的JSON，且html字段必须是字符串且包含有效HTML标签
+        // 5. 接受两种格式：
+        //    a. { "html": "<div>...</div>" } - 简化格式
+        //    b. { "type": "html", "html": "<div>...</div>" } - 完整格式（提示词中定义的格式）
         if (jsonData.html && typeof jsonData.html === 'string') {
             const htmlContent = jsonData.html;
             // 检查是否包含有效HTML标签
             if (htmlContent.includes('<') && htmlContent.includes('>')) {
                 return htmlContent.trim();
             }
+        }
+        // 接受只有type=html的格式，用于空HTML卡片
+        else if (jsonData.type === 'html') {
+            return '<div>卡片已发送</div>';
         }
 
     } catch (e) {
