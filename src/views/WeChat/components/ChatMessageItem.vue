@@ -446,8 +446,11 @@ const isFamilyCard = computed(() => {
     // Priority: use message type (set by store)
     if (props.msg.type === 'family_card') return true
 
-    // Recovery: Map ALL AI-generated HTML to Family Card
-    if (props.msg.type === 'html' && props.msg.role === 'ai') return true
+    // Check if HTML content actually contains family card
+    if (props.msg.type === 'html' && props.msg.role === 'ai') {
+        const content = ensureString(props.msg.content).toUpperCase()
+        return content.includes('FAMILY_CARD')
+    }
 
     // EXTREME Fallback: just check for the keyword. 
     const content = ensureString(props.msg.content).toUpperCase()
