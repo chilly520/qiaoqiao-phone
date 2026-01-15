@@ -122,7 +122,7 @@ export const useStickerStore = defineStore('sticker', () => {
     }
 
     // Import from text content
-    function importStickersFromText(content, scope = 'global') {
+    function importStickersFromText(content, scope = 'global', category = null) {
         const lines = content.split(/\r?\n/)
         let successCount = 0
         let dupCount = 0
@@ -165,7 +165,7 @@ export const useStickerStore = defineStore('sticker', () => {
             }
 
             if (url && (url.startsWith('http') || url.startsWith('data:'))) {
-                const result = addSticker(url, name, scope)
+                const result = addSticker(url, name, scope, category)
                 if (result === true) {
                     successCount++
                 } else if (result === false) {

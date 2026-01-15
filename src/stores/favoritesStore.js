@@ -20,24 +20,47 @@ export const useFavoritesStore = defineStore('favorites', () => {
     }
 
     function addFavorite(msg, chatName, avatarUrl) {
-        // Prevent duplicates? logic can be added.
         const item = {
             id: Date.now(),
-            msgId: msg.id,
-            type: msg.type,
-            content: msg.content,
-            msgTimestamp: msg.timestamp,
+            type: 'single',
+            source: chatName,
             savedAt: Date.now(),
+            // Data
+            msgId: msg.id,
+            msgType: msg.type || 'text',
+            content: msg.content,
             author: msg.role === 'ai' ? chatName : '我',
-            avatar: avatarUrl || '' 
+            avatar: avatarUrl || ''
         }
         favorites.value.unshift(item)
         saveFavorites()
         return true
     }
 
+    function addBatchFavorite(msgs, chatName) {
+        if (!msgs || msgs.length === 0) return false
+
+        const item = {
+            id: Date.now(),
+            type: 'chat_record',
+            source: chatName,
+            savedAt: Date.now(),
+            messages: msgs.map(m => ({
+                id: m.id,
+                role: m.role,
+                type: m.type || 'text',
+                content: m.content,
+                timestamp: m.timestamp,
+                author: m.role === 'ai' ? chatName : '我'
+            }))
+        }
+
+        favorites.value.unshift(item)
+        saveFavorites()
+        return true
+    }
+
     function removeFavorite(id) {
-        // Use splice for absolute certainty
         const idx = favorites.value.findIndex(f => f.id == id)
         if (idx !== -1) {
             favorites.value.splice(idx, 1)
@@ -53,6 +76,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
     return {
         favorites,
         addFavorite,
+        addBatchFavorite,
         removeFavorite
     }
 })

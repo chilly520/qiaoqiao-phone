@@ -151,6 +151,43 @@
 
                         </div>
 
+                        <!-- CASE 6: Favorite Card (Shared Favorite) -->
+                        <div v-else-if="isFavoriteCard"
+                            class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
+                            @click="$router.push('/wechat/favorite/' + favoriteCardData.favoriteId)">
+                            <div class="p-4 flex flex-col gap-2">
+                                <div class="flex items-center gap-2 text-[#fabb05] mb-1">
+                                    <i class="fa-solid fa-star"></i>
+                                    <span class="text-xs font-bold text-gray-400">
+                                        {{ favoriteCardData.type === 'chat_record' ? '收藏的消息记录' : '收藏的消息' }}
+                                    </span>
+                                </div>
+                                <div class="text-[13px] text-gray-500 line-clamp-1 mb-2">来自与 {{
+                                    favoriteCardData.source }} 的聊天</div>
+
+                                <div class="bg-gray-50/50 p-3 rounded-lg border border-gray-50">
+                                    <div class="text-sm text-gray-700 whitespace-pre-wrap line-clamp-3 leading-relaxed">
+                                        {{ favoriteCardData.preview }}
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="mt-2 pt-2 border-t border-gray-50 flex justify-between items-center text-[10px] text-gray-300">
+                                    <template v-if="favoriteCardData.type === 'chat_record'">
+                                        <span>共 {{ favoriteCardData.count }} 条消息</span>
+                                    </template>
+                                    <template v-else>
+                                        <span>收藏于 {{ new Date(favoriteCardData.savedAt).getMonth() + 1 }}-{{ new
+                                            Date(favoriteCardData.savedAt).getDate() }} {{ new
+                                                Date(favoriteCardData.savedAt).getHours().toString().padStart(2, '0')
+                                            }}:{{ new
+                                                Date(favoriteCardData.savedAt).getMinutes().toString().padStart(2, '0')
+                                            }}</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Image -->
                         <div v-else-if="msg.type === 'image' || isImageMsg(msg)" class="msg-image bg-transparent"
                             @contextmenu.prevent="emitContextMenu">
@@ -185,7 +222,8 @@
                                         style="display: none;">
                                     </div>
                                     <span class="text-[10px] font-bold opacity-70"
-                                        :class="msg.role === 'user' ? 'mr-0 ml-1' : 'ml-1 mr-0'">{{ getDuration(msg)
+                                        :class="msg.role === 'user' ? 'mr-0 ml-1' : 'ml-1 mr-0'">{{
+                                            getDuration(msg)
                                         }}"</span>
                                 </div>
                                 <div v-if="msg.role === 'ai' && !msg.isPlayed" class="w-2 h-2 bg-red-500 rounded-full">
@@ -201,10 +239,11 @@
                         </div>
 
                         <!-- HTML Card -->
-                        <div v-else-if="msg.type === 'html'" class="w-full mt-1" @contextmenu.prevent="emitContextMenu"
+                        <div v-else-if="(msg.type === 'html' || isHtmlCard) && isValidMessage"
+                            class="w-full mt-1 transition-all relative z-10" @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                            <SafeHtmlCard :content="getHtmlContent(msg.content)" />
+                            <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                         </div>
 
 
@@ -229,7 +268,8 @@
                             <!-- Quote -->
                             <div v-if="msg.quote"
                                 class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
-                                <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方') }}
+                                <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
+                                    }}
                                 </div>
                                 <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                             </div>
@@ -263,6 +303,7 @@ import { marked } from 'marked'
 import { useStickerStore } from '../../../stores/stickerStore'
 import { useChatStore } from '../../../stores/chatStore'
 import { useWalletStore } from '../../../stores/walletStore'
+import { useSettingsStore } from '../../../stores/settingsStore'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
 import FamilyCardClaimModal from '../FamilyCardClaimModal.vue'
@@ -288,6 +329,7 @@ const emit = defineEmits([
 const stickerStore = useStickerStore()
 const chatStore = useChatStore()
 const walletStore = useWalletStore()
+const settingsStore = useSettingsStore()
 const localShowDetail = ref(false)
 const localShowTranscript = ref(false)
 const familyCardModal = ref(null)
@@ -426,16 +468,22 @@ const formattedTime = computed(() => {
 
 // Check if message should be displayed
 const isValidMessage = computed(() => {
-    // 1. If it's a family card (using robust check), always show
+    // 1. If it's a family card, always show
     if (isFamilyCard.value) return true
 
-    // 2. If it's an image, always show
+    // 2. If it's an HTML card, show only if content is not empty
+    if (isHtmlCard.value) {
+        const htmlContent = getPureHtml(props.msg.html || props.msg.content)
+        return htmlContent && htmlContent.length > 0
+    }
+
+    // 3. If it's an image, always show
     if (isImageMsg(props.msg.content)) return true
 
-    // 3. If content is being streamed (from AI), always show to prevent flickering
+    // 4. If content is being streamed (from AI), always show to prevent flickering
     if (props.msg.isStreaming) return true
 
-    // 4. Otherwise, only show if cleaned content is not empty
+    // 5. Otherwise, only show if cleaned content is not empty
     const clean = getCleanContent(ensureString(props.msg.content))
     return clean && clean.length > 0
 })
@@ -464,6 +512,27 @@ const isFamilyCardReject = computed(() => {
     const c = ensureString(props.msg.content)
     // Regular check OR HTML JSON check
     return /[\\]?\[\s*FAMILY_CARD_REJECT/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
+})
+
+const isHtmlCard = computed(() => {
+    if (props.msg.type === 'html') return true
+    const c = ensureString(props.msg.content)
+    // Robust check for HTML card JSON structure
+    return (c.includes('"type"') || c.includes('type:')) &&
+        (c.includes('"html"') || c.includes('html:')) &&
+        c.includes('<') && c.includes('>')
+})
+
+const isFavoriteCard = computed(() => props.msg.type === 'favorite_card')
+
+const favoriteCardData = computed(() => {
+    if (!isFavoriteCard.value) return null
+    try {
+        const content = ensureString(props.msg.content)
+        return JSON.parse(content)
+    } catch (e) {
+        return null
+    }
 })
 
 const familyCardData = computed(() => {
@@ -511,11 +580,43 @@ const getUserName = computed(() => {
 function getCleanContent(contentRaw) {
     if (!contentRaw) return '';
     const content = ensureString(contentRaw);
+
+    // EARLY FILTER: JSON Fragment Detection (头尾碎片)
+    const trimmed = content.trim();
+
+    // Check for both regular quotes and HTML entities
+    const hasTypeKeyword = trimmed.includes('"type"') || trimmed.includes('&quot;type&quot;') || trimmed.includes("'type'");
+    const hasHtmlKeyword = trimmed.includes('"html"') || trimmed.includes('&quot;html&quot;') || trimmed.includes("'html'");
+
+    // Debug logging
+    if (hasTypeKeyword && hasHtmlKeyword) {
+        console.log('[Fragment Debug]', {
+            content: trimmed,
+            length: trimmed.length,
+            startsWithBrace: trimmed.startsWith('{'),
+            hasDiv: trimmed.includes('<div'),
+            hasSpan: trimmed.includes('<span')
+        });
+    }
+
+    // Header fragment: { "type": "html", "html": " (with or without HTML entities)
+    if (trimmed.startsWith('{') && hasTypeKeyword && hasHtmlKeyword && trimmed.length < 100 && !trimmed.includes('<div') && !trimmed.includes('<span')) {
+        console.log('[Fragment] Hiding header fragment');
+        return '';
+    }
+
+    // Tail fragment: Various patterns
+    const tailPatterns = ['"', '"}', '" }', "'}", "'}", "' }", '&quot;', '&quot;}', '&quot; }'];
+    if (tailPatterns.includes(trimmed)) {
+        console.log('[Fragment] Hiding tail fragment:', trimmed);
+        return '';
+    }
+
     if (content.length > 300) {
         if (content.includes('data:image/') || content.includes('blob:')) return '';
         if (!content.includes('[INNER_VOICE]')) return content.trim();
     }
-    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '');
+    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/gi, '');
     clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
     // Remove manual labels identifying thoughts/action if AI leaks them
     clean = clean.replace(/^(心声|行为|内心情绪|当前环境|当前着装|STATUS|ACTION|THOUGHTS)[:：].*?$/gim, '');
@@ -527,9 +628,9 @@ function getCleanContent(contentRaw) {
     // Aggressive CSS filter (AI Only)
     if (props.msg.role === 'ai') {
         // Filter 0: Remove JSON dumps / truncated JSON
+        // 移除了对 "type":"html" 的过滤，避免HTML消息被误删
         if (clean.trim().startsWith('{') && (
             (clean.includes('"index":') && clean.includes('"message":')) ||
-            (clean.includes('"type":"html"')) ||
             (clean.includes('padding:') && clean.includes('margin:'))
         )) return '';
 
@@ -555,9 +656,172 @@ function getCleanContent(contentRaw) {
     // Filter 3: Garbage punctuation strings
     if (/^["'>}<{\[\]]+$/.test(clean.trim())) return '';
 
+    // Filter 4: HTML JSON head/tail cleanup (Last resort)
+    if (clean.includes('"type"') && clean.includes('"html"')) {
+        // If it looks like a leaked JSON wrapper, strip the wrapper and keep only text before/after if any
+        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?\}/gi, '').trim();
+    }
+
+
     clean = clean.trim();
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
     return clean;
+}
+
+function getPureHtml(content) {
+    if (!content) return ''
+    const str = typeof content === 'string' ? content : JSON.stringify(content)
+    const trimmed = str.trim()
+
+    // 1. 智能CSS过滤：只过滤明显的CSS代码块，避免误过滤正常HTML
+    if (trimmed.includes('/* 完全隔离的样式重置') && trimmed.includes(':root { all: initial !important;')) {
+        console.log('[getPureHtml] Filtering out excessive CSS code block');
+        return ''
+    }
+
+    // 2. 首先检查是否为完整的JSON格式
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+            // 处理转义字符
+            let processedStr = str
+            // 先处理可能的双重转义
+            if (processedStr.includes('\\n')) {
+                processedStr = processedStr.replace(/\\n/g, '\n')
+                processedStr = processedStr.replace(/\\r/g, '\r')
+                processedStr = processedStr.replace(/\\t/g, '\t')
+                processedStr = processedStr.replace(/\\"/g, '\\"')
+            }
+            // 处理正常转义
+            processedStr = processedStr
+                .replace(/\\n/g, '\n')
+                .replace(/\\r/g, '\r')
+                .replace(/\\t/g, '\t')
+                .replace(/\\"/g, '"')
+                .replace(/\\'/g, "'")
+            
+            const parsed = JSON.parse(processedStr)
+            if (parsed.html && typeof parsed.html === 'string') {
+                const htmlContent = parsed.html.trim()
+                // 确保返回的是真正的HTML内容
+                if (htmlContent && (htmlContent.includes('<') && htmlContent.includes('>'))) {
+                    return htmlContent
+                }
+                return ''
+            }
+        } catch (e) {
+            // JSON解析失败，继续处理
+        }
+    }
+
+    // 2. 处理JSON格式的变体（可能有额外的引号或格式问题）
+    if (trimmed.includes('"type":"html"') || trimmed.includes("'type':'html'")) {
+        try {
+            // 清理可能的额外引号
+            let cleanedJson = trimmed
+                .replace(/^["']/, '')
+                .replace(/["']$/, '')
+                .trim()
+            
+            // 处理转义字符
+            cleanedJson = cleanedJson
+                .replace(/\\n/g, '\n')
+                .replace(/\\r/g, '\r')
+                .replace(/\\t/g, '\t')
+                .replace(/\\"/g, '"')
+                .replace(/\\'/g, "'")
+            
+            // 尝试解析
+            const parsed = JSON.parse(cleanedJson)
+            if (parsed.html && typeof parsed.html === 'string') {
+                const htmlContent = parsed.html.trim()
+                if (htmlContent && (htmlContent.includes('<') && htmlContent.includes('>'))) {
+                    return htmlContent
+                }
+            }
+        } catch (e) {
+            // 解析失败，继续处理
+        }
+    }
+
+    // 3. 过滤头尾碎片
+    // 头部碎片: { "type": "html", "html": " 或类似变体
+    const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+    if (headerPattern.test(trimmed)) {
+        return ''
+    }
+    
+    // 尾部碎片: 各种可能的尾部格式
+    const tailPatterns = [
+        /^["']\s*$/,           // 单独的引号
+        /^["']\s*\}\s*$/,     // 引号加右大括号
+        /^\}\s*$/,             // 单独的右大括号
+        /^["']\s*\}\s*["']$/, // 引号包围的右大括号
+        /^\s*["']?\s*$/,        // 空白加引号
+        /^\s*\}\s*$/,           // 空白加右大括号
+        /^\s*["']\s*$/,         // 空白加引号
+        /^\s*&quot;\s*$/,        // HTML实体引号
+        /^\s*&quot;\s*\}\s*$/,  // HTML实体引号加右大括号
+        /^\s*'\s*$/,             // 单引号
+        /^\s*'\s*\}\s*$/,       // 单引号加右大括号
+        /^\s*&apos;\s*$/,        // HTML实体单引号
+        /^\s*&apos;\s*\}\s*$/   // HTML实体单引号加右大括号
+    ];
+    
+    for (const pattern of tailPatterns) {
+        if (pattern.test(trimmed)) {
+            return ''
+        }
+    }
+
+    // 4. 处理非JSON格式的HTML内容
+    // 清理可能的markdown代码块
+    let cleaned = trimmed
+        .replace(/^```(?:html|json|xml)?\s*\n?/gi, '')
+        .replace(/```\s*$/gi, '')
+        .trim()
+    
+    // 清理可能的[CARD]标签
+    cleaned = cleaned
+        .replace(/\[\s*CARD\s*\]/gi, '')
+        .replace(/\[\s*\/CARD\s*\]/gi, '')
+        .trim()
+
+    // 5. 尝试从混合内容中提取HTML
+    if (cleaned.includes('<') && cleaned.includes('>')) {
+        // 寻找第一个开始标签和最后一个结束标签
+        const startTagIndex = cleaned.indexOf('<')
+        const endTagIndex = cleaned.lastIndexOf('>')
+        if (startTagIndex !== -1 && endTagIndex !== -1 && endTagIndex > startTagIndex) {
+            const htmlContent = cleaned.substring(startTagIndex, endTagIndex + 1).trim()
+            if (htmlContent && htmlContent.length > 10) {
+                return htmlContent
+            }
+        }
+    }
+
+    // 6. 再次检查是否为碎片
+    if (cleaned.length < 50 && (!cleaned.includes('<') || !cleaned.includes('>'))) {
+        // 短内容且不包含HTML标签，可能是碎片
+        return ''
+    }
+
+    // 7. 处理转义序列
+    if (cleaned.includes('\\n') || cleaned.includes('\\t') || cleaned.includes('\\r') || cleaned.includes('\\"')) {
+        cleaned = cleaned
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\t/g, '\t')
+            .replace(/\\"/g, '"')
+            .replace(/\\'/g, "'")
+    }
+
+    // 8. 最终验证：确保返回的是有效的HTML内容
+    const finalTrimmed = cleaned.trim()
+    if (finalTrimmed && finalTrimmed.includes('<') && finalTrimmed.includes('>')) {
+        return finalTrimmed
+    }
+
+    return ''
 }
 
 const mixedText = computed(() => {
@@ -699,6 +963,17 @@ function formatMessageContent(msg) {
 
     text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '') // Remove image tags if any left
 
+    // 5. Highlight Mentions (@name)
+    const userName = settingsStore.personalization.userProfile.name;
+    const contactName = props.chatData?.name;
+
+    [userName, contactName].forEach(name => {
+        if (!name) return;
+        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
+        text = text.replace(mentionRegex, `<span class="text-blue-500 font-medium">@${name}</span>`)
+    });
+
     // Sticker inline replacer (Standardized)
     text = text.replace(/\[(.*?)\]/g, (match, name) => {
         const n = name.trim()
@@ -809,40 +1084,52 @@ function getHtmlContent(content) {
     if (!content) return ''
     try {
         let processed = content;
-        
+
         // 1. 移除[INNER_VOICE]标签和内容（包括换行符）
         processed = processed.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-        
+
         // 2. 移除所有[CARD]和[/CARD]标签
         processed = processed.replace(/\[CARD\]/gi, '').trim();
         processed = processed.replace(/\[\/CARD\]/gi, '').trim();
-        
+
         // 3. 移除markdown反引号
         processed = processed.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
-        
-        // 4. 直接尝试解析整个处理后的内容为JSON
-        let jsonData = JSON.parse(processed);
-        if (jsonData.html && typeof jsonData.html === 'string') {
-            return jsonData.html;
-        } else if (jsonData.content && typeof jsonData.content === 'string') {
-            return jsonData.content;
+
+        // 3.1 鲁棒性：如果看起来是JSON但缺了大括号，补齐它
+        if (!processed.startsWith('{') && (processed.includes('"type":') || processed.includes('"html":'))) {
+            processed = '{' + processed + '}';
+        } else if (processed.startsWith('{') && !processed.endsWith('}')) {
+            processed = processed + '}';
         }
-        
+
+        // 4. 直接尝试解析整个处理后的内容为JSON
+        try {
+            let jsonData = JSON.parse(processed);
+            if (jsonData.html && typeof jsonData.html === 'string') {
+                return jsonData.html;
+            } else if (jsonData.content && typeof jsonData.content === 'string') {
+                return jsonData.content;
+            }
+        } catch (e) {
+            // If direct parse fails, proceed to more aggressive extraction
+            console.warn('[ChatMessageItem] Direct JSON parse failed, trying extraction');
+        }
+
         // 5. 如果JSON解析成功但没有html或content字段，尝试直接返回
         return processed;
-        
+
     } catch (e) {
         console.warn('[ChatMessageItem] 直接JSON解析失败，尝试提取JSON片段:', e);
         try {
             // 6. 尝试提取JSON片段
             let cleaned = content;
-            
+
             // 重新处理原始内容
             cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
             cleaned = cleaned.replace(/\[CARD\]/gi, '').trim();
             cleaned = cleaned.replace(/\[\/CARD\]/gi, '').trim();
             cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
-            
+
             // 提取JSON对象
             let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
@@ -852,17 +1139,20 @@ function getHtmlContent(content) {
                 } else if (jsonData.content && typeof jsonData.content === 'string') {
                     return jsonData.content;
                 }
+            } else {
+                // 如果没有找到大括号，但包含HTML标签，直接返回HTML内容
+                const htmlMatch = cleaned.match(/<div[\s\S]*<\/div>|<html[\s\S]*<\/html>|<style[\s\S]*<\/style>/i);
+                if (htmlMatch) return htmlMatch[0];
             }
-            
+
             // 7. 兜底：直接返回处理后的内容
             return cleaned;
-            
+
         } catch (e2) {
             console.error('[ChatMessageItem] 所有解析尝试都失败了:', e2);
             return content;
         }
     }
-    return content;
 }
 
 </script>
@@ -874,7 +1164,7 @@ function getHtmlContent(content) {
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     color: #e5e7eb;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
     font-family: 'Noto Serif SC', serif;
     font-weight: 300;
     letter-spacing: 0.5px;
@@ -886,11 +1176,11 @@ function getHtmlContent(content) {
     border: 1px solid rgba(212, 175, 55, 0.2);
     border-top: 1px solid rgba(212, 175, 55, 0.4);
     color: #e6dcc0;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
     font-family: 'Noto Serif SC', serif;
     font-weight: 300;
     letter-spacing: 0.5px;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
     border-radius: 2px 12px 12px 12px;
 }
 
@@ -901,11 +1191,11 @@ function getHtmlContent(content) {
     border: 1px solid rgba(212, 175, 55, 0.2) !important;
     border-top: 1px solid rgba(212, 175, 55, 0.4) !important;
     color: #e6dcc0 !important;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.6) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6) !important;
     font-family: 'Noto Serif SC', serif !important;
     font-weight: 300 !important;
     letter-spacing: 0.5px !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8) !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
     border-radius: 2px 12px 12px 12px !important;
 }
 
@@ -915,7 +1205,7 @@ function getHtmlContent(content) {
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
     color: #e5e7eb !important;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
     font-family: 'Noto Serif SC', serif !important;
     font-weight: 300 !important;
     letter-spacing: 0.5px !important;
@@ -948,11 +1238,25 @@ function getHtmlContent(content) {
 }
 
 /* Individual bar heights */
-.bar1 { height: 5px; }
-.bar2 { height: 12px; }
-.bar3 { height: 16px; }
-.bar4 { height: 9px; }
-.bar5 { height: 14px; }
+.bar1 {
+    height: 5px;
+}
+
+.bar2 {
+    height: 12px;
+}
+
+.bar3 {
+    height: 16px;
+}
+
+.bar4 {
+    height: 9px;
+}
+
+.bar5 {
+    height: 14px;
+}
 
 /* Animation when playing */
 .voice-wave.playing .bar {
@@ -964,18 +1268,49 @@ function getHtmlContent(content) {
     animation: none !important;
 }
 
-.voice-wave.playing .bar1 { animation-delay: 0s; }
-.voice-wave.playing .bar2 { animation-delay: 0.1s; }
-.voice-wave.playing .bar3 { animation-delay: 0.2s; }
-.voice-wave.playing .bar4 { animation-delay: 0.3s; }
-.voice-wave.playing .bar5 { animation-delay: 0.4s; }
+.voice-wave.playing .bar1 {
+    animation-delay: 0s;
+}
+
+.voice-wave.playing .bar2 {
+    animation-delay: 0.1s;
+}
+
+.voice-wave.playing .bar3 {
+    animation-delay: 0.2s;
+}
+
+.voice-wave.playing .bar4 {
+    animation-delay: 0.3s;
+}
+
+.voice-wave.playing .bar5 {
+    animation-delay: 0.4s;
+}
 
 /* Realistic wave animation */
 @keyframes voice-wave-anim {
-    0%, 100% { height: 5px; opacity: 0.5; }
-    20% { height: 16px; opacity: 0.9; }
-    50% { height: 14px; opacity: 1; }
-    90% { height: 13px; opacity: 0.9; }
+
+    0%,
+    100% {
+        height: 5px;
+        opacity: 0.5;
+    }
+
+    20% {
+        height: 16px;
+        opacity: 0.9;
+    }
+
+    50% {
+        height: 14px;
+        opacity: 1;
+    }
+
+    90% {
+        height: 13px;
+        opacity: 0.9;
+    }
 }
 
 .pay-card {

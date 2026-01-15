@@ -355,10 +355,75 @@ const goBack = () => {
     console.log('[WeChatApp] Navigating to home')
     router.back()
 }
+
+// --- Import Logic ---
+const importFileInput = ref(null)
+
+const triggerImport = () => {
+    if (importFileInput.value) importFileInput.value.click()
+}
+
+const handleImport = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    try {
+        const text = await file.text()
+        const data = JSON.parse(text)
+
+        if (data.type !== 'qiaoqiao_character_card' || !data.character) {
+            chatStore.triggerToast('无效的角色卡文件', 'info')
+            return
+        }
+
+        // Create new chat
+        const name = data.character.name || '导入角色'
+        const newChat = chatStore.createChat(name)
+        const chatId = newChat.id
+
+        // Update character data
+        const updateData = {
+            ...data.character,
+            // User Persona override
+            userName: data.user?.name,
+            userAvatar: data.user?.avatar,
+            userGender: data.user?.gender,
+            userPersona: data.user?.persona
+        }
+
+        // Use updateCharacter to merge
+        chatStore.updateCharacter(chatId, updateData)
+
+        const chat = chatStore.chats[chatId]
+
+        // Restore Memory
+        if (data.memory && Array.isArray(data.memory)) {
+            chat.memory = data.memory
+        }
+
+        // Restore History
+        if (data.msgs && Array.isArray(data.msgs) && data.msgs.length > 0) {
+            // Overwrite default greeting
+            chat.msgs = data.msgs
+        }
+
+        chatStore.saveChats()
+        chatStore.triggerToast(`已导入: ${name}`, 'success')
+
+    } catch (err) {
+        console.error(err)
+        chatStore.triggerToast('导入失败', 'error')
+    } finally {
+        // Reset input
+        e.target.value = ''
+    }
+}
 </script>
 
 <template>
     <div class="wechat-app w-full h-full bg-gray-100 flex flex-col relative" @click="showAddMenu = false">
+        <!-- Hidden Import Input -->
+        <input type="file" ref="importFileInput" class="hidden" accept=".json" @change="handleImport">
 
         <!-- Chat Window Overlay -->
         <ChatWindow v-if="chatStore.currentChatId" class="absolute inset-0 z-50" @back="handleChatBack"
@@ -495,8 +560,10 @@ const goBack = () => {
                         : '')) }}
                 </div>
 
-                <div class="flex gap-4 text-base items-center w-20 justify-end"
+                <div class="flex gap-2 text-base items-center w-24 justify-end"
                     v-if="currentTab === 'chat' || currentTab === 'contacts'">
+                    <i class="fa-solid fa-file-import text-black cursor-pointer p-2" title="导入角色卡"
+                        @click="triggerImport"></i>
                     <i class="fa-solid fa-magnifying-glass text-black cursor-pointer p-2"
                         @click="showSearch = !showSearch"></i>
                     <div class="relative flex items-center">
@@ -616,6 +683,12 @@ const goBack = () => {
                         @click="router.push('/worldbook')">
                         <i class="fa-solid fa-book-journal-whills text-purple-500 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">世界书</span>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
+                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                        @click="router.push('/gallery')">
+                        <i class="fa-solid fa-images text-blue-500 text-xl"></i>
+                        <span class="text-base text-gray-900 flex-1">图库</span>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
                 </div>

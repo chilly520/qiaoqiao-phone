@@ -59,8 +59,11 @@ const postForm = ref({
     imageDescription: '',
     location: '',
     visibility: 'public', // public, private, partial, exclude
-    visibleIds: []
+    visibleIds: [],
+    mentions: []
 })
+const showMentionModal = ref(false)
+const customMentionInput = ref('')
 
 const showVisibilityPicker = ref(false)
 const showLocationPicker = ref(false)
@@ -197,7 +200,8 @@ const handlePost = () => {
             imageDescriptions: [postForm.value.imageDescription],
             location: postForm.value.location,
             visibility: postForm.value.visibility,
-            visibleIds: [...postForm.value.visibleIds]
+            visibleIds: [...postForm.value.visibleIds],
+            mentions: [...(postForm.value.mentions || [])]
         })
         chatStore.triggerToast('修改成功', 'success')
     } else {
@@ -210,7 +214,8 @@ const handlePost = () => {
             imageDescriptions: [postForm.value.imageDescription],
             location: postForm.value.location,
             visibility: postForm.value.visibility,
-            visibleIds: [...postForm.value.visibleIds]
+            visibleIds: [...postForm.value.visibleIds],
+            mentions: [...(postForm.value.mentions || [])]
         })
         chatStore.triggerToast('发布成功', 'success')
     }
@@ -223,7 +228,8 @@ const handlePost = () => {
         imageDescription: '',
         location: '',
         visibility: 'public',
-        visibleIds: []
+        visibleIds: [],
+        mentions: []
     }
     editingId.value = null
     showPostModal.value = false
@@ -283,7 +289,8 @@ const handleEditMoment = (moment) => {
         imageDescription: moment.imageDescriptions[0] || '',
         location: moment.location || '',
         visibility: moment.visibility || 'public',
-        visibleIds: [...(moment.visibleIds || [])]
+        visibleIds: [...(moment.visibleIds || [])],
+        mentions: [...(moment.mentions || [])]
     }
     showPostModal.value = true
 }
@@ -491,6 +498,36 @@ const handleNotificationJump = (momentId) => {
     }, 400)
 }
 
+const handleMentionSelect = (target) => {
+    // target can be a contact object or a string (custom name)
+    const name = typeof target === 'string' ? target : (target.name)
+    const id = typeof target === 'string' ? null : target.id
+
+    // Check if already mentioned
+    if (postForm.value.mentions.some(m => m.name === name)) {
+        chatStore.triggerToast('已经提醒过啦', 'info')
+        return
+    }
+
+    // Add to mentions array
+    postForm.value.mentions.push({ id, name })
+
+    // Add @name to content if not already there
+    if (!postForm.value.content.includes(`@${name}`)) {
+        if (postForm.value.content && !postForm.value.content.endsWith(' ')) {
+            postForm.value.content += ' '
+        }
+        postForm.value.content += `@${name} `
+    }
+
+    showMentionModal.value = false
+    customMentionInput.value = ''
+}
+
+const removeMention = (idx) => {
+    postForm.value.mentions.splice(idx, 1)
+}
+
 onMounted(() => {
     momentsStore.startAutoGeneration()
     if (props.initialProfileId) {
@@ -657,11 +694,22 @@ onMounted(() => {
                 </div>
 
                 <!-- Toolbar -->
-                <div class="flex gap-4 mt-6 text-xl text-gray-500">
+                <div class="flex gap-4 mt-6 text-xl text-gray-500 items-center">
                     <i class="fa-regular fa-face-smile cursor-pointer hover:text-gray-800"
                         @click="showEmojiPicker = true"></i>
+                    <i class="fa-solid fa-at cursor-pointer hover:text-gray-800" @click="showMentionModal = true"></i>
                     <i class="fa-solid fa-link cursor-pointer hover:text-gray-800"
                         @click="postForm.images.push(prompt('请输入图片URL'))"></i>
+                </div>
+
+                <!-- Selected Mentions Display -->
+                <div v-if="postForm.mentions.length > 0" class="mt-4 flex flex-wrap gap-2">
+                    <div v-for="(m, idx) in postForm.mentions" :key="idx"
+                        class="bg-blue-50 text-blue-500 px-2 py-1 rounded-full text-xs flex items-center gap-1 border border-blue-100 font-medium">
+                        <span>@{{ m.name }}</span>
+                        <i class="fa-solid fa-xmark cursor-pointer opacity-50 hover:opacity-100"
+                            @click="removeMention(idx)"></i>
+                    </div>
                 </div>
 
                 <input type="file" ref="fileInput" class="hidden" accept="image/*" multiple
@@ -733,7 +781,7 @@ onMounted(() => {
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-blue-500 truncate max-w-[120px]">{{ postForm.location || '选择位置'
-                            }}</span>
+                                }}</span>
                             <i class="fa-solid fa-chevron-right text-gray-300 text-[10px]"></i>
                         </div>
                     </div>
@@ -788,8 +836,7 @@ onMounted(() => {
                                 <div v-for="chat in chatStore.contactList" :key="chat.id"
                                     class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group"
                                     @click="settingsForm.enabledCharacters.includes(chat.id) ? settingsForm.enabledCharacters = settingsForm.enabledCharacters.filter(id => id !== chat.id) : settingsForm.enabledCharacters.push(chat.id)">
-                                    <input type="checkbox"
-                                        :checked="settingsForm.enabledCharacters.includes(chat.id)"
+                                    <input type="checkbox" :checked="settingsForm.enabledCharacters.includes(chat.id)"
                                         class="accent-green-500">
                                     <img :src="chat.avatar" class="w-6 h-6 rounded">
                                     <span class="text-sm flex-1">{{ chat.name }}</span>
@@ -1053,116 +1100,175 @@ onMounted(() => {
                                 class="fa-solid fa-chevron-right text-gray-300 text-sm group-hover:translate-x-1 transition-transform"></i>
                         </button>
 
-                        <div class="flex gap-3">
-                            <button
-                                class="flex-1 py-4 bg-[#07c160] text-white rounded-xl shadow-lg shadow-green-100 flex items-center justify-center gap-2 font-bold active:scale-95 transition-all"
-                                @click="openChatFromProfile">
-                                <i class="fa-solid fa-comment-dots"></i>
-                                发消息
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bio Secion -->
-                <div class="p-6 pt-8">
-                    <div class="mb-6">
-                        <label class="text-[10px] text-gray-400 font-bold uppercase tracking-widest block mb-3">个性签名 /
-                            设定</label>
-                        <div class="bg-white/60 p-4 rounded-xl border border-white border-b-gray-200/50">
-                            <p class="text-sm text-gray-600 leading-relaxed italic relative">
-                                <i class="fa-solid fa-quote-left absolute -top-2 -left-2 text-gray-200 text-xl"></i>
-                                {{ currentProfileChar.prompt?.substring(0, 200) || '对方很忙，没有留下任何设定...' }}
-                                <span v-if="currentProfileChar.prompt?.length > 200">...</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div v-if="currentProfileChar.tags && currentProfileChar.tags.length > 0"
-                        class="flex flex-wrap gap-2">
-                        <span v-for="tag in currentProfileChar.tags" :key="tag"
-                            class="text-[10px] bg-white px-2 py-0.5 rounded text-gray-400 border border-gray-100">
-                            #{{ tag }}
-                        </span>
+                        <button
+                            class="w-full py-4 bg-[#07c160] text-white rounded-xl shadow-lg shadow-green-100 flex items-center justify-center gap-2 font-bold active:scale-95 transition-all"
+                            @click="openChatFromProfile">
+                            <i class="fa-solid fa-comment-dots"></i>
+                            发消息
+                        </button>
                     </div>
                 </div>
             </div>
+
+            <!-- Bio Secion -->
+            <div class="p-6 pt-8">
+                <div class="mb-6">
+                    <label class="text-[10px] text-gray-400 font-bold uppercase tracking-widest block mb-3">个性签名 /
+                        设定</label>
+                    <div class="bg-white/60 p-4 rounded-xl border border-white border-b-gray-200/50">
+                        <p class="text-sm text-gray-600 leading-relaxed italic relative">
+                            <i class="fa-solid fa-quote-left absolute -top-2 -left-2 text-gray-200 text-xl"></i>
+                            {{ currentProfileChar.prompt?.substring(0, 200) || '对方很忙，没有留下任何设定...' }}
+                            <span v-if="currentProfileChar.prompt?.length > 200">...</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div v-if="currentProfileChar.tags && currentProfileChar.tags.length > 0" class="flex flex-wrap gap-2">
+                    <span v-for="tag in currentProfileChar.tags" :key="tag"
+                        class="text-[10px] bg-white px-2 py-0.5 rounded text-gray-400 border border-gray-100">
+                        #{{ tag }}
+                    </span>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <!-- Generation Choice Modal -->
-        <div v-if="showGenChoiceModal" class="absolute inset-0 z-[120] bg-black/60 flex items-center justify-center p-6"
-            @click.self="showGenChoiceModal = false">
-            <div
-                class="bg-white w-full max-w-[340px] rounded-3xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[70vh]">
-                <div class="p-5 border-b border-gray-50 flex items-center justify-between bg-white sticky top-0 z-10">
-                    <h3 class="font-black text-lg text-gray-800">选择生成角色</h3>
-                    <div class="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-400 font-bold">
-                        选中 {{ genChoiceForm.selectedIds.length }} 人
+    <!-- Generation Choice Modal -->
+    <div v-if="showGenChoiceModal" class="absolute inset-0 z-[120] bg-black/60 flex items-center justify-center p-6"
+        @click.self="showGenChoiceModal = false">
+        <div
+            class="bg-white w-full max-w-[340px] rounded-3xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[70vh]">
+            <div class="p-5 border-b border-gray-50 flex items-center justify-between bg-white sticky top-0 z-10">
+                <h3 class="font-black text-lg text-gray-800">选择生成角色</h3>
+                <div class="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-400 font-bold">
+                    选中 {{ genChoiceForm.selectedIds.length }} 人
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
+                <div class="bg-blue-50/50 p-4 rounded-2xl mb-4 border border-blue-100/50">
+                    <label
+                        class="text-[10px] text-blue-400 font-black uppercase tracking-widest block mb-2">生成数量</label>
+                    <div class="flex items-center gap-4">
+                        <input v-model="genChoiceForm.count" type="range" min="1" max="10"
+                            class="flex-1 accent-blue-500">
+                        <span class="font-black text-blue-600 w-6">{{ genChoiceForm.count }}</span>
                     </div>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
-                    <div class="bg-blue-50/50 p-4 rounded-2xl mb-4 border border-blue-100/50">
-                        <label
-                            class="text-[10px] text-blue-400 font-black uppercase tracking-widest block mb-2">生成数量</label>
-                        <div class="flex items-center gap-4">
-                            <input v-model="genChoiceForm.count" type="range" min="1" max="10"
-                                class="flex-1 accent-blue-500">
-                            <span class="font-black text-blue-600 w-6">{{ genChoiceForm.count }}</span>
+                <div v-for="chat in chatStore.contactList" :key="chat.id"
+                    class="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 cursor-pointer transition-all border border-transparent active:scale-[0.98]"
+                    :class="{ 'bg-green-50/40 border-green-100': genChoiceForm.selectedIds.includes(chat.id) }"
+                    @click="genChoiceForm.selectedIds.includes(chat.id) ? genChoiceForm.selectedIds = genChoiceForm.selectedIds.filter(id => id !== chat.id) : genChoiceForm.selectedIds.push(chat.id)">
+                    <div class="relative">
+                        <img :src="chat.avatar" class="w-10 h-10 rounded-xl object-cover shadow-sm">
+                        <div v-if="genChoiceForm.selectedIds.includes(chat.id)"
+                            class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                            <i class="fa-solid fa-check text-white text-[8px]"></i>
                         </div>
                     </div>
-
-                    <div v-for="chat in chatStore.contactList" :key="chat.id"
-                        class="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 cursor-pointer transition-all border border-transparent active:scale-[0.98]"
-                        :class="{ 'bg-green-50/40 border-green-100': genChoiceForm.selectedIds.includes(chat.id) }"
-                        @click="genChoiceForm.selectedIds.includes(chat.id) ? genChoiceForm.selectedIds = genChoiceForm.selectedIds.filter(id => id !== chat.id) : genChoiceForm.selectedIds.push(chat.id)">
-                        <div class="relative">
-                            <img :src="chat.avatar" class="w-10 h-10 rounded-xl object-cover shadow-sm">
-                            <div v-if="genChoiceForm.selectedIds.includes(chat.id)"
-                                class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
-                                <i class="fa-solid fa-check text-white text-[8px]"></i>
-                            </div>
-                        </div>
-                        <div class="flex-1">
-                            <div class="text-sm font-bold text-gray-700">{{ chat.name }}</div>
-                            <div class="text-[9px] text-gray-400 truncate opacity-60">{{ chat.remark || '普通好友' }}</div>
-                        </div>
+                    <div class="flex-1">
+                        <div class="text-sm font-bold text-gray-700">{{ chat.name }}</div>
+                        <div class="text-[9px] text-gray-400 truncate opacity-60">{{ chat.remark || '普通好友' }}</div>
                     </div>
                 </div>
+            </div>
 
-                <div class="p-4 bg-gray-50/80 backdrop-blur-md border-t border-gray-100 flex gap-3">
-                    <button class="flex-1 py-3 text-sm font-bold text-gray-400 active:text-gray-600 transition-colors"
-                        @click="showGenChoiceModal = false">取消</button>
+            <div class="p-4 bg-gray-50/80 backdrop-blur-md border-t border-gray-100 flex gap-3">
+                <button class="flex-1 py-3 text-sm font-bold text-gray-400 active:text-gray-600 transition-colors"
+                    @click="showGenChoiceModal = false">取消</button>
+                <button
+                    class="flex-[2] py-3 bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-100 font-bold active:scale-95 transition-all text-sm flex items-center justify-center gap-2"
+                    :disabled="genChoiceForm.selectedIds.length === 0" @click="handleGenChoiceConfirm">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    立即生成
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Signature Edit Modal -->
+    <div v-if="showSignatureModal"
+        class="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-scale-up">
+            <div class="p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">修改个性签名</h3>
+                <textarea v-model="signatureInput"
+                    class="w-full h-32 p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#07c160] focus:border-transparent outline-none transition-all resize-none"
+                    placeholder="那年今日，你是谁的..." maxlength="50" v-focus></textarea>
+                <div class="flex justify-end mt-2">
+                    <span class="text-[10px] text-gray-400">{{ signatureInput.length }}/50</span>
+                </div>
+            </div>
+            <div class="flex border-t border-gray-100">
+                <button class="flex-1 py-4 text-gray-500 font-medium active:bg-gray-50 transition-colors"
+                    @click="showSignatureModal = false">取消</button>
+                <button
+                    class="flex-1 py-4 text-[#07c160] font-bold active:bg-gray-50 transition-colors border-l border-gray-100"
+                    @click="confirmSignature">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mentions Selection Modal -->
+    <div v-if="showMentionModal" class="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-6"
+        @click.self="showMentionModal = false">
+        <div
+            class="bg-white w-full max-w-[340px] rounded-2xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[80vh]">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <span class="font-bold text-gray-800">提醒谁看</span>
+                <i class="fa-solid fa-xmark text-gray-400 cursor-pointer" @click="showMentionModal = false"></i>
+            </div>
+
+            <!-- Custom Input -->
+            <div class="p-4 bg-gray-50 shrink-0">
+                <div class="flex gap-2">
+                    <input v-model="customMentionInput" type="text"
+                        class="flex-1 bg-white border border-gray-200 px-3 py-2 rounded-lg outline-none text-sm"
+                        placeholder="寻找或者瞎编一个人名..." @keyup.enter="handleMentionSelect(customMentionInput)">
                     <button
-                        class="flex-[2] py-3 bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-100 font-bold active:scale-95 transition-all text-sm flex items-center justify-center gap-2"
-                        :disabled="genChoiceForm.selectedIds.length === 0" @click="handleGenChoiceConfirm">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
-                        立即生成
+                        class="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-bold active:scale-95 disabled:opacity-50"
+                        :disabled="!customMentionInput.trim()" @click="handleMentionSelect(customMentionInput)">
+                        添加
                     </button>
                 </div>
             </div>
-        </div>
 
-        <!-- Signature Edit Modal -->
-        <div v-if="showSignatureModal"
-            class="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-scale-up">
-                <div class="p-6">
-                    <h3 class="text-lg font-bold text-gray-900 mb-4">修改个性签名</h3>
-                    <textarea v-model="signatureInput"
-                        class="w-full h-32 p-4 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#07c160] focus:border-transparent outline-none transition-all resize-none"
-                        placeholder="那年今日，你是谁的..." maxlength="50" v-focus></textarea>
-                    <div class="flex justify-end mt-2">
-                        <span class="text-[10px] text-gray-400">{{ signatureInput.length }}/50</span>
+            <!-- Selection List -->
+            <div class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                <!-- Me -->
+                <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-blue-50 cursor-pointer transition-colors group"
+                    @click="handleMentionSelect({ id: 'user', name: userProfile.name })">
+                    <div class="w-10 h-10 rounded-lg overflow-hidden bg-gray-200">
+                        <img :src="userProfile.avatar" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-gray-800 text-sm">{{ userProfile.name }}</div>
+                        <div class="text-[10px] text-blue-500 font-medium">(我自己)</div>
                     </div>
                 </div>
-                <div class="flex border-t border-gray-100">
-                    <button class="flex-1 py-4 text-gray-500 font-medium active:bg-gray-50 transition-colors"
-                        @click="showSignatureModal = false">取消</button>
-                    <button
-                        class="flex-1 py-4 text-[#07c160] font-bold active:bg-gray-50 transition-colors border-l border-gray-100"
-                        @click="confirmSignature">确定</button>
+
+                <div class="h-px bg-gray-100 my-2 mx-2"></div>
+                <div class="px-3 py-1 text-[10px] text-gray-400 font-bold uppercase tracking-wider">通讯录</div>
+
+                <div v-for="chat in chatStore.contactList" :key="chat.id"
+                    class="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors group"
+                    @click="handleMentionSelect(chat)">
+                    <div class="w-10 h-10 rounded-lg overflow-hidden bg-gray-200">
+                        <img :src="chat.avatar" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-gray-800 text-sm group-hover:text-blue-600 transition-colors">{{
+                            chat.name }}</div>
+                        <div class="text-[10px] text-gray-400 truncate">{{ chat.statusText || '对方很忙，没填心情' }}</div>
+                    </div>
+                    <i class="fa-solid fa-plus text-gray-300 group-hover:text-blue-500 transition-colors"></i>
                 </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-100 text-center">
+                <button class="text-sm text-gray-500 font-medium" @click="showMentionModal = false">取消</button>
             </div>
         </div>
     </div>

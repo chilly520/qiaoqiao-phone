@@ -133,12 +133,18 @@ const normalizeContent = (msg) => {
 
     let content = msg.content || ''
 
+    // Antigravity Fix: Use pre-extracted HTML if available
+    if (msg.type === 'html' && msg.html) {
+        return msg.html
+    }
+
     // Auto-extract HTML from JSON card format
     if (msg.type === 'html' && content.trim().startsWith('{')) {
         try {
             const data = JSON.parse(content)
             if (data.html) return data.html
         } catch (e) {
+            console.error('[ChatEdit] JSON Parse Error:', e);
             // ignore
         }
     }

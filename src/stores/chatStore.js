@@ -73,13 +73,15 @@ export const useChatStore = defineStore('chat', () => {
 
     // Getters
     const chatList = computed(() => {
-        return Object.keys(chats.value).map(key => ({
-            id: key,
-            ...chats.value[key],
-            ...chats.value[key],
-            unreadCount: chats.value[key].unreadCount || 0,
-            lastMsg: (chats.value[key].msgs || []).slice(-1)[0] || null
-        })).filter(c => c.inChatList !== false).sort((a, b) => {
+        return Object.keys(chats.value).map(key => {
+            const chat = chats.value[key]
+            return {
+                id: key,
+                ...chat,
+                unreadCount: chat.unreadCount || 0,
+                lastMsg: (chat.msgs || []).slice(-1)[0] || null
+            }
+        }).filter(c => c.inChatList !== false).sort((a, b) => {
             // Sort by Pinned First
             if (a.isPinned && !b.isPinned) return -1
             if (!a.isPinned && b.isPinned) return 1
@@ -103,9 +105,36 @@ export const useChatStore = defineStore('chat', () => {
 
     const currentChat = computed(() => {
         if (!currentChatId.value || !chats.value[currentChatId.value]) return null
+
+        const chat = chats.value[currentChatId.value];
+
+        // REAL-TIME FILTER: Remove JSON fragments from display
+        if (chat.msgs && Array.isArray(chat.msgs)) {
+            const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+
+            chat.msgs = chat.msgs.filter(m => {
+                if (!m.content || typeof m.content !== 'string') return true;
+                const trimmed = m.content.trim();
+
+                // Filter header fragment
+                if (headerPattern.test(trimmed)) {
+                    console.log('[CurrentChat] Hiding header fragment in real-time');
+                    return false;
+                }
+
+                // Filter tail fragment
+                if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") {
+                    console.log('[CurrentChat] Hiding tail fragment in real-time:', trimmed);
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
         return {
             id: currentChatId.value,
-            ...chats.value[currentChatId.value]
+            ...chat
         }
     })
 
@@ -113,6 +142,27 @@ export const useChatStore = defineStore('chat', () => {
     function addMessage(chatId, msg) {
         const chat = chats.value[chatId]
         if (!chat) return false
+
+        // EARLY FILTER: Reject JSON fragment messages (头尾碎片过滤)
+        if (msg.content && typeof msg.content === 'string') {
+            const trimmed = msg.content.trim();
+
+            console.log('[addMessage] Checking:', JSON.stringify(trimmed));
+
+            // Filter header fragment: EXACT match for { "type": "html", "html": "
+            // Use regex to match the exact JSON wrapper pattern, not just keywords
+            const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+            if (headerPattern.test(trimmed)) {
+                console.log('[ChatStore] ✅ Rejected header fragment');
+                return false;
+            }
+
+            // Filter tail fragment: EXACT match for " } or "}
+            if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") {
+                console.log('[ChatStore] ✅ Rejected tail fragment:', trimmed);
+                return false;
+            }
+        }
 
         // 1. Initialize message object
         const newMsg = {
@@ -309,7 +359,7 @@ export const useChatStore = defineStore('chat', () => {
                 } else if (/[\\]?\[\s*FAMILY_CARD/i.test(newMsg.content)) {
                     // NEW: Auto-detect Family Card
                     // Only match if it's a proper [FAMILY_CARD] tag, not random text in HTML
-                    const content = ensureString(newMsg.content).toUpperCase()
+                    const content = String(newMsg.content || '').toUpperCase()
                     // Check that it's not an HTML message with family card keyword in content
                     if (!content.includes('<HTML') && !content.includes('<DIV') && !content.includes('<SPAN')) {
                         newMsg.type = 'family_card'
@@ -363,7 +413,7 @@ export const useChatStore = defineStore('chat', () => {
                     content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
                     timestamp: Date.now()
                 }
-                
+
                 // Browser notification using notification service
                 // Extract to separate function to avoid async/await in sync function
                 sendBrowserNotification(chatId, chat, newMsg)
@@ -477,94 +527,12 @@ export const useChatStore = defineStore('chat', () => {
             }
             saveChats()
         }
-        return chats.value[chatId]
+        return { id: chatId, ...chats.value[chatId] }
     }
 
 
     // --- Memory Logic ---
-    function getTokenBreakdown(chatId) {
-        const chat = chats.value[chatId]
-        if (!chat) return { total: 0, system: 0, persona: 0, worldBook: 0, memory: 0, history: 0, summaryLib: 0 }
 
-        // 1. System & Tools (Rough Estimate)
-        // Base system prompt + tools definitions
-        const systemToken = 800
-
-        // 2. Persona (User + Character)
-        const charPersona = (chat.prompt || '') + (chat.name || '')
-        const userPersona = (chat.userName || '') + (chat.userPersona || '')
-        const personaToken = Math.floor((charPersona.length + userPersona.length) * 1.2)
-
-        // 3. WorldBook (Linked Entries)
-        let wbToken = 0
-        if (chat.worldBookLinks && chat.worldBookLinks.length > 0) {
-            const wbStore = useWorldBookStore()
-            // We need to access store directly or pass it in. Pinia stores are singletons.
-            // Since we are inside a store, we can use other stores.
-            chat.worldBookLinks.forEach(entryId => {
-                const entry = wbStore.getEntryById(entryId)
-                if (entry) {
-                    wbToken += Math.floor(((entry.content || '') + (entry.name || '')).length * 1.2)
-                }
-            })
-        }
-
-        // 4. Memory (Auto Summaries)
-        let memoryContextToken = 0
-        let memoryTotalToken = 0
-        if (chat.memory && Array.isArray(chat.memory)) {
-            // Context: Top 10
-            const contextMemories = chat.memory.slice(0, 10)
-            const contextText = contextMemories.map(m => typeof m === 'object' ? (m.content || '') : m).join('')
-            memoryContextToken = Math.floor(contextText.length * 1.2)
-
-            // Total: All
-            const totalText = chat.memory.map(m => typeof m === 'object' ? (m.content || '') : m).join('')
-            memoryTotalToken = Math.floor(totalText.length * 1.2)
-        }
-
-        // 5. History (Context Window - Optimized Estimate)
-        const limit = chat.contextLimit || 20
-        const historyMsgs = (chat.msgs || []).slice(-limit)
-
-        // Estimate token usage based on "Optimization Strategy":
-        // Base64 images are NOT sent, only IDs are sent (~50 chars).
-        let historyToken = 0
-        historyMsgs.forEach(m => {
-            let contentLen = 0
-            if (typeof m.content === 'string') {
-                if (m.content.startsWith('data:image')) {
-                    contentLen = 50 // ID ref
-                } else if (m.content.length > 500 && /data:image\/[^;]+;base64/.test(m.content)) {
-                    // Embedded
-                    contentLen = m.content.replace(/\[图片:data:image\/[^\]]+\]/g, '[IMG_REF]').length
-                } else {
-                    contentLen = m.content.length
-                }
-            } else {
-                contentLen = JSON.stringify(m.content).length
-            }
-            historyToken += Math.floor(contentLen * 1.2)
-        })
-
-        // Total Context
-        const totalContext = systemToken + personaToken + wbToken + memoryContextToken + historyToken
-
-        // Total Storage (All messages + All memory)
-        const allHistoryText = (chat.msgs || []).map(m => m.content).join('')
-        const totalStorage = systemToken + personaToken + wbToken + memoryTotalToken + Math.floor(allHistoryText.length * 1.2)
-
-        return {
-            total: totalStorage,
-            totalContext: totalContext,
-            system: systemToken,
-            persona: personaToken,
-            worldBook: wbToken,
-            memory: memoryContextToken,
-            history: historyToken,
-            summaryLib: Math.max(0, memoryTotalToken - memoryContextToken) // Remaining memories
-        }
-    }
 
     function getTokenCount(chatId) {
         const stats = getTokenBreakdown(chatId)
@@ -786,16 +754,16 @@ export const useChatStore = defineStore('chat', () => {
             if (typeof window === 'undefined' || chatId === currentChatId.value) {
                 return
             }
-            
+
             // Import notification service dynamically to avoid circular dependencies
             const { notificationService } = await import('../utils/notificationService')
-            
+
             // Check if notification permission is granted
             if (notificationService.hasPermission()) {
-                const notificationContent = newMsg.type === 'family_card' ? '[亲属卡]' : 
-                                         (newMsg.type === 'image' ? '[图片]' : 
-                                         (newMsg.content || '[消息]'))
-                
+                const notificationContent = newMsg.type === 'family_card' ? '[亲属卡]' :
+                    (newMsg.type === 'image' ? '[图片]' :
+                        (newMsg.content || '[消息]'))
+
                 notificationService.sendNotification(chat.name, {
                     body: notificationContent,
                     icon: chat.avatar || '/pwa-192x192.jpg',
@@ -995,7 +963,7 @@ export const useChatStore = defineStore('chat', () => {
                     const hours = Math.floor(diffMinutes / 60);
                     const mins = diffMinutes % 60;
                     const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
-                    lastUserMsg.content += ` （对方已经${timeStr}没有理你了）`
+                    lastUserMsg.content += ` （系统提示：${chat.userName || '用户'}已经${timeStr}没有理你了）`
                 }
             }
         }
@@ -1105,10 +1073,10 @@ export const useChatStore = defineStore('chat', () => {
                 const allVoiceBlocks = [...fullContent.matchAll(innerVoiceRegex)];
                 // Take the first block as the canonical inner voice
                 const innerVoiceBlock = allVoiceBlocks.length > 0 ? allVoiceBlocks[0][0] : '';
-                
+
                 // Remove ALL inner voice blocks from the content to get pure dialogue
                 const pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
-                
+
                 // Reconstruct the full content with proper order: dialogue first, then inner voice
                 const properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
 
@@ -1404,360 +1372,249 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(/\[\/?(INNER_VOICE|MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
                     .trim();
 
-                // --- TOXIC CSS FILTER (Enhanced) ---
-                // Filter 1: Blocks with braces
-                if (cleanContent.includes('{') && cleanContent.includes('}')) {
-                    cleanContent = cleanContent.replace(/\{[\s\S]*?(padding:|margin:|border:|display:)[\s\S]*?\}/gi, '');
-                }
-
-                // Filter 2: Enhanced Keyword List (Removed colons for stricter matching on prefixes)
-                const toxicKeywords = [
-                    'border-radius', 'box-shadow', 'background', 'background-image', 'linear-gradient',
-                    'isplay: flex', 'display: flex', 'justify-content', 'align-items',
-                    'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute',
-                    'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height',
-                    'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'
-                ];
-
-                // Filter 3: Regex for CSS-like lines (e.g. "margin-bottom: 12px;")
-                // Matches lines that look like "property: value;" or "property: value"
-                const cssLineRegex = /^\s*[a-z-]+\s*:\s*[^:]{1,100}(?:;|px|em|rem|%|vw|vh)\s*$/i;
-
-                // Remove lines matching logic
-                const lines = cleanContent.split('\n');
-                cleanContent = lines.filter(line => {
-                    const lower = line.trim().toLowerCase();
-                    if (!lower) return false; // Remove empty lines
-
-                    // Check 1: Explicit Toxic Keywords
-                    if (toxicKeywords.some(k => lower.includes(k))) return false;
-
-                    // Check 2: CSS Property syntax
-                    if (cssLineRegex.test(line)) return false;
-
-                    // Check 3: HTML garbage leftovers (e.g. ">¥ 5200")
-                    if (line.trim().startsWith('">') || line.trim().startsWith('/>')) return false;
-
-                    return true;
-                }).join('\n').trim();
-                // ------------------------------------
-
-                // --- Handle Image Security & Validation ---
-                cleanContent = cleanContent.replace(/\[图片:(.+?)\]/gi, (match, url) => {
-                    const trimmedUrl = url.trim();
-                    const isValid = trimmedUrl.startsWith('http') ||
-                        trimmedUrl.startsWith('data:') ||
-                        trimmedUrl === '/broken-image.png';
-
-                    if (!isValid) return '[图片:/broken-image.png]';
-                    return match;
-                });
-
-                // --- Pre-process: Extract and Protect CARD blocks (Enhanced) ---
-                // Supports strict [CARD]{...}, naked JSON, and now Markdown Code Blocks (Stupid AI protection)
+                // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
                 const cardBlocks = [];
-                let processedContent = cleanContent;
 
-                // Anti-Stupid Pass 1: Handle Markdown HTML code blocks
-                cleanContent = cleanContent.replace(/```(?:html|xml)?\s*([\s\S]*?)```/gi, (match, code) => {
+                // Pass 1: Handle Markdown HTML code blocks & JSON code blocks (Stupid AI protection)
+                cleanContent = cleanContent.replace(/```(?:html|xml|json)?\s*([\s\S]*?)```/gi, (match, code) => {
                     const trimmed = code.trim();
                     if (trimmed.includes('<') && trimmed.includes('>')) {
-                        // Looks like HTML, wrap it in our CARD format
                         const json = JSON.stringify({ type: 'html', html: trimmed });
-                        return `[CARD]${json}`;
+                        return `\n[CARD]${json}\n`;
+                    } else if (trimmed.startsWith('{') && (trimmed.includes('"type"') || trimmed.includes('"html"'))) {
+                        return `\n[CARD]${trimmed}\n`;
                     }
                     return match;
                 });
 
-                // Anti-Stupid Pass 2: Handle naked <html>...</html> or large <div> blocks
-                // Only if not already inside a [CARD] tag
+                // Pass 2: Handle naked <html>...</html> or large <div> blocks
                 cleanContent = cleanContent.replace(/(?:^|\n)(<(html|div|section|article|style)[\s\S]*?<\/\2>)(?:\n|$)/gi, (match, html) => {
-                    if (html.length > 100 && !cleanContent.includes('[CARD]')) {
+                    if (html.length > 50 && !cleanContent.includes('[CARD]')) {
                         const json = JSON.stringify({ type: 'html', html: html.trim() });
                         return `\n[CARD]${json}\n`;
                     }
                     return match;
                 });
 
-                // Regex matches start of card:
-                // 1. [CARD] followed by {
-                // 2. OR { followed by "type": "html" (naked)
-                // REGEX FIX: Also match escaped quotes like \"type\"
-                const cardStartRegex = /(?:\[CARD\]\s*\{)|(?:\{\s*\\?["']type\\?["']\s*:\s*\\?["']html\\?["'])/gi;
-                let match;
+                // Pass 3: Extraction using robust brace matcher (The Protectors)
+                // Aggressively match anything starting with [CARD]{ or just { "any_key":
+                const cardStartRegex = /(?:\[\s*CARD\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*:\s*)/gi;
+                let cardMatch;
                 const cardPositions = [];
 
-                while ((match = cardStartRegex.exec(cleanContent)) !== null) {
-                    let startPos = match.index;
-                    let jsonStart = match.index;
-                    let isNaked = false;
-
-                    if (match[0].trim().toUpperCase().startsWith('[')) {
-                        // Matched [CARD] {
-                        jsonStart = match.index + match[0].indexOf('{');
-                    } else {
-                        // Matched { "type": "html"
-                        isNaked = true;
-                        jsonStart = match.index;
-                    }
+                while ((cardMatch = cardStartRegex.exec(cleanContent)) !== null) {
+                    let startPos = cardMatch.index;
+                    let jsonStart = cardMatch.index + cardMatch[0].indexOf('{');
+                    let isNaked = !cardMatch[0].trim().toUpperCase().startsWith('[');
 
                     let braceCount = 1;
                     let endPos = jsonStart + 1;
+                    let inString = false;
+                    let isEscaped = false;
+
                     while (endPos < cleanContent.length && braceCount > 0) {
-                        if (cleanContent[endPos] === '{') braceCount++;
-                        else if (cleanContent[endPos] === '}') braceCount--;
+                        const char = cleanContent[endPos];
+                        if (isEscaped) { isEscaped = false; }
+                        else if (char === '\\') { isEscaped = true; }
+                        else if (char === '"') { inString = !inString; }
+                        else if (!inString) {
+                            if (char === '{') braceCount++;
+                            else if (char === '}') braceCount--;
+                        }
                         endPos++;
                     }
 
                     if (braceCount === 0) {
-                        const fullCard = cleanContent.substring(startPos, endPos);
+                        let totalEnd = endPos;
+                        const remaining = cleanContent.substring(endPos);
+                        const closingTagMatch = remaining.match(/^\s*\[\/CARD\]/i);
+                        if (closingTagMatch) totalEnd += closingTagMatch[0].length;
 
-                        // Treat as card
-                        // Store isNaked flag to prepend [CARD] later if needed
-                        cardPositions.push({ start: startPos, end: endPos, content: fullCard, isNaked });
-
-                        // Advance regex to avoid scanning inside this block
-                        cardStartRegex.lastIndex = endPos;
+                        const fullCard = cleanContent.substring(startPos, totalEnd);
+                        cardPositions.push({ start: startPos, end: totalEnd, content: fullCard, isNaked });
+                        cardStartRegex.lastIndex = totalEnd;
                     }
                 }
 
+                // Apply Placeholders (Reversed order to maintain indices)
+                let processedContent = cleanContent;
                 for (let i = cardPositions.length - 1; i >= 0; i--) {
                     const pos = cardPositions[i];
-                    const placeholder = `__CARD_PLACEHOLDER_${i}__`;
-                    // If naked, auto-fix by adding [CARD] tag so downstream logic recognizes it
                     const contentToStore = pos.isNaked ? ('[CARD]' + pos.content) : pos.content;
                     cardBlocks.push(contentToStore);
-                    processedContent = processedContent.substring(0, pos.start) + placeholder + processedContent.substring(pos.end);
+                    processedContent = processedContent.substring(0, pos.start) + ` __CARD_PLACEHOLDER_${i}__ ` + processedContent.substring(pos.end);
                 }
 
-                // --- AI HALLUCINATION CLEANER (Legacy Button Recovery) ---
-                // If the AI learned the old <button> format from history, convert it back to the clean [FAMILY_CARD] tag.
-                // This prevents segmented delivery of raw HTML code and preserves system integrity.
+                // Pass 4: Clean up image tags & Hallucination Cleanup
+                processedContent = processedContent.replace(/\[图片:(.+?)\]/gi, (match, url) => {
+                    const trimmedUrl = url.trim();
+                    if (!(trimmedUrl.startsWith('http') || trimmedUrl.startsWith('data:') || trimmedUrl === '/broken-image.png')) {
+                        return '[图片:/broken-image.png]';
+                    }
+                    return match;
+                });
+
                 processedContent = processedContent.replace(/<button[\s\S]*?qiaoqiao_receiveFamilyCard\('([^']*)',\s*([\d.]+),\s*'([^']*)'[\s\S]*?点击领取<\/button>/gi, (match, uuid, amount, note) => {
-                    console.warn('[ChatStore] AI attempted legacy button output. Recovering to tag format:', { amount, note });
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // --- Improved Splitting Logic (V7 - Fixed for FAMILY_CARD) ---
-                // FIX: Support Multiline Family Card and REJECT tags in Split Regex
-                // FIX: Exclude INNER_VOICE tags from bracket matching to prevent message truncation
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[表情包:.*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\([^\)]+\)|（[^）]+）|\[(?!INNER_VOICE|\/INNER_VOICE)[^\]]+\]|[!?;。！？；…\n]+)/;
+                // --- Improved Splitting Logic (V10 - Placeholder Aware) ---
+                // We split by punctuation BUT avoid splitting if it seems to be inside a parenthesis or bracket
+                // Using a simpler exclusion for common cases
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[表情包:.*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|\[(?!INNER_VOICE|\/INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
-                let segments = [];
-                let currentSegment = "";
+                let rawSegments = [];
+                let currentRawSegment = "";
 
-
-
-                // --- Pre-process Segments for VOICE ---
-                // If a segment contains [语音:], treat it as a standalone segment
-                // This is a simple patch. Ideally, splitting regex should handle it.
-                // Regex already splits by [ ], so [语音:Text] should be a segment if it matches existing pattern.
-                // But my split regex `\[[^\]]+\]` matches it.
-                // So `[语音:Text]` will be a segment.
-                // My loop above: `isBracket` = true.
-                // It goes to `else if (isParenthesis || isBracket) { currentSegment += part; }`
-                // Wait! If it's `[语音:...]`, it should be PUSHED as a segment to be recognized in step 4.2
-                // Current logic appends `[Bracket]` to `currentSegment`.
-                // Only `isCardPlaceholder || isSticker || isDraw` pushes immediately.
-
-                // FIX: Add isVoice to the "Push Immediately" condition
                 for (let i = 0; i < rawParts.length; i++) {
                     const part = rawParts[i];
                     if (part === undefined) continue;
 
-                    const isCardPlaceholder = /^__CARD_PLACEHOLDER_\d+__$/.test(part);
-                    const isDraw = /^\[DRAW:/.test(part);
-                    const isSticker = /^\[表情包:/.test(part);
-                    const isVoice = /^\[语音:/.test(part);
-                    const isCardTag = /^\[CARD\]/.test(part); // Added check for explicit CARD tag
-                    const isFamilyCard = /^\[FAMILY_CARD(?:_APPLY|_REJECT)?:/.test(part); // Family Card Protection including REJECT
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[DRAW:|\[表情包:|\[语音:|\[CARD\]|\[FAMILY_CARD)/.test(part);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
-                    const isParenthesis = /^[\(（].*[\)）]$/.test(part);
-                    const isBracket = /^\[[^\]]+\]$/.test(part);
 
-                    if (isCardPlaceholder || isSticker || isDraw || isVoice || isCardTag || isFamilyCard) {
-                        if (currentSegment) { segments.push(currentSegment); currentSegment = ""; }
-                        segments.push(part);
+                    if (isSpecial) {
+                        if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }
+                        rawSegments.push(part);
                     } else if (isPunctuation) {
-                        currentSegment += part;
-                        segments.push(currentSegment);
-                        currentSegment = "";
-                    } else if (isParenthesis || isBracket) {
-                        // If it's a bracket but not a card/sticker/draw/voice, treat as text
-                        currentSegment += part;
+                        currentRawSegment += part;
+                        rawSegments.push(currentRawSegment);
+                        currentRawSegment = "";
                     } else {
-                        currentSegment += part;
+                        currentRawSegment += part;
                     }
                 }
-                if (currentSegment) segments.push(currentSegment);
+                if (currentRawSegment) rawSegments.push(currentRawSegment);
 
-                // Restore CARD blocks
-                segments = segments.map(seg => {
-                    const placeholderMatch = seg.match(/__CARD_PLACEHOLDER_(\d+)__/);
+                // --- Restoring Card Blocks and Filtering Content ---
+                let finalSegments = [];
+                for (const seg of rawSegments) {
+                    let content = seg;
+                    const placeholderMatch = content.match(/__CARD_PLACEHOLDER_(\d+)__/);
+
                     if (placeholderMatch) {
                         const index = parseInt(placeholderMatch[1]);
-                        return cardBlocks[cardBlocks.length - 1 - index];
+                        content = cardBlocks[cardBlocks.length - 1 - index];
+                        finalSegments.push({ type: 'card', content });
+                    } else if (content.startsWith('[表情包:')) {
+                        finalSegments.push({ type: 'sticker', content: content.trim() });
+                    } else if (content.startsWith('[语音:')) {
+                        finalSegments.push({ type: 'voice', content: content.substring(4, content.length - 1).trim() });
+                    } else if (content.startsWith('[DRAW:')) {
+                        finalSegments.push({ type: 'draw', content: content.trim() });
+                    } else {
+                        // Standard Text: Apply Toxic CSS Filter HERE only
+                        const toxicKeywords = ['border-radius', 'box-shadow', 'background', 'background-image', 'linear-gradient', 'isplay: flex', 'display: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'];
+                        const cssLineRegex = /^\s*[a-z-]+\s*:\s*[^:]{1,100}(?:;|px|em|rem|%|vw|vh)\s*$/i;
+
+                        let filtered = content;
+                        if (filtered.includes('{') && filtered.includes('}')) {
+                            filtered = filtered.replace(/\{[\s\S]*?(padding:|margin:|border:|display:)[\s\S]*?\}/gi, '');
+                        }
+                        filtered = filtered.split('\n').filter(line => {
+                            const lower = line.trim().toLowerCase();
+                            if (!lower) return false;
+                            if (toxicKeywords.some(k => lower.includes(k))) return false;
+                            if (cssLineRegex.test(line)) return false;
+                            if (line.trim().startsWith('">') || line.trim().startsWith('/>')) return false;
+                            return true;
+                        }).join('\n').trim();
+
+                        if (filtered) {
+                            finalSegments.push({ type: 'text', content: filtered });
+                        }
                     }
-                    return seg;
-                });
+                }
 
-                const finalSegments = segments.filter(s => s.trim());
-                if (finalSegments.length === 0 && cleanContent) finalSegments.push(cleanContent);
-
-                // --- 4. Sequential Delivery & Real-time Operations ---
+                // --- 4. Sequential Delivery ---
                 for (let i = 0; i < finalSegments.length; i++) {
-                    // Check interruption status
-                    if (!isTyping.value) {
-                        console.log('[ChatStore] Message delivery interrupted by user.');
-                        break;
-                    }
+                    if (!isTyping.value) break;
 
-                    const seg = finalSegments[i];
-                    let msgContent = seg;
-                    const isFirstTextMessage = segments.findIndex(s => !s.startsWith('[CARD]')) === i;
-
-                    const isCard = seg.trim().startsWith('[CARD]');
-                    if (isFirstTextMessage && innerVoiceBlock && !isCard) {
-                        // FIX: Append inner voice instead of prepending, to avoid order confusion on mobile,
-                        // and ensure the text message content starts with the actual text.
-                        msgContent = seg + '\n' + innerVoiceBlock;
-                    }
-
-                    // 4.1 Process Payment Tags in THIS segment
-                    let pendingSystemMsgs = [];
-                    let claimMatch;
-                    while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
-                        const type = claimMatch[1];
-                        const paymentId = claimMatch[2].trim();
-                        const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
-                        if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
-                            targetMsg.isClaimed = true;
-                            targetMsg.claimTime = Date.now();
-                            targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
-                            pendingSystemMsgs.push(`${chat.name}领取了你的${type}`);
-                        }
-                    }
-                    let rejectMatch;
-                    while ((rejectMatch = rejectRegex.exec(msgContent)) !== null) {
-                        const type = rejectMatch[2];
-                        const paymentId = rejectMatch[3].trim();
-                        const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
-                        if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
-                            targetMsg.isRejected = true;
-                            targetMsg.rejectTime = Date.now();
-                            pendingSystemMsgs.push(`${chat.name}拒收了你的${type}`);
-                        }
-                    }
-
-                    // Clean the tags from the bubble before displaying
-                    msgContent = msgContent
-                        .replace(/\[领取(红包|转账):[^\]]+\]/g, '')
-                        .replace(/\[(退回|拒收)(红包|转账):[^\]]+\]/g, '')
-                        .trim();
-
-                    if (!msgContent && pendingSystemMsgs.length === 0) continue;
-
-                    // 4.2 Send the actual bubble
+                    const { type, content } = finalSegments[i];
                     let msgAdded = null;
-                    if (msgContent) {
-                        if (msgContent.trim().startsWith('[CARD]')) {
-                            let jsonStr = msgContent.trim().replace('[CARD]', '').trim();
-                            // ESCAPE FIX: Unescape JSON quotes
-                            jsonStr = jsonStr.replace(/\\"/g, '"');
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: jsonStr, quote: i === 0 ? aiQuote : null });
-                        } else if (msgContent.startsWith('<') && msgContent.includes('>') && (msgContent.includes('style=') || msgContent.includes('class='))) {
-                            // 直接检测HTML内容，设置为html类型
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: msgContent, quote: i === 0 ? aiQuote : null });
-                        } else if (msgContent.startsWith('[表情包:')) {
-                            msgAdded = addMessage(chatId, { role: 'ai', content: msgContent, quote: i === 0 ? aiQuote : null });
-                        } else if (msgContent.startsWith('[语音:')) {
-                            const voiceContent = msgContent.substring(4, msgContent.length - 1).trim();
-                            msgAdded = addMessage(chatId, {
-                                role: 'ai',
-                                type: 'voice',
-                                content: voiceContent,
-                                duration: Math.ceil(voiceContent.length / 3) || 1,
-                                quote: i === 0 ? aiQuote : null
-                            });
+                    let msgContent = content;
+
+                    if (type === 'card' || type === 'text') {
+                        // Process Payment Tags
+                        let pendingSystemMsgs = [];
+                        let claimMatch;
+                        while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
+                            const paymentId = claimMatch[2].trim();
+                            const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
+                            if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
+                                targetMsg.isClaimed = true;
+                                targetMsg.claimTime = Date.now();
+                                targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
+                                pendingSystemMsgs.push(`${chat.name}领取了你的${claimMatch[1]}`);
+                            }
+                        }
+                        // (Add similar logic for reject if needed)
+
+                        msgContent = msgContent.replace(/\[领取(红包|转账):[^\]]+\]/g, '').replace(/\[(退回|拒收)(红包|转账):[^\]]+\]/g, '').trim();
+                        if (!msgContent && pendingSystemMsgs.length === 0) continue;
+
+                        if (type === 'card' || msgContent.match(/\[\s*CARD\s*\]/i) || msgContent.trim().startsWith('{')) {
+                            // HTML Card Delivery
+                            let processedHtml = msgContent.replace(/\[\s*\/?[CARD\s]*\]/gi, '').trim();
+                            if (processedHtml.includes('\\"')) processedHtml = processedHtml.replace(/\\"/g, '"');
+                            if (!processedHtml.trim().startsWith('{') && (processedHtml.includes('"type":') || processedHtml.includes('"html":'))) processedHtml = '{' + processedHtml + '}';
+
+                            let extractedHtml = processedHtml;
+                            try {
+                                const parsed = JSON.parse(processedHtml);
+                                if (parsed.html) extractedHtml = parsed.html;
+                            } catch (e) { /* Fallback to raw */ }
+
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
                         } else {
-                            // Standard Text / Drawing
-                            // Allow spaces and Chinese colons
+                            // Text Message Delivery
                             const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
-                            const familyMatch = msgContent.match(/\[FAMILY_CARD/i); // Explicitly check for family card tags
-                            let msgType = 'text';
-                            let amount = null;
-                            let note = null;
-
+                            let msgType = 'text', amount = null, note = null;
                             if (rpMatch) {
-                                const typeStr = rpMatch[1];
-                                amount = parseFloat(rpMatch[2]);
+                                msgType = rpMatch[1] === '红包' ? 'redpacket' : 'transfer';
+                                amount = parseFloat(rpMatch[2]) || 1.0;
                                 note = rpMatch[3];
-
-                                // Fix 0 amount issue: If AI generates 0, force a random amount
-                                if (!amount || amount <= 0) {
-                                    amount = (Math.random() * 100 + 5.20).toFixed(2);
-                                    console.warn('[ChatStore] Adjusted invalid red packet amount to:', amount);
-                                    msgContent = msgContent.replace(rpMatch[0], `[${typeStr}:${amount}:${note}]`);
-                                }
-                                msgType = typeStr === '红包' ? 'redpacket' : 'transfer';
-                            } else if (familyMatch) {
+                            } else if (msgContent.includes('[FAMILY_CARD')) {
                                 msgType = 'family_card';
                             }
 
-                            msgAdded = addMessage(chatId, {
-                                role: 'ai',
-                                content: msgContent,
-                                type: msgType,
-                                amount: amount,
-                                note: note,
-                                quote: i === 0 ? aiQuote : null
-                            });
+                            if (i === 0 && innerVoiceBlock) msgContent += '\n' + innerVoiceBlock;
 
-                            // Async Drawing Handler
-                            if (msgContent.includes('[DRAW:')) {
-                                const drawMatch = msgContent.match(/\[DRAW:\s*([\s\S]*?)\]/i);
-                                if (drawMatch && msgAdded) {
-                                    const prompt = drawMatch[1].trim();
-                                    const targetMsgId = msgAdded.id;
-                                    (async () => {
-                                        try {
-                                            const imageUrl = await generateImage(prompt);
-                                            updateMessage(chatId, targetMsgId, { content: msgContent.replace(drawMatch[0], `[图片:${imageUrl}]`) });
-                                        } catch (err) {
-                                            updateMessage(chatId, targetMsgId, { content: msgContent.replace(drawMatch[0], '(绘画失败)') });
-                                        }
-                                    })();
-                                }
-                            }
+                            msgAdded = addMessage(chatId, { role: 'ai', type: msgType, content: msgContent, amount, note, quote: i === 0 ? aiQuote : null });
+                        }
+
+                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt }));
+
+                    } else if (type === 'sticker') {
+                        msgAdded = addMessage(chatId, { role: 'ai', content, quote: i === 0 ? aiQuote : null });
+                    } else if (type === 'voice') {
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1 });
+                    } else if (type === 'draw') {
+                        // (Drawing logic handled after adding message)
+                        msgAdded = addMessage(chatId, { role: 'ai', content, quote: i === 0 ? aiQuote : null });
+                        const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
+                        if (drawMatch && msgAdded) {
+                            const targetMsgId = msgAdded.id;
+                            (async () => {
+                                try {
+                                    const imageUrl = await generateImage(drawMatch[1].trim());
+                                    updateMessage(chatId, targetMsgId, { content: content.replace(drawMatch[0], `[图片:${imageUrl}]`) });
+                                } catch (err) { updateMessage(chatId, targetMsgId, { content: content.replace(drawMatch[0], '(绘画失败)') }); }
+                            })();
                         }
                     }
 
-                    // 4.3 Insert system messages immediately after the bubble
-                    pendingSystemMsgs.forEach(txt => {
-                        addMessage(chatId, { role: 'system', type: 'text', content: txt, timestamp: Date.now() + 1 });
-                    });
-
                     // Sequential Delay
-                    const delay = Math.min(2000, Math.max(600, seg.length * 80));
+                    const delay = Math.min(2000, Math.max(600, (content?.length || 10) * 80));
                     await new Promise(resolve => setTimeout(resolve, delay));
-
-                    // Check again after delay before next iteration
-                    if (!isTyping.value) {
-                        console.log('[ChatStore] Message delivery interrupted during delay.');
-                        break;
-                    }
                 }
 
-                // --- Send FAMILY_CARD messages separately ---
+                // --- Send FAMILY_CARD messages separately (hallucination cleanup) ---
                 if (familyCardMatches.length > 0) {
                     for (const cardTag of familyCardMatches) {
                         if (!isTyping.value) break;
-                        addMessage(chatId, {
-                            role: 'ai',
-                            content: cardTag,
-                            type: 'text'
-                        });
+                        addMessage(chatId, { role: 'ai', content: cardTag, type: 'text' });
                         await new Promise(resolve => setTimeout(resolve, 800));
                     }
                 }
@@ -1886,6 +1743,30 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     function saveChats() {
+        // LAST LINE OF DEFENSE: Filter JSON fragments before saving
+        Object.values(chats.value).forEach(chat => {
+            if (chat.msgs && Array.isArray(chat.msgs)) {
+                const originalLength = chat.msgs.length;
+                chat.msgs = chat.msgs.filter(m => {
+                    if (!m.content || typeof m.content !== 'string') return true;
+                    const trimmed = m.content.trim();
+
+                    // Filter header fragment
+                    const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+                    if (headerPattern.test(trimmed)) return false;
+
+                    // Filter tail fragment
+                    if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
+
+                    return true;
+                });
+
+                if (chat.msgs.length < originalLength) {
+                    console.log(`[SaveChats] Filtered ${originalLength - chat.msgs.length} fragment(s) from chat ${chat.name}`);
+                }
+            }
+        });
+
         try {
             localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value))
             return true
@@ -1915,7 +1796,23 @@ export const useChatStore = defineStore('chat', () => {
                     if (c.msgs && Array.isArray(c.msgs)) {
                         c.msgs = c.msgs.filter(m => {
                             if (!m.content) return true
-                            const s = String(m.content)
+
+                            // Skip filtering for HTML type messages
+                            if (m.type === 'html') return true
+
+                            const s = String(m.content).trim()
+
+                            // NEW: Filter JSON fragments (头尾碎片)
+                            const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+                            if (headerPattern.test(s)) {
+                                console.log('[LoadChats] Filtered header fragment');
+                                return false;
+                            }
+                            if (s === '"' || s === '"}' || s === '" }' || s === "'}'" || s === "' }") {
+                                console.log('[LoadChats] Filtered tail fragment:', s);
+                                return false;
+                            }
+
                             // Filter toxic CSS messages
                             if (s.includes('display:') && s.includes('flex')) return false
                             if (s.includes('background:') && s.includes('gradient')) return false

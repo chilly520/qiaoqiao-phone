@@ -24,7 +24,7 @@ import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
 import { marked } from 'marked'
 import { compressImage } from '../../utils/imageUtils'
-import { generateImage } from '../../utils/aiService'
+import { generateImage, translateToEnglish } from '../../utils/aiService'
 import { batteryMonitor } from '../../utils/batteryMonitor'
 import { useChatTransaction } from '../../composables/chat/useChatTransaction'
 
@@ -292,14 +292,19 @@ const favoriteSelectedMessages = () => {
     if (selectedMsgIds.value.size === 0) return
 
     const chatName = chatData.value.name
-    msgs.value.forEach(msg => {
-        if (selectedMsgIds.value.has(msg.id)) {
-            const avatarUrl = msg.role === 'user'
-                ? (settingsStore.personalization.userProfile.avatar || '/avatars/user.png')
-                : (chatData.value.avatar || '/avatars/default.png')
-            favoritesStore.addFavorite(msg, chatName, avatarUrl)
-        }
-    })
+    const selectedMsgs = msgs.value.filter(m => selectedMsgIds.value.has(m.id))
+
+    if (selectedMsgs.length > 1) {
+        // Multi-select: add as batch
+        favoritesStore.addBatchFavorite(selectedMsgs, chatName)
+    } else if (selectedMsgs.length === 1) {
+        // Single message: add as single
+        const msg = selectedMsgs[0]
+        const avatarUrl = msg.role === 'user'
+            ? (settingsStore.personalization.userProfile.avatar || '/avatars/user.png')
+            : (chatData.value.avatar || '/avatars/default.png')
+        favoritesStore.addFavorite(msg, chatName, avatarUrl)
+    }
 
     showToast(`成功收藏 ${selectedMsgIds.value.size} 条消息`, 'success')
     exitMultiSelectMode()
@@ -522,7 +527,7 @@ const handlePat = (msg) => {
         clearTimeout(avatarClickTimer)
         avatarClickTimer = null
     }
-    
+
     // 1. Visual Response
     shakingAvatars.value.add(msg.id)
     setTimeout(() => shakingAvatars.value.delete(msg.id), 500)
@@ -552,7 +557,7 @@ const handleAvatarClick = (msg) => {
     if (avatarClickTimer) {
         clearTimeout(avatarClickTimer)
     }
-    
+
     // Set a timer to handle the single click after a short delay
     avatarClickTimer = setTimeout(() => {
         // If it's a friend request or system message, ignore
@@ -563,7 +568,7 @@ const handleAvatarClick = (msg) => {
         // Here we assume 'user' is a valid ID for the user profile, or we handle it.
         const targetId = msg.role === 'user' ? 'user' : chatStore.currentChatId;
         router.push({ name: 'character-info', params: { charId: targetId } });
-        
+
         // Clear the timer reference
         avatarClickTimer = null
     }, 300) // 300ms delay - typical double-click timeout
@@ -607,6 +612,18 @@ const familyCardAmount = ref('5200')
 const familyCardNote = ref('我的钱就是你的钱')
 const familyCardApplyNote = ref('送我一张亲属卡好不好？以后你来管家~')
 
+// See Image (Text to Image) Modal
+const showSeeImageModal = ref(false)
+const seeImagePrompt = ref('')
+const seeImageLoading = ref(false)
+const seeImageResult = ref('')
+const seeImageHistory = ref([])
+const currentHistoryIndex = ref(-1)
+
+// Touch slide variables for image preview
+let touchStartX = 0
+let touchEndX = 0
+
 const handlePanelAction = (type) => {
     if (type === 'album') {
         imgUploadInput.value.click()
@@ -619,6 +636,9 @@ const handlePanelAction = (type) => {
     } else if (type === 'family-card') {
         // Show family card action selection modal
         showFamilyCardModal.value = true
+    } else if (type === 'see-image') {
+        // Show see image modal
+        showSeeImageModal.value = true
     }
 }
 
@@ -636,27 +656,160 @@ const handleFamilyCardAction = (actionType) => {
     }
 }
 
+// See Image (Text to Image) Methods
+const generateSeeImage = async () => {
+    if (!seeImagePrompt.value.trim()) {
+        showToast('请输入生图提示词', 'info')
+        return
+    }
+    
+    seeImageLoading.value = true
+    try {
+        console.log('开始生成图片:', seeImagePrompt.value)
+        // 模拟生成图片（不调用API）
+        // 这里我们只是模拟生成过程，实际项目中可以替换为真实的文生图API调用
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // 将中文提示词转义成英文关键词
+        const prompt = seeImagePrompt.value.trim()
+        let englishPrompt = prompt
+        // 简单的中文关键词转英文（实际项目中可使用更复杂的翻译服务）
+        const chineseToEnglish = {
+            '花': 'flower',
+            '玫瑰': 'rose',
+            '山': 'mountain',
+            '水': 'water',
+            '天空': 'sky',
+            '树': 'tree',
+            '人': 'person',
+            '狗': 'dog',
+            '猫': 'cat',
+            '太阳': 'sun',
+            '月亮': 'moon',
+            '星星': 'star'
+        }
+        for (const [chinese, english] of Object.entries(chineseToEnglish)) {
+            if (prompt.includes(chinese)) {
+                englishPrompt = english
+                break
+            }
+        }
+        
+        // 将中文提示词翻译为英文
+        const translatedPrompt = await translateToEnglish(prompt)
+        console.log('中文提示词:', prompt)
+        console.log('翻译后的英文提示词:', translatedPrompt)
+        
+        // 使用真实的生图API生成图片
+        const generatedImageUrl = await generateImage(translatedPrompt)
+        console.log('生成的图片URL:', generatedImageUrl)
+        
+        // 添加到历史记录
+        seeImageHistory.value.push(generatedImageUrl)
+        currentHistoryIndex.value = seeImageHistory.value.length - 1
+        seeImageResult.value = generatedImageUrl
+        console.log('图片生成成功，历史记录长度:', seeImageHistory.value.length)
+        
+        showToast('图片生成成功', 'success')
+    } catch (error) {
+        console.error('生成图片失败:', error)
+        showToast('生成图片失败，请重试', 'error')
+    } finally {
+        seeImageLoading.value = false
+        console.log('生成图片过程结束')
+    }
+}
+
+const sendSeeImage = () => {
+    if (!seeImageResult.value) {
+        showToast('请先生成图片', 'info')
+        return
+    }
+    
+    // 添加图片消息到聊天界面（挂载，不发送）
+    chatStore.addMessage(chatStore.currentChatId, {
+        role: 'user',
+        type: 'image',
+        content: seeImageResult.value
+    })
+    
+    // 关闭模态框
+    showSeeImageModal.value = false
+    // 清空状态
+    seeImagePrompt.value = ''
+    seeImageResult.value = ''
+    seeImageHistory.value = []
+    currentHistoryIndex.value = -1
+}
+
+const regenerateSeeImage = () => {
+    generateSeeImage()
+}
+
+const prevHistoryImage = () => {
+    if (currentHistoryIndex.value > 0) {
+        currentHistoryIndex.value--
+        seeImageResult.value = seeImageHistory.value[currentHistoryIndex.value]
+    }
+}
+
+const nextHistoryImage = () => {
+    if (currentHistoryIndex.value < seeImageHistory.value.length - 1) {
+        currentHistoryIndex.value++
+        seeImageResult.value = seeImageHistory.value[currentHistoryIndex.value]
+    }
+}
+
+// Touch slide handlers for image preview
+const touchStart = (e) => {
+    touchStartX = e.changedTouches[0].screenX
+}
+
+const touchMove = (e) => {
+    touchEndX = e.changedTouches[0].screenX
+}
+
+const touchEnd = () => {
+    const swipeThreshold = 50
+    if (touchEndX < touchStartX - swipeThreshold) {
+        // Swipe left - next image
+        nextHistoryImage()
+    } else if (touchEndX > touchStartX + swipeThreshold) {
+        // Swipe right - previous image
+        prevHistoryImage()
+    }
+}
+
+const closeSeeImageModal = () => {
+    showSeeImageModal.value = false
+    // 清空状态
+    seeImagePrompt.value = ''
+    seeImageResult.value = ''
+    seeImageHistory.value = []
+    currentHistoryIndex.value = -1
+}
+
 // Handle sending family card after user fills form
 const confirmSendFamilyCard = () => {
     if (!familyCardAmount.value || parseFloat(familyCardAmount.value) <= 0) {
         showToast('请输入有效的额度', 'error')
         return
     }
-    
+
     // Send family card message
     chatStore.addMessage(chatData.value.id, {
         role: 'user',
         type: 'text',
         content: `[FAMILY_CARD:${familyCardAmount.value}:${familyCardNote.value || '亲属卡'}]`
     })
-    
+
     // Close modal
     showFamilyCardSendModal.value = false
-    
+
     // Clear form fields
     familyCardAmount.value = '5200'
     familyCardNote.value = '我的钱就是你的钱'
-    
+
     // DO NOT auto-call API - remove the timeout generateAIResponse call
     // User requested that card is just mounted on message without auto API call
 }
@@ -667,20 +820,20 @@ const confirmApplyFamilyCard = () => {
         showToast('请输入申请备注', 'error')
         return
     }
-    
+
     // Send family card apply message
     chatStore.addMessage(chatData.value.id, {
         role: 'user',
         type: 'text',
         content: `[FAMILY_CARD_APPLY:${familyCardApplyNote.value}]`
     })
-    
+
     // Close modal
     showFamilyCardApplyModal.value = false
-    
+
     // Clear form fields
     familyCardApplyNote.value = '送我一张亲属卡好不好？以后你来管家~'
-    
+
     // DO NOT auto-call API - remove the timeout generateAIResponse call
     // User requested that card is just mounted on message without auto API call
 }
@@ -828,7 +981,7 @@ const processQueue = () => {
         if (msgId) {
             spokenMsgIds.add(msgId);
         }
-        
+
         isSpeaking.value = false;
         // Pause slightly between bubbles
         setTimeout(processQueue, 500);
@@ -884,12 +1037,12 @@ const speakOne = (text, onEnd) => {
 
 const speakMessage = (text, msgId = null) => {
     if (!text) return;
-    
+
     // 如果提供了消息ID，检查是否已经朗读过
     if (msgId && spokenMsgIds.has(msgId)) {
         return;
     }
-    
+
     ttsQueue.value.push({ text, msgId });
     processQueue();
 }
@@ -904,7 +1057,7 @@ watch(() => chatStore.isTyping, (isTyping) => {
 watch(msgs, (newVal, oldVal) => {
     if (newVal.length > (oldVal?.length || 0)) {
         scrollToBottom()
-        
+
         // AI finished generating. Check for unread messages if Auto Read is ON.
         if (chatData.value?.autoRead) { // Check switch only (capability is usually true)
             // 只处理新添加的消息
@@ -912,14 +1065,14 @@ watch(msgs, (newVal, oldVal) => {
             if (newMsgCount > 0) {
                 // 获取新添加的消息，按照顺序处理
                 const newlyAddedMsgs = newVal.slice(-newMsgCount);
-                
+
                 // 等待DOM更新完成，确保气泡已经渲染在界面上
                 nextTick(() => {
                     newlyAddedMsgs.forEach(msg => {
                         // 只朗读AI消息，不朗读用户消息
                         if (
-                            msg.role === 'ai' && 
-                            msg.content && 
+                            msg.role === 'ai' &&
+                            msg.content &&
                             !spokenMsgIds.has(msg.id) &&
                             // 只朗读文本类型消息，过滤掉HTML和其他特殊类型
                             msg.type === 'text' &&
@@ -1887,10 +2040,7 @@ const getHtmlContent = (content) => {
     if (!content) return ''
     try {
         let cleaned = content.trim()
-        // If it looks like JSON with escaped quotes, unescape it
-        if (cleaned.includes('\\"')) {
-            cleaned = cleaned.replace(/\\"/g, '"')
-        }
+        // Removed manual unescape that corrupts valid JSON
 
         // Try parsing as JSON first (if it's the [CARD] format)
         if (cleaned.startsWith('{')) {
@@ -2026,7 +2176,7 @@ onUnmounted(() => {
         <!-- Global Toast Notifier -->
         <Transition name="fade">
             <div v-if="toastVisible"
-                class="absolute top-16 left-1/2 transform -translate-x-1/2 z-[100] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 min-w-[200px] justify-center backdrop-blur-md"
+                class="absolute top-16 left-1/2 transform -translate-x-1/2 z-[200] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 min-w-[200px] justify-center backdrop-blur-md"
                 :class="{
                     'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 text-white': toastType === 'info',
                     'bg-gradient-to-r from-green-500/90 to-emerald-600/90 text-white': toastType === 'success',
@@ -2230,22 +2380,23 @@ onUnmounted(() => {
             @close="closeModals" @confirm="confirmTransfer" @reject="rejectPayment" />
 
         <!-- Family Card Action Selection Modal -->
-        <div v-if="showFamilyCardModal" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+        <div v-if="showFamilyCardModal"
+            class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
             <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
                 <h3 class="text-lg font-bold text-center mb-6">亲属卡</h3>
-                
+
                 <div class="space-y-4">
                     <!-- Apply for Family Card -->
-                    <button @click="handleFamilyCardAction('apply')" 
+                    <button @click="handleFamilyCardAction('apply')"
                         class="w-full bg-gradient-to-r from-[#ff9a9e] to-[#fecfef] text-white py-4 rounded-xl font-bold shadow-md hover:shadow-lg transition-all">
                         <div class="flex items-center justify-center gap-2">
                             <i class="fa-solid fa-hand-holding-heart"></i>
                             <span>申请亲属卡</span>
                         </div>
                     </button>
-                    
+
                     <!-- Send Family Card -->
-                    <button @click="handleFamilyCardAction('send')" 
+                    <button @click="handleFamilyCardAction('send')"
                         class="w-full bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-4 rounded-xl font-bold shadow-md hover:shadow-lg transition-all">
                         <div class="flex items-center justify-center gap-2">
                             <i class="fa-solid fa-gift"></i>
@@ -2253,50 +2404,52 @@ onUnmounted(() => {
                         </div>
                     </button>
                 </div>
-                
+
                 <!-- Cancel Button -->
-                <button @click="showFamilyCardModal = false" 
+                <button @click="showFamilyCardModal = false"
                     class="w-full mt-4 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
                     取消
                 </button>
             </div>
         </div>
-        
+
         <!-- Send Family Card Form Modal -->
-        <div v-if="showFamilyCardSendModal" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+        <div v-if="showFamilyCardSendModal"
+            class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
             <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
                 <h3 class="text-lg font-bold text-center mb-6">赠送亲属卡</h3>
-                
+
                 <div class="space-y-5">
                     <!-- Amount Input -->
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">设置额度</label>
                         <div class="relative">
-                            <div class="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-500">¥</div>
-                            <input type="number" v-model="familyCardAmount" 
-                                class="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            <div class="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-500">¥
+                            </div>
+                            <input type="number" v-model="familyCardAmount"
+                                class="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="0.00" step="0.01" min="0.01">
                         </div>
                         <div class="text-xs text-gray-500 mt-1">请输入亲属卡额度，最低0.01元</div>
                     </div>
-                    
+
                     <!-- Note Input -->
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">备注</label>
-                        <input type="text" v-model="familyCardNote" 
-                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                        <input type="text" v-model="familyCardNote"
+                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="例如：我的钱就是你的钱">
                         <div class="text-xs text-gray-500 mt-1">给亲属卡起个温馨的名字吧</div>
                     </div>
-                    
+
                     <!-- Action Buttons -->
                     <div class="flex gap-3 pt-2">
-                        <button @click="showFamilyCardSendModal = false" 
+                        <button @click="showFamilyCardSendModal = false"
                             class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
                             取消
                         </button>
-                        <button @click="confirmSendFamilyCard" 
-                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all" 
+                        <button @click="confirmSendFamilyCard"
+                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all"
                             :disabled="!familyCardAmount || parseFloat(familyCardAmount) <= 0">
                             发送
                         </button>
@@ -2304,31 +2457,31 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-        
+
         <!-- Apply Family Card Form Modal -->
-        <div v-if="showFamilyCardApplyModal" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+        <div v-if="showFamilyCardApplyModal"
+            class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
             <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
                 <h3 class="text-lg font-bold text-center mb-6">申请亲属卡</h3>
-                
+
                 <div class="space-y-5">
                     <!-- Note Input -->
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">申请留言</label>
-                        <textarea v-model="familyCardApplyNote" 
-                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                            placeholder="例如：送我一张亲属卡好不好？以后你来管家~" 
-                            rows="3" maxlength="100"></textarea>
+                        <textarea v-model="familyCardApplyNote"
+                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="例如：送我一张亲属卡好不好？以后你来管家~" rows="3" maxlength="100"></textarea>
                         <div class="text-xs text-gray-500 mt-1">写下你想要申请亲属卡的理由吧</div>
                     </div>
-                    
+
                     <!-- Action Buttons -->
                     <div class="flex gap-3 pt-2">
-                        <button @click="showFamilyCardApplyModal = false" 
+                        <button @click="showFamilyCardApplyModal = false"
                             class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
                             取消
                         </button>
-                        <button @click="confirmApplyFamilyCard" 
-                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all" 
+                        <button @click="confirmApplyFamilyCard"
+                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all"
                             :disabled="!familyCardApplyNote.trim()">
                             发送申请
                         </button>
@@ -2336,7 +2489,7 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
-        
+
         <!-- Family Card Claim Modal (Extracted) -->
         <FamilyCardClaimModal ref="claimModalRef" @confirm="handleClaimConfirm" />
 
@@ -2469,6 +2622,88 @@ onUnmounted(() => {
         <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />
         <ChatHistoryModal v-model="showHistoryModal" :targetMsgId="editTargetId" />
         <MusicPlayer />
+        
+        <!-- See Image (Text to Image) Modal -->
+        <div v-if="showSeeImageModal" class="fixed inset-0 bg-gradient-to-br from-gray-900/80 to-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" @click="closeSeeImageModal">
+            <div class="bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200" @click.stop>
+                <!-- Header -->
+                <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white">
+                    <h3 class="font-bold text-xl text-gray-800">见图</h3>
+                    <button @click="closeSeeImageModal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+                
+                <!-- Body -->
+                <div class="p-6">
+                    <!-- Prompt Input -->
+                    <div class="mb-5">
+                        <label class="block text-sm font-medium text-gray-600 mb-3">生图提示词</label>
+                        <textarea v-model="seeImagePrompt" 
+                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none resize-none text-gray-800"
+                            rows="3" placeholder="请输入你想要生成的图片描述..."></textarea>
+                    </div>
+                    
+                    <!-- Generate Button -->
+                    <button @click="generateSeeImage" 
+                        class="w-full bg-gradient-to-r from-blue-400 to-blue-500 text-white font-medium py-3 px-4 rounded-lg hover:from-blue-500 hover:to-blue-600 transition-all mb-5 shadow-sm hover:shadow-md"
+                        :disabled="seeImageLoading">
+                        <span v-if="seeImageLoading">
+                            <i class="fa-solid fa-spinner fa-spin mr-2"></i>生成中...
+                        </span>
+                        <span v-else>
+                            <i class="fa-solid fa-magic mr-2"></i>生成图片
+                        </span>
+                    </button>
+                    
+                    <!-- Image Preview (if generated) -->
+                    <div v-if="seeImageResult" class="mb-5">
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="block text-sm font-medium text-gray-600">预览</label>
+                            <div class="text-xs text-gray-400">
+                                {{ currentHistoryIndex + 1 }}/{{ seeImageHistory.length }}
+                            </div>
+                        </div>
+                        <div 
+                            class="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white p-2"
+                            @touchstart="touchStart"
+                            @touchmove="touchMove"
+                            @touchend="touchEnd"
+                        >
+                            <img :src="seeImageResult" class="w-full h-auto rounded">
+                        </div>
+                    </div>
+                    
+                    <!-- Image History Navigation -->
+                    <div v-if="seeImageHistory.length > 0" class="mb-5">
+                        <div class="flex items-center justify-center gap-3">
+                            <button @click="prevHistoryImage" 
+                                class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors"
+                                :disabled="currentHistoryIndex <= 0">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </button>
+                            <button @click="regenerateSeeImage" 
+                                class="flex-1 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg hover:from-gray-200 hover:to-gray-300 transition-all shadow-sm"
+                                :disabled="seeImageLoading">
+                                <i class="fa-solid fa-rotate-right mr-2"></i>重新生成
+                            </button>
+                            <button @click="nextHistoryImage" 
+                                class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors"
+                                :disabled="currentHistoryIndex >= seeImageHistory.length - 1">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Send Button -->
+                    <button @click="sendSeeImage" 
+                        class="w-full bg-gradient-to-r from-green-400 to-green-500 text-white font-medium py-3 px-4 rounded-lg hover:from-green-500 hover:to-green-600 transition-all shadow-sm hover:shadow-md"
+                        :disabled="!seeImageResult || seeImageLoading">
+                        <i class="fa-solid fa-paper-plane mr-2"></i>发送到聊天
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- Context Menu -->
         <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="closeContextMenu"
@@ -3356,7 +3591,8 @@ onUnmounted(() => {
 .voice-wave .bar {
     width: 3px;
     border-radius: 2px;
-    background-color: currentColor; /* 声纹颜色与气泡文字颜色一致 */
+    background-color: currentColor;
+    /* 声纹颜色与气泡文字颜色一致 */
     transition: height 0.2s, opacity 0.2s;
     opacity: 0.8;
 }
@@ -3393,42 +3629,53 @@ onUnmounted(() => {
 }
 
 @keyframes voice-wave-anim {
-    0%, 100% {
+
+    0%,
+    100% {
         height: 5px;
         opacity: 0.5;
     }
+
     10% {
         height: 10px;
         opacity: 0.7;
     }
+
     20% {
         height: 16px;
         opacity: 0.9;
     }
+
     30% {
         height: 12px;
         opacity: 0.8;
     }
+
     40% {
         height: 8px;
         opacity: 0.7;
     }
+
     50% {
         height: 14px;
         opacity: 1;
     }
+
     60% {
         height: 6px;
         opacity: 0.6;
     }
+
     70% {
         height: 11px;
         opacity: 0.8;
     }
+
     80% {
         height: 7px;
         opacity: 0.7;
     }
+
     90% {
         height: 13px;
         opacity: 0.9;

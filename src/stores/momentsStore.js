@@ -74,6 +74,7 @@ export const useMomentsStore = defineStore('moments', () => {
             comments: [],
             visibility: data.visibility || 'public',
             visibleIds: data.visibleIds || [],
+            mentions: data.mentions || [], // Array of { id: string|null, name: string }
             baseLikeCount: Math.floor(Math.random() * 5000) + 10 // Simulating popularity
         }
 
@@ -238,12 +239,31 @@ export const useMomentsStore = defineStore('moments', () => {
         const finalAuthorName = realChar ? (realChar.remark || realChar.name) : (comment.authorName || '神秘好友')
         const finalAuthorAvatar = realChar ? realChar.avatar : (comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${comment.authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`)
 
+        // Auto-extract mentions if not provided
+        const finalMentions = [...(comment.mentions || [])]
+        if (finalMentions.length === 0 && comment.content && comment.content.includes('@')) {
+            const userName = settingsStore.personalization.userProfile.name
+            // Match @name or @name followed by space/punc
+            const possibleNames = [userName, ...chatStore.contactList.map(c => c.name)]
+            possibleNames.forEach(name => {
+                const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
+                if (mentionRegex.test(comment.content)) {
+                    const char = chatStore.contactList.find(c => c.name === name)
+                    if (!finalMentions.some(m => m.name === name)) {
+                        finalMentions.push({ id: char ? char.id : (name === userName ? 'user' : null), name })
+                    }
+                }
+            })
+        }
+
         moment.comments.push({
             id: 'c-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
             authorId: realChar ? realChar.id : (comment.authorId || 'virtual-' + Date.now()),
             authorName: finalAuthorName,
             authorAvatar: finalAuthorAvatar,
             content: comment.content,
+            mentions: finalMentions,
             timestamp: Date.now(),
             replyTo: comment.replyTo || null,
             isVirtual: !realChar && (comment.isVirtual || false)
@@ -360,6 +380,7 @@ export const useMomentsStore = defineStore('moments', () => {
                         authorName: interaction.authorName,
                         authorAvatar: avatarUrl,
                         content: interaction.content,
+                        mentions: interaction.mentions || [],
                         replyTo: interaction.replyTo || null,
                         isVirtual: interaction.isVirtual
                     })
@@ -452,7 +473,14 @@ export const useMomentsStore = defineStore('moments', () => {
             })
 
             for (const data of momentsData) {
-                const moment = addMoment({ authorId: data.authorId, content: data.content, location: data.location, images: data.images }, { skipAutoInteraction: true })
+                const moment = addMoment({
+                    authorId: data.authorId,
+                    content: data.content,
+                    location: data.location,
+                    images: data.images,
+                    mentions: data.mentions || []
+                }, { skipAutoInteraction: true })
+
                 if (data.interactions) {
                     for (const inter of data.interactions) {
                         if (inter.type === 'like') addLike(moment.id, inter.authorName)
@@ -460,6 +488,8 @@ export const useMomentsStore = defineStore('moments', () => {
                             authorId: inter.authorId,
                             authorName: inter.authorName,
                             content: inter.content,
+                            mentions: inter.mentions || [],
+                            replyTo: inter.replyTo || null,
                             isVirtual: inter.isVirtual
                         })
                     }

@@ -262,7 +262,7 @@
                     </div>
                 </div>
                 <div class="text-[10px] text-gray-400 mt-1 px-1">
-                    已选 {{ localData.worldBookLinks?.length || 0 }} 项。绑定后，相关设定将注入到该角色的对话中。
+                    已选 {{ actualSelectedCount }} 项。绑定后，相关设定将注入到该角色的对话中。
                 </div>
             </div>
 
@@ -581,21 +581,31 @@
                 </div>
 
                 <!-- Delete -->
-                <!-- Actions Group -->
-                <div class="mt-8 grid grid-cols-1 gap-3">
-                    <!-- Clear History -->
+                <!-- Data & Management -->
+                <div class="mt-6">
+                    <h3 class="section-title">数据与管理</h3>
+
+                    <!-- Export Card -->
                     <button
-                        class="w-full py-3 rounded-xl bg-white text-gray-700 font-bold border border-gray-200 active:bg-gray-50 transition-colors shadow-sm"
-                        @click="showClearConfirm = true">
-                        删除聊天记录
+                        class="w-full py-3 mb-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
+                        @click="showExportModal = true">
+                        <i class="fa-solid fa-file-export"></i> 导出角色卡
                     </button>
 
-                    <!-- Reset Layout -->
-                    <button
-                        class="w-full py-3 rounded-xl bg-white text-orange-500 font-bold border border-orange-100 active:bg-orange-50 transition-colors shadow-sm"
-                        @click="showResetConfirm = true">
-                        重置角色配置
-                    </button>
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <!-- Reset Layout -->
+                        <button
+                            class="py-3 rounded-xl bg-white text-orange-500 font-bold border border-orange-100 active:bg-orange-50 transition-colors shadow-sm"
+                            @click="showResetConfirm = true">
+                            重置配置
+                        </button>
+                        <!-- Clear History -->
+                        <button
+                            class="py-3 rounded-xl bg-white text-gray-700 font-bold border border-gray-200 active:bg-gray-50 transition-colors shadow-sm"
+                            @click="showClearConfirm = true">
+                            删除记录
+                        </button>
+                    </div>
 
                     <!-- Delete Character -->
                     <button
@@ -903,13 +913,52 @@
         </div>
     </div>
 
+    <!-- Export Card Modal -->
+    <div v-if="showExportModal"
+        class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        @click.self="showExportModal = false">
+        <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">导出角色卡</h3>
+
+            <div class="space-y-3 mb-6">
+                <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
+                    @click="exportIncludeMemory = !exportIncludeMemory">
+                    <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                        :class="exportIncludeMemory ? 'bg-purple-500 border-purple-500' : 'bg-white border-gray-300'">
+                        <i v-if="exportIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-sm font-bold text-gray-700">包含记忆库</div>
+                        <div class="text-[10px] text-gray-400">保留角色已有的长期记忆</div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
+                    @click="exportIncludeHistory = !exportIncludeHistory">
+                    <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                        :class="exportIncludeHistory ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'">
+                        <i v-if="exportIncludeHistory" class="fa-solid fa-check text-white text-xs"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-sm font-bold text-gray-700">包含聊天记录</div>
+                        <div class="text-[10px] text-gray-400 text-orange-500"><i
+                                class="fa-solid fa-triangle-exclamation mr-1"></i>文件可能较大</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold"
+                    @click="showExportModal = false">取消</button>
+                <button class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200"
+                    @click="handleExportCard">导出</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Avatar Cropper Modal -->
-    <AvatarCropper
-        v-if="showAvatarCropper || showUserAvatarCropper"
-        :image-src="cropperImageSrc"
-        @crop="handleCropComplete"
-        @cancel="handleCropCancel"
-    />
+    <AvatarCropper v-if="showAvatarCropper || showUserAvatarCropper" :image-src="cropperImageSrc"
+        @crop="handleCropComplete" @cancel="handleCropCancel" />
 </template>
 
 <script setup>
@@ -1116,8 +1165,9 @@ const executeManualSummary = async () => {
 const showMemoryModal = ref(false)
 const memories = computed(() => {
     const memArray = chatStore.chats[props.chatData.id]?.memory || []
-    // Reverse to show newest first (most recent at top)
-    return memArray.slice().reverse()
+    // The store uses unshift, so new items are already at the beginning.
+    // No need to reverse, which would put oldest items at the top.
+    return memArray.slice()
 })
 
 const loadMemories = () => { /* Computed handles this now */ }
@@ -1415,6 +1465,18 @@ const compressImage = (file, maxWidth = 400, quality = 0.7) => {
     })
 }
 
+// Count only existing world book links
+const actualSelectedCount = computed(() => {
+    if (!localData.value.worldBookLinks) return 0
+    const allEntryIds = new Set()
+    worldBookStore.books.forEach(book => {
+        if (book.entries) {
+            book.entries.forEach(e => allEntryIds.add(e.id))
+        }
+    })
+    return localData.value.worldBookLinks.filter(id => allEntryIds.has(id)).length
+})
+
 // Avatar Handlers
 const triggerAvatarUpload = () => {
     if (fileInput.value) {
@@ -1481,7 +1543,7 @@ const handleCropComplete = async (croppedImage) => {
         const blob = await (await fetch(croppedImage)).blob()
         // Compress the cropped image
         const compressed = await compressImage(blob, 200, 0.6)
-        
+
         // Set the avatar based on type
         if (currentAvatarType.value === 'character') {
             localData.value.avatar = compressed
@@ -1490,7 +1552,7 @@ const handleCropComplete = async (croppedImage) => {
             localData.value.userAvatar = compressed
             showUserAvatarCropper.value = false
         }
-        
+
         showToast('头像设置成功')
     } catch (err) {
         console.error('Compression failed', err)
@@ -1666,6 +1728,106 @@ const confirmDelete = () => {
     emit('close')
 }
 
+// --- Export Logic ---
+const showExportModal = ref(false)
+const exportIncludeHistory = ref(false)
+const exportIncludeMemory = ref(true)
+
+const handleExportCard = () => {
+    try {
+        const chat = chatStore.chats[props.chatData.id]
+        if (!chat) return
+
+        const exportData = {
+            version: '1.0',
+            type: 'qiaoqiao_character_card',
+            timestamp: Date.now(),
+            character: {
+                // Basic Info
+                name: localData.value.name,
+                avatar: localData.value.avatar,
+                remark: localData.value.remark,
+                gender: localData.value.gender,
+                wechatId: localData.value.wechatId,
+                openingLine: localData.value.openingLine,
+
+                // Persona & Prompt
+                prompt: localData.value.prompt,
+
+                // Visuals
+                bgUrl: localData.value.bgUrl,
+                bgTheme: localData.value.bgTheme,
+                bgBlur: localData.value.bgBlur,
+                bgOpacity: localData.value.bgOpacity,
+                bubbleCss: localData.value.bubbleCss,
+                bubbleSize: localData.value.bubbleSize,
+                avatarFrame: localData.value.avatarFrame,
+                userAvatarFrame: localData.value.userAvatarFrame,
+
+                // Voice (TTS)
+                voiceId: localData.value.voiceId,
+                voiceSpeed: localData.value.voiceSpeed,
+                autoTTS: localData.value.autoTTS,
+
+                // Interaction (Pat, Proactive)
+                patAction: localData.value.patAction,
+                patSuffix: localData.value.patSuffix,
+                activeChat: localData.value.activeChat,
+                activeInterval: localData.value.activeInterval,
+                proactiveChat: localData.value.proactiveChat,
+                proactiveInterval: localData.value.proactiveInterval,
+
+                // Memory & Context Config
+                contextLimit: localData.value.contextLimit,
+                displayLimit: localData.value.displayLimit,
+                summaryLimit: localData.value.summaryLimit,
+                autoSummary: localData.value.autoSummary,
+                summaryPrompt: localData.value.summaryPrompt,
+                momentsMemoryLimit: localData.value.momentsMemoryLimit,
+
+                // World Sync
+                locationSync: localData.value.locationSync,
+                timeAware: localData.value.timeAware,
+                timeSyncMode: localData.value.timeSyncMode,
+                virtualTime: localData.value.virtualTime,
+
+                // Bindings
+                worldBookLinks: localData.value.worldBookLinks
+            },
+            user: {
+                name: localData.value.userName,
+                avatar: localData.value.userAvatar,
+                gender: localData.value.userGender,
+                persona: localData.value.userPersona
+            }
+        }
+
+        if (exportIncludeMemory.value && chat.memory) {
+            exportData.memory = chat.memory
+        }
+
+        if (exportIncludeHistory.value && chat.msgs) {
+            exportData.msgs = chat.msgs
+        }
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${localData.value.name || 'character'}_card.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+
+        showExportModal.value = false
+        showToast('导出成功')
+    } catch (e) {
+        console.error(e)
+        showToast('导出失败')
+    }
+}
+
 const toggleWorldBook = (id) => {
     if (!localData.value.worldBookLinks) localData.value.worldBookLinks = []
 
@@ -1720,6 +1882,17 @@ const saveSettings = () => {
     // Check for Remark Change
     const oldRemark = props.chatData.remark
     const newRemark = localData.value.remark
+
+    // Cleanup stale world book links
+    if (localData.value.worldBookLinks) {
+        const allEntryIds = new Set()
+        worldBookStore.books.forEach(book => {
+            if (book.entries) {
+                book.entries.forEach(e => allEntryIds.add(e.id))
+            }
+        })
+        localData.value.worldBookLinks = localData.value.worldBookLinks.filter(id => allEntryIds.has(id))
+    }
 
     // Virtual time sync logic
     if (localData.value.timeSyncMode === 'manual' && (!localData.value.virtualTimeLastSync || localData.value.virtualTimeLastSync === 0)) {

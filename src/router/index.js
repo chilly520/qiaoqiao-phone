@@ -89,6 +89,11 @@ const router = createRouter({
             name: 'favorite-detail',
             component: () => import('../views/WeChat/FavoriteDetailView.vue')
         },
+        {
+            path: '/gallery',
+            name: 'gallery',
+            component: () => import('../views/WeChat/GalleryView.vue')
+        },
         // Wallet Routes
         {
             path: '/wallet',

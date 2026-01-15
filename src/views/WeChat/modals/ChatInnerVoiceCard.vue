@@ -65,25 +65,30 @@
                             <div class="voice-history-time">{{ formatTime(item.timestamp) }}</div>
                             <div class="voice-history-preview">{{ item.preview }}</div>
                         </div>
-                        <div v-if="historyList.length === 0" class="text-center text-gray-500 mt-10 text-xs">暂无历史记录</div>
+                        <div v-if="historyList.length === 0" class="text-center text-gray-500 mt-10 text-xs">暂无历史记录
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Footer -->
             <div class="voice-modal-footer">
-                <span class="footer-count">NO.{{ (currentIndex + 1).toString().padStart(2, '0') }} · {{ formatTime(currentVoice?.timestamp) }}</span>
+                <span class="footer-count">NO.{{ (currentIndex + 1).toString().padStart(2, '0') }} · {{
+                    formatTime(currentVoice?.timestamp) }}</span>
                 <div class="effect-badge" @click="toggleEffect">
                     {{ currentEffect.name }}
                 </div>
             </div>
 
             <!-- Delete Confirm Overlay -->
-            <div v-if="showDeleteConfirm" class="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
+            <div v-if="showDeleteConfirm"
+                class="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
                 <div class="text-[#e6dcc0] mb-6">确定要删除这条心声记录吗？</div>
                 <div class="flex gap-4">
-                    <button @click="showDeleteConfirm = false" class="px-6 py-2 text-gray-400 border border-gray-600 rounded-full text-sm">取消</button>
-                    <button @click="confirmDelete" class="px-6 py-2 text-red-400 border border-red-900 bg-red-900/20 rounded-full text-sm">确定删除</button>
+                    <button @click="showDeleteConfirm = false"
+                        class="px-6 py-2 text-gray-400 border border-gray-600 rounded-full text-sm">取消</button>
+                    <button @click="confirmDelete"
+                        class="px-6 py-2 text-red-400 border border-red-900 bg-red-900/20 rounded-full text-sm">确定删除</button>
                 </div>
             </div>
         </div>
@@ -138,7 +143,7 @@ const parseVoiceData = (text) => {
             if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
             const match = jsonStr.match(/\{[\s\S]*\}/)
             if (match) {
-                try { result = JSON.parse(match[0]) } 
+                try { result = JSON.parse(match[0]) }
                 catch (e) {
                     try { result = JSON.parse(match[0].replace(/\\"/g, '"').replace(/\\\\/g, '\\')) } catch (e2) { }
                 }
@@ -174,7 +179,7 @@ const parseVoiceData = (text) => {
         let target = result
         if (result.content && typeof result.content === 'object') target = result.content
         else if (result.inner_voice && typeof result.inner_voice === 'object') target = result.inner_voice
-        
+
         if (typeof target["心声"] === 'object' && target["心声"] !== null) {
             const inner = target["心声"]
             return {
@@ -201,7 +206,7 @@ const historyList = computed(() => {
     return msgs.filter(m => m.content && (m.type === 'inner_voice_card' || String(m.content).includes('[INNER_VOICE]')))
         .map(m => {
             let content = m.content
-            const match = String(m.content).match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/)
+            const match = String(m.content).match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/)
             if (match) content = match[1]
             return { id: m.id, timestamp: m.timestamp, content: content }
         })
@@ -404,8 +409,13 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .voice-modal-content {
@@ -491,6 +501,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 .voice-modal-body::-webkit-scrollbar {
     width: 4px;
 }
+
 .voice-modal-body::-webkit-scrollbar-thumb {
     background-color: rgba(212, 175, 55, 0.3);
     border-radius: 2px;

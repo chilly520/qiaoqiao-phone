@@ -67,27 +67,48 @@
                         <span class="text-xs text-gray-400 mt-1">批量</span>
                     </div>
 
+                    <!-- Settings Button -->
+                    <div class="aspect-square bg-white border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition"
+                        @click="toggleDeleteMode">
+                        <i class="fa-solid fa-gear text-gray-400 text-2xl"></i>
+                        <span class="text-xs text-gray-400 mt-1">{{ isDeleteMode ? '取消' : '设置' }}</span>
+                    </div>
+
+                    <!-- Clear Category Button -->
+                    <div v-if="isDeleteMode && selectedCategory" class="aspect-square bg-white border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition"
+                        @click="clearCategory">
+                        <i class="fa-solid fa-trash-can text-red-400 text-2xl"></i>
+                        <span class="text-xs text-red-400 mt-1">清空分类</span>
+                    </div>
+                    <div v-else-if="isDeleteMode" class="aspect-square bg-white border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition"
+                        @click="clearAllStickers">
+                        <i class="fa-solid fa-trash-can text-red-400 text-2xl"></i>
+                        <span class="text-xs text-red-400 mt-1">清空全部</span>
+                    </div>
 
                     <!-- Sticker List (Filtered) -->
                     <div v-for="sticker in filteredStickers" :key="sticker.url"
                         class="relative group flex flex-col items-center gap-1">
                         <div class="aspect-square w-full bg-white rounded-lg border border-gray-200 cursor-pointer overflow-hidden p-2 relative"
-                            @click="$emit('select-sticker', sticker)"
-                            @contextmenu.prevent="handleStickerContext(sticker)">
+                            @click="isDeleteMode ? toggleStickerSelection(sticker) : $emit('select-sticker', sticker)">
                             <img :src="sticker.url" class="w-full h-full object-contain">
 
-                            <!-- Visible Delete Button (Top Right) -->
-                            <div class="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center cursor-pointer hover:bg-red-500 transition-colors"
-                                @click.stop="deleteSticker(sticker.url)">
-                                <i v-if="deletingUrl === sticker.url"
-                                    class="fa-solid fa-check text-white text-[10px]"></i>
-                                <i v-else class="fa-solid fa-xmark text-white text-[10px]"></i>
+                            <!-- Selection Checkbox -->
+                            <div v-if="isDeleteMode" class="absolute top-1 left-1 w-5 h-5 bg-white/80 flex items-center justify-center rounded-full cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    :checked="selectedStickers.includes(sticker.url)"
+                                    @change="toggleStickerSelection(sticker)"
+                                    class="w-4 h-4 rounded-full appearance-none bg-white border-2 border-gray-300 checked:bg-blue-500 checked:border-blue-500 relative"
+                                >
+                                <div v-if="selectedStickers.includes(sticker.url)" class="absolute inset-0 flex items-center justify-center text-white text-xs">
+                                    <i class="fa-solid fa-check"></i>
+                                </div>
                             </div>
                         </div>
                         <!-- Sticker Name with Category Badge -->
                         <div class="w-full flex flex-col items-center gap-0.5">
-                            <span class="text-[10px] text-gray-500 truncate w-full text-center">{{ deletingUrl ===
-                                sticker.url ? '确认删除?' : sticker.name }}</span>
+                            <span class="text-[10px] text-gray-500 truncate w-full text-center">{{ sticker.name }}</span>
                             <span v-if="sticker.category"
                                 class="text-[8px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">{{
                                     sticker.category }}</span>
@@ -100,6 +121,36 @@
             <div v-if="toastMessage"
                 class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 text-white px-3 py-1 rounded-full text-xs transition-opacity animate-fade-in z-50">
                 {{ toastMessage }}
+            </div>
+            
+            <!-- Delete Mode Actions -->
+            <div v-if="isDeleteMode && selectedStickers.length > 0" class="absolute bottom-16 left-4 right-4 bg-white border border-gray-200 rounded-lg shadow-lg z-10 p-2 animate-fade-in">
+                <button @click="deleteSelectedStickers" class="w-full bg-red-500 text-white py-2 rounded font-medium text-sm">
+                    删除选中 ({{ selectedStickers.length }})
+                </button>
+            </div>
+            
+            <!-- Confirm Modal -->
+            <div v-if="showConfirmModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-fade-in">
+                <div class="bg-white w-[80%] max-w-[280px] rounded-lg shadow-xl">
+                    <div class="p-4 text-center">
+                        <div class="text-base text-gray-800 mb-4">{{ confirmMessage }}</div>
+                        <div class="flex gap-2 justify-center">
+                            <button 
+                                @click="showConfirmModal = false; confirmCallback = null" 
+                                class="px-4 py-2 bg-gray-100 text-gray-600 rounded font-medium text-sm"
+                            >
+                                取消
+                            </button>
+                            <button 
+                                @click="handleConfirmAction" 
+                                class="px-4 py-2 bg-red-500 text-white rounded font-medium text-sm"
+                            >
+                                确认
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
         </div>
@@ -136,8 +187,43 @@
             <!-- Category Input -->
             <div class="mb-3">
                 <label class="text-xs text-gray-600 mb-1 block">分类标签 (可选)</label>
-                <input v-model="batchCategory" type="text" placeholder="例如：可爱、搞笑、表情等"
-                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300">
+                <div class="relative">
+                    <button 
+                        @click="showCategoryMenu = !showCategoryMenu"
+                        class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300"
+                    >
+                        <span>{{ batchCategory || '选择或新建分类标签' }}</span>
+                        <i class="fa-solid fa-chevron-down text-gray-400 text-xs"></i>
+                    </button>
+                    <div v-if="showCategoryMenu" class="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-10 mt-1 max-h-40 overflow-y-auto">
+                        <div class="p-2">
+                            <div class="text-xs text-gray-500 mb-1 px-2">现有标签</div>
+                            <button 
+                                v-for="cat in availableCategories" 
+                                :key="cat"
+                                @click="batchCategory = cat; showCategoryMenu = false"
+                                class="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 rounded mb-1"
+                            >
+                                {{ cat }}
+                            </button>
+                            <div class="text-xs text-gray-500 mb-1 px-2 mt-2">新建标签</div>
+                            <div class="flex gap-1">
+                                <input 
+                                    v-model="newCategoryName" 
+                                    type="text" 
+                                    placeholder="输入新标签名称"
+                                    class="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300"
+                                >
+                                <button 
+                                    @click="addNewCategory" 
+                                    class="px-3 py-1.5 text-sm bg-orange-500 text-white rounded"
+                                >
+                                    <i class="fa-solid fa-plus text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="text-xs text-gray-500 mb-2">格式：名称：URL (每行一个)</div>
@@ -176,6 +262,13 @@ const txtInput = ref(null)
 const showBatchModal = ref(false)
 const batchInput = ref('')
 const batchCategory = ref('')
+const showCategoryMenu = ref(false)
+const newCategoryName = ref('')
+const isDeleteMode = ref(false)
+const selectedStickers = ref([])
+const showConfirmModal = ref(false)
+const confirmMessage = ref('')
+const confirmCallback = ref(null)
 
 const displayedStickers = computed(() => {
     const char = chatStore.currentChat
@@ -251,6 +344,15 @@ const triggerTxtImport = () => {
     txtInput.value.click()
 }
 
+// 新建分类标签
+const addNewCategory = () => {
+    if (newCategoryName.value.trim()) {
+        batchCategory.value = newCategoryName.value.trim()
+        newCategoryName.value = ''
+        showCategoryMenu.value = false
+    }
+}
+
 const handleTxtFileChange = (event) => {
     const file = event.target.files[0]
     if (!file) return
@@ -258,7 +360,7 @@ const handleTxtFileChange = (event) => {
     const reader = new FileReader()
     reader.onload = (e) => {
         const content = e.target.result
-        const res = stickerStore.importStickersFromText(content, activeScope.value)
+        const res = stickerStore.importStickersFromText(content, activeScope.value, batchCategory.value)
 
         if (activeScope.value !== 'global' && res.newStickers?.length > 0) {
             const char = chatStore.currentChat
@@ -274,6 +376,77 @@ const handleTxtFileChange = (event) => {
     }
     reader.onerror = () => showToast('读取文件失败')
     reader.readAsText(file)
+}
+
+// 切换删除模式
+const toggleDeleteMode = () => {
+    isDeleteMode.value = !isDeleteMode.value
+    selectedStickers.value = []
+}
+
+// 切换表情包选择
+const toggleStickerSelection = (sticker) => {
+    const url = sticker.url
+    const index = selectedStickers.value.indexOf(url)
+    if (index > -1) {
+        selectedStickers.value.splice(index, 1)
+    } else {
+        selectedStickers.value.push(url)
+    }
+}
+
+// 处理确认操作
+const handleConfirmAction = () => {
+    if (confirmCallback.value) {
+        confirmCallback.value()
+        showConfirmModal.value = false
+        confirmCallback.value = null
+    }
+}
+
+// 清空全部
+const clearAllStickers = () => {
+    confirmMessage.value = '确定要清空所有表情包吗？'
+    confirmCallback.value = () => {
+        stickerStore.clearAllStickers(activeScope.value)
+        showToast('已清空所有表情包')
+        isDeleteMode.value = false
+    }
+    showConfirmModal.value = true
+}
+
+// 清空分类
+const clearCategory = () => {
+    if (!selectedCategory.value) return
+    
+    const categoryStickers = displayedStickers.value.filter(s => s.category === selectedCategory.value)
+    confirmMessage.value = `确定要清空"${selectedCategory.value}"分类的所有表情包吗？`
+    confirmCallback.value = () => {
+        categoryStickers.forEach(sticker => {
+            stickerStore.deleteSticker(sticker.url, activeScope.value)
+        })
+        
+        showToast(`已清空 ${categoryStickers.length} 个表情包`)
+        isDeleteMode.value = false
+    }
+    showConfirmModal.value = true
+}
+
+// 批量删除选中表情包
+const deleteSelectedStickers = () => {
+    if (selectedStickers.value.length === 0) return
+    
+    confirmMessage.value = `确定要删除选中的 ${selectedStickers.value.length} 个表情包吗？`
+    confirmCallback.value = () => {
+        selectedStickers.value.forEach(url => {
+            stickerStore.deleteSticker(url, activeScope.value)
+        })
+        
+        showToast(`已删除 ${selectedStickers.value.length} 个表情包`)
+        selectedStickers.value = []
+        isDeleteMode.value = false
+    }
+    showConfirmModal.value = true
 }
 
 const deleteSticker = (url) => {

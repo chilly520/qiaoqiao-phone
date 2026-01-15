@@ -33,8 +33,8 @@ let touchStartY = 0
 
 // --- Getters ---
 const isUser = computed(() => {
-    return props.moment?.authorId === 'user' || 
-           (settingsStore.personalization.userProfile.wechatId && props.moment?.authorId === settingsStore.personalization.userProfile.wechatId)
+    return props.moment?.authorId === 'user' ||
+        (settingsStore.personalization.userProfile.wechatId && props.moment?.authorId === settingsStore.personalization.userProfile.wechatId)
 })
 const author = computed(() => {
     if (isUser.value) return settingsStore.personalization.userProfile
@@ -111,6 +111,24 @@ const getAuthorAvatar = (id) => {
     return ''
 }
 
+const renderCommentContent = (comment) => {
+    let content = comment.content || ''
+    // Escape HTML
+    const div = document.createElement('div')
+    div.textContent = content
+    content = div.innerHTML
+
+    // Handle Mentions
+    if (comment.mentions && comment.mentions.length > 0) {
+        comment.mentions.forEach(mention => {
+            const escapedName = mention.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
+            content = content.replace(mentionRegex, `<span class="text-blue-500 font-medium">@${mention.name}</span>`)
+        })
+    }
+    return content
+}
+
 // --- Content Parsing (Stickers) ---
 const parsedContent = computed(() => {
     let content = props.moment?.content || ''
@@ -119,7 +137,18 @@ const parsedContent = computed(() => {
     div.textContent = content
     content = div.innerHTML
 
-    // Regex for [表情包:名称]
+    // 1. Handle Mentions (@name)
+    // We match @ followed by non-whitespace characters
+    // We only highlight if it exists in the mentions array to avoid false positives
+    if (props.moment?.mentions && props.moment.mentions.length > 0) {
+        props.moment.mentions.forEach(mention => {
+            const escapedName = mention.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
+            content = content.replace(mentionRegex, `<span class="inline-block px-1.5 py-0.5 mx-0.5 bg-blue-50 text-blue-500 rounded text-[14px] font-medium leading-tight">@${mention.name}</span>`)
+        })
+    }
+
+    // 2. Regex for [表情包:名称]
     const stickerRegex = /\[表情包:([^\]]+)\]/g
     return content.replace(stickerRegex, (match, name) => {
         let sticker = stickerStore.customStickers.find(s => s.name === name)
@@ -152,17 +181,37 @@ const toggleLike = () => {
 
 const handleComment = () => {
     if (!commentText.value.trim()) return
+
     momentsStore.addComment(props.moment.id, {
         authorId: 'user',
-        authorName: settingsStore.personalization.userProfile.name,
-        authorAvatar: settingsStore.personalization.userProfile.avatar,
         content: commentText.value,
+        mentions: [...commentMentions.value],
         replyTo: replyToComment.value ? replyToComment.value.authorName : null
     })
+
     commentText.value = ''
+    commentMentions.value = []
     showCommentInput.value = false
     replyToComment.value = null
+    showCommentMentionList.value = false
     chatStore.triggerToast('已评论', 'info')
+}
+
+const handleCommentMentionSelect = (target) => {
+    const name = target.name
+    const id = target.id
+
+    if (!commentMentions.value.some(m => m.name === name)) {
+        commentMentions.value.push({ id, name })
+    }
+
+    if (!commentText.value.includes(`@${name}`)) {
+        if (commentText.value && !commentText.value.endsWith(' ')) {
+            commentText.value += ' '
+        }
+        commentText.value += `@${name} `
+    }
+    showCommentMentionList.value = false
 }
 
 const startReplyTo = (comment) => {
@@ -484,7 +533,8 @@ const navigateToAuthor = () => {
                         }}</span>
                         <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
                         <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ comment.replyTo }}</span>
-                        <span class="text-gray-900">: {{ comment.content }}</span>
+                        <span class="text-gray-900">: </span>
+                        <span class="text-gray-900" v-html="renderCommentContent(comment)"></span>
                     </div>
                 </div>
             </div>
@@ -500,9 +550,40 @@ const navigateToAuthor = () => {
                     <input v-model="commentText" type="text"
                         class="flex-1 bg-white border border-gray-200 px-3 py-1.5 rounded outline-none text-sm"
                         :placeholder="replyToComment ? '输入回复内容...' : '评论'" @keyup.enter="handleComment" autoFocus>
-                    <button class="text-blue-500 font-bold text-sm px-2" @click="handleComment">发布</button>
-                    <button class="text-gray-400 text-sm px-1"
-                        @click="showCommentInput = false; replyToComment = null">取消</button>
+                    <div class="flex items-center gap-1">
+                        <i class="fa-solid fa-at text-gray-400 cursor-pointer hover:text-blue-500"
+                            @click="showCommentMentionList = !showCommentMentionList"></i>
+                        <button class="text-blue-500 font-bold text-sm px-2" @click="handleComment">发布</button>
+                    </div>
+                </div>
+
+                <!-- Mini Mention List -->
+                <div v-if="showCommentMentionList"
+                    class="bg-white border border-gray-100 rounded-lg shadow-lg max-h-40 overflow-y-auto p-1 space-y-1 custom-scrollbar">
+                    <div
+                        class="px-2 py-1 text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-gray-50 flex justify-between items-center">
+                        <span>选择提醒对象</span>
+                        <i class="fa-solid fa-xmark cursor-pointer" @click="showCommentMentionList = false"></i>
+                    </div>
+                    <!-- User themselves -->
+                    <div class="flex items-center gap-2 p-1.5 rounded hover:bg-blue-50 cursor-pointer transition-colors"
+                        @click="handleCommentMentionSelect({ id: 'user', name: settingsStore.personalization.userProfile.name })">
+                        <div class="w-6 h-6 rounded bg-gray-200 shrink-0">
+                            <img :src="settingsStore.personalization.userProfile.avatar"
+                                class="w-full h-full object-cover rounded">
+                        </div>
+                        <span class="text-xs font-bold text-gray-700">{{ settingsStore.personalization.userProfile.name
+                            }} (我自己)</span>
+                    </div>
+                    <!-- Contacts -->
+                    <div v-for="chat in chatStore.contactList" :key="chat.id"
+                        class="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer transition-colors"
+                        @click="handleCommentMentionSelect(chat)">
+                        <div class="w-6 h-6 rounded bg-gray-200 shrink-0">
+                            <img :src="chat.avatar" class="w-full h-full object-cover rounded">
+                        </div>
+                        <span class="text-xs font-bold text-gray-700">{{ chat.name }}</span>
+                    </div>
                 </div>
             </div>
         </div>

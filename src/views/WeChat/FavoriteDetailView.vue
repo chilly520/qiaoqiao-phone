@@ -28,7 +28,10 @@ const allStickers = computed(() => {
 // Special Content Parsing (Sticker / Card)
 const specialContent = computed(() => {
     if (!item.value) return null
-    if (item.value.type !== 'text' && item.value.type !== 'sticker') return null
+    if (item.value.type === 'chat_record') return null // Handled separately
+    if (item.value.type !== 'text' && item.value.type !== 'sticker' && item.value.type !== 'single') return null
+
+    // For 'single' types, content is directly on item. For legacy 'text', same.
     const content = item.value.content || ''
 
     // 1. HTML Card
@@ -36,7 +39,7 @@ const specialContent = computed(() => {
         try {
             const json = JSON.parse(content.replace('[CARD]', '').trim())
             if (json.type === 'html') {
-                 return { type: 'html', html: json.html }
+                return { type: 'html', html: json.html }
             }
         } catch (e) {
             console.error('Invalid Card JSON', e)
@@ -46,18 +49,18 @@ const specialContent = computed(() => {
     // 2. Sticker
     const stickerMatch = content.match(/\[(表情包|Sticker)\s*[:：]\s*([^\]]+)\]/i)
     if (stickerMatch) {
-         const val = stickerMatch[2].trim()
-         if (val.startsWith('http') || val.startsWith('data:')) {
-             return { type: 'sticker', url: val }
-         }
-         // Name Lookup
-         const found = allStickers.value.find(s => s.name === val)
-         if (found) return { type: 'sticker', url: found.url }
-         
-         // Fallback
-         return { type: 'sticker_placeholder', name: val }
+        const val = stickerMatch[2].trim()
+        if (val.startsWith('http') || val.startsWith('data:')) {
+            return { type: 'sticker', url: val }
+        }
+        // Name Lookup
+        const found = allStickers.value.find(s => s.name === val)
+        if (found) return { type: 'sticker', url: found.url }
+
+        // Fallback
+        return { type: 'sticker_placeholder', name: val }
     }
-    
+
     return null
 })
 
@@ -76,7 +79,7 @@ const goBack = () => {
 const parsedInnerVoice = computed(() => {
     if (!item.value) return null
     if (item.value.type !== 'text' && item.value.type !== 'ai') return null
-    
+
     // Check for [INNER_VOICE] tag
     const match = item.value.content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
     if (match) {
@@ -89,7 +92,7 @@ const parsedInnerVoice = computed(() => {
     }
     // Also try direct JSON if it looks like it
     if (item.value.content.trim().startsWith('{') && item.value.content.includes('"着装"')) {
-         try {
+        try {
             return JSON.parse(item.value.content)
         } catch (e) {
             return null
@@ -110,11 +113,11 @@ const safeJsonParse = (str) => {
 
 const formattedThoughts = computed(() => {
     if (!parsedInnerVoice.value) return null
-    
+
     // Check if '心声' is a JSON string
     const thoughtsRaw = parsedInnerVoice.value.心声 || parsedInnerVoice.value.thoughts
     const parsed = safeJsonParse(thoughtsRaw)
-    
+
     if (parsed && typeof parsed === 'object') {
         return parsed // { "心情": "...", "情绪": "...", ... }
     }
@@ -134,100 +137,168 @@ const formatDate = (ts) => {
     if (!ts) return ''
     return new Date(ts).toLocaleString()
 }
+
+// --- Share Logic ---
+const showShareModal = ref(false)
+const shareToChatId = ref(null)
+
+const shareToChat = (chatId) => {
+    if (!item.value) return
+
+    // Prepare card content
+    const cardData = {
+        favoriteId: item.value.id,
+        type: item.value.type,
+        source: item.value.source || item.value.author || '未知来源',
+        savedAt: item.value.savedAt,
+        count: item.value.type === 'chat_record' ? item.value.messages.length : 1
+    }
+
+    // For preview, get first message or the single content
+    if (item.value.type === 'single') {
+        // Truncate preview if too long
+        let p = item.value.content || ''
+        if (p.length > 50) p = p.substring(0, 50) + '...'
+        cardData.preview = p
+    } else if (item.value.type === 'chat_record' && item.value.messages?.length > 0) {
+        // Take first 2 as preview
+        cardData.preview = item.value.messages.slice(0, 2).map(m => `${m.author}: ${m.content}`).join('\n')
+    }
+
+    chatStore.addMessage(chatId, {
+        role: 'user', // Sent by me
+        type: 'favorite_card',
+        content: JSON.stringify(cardData)
+    })
+
+    showShareModal.value = false
+    alert('已分享到聊天')
+}
+
+const chatsList = computed(() => {
+    return Object.keys(chatStore.chats).map(id => ({
+        id,
+        ...chatStore.chats[id]
+    }))
+})
 </script>
 
 <template>
     <div class="h-full bg-gray-100 flex flex-col">
         <!-- Header -->
         <div class="h-[44px] bg-white flex items-center justify-between px-4 border-b border-gray-200 shrink-0">
-             <div class="flex items-center gap-1 cursor-pointer w-20" @click="goBack">
+            <div class="flex items-center gap-1 cursor-pointer w-20" @click="goBack">
                 <i class="fa-solid fa-chevron-left text-black"></i>
                 <span class="font-bold text-base text-black">返回</span>
             </div>
             <div class="font-bold text-base">详情</div>
-            <div class="w-20 flex justify-end">
+            <div class="w-20 flex justify-end gap-3">
+                <i class="fa-solid fa-share-nodes text-gray-800 cursor-pointer p-2" @click="showShareModal = true"></i>
                 <i class="fa-solid fa-trash text-gray-800 cursor-pointer p-2" @click="deleteCurrentItem"></i>
             </div>
         </div>
 
         <!-- Content -->
         <div class="flex-1 overflow-y-auto p-4" v-if="item">
-            
+
             <div class="bg-white rounded-lg shadow-sm p-6 mb-4">
-                 <!-- Meta -->
-                 <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-                     <img v-if="item.authorAvatar || item.avatar" :src="item.authorAvatar || item.avatar" class="w-10 h-10 rounded-full bg-gray-200 object-cover">
-                     <div v-else class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500">
-                         {{ item.author?.[0] || '?' }}
-                     </div>
-                     <div>
-                         <div class="font-bold text-gray-900">{{ item.author }}</div>
-                         <div class="text-xs text-gray-400">{{ formatDate(item.savedAt) }}</div>
-                     </div>
-                 </div>
+                <!-- Meta -->
+                <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+                    <img v-if="item.authorAvatar || item.avatar" :src="item.authorAvatar || item.avatar"
+                        class="w-10 h-10 rounded-full bg-gray-200 object-cover">
+                    <div v-else
+                        class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-500">
+                        {{ item.author?.[0] || '?' }}
+                    </div>
+                    <div>
+                        <div class="font-bold text-gray-900">{{ item.author }}</div>
+                        <div class="text-xs text-gray-400">{{ formatDate(item.savedAt) }}</div>
+                    </div>
+                </div>
 
-                 <!-- Render Logic -->
-                 
-                 <!-- Inner Voice Card -->
-                 <div v-if="parsedInnerVoice" class="mb-4">
-                     <div class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-5 text-gray-200 shadow-md border border-gray-700">
-                         <div class="text-center text-[#d4af37] text-sm tracking-[0.2em] mb-4 opacity-80">· 内 心 独 白 ·</div>
-                         
-                         <!-- Main Thoughts -->
-                         <div class="text-base leading-relaxed mb-6 font-light text-center px-4 italic">
-                             <template v-if="formattedThoughts">
-                                 <div v-for="(val, key) in formattedThoughts" :key="key" class="mb-2">
-                                     <span class="opacity-60 text-xs text-[#d4af37] block mb-1 uppercase tracking-wider">{{key}}</span>
-                                     <span>"{{ val }}"</span>
-                                 </div>
-                             </template>
-                             <template v-else>
-                                 "{{ parsedInnerVoice.心声 || parsedInnerVoice.thoughts || '...' }}"
-                             </template>
-                         </div>
-                         
-                         <!-- Grid Info -->
-                         <div class="grid grid-cols-1 gap-4 text-xs">
-                             <div v-if="parsedInnerVoice.着装" class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                 <div class="text-[#d4af37] mb-1">着装 OUTFIT</div>
-                                 <div class="text-gray-400 leading-relaxed whitespace-pre-wrap" v-if="typeof parsedInnerVoice.着装 === 'object'">
-                                     <div v-for="(v, k) in parsedInnerVoice.着装" :key="k">
-                                         <span class="opacity-70">{{k}}:</span> {{v}}
-                                     </div>
-                                 </div>
-                                 <div class="text-gray-400 leading-relaxed" v-else>{{ parsedInnerVoice.着装 }}</div>
-                             </div>
-                             
-                             <div v-if="parsedInnerVoice.环境" class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                 <div class="text-[#d4af37] mb-1">环境 SCENE</div>
-                                 <div class="text-gray-400 leading-relaxed">{{ parsedInnerVoice.环境 }}</div>
-                             </div>
+                <!-- Render Logic -->
 
-                             <div v-if="parsedInnerVoice.行为" class="bg-white/5 p-3 rounded-lg border border-white/5">
-                                 <div class="text-[#d4af37] mb-1">行为 ACTION</div>
-                                 <div class="text-gray-400 leading-relaxed">{{ parsedInnerVoice.行为 }}</div>
-                             </div>
-                         </div>
-                     </div>
-                 </div>
+                <!-- Chat Record Type -->
+                <div v-if="item.type === 'chat_record'" class="space-y-4">
+                    <div class="text-xs text-[#d4af37] font-bold mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-comments"></i> 聊天记录记录 (共 {{ item.messages.length }} 条)
+                    </div>
+                    <div v-for="m in item.messages" :key="m.id" class="border-b border-gray-50 pb-3 last:border-0">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-blue-600">{{ m.author }}</span>
+                            <span class="text-[10px] text-gray-300">{{ formatDate(m.timestamp) }}</span>
+                        </div>
+                        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
+                    </div>
+                </div>
 
-                 <!-- Special Content (Card/Sticker) -->
-                 <div v-if="specialContent">
-                     <SafeHtmlCard v-if="specialContent.type === 'html'" :htmlContent="specialContent.html" />
-                     <img v-else-if="specialContent.type === 'sticker'" :src="specialContent.url" class="max-w-[150px] rounded-lg">
-                     <div v-else-if="specialContent.type === 'sticker_placeholder'" class="inline-flex items-center gap-2 bg-gray-50 px-4 py-3 rounded-lg text-gray-600 border border-gray-200">
-                         <i class="fa-regular fa-image text-lg"></i>
-                         <span class="font-medium">{{ specialContent.name }}</span>
-                     </div>
-                 </div>
+                <!-- Inner Voice Card (Existing) -->
+                <div v-else-if="parsedInnerVoice" class="mb-4">
+                    <div
+                        class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-5 text-gray-200 shadow-md border border-gray-700">
+                        <div class="text-center text-[#d4af37] text-sm tracking-[0.2em] mb-4 opacity-80">· 内 心 独 白 ·
+                        </div>
 
-                 <!-- Standard Text Content (if not special) -->
-                 <div v-else-if="cleanContent" class="text-gray-800 text-base leading-7 whitespace-pre-wrap" v-html="marked(cleanContent)"></div>
+                        <!-- Main Thoughts -->
+                        <div class="text-base leading-relaxed mb-6 font-light text-center px-4 italic">
+                            <template v-if="formattedThoughts">
+                                <div v-for="(val, key) in formattedThoughts" :key="key" class="mb-2">
+                                    <span
+                                        class="opacity-60 text-xs text-[#d4af37] block mb-1 uppercase tracking-wider">{{ key }}</span>
+                                    <span>"{{ val }}"</span>
+                                </div>
+                            </template>
+                            <template v-else>
+                                "{{ parsedInnerVoice.心声 || parsedInnerVoice.thoughts || '...' }}"
+                            </template>
+                        </div>
 
-                 <!-- Image Type -->
-                 <div v-if="item.type === 'image'" class="mt-2">
-                     <img :src="item.content" class="rounded-lg max-w-full border border-gray-100">
-                 </div>
+                        <!-- Grid Info -->
+                        <div class="grid grid-cols-1 gap-4 text-xs">
+                            <div v-if="parsedInnerVoice.着装" class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                <div class="text-[#d4af37] mb-1">着装 OUTFIT</div>
+                                <div class="text-gray-400 leading-relaxed whitespace-pre-wrap"
+                                    v-if="typeof parsedInnerVoice.着装 === 'object'">
+                                    <div v-for="(v, k) in parsedInnerVoice.着装" :key="k">
+                                        <span class="opacity-70">{{ k }}:</span> {{ v }}
+                                    </div>
+                                </div>
+                                <div class="text-gray-400 leading-relaxed" v-else>{{ parsedInnerVoice.着装 }}</div>
+                            </div>
+
+                            <div v-if="parsedInnerVoice.环境" class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                <div class="text-[#d4af37] mb-1">环境 SCENE</div>
+                                <div class="text-gray-400 leading-relaxed">{{ parsedInnerVoice.环境 }}</div>
+                            </div>
+
+                            <div v-if="parsedInnerVoice.行为" class="bg-white/5 p-3 rounded-lg border border-white/5">
+                                <div class="text-[#d4af37] mb-1">行为 ACTION</div>
+                                <div class="text-gray-400 leading-relaxed">{{ parsedInnerVoice.行为 }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Special Content (Card/Sticker) -->
+                <div v-if="specialContent">
+                    <SafeHtmlCard v-if="specialContent.type === 'html'" :htmlContent="specialContent.html" />
+                    <img v-else-if="specialContent.type === 'sticker'" :src="specialContent.url"
+                        class="max-w-[150px] rounded-lg">
+                    <div v-else-if="specialContent.type === 'sticker_placeholder'"
+                        class="inline-flex items-center gap-2 bg-gray-50 px-4 py-3 rounded-lg text-gray-600 border border-gray-200">
+                        <i class="fa-regular fa-image text-lg"></i>
+                        <span class="font-medium">{{ specialContent.name }}</span>
+                    </div>
+                </div>
+
+                <!-- Standard Text Content (if not special) -->
+                <div v-else-if="cleanContent" class="text-gray-800 text-base leading-7 whitespace-pre-wrap"
+                    v-html="marked(cleanContent)"></div>
+
+                <!-- Image Type -->
+                <div v-if="item.type === 'image'" class="mt-2">
+                    <img :src="item.content" class="rounded-lg max-w-full border border-gray-100">
+                </div>
 
             </div>
 
@@ -235,6 +306,28 @@ const formatDate = (ts) => {
 
         <div v-else class="flex-1 flex items-center justify-center text-gray-400">
             内容不存在
+        </div>
+
+        <!-- Share Selection Modal -->
+        <div v-if="showShareModal"
+            class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            @click="showShareModal = false">
+            <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[70%]"
+                @click.stop>
+                <div class="p-4 border-b border-gray-100 font-bold flex justify-between items-center">
+                    <span>发送给...</span>
+                    <i class="fa-solid fa-xmark text-gray-400 cursor-pointer" @click="showShareModal = false"></i>
+                </div>
+                <div class="flex-1 overflow-y-auto p-2">
+                    <div v-for="chat in chatsList" :key="chat.id"
+                        class="p-3 flex items-center gap-3 hover:bg-gray-100 rounded-xl cursor-pointer transition-colors"
+                        @click="shareToChat(chat.id)">
+                        <img :src="chat.avatar || '/avatars/default.png'" class="w-10 h-10 rounded-lg object-cover">
+                        <span class="font-bold text-gray-800">{{ chat.name }}</span>
+                    </div>
+                    <div v-if="chatsList.length === 0" class="text-center py-6 text-gray-400 text-sm">暂无联系人</div>
+                </div>
+            </div>
         </div>
     </div>
 </template>

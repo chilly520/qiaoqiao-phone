@@ -208,12 +208,12 @@ async function _generateReplyInternal(messages, char, signal) {
     }
 
     if (!config) {
-            return { error: '未找到有效的 API 配置', internalError: 'Config is null', request: {} }
-        }
+        return { error: '未找到有效的 API 配置', internalError: 'Config is null', request: {} }
+    }
 
-        if (!apiKey) {
-            return { error: '请先在设置中配置 API Key', request: {} }
-        }
+    if (!apiKey) {
+        return { error: '请先在设置中配置 API Key', request: {} }
+    }
 
     // Use user info passed in 'char' object (per-chat settings) or global user profile
     const realUserProfile = settingsStore.personalization?.userProfile || {};
@@ -831,17 +831,17 @@ async function _generateReplyInternal(messages, char, signal) {
             // Check for safety/finish reason
             const finishReason = data.choices?.[0]?.finish_reason || data.candidates?.[0]?.finishReason
             if (finishReason === 'safety' || finishReason === 'content_filter') {
-                return { 
-                error: '内容被AI安全策略拦截 (Safety Filter)',
-                request: {
-                    provider,
-                    endpoint,
-                    headers: reqHeaders,
-                    body: reqBody
+                return {
+                    error: '内容被AI安全策略拦截 (Safety Filter)',
+                    request: {
+                        provider,
+                        endpoint,
+                        headers: reqHeaders,
+                        body: reqBody
+                    }
                 }
             }
-            }
-            return { 
+            return {
                 error: 'AI返回了空内容，请检查日志 (Raw Data)',
                 request: {
                     provider,
@@ -893,16 +893,16 @@ async function _generateReplyInternal(messages, char, signal) {
         content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
 
         return {
-                content,
-                innerVoice,
-                raw: rawContent,
-                request: {
-                    provider,
-                    endpoint,
-                    headers: reqHeaders,
-                    body: reqBody
-                }
+            content,
+            innerVoice,
+            raw: rawContent,
+            request: {
+                provider,
+                endpoint,
+                headers: reqHeaders,
+                body: reqBody
             }
+        }
 
     } catch (error) {
         console.error('AI Generation Failed:', error)
@@ -1304,7 +1304,8 @@ ${userContextText}
 [
   {
     "authorId": "角色ID（从输入中选择）",
-    "content": "朋友圈文字内容",
+    "content": "朋友圈文字内容。你可以通过 @名字 提醒某人，并在下方 mentions 数组中登记。",
+    "mentions": [ { "id": "user", "name": "${userProfile.name}" }, { "id": null, "name": "某人" } ],
     "location": "地理位置（可选）",
     "imagePrompt": "英文图片生成提示词（可选，如果需要配图）",
     "imageDescription": "图片描述（可选）",
@@ -1318,8 +1319,9 @@ ${userContextText}
       {
         "type": "comment",
         "authorName": "评论者的名字",
-        "content": "评论内容",
+        "content": "评论内容。也可以用 @名字。",
         "replyTo": "被回复者的名字（如果是回复某评论，可选）",
+        "mentions": [],
         "isVirtual": true/false
       }
     ]
@@ -1363,6 +1365,7 @@ ${userContextText}
                 images: [],
                 imageDescriptions: [],
                 html: data.html || null,
+                mentions: data.mentions || [], // Extract mentions
                 interactions: data.interactions || []
             }
 
@@ -1388,6 +1391,9 @@ ${userContextText}
                     if (interaction.content && interaction.content.includes('User')) {
                         interaction.content = interaction.content.replace(/User/g, userName)
                     }
+                    // Mentions in interactions
+                    if (!interaction.mentions) interaction.mentions = []
+
                     // ID Patch
                     if (interaction.isVirtual && !interaction.authorId) {
                         interaction.authorId = `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
@@ -1678,11 +1684,11 @@ ${historyStr}
    - 一条动态下的所有评论和点赞，**严禁来自同一个人**。
    - 如果通讯录中只有 1-2 个好友，你**必须**虚构至少 3 个各具特色的虚拟 NPC（如：外卖小哥、小学同学、深夜潜水员）来发表评论，确保互动者名单不少于 4 个人。
    - 严禁让通讯录好友（如“林深”）发表多条相互独立的评论。
-8. **必须**返回一个 JSON 数组，格式如下：
+   8. **必须**返回一个 JSON 数组，格式如下：
 [
   { "type": "like", "authorName": "名字", "isVirtual": true/false, "authorId": "ID或null" },
-  { "type": "comment", "authorName": "名字", "content": "评论内容", "isVirtual": true/false, "authorId": "ID或null" },
-  { "type": "reply", "authorName": "名字", "content": "回复内容", "replyTo": "被回复者的名字", "isVirtual": true/false, "authorId": "ID或null" }
+  { "type": "comment", "authorName": "名字", "content": "评论内容", "mentions": [{ "id": "user", "name": "${userProfile.name}" }], "isVirtual": true/false, "authorId": "ID或null" },
+  { "type": "reply", "authorName": "名字", "content": "回复内容", "replyTo": "被回复者的名字", "mentions": [], "isVirtual": true/false, "authorId": "ID或null" }
 ]
 `
     try {
@@ -1731,7 +1737,8 @@ ${historicalContext ? `\n${historicalContext}` : ''}
 2. 根据你和对方的关系决定语气（调侃、关心、撒娇等）。
 3. 如果朋友圈内容或之前的历史动态很有意思，请结合背景进行吐槽、互动或接梗。
 4. 如果有图片描述，请尝试提及图片中的元素以增强“视觉感”。
-5. 直接输出评论文字，不要包含任何标签或多余解释。`
+5. **@功能支持**：你可以通过 '@名字' 提醒特定的人阅读评论。
+6. 直接输出评论文字，不要包含任何标签或多余解释。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -1770,7 +1777,8 @@ ${worldContext ? `当前世界背景：${worldContext}` : ''}
 【要求】
 1. 回复要简短、口语化（类似微信回复），字数控制在20字以内。
 2. 即使是回复，也是公开展示在朋友圈下方的，请保持得体或有趣的互动风格。
-3. 直接输出回复内容，不要包含任何标签。`
+3. **@功能支持**：你可以通过 '@名字' 提醒阅读。
+4. 直接输出回复内容，不要包含任何标签。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -1790,18 +1798,23 @@ ${worldContext ? `当前世界背景：${worldContext}` : ''}
 /**
  * Generate complete character profile (background + pinned moments + bio) in ONE API call
  * @param {Object} character - Character object with name and prompt
+ * @param {Object} userProfile - User profile with name
  * @returns {Promise<Object>} { pinnedMoments: Array, backgroundUrl: String, bio: String }
  */
-export async function generateCompleteProfile(character) {
+export async function generateCompleteProfile(character, userProfile = {}) {
+    const userName = userProfile.name || '我'
     const systemPrompt = `你是一个创意助手，需要一次性为角色生成完整的主页内容。
 
 角色信息：
 姓名：${character.name}
 人设：${character.prompt || '无'}
 
+当前用户：${userName}
+
 要求生成以下内容：
 1. **3条置顶朋友圈** - 最能代表角色特点的精华内容
    - 可以配图、纯文字、或HTML排版
+   - **支持 @提醒**：内容中可以使用 @${userName} 提醒用户。
 2. **个性签名** - 简短精炼，符合角色气质（20字以内）
 3. **背景图提示词** - 英文，描述适合作为朋友圈背景的风景/场景
 
@@ -1810,7 +1823,8 @@ export async function generateCompleteProfile(character) {
 {
   "pinnedMoments": [
     {
-      "content": "朋友圈文字内容",
+      "content": "朋友圈文字内容（支持 @${userName} 提醒）",
+      "mentions": [ { "id": "user", "name": "${userName}" } ],
       "imagePrompt": "英文图片生成提示词（可选）",
       "imageDescription": "图片描述（可选）",
       "html": "HTML格式内容（可选）"
@@ -1853,9 +1867,10 @@ export async function generateCompleteProfile(character) {
         for (const data of (profileData.pinnedMoments || []).slice(0, 3)) {
             const processed = {
                 content: data.content,
+                mentions: data.mentions || [],
                 images: [],
                 imageDescriptions: data.imageDescription ? [data.imageDescription] : [],
-                html: data.html || null
+                html: data.html || null,
             }
 
             if (data.imagePrompt) {
