@@ -106,7 +106,7 @@ export function useChatTransaction() {
             const chat = chatStore.chats[chatStore.currentChatId]
             if (chat) {
                 const senderName = chat.remark || chat.name
-                const userName = chat.userName || '你'
+                const userName = chat.userName || '用户'
                 chatStore.addMessage(chat.id, {
                     role: 'system',
                     type: 'system',
@@ -130,7 +130,7 @@ export function useChatTransaction() {
         const chat = chatStore.chats[chatStore.currentChatId]
         if (chat) {
             const senderName = chat.remark || chat.name || '对方'
-            const userName = chat.userName || '你'
+            const userName = chat.userName || '用户'
             chatStore.addMessage(chat.id, {
                 role: 'system',
                 content: `${userName}已领取了${senderName}的转账`

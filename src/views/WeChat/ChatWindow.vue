@@ -568,6 +568,13 @@ watch(() => chatStore.patEvent, (evt) => {
     if (navigator.vibrate) navigator.vibrate(50)
 })
 
+// Family Card Modal State
+const showFamilyCardModal = ref(false)
+const familyCardActionType = ref('') // 'apply' or 'send'
+const showFamilyCardSendModal = ref(false)
+const familyCardAmount = ref('5200')
+const familyCardNote = ref('我的钱就是你的钱')
+
 const handlePanelAction = (type) => {
     if (type === 'album') {
         imgUploadInput.value.click()
@@ -577,7 +584,58 @@ const handlePanelAction = (type) => {
         openSendDialog('redpacket')
     } else if (type === 'transfer') {
         openSendDialog('transfer')
+    } else if (type === 'family-card') {
+        // Show family card action selection modal
+        showFamilyCardModal.value = true
     }
+}
+
+// Handle Family Card Action Selection
+const handleFamilyCardAction = (actionType) => {
+    familyCardActionType.value = actionType
+    if (actionType === 'apply') {
+        // Apply for family card
+        const defaultText = '送我一张亲属卡好不好？以后你来管家~'
+        chatStore.addMessage(chatData.value.id, {
+            role: 'user',
+            type: 'text',
+            content: `[FAMILY_CARD_APPLY:${defaultText}]`
+        })
+        showFamilyCardModal.value = false
+        // Auto-send AI response after delay
+        setTimeout(() => {
+            generateAIResponse()
+        }, 500)
+    } else if (actionType === 'send') {
+        // Show family card send modal
+        showFamilyCardModal.value = false
+        showFamilyCardSendModal.value = true
+    }
+}
+
+// Handle sending family card after user fills form
+const confirmSendFamilyCard = () => {
+    if (!familyCardAmount.value || parseFloat(familyCardAmount.value) <= 0) {
+        showToast('请输入有效的额度', 'error')
+        return
+    }
+    
+    // Send family card message
+    chatStore.addMessage(chatData.value.id, {
+        role: 'user',
+        type: 'text',
+        content: `[FAMILY_CARD:${familyCardAmount.value}:${familyCardNote.value || '亲属卡'}]`
+    })
+    
+    // Close modal
+    showFamilyCardSendModal.value = false
+    
+    // Clear form fields
+    familyCardAmount.value = '5200'
+    familyCardNote.value = '我的钱就是你的钱'
+    
+    // DO NOT auto-call API - remove the timeout generateAIResponse call
+    // User requested that card is just mounted on message without auto API call
 }
 
 // --- Send Modal Logic ---
@@ -2084,6 +2142,82 @@ onUnmounted(() => {
         <ChatTransferModal :visible="showTransferModal" :packet="currentRedPacket" :chatData="chatData"
             @close="closeModals" @confirm="confirmTransfer" @reject="rejectPayment" />
 
+        <!-- Family Card Action Selection Modal -->
+        <div v-if="showFamilyCardModal" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
+                <h3 class="text-lg font-bold text-center mb-6">亲属卡</h3>
+                
+                <div class="space-y-4">
+                    <!-- Apply for Family Card -->
+                    <button @click="handleFamilyCardAction('apply')" 
+                        class="w-full bg-gradient-to-r from-[#ff9a9e] to-[#fecfef] text-white py-4 rounded-xl font-bold shadow-md hover:shadow-lg transition-all">
+                        <div class="flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-hand-holding-heart"></i>
+                            <span>申请亲属卡</span>
+                        </div>
+                    </button>
+                    
+                    <!-- Send Family Card -->
+                    <button @click="handleFamilyCardAction('send')" 
+                        class="w-full bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-4 rounded-xl font-bold shadow-md hover:shadow-lg transition-all">
+                        <div class="flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-gift"></i>
+                            <span>赠送亲属卡</span>
+                        </div>
+                    </button>
+                </div>
+                
+                <!-- Cancel Button -->
+                <button @click="showFamilyCardModal = false" 
+                    class="w-full mt-4 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                    取消
+                </button>
+            </div>
+        </div>
+        
+        <!-- Send Family Card Form Modal -->
+        <div v-if="showFamilyCardSendModal" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+            <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
+                <h3 class="text-lg font-bold text-center mb-6">赠送亲属卡</h3>
+                
+                <div class="space-y-5">
+                    <!-- Amount Input -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">设置额度</label>
+                        <div class="relative">
+                            <div class="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-500">¥</div>
+                            <input type="number" v-model="familyCardAmount" 
+                                class="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                placeholder="0.00" step="0.01" min="0.01">
+                        </div>
+                        <div class="text-xs text-gray-500 mt-1">请输入亲属卡额度，最低0.01元</div>
+                    </div>
+                    
+                    <!-- Note Input -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">备注</label>
+                        <input type="text" v-model="familyCardNote" 
+                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            placeholder="例如：我的钱就是你的钱">
+                        <div class="text-xs text-gray-500 mt-1">给亲属卡起个温馨的名字吧</div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex gap-3 pt-2">
+                        <button @click="showFamilyCardSendModal = false" 
+                            class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
+                            取消
+                        </button>
+                        <button @click="confirmSendFamilyCard" 
+                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all" 
+                            :disabled="!familyCardAmount || parseFloat(familyCardAmount) <= 0">
+                            发送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Family Card Claim Modal (Extracted) -->
         <FamilyCardClaimModal ref="claimModalRef" @confirm="handleClaimConfirm" />
 

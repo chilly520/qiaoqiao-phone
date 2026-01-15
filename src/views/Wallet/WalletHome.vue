@@ -100,30 +100,78 @@
     
     <!-- Settings Modal -->
     <div v-if="showSettings" class="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center sm:justify-center animate-fade-in" @click.self="showSettings = false">
-        <div class="bg-white w-full sm:w-[320px] rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up">
+        <div class="bg-white w-full sm:w-[320px] rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up max-h-[80vh] overflow-y-auto">
             <h3 class="font-bold text-lg mb-6 text-center">支付设置</h3>
             
             <div class="space-y-4 mb-6">
-                <div class="flex items-center justify-between p-3 rounded-lg border border-gray-100" @click="changeDefaultMethod('balance')">
-                    <div class="flex items-center gap-3">
-                        <i class="fa-brands fa-weixin text-[#07c160]"></i>
-                        <span>零钱优先</span>
+                <!-- Payment Priority -->
+                <div class="text-xs text-gray-500 mb-2">支付优先级</div>
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between p-3 rounded-lg border border-gray-100" @click="changeDefaultMethod('balance')">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-brands fa-weixin text-[#07c160]"></i>
+                            <span>零钱优先</span>
+                        </div>
+                        <i v-if="walletStore.paymentSettings.defaultMethod === 'balance'" class="fa-solid fa-check text-[#07c160]"></i>
                     </div>
-                    <i v-if="walletStore.paymentSettings.defaultMethod === 'balance'" class="fa-solid fa-check text-[#07c160]"></i>
                 </div>
-                 <div class="flex items-center justify-between p-3 rounded-lg border border-gray-100" @click="changeDefaultMethod('family')">
-                    <div class="flex items-center gap-3">
-                        <i class="fa-solid fa-people-roof text-[#ea4335]"></i>
-                        <span>亲属卡优先</span>
+                
+                <!-- Family Cards with Collapsible Menu -->
+                <div class="text-xs text-gray-500 mb-2 mt-4">亲属卡（可勾选具体卡）</div>
+                <div class="border border-gray-100 rounded-lg overflow-hidden">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer" @click="showFamilyCards = !showFamilyCards">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-people-roof text-[#ea4335]"></i>
+                            <span>亲属卡优先</span>
+                        </div>
+                        <i :class="['fa-solid', showFamilyCards ? 'fa-chevron-up' : 'fa-chevron-down', 'text-gray-500']"></i>
                     </div>
-                    <i v-if="walletStore.paymentSettings.defaultMethod === 'family'" class="fa-solid fa-check text-[#07c160]"></i>
+                    
+                    <!-- Family Card List -->
+                    <div v-if="showFamilyCards" class="space-y-1 bg-white">
+                        <div v-if="walletStore.familyCards.length === 0" class="p-4 text-xs text-gray-400">
+                            暂无亲属卡
+                        </div>
+                        <div v-for="card in walletStore.familyCards" :key="card.id" class="flex items-center justify-between p-3 text-sm border-t border-gray-100 hover:bg-gray-50">
+                            <div class="flex items-center gap-2">
+                                <div :class="`w-3 h-3 rounded-full`" :style="{ backgroundColor: card.theme === 'pink' ? '#ff9a9e' : '#f79c1f' }"></div>
+                                <div>
+                                    <div class="font-medium">{{ card.remark }}</div>
+                                    <div class="text-xs text-gray-500">{{ card.ownerName }} - ¥{{ card.amount }}</div>
+                                </div>
+                            </div>
+                            <input type="radio" v-model="walletStore.paymentSettings.selectedCardId" :value="card.id" class="text-[#07c160]">
+                        </div>
+                    </div>
                 </div>
-                 <div class="flex items-center justify-between p-3 rounded-lg border border-gray-100" @click="changeDefaultMethod('bank')">
-                    <div class="flex items-center gap-3">
-                        <i class="fa-solid fa-credit-card text-[#4285f4]"></i>
-                        <span>银行卡优先</span>
+                
+                <!-- Bank Cards with Collapsible Menu -->
+                <div class="text-xs text-gray-500 mb-2 mt-4">银行卡（可勾选具体卡）</div>
+                <div class="border border-gray-100 rounded-lg overflow-hidden">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 cursor-pointer" @click="showBankCards = !showBankCards">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-credit-card text-[#4285f4]"></i>
+                            <span>银行卡优先</span>
+                        </div>
+                        <i :class="['fa-solid', showBankCards ? 'fa-chevron-up' : 'fa-chevron-down', 'text-gray-500']"></i>
                     </div>
-                    <i v-if="walletStore.paymentSettings.defaultMethod === 'bank'" class="fa-solid fa-check text-[#07c160]"></i>
+                    
+                    <!-- Bank Card List -->
+                    <div v-if="showBankCards" class="space-y-1 bg-white">
+                        <div v-if="walletStore.bankCards.length === 0" class="p-4 text-xs text-gray-400">
+                            暂无银行卡
+                        </div>
+                        <div v-for="card in walletStore.bankCards" :key="card.id" class="flex items-center justify-between p-3 text-sm border-t border-gray-100 hover:bg-gray-50">
+                            <div class="flex items-center gap-2">
+                                <div :class="`w-3 h-3 rounded-full`" :style="{ backgroundColor: card.theme === 'red' ? '#ea4335' : '#4285f4' }"></div>
+                                <div>
+                                    <div class="font-medium">{{ card.bankName }}</div>
+                                    <div class="text-xs text-gray-500">**** **** **** {{ card.number.slice(-4) }}</div>
+                                </div>
+                            </div>
+                            <input type="radio" v-model="walletStore.paymentSettings.selectedCardId" :value="card.id" class="text-[#07c160]">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -150,6 +198,8 @@ const showRecharge = ref(false)
 const showSettings = ref(false)
 const rechargeAmount = ref('')
 const rechargeMethod = ref('fake_bank')
+const showFamilyCards = ref(false)
+const showBankCards = ref(false)
 
 const handleRecharge = () => {
     const amount = parseFloat(rechargeAmount.value)

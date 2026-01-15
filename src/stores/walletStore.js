@@ -114,7 +114,7 @@ export const useWalletStore = defineStore('wallet', () => {
         const newCard = {
             id: `family_${Date.now()}`,
             ownerId: card.ownerId,
-            ownerName: card.ownerName || '未知',
+            ownerName: card.ownerName || '对方',
             amount: parseFloat(card.amount) || 0, // Initial limit
             usedAmount: 0, // Amount already spent
             remark: card.remark || '亲属卡',

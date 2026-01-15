@@ -1,6 +1,6 @@
 <template>
   <div class="h-[200px] bg-[#f7f7f7] border-t border-[#dcdcdc] p-6 animate-slide-up">
-    <div class="grid grid-cols-4 gap-6">
+    <div class="grid grid-cols-5 gap-4">
       <!-- Album (Image) -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'album')">
         <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
@@ -31,6 +31,14 @@
            <i class="fa-solid fa-arrow-right-arrow-left text-2xl text-[#f79e39]"></i>
         </div>
         <span class="text-xs text-[#888]">转账</span>
+      </div>
+      
+      <!-- Family Card -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'family-card')">
+        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+           <i class="fa-solid fa-people-roof text-2xl text-[#ea4335]"></i>
+        </div>
+        <span class="text-xs text-[#888]">亲属卡</span>
       </div>
     </div>
   </div>

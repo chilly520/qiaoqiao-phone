@@ -213,8 +213,8 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. Robust AI Payment Handling (ID-based)
         if (newMsg.role === 'ai') {
-            // Handle AI claiming by ID: [领取红包:PAY-xxx] or [领取转账:PAY-xxx]
-            const claimRegex = /\[领取(红包|转账):([^\]]+)\]/g;
+            // Handle AI claiming by ID: [领取红包:PAY-xxx] or [领取转账:PAY-xxx] or [领取亲属卡:PAY-xxx]
+            const claimRegex = /\[领取(红包|转账|亲属卡):([^\]]+)\]/g;
             let claimMatch;
             const claimedPayments = [];
             while ((claimMatch = claimRegex.exec(newMsg.content)) !== null) {
@@ -225,14 +225,14 @@ export const useChatStore = defineStore('chat', () => {
                     targetMsg.isClaimed = true;
                     targetMsg.claimTime = Date.now();
                     targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
-                    console.log(`[ChatStore] AI claimed payment ${paymentId}`);
+                    console.log(`[ChatStore] AI claimed ${paymentType} ${paymentId}`);
                     claimedPayments.push(paymentType);
                 }
             }
 
             // Handle AI rejecting by ID: Support all variations
-            // [拒收红包], [退回红包], [拒收转账], [退回转账]
-            const rejectRegex = /\[(拒收|退回)(红包|转账):([^\]]+)\]/g;
+            // [拒收红包], [退回红包], [拒收转账], [退回转账], [拒收亲属卡], [退回亲属卡]
+            const rejectRegex = /\[(拒收|退回)(红包|转账|亲属卡):([^\]]+)\]/g;
             let rejectMatch;
             const rejectedPayments = [];
             while ((rejectMatch = rejectRegex.exec(newMsg.content)) !== null) {
@@ -242,15 +242,15 @@ export const useChatStore = defineStore('chat', () => {
                 if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
                     targetMsg.isRejected = true;
                     targetMsg.rejectTime = Date.now();
-                    console.log(`[ChatStore/addMessage] AI rejected ${paymentId}`);
+                    console.log(`[ChatStore/addMessage] AI rejected ${paymentType} ${paymentId}`);
                     rejectedPayments.push(paymentType);
                 }
             }
 
             // Clean operation tags from content
             newMsg.content = newMsg.content
-                .replace(/\[领取(红包|转账):[^\]]+\]/g, '')
-                .replace(/\[(拒收|退回)(红包|转账):[^\]]+\]/g, '')
+                .replace(/\[领取(红包|转账|亲属卡):[^\]]+\]/g, '')
+                .replace(/\[(拒收|退回)(红包|转账|亲属卡):[^\]]+\]/g, '')
                 .trim();
 
             if (!newMsg.content && (claimMatch || rejectMatch)) return saveChats(); // Pure operation
@@ -264,16 +264,26 @@ export const useChatStore = defineStore('chat', () => {
                         id: crypto.randomUUID(),
                         role: 'system',
                         type: 'text',
-                        content: `${chat.name}领取了你的${type}`,
+                        content: `${chat.name}领取了${chat.userName || '你'}的${type}`,
                         timestamp: Date.now() + 50
                     });
+                    // For family cards, add additional notification about activation
+                    if (type === '亲属卡') {
+                        newMsg._pendingSystemMessages.push({
+                            id: crypto.randomUUID(),
+                            role: 'system',
+                            type: 'text',
+                            content: `${chat.name}领取的亲属卡已生效`,
+                            timestamp: Date.now() + 150
+                        });
+                    }
                 });
                 rejectedPayments.forEach(type => {
                     newMsg._pendingSystemMessages.push({
                         id: crypto.randomUUID(),
                         role: 'system',
                         type: 'text',
-                        content: `${chat.name}拒收了你的${type}`,
+                        content: `${chat.name}拒收了${chat.userName || '你'}的${type}`,
                         timestamp: Date.now() + 100
                     });
                 });
@@ -301,6 +311,8 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.type = 'family_card'
                     newMsg.isClaimed = false
                     newMsg.isRejected = false
+                    // Add paymentId for family cards to enable ID-based operations
+                    newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                     // Do NOT clear content, because Family Card needs the tag for data parsing (amount, text, etc)
                     // The ChatMessageItem will handle the mixed text display.
                 }
