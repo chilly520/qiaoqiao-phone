@@ -817,12 +817,17 @@ function getHtmlContent(content) {
         // 1. Pre-cleanup: Remove markdown backticks
         cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim()
 
-        // 2. Remove [CARD] prefix if present
-        if (cleaned.startsWith('[CARD]')) {
-            cleaned = cleaned.substring('[CARD]'.length).trim();
-        }
+        // 2. Remove [CARD] and [/CARD] tags if present
+        cleaned = cleaned.replace(/^\[CARD\]/gi, '').trim();
+        cleaned = cleaned.replace(/\[\/CARD\]$/gi, '').trim();
+        cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
 
-        // 3. Powerful Regex to handle JSON-wrapped HTML with unescaped stuff
+        // 3. Handle escaped quotes and newlines
+        if (cleaned.includes('\\n')) cleaned = cleaned.replace(/\\n/g, '\n');
+        if (cleaned.includes('\\t')) cleaned = cleaned.replace(/\\t/g, '\t');
+        if (cleaned.includes('\\r')) cleaned = cleaned.replace(/\\r/g, '\r');
+
+        // 4. Powerful Regex to handle JSON-wrapped HTML with unescaped stuff
         // Look for the "html" key and capture everything until the final closure or common JSON delimiters
         const jsonHtmlRegex = /"html"\s*:\s*"([\s\S]*?)"\s*(?:\}\s*$|,\s*"[^"]*"\s*:)/i;
         let match = cleaned.match(jsonHtmlRegex);
@@ -843,38 +848,35 @@ function getHtmlContent(content) {
             if (body.includes('<') && body.includes('>')) return body.trim();
         }
 
-        // 4. Handle direct HTML content (when [CARD] is followed by HTML instead of JSON)
+        // 5. Handle direct HTML content (when [CARD] is followed by HTML instead of JSON)
         if (cleaned.includes('<') && cleaned.includes('>')) {
             let body = cleaned;
             // Remove any JSON wrapper if present
             if (body.startsWith('{') && body.endsWith('}')) {
                 // Try to find HTML inside JSON
-                const htmlMatch = body.match(/([\s\S]*?)(<[\s\S]*>)([\s\S]*?)/);
-                if (htmlMatch && htmlMatch[2]) {
-                    body = htmlMatch[2];
+                const htmlMatch = body.match(/(<[\s\S]*>)/);
+                if (htmlMatch && htmlMatch[1]) {
+                    body = htmlMatch[1];
                 }
             }
             // Unescape HTML if needed
             if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
-            if (body.includes('\\n')) body = body.replace(/\\n/g, '\n');
-            if (body.includes('\\t')) body = body.replace(/\\t/g, '\t');
             return body.trim();
         }
 
-        // 5. Fallback: Naked Tag Extraction (The "Tag-to-Tag" method)
+        // 6. Fallback: Naked Tag Extraction (The "Tag-to-Tag" method)
         const firstTag = cleaned.indexOf('<');
         const lastTag = cleaned.lastIndexOf('>');
         if (firstTag !== -1 && lastTag !== -1 && lastTag > firstTag) {
             let extracted = cleaned.substring(firstTag, lastTag + 1);
             if (extracted.includes('\\"')) extracted = extracted.replace(/\\"/g, '"');
-            if (extracted.includes('\\n')) extracted = extracted.replace(/\\n/g, '\n');
             return extracted;
         }
 
     } catch (e) {
         console.error('[ChatMessageItem] Super Salvage global error:', e)
     }
-    return content
+    return cleaned
 }
 
 </script>
