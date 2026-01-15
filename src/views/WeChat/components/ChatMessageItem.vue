@@ -804,53 +804,56 @@ function cancelLongPress() {
     }
 }
 
-// Helper for SafeHtmlCard - 宽松处理各种HTML格式
+// Helper for SafeHtmlCard - 还原原始HTML渲染逻辑
 function getHtmlContent(content) {
     if (!content) return ''
-    let cleaned = ''
     try {
-        cleaned = content.trim()
-
-        // 1. Pre-cleanup: Remove markdown backticks
-        cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim()
-
-        // 2. Remove [CARD] and [/CARD] tags if present
-        cleaned = cleaned.replace(/^\[CARD\]/gi, '').trim();
-        cleaned = cleaned.replace(/\[\/CARD\]$/gi, '').trim();
-        // 3. Remove [INNER_VOICE] tags and content
+        // 1. 直接处理原始内容，不做过度清洗
+        let cleaned = content;
+        
+        // 2. 移除所有[CARD]和[/CARD]标签
+        cleaned = cleaned.replace(/\[CARD\]/gi, '').trim();
+        cleaned = cleaned.replace(/\[\/CARD\]/gi, '').trim();
+        
+        // 3. 移除[INNER_VOICE]标签和内容
         cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-
-        // 4. Try to extract JSON from the cleaned content
+        
+        // 4. 移除markdown反引号
+        cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
+        
+        // 5. 处理转义字符和换行符
+        // 替换转义的双引号
+        cleaned = cleaned.replace(/\\"/g, '"');
+        // 替换转义的单引号
+        cleaned = cleaned.replace(/\\'/g, "'");
+        // 替换转义的换行符
+        cleaned = cleaned.replace(/\\n/g, '');
+        // 替换转义的反斜杠
+        cleaned = cleaned.replace(/\\\\/g, '\\');
+        
+        // 6. 尝试提取JSON
         let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             try {
                 let jsonData = JSON.parse(jsonMatch[0]);
                 if (jsonData.html && typeof jsonData.html === 'string') {
-                    return jsonData.html.trim();
+                    return jsonData.html;
                 } else if (jsonData.content && typeof jsonData.content === 'string') {
-                    // 支持content字段
-                    return jsonData.content.trim();
+                    return jsonData.content;
                 }
             } catch (e) {
-                // JSON解析失败，尝试直接处理
-                console.warn('[ChatMessageItem] JSON解析失败，尝试直接处理HTML:', e);
+                console.warn('[ChatMessageItem] JSON解析失败，尝试直接返回:', e);
             }
         }
-
-        // 5. 直接检查是否包含HTML标签，如果有就返回
-        if (cleaned.includes('<') && cleaned.includes('>')) {
-            return cleaned;
-        }
-
-        // 6. 兜底：如果没有HTML标签，至少返回内容本身，避免空白气泡
+        
+        // 7. 直接返回处理后的内容
         return cleaned;
-
+        
     } catch (e) {
         console.error('[ChatMessageItem] HTML渲染错误:', e);
-        // 出错时至少返回原始内容，避免空白气泡
-        return content || '';
+        return content;
     }
-    return content || ''; // 默认返回原始内容，避免空白气泡
+    return content;
 }
 
 </script>
