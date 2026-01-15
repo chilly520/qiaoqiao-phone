@@ -819,10 +819,12 @@ function getHtmlContent(content) {
         cleaned = cleaned.replace(/\[\/CARD\]$/gi, '').trim();
         cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
 
-        // 3. Handle escaped quotes and newlines
+        // 3. Handle escaped quotes and newlines - ALWAYS do this first!
         if (cleaned.includes('\\n')) cleaned = cleaned.replace(/\\n/g, '\n');
         if (cleaned.includes('\\t')) cleaned = cleaned.replace(/\\t/g, '\t');
         if (cleaned.includes('\\r')) cleaned = cleaned.replace(/\\r/g, '\r');
+        // UNESCAPE ALL QUOTES first - this is crucial for HTML to render properly
+        if (cleaned.includes('\\"')) cleaned = cleaned.replace(/\\"/g, '"');
 
         // 4. Powerful Regex to handle JSON-wrapped HTML with unescaped stuff
         // Look for the "html" key and capture everything until the final closure or common JSON delimiters
@@ -854,10 +856,17 @@ function getHtmlContent(content) {
                 const htmlMatch = body.match(/(<[\s\S]*>)/);
                 if (htmlMatch && htmlMatch[1]) {
                     body = htmlMatch[1];
+                    // Ensure quotes are unescaped in extracted HTML
+                    if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
+                } else {
+                    // If no HTML found inside JSON, try to extract just the HTML part
+                    const htmlOnlyMatch = body.match(/"([\s\S]*?<[\s\S]*?>[\s\S]*?)"/);
+                    if (htmlOnlyMatch && htmlOnlyMatch[1]) {
+                        body = htmlOnlyMatch[1];
+                        if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
+                    }
                 }
             }
-            // Unescape HTML if needed
-            if (body.includes('\\"')) body = body.replace(/\\"/g, '"');
             return body.trim();
         }
 
