@@ -1058,41 +1058,81 @@ watch(msgs, (newVal, oldVal) => {
     if (newVal.length > (oldVal?.length || 0)) {
         scrollToBottom()
 
+        console.log('TTS: 检测到新消息，消息总数:', newVal.length);
+        console.log('TTS: 聊天数据:', {
+            autoRead: chatData.value?.autoRead,
+            chatId: chatData.value?.id,
+            chatName: chatData.value?.name
+        });
+
         // AI finished generating. Check for unread messages if Auto Read is ON.
         if (chatData.value?.autoRead) { // Check switch only (capability is usually true)
+            console.log('TTS: 自动朗读已开启，检查新消息');
             // 只处理新添加的消息
             const newMsgCount = newVal.length - (oldVal?.length || 0);
+            console.log('TTS: 新消息数量:', newMsgCount);
             if (newMsgCount > 0) {
                 // 获取新添加的消息，按照顺序处理
                 const newlyAddedMsgs = newVal.slice(-newMsgCount);
+                console.log('TTS: 新添加的消息:', newlyAddedMsgs);
 
                 // 等待DOM更新完成，确保气泡已经渲染在界面上
                 nextTick(() => {
                     newlyAddedMsgs.forEach(msg => {
+                        console.log('TTS: 处理消息:', {
+                            id: msg.id,
+                            role: msg.role,
+                            type: msg.type,
+                            content: msg.content,
+                            hasId: msg.id !== undefined,
+                            alreadySpoken: spokenMsgIds.has(msg.id)
+                        });
                         // 只朗读AI消息，不朗读用户消息
+                        console.log('TTS: 检查消息是否符合朗读条件:', {
+                            isAI: msg.role === 'ai',
+                            hasContent: !!msg.content,
+                            hasId: msg.id !== undefined,
+                            notSpoken: !spokenMsgIds.has(msg.id),
+                            messageType: msg.type
+                        });
+                        
                         if (
                             msg.role === 'ai' &&
                             msg.content &&
-                            !spokenMsgIds.has(msg.id) &&
-                            // 只朗读文本类型消息，过滤掉HTML和其他特殊类型
-                            msg.type === 'text' &&
-                            msg.type !== 'image' &&
-                            msg.type !== 'sticker' &&
-                            msg.type !== 'family_card' &&
-                            msg.type !== 'redpacket' &&
-                            msg.type !== 'transfer' &&
-                            msg.type !== 'voice' &&
-                            msg.type !== 'html'
+                            // 检查消息ID是否存在
+                            msg.id !== undefined &&
+                            !spokenMsgIds.has(msg.id)
                         ) {
+                            console.log('TTS: 检测到新的AI消息，准备朗读:', msg.id);
+                            console.log('TTS: 消息类型:', msg.type, '消息内容:', msg.content);
                             // 清理文本内容，只保留需要朗读的部分
                             const cleanText = getCleanSpeechText(msg.content);
+                            console.log('TTS: 清理后的文本:', cleanText);
                             if (cleanText) {
+                                console.log('TTS: 开始朗读消息:', msg.id, '文本:', cleanText);
                                 speakMessage(cleanText, msg.id);
+                                console.log('TTS: 朗读命令已发送:', msg.id);
+                            } else {
+                                console.log('TTS: 清理后文本为空，跳过朗读:', msg.id);
                             }
+                        } else {
+                            console.log('TTS: 跳过消息:', {
+                                role: msg.role,
+                                type: msg.type,
+                                hasContent: !!msg.content,
+                                hasId: msg.id !== undefined,
+                                alreadySpoken: spokenMsgIds.has(msg.id),
+                                reason: msg.role !== 'ai' ? '不是AI消息' : 
+                                         !msg.content ? '无内容' :
+                                         msg.id === undefined ? '无消息ID' :
+                                         spokenMsgIds.has(msg.id) ? '已朗读过' : '其他原因'
+                            });
                         }
                     });
                 });
             }
+        } else {
+            console.log('TTS: 自动朗读未开启:', chatData.value?.autoRead);
         }
     }
 }, { deep: true })

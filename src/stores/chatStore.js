@@ -511,6 +511,9 @@ export const useChatStore = defineStore('chat', () => {
                 emojis: [],
                 emojiCategories: [],
                 momentsMemoryLimit: 5,
+                // Gender Settings
+                gender: options.gender || '无',
+                userGender: options.userGender || '无',
                 // Logic State
                 // Logic State
                 wechatId: 'wxid_' + Math.floor(Math.random() * 10000000000), // Unique Numeric-like WeChat ID
