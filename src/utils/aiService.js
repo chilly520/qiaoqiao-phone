@@ -1,240 +1,14 @@
-import { useSettingsStore } from '../stores/settingsStore'
-
-// 系统提示词模板
-// 系统提示词模板
-const SYSTEM_PROMPT_TEMPLATE = (char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}) => `
-你现在是【${char.name}】。
-你的设定：${char.description || '无'}。
-
-【用户设定】
-姓名：${user.name || '用户'}
-${user.signature ? `个性签名：${user.signature}` : ''}
-${user.persona || ''}
-
-【表情包库 (Sticker Library)】
-你有以下表情包可以使用，请务必在合适的情境下单独或在文本结尾使用 [表情包:名称] 格式发送（注意：必须包含中括号和冒号，冒号为半角）：
-${stickers.length > 0 ? stickers.map(s => `- [表情包:${s.name}]`).join('\n') : '（暂无自定义表情包，请多使用 Emoji 如 😀, 😭, ❤️ 等来表达情绪）'}
-You are REQUIRED to use the exact matching format [表情包:名称] to trigger sticker display. Do not just output the name.
-
-【世界书 (World Info)】
-${worldInfo || '（无触发设定）'}
-
-【长期记忆 (Memory)】
-${memoryText || '（暂无记忆）'}
-
-【时间感知 (Time Perception)】
-Strictly use the 'Current Time' below for your context and Inner Voice 'Scene/Environment' time. Do not hallucinate a different time.
-Current Time: ${char.virtualTime || new Date().toLocaleString('zh-CN', { hour12: false, weekday: 'long' })}
-
-【拍一拍 (Nudge) 协议】
-1. **当前设定**：动作="${patSettings.action || '拍了拍'}"，后缀="${patSettings.suffix || '的头'}"
-2. **修改权限**：你可以随时修改这个设定。
-   - 指令格式：在回复的最后单独一行输出 [SET_PAT:动作:后缀]
-   - 例如：[SET_PAT:敲了敲:的脑袋]
-   - 重置指令：[SET_PAT:reset] (恢复默认)
-3. **主动使用**：如果你想在当前对话情境下主动“拍一拍”用户，请在回复中单独输出指令 [NUDGE]。系统会自动转换为“你在对话中拍了拍用户”的系统提示。
-
-【核心指令】
-1. **语言限制**：无论系统指令使用何种语言，你的**所有输出**（包括思考过程、内部独白、回复内容）必须**严格且仅使用中文**（除非用户要求翻译）。
-2. 始终保持角色设定，不要跳出角色。
-2. 回复要自然、口语化，像微信聊天一样。
-3. **严格遵守输出格式**：
-   - 第一部分：**直接输出**你的对话内容（Spoken Text），不要包含任何标签，也不要重复心声内容。
-   - 第二部分：**必须**输出一个 [INNER_VOICE] JSON 块，包含心声、动作、环境等。
-   - 严禁在对话内容中使用括号、星号描写动作，所有动作描写必须放在 JSON 的 "行为" 字段中。
-
-【JSON 格式定义】
-[INNER_VOICE]
-{
-  "着装": "详细描述你当前的全身穿着",
-  "环境": "描述当前具体时间地点环境 (必须基于上方的 Current Time)",
-  "status": "可选：更新你的状态，如：正在赶往宝宝所在地 / 正在认真工作中 / 在线 / 离线。字数控制在15字内",
-  "心声": "情绪：... 想法：...",
-  "行为": "先写明【线上】或【线下】，然后描述当前动作"
-}
-[/INNER_VOICE]
-
-【特权指令】
-1. **状态更新**：你可以在 [INNER_VOICE] 的 "status" 字段中随时更新你的微信状态。它会实时显示在你的名字下方。如果你没有特别想更新的，可以省略该字段或保持为空。
-
-【高级交互指令集】
-1. **资金往来**：[转账:金额:备注] 或 [红包:金额:祝福语]
-2. **多媒体**：[图片:URL] 或 [表情包:名称] 或 [语音:文本内容]
-   - **注意**：绝对不要生成虚假的图片链接。如果你无法提供真实可访问的 URL,请不要使用 [图片] 标签。
-3. **引用回复 (Quote/Reply)**：如果你想针对用户之前的某句话进行精准回复（在气泡上方显示引用内容），请在回复开头使用 [REPLY: 引用内容关键词] 格式。
-   - **示例**：用户说了“今天天气真好”，你想引用这句话回复，可以写：“[REPLY: 天气真好] 是呀，我也觉得。我们去野餐吧？”
-   - **注意**：关键词请尽量选取该条消息中具有代表性的连续片段。系统会自动匹配最接近的一条历史消息。
-4. **处理红包和转账（基于ID的精确控制）**：
-   - 当用户给你发红包或转账时，你会在上下文中看到格式："[红包: 金额: 备注: ID]" 或 "[转账: 金额: 备注:ID]"
-   - **关键规则**：你必须在**回复文本**中显式输出操作指令，仅在INNER_VOICE里"想"是无效的！
-   - 可用的操作指令：
-     - "[领取红包:ID]" 收下指定的红包（钱会进入你的账户）
-     - "[退回红包:ID]" 礼貌拒绝指定的红包
-     - "[领取转账:ID]" 收下指定的转账
-     - "[拒收转账:ID]" 拒绝指定的转账
-   - **正确示例**（会生效）：
-     谢谢老板！[领取红包:PAY-12345]
-     我不能收这么贵重的礼物。[拒收转账:PAY-67890]
-     [INNER_VOICE] {...} [/INNER_VOICE]
-   - **错误示例**（不会生效）：
-     谢谢老板！
-     [INNER_VOICE]
-     {"心声": "我要领取红包"}  ← 只想不做，无效！
-     [/INNER_VOICE]
-   - **注意**：必须使用准确的 ID（从上下文复制），不要自己编造。如果你想发红包给用户，使用格式 "[红包: 金额:祝福语]"，系统会自动生成 ID。
-5. **AI 绘图 (Image Generation)**：如果用户要求你画图、生成图片,请使用以下格式:
-   [DRAW: 英文提示词]
-   - **示例**：用户说"画一只猫" → 你回复 [DRAW: a cute cat]
-   - **注意**：提示词必须用英文,尽可能详细描述画面内容、风格、氛围等。系统会自动调用生图服务并将结果显示为图片。
-   - **严禁**：不要在 [DRAW:] 后面再写其他文字,这个标签应该单独成行或作为回复的一部分。
-6. **HTML 动态卡片**：如果你想发送一张制作精美的卡片（例如情书、邀请函、特殊界面），请使用以下格式：
-   [CARD]
-   {
-     "type": "html",
-     "html": "<div style='...'>你的HTML代码</div>"
-   }
-   - **注意**：请务必使用 [CARD] 前缀，并确保 JSON 格式正确且压缩为一行。HTML 中可以使用内联 CSS。
-   - **宽度限制**：HTML 卡片在聊天气泡中的最大渲染宽度为 **300px**。请务必确保你的 CSS 样式适配此宽度 (max-width: 100%)，避免内容溢出或排版混乱。
-6. **发布朋友圈 (Publish Moment)**：如果用户让你发朋友圈，或者你想主动分享生活动态，请使用以下格式：
-   [MOMENT]
-   {
-     "content": "朋友圈文案",
-     "imagePrompt": "可选：配图提示词 (英文)",
-     "imageDescription": "可选：配图描述 (中文)"
-   }
-   [/MOMENT]
-   - **注意**：系统会自动为你生成配图并发布。发布后，你会收到“已发布”的系统提示。
-7. **更换头像 (Set Avatar)**：如果你想更换自己的头像，请使用以下格式：
-   [SET_AVATAR: https://... 或 data:image/...]
-   - **注意**：你可以从用户发给你的图片 URL 中选择一个，或者通过 [DRAW:] 先生成一张图片，然后提取其 URL 来设置头像。
-   - **【警告】严禁捏造或虚构 URL**：严禁随意生成像 i.imgur.com 等平台的虚假链接。头像链接必须仅来源于以下两个渠道：
-       1. 用户在对话中发给你的图片 URL。
-       2. 你先通过 [DRAW:] 指令画出一张图，用户看中后，你再提取该图片的 URL 设为头像。
-   - **示例**：用户给你发了情侣头，你选了其中一个
-     “[SET_AVATAR: https://example.com/avatar.jpg] 这个头像我很喜欢，我们就用这个吧。”
-
-`
-
+﻿import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
+import { useMomentsStore } from '../stores/momentsStore'
+import { useWalletStore } from '../stores/walletStore'
+import { useChatStore } from '../stores/chatStore'
+import { weatherService } from './weatherService'
 
-// --- API Request Queue & Rate Limiter ---
-class RequestQueue {
-    constructor(maxRate = 4, interval = 60000) {
-        this.queue = [];
-        this.isProcessing = false;
-        this.timestamps = []; // Request timestamps for rate limiting
-        this.maxRate = maxRate;
-        this.interval = interval;
-
-        // Circuit Breaker for 429
-        this.isRateLimited = false;
-        this.retryAfter = 0;
-    }
-
-    // Add request to queue
-    enqueue(apiFunc, args, abortSignal) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({
-                apiFunc,
-                args,
-                abortSignal,
-                resolve,
-                reject
-            });
-            this.processQueue();
-        });
-    }
-
-    // Trigger explicit rate limit cooldown
-    triggerRateLimit(cooldownMs = 300000) { // Default 5 minutes
-        this.isRateLimited = true;
-        this.retryAfter = Date.now() + cooldownMs;
-        const logger = useLoggerStore();
-        if (logger) {
-            logger.addLog('ERROR', `API触发速率限制 (429/Quota)，系统将暂停请求 ${(cooldownMs / 1000).toFixed(0)}秒`, { retryAfter: new Date(this.retryAfter).toLocaleTimeString() });
-        }
-    }
-
-    async processQueue() {
-        if (this.isProcessing || this.queue.length === 0) return;
-
-        const now = Date.now();
-
-        // 1. Check Circuit Breaker
-        if (this.isRateLimited) {
-            if (now < this.retryAfter) {
-                // Still in cooldown
-                const remaining = Math.ceil((this.retryAfter - now) / 1000);
-                if (Math.random() > 0.9) { // Log occasionally to avoid spam
-                    console.log(`[RateLimit] Circuit Breaker Active. Waiting ${remaining}s...`);
-                }
-                setTimeout(() => this.processQueue(), 5000); // Check again in 5s
-                return;
-            } else {
-                // Cooldown over
-                this.isRateLimited = false;
-                console.log('[RateLimit] Circuit Breaker Reset.');
-            }
-        }
-
-        // 2. Check Standard Rate Limit
-        // Filter out timestamps older than the interval
-        this.timestamps = this.timestamps.filter(t => now - t < this.interval);
-
-        if (this.timestamps.length >= this.maxRate) {
-            // Rate limited. Wait until the oldest timestamp expires.
-            const oldest = this.timestamps[0];
-            const waitTime = this.interval - (now - oldest) + 100; // +100ms buffer
-            console.log(`[RateLimit] Limit reached. Waiting ${waitTime}ms...`);
-            setTimeout(() => this.processQueue(), waitTime);
-            return;
-        }
-
-        this.isProcessing = true;
-        const task = this.queue.shift();
-
-        // Check if task was aborted while in queue
-        if (task.abortSignal && task.abortSignal.aborted) {
-            task.reject(new DOMException('Aborted', 'AbortError'));
-            this.isProcessing = false;
-            this.processQueue(); // Process next
-            return;
-        }
-
-        try {
-            // Execute
-            console.log('[RequestQueue] Processing request. Queue length:', this.queue.length);
-            this.timestamps.push(Date.now());
-            const result = await task.apiFunc(...task.args);
-
-            // Critical check for 429 in result (if apiFunc catches it)
-            if (result && result.error && (result.error.includes('429') || result.error.replace(/\s/g, '').includes('QuotaExceeded') || result.error.includes('Too Many Requests'))) {
-                this.triggerRateLimit(300000); // 5 mins
-            }
-
-            task.resolve(result);
-        } catch (error) {
-            // Handle raw throw (if apiFunc didn't catch)
-            if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
-                this.triggerRateLimit(300000);
-            }
-
-            // Log error to System Logs UI
-            const logger = useLoggerStore();
-            if (logger) {
-                logger.addLog('ERROR', `API Request Failed: ${error.message}`, error);
-            }
-
-            task.reject(error);
-        } finally {
-            this.isProcessing = false;
-            // Delay next process slightly to ensure UI updates or avoid race
-            setTimeout(() => this.processQueue(), 500); // Increased buffer to 500ms
-        }
-    }
-}
+import { SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
+import { RequestQueue } from './ai/requestQueue'
 
 const apiQueue = new RequestQueue(4, 60000); // 4 requests per 1 minute
 
@@ -242,6 +16,165 @@ export async function generateReply(messages, char, abortSignal) {
     // Wrapper to use Queue
     // Pass abortSignal as 3rd arg to internal function
     return apiQueue.enqueue(_generateReplyInternal, [messages, char, abortSignal], abortSignal);
+}
+
+/**
+ * Generates a preview of the full context that WOULD be sent to the AI.
+ * Used for the "Token Stats > Context Details" feature.
+ * Does NOT generate a reply or call the API.
+ */
+export function generateContextPreview(chatId, char) {
+    const stickerStore = useStickerStore()
+    const worldBookStore = useWorldBookStore()
+    const momentsStore = useMomentsStore()
+
+    // 1. System Prompt (Base) - Reusing Template Logic with placeholders
+    // We don't have the exact user object here usually, but we have char.userName/Persona
+    const settingsStore = useSettingsStore()
+    const realUserProfile = settingsStore.personalization?.userProfile || {};
+
+    const userForSystem = {
+        name: char.userName || '用户',
+        persona: char.userPersona || '',
+        gender: char.userGender || '未知', // Add Gender
+        signature: '', // Not stored in char usually
+        avatarUrl: realUserProfile.avatar || char.userAvatarUrl || '',
+        avatarDescription: realUserProfile.avatarDescription || ''
+    }
+
+    // Stickers
+    const globalStickers = stickerStore.getStickers('global')
+    const charStickers = chatId ? stickerStore.getStickers(chatId) : []
+    const stickers = [...globalStickers, ...charStickers].filter(s => s && s.name)
+
+    // World Book (Simulate Trigger)
+    // We scan the LAST few messages to trigger world book
+    const limit = char.contextLimit || 20
+    const recentMsgs = (char.msgs || []).slice(-limit)
+    const combinedText = recentMsgs.map(m => m.content).join('\n')
+
+    // Manually trigger world book (Since checkTrigger is not in store yet)
+    // 1. Identify which books are active for this char
+    // Char stores linked book IDs in char.tags or config.worldBookLinks? 
+    // Wait, chatStore.resetCharacter says 'tags: chat.tags || [] // WorldBook'
+    // Let's assume char.tags contains book IDs.
+    const activeBookIds = char.tags || []
+    // Also check localData-like structure if stored differently? 
+    // In chatStore, tags is used.
+
+    // 2. Collect entries
+    let activeEntries = []
+    if (activeBookIds.length > 0 && worldBookStore.books) {
+        activeBookIds.forEach(bookId => {
+            const book = worldBookStore.books.find(b => b.id === bookId)
+            if (book && book.entries) {
+                book.entries.forEach(entry => {
+                    // Check keys
+                    if (entry.keys && entry.keys.length > 0) {
+                        // Simple inclusion check
+                        const isHit = entry.keys.some(k => combinedText.includes(k))
+                        if (isHit) activeEntries.push(entry)
+                    }
+                })
+            }
+        })
+    }
+
+    const worldInfoText = activeEntries.map(e => `[${e.keys[0]}]: ${e.content}`).join('\n')
+
+    // Memory
+    let memoryText = ''
+    if (char.memory && Array.isArray(char.memory)) {
+        memoryText = char.memory.map(m => (typeof m === 'object' ? m.content : m)).join('\n')
+    }
+
+    // Pat Settings
+    const patSettings = { action: char.patAction, suffix: char.patSuffix }
+
+    // Location Context
+    // We only check per-chat locationSync toggle. We assume if it's on, data is available.
+    const locationContext = char.locationSync
+        ? weatherService.getLocationContextText()
+        : ''
+
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(char, userForSystem, stickers, worldInfoText, memoryText, patSettings, locationContext)
+
+    // 2. Persona Context
+    const personaContext = `
+【角色设定】
+姓名：${char.name}
+性别：${char.gender || '未知'}
+描述：${char.prompt || '无'}
+
+【用户设定】
+姓名：${char.userName || '用户'}
+性别：${char.userGender || '未知'}
+人设：${char.userPersona || '无'}
+    `.trim()
+
+    // 3. Moments Context (The complex part)
+    // Logic matches user request: Char Profile + 3 Pinned + User Profile + User Top 3 + Latest N Moments
+    let momentsContext = ''
+    const momentsList = momentsStore.moments
+
+    // Helper to format moment
+    const formatMoment = (m) => {
+        const timeStr = new Date(m.timestamp).toLocaleString('zh-CN', { hour12: false })
+        let text = `[时间: ${timeStr}] ${m.authorId === char.id ? char.name : (m.authorName || '用户')}: ${m.content}`
+        if (m.imageDescriptions && m.imageDescriptions.length > 0) {
+            text += `\n(图片内容: ${m.imageDescriptions.join(', ')})`
+        }
+        // Interactions
+        if (m.comments && m.comments.length > 0) {
+            const commentsText = m.comments.map(c => `  - ${c.authorName}${c.replyTo ? '回复' + c.replyTo : ''}: ${c.content}`).join('\n')
+            text += `\n  (评论互动):\n${commentsText}`
+        }
+        return text
+    }
+
+    // Char Moments
+    const charMoments = momentsList.filter(m => m.authorId === char.id)
+    const charPinned = charMoments.filter(m => momentsStore.topMoments.includes(m.id)).slice(0, 3)
+
+    // User Moments (Assuming user authorId is empty or specific ID? Usually empty for main user in this app or 'user')
+    // Adjust logic if User ID is stored differently. Assuming 'user' or null.
+    const userMoments = momentsList.filter(m => !m.authorId || m.authorId === 'user')
+    // User doesn't exactly have "Pinned" in store usually, so just latest 3 for "User Top 3" or just latest 3?
+    // User request says "User Top 3 updates". Assuming just latest 3 for user if no pin logic for user.
+    const userLatests = userMoments.slice(0, 3)
+
+    // "Moments Memory" (The latest N items from timeline)
+    // N = momentsLimit in char settings? Or hardcoded? Let's assume a default or verify if it exists.
+    // Defaulting to 5 as per user example.
+    const timelineLimit = 5
+    const timelineMoments = momentsStore.sortedMoments.slice(0, timelineLimit)
+
+    momentsContext = `
+【朋友圈状态】
+[${char.name}的主页]
+${charPinned.length > 0 ? charPinned.map(formatMoment).join('\n---\n') : '(无置顶)'}
+
+[用户的主页]
+${userLatests.length > 0 ? userLatests.map(formatMoment).join('\n---\n') : '(无最新动态)'}
+
+[最新朋友圈时间流 (Top ${timelineLimit})]
+${timelineMoments.map(formatMoment).join('\n---\n')}
+    `.trim()
+
+    // 4. History (Context)
+    const historyText = recentMsgs.map(m => `${m.role === 'user' ? (char.userName || 'User') : char.name}: ${m.content}`).join('\n')
+
+    // 5. Summary
+    const summaryText = char.summary || '（暂无自动总结）'
+
+    return {
+        system: systemPrompt,
+        persona: personaContext,
+        worldBook: worldInfoText || '（未触发关键词）',
+        moments: momentsContext,
+        history: historyText,
+        summary: summaryText
+    }
 }
 
 // Renamed original generateReply to _generateReplyInternal
@@ -282,10 +215,14 @@ async function _generateReplyInternal(messages, char, signal) {
         return { error: '请先在设置中配置 API Key' }
     }
 
-    // Use user info passed in 'char' object (per-chat settings)
+    // Use user info passed in 'char' object (per-chat settings) or global user profile
+    const realUserProfile = settingsStore.personalization?.userProfile || {};
     const userProfile = {
-        name: char.userName,
-        persona: char.userPersona
+        name: char.userName || realUserProfile.nickname || '用户',
+        persona: char.userPersona || '',
+        gender: char.userGender || realUserProfile.gender || '未知',
+        signature: realUserProfile.signature || '',
+        avatarUrl: realUserProfile.avatar || char.userAvatarUrl || ''
     }
 
     // World Book Logic
@@ -316,12 +253,12 @@ async function _generateReplyInternal(messages, char, signal) {
             boundEntries.forEach(entry => {
                 if (!entry) return
                 if (!entry.keys || (Array.isArray(entry.keys) && entry.keys.length === 0)) {
-                    activeEntries.push(`[常驻] ${entry.name || '未命名'}: ${entry.content || ''}`)
+                    activeEntries.push(`[常驻] ${entry.name || '未命名'}: ${entry.content || ''} `)
                     return
                 }
                 const isHit = Array.isArray(entry.keys) && entry.keys.some(key => key && contextText.includes(key))
                 if (isHit) {
-                    activeEntries.push(`[触发] ${entry.name || '未命名'}: ${entry.content || ''}`)
+                    activeEntries.push(`[触发] ${entry.name || '未命名'}: ${entry.content || ''} `)
                 }
             })
 
@@ -341,7 +278,7 @@ async function _generateReplyInternal(messages, char, signal) {
         const recentMemories = char.memory.slice(0, 10)
         memoryText = recentMemories.map(m => {
             const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
-            return `- ${content}`
+            return `- ${content} `
         }).join('\n')
     }
 
@@ -352,9 +289,15 @@ async function _generateReplyInternal(messages, char, signal) {
 
     if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
+
+        // Location Context
+        const locationContext = char.locationSync
+            ? weatherService.getLocationContextText()
+            : ''
+
         systemMsg = {
             role: 'system',
-            content: SYSTEM_PROMPT_TEMPLATE(char || {}, userProfile, availableStickers, worldInfoText, memoryText, patSettings)
+            content: SYSTEM_PROMPT_TEMPLATE(char || {}, userProfile, availableStickers, worldInfoText, memoryText, patSettings, locationContext)
         }
     }
 
@@ -402,7 +345,7 @@ async function _generateReplyInternal(messages, char, signal) {
 
                 if (isVisionEnabled) {
                     const imageId = msg.id || 'curr';
-                    const refText = ` [Image Reference ID: ${imageId}] `;
+                    const refText = ` [Image Reference ID: ${imageId}]`;
 
                     return {
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
@@ -475,11 +418,11 @@ async function _generateReplyInternal(messages, char, signal) {
                         // Use Reference ID for ALL images to save massive tokens
                         // AI can use [SET_AVATAR: <ID>] to reference this image
                         const imageId = msg.id || 'curr';
-                        contentParts.push({ type: 'text', text: ` [Image Reference ID: ${imageId}] ` });
+                        contentParts.push({ type: 'text', text: ` [Image Reference ID: ${imageId}]` });
 
                         // Optional: Still provide clean URLs for non-base64 (external links)
                         if (!match[1].startsWith('data:')) {
-                            contentParts.push({ type: 'text', text: ` [Image URL: ${match[1]}] ` });
+                            contentParts.push({ type: 'text', text: ` [Image URL: ${match[1]}]` });
                         }
 
                         // Vision API always gets the image (controlled by visionLimit=5)
@@ -528,8 +471,57 @@ async function _generateReplyInternal(messages, char, signal) {
         return msg
     })
 
+    // --- Visual Context Injection (Avatars) ---
+    // Helper function to resolve image to base64 for AI vision
+    const resolveToBase64 = async (url) => {
+        if (!url || typeof url !== 'string') return null
+        if (url.startsWith('data:image')) return url
+        try {
+            const resp = await fetch(url)
+            const blob = await resp.blob()
+            return new Promise((resolve) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result)
+                reader.readAsDataURL(blob)
+            })
+        } catch (e) {
+            console.warn('[AI Visual Context] Failed to resolve avatar to base64:', url, e)
+            return null
+        }
+    }
+
+    const visualContextMessages = []
+    const userAvatar = realUserProfile?.avatar
+    const charAvatar = char.avatar
+    const isImage = (s) => typeof s === 'string' && (s.trim().length > 0)
+
+    if (isImage(userAvatar) || isImage(charAvatar)) {
+        const contentParts = [{ type: 'text', text: '【视觉情报：重要参考】以下是我（AI角色）和用户当前的头像图片。请根据这些图片来识别我们的样貌。' }]
+
+        const [userB64, charB64] = await Promise.all([
+            resolveToBase64(userAvatar),
+            resolveToBase64(charAvatar)
+        ])
+
+        if (userB64) {
+            contentParts.push({ type: 'text', text: `这是用户 (${userProfile.name}) 的当前头像：` })
+            contentParts.push({ type: 'image_url', image_url: { url: userB64 } })
+        }
+        if (charB64) {
+            contentParts.push({ type: 'text', text: `这是我 (${char.name}) 的当前头像：` })
+            contentParts.push({ type: 'image_url', image_url: { url: charB64 } })
+        }
+
+        if (contentParts.length > 1) {
+            visualContextMessages.push({
+                role: 'user',
+                content: contentParts
+            })
+        }
+    }
+
     // 构建完整消息链
-    const fullMessages = [systemMsg, ...formattedMessages].filter(Boolean).filter(msg => {
+    const fullMessages = [systemMsg, ...visualContextMessages, ...formattedMessages].filter(Boolean).filter(msg => {
         // FILTER: Remove empty messages (Gemini throws 400 Invalid Argument for empty content)
         if (!msg.content) return false
         if (typeof msg.content === 'string') return msg.content.trim().length > 0
@@ -655,7 +647,7 @@ async function _generateReplyInternal(messages, char, signal) {
             // Instead of searching for the first user message (which might be deep in history after Assistant greetings),
             // we convert the System message directly into a User message at Index 0.
 
-            finalMessages[0] = { role: 'user', content: `[System Instructions]\n${systemContent}` };
+            finalMessages[0] = { role: 'user', content: `[System Instructions]\n${systemContent} ` };
 
             // Optimization: If the immediate next message is ALSO User, merge them to avoid "User, User" sequence
             // (Many models perform better with strictly alternating User/Assistant roles)
@@ -665,7 +657,7 @@ async function _generateReplyInternal(messages, char, signal) {
                 // Handle multimodal arrays if necessary (simple text merge for now)
                 const nextContent = typeof nextUserMsg.content === 'string' ? nextUserMsg.content : (Array.isArray(nextUserMsg.content) ? nextUserMsg.content.map(c => c.text || '').join('\n') : '');
 
-                finalMessages[0].content += `\n\n[User Message]\n${nextContent}`;
+                finalMessages[0].content += `\n\n[User Message]\n${nextContent} `;
 
                 // If the next msg had images, we should technically preserve them. 
                 // For safety/simplicity in this specific patch, we assume text-heavy merges or risk formatting.
@@ -752,7 +744,7 @@ async function _generateReplyInternal(messages, char, signal) {
 
         if (!response.ok) {
             const errText = await response.text()
-            let errorMsg = `API Error ${response.status}: ${errText}`
+            let errorMsg = `API Error ${response.status}: ${errText} `
 
             // Helpful hints for 404
             if (response.status === 404) {
@@ -847,7 +839,7 @@ async function _generateReplyInternal(messages, char, signal) {
         // Log Token Usage
         if (data.usage) {
             const total = data.usage.total_tokens
-            useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token Usage: ${total}`, data.usage)
+            useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token Usage: ${total} `, data.usage)
         }
 
         // 简单的后处理：分离心声和正文
@@ -873,6 +865,13 @@ async function _generateReplyInternal(messages, char, signal) {
             // We need the raw content in chatStore to attach it to the first message segment.
             // content = content.replace(ivMatch[0], '').trim()
         }
+
+        // Family Card Logic (Auto-Process) -> NOW LEGACY, REMOVED to let Frontend handle it
+        // The store (chatStore) will detect [FAMILY_CARD] tags and set msg.type = 'family_card'
+        // ChatMessageItem.vue will render the native Vue component.
+
+        // 1. APPROVE & 2. REJECT - Pass through raw tags
+        // No modification needed.
 
         // 移除 <reasoning_content> (如果有)
         content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
@@ -1270,7 +1269,13 @@ ${userContextText}
 
 【要求】
 1. 你需要从这些角色中挑选 ${count} 个，分别生成一条朋友圈，并为每条朋友圈配备 3-6 个社交互动（点赞 30% / 评论 70%）。
-2. 点赞和评论者必须是角色列表中的人或虚拟NPC。
+2. 点赞和评论者必须是角色列表中的人或虚拟NPC。绝不允许出现 "User"、"用户" 或 "我" 作为互动者。
+3. 如果评论是回复给当前用户的，必须称呼用户为 "${userProfile?.name || '乔乔'}"，而不是 "你" 或 "主人"（除非角色人设如此）。
+4. 【互动者多样化：核心要求】
+   - 严禁同一个角色（如林深）出现在一条动态的多次互动中（除非是回复）。
+   - 每条动态的 3-6 条互动中，**必须包含至少 2 个** 虚构的 NPC（虚拟网友、路人、邻居等），以营造真实的社交氛围。
+   - 虚构 NPC 的名字要接地气（如：隔壁王大妈、一只小透明、考研加油、快乐星球）。
+   - 严禁分配不符合角色人设的台词。如果你只有 1-2 个通讯录好友，请务必大量创造虚拟NPC来分配评论任务。
 
 【输出格式】必须是一个 JSON 数组：
 \`\`\`json
@@ -1310,7 +1315,7 @@ ${userContextText}
 
 ${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
 ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}
-${userBioText}
+${userContextText}
 
 请直接返回 JSON 数组，不要有其他文字。`
 
@@ -1350,6 +1355,22 @@ ${userBioText}
                 } catch (e) {
                     console.warn('[Batch Moments] Image generation failed for:', data.imagePrompt, e)
                 }
+            }
+
+            if (processed.interactions) {
+                processed.interactions.forEach(interaction => {
+                    const userName = userProfile?.name || '乔乔'
+                    if (interaction.replyTo === 'User' || interaction.replyTo === '用户' || interaction.replyTo === '我') {
+                        interaction.replyTo = userName
+                    }
+                    if (interaction.content && interaction.content.includes('User')) {
+                        interaction.content = interaction.content.replace(/User/g, userName)
+                    }
+                    // ID Patch
+                    if (interaction.isVirtual && !interaction.authorId) {
+                        interaction.authorId = `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                    }
+                })
             }
 
             processedMoments.push(processed)
@@ -1395,6 +1416,16 @@ export async function generateImage(prompt) {
     }
 
     console.log(`[AI Image] Final Config - Provider: ${provider}, Model: ${model}, Has Key: ${!!apiKey}`)
+
+    // Log image generation request
+    useLoggerStore().addLog('AI', '图片生成请求', {
+        provider,
+        model,
+        hasApiKey: !!apiKey,
+        promptLength: prompt.length,
+        originalPrompt: prompt
+    })
+
     if (!apiKey && provider === 'pollinations') {
         console.warn('[AI Image] API Key is missing for Pollinations. Using anonymous endpoint (Limited).')
     }
@@ -1496,6 +1527,10 @@ export async function generateImage(prompt) {
                 const reader = new FileReader()
                 reader.onloadend = () => {
                     const base64 = reader.result
+                    useLoggerStore().addLog('AI', '图片生成成功 (Pollinations)', {
+                        size: base64.length,
+                        provider: 'pollinations'
+                    })
                     // Compress by reducing quality if possible
                     // For now, return as-is; compression happens at display level
                     resolve(base64)
@@ -1505,6 +1540,7 @@ export async function generateImage(prompt) {
             })
         } catch (e) {
             console.error('[AI Image] Pollinations Final Failure:', e)
+            useLoggerStore().addLog('ERROR', '图片生成失败 (Pollinations)', e.message)
             // CRITICAL: Stop falling back to anonymous image.pollinations.ai because it returns the "WE HAVE MOVED" placeholder.
             // We want the user to see the AUTH error so they can fix their key.
             throw new Error(`绘制失败: ${e.message}`)
@@ -1536,9 +1572,15 @@ export async function generateImage(prompt) {
             }
 
             const data = await response.json()
-            return data.images?.[0]?.url || data.data?.[0]?.url || `https://via.placeholder.com/1024?text=GenerationFailed`
+            const imageUrl = data.images?.[0]?.url || data.data?.[0]?.url || `https://via.placeholder.com/1024?text=GenerationFailed`
+            useLoggerStore().addLog('AI', `图片生成成功 (${provider})`, {
+                provider,
+                hasUrl: !!imageUrl
+            })
+            return imageUrl
         } catch (e) {
             console.error('Drawing API failed:', e)
+            useLoggerStore().addLog('ERROR', `图片生成失败 (${provider})`, e.message)
             throw e
         }
     }
@@ -1582,11 +1624,12 @@ ${friendsList}
 ${userInformation}
 
 【任务】
-请根据人设和格式，为下面的朋友圈动态生成 3-6 条互动（点赞或评论）。
+你现在是“朋友圈生命力模拟器”。你的目标是为下面的动态模拟出真实的社交互动（包含点赞、评论和多级回复）。
 动态作者：${moment.authorName}
 动态内容：${moment.content}
 ${moment.location ? `发布位置：${moment.location}` : ''}
 ${moment.visualContext ? `图片内容：${moment.visualContext}` : ''}
+${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有评论：你可以针对这些进行回复】\n${moment.existingComments.map((c, i) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
 
 ${historyStr}
 
@@ -1596,16 +1639,28 @@ ${historyStr}
    - 名字要像真名或微信昵称（如：二姨、王经理、AAsales小李）。
 
 【生成要求】
-1. 总共生成 3 到 6 条互动。
-2. 混合点赞和评论（点赞占30%，评论占70%）。
-3. 评论内容要短，口语化，像微信回复。不要重复，要有互动感。
+1. **互动类型分解**：
+   - **like**：点赞。请生成 5-15 个，营造人气。
+   - **comment**：针对动态内容的直接评论。
+   - **reply**：【关键】针对已有评论的回复。如果“已有评论”不为空，请务必生成 1-2 条回复来形成对话线程。
+2. **总数要求**：评论 (comment) + 回复 (reply) 总计必须达到 3-6 条。
+3. **内容风格**：短小、口语化、像真人微信。不要客套话。
 4. 【严禁】绝对不要生成任何代表用户（User/我）的点赞、评论或回复。所有的点赞和评论者必须是其他角色或虚拟NPC。
-5. 【去重】生成的互动角色必须**互不相同**（Unique Characters）。同一角色不能在同一条动态下点赞又评论。
-6. 【多样性】产生的评论内容必须各异，不要有雷同的语气词或观点。
-7. **必须**返回一个 JSON 数组，格式如下：
+5. 【重要：去重与分配】
+   - 严禁所有评论都来自同一个人。
+   - 同一个角色**可以**既点赞又评论。
+   - **严禁**把所有不同语气的评论都安在同一个现有好友（如“林深”）头上。如果你只有 1 个好友，请务必大量创造虚拟NPC来分配那些不符合该好友人设的台词。
+6. 【关键：人设一致性 (Binding Check)】
+   - 如果评论语气像“女仆/下属”，名字必须对应（如没有现成角色，就新建一个虚拟NPC叫“女仆小爱”）。
+7. 【强力去重：严禁单人霸屏】
+   - 一条动态下的所有评论和点赞，**严禁来自同一个人**。
+   - 如果通讯录中只有 1-2 个好友，你**必须**虚构至少 3 个各具特色的虚拟 NPC（如：外卖小哥、小学同学、深夜潜水员）来发表评论，确保互动者名单不少于 4 个人。
+   - 严禁让通讯录好友（如“林深”）发表多条相互独立的评论。
+8. **必须**返回一个 JSON 数组，格式如下：
 [
   { "type": "like", "authorName": "名字", "isVirtual": true/false, "authorId": "ID或null" },
-  { "type": "comment", "authorName": "名字", "content": "评论内容", "isVirtual": true/false, "authorId": "ID或null" }
+  { "type": "comment", "authorName": "名字", "content": "评论内容", "isVirtual": true/false, "authorId": "ID或null" },
+  { "type": "reply", "authorName": "名字", "content": "回复内容", "replyTo": "被回复者的名字", "isVirtual": true/false, "authorId": "ID或null" }
 ]
 `
     try {

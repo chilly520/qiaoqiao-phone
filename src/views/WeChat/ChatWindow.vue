@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../../stores/chatStore'
 import { useWalletStore } from '../../stores/walletStore'
 import { useFavoritesStore } from '../../stores/favoritesStore'
@@ -14,12 +14,19 @@ import MusicPlayer from '../../components/MusicPlayer.vue'
 import EmojiPicker from './EmojiPicker.vue'
 import ChatEditModal from './ChatEditModal.vue'
 import ChatHistoryModal from './ChatHistoryModal.vue'
+import ChatInnerVoiceCard from './modals/ChatInnerVoiceCard.vue'
+import ChatRedPacketModal from './modals/ChatRedPacketModal.vue'
+import ChatTransferModal from './modals/ChatTransferModal.vue'
+import ChatInputBar from './components/ChatInputBar.vue'
+import ChatMessageItem from './components/ChatMessageItem.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
 import { marked } from 'marked'
 import { compressImage } from '../../utils/imageUtils'
 import { generateImage } from '../../utils/aiService'
+import { batteryMonitor } from '../../utils/batteryMonitor'
+import { useChatTransaction } from '../../composables/chat/useChatTransaction'
 
 const ensureString = (val) => {
     if (typeof val === 'string') return val;
@@ -55,11 +62,10 @@ const favoritesStore = useFavoritesStore()
 const musicStore = useMusicStore()
 
 const route = useRoute()
+const router = useRouter()
 
 // Input and Voice Mode
-const inputVal = ref('')
-const textareaRef = ref(null)
-const isVoiceMode = ref(false)
+const chatInputBarRef = ref(null)
 
 const chatData = computed(() => chatStore.currentChat)
 const msgs = computed(() => chatData.value?.msgs || [])
@@ -72,6 +78,11 @@ const updateTime = () => {
 }
 setInterval(updateTime, 1000)
 updateTime()
+
+// Battery Status
+const batteryLevel = ref(100)
+const batteryCharging = ref(false)
+const batteryInitialized = ref(false)
 
 const showFriendRequest = computed(() => {
     if (!chatData.value || !chatData.value.msgs) return false
@@ -171,9 +182,10 @@ onMounted(() => {
 })
 onUnmounted(() => {
     window.removeEventListener('popstate', handleSettingsPopState)
-    // Abort AI if leaving the chat to save resources and prevent background errors
-    // Use silent=true to avoid showing "已中断生成" toast when navigating away
-    chatStore.stopGeneration(true)
+    // Abort AI if leaving the chat?
+    // User requested to KEEP generating even if they leave (e.g. go to home screen).
+    // So we comment this out.
+    // chatStore.stopGeneration(true) 
 })
 
 // ===== 优化后的分页逻辑 =====
@@ -216,24 +228,53 @@ const addToFavorites = (msg) => {
         : (chatData.value.avatar || '/avatars/default.png')
 
     favoritesStore.addFavorite(msg, chatName, avatarUrl)
-    alert('已收藏')
+    showToast('已收藏', 'success')
 }
 
 // Multi-select State
 const isMultiSelectMode = ref(false)
 const selectedMsgIds = ref(new Set())
+const lastSelectedId = ref(null)
 
 const toggleMessageSelection = (msgId) => {
     if (selectedMsgIds.value.has(msgId)) {
         selectedMsgIds.value.delete(msgId)
+        if (lastSelectedId.value === msgId) {
+            // If the anchor is deselected, we could find another one or just clear
+            // For simplicity, we just keep it or clear if empty
+            if (selectedMsgIds.value.size === 0) lastSelectedId.value = null
+        }
     } else {
         selectedMsgIds.value.add(msgId)
+        lastSelectedId.value = msgId
+    }
+}
+
+const selectToBottom = () => {
+    if (selectedMsgIds.value.size === 0) return
+
+    const allMsgs = msgs.value
+    // Find the earliest message index in the current selection
+    let minIdx = -1
+    for (let i = 0; i < allMsgs.length; i++) {
+        if (selectedMsgIds.value.has(allMsgs[i].id)) {
+            minIdx = i
+            break
+        }
+    }
+
+    if (minIdx === -1) return
+
+    // Select everything from the earliest selection to the end of the list
+    for (let i = minIdx; i < allMsgs.length; i++) {
+        selectedMsgIds.value.add(allMsgs[i].id)
     }
 }
 
 const exitMultiSelectMode = () => {
     isMultiSelectMode.value = false
     selectedMsgIds.value.clear()
+    lastSelectedId.value = null
 }
 
 const deleteSelectedMessages = () => {
@@ -260,14 +301,16 @@ const favoriteSelectedMessages = () => {
         }
     })
 
-    alert(`成功收藏 ${selectedMsgIds.value.size} 条消息`)
+    showToast(`成功收藏 ${selectedMsgIds.value.size} 条消息`, 'success')
     exitMultiSelectMode()
 }
 
 const showSystemMsgDetail = (msg) => {
     if (msg.realContent) {
         // Show as Toast or temporary overlay
-        alert(`撤回的内容:\n\n${msg.realContent}`)
+        // For debug mostly
+        showToast('内容已撤回', 'info')
+        console.log('Recall Content:', msg.realContent)
     }
 }
 
@@ -366,6 +409,18 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
             const drawMatch = contentStr.match(/\[DRAW:\s*([\s\S]*?)\]/i)
             if (drawMatch) {
                 handleDrawCommandInChat(lastMsg.id, drawMatch[1].trim())
+            }
+
+            // 3. Family Card Status Logic
+            if (lastMsg.role === 'ai') {
+                if (contentStr.includes('FAMILY_CARD_REJECT') || (contentStr.includes('"type":"html"') && contentStr.includes('拒绝'))) {
+                    const applyMsg = [...msgs.value].reverse().find(m => m.role === 'user' && ensureString(m.content).includes('FAMILY_CARD_APPLY'))
+                    if (applyMsg) chatStore.updateMessage(chatData.value.id, applyMsg.id, { status: 'rejected' })
+                }
+                else if (contentStr.includes('FAMILY_CARD') && !contentStr.includes('APPLY')) {
+                    const applyMsg = [...msgs.value].reverse().find(m => m.role === 'user' && ensureString(m.content).includes('FAMILY_CARD_APPLY'))
+                    if (applyMsg && !applyMsg.status) chatStore.updateMessage(chatData.value.id, applyMsg.id, { status: 'accepted' })
+                }
             }
         }
     }
@@ -517,7 +572,7 @@ const handlePanelAction = (type) => {
     if (type === 'album') {
         imgUploadInput.value.click()
     } else if (type === 'camera') {
-        alert('暂不支持拍摄')
+        showToast('暂不支持拍摄', 'info')
     } else if (type === 'redpacket') {
         openSendDialog('redpacket')
     } else if (type === 'transfer') {
@@ -540,13 +595,32 @@ const openSendDialog = (type) => {
 }
 
 const confirmSend = () => {
-    if (!sendAmount.value) return alert('请输入金额')
+    if (!sendAmount.value) return showToast('请输入金额', 'warning')
+
+    const amount = parseFloat(sendAmount.value)
+    if (isNaN(amount) || amount <= 0) return showToast('请输入有效的金额', 'warning')
+
+    // 1. Check if payment method is set
+    if (!walletStore.paymentSettings?.defaultMethod) {
+        return showToast('温馨提示：您尚未设置支付方式，请前往钱包设置', 'warning')
+    }
 
     const isRP = sendType.value === 'redpacket'
+    const title = isRP ? '发红包' : '转账'
+
+    // 2. Try to deduct
+    // Currently defaults to Balance logic (can be expanded to check specific methods)
+    const success = walletStore.decreaseBalance(amount, title)
+
+    if (!success) {
+        // Balance insufficient
+        return showToast(`支付失败：余额不足 (当前余额 ¥${walletStore.balance})`, 'error')
+    }
+
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: sendType.value,
-        content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (sendAmount.value + '元')}`,
+        content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (amount + '元')}`,
         amount: sendAmount.value,
         note: sendNote.value || (isRP ? '恭喜发财，大吉大利' : '转账给您'),
         status: 'sent' // Initial status
@@ -561,7 +635,7 @@ const handleImgUpload = (event) => {
 
     // 1. Validate
     if (file.size > 10 * 1024 * 1024) {
-        alert('图片太大 (限制10MB)')
+        showToast('图片太大 (限制10MB)', 'warning')
         return
     }
 
@@ -624,6 +698,7 @@ const toastMessage = ref('');
 const toastType = ref('info');
 let toastTimer = null;
 
+// Toast System removed local watch because App.vue handles global toastEvent
 const showToast = (msg, type = 'info') => {
     toastMessage.value = msg;
     toastType.value = type;
@@ -634,12 +709,6 @@ const showToast = (msg, type = 'info') => {
         toastVisible.value = false;
     }, 3000);
 };
-
-watch(() => chatStore.toastEvent, (newVal) => {
-    if (newVal) {
-        showToast(newVal.message, newVal.type);
-    }
-});
 
 const processQueue = () => {
     if (isSpeaking.value || ttsQueue.value.length === 0) return;
@@ -654,22 +723,49 @@ const processQueue = () => {
     });
 };
 
+// Enhanced text cleaner for TTS
+const getCleanSpeechText = (text) => {
+    if (!text) return '';
+    let clean = text;
+
+    // Remove INNER_VOICE blocks completely
+    clean = clean.replace(/\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/g, '');
+
+    // Remove Tags like [图片], [转账]
+    clean = clean.replace(/\[[^\]]+\]/g, '');
+
+    // Remove Parentheses content (Action descriptions) e.g. (笑着说)
+    // Support standard () and full-width （）
+    clean = clean.replace(/\([^\)]*\)/g, '');
+    clean = clean.replace(/（[^）]*）/g, '');
+
+    return clean.trim();
+}
+
 const speakOne = (text, onEnd) => {
     if (!text) return onEnd?.();
     if (!window.speechSynthesis) return onEnd?.();
 
-    // Clean text: remove inner voice, claim tags
-    let cleanText = getCleanContent(text);
-    // Filter out content in parentheses (actions, environments)
-    cleanText = cleanText.replace(/[（(][^）)]*[）)]/g, '').trim();
+    // Use enhanced cleaner
+    const cleanText = getCleanSpeechText(text);
 
-    if (!cleanText) return onEnd?.();
+    if (!cleanText || cleanText.length < 1) return onEnd?.();
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = 'zh-CN';
 
-    utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onEnd?.();
+    // Attempt to pick a good voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Xiaoxiao') || v.name.includes('Female'));
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onend = () => {
+        onEnd?.();
+    };
+    utterance.onerror = (e) => {
+        console.warn('TTS Error:', e);
+        onEnd?.();
+    };
 
     window.speechSynthesis.speak(utterance);
 };
@@ -680,31 +776,29 @@ const speakMessage = (text) => {
     processQueue();
 }
 
-watch(() => chatStore.isTyping, (newVal) => {
-    if (newVal) {
-        // Give it a tiny delay for the "Typing..." div to render
+watch(() => chatStore.isTyping, (isTyping) => {
+    if (isTyping) {
+        // AI is generating... scroll to bottom
         setTimeout(() => scrollToBottom(), 50);
+    } else {
+        // AI finished generating. Check for unread messages if Auto Read is ON.
+        if (chatData.value?.autoRead) { // Check switch only (capability is usually true)
+            // Get last few messages to be safe
+            const recentMsgs = msgs.value.slice(-3);
+            recentMsgs.forEach(msg => {
+                // If it's AI, valid content, and NOT played yet
+                if (msg.role === 'ai' && !msg._ttsPlayed && msg.content) {
+                    speakMessage(msg.content);
+                    msg._ttsPlayed = true;
+                }
+            });
+        }
     }
 })
 
 watch(msgs, (newVal, oldVal) => {
     if (newVal.length > (oldVal?.length || 0)) {
         scrollToBottom()
-    }
-
-    // Auto TTS Logic
-    if (chatData.value?.autoTTS) {
-        // Find NEW messages from AI
-        const oldMsgIds = new Set(oldVal?.map(m => m.id) || []);
-        const newAiMsgs = newVal.filter(m => m.role === 'ai' && !oldMsgIds.has(m.id));
-
-        if (newAiMsgs.length > 0) {
-            // Sort by timestamp just in case
-            newAiMsgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            newAiMsgs.forEach(msg => {
-                speakMessage(msg.content);
-            });
-        }
     }
 }, { deep: true })
 
@@ -792,51 +886,68 @@ const cleanVoiceText = (val) => {
     return String(val);
 }
 
+const handleAvatarClick = (msg) => {
+    // If it's a friend request or system message, ignore
+    if (msg.isSystem || msg.type === 'system') return;
+
+    // Navigate to Character Info Card
+    // If user, go to user profile (using 'user' ID or whatever logic you prefer)
+    // Here we assume 'user' is a valid ID for the user profile, or we handle it.
+    const targetId = msg.role === 'user' ? 'user' : chatStore.currentChatId;
+    router.push({ name: 'character-info', params: { charId: targetId } });
+}
+
 const parseInnerVoice = (contentRaw) => {
     if (!contentRaw) return null;
     const content = ensureString(contentRaw);
     let rawObj = null;
 
     try {
-        // Relaxed regex matches up to [/INNER_VOICE] or end of string
+        // 1. Tag Extraction [INNER_VOICE]...[/INNER_VOICE]
         const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i);
+
         if (match && match[1]) {
             let jsonStr = match[1].trim();
-            // Fix Markdown blocks
             jsonStr = jsonStr.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-            // Fix Chinese quotes for keys and values (Crucial Fix)
-            jsonStr = jsonStr.replace(/[“”]/g, '"');
 
-            // Try Parsing
-            rawObj = JSON.parse(jsonStr);
-        }
-    } catch (e) {
-        // Fallback: Regex extraction
-        try {
-            const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i);
-            if (match && match[1]) {
-                const innerText = match[1];
-                const cleanText = (regexp) => {
-                    const m = innerText.match(regexp);
-                    // m[1] is the key, m[2] is the value
+            // Attempt standard parse first
+            try {
+                // Try fixing outer quotes if Chinese
+                rawObj = JSON.parse(jsonStr.replace(/[“”]/g, '"'));
+            } catch (jsonErr) {
+                // FALLBACK REGEX for broken JSON
+                const cleanText = (regex) => {
+                    const m = jsonStr.match(regex);
                     return m ? m[2] : null;
                 }
 
-                // Regex extracting Chinese or English keys
-                const mind = cleanText(/"(mind|thoughts|想法|心声)"\s*[:：]\s*["“]([^"”]*)[”"]/i);
-                const outfit = cleanText(/"(outfit|clothes|着装)"\s*[:：]\s*["“]([^"”]*)[”"]/i);
-                const scene = cleanText(/"(scene|environment|环境)"\s*[:：]\s*["“]([^"”]*)[”"]/i);
-                const action = cleanText(/"(action|behavior|行为)"\s*[:：]\s*["“]([^"”]*)[”"]/i);
+                // Non-greedy capture until quote + separator
+                const mind = cleanText(/"(mind|thoughts|想法|心声)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const outfit = cleanText(/"(outfit|clothes|着装)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const scene = cleanText(/"(scene|environment|环境)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const action = cleanText(/"(action|behavior|行为)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
 
-                if (mind || outfit || scene) {
+                if (mind || action || outfit || scene) {
                     rawObj = { mind, outfit, scene, action };
+                } else {
+                    if (!jsonStr.trim().startsWith('{')) rawObj = { mind: jsonStr };
                 }
             }
-        } catch (err) { }
+        } else {
+            // 2. Naked JSON extraction (fallback)
+            const jsonMatch = content.match(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/i);
+            if (jsonMatch) {
+                const jsonStr = jsonMatch[0].trim();
+                try {
+                    rawObj = JSON.parse(jsonStr.replace(/[“”]/g, '"'));
+                } catch (e) { /* Ignore */ }
+            }
+        }
+    } catch (e) {
+        console.error('Inner Voice Parse Error', e);
     }
 
     if (rawObj) {
-        // Normalize Chinese Keys to English for Template AND Clean format
         return {
             outfit: cleanVoiceText(rawObj.着装 || rawObj.outfit || rawObj.clothes) || '...',
             scene: cleanVoiceText(rawObj.环境 || rawObj.scene || rawObj.environment) || '...',
@@ -860,8 +971,14 @@ const getCleanContent = (contentRaw) => {
         if (!content.includes('[INNER_VOICE]')) return content.trim();
     }
 
-    // Remove Inner Voice block
-    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+    // Remove Inner Voice block (Standard)
+    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '');
+
+    // Remove Naked JSON blocks (Fallback) - Only if they contain specific Inner Voice keys
+    // to avoid deleting other JSONs like [CARD] or code blocks if user sends some.
+    clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
+
+    clean = clean.trim();
     // Remove Claim Tags
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
     return clean;
@@ -893,6 +1010,7 @@ const showInnerVoiceModal = ref(false)
 const showHistoryList = ref(false)
 const showDeleteConfirm = ref(false)
 const currentInnerVoice = ref(null)
+const currentInnerVoiceMsgId = ref(null)
 
 // Computed History List
 const voiceHistoryList = computed(() => {
@@ -928,28 +1046,40 @@ const loadHistoryItem = (item) => {
 }
 
 const openInnerVoiceModal = () => {
-    console.log('[DEBUG] Opening Inner Voice Modal');
     // Reset view state
     showHistoryList.value = false;
-
-    // Find the last AI message with Inner Voice (Scan backwards)
-    const reversedMsgs = [...msgs.value].reverse();
-    const lastAiMsg = reversedMsgs.find(m => m.role === 'ai' && parseInnerVoice(m.content));
-
-    if (lastAiMsg) {
-        const data = parseInnerVoice(lastAiMsg.content);
-        if (data) {
-            currentInnerVoice.value = { ...data, id: lastAiMsg.id };
-        }
-    } else {
-        // Retry: Look deeper or check raw content
-        currentInnerVoice.value = null;
-    }
 
     // Initialize Effects (Randomize)
     const randomIdx = Math.floor(Math.random() * effectTypes.length);
     currentEffectIndex.value = randomIdx;
     currentEffect.value = effectTypes[randomIdx];
+
+    // Find the last AI message with Inner Voice (Scan backwards efficiently)
+    // Optimization: Do NOT copy/reverse the entire array.
+    const rawMsgs = msgs.value
+    let foundMsg = null
+
+    for (let i = rawMsgs.length - 1; i >= 0; i--) {
+        const m = rawMsgs[i]
+        if (m.role === 'ai' && m.content && m.content.includes('INNER_VOICE')) {
+            // Only parse if potential tag exists to save Regex time
+            if (parseInnerVoice(m.content)) {
+                foundMsg = m
+                break
+            }
+        }
+    }
+
+    if (foundMsg) {
+        const data = parseInnerVoice(foundMsg.content);
+        if (data) {
+            currentInnerVoice.value = { ...data, id: foundMsg.id };
+            currentInnerVoiceMsgId.value = foundMsg.id;
+        }
+    } else {
+        currentInnerVoice.value = null;
+        currentInnerVoiceMsgId.value = null;
+    }
 
     showInnerVoiceModal.value = true
 
@@ -963,64 +1093,38 @@ const closeInnerVoiceModal = () => {
     showInnerVoiceModal.value = false
 }
 
-const handleAutoResize = () => {
-    if (!textareaRef.value) return
-    textareaRef.value.style.height = 'auto'
-    const scrollHeight = textareaRef.value.scrollHeight
-    textareaRef.value.style.height = Math.min(scrollHeight, 66) + 'px'
+// Visualizer for Inner Voice (Placeholder to fix ReferenceError)
+function initVoiceCanvas() {
+    console.log('[ChatWindow] Initializing voice visualizer canvas...');
+    const canvas = document.querySelector('.voice-visualizer-canvas');
+    if (!canvas) return;
+    // Basic setup if needed in future
 }
 
-const sendUserMessage = async () => {
-    if (!inputVal.value.trim() && !imgUploadInput.value?.files?.length) return
-
-    // Send Message
+const handleSendMessage = (payload) => {
+    const { type, content } = payload
     const chatId = chatStore.currentChatId
-    if (inputVal.value.trim()) {
-        const content = inputVal.value.trim()
 
-        if (isVoiceMode.value) {
-            // Send as Voice
-            chatStore.addMessage(chatId, {
-                role: 'user',
-                type: 'voice',
-                content: content,
-                duration: Math.ceil(content.length / 3) || 1,
-                quote: currentQuote.value
-            })
-        } else {
-            // Send as Text
-            let content = inputVal.value.trim()
-
-            // INTERCEPT: Draw Command
-            if (content.toLowerCase().startsWith('/draw ')) {
-                const prompt = content.substring(6).trim()
-                content = `[DRAW: ${prompt}]`
-            }
-
-            chatStore.addMessage(chatId, {
-                role: 'user',
-                content: content,
-                quote: currentQuote.value
-            })
-        }
-
-        currentQuote.value = null
-        inputVal.value = ''
-        nextTick(() => {
-            if (textareaRef.value) {
-                textareaRef.value.style.height = 'auto'
-            }
-            scrollToBottom()
+    if (type === 'voice') {
+        chatStore.addMessage(chatId, {
+            role: 'user',
+            type: 'voice',
+            content: content,
+            duration: Math.ceil(content.length / 3) || 1,
+            quote: currentQuote.value
         })
-
-        // Manual Trigger Only
+    } else {
+        chatStore.addMessage(chatId, {
+            role: 'user',
+            content: content,
+            quote: currentQuote.value
+        })
     }
-}
 
-// Toggle Voice Mode
-const toggleVoiceMode = () => {
-    isVoiceMode.value = !isVoiceMode.value
-    showToast(isVoiceMode.value ? '已切换到语音模式' : '已切换到文字模式', 'info')
+    currentQuote.value = null
+    nextTick(() => {
+        scrollToBottom()
+    })
 }
 
 
@@ -1055,104 +1159,16 @@ const regenerateLastMessage = () => {
     chatStore.sendMessageToAI(chatStore.currentChatId)
 }
 // Red Packet & Wallet Logic
-const showRedPacketModal = ref(false)
-const showTransferModal = ref(false)
-const currentRedPacket = ref(null)
-const isOpening = ref(false)
-const showResult = ref(false)
-const resultAmount = ref(0)
-
-const handlePayClick = (msg) => {
-    currentRedPacket.value = msg
-
-    // User Sent Message: View Details Only
-    if (msg.role === 'user') {
-        if (msg.type === 'transfer' || msg.content.includes('[转账]')) {
-            // For transfer, usually just show "Transferred" state. 
-            // We can reuse transfer modal but hide "Confirm" button? 
-            // Or simpler: Reuse Red Packet Result view for "Details"
-            showRedPacketModal.value = true
-            showResult.value = true
-            resultAmount.value = msg.amount
-            isOpening.value = false
-        } else {
-            // Red Packet
-            showRedPacketModal.value = true
-            showResult.value = true
-            resultAmount.value = msg.amount
-            isOpening.value = false
-        }
-        return
-    }
-
-    // Unified check
-    if (msg.isClaimed || msg.isRejected) {
-        // Already processed -> Show Details
-        if (msg.type === 'transfer' || msg.content.includes('转账')) {
-            showTransferModal.value = true // Reuse transfer modal for details
-        } else {
-            showRedPacketModal.value = true
-            showResult.value = true
-            isOpening.value = false
-            resultAmount.value = msg.amount
-        }
-        return
-    }
-
-    // New AI Message -> Open Logic
-    // Only parse if specific type or content match
-    const isRedPacket = msg.type === 'redpacket' || msg.content.includes('[发红包')
-    const isTransfer = msg.type === 'transfer' || msg.content.includes('[转账')
-
-    if (isRedPacket) {
-        showRedPacketModal.value = true
-        showResult.value = false
-        isOpening.value = false
-        resultAmount.value = msg.amount
-    } else if (isTransfer) {
-        showTransferModal.value = true
-    }
-}
-
-const updateMessageState = (updates) => {
-    if (!currentRedPacket.value) return
-    const newMsg = { ...currentRedPacket.value, ...updates }
-    chatStore.updateMessage(chatStore.currentChatId, currentRedPacket.value.id, newMsg) // Ensure updateMessage supports object
-    // Or direct mutation if store allows reference (store usually reactive deep)
-    currentRedPacket.value = newMsg
-}
-
-// Confirm Transfer Receipt
-const confirmTransfer = () => {
-    const amount = parseFloat(currentRedPacket.value.amount || 0)
-    walletStore.addBalance(amount, `收到转账: ${currentRedPacket.value.note || ''}`)
-
-    // Update State
-    currentRedPacket.value.isClaimed = true
-    currentRedPacket.value.claimTime = Date.now()
-    currentRedPacket.value.claimedBy = { name: '我', avatar: '' }
-
-    // Sync to original message in chatStore
-    const chat = chatStore.chats[chatStore.currentChatId]
-    const msg = chat.msgs.find(m => m.id === currentRedPacket.value.id)
-    if (msg) {
-        msg.isClaimed = true
-        msg.claimTime = Date.now()
-
-        // Add System Message: "UserName confirmed receipt of xx's transfer"
-        const senderName = chat.remark || chat.name || '对方'
-        const userName = chat.userName || '你'
-        chatStore.addMessage(chat.id, {
-            role: 'system',
-            content: `${userName}已领取了${senderName}的转账`
-        })
-
-        chatStore.saveChats()
-    }
-
-    // Close modal
-    showTransferModal.value = false
-}
+const {
+    showRedPacketModal,
+    showTransferModal,
+    currentRedPacket,
+    isOpening,
+    showResult,
+    resultAmount,
+    confirmTransfer,
+    closeModals
+} = useChatTransaction()
 
 
 // Voice Logic
@@ -1187,46 +1203,7 @@ const formatAncientTime = (timestamp) => {
     return `${shichen}时${keChinese[ke]}刻`
 }
 
-const formatTimelineTime = (timestamp) => {
-    const now = new Date()
-    const date = new Date(timestamp)
-
-    // Modern display for timeline
-    const isToday = now.toDateString() === date.toDateString()
-    const isYesterday = new Date(now - 86400000).toDateString() === date.toDateString()
-
-    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
-    if (isToday) return timeStr
-    if (isYesterday) return `昨天 ${timeStr}`
-
-    const isThisYear = now.getFullYear() === date.getFullYear()
-    if (isThisYear) {
-        return `${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`
-    }
-
-    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${timeStr}`
-}
-
-const handleVoiceClick = (msg) => {
-    // 1. Toggle Transcript
-    msg.showTranscript = !msg.showTranscript
-
-    // 2. Play Animation Logic
-    msg.isPlaying = true
-    const duration = getDuration(msg) * 1000
-
-    // 3. TTS if AI
-    if (msg.role === 'ai' && chatData.value.autoTTS) {
-        speakMessage(msg.content)
-        msg.isPlayed = true
-    }
-
-    // Auto stop animation
-    setTimeout(() => {
-        msg.isPlaying = false
-    }, duration)
-}
+// [Deleted formatTimelineTime and handleVoiceClick - Moved to Component/Refactored]
 
 // --- Explicit Voice Logic (Force Manual Trigger) ---
 const recognition = ref(null)
@@ -1244,7 +1221,9 @@ const voiceStart = () => {
             const transcript = Array.from(event.results)
                 .map(result => result[0].transcript)
                 .join('')
-            inputVal.value = transcript
+            if (chatInputBarRef.value) {
+                chatInputBarRef.value.setInput(transcript)
+            }
         }
 
         recognition.value.start()
@@ -1310,7 +1289,7 @@ const openRedPacket = () => {
         resultAmount.value = amount
 
         // Add to Wallet
-        walletStore.addBalance(amount, `领取红包: ${currentRedPacket.value.note || ''}`)
+        walletStore.increaseBalance(amount, '微信红包', `领取红包: ${currentRedPacket.value.note || ''}`)
 
         // Update State
         const chat = chatStore.chats[chatStore.currentChatId]
@@ -1340,13 +1319,68 @@ const closeRedPacketModal = () => {
     currentRedPacket.value = null
 }
 
+const navigateToWallet = () => {
+    closeRedPacketModal()
+    showTransferModal.value = false
+    router.push('/wallet')
+}
+
 
 
 // Helper methods for Rich Messages
-const shouldShowTimeDivider = (currentMsg, prevMsg) => {
-    if (!prevMsg) return true // First message in list should show time
-    const diff = currentMsg.timestamp - prevMsg.timestamp
-    return diff > 5 * 60 * 1000 // 5 minutes in ms
+// (shakingAvatars etc defined above)
+
+const handleVoiceClick = (msg) => {
+    // 1. Toggle Transcript (AI only usually, or both?)
+    msg.showTranscript = !msg.showTranscript
+
+    // 2. Animation
+    msg.isPlaying = true
+    const duration = (msg.duration || Math.ceil(ensureString(msg.content).length / 3) || 1) * 1000
+
+    if (msg.role === 'ai') {
+        const text = getCleanContent(msg.content)
+        speakMessage(text)
+        if (msg.isPlayed === false) {
+            chatStore.updateMessage(chatData.value.id, msg.id, { isPlayed: true })
+        }
+    } else {
+        // User voice fallback
+        showToast('暂不支持播放用户语音', 'info')
+    }
+
+    setTimeout(() => {
+        msg.isPlaying = false
+    }, duration)
+}
+
+const handlePayClick = (msg) => {
+    const content = ensureString(msg.content)
+
+    // Determine initial view state
+    // Show result/detail if:
+    // 1. User sent it (viewing own packet)
+    // 2. Already claimed or rejected
+    // 3. Status is received
+    const shouldShowDetail = msg.role === 'user' || msg.isClaimed || msg.isRejected || msg.status === 'received'
+
+    showResult.value = shouldShowDetail
+
+    // Ensure amount is displayed for detail view
+    if (shouldShowDetail) {
+        resultAmount.value = msg.amount || '0.00'
+    } else {
+        // Reset for new open
+        resultAmount.value = '0.00'
+    }
+
+    if (msg.type === 'redpacket' || content.includes('[红包]')) {
+        currentRedPacket.value = msg
+        showRedPacketModal.value = true
+    } else if (msg.type === 'transfer' || content.includes('[转账]')) {
+        currentRedPacket.value = msg
+        showTransferModal.value = true
+    }
 }
 
 const isMsgVisible = (msg) => {
@@ -1463,7 +1497,11 @@ const formatMessageContent = (msg) => {
         })
     }
 
-    // ... (rest of implementation)
+    // 3. Remove/Clean Specialized Tags from normal text bubble rendering
+    const familyCardRegex = /\\\\?\[\\s*FAMILY_CARD(?:_APPLY|_REJECT)?\\s*[:：][\\s\\S]*?\]/gi;
+    text = text.replace(familyCardRegex, '');
+
+    // 4. Sticker inline replacer (Standardized)
     text = text.replace(/\[表情包[:：](.*?)\]/g, (match, name) => {
         const n = name.trim()
         const charStickers = chatData.value?.emojis || []
@@ -1495,48 +1533,6 @@ const previewImage = (src) => {
     window.open(src, '_blank')
 }
 
-const getPayTitle = (msg) => {
-    if (!msg) return ''
-    const content = ensureString(msg.content)
-    if (msg.type === 'transfer' || content.includes('[转账]')) return `¥${msg.amount || '520.00'}`
-    return msg.note || '恭喜发财，大吉大利'
-}
-
-const getPayDesc = (msg) => {
-    if (!msg) return ''
-    const content = ensureString(msg.content)
-    if (msg.type === 'transfer' || content.includes('[转账]')) return msg.note || '转账给您'
-    return '领取红包'
-}
-
-const getPayStatusText = (msg) => {
-    if (msg.isRejected) return '已拒收'
-    const content = ensureString(msg.content)
-    if (msg.isClaimed || msg.status === 'received') {
-        const isTransfer = msg.type === 'transfer' || content.includes('[转账]')
-        return isTransfer ? '已收款' : '已领取'
-    }
-    if (msg.type === 'transfer' || content.includes('[转账]')) return '微信转账'
-    return '微信红包'
-}
-
-
-const parseBubbleCss = (cssString) => {
-    if (!cssString || typeof cssString !== 'string') return {}
-    const style = {}
-    cssString.split(';').forEach(rule => {
-        const trimmed = rule.trim()
-        if (!trimmed) return
-        const parts = trimmed.split(':')
-        if (parts.length >= 2) {
-            // Convert kebab-case to camelCase
-            const key = parts[0].trim().replace(/-([a-z])/g, g => g[1].toUpperCase())
-            const value = parts.slice(1).join(':').trim()
-            if (key && value) style[key] = value
-        }
-    })
-    return style
-}
 
 // Header Toggles
 const toggleAutoTTS = () => {
@@ -1706,13 +1702,7 @@ const emojiList = [
 ];
 
 const handleEmojiSelect = (emoji) => {
-    inputVal.value += emoji;
-    // Keep picker open or close? Typically keep open for multiple
-    // Focus back
-    nextTick(() => {
-        const el = document.querySelector('textarea');
-        if (el) el.focus();
-    });
+    chatInputBarRef.value?.insertText(emoji)
 };
 
 const handleStickerSelect = (sticker) => {
@@ -1736,217 +1726,12 @@ const handleStickerSelect = (sticker) => {
 const voiceCanvasRef = ref(null);
 let voiceCanvas = null;
 let voiceCtx = null;
-let animationFrameId = null;
+// Inner Voice Logic (Refactored to Component)
 
-// Original 10 Effect Types (Moved to top)
-// const effectTypes = [...];
-// const currentEffect = ...;
-// const currentEffectIndex = ...;
-
-const initVoiceCanvas = () => {
-    voiceCanvas = voiceCanvasRef.value;
-    if (!voiceCanvas) {
-        voiceCanvas = document.getElementById('voice-effect-canvas');
-        if (!voiceCanvas) return;
-    }
-    voiceCtx = voiceCanvas.getContext('2d');
-
-    const resize = () => {
-        if (voiceCanvas && voiceCanvas.parentElement) {
-            voiceCanvas.width = voiceCanvas.parentElement.clientWidth;
-            voiceCanvas.height = voiceCanvas.parentElement.clientHeight;
-        }
-    };
-    window.removeEventListener('resize', resize);
-    window.addEventListener('resize', resize);
-    resize();
-
-    startAnimation();
-};
-
-const startAnimation = () => {
-    if (!voiceCanvas || !voiceCtx) return;
-    if (animationFrameId) cancelAnimationFrame(animationFrameId);
-
-    const width = voiceCanvas.width;
-    const height = voiceCanvas.height;
-    let particles = [];
-    let lastLaunch = 0;
-
-    class Particle {
-        constructor(typeOverride, startX, startY) {
-            this.init(typeOverride, startX, startY);
-        }
-        init(typeOverride, startX, startY) {
-            const effect = currentEffect.value;
-            if (typeOverride === 'burst') {
-                this.isBurst = true;
-                this.x = startX; this.y = startY;
-                this.prevX = this.x; this.prevY = this.y;
-                const angle = Math.random() * Math.PI * 2;
-                const speed = Math.random() * 1.5 + 0.5;
-                this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
-                this.gravity = 0.03; this.drag = 0.96;
-                this.alpha = 1; this.decay = Math.random() * 0.01 + 0.005;
-                this.size = Math.random() * 1.5 + 0.5;
-                return;
-            }
-            this.isBurst = false;
-            this.x = Math.random() * width;
-            this.alpha = Math.random() * 0.5 + 0.2;
-
-            if (effect.type === 'sway_fall') {
-                this.y = -10;
-                this.vy = Math.random() * 0.5 + 0.3;
-                this.vx = 0;
-                this.size = Math.random() * 4 + 2;
-                this.sway = Math.random() * Math.PI * 2;
-                this.swaySpeed = Math.random() * 0.02 + 0.01;
-                this.rotation = Math.random() * 360;
-                this.rotSpeed = Math.random() - 0.5;
-            } else if (effect.type.includes('rain')) {
-                this.y = Math.random() * height;
-                this.vx = -0.5; this.vy = Math.random() * 10 + 15;
-                this.size = Math.random() * 20 + 10;
-                this.alpha = 0.2;
-            } else if (effect.type === 'meteor') {
-                this.x = Math.random() * width * 1.5 - width * 0.25;
-                this.y = -100;
-                this.vx = -4 - Math.random() * 4; this.vy = 4 + Math.random() * 4;
-                this.size = Math.random() * 30 + 20;
-                this.alpha = 0; this.delay = Math.random() * 100;
-            } else if (effect.type === 'float_up_fade' || effect.type === 'flow_up') {
-                this.y = height + 10;
-                this.vx = Math.random() * 0.5 - 0.25;
-                this.vy = -(Math.random() * 1 + 0.5);
-                this.size = Math.random() * 2 + 1;
-                if (effect.type === 'float_up_fade') { this.alpha = 1; this.decay = 0.01; }
-            } else {
-                this.y = Math.random() * height;
-                this.vx = Math.random() - 0.5; this.vy = Math.random() - 0.5;
-                this.size = 2;
-            }
-            this.prevX = this.x; this.prevY = this.y;
-        }
-        update() {
-            this.prevX = this.x; this.prevY = this.y;
-            const effect = currentEffect.value;
-
-            if (this.isBurst) {
-                this.vx *= this.drag; this.vy *= this.drag; this.vy += this.gravity;
-                this.x += this.vx; this.y += this.vy; this.alpha -= this.decay;
-            } else if (effect.type === 'sway_fall') {
-                this.y += this.vy;
-                this.sway += this.swaySpeed;
-                this.x += Math.sin(this.sway) * 0.5;
-                this.rotation += this.rotSpeed;
-                if (this.y > height + 20) this.init();
-            } else if (effect.type === 'meteor') {
-                if (this.delay > 0) { this.delay--; return; }
-                this.x += this.vx; this.y += this.vy;
-                if (this.y < height / 2) this.alpha += 0.05; else this.alpha -= 0.05;
-                if (this.alpha > 1) this.alpha = 1;
-                if (this.y > height + 100) this.init(null, null, null);
-            } else {
-                this.x += this.vx; this.y += this.vy;
-                if (effect.type === 'float_up_fade') {
-                    this.alpha -= 0.005; if (this.alpha <= 0) this.init();
-                }
-                if (this.y > height + 20 && this.vy > 0) this.init();
-                if (this.y < -20 && this.vy < 0) this.init();
-            }
-        }
-        draw() {
-            if (this.alpha <= 0) return;
-            voiceCtx.save();
-            const effect = currentEffect.value;
-
-            if (effect.type === 'sway_fall') {
-                voiceCtx.translate(this.x, this.y);
-                voiceCtx.rotate(this.rotation * Math.PI / 180);
-                voiceCtx.fillStyle = `rgba(${effect.color}, ${this.alpha})`;
-                voiceCtx.beginPath();
-                if (effect.id === 'bamboo') voiceCtx.ellipse(0, 0, this.size / 3, this.size, 0, 0, Math.PI * 2);
-                else if (effect.id === 'sakura') { voiceCtx.moveTo(0, 0); voiceCtx.bezierCurveTo(this.size / 2, -this.size / 2, this.size, 0, 0, this.size); voiceCtx.bezierCurveTo(-this.size, 0, -this.size / 2, -this.size / 2, 0, 0); }
-                else voiceCtx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
-                voiceCtx.fill();
-            } else if (this.isBurst || effect.type === 'flow_up' || effect.type.includes('rain') || effect.type === 'meteor') {
-                voiceCtx.strokeStyle = `rgba(${effect.color}, ${this.alpha})`;
-                voiceCtx.lineWidth = this.isBurst ? this.size : 1;
-                if (effect.type === 'meteor') voiceCtx.lineWidth = 2;
-                voiceCtx.beginPath();
-                voiceCtx.moveTo(this.prevX, this.prevY);
-                let endX = this.x; let endY = this.y;
-                if (effect.type.includes('rain')) { endX = this.x + this.vx * 2; endY = this.y + this.size; }
-                else if (effect.type === 'meteor') { voiceCtx.moveTo(this.x, this.y); endX = this.x - this.vx * 8; endY = this.y - this.vy * 8; }
-                voiceCtx.lineTo(endX, endY);
-                voiceCtx.stroke();
-            } else {
-                voiceCtx.translate(this.x, this.y);
-                voiceCtx.fillStyle = `rgba(${effect.color}, ${this.alpha})`;
-                if (effect.id === 'firefly') { voiceCtx.shadowBlur = 5; voiceCtx.shadowColor = `rgba(${effect.color}, 1)`; }
-                voiceCtx.beginPath(); voiceCtx.arc(0, 0, this.size, 0, Math.PI * 2); voiceCtx.fill();
-            }
-            voiceCtx.restore();
-        }
-    }
-
-    if (currentEffect.value.type !== 'burst') {
-        let count = 40;
-        if (currentEffect.value.type.includes('rain')) count = 100;
-        if (currentEffect.value.type === 'meteor') count = 5;
-        for (let i = 0; i < count; i++) particles.push(new Particle());
-    }
-
-    const drawLightning = () => {
-        if (currentEffect.value.id !== 'storm') return;
-        if (Math.random() < 0.008) {
-            voiceCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-            voiceCtx.fillRect(0, 0, width, height);
-            voiceCtx.beginPath();
-            let lx = Math.random() * width; let ly = 0;
-            voiceCtx.moveTo(lx, ly);
-            while (ly < height) { lx += (Math.random() - 0.5) * 80; ly += Math.random() * 50 + 20; voiceCtx.lineTo(lx, ly); }
-            voiceCtx.strokeStyle = 'rgba(255,255,255,0.6)'; voiceCtx.lineWidth = 2; voiceCtx.stroke();
-        }
-    };
-
-    const loop = (timestamp) => {
-        if (!showInnerVoiceModal.value) return;
-
-        // Trail Effect: Fade out previous frame instead of clearing
-        voiceCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        voiceCtx.fillRect(0, 0, width, height);
-        voiceCtx.globalCompositeOperation = 'lighter';
-
-        drawLightning();
-
-        if (currentEffect.value.type === 'burst') {
-            if (timestamp - lastLaunch > Math.random() * 2000 + 1500) {
-                const x = Math.random() * width * 0.6 + width * 0.2;
-                const y = Math.random() * height * 0.4 + height * 0.1;
-                for (let i = 0; i < 50; i++) particles.push(new Particle('burst', x, y));
-                lastLaunch = timestamp;
-            }
-        }
-
-        for (let i = particles.length - 1; i >= 0; i--) {
-            particles[i].update();
-            particles[i].draw();
-            if (particles[i].isBurst && particles[i].alpha <= 0) particles.splice(i, 1);
-        }
-
-        voiceCtx.globalCompositeOperation = 'source-over';
-        animationFrameId = requestAnimationFrame(loop);
-    };
-
-    animationFrameId = requestAnimationFrame(loop);
-};
 
 const cleanupCanvas = () => {
-    if (animationFrameId) cancelAnimationFrame(animationFrameId);
-};
+    // No-op (Moved to component)
+}
 
 const handleImageError = (e) => {
     e.target.src = '/broken-image.png';
@@ -1956,53 +1741,132 @@ const handleImageError = (e) => {
 const getHtmlContent = (content) => {
     if (!content) return ''
     try {
+        let cleaned = content.trim()
+        // If it looks like JSON with escaped quotes, unescape it
+        if (cleaned.includes('\\"')) {
+            cleaned = cleaned.replace(/\\"/g, '"')
+        }
+
         // Try parsing as JSON first (if it's the [CARD] format)
-        if (content.trim().startsWith('{')) {
-            const data = JSON.parse(content)
+        if (cleaned.startsWith('{')) {
+            const data = JSON.parse(cleaned)
             if (data.html) return data.html
         }
     } catch (e) {
-        // Not JSON, treat as raw HTML string
+        // Not JSON or parse failed, treat as raw HTML string
     }
     return content
 }
 
+const toggleAutoRead = () => {
+    if (!chatData.value.autoTTS) {
+        showToast('请先在"设置"中开启语音(TTS)功能', 'error')
+        return
+    }
+    const newVal = !chatData.value.autoRead
+    chatStore.updateCharacter(chatData.value.id, { autoRead: newVal })
+
+    if (newVal) {
+        showToast('已开启自动朗读', 'success')
+    } else {
+        showToast('已关闭自动朗读', 'info')
+        // Optional: stop current speaking
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel()
+        }
+    }
+}
+
 // UI Methods
-// (Methods moved to 'Modal Logic' section above)
-const toggleVoiceEffect = () => {
-    // Increment index
-    let nextIndex = currentEffectIndex.value + 1;
-    if (nextIndex >= effectTypes.length) nextIndex = 0;
+// Deprecated Inner Voice methods removed
 
-    currentEffectIndex.value = nextIndex;
-    currentEffect.value = effectTypes[nextIndex];
 
-    // Restart animation with new effect
-    startAnimation();
-};
 
-const toggleManageMode = () => {
-    alert('历史记录功能暂未实装');
-};
+import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
 
-const deleteCurrent = () => {
-    if (!currentInnerVoice.value || !currentInnerVoice.value.id) return;
-    showDeleteConfirm.value = true;
-};
+/* ... */
 
-const executeDelete = () => {
-    const msgId = currentInnerVoice.value.id;
-    const msg = msgs.value.find(m => m.id === msgId);
+// Family Card Logic
+const claimModalRef = ref(null)
+
+const handleClaimConfirm = (data) => {
+    // data: { uuid, amount, note, fromCharId, cardName, number, theme }
+    const { uuid, amount, fromCharId, cardName, number, theme } = data
+
+    const charName = chatStore.chats[fromCharId]?.name || '对方'
+    const walletStore = useWalletStore()
+
+    // Add to wallet (Standardized names)
+    walletStore.addFamilyCard({
+        ownerId: fromCharId,
+        ownerName: charName,
+        amount: parseFloat(amount) || 0,
+        remark: cardName || '亲属卡',
+        theme: theme || 'pink',
+        number: number
+    })
+
+    // Update Message UI Status
+    const chatId = chatStore.currentChatId
+    const messages = chatStore.messages[chatId] || []
+
+    // Find target message: either by legacy UUID in content or by direct ID match
+    const msg = messages.find(m =>
+        (m.id === uuid) ||
+        (m.content && m.content.includes(uuid))
+    )
 
     if (msg) {
-        // Remove Inner Voice block
-        const newContent = msg.content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-        chatStore.updateMessage(chatStore.currentChatId, msgId, newContent);
-
-        showDeleteConfirm.value = false;
-        closeInnerVoiceModal();
+        chatStore.updateMessage(chatId, msg.id, {
+            isClaimed: true,
+            status: 'claimed',
+            claimTime: Date.now()
+        })
     }
-};
+
+    showToast('领取成功！已存入钱包', 'success')
+}
+
+// Battery Monitoring Lifecycle
+onMounted(async () => {
+    /* ... battery init ... */
+    const initialized = await batteryMonitor.init()
+    if (initialized) {
+        batteryInitialized.value = true
+        const info = batteryMonitor.getBatteryInfo()
+        batteryLevel.value = info.level
+        batteryCharging.value = info.charging
+        batteryMonitor.onChange((info) => {
+            batteryLevel.value = info.level
+            batteryCharging.value = info.charging
+        })
+        batteryMonitor.onLowBattery((info) => {
+            if (!chatData.value || info.charging) return
+            const systemMsg = {
+                id: `sys_battery_${Date.now()}`,
+                role: 'system',
+                content: `[系统提醒] 当前设备电量为 ${info.level}%，建议尽快充电。`,
+                timestamp: Date.now(),
+                type: 'system'
+            }
+            chatStore.addMessage(chatData.value.id, systemMsg)
+        })
+    }
+
+    // Family Card Global Handler
+    window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
+        const charName = chatStore.chats[fromCharId]?.name || '亲属'
+        claimModalRef.value?.open({ uuid, amount, note, fromCharId }, `${charName}的亲属卡`)
+    }
+})
+
+onUnmounted(() => {
+    // Clean up battery monitor
+    if (batteryInitialized.value) {
+        batteryMonitor.destroy()
+    }
+    delete window.qiaoqiao_receiveFamilyCard
+})
 </script>
 
 <template>
@@ -2056,11 +1920,12 @@ const executeDelete = () => {
                     </div>
                 </div>
                 <div class="absolute right-1.5 flex items-center gap-0.5 text-black z-20">
-                    <!-- Auto TTS Button -->
+                    <!-- Auto TTS Button (Controls Automatic Reading, dependent on Capability Switch) -->
                     <div class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
-                        @click="toggleAutoTTS" :title="chatData?.autoTTS ? '关闭朗读' : '开启朗读'">
+                        :class="{ 'opacity-30': !chatData?.autoTTS }" @click="toggleAutoRead"
+                        :title="chatData?.autoTTS ? (chatData?.autoRead ? '关闭自动朗读' : '开启自动朗读') : 'TTS功能未启用'">
                         <i class="fa-solid"
-                            :class="chatData?.autoTTS ? 'fa-volume-high text-green-600' : 'fa-volume-xmark text-gray-400'"></i>
+                            :class="chatData?.autoRead ? 'fa-volume-high text-green-600' : 'fa-volume-xmark text-gray-400'"></i>
                     </div>
 
                     <!-- Inner Voice Button -->
@@ -2130,235 +1995,12 @@ const executeDelete = () => {
                 </div>
 
 
-                <div v-for="(msg, index) in displayedMsgs" :key="msg.id" v-show="isMsgVisible(msg)" class="w-full z-10">
-                    <!-- Center Time Divider (WeChat Style) -->
-                    <div v-if="shouldShowTimeDivider(msg, displayedMsgs[index - 1])"
-                        class="flex justify-center my-4 animate-fade-in relative">
-                        <span
-                            class="text-[10px] px-2 py-0.5 rounded shadow-sm select-none transition-colors duration-300"
-                            :class="chatData?.bgTheme === 'dark' ? 'text-white/60 bg-white/10' : 'text-gray-400 bg-gray-100/60'">
-                            {{ formatTimelineTime(msg.timestamp) }}
-                        </span>
-                    </div>
-
-                    <!-- Multi-select Layer Wrapper -->
-                    <div class="flex items-center gap-3 transition-all duration-300 relative"
-                        :class="isMultiSelectMode ? 'pl-10' : ''">
-                        <!-- Selection Circle (Visible in Multi-select Mode) -->
-                        <div v-if="isMultiSelectMode"
-                            class="absolute left-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all shrink-0"
-                            :class="selectedMsgIds.has(msg.id) ? 'bg-[#07c160] border-[#07c160]' : 'border-gray-300 bg-white/10'"
-                            @click.stop="toggleMessageSelection(msg.id)">
-                            <i v-if="selectedMsgIds.has(msg.id)" class="fa-solid fa-check text-white text-[10px]"></i>
-                        </div>
-
-                        <div class="flex-1 overflow-hidden"
-                            @click="isMultiSelectMode ? toggleMessageSelection(msg.id) : null">
-
-                            <!-- CASE 1: System / Recall Message (Standalone) -->
-                            <div v-if="msg.type === 'system' || msg.role === 'system'"
-                                class="flex flex-col items-center my-2 w-full animate-fade-in"
-                                @contextmenu.prevent="handleContextMenu(msg, $event)">
-                                <!-- Main Tip -->
-                                <span
-                                    class="text-[11px] px-3 py-1 rounded font-songti select-none transition-colors duration-300"
-                                    :class="[
-                                        msg.isRecallTip ? 'cursor-pointer hover:bg-opacity-80 transition-colors' : '',
-                                        chatData?.bgTheme === 'dark' ? 'bg-white/10 text-white/40' : 'bg-gray-200/50 text-gray-400'
-                                    ]" @click="msg.isRecallTip && (msg.showDetail = !msg.showDetail)">
-                                    {{ msg.content }}
-                                </span>
-
-                                <!-- Foldable Content -->
-                                <div v-if="msg.showDetail && msg.realContent"
-                                    class="mt-1.5 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500 max-w-[80%] break-all shadow-sm animate-fade-in-down">
-                                    <div class="mb-0.5 text-gray-400 text-[10px]">原内容:</div>
-                                    {{ msg.realContent }}
-                                </div>
-                            </div>
-
-                            <!-- CASE 2: Regular Message (Avatar + Inner Content) -->
-                            <div v-else class="flex gap-2 w-full"
-                                :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
-                                <!-- Avatar Container -->
-                                <div class="relative w-10 h-10 shrink-0 cursor-pointer" @dblclick="handlePat(msg)">
-                                    <!-- Inner Avatar (Resized to 80% if frame exists) -->
-                                    <div class="absolute overflow-hidden bg-white shadow-sm transition-all duration-300"
-                                        :class="[
-                                            (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame) || chatData?.avatarShape === 'circle' ? 'rounded-full' : 'rounded',
-                                            { 'animate-shake': shakingAvatars.has(msg.id) }
-                                        ]" :style="{
-                                            inset: (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)
-                                                ? ((1 - ((msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)?.scale || 1)) / 2 * 100) + '%'
-                                                : '0',
-                                            transform: (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)
-                                                ? `translate(${((msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)?.offsetX || 0)}px, ${((msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame)?.offsetY || 0)}px)`
-                                                : 'none'
-                                        }">
-                                        <img :src="msg.role === 'user'
-                                            ? (chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me')
-                                            : (chatData?.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chatData?.name || 'AI'}`)"
-                                            class="w-full h-full object-cover">
-                                    </div>
-                                    <!-- Frame Overlay (100%) -->
-                                    <img v-if="msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame"
-                                        :src="msg.role === 'user' ? chatData?.userAvatarFrame?.url : chatData?.avatarFrame?.url"
-                                        class="absolute inset-0 w-full h-full pointer-events-none z-10">
-                                </div>
-
-                                <div class="flex flex-col max-w-[80%]"
-                                    :class="msg.role === 'user' ? 'items-end' : 'items-start'">
-
-                                    <!-- Pay Card (Red Packet / Transfer) -->
-                                    <div v-if="msg.type === 'redpacket' || msg.type === 'transfer' || (typeof msg.content === 'string' && (msg.content.includes('[红包]') || msg.content.includes('[转账]')))"
-                                        class="pay-card"
-                                        :class="{ 'received': msg.isClaimed || msg.status === 'received', 'rejected': msg.isRejected }"
-                                        @click="handlePayClick(msg)"
-                                        @contextmenu.prevent="handleContextMenu(msg, $event)">
-                                        <div class="pay-top">
-                                            <div class="pay-icon"
-                                                :class="{ 'bg-[#ea5f39]': !msg.type || msg.type === 'redpacket', 'bg-[#eda338]': msg.type === 'transfer', 'opacity-70': msg.isClaimed }">
-                                                <i v-if="msg.type === 'transfer'"
-                                                    :class="msg.isClaimed ? 'fa-solid fa-check' : 'fa-solid fa-right-left'"></i>
-                                                <i v-else
-                                                    :class="msg.isClaimed ? 'fa-regular fa-envelope-open' : 'fa-regular fa-envelope'"></i>
-                                            </div>
-                                            <div class="pay-info">
-                                                <div class="pay-title">{{ getPayTitle(msg) }}</div>
-                                                <div class="pay-desc">{{ getPayDesc(msg) }}</div>
-                                            </div>
-                                        </div>
-                                        <div class="pay-bottom">
-                                            {{ getPayStatusText(msg) }}
-                                        </div>
-                                    </div>
-
-                                    <!-- Image / Emoji -->
-                                    <div v-else-if="msg.type === 'image' || isImageMsg(msg)"
-                                        class="msg-image bg-transparent"
-                                        @contextmenu.prevent="handleContextMenu(msg, $event)">
-                                        <img :src="getImageSrc(msg)"
-                                            class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
-                                            @click="previewImage(getImageSrc(msg))" @error="handleImageError">
-                                    </div>
-
-                                    <!-- Voice Message Branch (Unified) -->
-                                    <div v-else-if="msg.type === 'voice'" class="flex flex-col w-full"
-                                        :class="msg.role === 'user' ? 'items-end' : 'items-start'">
-                                        <div class="flex items-center gap-2"
-                                            :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
-                                            <!-- Bubble -->
-                                            <div class="h-10 rounded-lg flex items-center px-4 cursor-pointer relative shadow-sm min-w-[80px]"
-                                                :class="[
-                                                    msg.role === 'user' ? 'bg-[#2e2e2e] text-white flex-row-reverse' : 'bg-black text-[#d4af37]',
-                                                    msg.isPlaying ? 'voice-playing-effect' : ''
-                                                ]"
-                                                :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px' }"
-                                                @click="handleVoiceClick(msg)"
-                                                @contextmenu.prevent="handleContextMenu(msg, $event)">
-                                                <!-- Wave Icon -->
-                                                <div class="voice-wave"
-                                                    :class="[msg.isPlaying ? 'playing' : '', msg.role === 'user' ? 'wave-right' : 'wave-left']">
-                                                    <div class="bar bar1"
-                                                        :class="msg.role === 'user' ? 'bg-white' : 'bg-[#d4af37]'">
-                                                    </div>
-                                                    <div class="bar bar2"
-                                                        :class="msg.role === 'user' ? 'bg-white' : 'bg-[#d4af37]'">
-                                                    </div>
-                                                    <div class="bar bar3"
-                                                        :class="msg.role === 'user' ? 'bg-white' : 'bg-[#d4af37]'">
-                                                    </div>
-                                                </div>
-
-                                                <!-- Arrow -->
-                                                <div class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#2e2e2e]' : 'left-[-6px] border-r-[6px] border-r-black'">
-                                                </div>
-
-                                                <!-- Duration (Inside) -->
-                                                <span class="text-[10px] font-bold opacity-70"
-                                                    :class="msg.role === 'user' ? 'mr-0 ml-1' : 'ml-1 mr-0'">{{
-                                                        getDuration(msg) }}"</span>
-                                            </div>
-
-                                            <!-- Red Dot for Unplayed AI Voice -->
-                                            <div v-if="msg.role === 'ai' && !msg.isPlayed"
-                                                class="w-2 h-2 bg-red-500 rounded-full"></div>
-                                        </div>
-
-                                        <!-- Transcript Box (White Bubble Style) -->
-                                        <div v-if="msg.showTranscript" class="mt-2 max-w-full animate-fade-in-down">
-                                            <div class="bg-white border border-gray-200 p-3 rounded-lg text-[14.5px] text-gray-800 font-songti leading-relaxed shadow-sm whitespace-pre-wrap relative overflow-hidden"
-                                                :class="msg.role === 'user' ? 'mr-0 ml-auto' : ''"
-                                                style="max-width: 280px;">
-                                                <!-- Subtle Gloss Effect -->
-                                                <div
-                                                    class="absolute inset-0 bg-gradient-to-b from-white/40 to-transparent pointer-events-none">
-                                                </div>
-                                                {{ msg.content }}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- HTML Card (Interactive Iframe) -->
-                                    <!-- HTML Card (Interactive Iframe) -->
-                                    <div v-else-if="msg.type === 'html'" class="w-full mt-1"
-                                        @contextmenu.prevent="handleContextMenu(msg, $event)"
-                                        @touchstart="startLongPress(msg, $event)" @touchend="cancelLongPress"
-                                        @touchmove="cancelLongPress" @mousedown="startLongPress(msg, $event)"
-                                        @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                                        <SafeHtmlCard :content="getHtmlContent(msg.content)" />
-                                    </div>
-
-                                    <!-- Moments Share Card -->
-                                    <div v-else-if="msg.type === 'moment_card'" class="w-full mt-1"
-                                        @contextmenu.prevent="handleContextMenu(msg, $event)">
-                                        <MomentShareCard :data="msg.content" />
-                                    </div>
-
-
-
-                                    <!-- Default Text Bubble -->
-                                    <div v-else v-show="getCleanContent(msg.content)"
-                                        @contextmenu.prevent="handleContextMenu(msg, $event)"
-                                        @touchstart="startLongPress(msg, $event)" @touchend="cancelLongPress"
-                                        @touchmove="cancelLongPress" @mousedown="startLongPress(msg, $event)"
-                                        @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
-                                        class="px-3 py-2 rounded-lg text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
-                                        :class="[
-                                            msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left',
-                                        ]" :style="{
-                                            fontSize: (chatData?.bubbleSize || 15) + 'px',
-                                            ...(chatData?.bubbleCss ? parseBubbleCss(chatData.bubbleCss) : {})
-                                        }">
-                                        <!-- Arrow -->
-                                        <div class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                            :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#1f2937]' : 'left-[-6px] border-r-[6px] border-r-[#1a1a1a]'">
-                                        </div>
-
-                                        <!-- Quote Reply -->
-                                        <div v-if="msg.quote"
-                                            class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
-                                            <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name
-                                                || '对方') }}</div>
-                                            <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
-                                        </div>
-
-                                        <span v-html="formatMessageContent(msg)"></span>
-                                    </div>
-
-                                    <!-- Timestamp below bubble -->
-                                    <div v-if="msg.timestamp" class="text-[10px] text-gray-400 mt-0.5 px-1">
-                                        {{ new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        }) }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <ChatMessageItem v-for="(msg, index) in displayedMsgs" :key="msg.id" v-show="isMsgVisible(msg)"
+                    :msg="msg" :prevMsg="displayedMsgs[index - 1]" :chatData="chatData"
+                    :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
+                    :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
+                    @context-menu="(e) => handleContextMenu(e.msg, e.event)" @toggle-select="toggleMessageSelection"
+                    @click-pay="handlePayClick" @play-voice="handleVoiceClick" />
 
                 <!-- Typing Indicator -->
                 <div v-if="chatStore.isTyping" class="flex gap-2 w-full z-10 mb-2">
@@ -2371,92 +2013,13 @@ const executeDelete = () => {
                 </div>
             </div>
 
-            <!-- Input Area (Two Rows: Toolbar Top, Input Bottom) -->
-            <div v-if="!isMultiSelectMode" class="bg-[#f7f7f7] border-t border-[#dcdcdc] relative z-20"
-                @contextmenu.prevent>
-
-                <!-- Reply Bar Overlay -->
-                <div v-if="currentQuote"
-                    class="absolute bottom-full left-0 right-0 mb-0 bg-white shadow-sm border-t border-gray-100 p-3 flex justify-between items-center z-30">
-                    <div class="text-sm text-gray-700 truncate max-w-[85%] border-l-4 border-gray-300 pl-2">
-                        <span class="font-medium text-gray-900">{{ currentQuote.role === 'user' ? '我' : (chatData.name
-                            || '对方') }}:</span>
-                        {{ currentQuote.content }}
-                    </div>
-                    <button @click="cancelQuote" class="text-gray-400 hover:text-gray-600">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-
-                <!-- Row 1: Function Toolbar (Above Input) -->
-                <div
-                    class="flex items-center px-4 pt-2 pb-1 gap-4 text-[#4a4a4a] text-[18px] select-none overflow-x-auto no-scrollbar">
-                    <!-- Plus (Panel Toggle) -->
-                    <i class="fa-solid fa-circle-plus cursor-pointer hover:text-gray-800 transition-colors"
-                        @click="toggleActionPanel" title="更多功能"></i>
-
-                    <!-- Emoji -->
-                    <i class="fa-regular fa-face-smile cursor-pointer hover:text-gray-800 transition-colors"
-                        @click.stop="toggleEmojiPicker" title="表情"></i>
-
-                    <!-- Call (Phone) -->
-                    <div class="relative group">
-                        <i class="fa-solid fa-phone-volume cursor-pointer hover:text-gray-800 transition-colors"
-                            title="通话"></i>
-                    </div>
-
-                    <!-- Regenerate -->
-                    <i class="fa-solid fa-rotate-right cursor-pointer hover:text-blue-500 transition-colors"
-                        @click="regenerateLastMessage" title="重新生成"></i>
-
-                    <!-- Music -->
-                    <i class="fa-solid fa-music cursor-pointer hover:text-yellow-600 transition-colors"
-                        :class="{ 'text-yellow-500': musicStore.playerVisible }" @click="musicStore.togglePlayer"
-                        title="音乐 (一起听歌)"></i>
-                </div>
-
-                <!-- Row 2: Input Box + Actions (Bottom) -->
-                <div class="flex items-end px-3 pb-3 pt-1 gap-2">
-                    <!-- Voice Toggle -->
-                    <button
-                        class="mb-1 text-[#2e2e2e] text-[22px] hover:text-gray-600 transition-colors w-[28px] flex justify-center"
-                        @click="toggleVoiceMode" :title="isVoiceMode ? '切换到文字模式' : '切换到语音模式'">
-                        <i class="fa-solid transition-all"
-                            :class="isVoiceMode ? 'fa-keyboard text-blue-500' : 'fa-microphone'"></i>
-                    </button>
-
-                    <!-- Input Wrapper -->
-                    <div class="flex-1 bg-white rounded-lg border border-gray-300 flex items-center min-h-[38px] px-3 py-2 shadow-sm"
-                        :class="isVoiceMode ? 'border-blue-400' : ''">
-                        <textarea v-model="inputVal"
-                            class="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-[15px] leading-[22px] text-gray-800 placeholder-gray-400"
-                            rows="1" :placeholder="isVoiceMode ? '输入文字，发送后将以语音形式显示...' : '发送消息...'"
-                            @keydown.enter.prevent="sendUserMessage" @input="handleAutoResize" ref="textareaRef"
-                            style="max-height: 66px; overflow-y: auto;"></textarea>
-                    </div>
-
-                    <!-- Stop Btn (When Typing) -->
-                    <button v-if="chatStore.isTyping"
-                        class="mb-1 text-white bg-red-500 rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-red-600 transition-all active:scale-95 shadow-sm"
-                        @click="chatStore.stopGeneration" title="停止生成">
-                        <i class="fa-solid fa-square text-[10px]"></i>
-                    </button>
-
-                    <!-- Generate Btn -->
-                    <button v-else-if="!inputVal.trim()"
-                        class="mb-1 text-white bg-[#07c160] rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-[#06ad56] transition-all active:scale-95 shadow-sm"
-                        @click="generateAIResponse">
-                        <i class="fa-solid fa-wand-magic-sparkles text-[13px]"></i>
-                    </button>
-
-                    <!-- Send Btn -->
-                    <button v-else
-                        class="mb-1 text-white bg-[#07c160] rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-[#06ad56] transition-all active:scale-95 shadow-sm"
-                        @click="sendUserMessage">
-                        <i class="fa-solid fa-paper-plane text-[13px]"></i>
-                    </button>
-                </div>
-            </div>
+            <!-- Input Area (Extracted) -->
+            <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef" :currentQuote="currentQuote"
+                :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
+                @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
+                @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker"
+                @toggle-music="musicStore.togglePlayer" @regenerate="regenerateLastMessage"
+                @cancel-quote="cancelQuote" />
 
 
 
@@ -2469,7 +2032,13 @@ const executeDelete = () => {
                     <span class="text-[10px] mt-0.5">取消</span>
                 </button>
 
-                <div class="flex gap-12">
+                <div class="flex gap-10">
+                    <button @click="selectToBottom"
+                        class="flex flex-col items-center justify-center text-gray-600 hover:text-[#07c160] transition-colors"
+                        :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
+                        <i class="fa-solid fa-list-check text-lg"></i>
+                        <span class="text-[10px] mt-0.5">勾选到这</span>
+                    </button>
                     <button @click="favoriteSelectedMessages"
                         class="flex flex-col items-center justify-center text-gray-600 hover:text-[#07c160] transition-colors"
                         :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
@@ -2507,249 +2076,20 @@ const executeDelete = () => {
 
 
         <!-- Red Packet Modal (QQ Style) -->
-        <div v-if="showRedPacketModal"
-            class="fixed inset-0 bg-black/85 z-[150] flex flex-col items-center justify-center animate-fade-in"
-            @click.self="closeRedPacketModal">
-            <!-- The Card -->
-            <div class="w-[320px] h-[500px] rounded-[12px] relative overflow-hidden shadow-2xl transition-all duration-500"
-                :class="showResult ? 'bg-[#f5f5f5]' : 'bg-[#D04035]'">
-
-                <!-- 1. Unopened View -->
-                <div v-if="!showResult" class="w-full h-full flex flex-col items-center relative">
-                    <!-- Top Arc Decoration -->
-                    <div
-                        class="absolute -top-[150px] -left-[10%] w-[120%] h-[350px] bg-[#E35447] rounded-[50%] shadow-lg z-0">
-                    </div>
-
-                    <!-- User Info -->
-                    <div class="z-10 mt-[80px] flex flex-col items-center">
-                        <div class="flex items-center gap-2 mb-4">
-                            <img :src="currentRedPacket?.role === 'user' ? (chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User') : chatData?.avatar"
-                                class="w-12 h-12 rounded-full border-2 border-[#FFE2B1] shadow-sm">
-                            <span class="text-[#FFE2B1] font-medium text-lg">{{ currentRedPacket?.role === 'user' ?
-                                '我的红包' : chatData?.name }}</span>
-                        </div>
-                        <div class="text-[#FFE2B1] text-xl font-medium px-8 text-center leading-relaxed">
-                            {{ currentRedPacket?.note || "恭喜发财，大吉大利" }}
-                        </div>
-                    </div>
-
-                    <!-- Open Button -->
-                    <div class="z-10 mt-auto mb-[100px] flex flex-col items-center">
-                        <div class="w-24 h-24 bg-[#EBC88E] rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-transform active:scale-90 border-4 border-[#E35447]"
-                            :class="{ 'animate-spin-slow': isOpening }" @click="openRedPacket">
-                            <span class="text-[#333] font-bold text-3xl font-serif">開</span>
-                        </div>
-                        <!-- Reject Link -->
-                        <div v-if="currentRedPacket?.role === 'ai'"
-                            class="mt-6 text-[#FFE2B1]/70 text-sm cursor-pointer hover:text-white transition-colors"
-                            @click="rejectPayment">
-                            退回红包
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2. Result View (Half Red / Half White) -->
-                <div v-else class="w-full h-full flex flex-col items-center relative animate-fade-in">
-                    <!-- Top Red Section -->
-                    <div class="absolute top-0 left-0 w-full h-[160px] bg-[#D04035]">
-                        <!-- Curved Bottom -->
-                        <div
-                            class="absolute -bottom-[40px] left-0 w-full h-[80px] bg-[#D04035] rounded-b-[50%] shadow-none z-0">
-                        </div>
-                    </div>
-
-                    <!-- Avatar (Overlapping) -->
-                    <div class="z-10 mt-[120px] relative">
-                        <div class="w-20 h-20 rounded-full p-1 bg-white shadow-md">
-                            <!-- Show claimer's avatar if claimed, or sender's if looking at details -->
-                            <img :src="currentRedPacket?.isClaimed
-                                ? (chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User')
-                                : (currentRedPacket?.role === 'user' ? (chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User') : chatData?.avatar)"
-                                class="w-full h-full rounded-full object-cover">
-                        </div>
-                    </div>
-
-                    <!-- Content (White Area) -->
-                    <div class="z-10 mt-4 flex flex-col items-center text-gray-800">
-                        <!-- Status -->
-                        <div class="font-medium text-lg mb-1">
-                            {{ currentRedPacket?.claimedBy?.name || (currentRedPacket?.isRejected ? '已退回' :
-                                (currentRedPacket?.role === 'user' ? '我的红包' : chatData?.name)) }}
-                        </div>
-                        <div class="text-gray-400 text-sm mb-6">{{ currentRedPacket?.isRejected ? '资金已原路退回' : '已存入零钱' }}
-                        </div>
-
-                        <!-- Amount -->
-                        <div class="flex items-baseline font-bold text-[#D04035] mb-8">
-                            <span class="text-3xl mr-1">¥</span>
-                            <span class="text-5xl border-b border-transparent">{{ resultAmount }}</span>
-                        </div>
-
-                        <div class="text-[#576b95] text-sm cursor-pointer" @click="closeRedPacketModal">查看我的钱包</div>
-                    </div>
-
-                    <!-- Bottom Decoration -->
-                    <div class="mt-auto mb-4 text-gray-300 text-xs">
-                        微信红包
-                    </div>
-                </div>
-            </div>
-
-            <!-- Bottom Close Button (Outside Card) -->
-            <button
-                class="mt-8 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center text-white/80 hover:bg-white/10 hover:border-white hover:text-white active:scale-95 transition-all backdrop-blur-sm"
-                @click="closeRedPacketModal">
-                <i class="fa-solid fa-xmark text-xl"></i>
-            </button>
-        </div>
+        <ChatRedPacketModal :visible="showRedPacketModal" :packet="currentRedPacket" :chatData="chatData"
+            :isOpening="isOpening" :showResult="showResult" :resultAmount="resultAmount" @close="closeModals"
+            @open="openRedPacket" @reject="rejectPayment" @view-wallet="navigateToWallet" />
 
         <!-- Transfer Modal -->
-        <div v-if="showTransferModal"
-            class="fixed inset-0 bg-black/60 z-[160] flex flex-col items-center justify-center p-4 animate-fade-in"
-            @click.self="showTransferModal = false">
-            <div class="bg-white w-[280px] rounded-[12px] overflow-hidden shadow-xl relative">
-                <div class="p-8 flex flex-col items-center text-center">
-                    <div v-if="currentRedPacket?.isRejected">
-                        <i class="fa-solid fa-ban text-red-500 text-5xl mb-4"></i>
-                        <div class="text-xl font-medium text-black mb-1">已拒收</div>
-                        <div class="text-3xl font-bold text-black mb-6">¥{{ currentRedPacket?.amount || '0.00' }}</div>
-                        <div class="text-gray-400 text-sm">资金已退回对方账户</div>
-                    </div>
-                    <div v-else-if="currentRedPacket?.isClaimed">
-                        <i class="fa-solid fa-check-circle text-[#07c160] text-5xl mb-4"></i>
-                        <div class="text-xl font-medium text-black mb-1">已收款</div>
-                        <div class="text-3xl font-bold text-black mb-6">¥{{ currentRedPacket?.amount || '0.00' }}</div>
-                        <div class="text-gray-400 text-sm">已存入零钱</div>
-                    </div>
-                    <div v-else>
-                        <i class="fa-solid fa-circle-check text-[#07c160] text-5xl mb-4"></i>
-                        <div class="text-xl font-medium text-black mb-1">收到转账</div>
-                        <div class="text-3xl font-bold text-black mb-6">¥{{ currentRedPacket?.amount || '0.00' }}</div>
-                        <div class="text-gray-400 text-sm mb-6">确认收款后资金将存入零钱</div>
+        <ChatTransferModal :visible="showTransferModal" :packet="currentRedPacket" :chatData="chatData"
+            @close="closeModals" @confirm="confirmTransfer" @reject="rejectPayment" />
 
-                        <div class="flex flex-col gap-3 w-full">
-                            <button
-                                class="w-full bg-[#07c160] hover:bg-[#06ad56] text-white py-3 rounded-lg font-medium transition-colors"
-                                @click="confirmTransfer">确认收款</button>
-                            <button
-                                class="w-full text-[#576b95] text-sm py-2 hover:bg-gray-50 rounded-lg transition-colors"
-                                @click="rejectPayment">立即退还</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Bottom Close Button (Outside Card) -->
-            <button
-                class="mt-8 w-10 h-10 rounded-full border border-white/40 flex items-center justify-center text-white/80 hover:bg-white/10 hover:border-white hover:text-white active:scale-95 transition-all backdrop-blur-sm"
-                @click="showTransferModal = false">
-                <i class="fa-solid fa-xmark text-xl"></i>
-            </button>
-        </div>
+        <!-- Family Card Claim Modal (Extracted) -->
+        <FamilyCardClaimModal ref="claimModalRef" @confirm="handleClaimConfirm" />
 
         <!-- Inner Voice Modal (Mindscape) -->
-        <div v-if="showInnerVoiceModal"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-            @click="closeInnerVoiceModal">
-            <div class="voice-modal-content" @click.stop>
-                <canvas id="voice-effect-canvas" ref="voiceCanvasRef"></canvas>
-                <!-- Header -->
-                <div class="voice-modal-header">
-                    <button class="voice-modal-header-btn" @click="closeInnerVoiceModal">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                    <div class="header-title">Mindscape</div>
-                    <div class="flex gap-2">
-                        <button class="voice-modal-header-btn" title="历史记录" @click="toggleVoiceHistory">
-                            <i class="fa-solid"
-                                :class="showHistoryList ? 'fa-rotate-left' : 'fa-clock-rotate-left'"></i>
-                        </button>
-                        <button class="voice-modal-header-btn" title="删除当前" @click="deleteCurrent"><i
-                                class="fa-solid fa-trash-can" style="font-size: 14px;"></i></button>
-                    </div>
-                </div>
-
-                <!-- Body -->
-                <!-- Character View (Main Card) -->
-                <div class="voice-modal-body flex flex-col items-center" v-if="!showHistoryList">
-                    <!-- Avatar & Meta -->
-                    <div class="voice-header-group">
-                        <div class="voice-char-avatar-box relative w-16 h-16">
-                            <!-- Inner Avatar -->
-                            <div class="absolute inset-0 overflow-hidden rounded-full transition-all duration-300"
-                                :style="{ padding: chatData?.avatarFrame ? '10%' : '0' }">
-                                <img :src="chatData?.avatar"
-                                    class="voice-char-avatar w-full h-full object-cover rounded-full">
-                            </div>
-                            <!-- Frame Overlay -->
-                            <img v-if="chatData?.avatarFrame" :src="chatData?.avatarFrame?.url"
-                                class="absolute inset-0 w-full h-full pointer-events-none z-10">
-                        </div>
-                        <div class="voice-char-name">{{ chatData?.name }}</div>
-                        <div class="voice-char-meta">{{ currentInnerVoice?.mood || 'Current Mood / ...' }}</div>
-                    </div>
-
-                    <!-- Main Card (Thoughts) -->
-                    <div class="voice-card-inner w-full" v-if="currentInnerVoice">
-                        <span class="voice-label-center">· 内 心 独 白 ·</span>
-                        <div class="voice-text-inner">
-                            {{ currentInnerVoice.thoughts || currentInnerVoice.thought || '暂无心声数据' }}
-                        </div>
-                    </div>
-
-                    <!-- Empty State -->
-                    <div class="voice-card-inner w-full flex items-center justify-center min-h-[200px]" v-else>
-                        <div class="text-[#8c7e63] text-sm tracking-widest opacity-50">暂无法读取心声数据</div>
-                    </div>
-
-                    <!-- Details Grid -->
-                    <div class="voice-row mt-6 w-full" v-if="currentInnerVoice">
-                        <div class="voice-info-block">
-                            <div class="voice-label">OUTFIT 穿搭</div>
-                            <div class="voice-text-content">{{ currentInnerVoice.outfit || '...' }}</div>
-                        </div>
-                        <div class="voice-info-block">
-                            <div class="voice-label">SCENE 环境</div>
-                            <div class="voice-text-content">{{ currentInnerVoice.scene || '...' }}</div>
-                        </div>
-                    </div>
-
-                    <!-- Action (Full Width) -->
-                    <div class="w-full" v-if="currentInnerVoice">
-                        <div class="voice-info-block mt-6">
-                            <div class="voice-label">ACTION 姿态</div>
-                            <div class="voice-text-content">{{ currentInnerVoice.action || '...' }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- History List View -->
-                <div class="voice-modal-body" v-else>
-                    <div class="text-[#8c7e63] text-xs text-center mb-6 tracking-widest uppercase opacity-80">·
-                        Mindscape History ·</div>
-
-                    <div v-if="voiceHistoryList.length === 0"
-                        class="text-center text-[#8c7e63] mt-10 text-xs opacity-50">暂无历史记录</div>
-
-                    <div v-else class="voice-history-list">
-                        <div v-for="(item, index) in voiceHistoryList" :key="item.id"
-                            class="voice-history-card animate-fade-in" :style="{ animationDelay: index * 50 + 'ms' }"
-                            @click="loadHistoryItem(item)">
-                            <div class="voice-history-time">{{ new Date(item.timestamp).toLocaleString() }}</div>
-                            <div class="voice-history-preview">{{ item.preview }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Footer -->
-                <div class="voice-modal-footer">
-                    <span class="footer-count" id="voice-index-indicator">NO. {{ currentVoiceIndex }}</span>
-                    <div class="effect-badge" @click="toggleVoiceEffect">{{ currentEffect.name }}</div>
-                </div>
-
-            </div>
-        </div>
+        <ChatInnerVoiceCard :visible="showInnerVoiceModal" :chatId="chatData?.id" :initialMsgId="currentInnerVoiceMsgId"
+            :chatData="chatData" @close="showInnerVoiceModal = false" />
 
         <!-- Send Money Modal (Redesigned) -->
         <div v-if="showSendModal"
@@ -3355,16 +2695,14 @@ const executeDelete = () => {
 
 /* Pay Card Styles */
 .pay-card {
-    width: 230px;
-    background-color: #fa9d3b;
-    /* Orange */
-    border-radius: 4px;
+    width: 245px;
+    background-color: white;
+    border-radius: 8px;
     overflow: hidden;
     cursor: pointer;
     user-select: none;
-    margin: 2px 0;
-    position: relative;
     transition: opacity 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .pay-card:active {
@@ -3373,28 +2711,31 @@ const executeDelete = () => {
 
 .pay-card.received,
 .pay-card.rejected {
-    background-color: #fab46e;
-    /* Desaturated version of orange */
-    opacity: 0.9;
+    opacity: 0.8;
 }
+
+/* Specific background styles handled in template or tailored here if possible, 
+   but since dynamic classes are used (bg-[#...]), we focus on layout. */
 
 .pay-top {
     display: flex;
     align-items: center;
-    padding: 15px 12px;
+    padding: 16px 12px;
+    gap: 12px;
 }
 
 .pay-icon {
-    width: 36px;
-    height: 36px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 50%;
+    width: 38px;
+    height: 38px;
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 18px;
+    font-size: 20px;
     color: white;
-    margin-right: 10px;
+    /* The background color is set dynamically in the template */
+    border-radius: 50%;
+    /* Slightly lighter background for the icon circle to simulate the visual */
+    background-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 .pay-info {
@@ -3403,25 +2744,33 @@ const executeDelete = () => {
     display: flex;
     flex-direction: column;
     justify-content: center;
+    overflow: hidden;
 }
 
 .pay-title {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 500;
     line-height: 1.2;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .pay-desc {
     font-size: 12px;
-    opacity: 0.8;
-    margin-top: 2px;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .pay-bottom {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: white;
     padding: 4px 12px;
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.7);
+    color: #999;
+    border-top: 1px solid #f0f0f0;
 }
 
 /* Voice Message Styles */

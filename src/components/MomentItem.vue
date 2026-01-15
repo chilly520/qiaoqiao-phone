@@ -32,7 +32,10 @@ let touchStartX = 0
 let touchStartY = 0
 
 // --- Getters ---
-const isUser = computed(() => props.moment?.authorId === 'user')
+const isUser = computed(() => {
+    return props.moment?.authorId === 'user' || 
+           (settingsStore.personalization.userProfile.wechatId && props.moment?.authorId === settingsStore.personalization.userProfile.wechatId)
+})
 const author = computed(() => {
     if (isUser.value) return settingsStore.personalization.userProfile
     const id = props.moment?.authorId
@@ -120,6 +123,8 @@ const handleComment = () => {
     if (!commentText.value.trim()) return
     momentsStore.addComment(props.moment.id, {
         authorId: 'user',
+        authorName: settingsStore.personalization.userProfile.name,
+        authorAvatar: settingsStore.personalization.userProfile.avatar,
         content: commentText.value,
         replyTo: replyToComment.value ? replyToComment.value.authorName : null
     })
@@ -175,7 +180,15 @@ const handleCommentContextMenu = (event, comment) => {
 
 const canDeleteComment = (comment) => {
     if (!comment) return false
-    return isUser.value || comment.authorId === 'user'
+    // God Mode: User can delete any comment on any post
+    return true
+}
+
+const handleReplyAction = () => {
+    if (activeComment.value) {
+        startReplyTo(activeComment.value)
+        showCommentMenu.value = false
+    }
 }
 
 const handleCopyComment = async () => {
@@ -308,7 +321,7 @@ const navigateToAuthor = () => {
                 class="flex items-center gap-1 text-[#576b95] text-[13px] mb-3 opacity-90">
                 <i class="fa-solid fa-location-dot scale-90"></i>
                 <span class="font-medium underline decoration-[#576b95]/30 underline-offset-2">{{ props.moment.location
-                }}</span>
+                    }}</span>
             </div>
 
             <!-- Images Grid -->
@@ -360,7 +373,7 @@ const navigateToAuthor = () => {
                     <i class="fa-solid text-sm"
                         :class="momentsStore.summoningIds.has(props.moment.id) ? 'fa-spinner fa-spin' : 'fa-wand-sparkles'"></i>
                     <span class="text-xs font-medium">{{ momentsStore.summoningIds.has(props.moment.id) ? '召唤中' : '召唤'
-                        }}</span>
+                    }}</span>
                 </button>
             </div>
 
@@ -437,7 +450,7 @@ const navigateToAuthor = () => {
                         @touchend="handleCommentTouchEnd" @click="handleCommentClick(comment)"
                         @contextmenu="handleCommentContextMenu($event, comment)" title="长按操作">
                         <span class="text-[#576b95] font-bold">{{ comment.authorName || getAuthorName(comment.authorId)
-                            }}</span>
+                        }}</span>
                         <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
                         <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ comment.replyTo }}</span>
                         <span class="text-gray-900">: {{ comment.content }}</span>
@@ -474,6 +487,12 @@ const navigateToAuthor = () => {
                     </span>
                 </div>
                 <div class="p-2 space-y-1">
+                    <button
+                        class="w-full py-3 hover:bg-gray-50 rounded-lg flex items-center justify-center gap-2 text-gray-700 active:bg-gray-100 transition-colors"
+                        @click="handleReplyAction">
+                        <i class="fa-solid fa-reply"></i>
+                        回复
+                    </button>
                     <button
                         class="w-full py-3 hover:bg-gray-50 rounded-lg flex items-center justify-center gap-2 text-gray-700 active:bg-gray-100 transition-colors"
                         @click="handleCopyComment">

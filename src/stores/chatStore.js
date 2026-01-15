@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { generateReply, generateSummary, generateImage } from '../utils/aiService'
+import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useLoggerStore } from './loggerStore'
 import { useWorldBookStore } from './worldBookStore'
+import { useMomentsStore } from './momentsStore'
 
 const DEFAULT_AVATARS = [
     '/avatars/小猫举爪.jpg',
@@ -26,6 +27,7 @@ export const useChatStore = defineStore('chat', () => {
     const notificationEvent = ref(null) // Global notification trigger
     const patEvent = ref(null) // Event: { chatId, target: 'ai'|'user' }
     const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
+    const momentsStore = useMomentsStore()
 
     // Pagination State
     const messagePageSize = ref(50) // 每页显示50条消息
@@ -50,8 +52,11 @@ export const useChatStore = defineStore('chat', () => {
         if (currentAbortController) {
             currentAbortController.abort()
             currentAbortController = null
+        }
+
+        if (isTyping.value) {
             isTyping.value = false
-            console.log('[ChatStore] AI Generation stopped by user.')
+            console.log('[ChatStore] AI Generation/Delivery stopped by user.')
             if (!silent) {
                 triggerToast('已中断生成', 'info')
             }
@@ -141,7 +146,7 @@ export const useChatStore = defineStore('chat', () => {
         // 2. Type Auto-Detection (if not specified)
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|语音|VIDEO|FILE|LOCATION)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]/i)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|语音|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
@@ -173,6 +178,8 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.type = 'file'
                 } else if (tagType === 'LOCATION') {
                     newMsg.type = 'location'
+                } else if (tagType.includes('FAMILY_CARD')) {
+                    newMsg.type = 'family_card'
                 }
             } else {
                 // 2.1 Fallback: Loose Parsing for User Inputs like "[转账] 520元" or "[红包] 恭喜发财"
@@ -289,6 +296,13 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.isClaimed = false
                     newMsg.isRejected = false
                     newMsg.content = ''
+                } else if (/\\?\[\s*FAMILY_CARD/i.test(newMsg.content)) {
+                    // NEW: Auto-detect Family Card
+                    newMsg.type = 'family_card'
+                    newMsg.isClaimed = false
+                    newMsg.isRejected = false
+                    // Do NOT clear content, because Family Card needs the tag for data parsing (amount, text, etc)
+                    // The ChatMessageItem will handle the mixed text display.
                 }
             }
         }
@@ -303,16 +317,14 @@ export const useChatStore = defineStore('chat', () => {
             delete newMsg._pendingSystemMessages // Clean up
         }
 
-        // Log message action
-        const logger = useLoggerStore()
-        const logContent = typeof newMsg.content === 'string'
-            ? newMsg.content
-            : (Array.isArray(newMsg.content) ? '[多媒体消息]' : String(newMsg.content || ''))
-
-        logger.info(`${newMsg.role === 'user' ? '发送' : '接收'}消息: ${chat.name}`, {
-            type: newMsg.type,
-            content: logContent.substring(0, 50) + (logContent.length > 50 ? '...' : '')
-        })
+        // Log message action (debug level to avoid spam)
+        // Log message action (debug level to avoid spam)
+        // const logger = useLoggerStore()
+        // logger.debug(`${newMsg.role === 'user' ? '发送' : '接收'}消息`, {
+        //     chatName: chat.name,
+        //     type: newMsg.type,
+        //     msgId: newMsg.id
+        // })
 
         if (!chat.inChatList) chat.inChatList = true
         if (chatId !== currentChatId.value) {
@@ -321,16 +333,58 @@ export const useChatStore = defineStore('chat', () => {
 
         // Trigger Global Notification (Only for AI or other users, not self)
         if (newMsg.role !== 'user') {
-            notificationEvent.value = {
-                id: Date.now(),
-                chatId: chatId,
-                name: chat.name,
-                avatar: chat.avatar,
-                content: newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]'),
-                timestamp: Date.now()
+            const contentStr = String(newMsg.content || '');
+            const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
+
+            if (!isToxic) {
+                notificationEvent.value = {
+                    id: Date.now(),
+                    chatId: chatId,
+                    name: chat.name,
+                    avatar: chat.avatar,
+                    content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
+                    timestamp: Date.now()
+                }
             }
         }
 
+
+        // Auto-generate system messages for family cards
+        const content = typeof newMsg.content === 'string' ? newMsg.content : ''
+        const userName = chat.userName || '用户'
+        const charName = chat.name || '对方'
+
+        // FAMILY_CARD_APPLY - User sent application
+        if (content.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
+            setTimeout(() => {
+                addMessage(chatId, {
+                    role: 'system',
+                    content: `${userName}正在向${charName}申请绑定亲属卡`
+                })
+            }, 100)
+        }
+
+        // FAMILY_CARD - AI sent approval
+        if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
+            const match = content.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
+            const cardName = match ? match[2] : '亲属卡'
+            setTimeout(() => {
+                addMessage(chatId, {
+                    role: 'system',
+                    content: `${charName}向您发送了亲属卡「${cardName}」，点击领取`
+                })
+            }, 100)
+        }
+
+        // FAMILY_CARD_REJECT - AI rejected
+        if (content.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
+            setTimeout(() => {
+                addMessage(chatId, {
+                    role: 'system',
+                    content: `${charName}已拒绝${userName}的亲属卡申请`
+                })
+            }, 100)
+        }
 
         checkAutoSummary(chatId)
         saveChats()
@@ -386,7 +440,6 @@ export const useChatStore = defineStore('chat', () => {
                 emojiCategories: [],
                 momentsMemoryLimit: 5,
                 // Logic State
-                emojiCategories: [],
                 // Logic State
                 wechatId: 'wxid_' + Math.floor(Math.random() * 10000000000), // Unique Numeric-like WeChat ID
                 openingLine: '', // Custom opening line
@@ -511,7 +564,7 @@ export const useChatStore = defineStore('chat', () => {
         // Check if new messages exceed limit
         if (msgs.length - lastSummaryIndex >= summaryLimit) {
             console.log(`[AutoSummary] Triggered for ${chat.name}. New msgs: ${msgs.length - lastSummaryIndex}`)
-            summarizeHistory(chatId)
+            summarizeHistory(chatId, { silent: true })
         }
     }
 
@@ -523,7 +576,9 @@ export const useChatStore = defineStore('chat', () => {
         if (chat.isSummarizing) return { success: false, error: 'Summarization already in progress' }
         chat.isSummarizing = true
 
-        triggerToast('正在分析上下文...', 'info')
+        if (!options.silent) {
+            triggerToast('正在分析上下文...', 'info')
+        }
 
         // Determine range
         let targetMsgs = []
@@ -828,15 +883,18 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             if (m.role === 'ai') {
-                // Clean up history to prevent "Double Voice" pollution
-                const ivMatch = content.match(/^\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i)
+                // Clean up history to prevent "Double Voice" pollution (Global match)
+                // Relaxed to catch INNER_VOICE anywhere, not just at start
+                const ivMatch = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i)
                 if (ivMatch) {
                     const ivBlock = ivMatch[0]
-                    let rest = content.substring(ivBlock.length)
-                    rest = rest.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '')
-                        .replace(/\[\/?INNER_VOICE\]/gi, '')
-                        .trim()
-                    content = ivBlock + '\n' + rest
+                    // Remove ALL Inner Voice blocks from content for history context
+                    content = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
+
+                    // Re-append the FIRST inner voice block at the end (standard format for LLM context)
+                    // This ensures LLM sees: "Text content... [INNER_VOICE]...[/INNER_VOICE]"
+                    // regardless of where it was originally.
+                    content = content + '\n' + ivBlock
                 }
             }
             if (m.quote) {
@@ -848,6 +906,7 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             return {
+                id: m.id,
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
                 type: m.type || 'text'
@@ -913,6 +972,21 @@ export const useChatStore = defineStore('chat', () => {
 2. 只有在真正需要发图时才使用该指令。`
             charInfo.description += drawingHint
 
+            // Log the context being sent to AI for debugging
+            useLoggerStore().addLog('AI', '网络请求 (即时上下文)', {
+                contextMessages: context.length,
+                charInfo: {
+                    name: charInfo.name,
+                    memoryCount: charInfo.memory?.length || 0,
+                    virtualTime: charInfo.virtualTime
+                },
+                payload: {
+                    messages: context,
+                    model: 'Context Preview',
+                    temperature: 1.0
+                }
+            })
+
             const result = await generateReply(context, charInfo, signal)
 
             // Clear controller on success
@@ -928,6 +1002,29 @@ export const useChatStore = defineStore('chat', () => {
                 // Keep FULL content (with Inner Voice) for history context
                 // The UI (ChatWindow) handles hiding it via getCleanContent
                 const fullContent = result.content;
+
+                // Log AI reply content for debugging
+                useLoggerStore().info(`接收AI回复: ${chat.name}`, {
+                    contentLength: fullContent.length,
+                    content: fullContent,
+                    hasInnerVoice: !!result.innerVoice,
+                    usage: result.usage
+                })
+
+                // --- Save Token Stats ---
+                if (result.usage) {
+                    chat.tokenStats = {
+                        total: result.usage.total_tokens || 0,
+                        system: 0, // Not detailed in standard usage
+                        persona: 0,
+                        worldBook: 0,
+                        memory: 0,
+                        history: result.usage.input_tokens || 0,
+                        summaryLib: 0,
+                        totalContext: result.usage.input_tokens || 0
+                    }
+                    saveChats()
+                }
 
                 // Update Mindscape & Status
                 if (result.innerVoice) {
@@ -967,7 +1064,8 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle Quote (REPLY) ---
-                const replyRegex = /^\[REPLY:\s*(.*?)\]/i;
+                // Remove ^ to allow REPLY tag to be anywhere (e.g. after Inner Voice)
+                const replyRegex = /\[REPLY:\s*(.*?)\]/i;
                 const replyMatch = fullContent.match(replyRegex);
                 let aiQuote = null;
                 if (replyMatch && chat.msgs) {
@@ -980,29 +1078,42 @@ export const useChatStore = defineStore('chat', () => {
                         aiQuote = {
                             id: quotedMsg.id,
                             name: '我',
-                            text: quotedMsg.content,
+                            content: quotedMsg.content,
                             timestamp: quotedMsg.timestamp
                         };
                     }
                 }
 
-                // --- Handle [NUDGE] Command ---
-                const nudgeRegex = /\[NUDGE(?::(.+?))?\]/i;
+                // --- Handle [NUDGE] Command (Updated) ---
+                const nudgeRegex = /\[(NUDGE(?:_SELF)?)(?::(.+?))?\]/i;
                 const nudgeMatch = fullContent.match(nudgeRegex);
                 if (nudgeMatch) {
-                    const modifier = nudgeMatch[1] ? nudgeMatch[1].trim() : '';
+                    const command = nudgeMatch[1].toUpperCase();
+                    const modifier = nudgeMatch[2] ? nudgeMatch[2].trim() : '';
+
                     const action = chat.patAction || '拍了拍';
                     let target = 'user';
-                    let suffix = chat.patSuffix || '我';
+                    let suffix = chat.patSuffix || '的头'; // Default suffix fixes "user undefined" issue
 
-                    if (modifier === 'self' || modifier === '自己' || modifier === 'me') {
-                        suffix = '自己';
+                    if (command === 'NUDGE_SELF' || modifier === 'self' || modifier === '自己' || modifier === 'me') {
+                        suffix = '自己' + (chat.patSuffix || '的脸'); // Contextual suffix
                         target = 'ai';
+                        // System message: "AI 拍了拍 自己XXX"
+                        // To make it look like "AI patted themselves", we need special handling in stored msg?
+                        // "ChatName 拍了拍 自己..."
                     } else if (modifier && modifier !== 'user' && modifier !== '我') {
-                        suffix = modifier;
+                        // NUDGE:CharacterName
+                        suffix = modifier; // "CharacterName"
+                        // System message: "ChatName 拍了拍 CharacterName"
+                    } else {
+                        // Nudge User
+                        suffix = '我' + (chat.patSuffix ? '' : '的头'); // "我" here means User from AI perspective?
+                        // Wait, logic at line 471 in ChatWindow says:
+                        // targetName = msg.role === 'user' ? '我' : '对方'
+                        // Here we are creating a SYSTEM message.
+                        // content: "ChatName action suffix"
+                        // If suffix is "我", content = "ChatName 拍了拍 我" -> "ChatName patted Me (User)"
                     }
-
-                    if (suffix.startsWith('的')) suffix = '我' + suffix;
 
                     addMessage(chatId, {
                         type: 'system',
@@ -1013,42 +1124,53 @@ export const useChatStore = defineStore('chat', () => {
                     triggerPatEffect(chatId, target);
                 }
 
-                // --- Handle [MOMENT] Command ---
-                const momentRegex = /\[MOMENT\]([\s\S]*?)\[\/MOMENT\]/i;
+
+                // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
+                // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
+                const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
                 const momentMatch = fullContent.match(momentRegex);
                 if (momentMatch) {
                     try {
-                        const jsonStr = momentMatch[1]
-                        const momentData = JSON.parse(jsonStr)
+                        let jsonStr = momentMatch[1].trim()
+                        // ESCAPE FIX: Handle AI's tendency to escape quotes in JSON
+                        jsonStr = jsonStr.replace(/\\"/g, '"');
 
-                        if (momentData && momentData.content) {
-                            // Call Moments Store to add
-                            // We need to import aiService to generate images if needed? 
-                            // Actually momentsStore.addMoment mainly takes raw data.
-                            // If imagePrompt exists, we might need to resolve it.
-                            // But for simplicity, we let momentsStore handle or we do it here.
-                            // Let's assume we pass it to addMoment and let it handle or we enhance it here.
-                            // Wait, momentsStore.addMoment expects { content, images: [] }
+                        // If it's not a full JSON but looks like it starts with {, try to close it if missing
+                        if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
 
+                        let momentData = JSON.parse(jsonStr)
+
+                        // Mapping Chinese Keys to English (Safety Net)
+                        const content = momentData.content || momentData.内容
+                        const interactions = momentData.interactions || momentData.互动 || []
+                        const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片
+
+                        if (momentData && content) {
                             const newMoment = {
-                                authorId: chatId, // The character ID
-                                content: momentData.content,
+                                authorId: chatId,
+                                content: content,
                                 images: [],
-                                imageDescriptions: []
+                                imageDescriptions: [],
+                                interactions: interactions.map(i => ({
+                                    type: i.type || (i.类型 === '点赞' ? 'like' : (i.类型 === '评论' ? 'comment' : (i.类型 === '回复' ? 'reply' : i.类型))),
+                                    author: i.author || i.作者 || i.名字,
+                                    text: i.text || i.内容 || i.文本 || i.content,
+                                    replyTo: i.replyTo || i.回复对象 || i.回复
+                                }))
                             }
 
-                            if (momentData.imagePrompt) {
-                                // Use the centralized generateImage service instead of hardcoded URLs
-                                const imageUrl = await generateImage(momentData.imagePrompt)
-                                newMoment.images.push(imageUrl)
-                                if (momentData.imageDescription) {
-                                    newMoment.imageDescriptions.push(momentData.imageDescription)
+                            if (imagePrompt) {
+                                // If it's already a URL (AI might pass existing URL), use it
+                                if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
+                                    newMoment.images.push(imagePrompt)
+                                } else {
+                                    const imageUrl = await generateImage(String(imagePrompt))
+                                    newMoment.images.push(imageUrl)
                                 }
                             }
 
                             momentsStore.addMoment(newMoment)
 
-                            // Feedback in Chat
                             addMessage(chatId, {
                                 type: 'system',
                                 content: `"${chat.name}" 发布了一条朋友圈`,
@@ -1058,6 +1180,51 @@ export const useChatStore = defineStore('chat', () => {
                     } catch (e) {
                         console.error('[ChatStore] Failed to parse [MOMENT]', e)
                     }
+                }
+
+                // --- Handle Active Interactions [LIKE], [COMMENT], [REPLY] ---
+                const likeRegex = /\[LIKE[:：]\s*(m-[^\]]+)\]/gi;
+                let likeMatch;
+                while ((likeMatch = likeRegex.exec(fullContent)) !== null) {
+                    momentsStore.addLike(likeMatch[1], chatId, chat.name);
+                }
+
+                const commentRegex = /\[COMMENT[:：]\s*(m-[^\]]+)[:：]\s*([\s\S]+?)\]/gi;
+                let commentMatch;
+                while ((commentMatch = commentRegex.exec(fullContent)) !== null) {
+                    momentsStore.addComment(commentMatch[1], {
+                        authorId: chatId,
+                        authorName: chat.name,
+                        content: commentMatch[2].trim()
+                    });
+                }
+
+                const momentActionReplyRegex = /\[REPLY[:：]\s*(m-[^\]]+)[:：]\s*(c-[^\]]+)[:：]\s*([\s\S]+?)\]/gi;
+                let momentActionReplyMatch;
+                while ((momentActionReplyMatch = momentActionReplyRegex.exec(fullContent)) !== null) {
+                    const momentId = momentActionReplyMatch[1];
+                    const commentId = momentActionReplyMatch[2];
+                    const content = momentActionReplyMatch[3].trim();
+
+                    const moment = momentsStore.moments.find(m => m.id === momentId);
+                    const targetComment = moment?.comments.find(c => c.id === commentId);
+
+                    momentsStore.addComment(momentId, {
+                        authorId: chatId,
+                        authorName: chat.name,
+                        content,
+                        replyTo: targetComment ? targetComment.authorName : null
+                    });
+                }
+
+                // --- Handle [FAMILY_CARD] Command ---
+                // Extract FAMILY_CARD tags and store them for separate delivery
+                // FIX: Use [\s\S] for multiline match
+                const familyCardRegex = /\[FAMILY_CARD(?:_APPLY)?:[\s\S]*?\]/gi;
+                const familyCardMatches = [];
+                let familyCardMatch;
+                while ((familyCardMatch = familyCardRegex.exec(fullContent)) !== null) {
+                    familyCardMatches.push(familyCardMatch[0]);
                 }
 
                 // --- Handle [SET_AVATAR] Command ---
@@ -1159,18 +1326,57 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(momentRegex, '')
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
+                    .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
                     // Aggressively clean AI's manual quote explanations like "引用来自 我 的消息..."
                     .replace(/[（\(]引用来自.*?[）\)]/gi, '')
                     .replace(/引用[^：:。^！]*[：:。^！]/gi, '')
                     .trim();
 
-                // Clean AI Hallucinations & Residual Tags
+                // Clean AI Hallucinations & Residual Tags & TOXIC CSS
                 cleanContent = cleanContent
                     .replace(/\[Image Reference ID:.*?\]/gi, '')
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
-                    .replace(/\[\/?(INNER_VOICE|MOMENT|REPLY|SET_AVATAR)\]/gi, '')
+                    .replace(/\[\/?(INNER_VOICE|MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
                     .trim();
+
+                // --- TOXIC CSS FILTER (Enhanced) ---
+                // Filter 1: Blocks with braces
+                if (cleanContent.includes('{') && cleanContent.includes('}')) {
+                    cleanContent = cleanContent.replace(/\{[\s\S]*?(padding:|margin:|border:|display:)[\s\S]*?\}/gi, '');
+                }
+
+                // Filter 2: Enhanced Keyword List (Removed colons for stricter matching on prefixes)
+                const toxicKeywords = [
+                    'border-radius', 'box-shadow', 'background', 'background-image', 'linear-gradient',
+                    'isplay: flex', 'display: flex', 'justify-content', 'align-items',
+                    'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute',
+                    'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height',
+                    'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'
+                ];
+
+                // Filter 3: Regex for CSS-like lines (e.g. "margin-bottom: 12px;")
+                // Matches lines that look like "property: value;" or "property: value"
+                const cssLineRegex = /^\s*[a-z-]+\s*:\s*[^:]{1,100}(?:;|px|em|rem|%|vw|vh)\s*$/i;
+
+                // Remove lines matching logic
+                const lines = cleanContent.split('\n');
+                cleanContent = lines.filter(line => {
+                    const lower = line.trim().toLowerCase();
+                    if (!lower) return false; // Remove empty lines
+
+                    // Check 1: Explicit Toxic Keywords
+                    if (toxicKeywords.some(k => lower.includes(k))) return false;
+
+                    // Check 2: CSS Property syntax
+                    if (cssLineRegex.test(line)) return false;
+
+                    // Check 3: HTML garbage leftovers (e.g. ">¥ 5200")
+                    if (line.trim().startsWith('">') || line.trim().startsWith('/>')) return false;
+
+                    return true;
+                }).join('\n').trim();
+                // ------------------------------------
 
                 // --- Handle Image Security & Validation ---
                 cleanContent = cleanContent.replace(/\[图片:(.+?)\]/gi, (match, url) => {
@@ -1183,16 +1389,54 @@ export const useChatStore = defineStore('chat', () => {
                     return match;
                 });
 
-                // --- Pre-process: Extract and Protect CARD blocks ---
+                // --- Pre-process: Extract and Protect CARD blocks (Enhanced) ---
+                // Supports strict [CARD]{...}, naked JSON, and now Markdown Code Blocks (Stupid AI protection)
                 const cardBlocks = [];
                 let processedContent = cleanContent;
-                const cardStartRegex = /\[CARD\]\s*\{/g;
+
+                // Anti-Stupid Pass 1: Handle Markdown HTML code blocks
+                cleanContent = cleanContent.replace(/```(?:html|xml)?\s*([\s\S]*?)```/gi, (match, code) => {
+                    const trimmed = code.trim();
+                    if (trimmed.includes('<') && trimmed.includes('>')) {
+                        // Looks like HTML, wrap it in our CARD format
+                        const json = JSON.stringify({ type: 'html', html: trimmed });
+                        return `[CARD]${json}`;
+                    }
+                    return match;
+                });
+
+                // Anti-Stupid Pass 2: Handle naked <html>...</html> or large <div> blocks
+                // Only if not already inside a [CARD] tag
+                cleanContent = cleanContent.replace(/(?:^|\n)(<(html|div|section|article|style)[\s\S]*?<\/\2>)(?:\n|$)/gi, (match, html) => {
+                    if (html.length > 100 && !cleanContent.includes('[CARD]')) {
+                        const json = JSON.stringify({ type: 'html', html: html.trim() });
+                        return `\n[CARD]${json}\n`;
+                    }
+                    return match;
+                });
+
+                // Regex matches start of card:
+                // 1. [CARD] followed by {
+                // 2. OR { followed by "type": "html" (naked)
+                // REGEX FIX: Also match escaped quotes like \"type\"
+                const cardStartRegex = /(?:\[CARD\]\s*\{)|(?:\{\s*\\?["']type\\?["']\s*:\s*\\?["']html\\?["'])/gi;
                 let match;
                 const cardPositions = [];
 
                 while ((match = cardStartRegex.exec(cleanContent)) !== null) {
-                    const startPos = match.index;
-                    const jsonStart = match.index + match[0].length - 1;
+                    let startPos = match.index;
+                    let jsonStart = match.index;
+                    let isNaked = false;
+
+                    if (match[0].trim().toUpperCase().startsWith('[')) {
+                        // Matched [CARD] {
+                        jsonStart = match.index + match[0].indexOf('{');
+                    } else {
+                        // Matched { "type": "html"
+                        isNaked = true;
+                        jsonStart = match.index;
+                    }
+
                     let braceCount = 1;
                     let endPos = jsonStart + 1;
                     while (endPos < cleanContent.length && braceCount > 0) {
@@ -1200,26 +1444,59 @@ export const useChatStore = defineStore('chat', () => {
                         else if (cleanContent[endPos] === '}') braceCount--;
                         endPos++;
                     }
+
                     if (braceCount === 0) {
                         const fullCard = cleanContent.substring(startPos, endPos);
-                        cardPositions.push({ start: startPos, end: endPos, content: fullCard });
+
+                        // Treat as card
+                        // Store isNaked flag to prepend [CARD] later if needed
+                        cardPositions.push({ start: startPos, end: endPos, content: fullCard, isNaked });
+
+                        // Advance regex to avoid scanning inside this block
+                        cardStartRegex.lastIndex = endPos;
                     }
                 }
 
                 for (let i = cardPositions.length - 1; i >= 0; i--) {
                     const pos = cardPositions[i];
                     const placeholder = `__CARD_PLACEHOLDER_${i}__`;
-                    cardBlocks.push(pos.content);
+                    // If naked, auto-fix by adding [CARD] tag so downstream logic recognizes it
+                    const contentToStore = pos.isNaked ? ('[CARD]' + pos.content) : pos.content;
+                    cardBlocks.push(contentToStore);
                     processedContent = processedContent.substring(0, pos.start) + placeholder + processedContent.substring(pos.end);
                 }
 
-                // --- Improved Splitting Logic (V6) ---
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[表情包:.*?\]|\([^\)]+\)|（[^）]+）|\[[^\]]+\]|[!?;。！？；…\n]+)/;
+                // --- AI HALLUCINATION CLEANER (Legacy Button Recovery) ---
+                // If the AI learned the old <button> format from history, convert it back to the clean [FAMILY_CARD] tag.
+                // This prevents segmented delivery of raw HTML code and preserves system integrity.
+                processedContent = processedContent.replace(/<button[\s\S]*?qiaoqiao_receiveFamilyCard\('([^']*)',\s*([\d.]+),\s*'([^']*)'[\s\S]*?点击领取<\/button>/gi, (match, uuid, amount, note) => {
+                    console.warn('[ChatStore] AI attempted legacy button output. Recovering to tag format:', { amount, note });
+                    return `[FAMILY_CARD:${amount}:${note}]`;
+                });
+
+                // --- Improved Splitting Logic (V7 - Fixed for FAMILY_CARD) ---
+                // FIX: Support Multiline Family Card and REJECT tags in Split Regex
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[表情包:.*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\([^\)]+\)|（[^）]+）|\[[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 let segments = [];
                 let currentSegment = "";
 
+
+
+                // --- Pre-process Segments for VOICE ---
+                // If a segment contains [语音:], treat it as a standalone segment
+                // This is a simple patch. Ideally, splitting regex should handle it.
+                // Regex already splits by [ ], so [语音:Text] should be a segment if it matches existing pattern.
+                // But my split regex `\[[^\]]+\]` matches it.
+                // So `[语音:Text]` will be a segment.
+                // My loop above: `isBracket` = true.
+                // It goes to `else if (isParenthesis || isBracket) { currentSegment += part; }`
+                // Wait! If it's `[语音:...]`, it should be PUSHED as a segment to be recognized in step 4.2
+                // Current logic appends `[Bracket]` to `currentSegment`.
+                // Only `isCardPlaceholder || isSticker || isDraw` pushes immediately.
+
+                // FIX: Add isVoice to the "Push Immediately" condition
                 for (let i = 0; i < rawParts.length; i++) {
                     const part = rawParts[i];
                     if (part === undefined) continue;
@@ -1227,11 +1504,14 @@ export const useChatStore = defineStore('chat', () => {
                     const isCardPlaceholder = /^__CARD_PLACEHOLDER_\d+__$/.test(part);
                     const isDraw = /^\[DRAW:/.test(part);
                     const isSticker = /^\[表情包:/.test(part);
+                    const isVoice = /^\[语音:/.test(part);
+                    const isCardTag = /^\[CARD\]/.test(part); // Added check for explicit CARD tag
+                    const isFamilyCard = /^\[FAMILY_CARD(?:_APPLY|_REJECT)?:/.test(part); // Family Card Protection including REJECT
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
                     const isParenthesis = /^[\(（].*[\)）]$/.test(part);
                     const isBracket = /^\[[^\]]+\]$/.test(part);
 
-                    if (isCardPlaceholder || isSticker || isDraw) {
+                    if (isCardPlaceholder || isSticker || isDraw || isVoice || isCardTag || isFamilyCard) {
                         if (currentSegment) { segments.push(currentSegment); currentSegment = ""; }
                         segments.push(part);
                     } else if (isPunctuation) {
@@ -1239,6 +1519,7 @@ export const useChatStore = defineStore('chat', () => {
                         segments.push(currentSegment);
                         currentSegment = "";
                     } else if (isParenthesis || isBracket) {
+                        // If it's a bracket but not a card/sticker/draw/voice, treat as text
                         currentSegment += part;
                     } else {
                         currentSegment += part;
@@ -1261,12 +1542,21 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- 4. Sequential Delivery & Real-time Operations ---
                 for (let i = 0; i < finalSegments.length; i++) {
+                    // Check interruption status
+                    if (!isTyping.value) {
+                        console.log('[ChatStore] Message delivery interrupted by user.');
+                        break;
+                    }
+
                     const seg = finalSegments[i];
                     let msgContent = seg;
                     const isFirstTextMessage = segments.findIndex(s => !s.startsWith('[CARD]')) === i;
 
-                    if (isFirstTextMessage && innerVoiceBlock) {
-                        msgContent = innerVoiceBlock + '\n' + seg;
+                    const isCard = seg.trim().startsWith('[CARD]');
+                    if (isFirstTextMessage && innerVoiceBlock && !isCard) {
+                        // FIX: Append inner voice instead of prepending, to avoid order confusion on mobile,
+                        // and ensure the text message content starts with the actual text.
+                        msgContent = seg + '\n' + innerVoiceBlock;
                     }
 
                     // 4.1 Process Payment Tags in THIS segment
@@ -1306,15 +1596,27 @@ export const useChatStore = defineStore('chat', () => {
                     // 4.2 Send the actual bubble
                     let msgAdded = null;
                     if (msgContent) {
-                        if (msgContent.startsWith('[CARD]')) {
-                            const jsonStr = msgContent.replace('[CARD]', '').trim();
+                        if (msgContent.trim().startsWith('[CARD]')) {
+                            let jsonStr = msgContent.trim().replace('[CARD]', '').trim();
+                            // ESCAPE FIX: Unescape JSON quotes
+                            jsonStr = jsonStr.replace(/\\"/g, '"');
                             msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: jsonStr, quote: i === 0 ? aiQuote : null });
                         } else if (msgContent.startsWith('[表情包:')) {
                             msgAdded = addMessage(chatId, { role: 'ai', content: msgContent, quote: i === 0 ? aiQuote : null });
+                        } else if (msgContent.startsWith('[语音:')) {
+                            const voiceContent = msgContent.substring(4, msgContent.length - 1).trim();
+                            msgAdded = addMessage(chatId, {
+                                role: 'ai',
+                                type: 'voice',
+                                content: voiceContent,
+                                duration: Math.ceil(voiceContent.length / 3) || 1,
+                                quote: i === 0 ? aiQuote : null
+                            });
                         } else {
                             // Standard Text / Drawing
                             // Allow spaces and Chinese colons
                             const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
+                            const familyMatch = msgContent.match(/\[FAMILY_CARD/i); // Explicitly check for family card tags
                             let msgType = 'text';
                             let amount = null;
                             let note = null;
@@ -1331,6 +1633,8 @@ export const useChatStore = defineStore('chat', () => {
                                     msgContent = msgContent.replace(rpMatch[0], `[${typeStr}:${amount}:${note}]`);
                                 }
                                 msgType = typeStr === '红包' ? 'redpacket' : 'transfer';
+                            } else if (familyMatch) {
+                                msgType = 'family_card';
                             }
 
                             msgAdded = addMessage(chatId, {
@@ -1369,6 +1673,25 @@ export const useChatStore = defineStore('chat', () => {
                     // Sequential Delay
                     const delay = Math.min(2000, Math.max(600, seg.length * 80));
                     await new Promise(resolve => setTimeout(resolve, delay));
+
+                    // Check again after delay before next iteration
+                    if (!isTyping.value) {
+                        console.log('[ChatStore] Message delivery interrupted during delay.');
+                        break;
+                    }
+                }
+
+                // --- Send FAMILY_CARD messages separately ---
+                if (familyCardMatches.length > 0) {
+                    for (const cardTag of familyCardMatches) {
+                        if (!isTyping.value) break;
+                        addMessage(chatId, {
+                            role: 'ai',
+                            content: cardTag,
+                            type: 'text'
+                        });
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                    }
                 }
             }
         } catch (e) {
@@ -1410,12 +1733,61 @@ export const useChatStore = defineStore('chat', () => {
         saveChats()
     }
 
-    function clearHistory(chatId) {
+    function clearHistory(chatId, options = {}) {
         if (chats.value[chatId]) {
             chats.value[chatId].msgs = []
-            chats.value[chatId].inChatList = false
+            // Keep in chat list so user can continue chatting
+            // chats.value[chatId].inChatList = false 
+
+            if (options.includeMemory) {
+                chats.value[chatId].memory = []
+                chats.value[chatId].summary = ''
+            }
             saveChats()
         }
+    }
+
+    function resetCharacter(chatId) {
+        if (!chats.value[chatId]) return
+        const chat = chats.value[chatId]
+
+        // Reset fields BUT keep core persona
+        // We reconstruct the object to ensure clean slate for UI settings
+        chats.value[chatId] = {
+            // Preserved Identity
+            id: chat.id,
+            name: chat.name,
+            avatar: chat.avatar,
+            prompt: chat.prompt,
+            userPersona: chat.userPersona,
+            userName: chat.userName,
+            memory: chat.memory || [],
+            summary: chat.summary || '',
+            tags: chat.tags || [], // WorldBook
+
+            // Preserved State
+            inChatList: chat.inChatList,
+            isPinned: chat.isPinned,
+
+            // Reset Content - Updated: Keep messages!
+            msgs: chat.msgs || [],
+
+            // Reset Settings to Defaults
+            bgUrl: '',
+            bgBlur: 0,
+            bgOpacity: 0.5,
+            bgTheme: 'light',
+            bubbleCss: '',
+            bubbleSize: 15,
+            voiceSpeed: 1.0,
+            patAction: '',
+            patSuffix: '',
+            activeChat: false,
+            activeInterval: 30,
+            autoTTS: false,
+            // Ensure any new fields from system updates are initialized (by omission or explicit default)
+        }
+        saveChats()
     }
 
     function deleteChat(chatId) {
@@ -1469,6 +1841,30 @@ export const useChatStore = defineStore('chat', () => {
         if (saved) {
             try {
                 chats.value = JSON.parse(saved)
+
+                // --- DATA SANITIZER (Fix for CSS leakage) ---
+                Object.values(chats.value).forEach(c => {
+                    if (c.msgs && Array.isArray(c.msgs)) {
+                        c.msgs = c.msgs.filter(m => {
+                            if (!m.content) return true
+                            const s = String(m.content)
+                            // Filter toxic CSS messages
+                            if (s.includes('display:') && s.includes('flex')) return false
+                            if (s.includes('background:') && s.includes('gradient')) return false
+                            if (s.trim().startsWith('{') && s.trim().endsWith('}') && s.includes('style')) return false
+                            if (/^\s*isplay:\s*flex/.test(s)) return false; // Fix truncated display: flex
+
+                            // Also fix Family Card type if it was missed
+                            if (/\\?\[\s*FAMILY_CARD/i.test(s) && m.type !== 'family_card') {
+                                m.type = 'family_card'
+                            }
+
+                            return true
+                        })
+                    }
+                })
+                // --------------------------------------------
+
                 Object.keys(chats.value).forEach(key => {
                     const c = chats.value[key]
                     if (c.activeChat === undefined) c.activeChat = false
@@ -1489,6 +1885,51 @@ export const useChatStore = defineStore('chat', () => {
     function addSystemMessage(content) {
         if (!currentChatId.value) return
         addMessage(currentChatId.value, { role: 'system', content: content, timestamp: Date.now() })
+    }
+
+    function estimateTokens(text) {
+        if (!text) return 0
+        // Simple heuristic: 1 Chinese char ≈ 1 token, 3 English chars ≈ 1 token
+        let len = text.length
+        let chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length
+        let other = len - chinese
+        return chinese + Math.ceil(other / 3)
+    }
+
+    function getTokenBreakdown(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat) return {
+            total: 0, system: 0, persona: 0, worldBook: 0, memory: 0, history: 0, summaryLib: 0, totalContext: 0
+        }
+
+        // Use PREVIEW logic for highest accuracy (Consistent with Detail Modal)
+        try {
+            const preview = generateContextPreview(chatId, chat)
+
+            const stats = {}
+            stats.system = estimateTokens(preview.system)
+            stats.persona = estimateTokens(preview.persona)
+            stats.worldBook = estimateTokens(preview.worldBook)
+            stats.moments = estimateTokens(preview.moments)
+            stats.history = estimateTokens(preview.history)
+            stats.summaryLib = estimateTokens(preview.summary)
+            stats.memory = 0 // Included in System prompt text usually, or handled separately in preview
+
+            // 1. Context Total (What actually gets sent to AI)
+            stats.totalContext = stats.system + stats.persona + stats.worldBook + stats.moments + stats.history + stats.summaryLib
+
+            // 2. Grand Total (Including ALL history, not just the sliced context)
+            const allMsgsText = (chat.msgs || []).map(m => `${m.role}:${m.content}`).join('\n')
+            const fullHistoryTokens = estimateTokens(allMsgsText)
+
+            // Grand Total = Base (Context - SlicedHistory) + FullHistory
+            stats.total = (stats.totalContext - stats.history) + fullHistoryTokens
+
+            return stats
+        } catch (e) {
+            console.error('Error calculating token stats:', e)
+            return { total: 0, totalContext: 0 }
+        }
     }
 
     function getDisplayedMessages(chatId) {
@@ -1515,6 +1956,11 @@ export const useChatStore = defineStore('chat', () => {
         return totalMsgs > loadedCount
     }
 
+    function getPreviewContext(chatId) {
+        if (!chats.value[chatId]) return null
+        return generateContextPreview(chatId, chats.value[chatId])
+    }
+
     return {
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, chatList, contactList,
@@ -1522,6 +1968,7 @@ export const useChatStore = defineStore('chat', () => {
         deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage,
-        getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages
+        getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
+        getPreviewContext
     }
 })

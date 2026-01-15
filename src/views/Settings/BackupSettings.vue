@@ -377,7 +377,11 @@ function handleConfirmExport() {
 }
 
 // --- Lifecycle & Persistence ---
-onMounted(() => {
+onMounted(async () => {
+  // Ensure data is loaded
+  await worldBookStore.loadEntries()
+  settingsStore.loadFromStorage()
+
   const savedConfig = window.localStorage.getItem('github_backup_config')
   if (savedConfig) {
     try {

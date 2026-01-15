@@ -19,24 +19,10 @@
         <!-- Character Avatar & Name -->
         <div class="absolute -bottom-12 left-4 flex items-end gap-3">
           <div class="relative w-20 h-20">
-            <!-- Avatar Container -->
-            <div :class="[
-                    character.avatarShape === 'circle' || character.avatarFrame ? 'rounded-full' : 'rounded-lg',
-                    !character.avatarFrame ? 'border-4 border-white shadow-lg' : ''
-                 ]" 
-                 class="absolute overflow-hidden bg-white transition-all duration-300"
-                 :style="{ 
-                    inset: character.avatarFrame ? ((1 - (character.avatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
-                    transform: character.avatarFrame ? `translate(${character.avatarFrame.offsetX || 0}px, ${character.avatarFrame.offsetY || 0}px)` : 'none',
-                    width: character.avatarFrame ? '100%' : '100%',
-                    height: character.avatarFrame ? '100%' : '100%',
-                    top: character.avatarFrame ? '0' : '0',
-                    left: character.avatarFrame ? '0' : '0'
-                 }">
+            <!-- Avatar Container (Forced Square, No Frame) -->
+            <div class="absolute overflow-hidden bg-white transition-all duration-300 rounded-lg border-4 border-white shadow-lg w-full h-full top-0 left-0">
               <img :src="character.avatar" class="w-full h-full object-cover">
             </div>
-            <!-- Avatar Frame Overlay -->
-            <img v-if="character.avatarFrame" :src="character.avatarFrame.url" class="absolute inset-0 w-full h-full pointer-events-none">
           </div>
         </div>
       </div>
@@ -44,6 +30,12 @@
       <!-- Character Info -->
       <div class="mt-14 px-4">
         <div class="text-xl font-bold text-gray-800">{{ character.name }}</div>
+        
+        <!-- Location Display -->
+        <div v-if="virtualCityDisplay" class="flex items-center gap-1 mt-1 text-xs text-gray-500 font-medium">
+            <i class="fa-solid fa-location-dot text-blue-400"></i>
+            <span>{{ virtualCityDisplay }}</span>
+        </div>
         <div 
           class="text-sm text-gray-500 mt-1 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded transition-colors active:bg-gray-200" 
           @click="editBio"
@@ -192,6 +184,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useMomentsStore } from '@/stores/momentsStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { CITY_MAPPING } from '@/utils/weatherService'
 import MomentItem from '@/components/MomentItem.vue'
 import { generateCompleteProfile } from '@/utils/aiService'
 
@@ -199,9 +193,29 @@ const route = useRoute()
 const router = useRouter()
 const chatStore = useChatStore()
 const momentsStore = useMomentsStore()
+const settingsStore = useSettingsStore()
 
 const charId = route.params.charId
 const character = computed(() => chatStore.chats[charId] || { name: '未知', avatar: '' })
+
+// Virtual Location Logic
+const virtualCityDisplay = computed(() => {
+    if (!character.value.locationSync) return null
+    
+    const w = settingsStore.weather
+    if (w.virtualLocation) return w.virtualLocation
+    
+    // Mapping fallback
+    const real = w.realLocation // Assuming realLocation stores "深圳" etc.
+    if (real) {
+        // Try exact match or match first 2 chars (e.g. 深圳市 -> 深圳)
+        for (const k in CITY_MAPPING) {
+            if (real.includes(k)) return CITY_MAPPING[k]
+        }
+        return real
+    }
+    return null
+})
 
 // Default backgrounds from local folder
 const defaultBackgrounds = [

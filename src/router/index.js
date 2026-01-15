@@ -70,6 +70,11 @@ const router = createRouter({
             component: () => import('../views/WorldBook/WorldBookApp.vue')
         },
         {
+            path: '/wechat/profile/:charId',
+            name: 'character-info',
+            component: () => import('../views/WeChat/CharacterInfoCard.vue')
+        },
+        {
             path: '/moments/profile/:charId',
             name: 'character-profile',
             component: () => import('../views/WeChat/CharacterProfileView.vue')
@@ -83,6 +88,27 @@ const router = createRouter({
             path: '/favorites/:id',
             name: 'favorite-detail',
             component: () => import('../views/WeChat/FavoriteDetailView.vue')
+        },
+        // Wallet Routes
+        {
+            path: '/wallet',
+            name: 'wallet',
+            component: () => import('../views/Wallet/WalletHome.vue')
+        },
+        {
+            path: '/wallet/bill',
+            name: 'wallet-bill',
+            component: () => import('../views/Wallet/WalletBillView.vue')
+        },
+        {
+            path: '/wallet/bank-cards',
+            name: 'wallet-bank-cards',
+            component: () => import('../views/Wallet/WalletBankCardsView.vue')
+        },
+        {
+            path: '/wallet/family-cards',
+            name: 'wallet-family-cards',
+            component: () => import('../views/Wallet/WalletFamilyCardsView.vue')
         }
     ]
 })

@@ -17,12 +17,13 @@ export const useMomentsStore = defineStore('moments', () => {
     const topMoments = ref(JSON.parse(localStorage.getItem('wechat_moments_top') || '[]')) // IDs of pinned moments (max 3)
     const summoningIds = ref(new Set()) // Track moments currently being interacted by AI
 
-    // Configs
+    // Configs - Initialize from LocalStorage
+    const savedConfig = JSON.parse(localStorage.getItem('wechat_moments_config') || '{}')
     const config = ref({
-        autoGenerateInterval: 30, // minutes
-        enabledCharacters: [], // Array of char IDs allowed to post
-        enabledWorldBookEntries: [], // Array of world book entries allowed to affect moments
-        customPrompt: ''
+        autoGenerateInterval: savedConfig.autoGenerateInterval !== undefined ? savedConfig.autoGenerateInterval : 30,
+        enabledCharacters: savedConfig.enabledCharacters || [],
+        enabledWorldBookEntries: savedConfig.enabledWorldBookEntries || [],
+        customPrompt: savedConfig.customPrompt || ''
     })
 
     // Persistence
@@ -78,8 +79,26 @@ export const useMomentsStore = defineStore('moments', () => {
 
         moments.value.push(moment)
 
-        if (!options.skipAutoInteraction && data.authorId === 'user') {
-            // New user post triggers AI thinking/interactions
+        // Handle pre-defined interactions (from AI)
+        if (data.interactions && Array.isArray(data.interactions)) {
+            data.interactions.forEach(inter => {
+                if (inter.type === 'like') {
+                    addLike(id, inter.authorId || null, inter.author || '神秘人')
+                } else if ((inter.type === 'comment' || inter.type === 'reply') && inter.text) {
+                    addComment(id, {
+                        authorName: inter.author,
+                        authorId: inter.authorId || null,
+                        content: inter.text,
+                        replyTo: inter.replyTo || null,
+                        isVirtual: !inter.authorId
+                    })
+                }
+            })
+        }
+
+        if (!options.skipAutoInteraction && !data.interactions) {
+            // New post triggers AI thinking/interactions (only if AI didn't pre-define them)
+            // This applies to both User posts and AI Character posts
             triggerAIInteractions(id)
         }
 
@@ -212,7 +231,10 @@ export const useMomentsStore = defineStore('moments', () => {
         if (isDuplicate) return
 
         // Resolve real contact info
-        let realChar = Object.values(chatStore.chats).find(c => c.id === comment.authorId || c.name === comment.authorName)
+        let realChar = null
+        if (!comment.isVirtual) {
+            realChar = Object.values(chatStore.chats).find(c => c.id === comment.authorId || c.name === comment.authorName)
+        }
         const finalAuthorName = realChar ? (realChar.remark || realChar.name) : (comment.authorName || '神秘好友')
         const finalAuthorAvatar = realChar ? realChar.avatar : (comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${comment.authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`)
 
@@ -297,7 +319,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 id,
                 name: chat.name,
                 persona: chat.prompt,
-                recentChats: (chat.msgs || []).slice(-10).map(m => m.content).join(' '),
+                recentChats: (chat.msgs || []).slice(-20).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join('\n'),
                 worldContext: (chat.tags || []).join(', ')
             }
         }).filter(char => canInteractWithMoment(moment, char.id))
@@ -322,7 +344,7 @@ export const useMomentsStore = defineStore('moments', () => {
             const interactions = await generateBatchInteractions(currentContext, charInfos, historicalMoments, userProfile)
 
             for (const interaction of interactions) {
-                await new Promise(r => setTimeout(r, 800 + Math.random() * 1500))
+                await new Promise(r => setTimeout(r, 300 + Math.random() * 800))
 
                 let avatarUrl = interaction.authorAvatar || ''
                 if (interaction.isVirtual) {
@@ -332,7 +354,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
                 if (interaction.type === 'like') {
                     addLike(momentId, interaction.authorId || interaction.authorName, interaction.authorName)
-                } else if (interaction.type === 'comment' && interaction.content) {
+                } else if ((interaction.type === 'comment' || interaction.type === 'reply') && interaction.content) {
                     addComment(momentId, {
                         authorId: interaction.authorId,
                         authorName: interaction.authorName,
@@ -404,14 +426,27 @@ export const useMomentsStore = defineStore('moments', () => {
     }
 
     async function batchGenerateAIMoments(count = 1, specificCharacters = null) {
-        const candidates = specificCharacters || Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.length === 0 || config.value.enabledCharacters.includes(id))
+        const candidates = specificCharacters || Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id))
         if (candidates.length === 0) return
 
         const chars = candidates.map(id => ({ id, name: chatStore.chats[id].name, persona: chatStore.chats[id].prompt, recentChats: '' }))
         try {
+            // 1. Get custom prompt from config
+            const customPrompt = config.value.customPrompt
+
+            // 2. Get active world book content
+            let worldContext = ''
+            if (config.value.enabledWorldBookEntries.length > 0) {
+                const books = worldBookStore.books || []
+                const allEntries = books.flatMap(b => b.entries || [])
+                const activeEntries = allEntries.filter(e => config.value.enabledWorldBookEntries.includes(e.id))
+                worldContext = activeEntries.map(e => `[${e.name}]: ${e.content}`).join('\n')
+            }
+
             const momentsData = await generateBatchMomentsWithInteractions({
                 characters: chars,
-                worldContext: '',
+                worldContext: worldContext,
+                customPrompt: customPrompt,
                 userProfile: { name: settingsStore.personalization.userProfile.name, signature: settingsStore.personalization.userProfile.signature },
                 count
             })
@@ -421,7 +456,12 @@ export const useMomentsStore = defineStore('moments', () => {
                 if (data.interactions) {
                     for (const inter of data.interactions) {
                         if (inter.type === 'like') addLike(moment.id, inter.authorName)
-                        else if (inter.type === 'comment') addComment(moment.id, { authorName: inter.authorName, content: inter.content, isVirtual: inter.isVirtual })
+                        else if (inter.type === 'comment') addComment(moment.id, {
+                            authorId: inter.authorId,
+                            authorName: inter.authorName,
+                            content: inter.content,
+                            isVirtual: inter.isVirtual
+                        })
                     }
                 }
             }
@@ -446,6 +486,6 @@ export const useMomentsStore = defineStore('moments', () => {
         clearAllMoments, clearCharacterMoments,
         addLike, removeLike, addComment, deleteComment,
         triggerAIInteractions, markNotificationsRead,
-        clearMyMoments, startAutoGeneration
+        clearMyMoments, startAutoGeneration, batchGenerateAIMoments
     }
 })

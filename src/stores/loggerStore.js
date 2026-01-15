@@ -4,55 +4,58 @@ import { ref, computed } from 'vue'
 export const useLoggerStore = defineStore('logger', () => {
     // Initial load from localStorage
     const savedLogs = localStorage.getItem('system_logs')
-    const logs = ref(savedLogs ? JSON.parse(savedLogs) : [])
+    const logs = ref([])
+    try {
+        if (savedLogs) logs.value = JSON.parse(savedLogs)
+    } catch (e) {
+        console.warn('Failed to parse logs', e)
+        localStorage.removeItem('system_logs')
+    }
 
-    const MAX_LOGS = 50 // Reduced from 500 to prevent quota issues
+    const MAX_LOGS = 20 // Keep it very small to save space
     const autoScroll = ref(true)
 
     const saveLogs = () => {
         try {
-            localStorage.setItem('system_logs', JSON.stringify(logs.value))
+            const data = JSON.stringify(logs.value)
+            localStorage.setItem('system_logs', data)
         } catch (e) {
-            // If quota exceeded, clear old logs and retry
-            if (e.name === 'QuotaExceededError') {
-                console.warn('[LoggerStore] Quota exceeded, clearing old logs...')
-                logs.value = logs.value.slice(-20) // Keep only last 20
-                try {
-                    localStorage.setItem('system_logs', JSON.stringify(logs.value))
-                } catch (retryErr) {
-                    console.error('[LoggerStore] Failed to save even after cleanup:', retryErr)
-                    // Last resort: disable persistence
-                    localStorage.removeItem('system_logs')
-                }
+            console.warn('[LoggerStore] Storage failed, clearing logs...', e)
+            logs.value = logs.value.slice(-1) // Absolute minimum
+            try {
+                localStorage.setItem('system_logs', JSON.stringify(logs.value))
+            } catch (err) {
+                localStorage.removeItem('system_logs')
+                logs.value = []
             }
         }
     }
 
     const addLog = (type, title, detail = null) => {
-        // Dynamic truncation: Critical AI logs get full content, others get limited
+        // Dynamic truncation
         const isCriticalAI = /网络请求|AI响应|Request|Response/i.test(title)
         const isAIRelated = /AI|生成|Generation/i.test(title)
 
         let maxDetailLength
         if (isCriticalAI) {
-            maxDetailLength = Infinity // No truncation for critical AI logs
+            maxDetailLength = 50000 // Cap critical logs at 50k chars to prevent storage crash
         } else if (isAIRelated) {
             maxDetailLength = 10000 // 10k for other AI logs
         } else {
-            maxDetailLength = 500 // 500 for general logs
+            maxDetailLength = 800 // 800 for general logs
         }
 
         // Truncate overly large details to prevent storage bloat
         let truncatedDetail = detail
         if (maxDetailLength !== Infinity && detail && typeof detail === 'string' && detail.length > maxDetailLength) {
-            truncatedDetail = detail.substring(0, maxDetailLength) + '... (truncated)'
+            truncatedDetail = detail.substring(0, maxDetailLength) + '... (truncated due to storage limits)'
         } else if (maxDetailLength !== Infinity && detail && typeof detail === 'object') {
             try {
                 const detailStr = JSON.stringify(detail)
                 if (detailStr.length > maxDetailLength) {
-                    truncatedDetail = detailStr.substring(0, maxDetailLength) + '... (truncated)'
+                    truncatedDetail = detailStr.substring(0, maxDetailLength) + '... (truncated due to storage limits)'
                 } else {
-                    truncatedDetail = detail // Keep as object if within limit
+                    truncatedDetail = detail // Keep as is
                 }
             } catch (e) {
                 truncatedDetail = '[Circular or non-serializable object]'
@@ -73,10 +76,15 @@ export const useLoggerStore = defineStore('logger', () => {
         }
         saveLogs()
 
-        // Also mirror to console for dev convenience
-        if (type === 'error') console.error(`[LOG] ${title}`, detail)
-        else if (type === 'warn') console.warn(`[LOG] ${title}`, detail)
-        else console.log(`[LOG] ${title}`, detail)
+        // Also mirror to console for dev convenience, stripping reactivity
+        try {
+            const cleanDetail = detail ? JSON.parse(JSON.stringify(detail)) : detail
+            if (type === 'error') console.error(`[LOG] ${title}`, cleanDetail)
+            else if (type === 'warn') console.warn(`[LOG] ${title}`, cleanDetail)
+            else console.log(`[LOG] ${title}`, cleanDetail)
+        } catch (e) {
+            console.log(`[LOG] ${title}`, '[Complex Object]')
+        }
     }
 
     // Helper methods for semantic logging

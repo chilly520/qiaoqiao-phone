@@ -3,6 +3,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from './stores/settingsStore'
 import { useChatStore } from './stores/chatStore'
+import { batteryMonitor } from './utils/batteryMonitor'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,11 +23,45 @@ const updateTime = () => {
 onMounted(() => {
     updateTime()
     timer = setInterval(updateTime, 1000)
+
+    // Initialize battery monitoring
+    batteryMonitor.init().then((initialized) => {
+        if (initialized) {
+            const info = batteryMonitor.getBatteryInfo()
+            batteryLevel.value = info.level
+            batteryCharging.value = info.charging
+
+            batteryMonitor.onChange((info) => {
+                batteryLevel.value = info.level
+                batteryCharging.value = info.charging
+            })
+        }
+    })
 })
 onUnmounted(() => {
     if (timer) clearInterval(timer)
+    batteryMonitor.destroy()
 })
 
+// Battery Status
+const batteryLevel = ref(100)
+const batteryCharging = ref(false)
+
+const batteryIcon = computed(() => {
+    if (batteryCharging.value) return 'fa-battery-bolt'
+    if (batteryLevel.value > 80) return 'fa-battery-full'
+    if (batteryLevel.value > 60) return 'fa-battery-three-quarters'
+    if (batteryLevel.value > 40) return 'fa-battery-half'
+    if (batteryLevel.value > 20) return 'fa-battery-quarter'
+    return 'fa-battery-empty'
+})
+
+const batteryColor = computed(() => {
+    if (batteryCharging.value) return 'text-green-500'
+    if (batteryLevel.value <= 20) return 'text-red-500'
+    if (batteryLevel.value <= 30) return 'text-orange-500'
+    return ''
+})
 // --- Personalization Bindings ---
 const wallpaperStyle = computed(() => {
     const url = store.personalization.wallpaper
@@ -151,38 +186,49 @@ watch(() => chatStore.toastEvent, (evt) => {
                     :class="statusBarStyle.color === '#ffffff' ? 'text-[11px]' : 'text-[11px] opacity-80'"></i>
                 <i class="fa-solid fa-wifi"
                     :class="statusBarStyle.color === '#ffffff' ? 'text-[12px]' : 'text-[12px] opacity-80'"></i>
-                <span class="text-[12px] font-bold ml-1">100%</span>
-                <i class="fa-solid fa-battery-full"
-                    :class="statusBarStyle.color === '#ffffff' ? 'text-[14px]' : 'text-[14px] opacity-80'"></i>
+                <span class="text-[12px] font-bold ml-1" :class="batteryColor">{{ batteryLevel }}%</span>
+                <i class="fa-solid"
+                    :class="[batteryIcon, batteryColor, statusBarStyle.color === '#ffffff' ? 'text-[14px]' : 'text-[14px] opacity-80']"></i>
             </div>
         </div>
 
-        <!-- Notification Banner -->
         <div v-if="showBanner && bannerData"
-            class="fixed top-6 left-1/2 max-w-sm w-[90%] bg-[#90c7f0]/95 backdrop-blur-md shadow-2xl rounded-2xl z-[200] p-4 flex items-center gap-4 cursor-pointer animate-slide-down border border-white/20"
-            @click="handleBannerClick">
-            <div class="w-12 h-12 rounded-lg bg-white/20 overflow-hidden shrink-0 border border-white/30 shadow-inner">
-                <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
-                <div v-else class="w-full h-full flex items-center justify-center text-white/70"><i
-                        class="fa-solid fa-user"></i></div>
-            </div>
-            <div class="flex-1 min-w-0 flex flex-col justify-center">
-                <div class="flex justify-between items-baseline mb-0.5">
-                    <span class="font-bold text-gray-800 text-[15px] truncate text-shadow-sm">{{ bannerData.name
-                        }}</span>
-                    <span class="text-[11px] text-gray-600/80">现在</span>
+            class="fixed top-2 left-4 right-4 z-[5000] cursor-pointer animate-slide-down" @click="handleBannerClick">
+            <!-- Banner Container -->
+            <div
+                class="w-full bg-[#8ec5fc]/90 backdrop-blur-xl shadow-xl rounded-[28px] p-4 flex items-center gap-4 border border-white/10 ring-1 ring-black/5">
+                <!-- Avatar (Rounded Square - iOS Style) -->
+                <div class="w-[52px] h-[52px] rounded-[14px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
+                    <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
+                    <div v-else class="w-full h-full bg-[#e1e1e1] flex items-center justify-center">
+                        <i class="fa-solid fa-user text-white text-lg"></i>
+                    </div>
                 </div>
-                <p class="text-[13px] text-gray-700 leading-snug truncate opacity-90 font-medium">{{ bannerData.content
-                    }}</p>
+
+                <!-- Content -->
+                <div class="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                    <div class="flex items-center justify-between w-full">
+                        <span class="text-[17px] font-semibold text-[#1c1c1e] truncate">{{ bannerData.title }}</span>
+                        <span
+                            class="text-[13px] text-[#1c1c1e]/40 font-medium whitespace-nowrap tracking-tight">现在</span>
+                    </div>
+                    <div class="text-[15px] text-[#1c1c1e]/70 truncate leading-tight font-normal">{{ bannerData.content
+                    }}</div>
+                </div>
             </div>
         </div>
 
         <!-- Global Toast Notification -->
         <div v-if="showToast"
-            class="fixed top-16 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[200] animate-toast-down flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30"
-            style="left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, rgba(147, 197, 253, 0.85) 0%, rgba(96, 165, 250, 0.85) 100%);">
+            class="fixed top-16 left-1/2 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[9999] flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30 animate-toast-pop"
+            :class="{
+                'bg-gradient-to-br from-blue-400/90 to-blue-500/90': toastData.type === 'info' || !toastData.type,
+                'bg-gradient-to-br from-green-400/90 to-green-500/90': toastData.type === 'success',
+                'bg-gradient-to-br from-rose-500/90 to-pink-600/90': toastData.type === 'error',
+                'bg-gradient-to-br from-amber-400/90 to-orange-500/90': toastData.type === 'warning',
+            }" style="transform: translateX(-50%);">
             <i class="text-xl text-white drop-shadow-md" :class="{
-                'fa-solid fa-circle-info': toastData.type === 'info',
+                'fa-solid fa-circle-info': toastData.type === 'info' || !toastData.type,
                 'fa-solid fa-circle-check': toastData.type === 'success',
                 'fa-solid fa-circle-exclamation': toastData.type === 'error',
                 'fa-solid fa-triangle-exclamation': toastData.type === 'warning'
@@ -215,21 +261,23 @@ watch(() => chatStore.toastEvent, (evt) => {
 
 .animate-slide-down {
     animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    left: 50%;
 }
 
-@keyframes toastDown {
-    from {
-        transform: translate(-50%, -100%);
+/* Toast Animation - Pure Vertical Fade */
+@keyframes toastPop {
+    0% {
         opacity: 0;
+        transform: translate(-50%, -10px) scale(0.98);
     }
 
-    to {
-        transform: translate(-50%, 0);
+    100% {
         opacity: 1;
+        transform: translate(-50%, 0) scale(1);
     }
 }
 
-.animate-toast-down {
-    animation: toastDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.animate-toast-pop {
+    animation: toastPop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 </style>

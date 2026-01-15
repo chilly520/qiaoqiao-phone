@@ -25,21 +25,29 @@
             <div class="flex items-center gap-3 bg-white p-3 rounded-xl shadow-sm">
                 <div class="flex flex-col items-center gap-2 shrink-0">
                     <div class="relative">
-                        <div class="w-16 h-16 bg-white flex items-center justify-center overflow-hidden relative group cursor-pointer"
-                            :class="[getAvatarShapeClass(), !localData.avatarFrame ? 'border border-gray-100' : '']"
-                            @click="triggerAvatarUpload">
-                            <!-- Inner Avatar (Scaled based on frame properties) -->
-                            <div class="w-full h-full transition-all duration-300 pointer-events-none" :style="{
-                                padding: localData.avatarFrame ? ((1 - (localData.avatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
-                                transform: localData.avatarFrame ? `translate(${localData.avatarFrame.offsetX || 0}px, ${localData.avatarFrame.offsetY || 0}px)` : 'none'
-                            }">
-                                <img v-if="localData.avatar" :src="localData.avatar" class="w-full h-full object-cover">
-                                <span v-else class="text-xs text-gray-400">头像</span>
+                        <!-- Outer wrapper: NO overflow hidden, so frame can expand -->
+                        <div class="w-16 h-16 relative group cursor-pointer" @click="triggerAvatarUpload">
+
+                            <!-- Inner Avatar Wrapper: Handles clipping for shape -->
+                            <div class="absolute inset-0 overflow-hidden bg-white flex items-center justify-center border-gray-100"
+                                :class="[getAvatarShapeClass(), !localData.avatarFrame ? 'border' : '']">
+
+                                <!-- Inner Avatar Image (Scaled based on frame) -->
+                                <div class="w-full h-full transition-all duration-300 pointer-events-none" :style="{
+                                    padding: localData.avatarFrame ? ((1 - (localData.avatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
+                                    transform: localData.avatarFrame ? `translate(${localData.avatarFrame.offsetX || 0}px, ${localData.avatarFrame.offsetY || 0}px)` : 'none'
+                                }">
+                                    <img v-if="localData.avatar" :src="localData.avatar"
+                                        class="w-full h-full object-cover">
+                                    <span v-else class="text-xs text-gray-400">头像</span>
+                                </div>
                             </div>
+
+                            <!-- Frame Overlay (Expanded to 130% & Shifted Up) -->
+                            <img v-if="localData.avatarFrame" :src="localData.avatarFrame.url"
+                                class="absolute pointer-events-none z-10 object-contain"
+                                style="left: -15%; top: -25%; width: 130%; height: 130%; max-width: none;">
                         </div>
-                        <!-- 头像框叠加 -->
-                        <img v-if="localData.avatarFrame" :src="localData.avatarFrame.url"
-                            class="absolute inset-0 w-full h-full pointer-events-none">
                     </div>
 
                     <!-- 头像操作按钮组 -->
@@ -61,8 +69,19 @@
                 </div>
 
                 <div class="flex-1 min-w-0">
-                    <input v-model="localData.name" type="text"
-                        class="text-base font-bold bg-transparent outline-none w-full mb-1" placeholder="角色名字">
+                    <div class="flex items-center gap-0 mb-1">
+                        <input v-model="localData.name" type="text"
+                            class="text-base font-bold bg-transparent outline-none min-w-[60px] max-w-[180px]"
+                            placeholder="角色名字" :style="'width:' + ((localData.name?.length || 4) * 12) + 'px'">
+                        <!-- 角色性别图标 (Click to Toggle) -->
+                        <button
+                            @click="localData.gender = localData.gender === '男' ? '女' : (localData.gender === '女' ? '无' : '男')"
+                            class="transition-opacity hover:opacity-70" :title="'性别: ' + localData.gender">
+                            <i v-if="localData.gender === '男'" class="fa-solid fa-mars text-blue-500 text-sm"></i>
+                            <i v-else-if="localData.gender === '女'" class="fa-solid fa-venus text-pink-500 text-sm"></i>
+                            <i v-else class="fa-solid fa-genderless text-gray-400 text-sm"></i>
+                        </button>
+                    </div>
                     <div class="text-[10px] text-gray-400 mb-2">微信号: <input v-model="localData.wechatId" type="text"
                             class="bg-transparent outline-none font-mono text-gray-500 w-28" placeholder="wxid_...">
                     </div>
@@ -91,26 +110,34 @@
                         <!-- 用户头像区域 -->
                         <div class="flex flex-col items-center gap-2 shrink-0">
                             <div class="relative">
-                                <div class="w-16 h-16 bg-white flex items-center justify-center overflow-hidden relative group cursor-pointer"
-                                    :class="[getAvatarShapeClass(), !localData.userAvatarFrame ? 'border border-gray-100' : '']"
-                                    @click="triggerUserAvatarUpload">
-                                    <!-- Inner Avatar (Scaled based on frame properties) -->
-                                    <div class="w-full h-full transition-all duration-300 pointer-events-none" :style="{
-                                        padding: localData.userAvatarFrame ? ((1 - (localData.userAvatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
-                                        transform: localData.userAvatarFrame ? `translate(${localData.userAvatarFrame.offsetX || 0}px, ${localData.userAvatarFrame.offsetY || 0}px)` : 'none'
-                                    }">
-                                        <img v-if="localData.userAvatar" :src="localData.userAvatar"
-                                            class="w-full h-full object-cover">
-                                        <span v-else class="text-xs text-gray-400">头像</span>
+                                <!-- Outer wrapper: NO overflow hidden -->
+                                <div class="w-16 h-16 relative group cursor-pointer" @click="triggerUserAvatarUpload">
+
+                                    <!-- Inner Wrapper: Clips the avatar image -->
+                                    <div class="absolute inset-0 overflow-hidden bg-white flex items-center justify-center border-gray-100"
+                                        :class="[getAvatarShapeClass(), !localData.userAvatarFrame ? 'border' : '']">
+
+                                        <!-- Inner Content -->
+                                        <div class="w-full h-full transition-all duration-300 pointer-events-none"
+                                            :style="{
+                                                padding: localData.userAvatarFrame ? ((1 - (localData.userAvatarFrame.scale || 1)) / 2 * 100) + '%' : '0',
+                                                transform: localData.userAvatarFrame ? `translate(${localData.userAvatarFrame.offsetX || 0}px, ${localData.userAvatarFrame.offsetY || 0}px)` : 'none'
+                                            }">
+                                            <img v-if="localData.userAvatar" :src="localData.userAvatar"
+                                                class="w-full h-full object-cover">
+                                            <span v-else class="text-xs text-gray-400">头像</span>
+                                        </div>
                                     </div>
+
+                                    <!-- User Avatar Frame (Expanded 130% & Shifted Up) -->
+                                    <img v-if="localData.userAvatarFrame" :src="localData.userAvatarFrame.url"
+                                        class="absolute pointer-events-none z-10 object-contain"
+                                        style="left: -15%; top: -25%; width: 130%; height: 130%; max-width: none;">
                                 </div>
-                                <!-- 用户头像框 -->
-                                <img v-if="localData.userAvatarFrame" :src="localData.userAvatarFrame.url"
-                                    class="absolute inset-0 w-full h-full pointer-events-none">
                             </div>
 
                             <!-- 用户操作按钮组 -->
-                            <div class="flex gap-1.5">
+                            <div class="flex flex-col gap-1.5">
                                 <!-- 用户头像框选择按钮 -->
                                 <button
                                     class="w-5 h-5 bg-blue-100 text-blue-600 rounded flex items-center justify-center hover:bg-blue-200 transition-colors text-[10px]"
@@ -122,8 +149,23 @@
 
                         <!-- 用户信息 -->
                         <div class="flex-1 min-w-0">
-                            <input v-model="localData.userName" type="text"
-                                class="text-base font-bold bg-transparent outline-none w-full mb-1" placeholder="我的名字">
+                            <div class="flex items-center gap-0 mb-1">
+                                <input v-model="localData.userName" type="text"
+                                    class="text-base font-bold bg-transparent outline-none min-w-[60px] max-w-[180px]"
+                                    placeholder="我的名字"
+                                    :style="'width:' + ((localData.userName?.length || 4) * 12) + 'px'">
+                                <!-- 用户性别图标 (Click to Toggle) -->
+                                <button
+                                    @click="localData.userGender = localData.userGender === '男' ? '女' : (localData.userGender === '女' ? '无' : '男')"
+                                    class="transition-opacity hover:opacity-70" :title="'性别: ' + localData.userGender">
+                                    <i v-if="localData.userGender === '男'"
+                                        class="fa-solid fa-mars text-blue-500 text-sm"></i>
+                                    <i v-else-if="localData.userGender === '女'"
+                                        class="fa-solid fa-venus text-pink-500 text-sm"></i>
+                                    <i v-else class="fa-solid fa-genderless text-gray-400 text-sm"></i>
+                                </button>
+                            </div>
+
                             <div class="flex gap-1.5">
                                 <button
                                     class="text-[10px] text-gray-500 bg-gray-50 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
@@ -144,7 +186,7 @@
             <!-- Character Definition -->
             <div>
                 <h3 class="section-title">角色设定</h3>
-                <input v-model="localData.remark" type="text" class="setting-input" placeholder="备注名">
+                <input v-model="localData.remark" type="text" class="setting-input mb-2" placeholder="备注名">
                 <textarea v-model="localData.prompt" class="setting-input h-32 mt-2"
                     placeholder="设定 Prompt..."></textarea>
             </div>
@@ -255,6 +297,39 @@
                 <div v-else
                     class="text-xs text-green-600 bg-green-50/50 p-2 rounded border border-green-100/50 animate-fade-in">
                     <i class="fa-solid fa-clock-rotate-left mr-1"></i> 已启用实时同步：当前 AI 将时刻感知您的物理时间
+                </div>
+            </div>
+
+            <!-- Location Sync -->
+            <div
+                class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20">
+                <span class="text-sm text-gray-800">定位同步</span>
+                <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
+                    :class="localData.locationSync ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'" @click="toggleLocationSync">
+                    <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
+                        :class="localData.locationSync ? 'left-[22px]' : 'left-[2px]'"></div>
+                </div>
+            </div>
+            <div v-if="localData.locationSync" class="mb-4 animate-fade-in transition-all">
+                <div class="text-xs bg-blue-50/50 p-3 rounded border border-blue-100/50 space-y-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-location-dot text-blue-600"></i>
+                        <span class="font-medium">
+                            {{ locationInfo?.realCity || '获取中...' }}
+                            <span class="text-gray-500">→</span>
+                            {{ locationInfo?.virtualCity || '...' }}
+                        </span>
+                    </div>
+                    <div v-if="locationInfo?.weather" class="text-[10px] text-gray-600 space-y-0.5">
+                        <div>☁️ {{ locationInfo.weather.weather }} | 🌡️ {{ typeof locationInfo.weather.temperature ===
+                            'string' ? locationInfo.weather.temperature.replace('°', '') :
+                            locationInfo.weather.temperature }}°C</div>
+                        <div v-if="locationInfo.weather.windDirection">💨 {{ locationInfo.weather.windDirection }}
+                            {{ locationInfo.weather.windPower }}级</div>
+                    </div>
+                    <button @click="refreshLocation" class="text-[10px] text-blue-600 hover:underline">
+                        <i class="fa-solid fa-arrows-rotate mr-1"></i>刷新定位
+                    </button>
                 </div>
             </div>
 
@@ -412,23 +487,29 @@
 
                         <div class="relative z-10 flex gap-2 mb-3">
                             <img :src="localData.avatar || 'https://picsum.photos/100'"
-                                class="w-10 h-10 rounded shadow bg-white border border-white/50">
-                            <div class="max-w-[70%]">
-                                <div class="px-3 py-2 rounded-lg text-[15px] leading-relaxed shadow-sm bg-black text-[#f0e6d2] border border-[#f0e6d2]/30"
-                                    :style="{ fontSize: localData.bubbleSize + 'px' }">
-                                    角色回复的消息<span class="text-[10px] ml-1 opacity-50">12:00</span>
+                                class="w-10 h-10 rounded shadow bg-white border border-white/50 object-cover">
+                            <div class="flex flex-col max-w-[70%]">
+                                <div class="px-3 py-2 leading-relaxed shadow-sm transition-all relative" :style="{
+                                    fontSize: localData.bubbleSize + 'px',
+                                    ...parsePreviewBubbleCss(localData.bubbleCss, 'ai')
+                                }">
+                                    角色回复的消息
                                 </div>
+                                <div class="text-[10px] text-gray-400 mt-0.5 px-1">12:00</div>
                             </div>
                         </div>
 
                         <div class="relative z-10 flex gap-2 flex-row-reverse">
                             <img :src="localData.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me'"
-                                class="w-10 h-10 rounded shadow bg-white border border-white/50">
-                            <div class="max-w-[70%] flex justify-end">
-                                <div class="px-3 py-2 rounded-lg text-[15px] leading-relaxed shadow-sm bg-gray-800 text-gray-100 border border-white/10"
-                                    :style="{ fontSize: localData.bubbleSize + 'px' }">
-                                    我的消息<span class="text-[10px] ml-1 opacity-50">12:01</span>
+                                class="w-10 h-10 rounded shadow bg-white border border-white/50 object-cover">
+                            <div class="flex flex-col items-end max-w-[70%]">
+                                <div class="px-3 py-2 leading-relaxed shadow-sm transition-all" :style="{
+                                    fontSize: localData.bubbleSize + 'px',
+                                    ...parsePreviewBubbleCss(localData.bubbleCss, 'user')
+                                }">
+                                    我的消息
                                 </div>
+                                <div class="text-[10px] text-gray-400 mt-0.5 px-1">12:01</div>
                             </div>
                         </div>
                     </div>
@@ -438,6 +519,18 @@
                         <input v-model="localData.bubbleSize" type="range" min="12" max="30" step="1"
                             class="flex-1 h-1 bg-gray-300 rounded-lg accent-green-500">
                         <span class="text-xs w-6 text-right">{{ localData.bubbleSize }}</span>
+                    </div>
+
+                    <!-- Presets -->
+                    <div class="mb-2">
+                        <label class="text-xs text-gray-500 mb-1 block">气泡预设</label>
+                        <select @change="onPresetChange"
+                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-green-500 transition-colors">
+                            <option value="">默认样式</option>
+                            <option v-for="preset in presetBubbles" :key="preset.name" :value="preset.name">
+                                {{ preset.name }}
+                            </option>
+                        </select>
                     </div>
 
                     <input v-model="localData.bubbleCss" type="text" class="setting-input mb-3"
@@ -488,11 +581,27 @@
                 </div>
 
                 <!-- Delete -->
-                <div class="mt-8">
-                    <button class="setting-btn danger w-full border py-3 rounded-lg font-bold transition-colors"
-                        :class="confirmingDelete ? 'bg-red-600 text-white border-red-700' : 'bg-red-50 text-red-500 border-red-200'"
-                        @click="handleDeleteChar">
-                        {{ confirmingDelete ? '再次点击确认删除' : '删除角色' }}
+                <!-- Actions Group -->
+                <div class="mt-8 grid grid-cols-1 gap-3">
+                    <!-- Clear History -->
+                    <button
+                        class="w-full py-3 rounded-xl bg-white text-gray-700 font-bold border border-gray-200 active:bg-gray-50 transition-colors shadow-sm"
+                        @click="showClearConfirm = true">
+                        删除聊天记录
+                    </button>
+
+                    <!-- Reset Layout -->
+                    <button
+                        class="w-full py-3 rounded-xl bg-white text-orange-500 font-bold border border-orange-100 active:bg-orange-50 transition-colors shadow-sm"
+                        @click="showResetConfirm = true">
+                        重置角色配置
+                    </button>
+
+                    <!-- Delete Character -->
+                    <button
+                        class="w-full py-3 rounded-xl bg-red-50 text-red-500 font-bold border border-red-100 active:bg-red-100 transition-colors shadow-sm"
+                        @click="showDeleteConfirm = true">
+                        删除角色 (删除好友)
                     </button>
                 </div>
 
@@ -510,39 +619,33 @@
                     <div class="p-4 space-y-3 text-sm">
                         <!-- Total -->
                         <div class="flex justify-between items-center mb-2 pb-2 border-b border-gray-100">
-                            <span class="font-bold text-gray-700">总计 (Total)</span>
-                            <span class="font-bold text-purple-600 font-mono">{{ tokenStats?.total }}</span>
+                            <span class="font-bold text-gray-700">总计 (Total Context)</span>
+                            <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
+                                }}</span>
                         </div>
 
-                        <!-- Breakdown -->
-                        <div class="space-y-2">
-                            <div class="flex justify-between text-gray-600">
-                                <span>系统提示 (System)</span>
-                                <span class="font-mono text-gray-500">{{ tokenStats?.system }}</span>
-                            </div>
-                            <div class="flex justify-between text-gray-600">
-                                <span>人设 (Persona)</span>
-                                <span class="font-mono text-gray-500">{{ tokenStats?.persona }}</span>
-                            </div>
-                            <div class="flex justify-between text-gray-600">
-                                <span>世界书 (WorldBook)</span>
-                                <span class="font-mono text-gray-500">{{ tokenStats?.worldBook }}</span>
-                            </div>
-                            <div class="flex justify-between text-gray-600">
-                                <span>长期记忆 (Memory)</span>
-                                <span class="font-mono text-gray-500">{{ tokenStats?.memory }}</span>
-                            </div>
-                            <div class="flex justify-between text-gray-600">
-                                <span>上下文历史 (History)</span>
-                                <span class="font-mono text-gray-500">{{ tokenStats?.history }}</span>
-                            </div>
-                            <div class="flex justify-between text-gray-600">
-                                <span>自动总结库 (Summary)</span>
-                                <span class="font-mono text-gray-500">{{ tokenStats?.summaryLib }}</span>
+                        <!-- Breakdown List -->
+                        <div class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                            <div v-for="(label, key) in contextLabels" :key="key">
+                                <div class="flex justify-between items-center text-gray-600 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors"
+                                    @click="toggleContextExpand(key)">
+                                    <span
+                                        class="font-medium border-b border-dashed border-gray-300 hover:border-gray-500 transition-colors">{{
+                                            label }}</span>
+                                    <span class="font-mono text-gray-500 bg-gray-100 px-1.5 rounded text-xs">{{
+                                        contextTokenCounts[key] || 0 }}</span>
+                                </div>
+
+                                <!-- Expanded Content -->
+                                <div v-if="expandedContextKey === key"
+                                    class="mt-1 p-2 bg-gray-50 rounded text-[10px] whitespace-pre-wrap font-mono text-gray-500 border border-gray-100 mb-2 break-all max-h-[200px] overflow-y-auto shadow-inner">
+                                    {{ contextPreviewData[key] || '（无内容）' }}
+                                </div>
                             </div>
                         </div>
 
-                        <div class="mt-4 text-[10px] text-gray-400 text-center">
+                        <div class="mt-4 text-[10px] text-gray-400 text-center border-t pt-2">
+                            * 点击条目可查看实际发送给 AI 的文本内容<br>
                             * 估算值：1 中文 ≈ 1 Token, 3 英文 ≈ 1 Token
                         </div>
                     </div>
@@ -734,15 +837,81 @@
             </div>
         </div>
     </div>
+    <!-- Reset Confirm Modal -->
+    <div v-if="showResetConfirm"
+        class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        @click.self="showResetConfirm = false">
+        <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up">
+            <h3 class="text-lg font-bold text-gray-900 mb-2 text-center">确认重置?</h3>
+            <p class="text-xs text-gray-500 mb-6 text-center leading-relaxed">
+                将重置界面配置、背景等设置。<br>
+                <span class="text-orange-500 font-bold">保留</span> 角色设定、人设和记忆库。
+            </p>
+            <div class="flex gap-3">
+                <button class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold"
+                    @click="showResetConfirm = false">取消</button>
+                <button class="flex-1 py-2.5 rounded-xl bg-orange-500 text-white font-bold shadow-lg shadow-orange-200"
+                    @click="confirmReset">重置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clear History Modal -->
+    <div v-if="showClearConfirm"
+        class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        @click.self="showClearConfirm = false">
+        <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">删除聊天记录</h3>
+
+            <div class="bg-gray-50 p-3 rounded-xl mb-6 flex items-start gap-3 cursor-pointer"
+                @click="clearIncludeMemory = !clearIncludeMemory">
+                <div class="mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                    :class="clearIncludeMemory ? 'bg-red-500 border-red-500' : 'bg-white border-gray-300'">
+                    <i v-if="clearIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="text-sm font-bold text-gray-700">同时清除记忆库</div>
+                    <div class="text-[10px] text-gray-400 mt-0.5">勾选后将一并删除角色的长期记忆</div>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold"
+                    @click="showClearConfirm = false">取消</button>
+                <button class="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-bold shadow-lg shadow-red-200"
+                    @click="confirmClearHistory">确认清除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Character Modal -->
+    <div v-if="showDeleteConfirm"
+        class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        @click.self="showDeleteConfirm = false">
+        <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up">
+            <h3 class="text-lg font-bold text-gray-900 mb-2 text-center">删除该角色?</h3>
+            <p class="text-xs text-gray-500 mb-6 text-center leading-relaxed">
+                将删除所有聊天记录、配置和记忆。<br>
+                <span class="text-red-500 font-bold">此操作不可恢复。</span>
+            </p>
+            <div class="flex gap-3">
+                <button class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold"
+                    @click="showDeleteConfirm = false">我再想想</button>
+                <button class="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold shadow-lg shadow-red-200"
+                    @click="confirmDelete">确认删除</button>
+            </div>
+        </div>
+    </div>
 </template>
 
 <script setup>
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
 import { useAvatarFrameStore } from '../../stores/avatarFrameStore'
 import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
+import { weatherService } from '../../utils/weatherService'
 
 const props = defineProps({
     chatData: {
@@ -790,16 +959,110 @@ const globalBgStyle = computed(() => {
     return url ? { backgroundImage: `url('${url}')` } : {}
 })
 
+// Location Sync Logic
+const locationInfo = ref(null)
+
+const toggleLocationSync = async () => {
+    if (!localData.value.locationSync) {
+        // Enabling
+        localData.value.locationSync = true
+        showToast('正在获取位置信息...')
+
+        try {
+            const result = await weatherService.enableLocationSync()
+            if (result.success) {
+                locationInfo.value = weatherService.getLocationInfo()
+                showToast(`定位成功: ${result.realCity} → ${result.virtualCity}`)
+            } else {
+                showToast('定位失败，已使用默认城市')
+                locationInfo.value = weatherService.getLocationInfo()
+            }
+        } catch (error) {
+            showToast('定位失败: ' + error.message)
+            localData.value.locationSync = false
+        }
+    } else {
+        // Disabling
+        localData.value.locationSync = false
+        weatherService.disableLocationSync()
+        locationInfo.value = null
+        showToast('已关闭定位同步')
+    }
+}
+
+const refreshLocation = async () => {
+    showToast('刷新中...')
+    try {
+        await weatherService.refreshWeather()
+        locationInfo.value = weatherService.getLocationInfo()
+        showToast('刷新成功')
+    } catch (error) {
+        showToast('刷新失败')
+    }
+}
+
+
 
 
 // --- Token Stats Logic ---
+// --- Token Stats Logic ---
 const showTokenModal = ref(false)
+const contextPreviewData = ref({})
+const contextTokenCounts = ref({})
+const expandedContextKey = ref(null)
+
+// Restored: This is needed for the stats cards in the template
 const tokenStats = computed(() => {
-    return chatStore.getTokenBreakdown(props.chatData.id)
+    return chatStore.getTokenBreakdown(props.chatData.id) || {
+        total: 0,
+        totalContext: 0,
+        system: 0,
+        persona: 0,
+        worldBook: 0,
+        memory: 0,
+        history: 0,
+        summaryLib: 0
+    }
 })
 
+
+
+const contextLabels = {
+    system: '系统提示 (System)',
+    persona: '人设 (Persona)',
+    worldBook: '世界书 (WorldBook)',
+    moments: '朋友圈 (Moments)',
+    history: '上下文历史 (History)',
+    summary: '自动总结库 (Summary)'
+}
+
 const showTokenDetailModal = () => {
+    // Load Preview Data
+    const raw = chatStore.getPreviewContext(props.chatData.id)
+    if (raw) {
+        contextPreviewData.value = raw
+        // Calculate tokens locally for preview consistency
+        let total = 0
+        const counts = {}
+        for (const k in raw) {
+            const text = raw[k] || ''
+            const len = text.length
+            const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length
+            const other = len - chinese
+            // 1CN=1, 3EN=1
+            const count = chinese + Math.ceil(other / 3)
+            counts[k] = count
+            total += count
+        }
+        counts.total = total
+        contextTokenCounts.value = counts
+    }
     showTokenModal.value = true
+}
+
+const toggleContextExpand = (key) => {
+    if (expandedContextKey.value === key) expandedContextKey.value = null
+    else expandedContextKey.value = key
 }
 
 // --- Manual Summary Logic ---
@@ -825,20 +1088,12 @@ const executeManualSummary = async () => {
     }
 
     showManualSummaryModal.value = false
-    showToast('正在生成总结...', 3000)
 
     try {
         // Pass range to store action
-        const result = await chatStore.summarizeHistory(props.chatData.id, options)
-        if (result && result.success) {
-            showToast('总结生成成功！')
-        } else if (result && result.error) {
-            showToast('生成失败: ' + result.error)
-        } else {
-            showToast('生成失败或无新内容')
-        }
+        await chatStore.summarizeHistory(props.chatData.id, options)
     } catch (e) {
-        showToast('生成出错: ' + e.message)
+        console.error(e)
     }
 }
 
@@ -1062,6 +1317,7 @@ const localData = ref({
     timeAware: false,
     timeSyncMode: 'system',
     virtualTime: '',
+    locationSync: false, // Location sync toggle
     activeChat: false,
     activeInterval: 30,
     proactiveChat: false,
@@ -1086,6 +1342,8 @@ const localData = ref({
     emojiCategories: [],
     worldBookLinks: [],
     momentsMemoryLimit: 5,
+    userGender: '无', // Add User Gender
+    gender: '无',    // Add Char Gender
     avatarShape: 'square', // 'circle' or 'square'
     avatarFrame: null, // { id, url, name, scale, offsetX, offsetY }
     userAvatarFrame: null
@@ -1197,11 +1455,98 @@ const handleShowProfile = () => {
     emit('show-profile', props.chatData.id)
 }
 
+function parsePreviewBubbleCss(cssString, role) {
+    if (!cssString || typeof cssString !== 'string') {
+        // Fallback defaults if empty
+        if (role === 'user') return { backgroundColor: '#95ec69', color: 'black', borderRadius: '4px' }
+        return { backgroundColor: '#ffffff', color: 'black', borderRadius: '4px' }
+    }
+
+    let targetCss = cssString
+    if (cssString.includes('|||')) {
+        const parts = cssString.split('|||')
+        targetCss = role === 'user' ? (parts[1] || '') : parts[0]
+    }
+
+    const style = {}
+    targetCss.split(';').forEach(rule => {
+        const trimmed = rule.trim()
+        if (!trimmed) return
+        const parts = trimmed.split(':')
+        if (parts.length >= 2) {
+            const key = parts[0].trim().replace(/-([a-z])/g, g => g[1].toUpperCase())
+            const value = parts.slice(1).join(':').trim()
+            if (key && value) style[key] = value
+        }
+    })
+    return style
+}
+
+
+// Bubble Presets
+const presetBubbles = [
+    {
+        name: '乌金·沉浸',
+        css: `background: radial-gradient(circle at top left, #2a2520 0%, #0e0e10 100%); border: 1px solid rgba(212, 175, 55, 0.2); border-top: 1px solid rgba(212, 175, 55, 0.4); color: #e6dcc0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6); font-family: 'Noto Serif SC', serif; font-weight: 300; letter-spacing: 0.5px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); border-radius: 2px 12px 12px 12px; ||| background: radial-gradient(circle at top right, #374151 0%, #1f2937 100%); border: 1px solid rgba(255, 255, 255, 0.1); border-top: 1px solid rgba(255, 255, 255, 0.2); color: #e5e7eb; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4); font-family: 'Noto Serif SC', serif; font-weight: 300; letter-spacing: 0.5px; border-radius: 12px 2px 12px 12px;`
+    },
+    {
+        name: '信笺·对话',
+        css: `background: #f7f5f0; border: 1px solid rgba(140, 126, 99, 0.3); color: #2c2c2c; box-shadow: 2px 2px 0 rgba(212, 175, 55, 0.2); font-family: 'KaiTi', 'STKaiti', serif; font-weight: 600; border-radius: 4px; padding: 10px 14px; letter-spacing: 1px; ||| background: #e5e7eb; border: 1px solid rgba(156, 163, 175, 0.3); color: #1f2937; box-shadow: -2px 2px 0 rgba(107, 114, 128, 0.1); font-family: 'KaiTi', 'STKaiti', serif; font-weight: 600; border-radius: 4px; padding: 10px 14px; letter-spacing: 1px;`
+    },
+    {
+        name: '极致·琉璃',
+        css: `background: rgba(30, 30, 35, 0.75); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.15); border-left: 2px solid #d4af37; color: #ffffff; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4); font-family: system-ui, -apple-system, 'Microsoft YaHei', sans-serif; font-weight: 400; letter-spacing: 1px; border-radius: 8px; --no-arrow: true; ||| background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); border-right: 2px solid #e5e7eb; color: #ffffff; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); font-family: system-ui, -apple-system, 'Microsoft YaHei', sans-serif; font-weight: 400; letter-spacing: 1px; border-radius: 8px; --no-arrow: true;`
+    },
+    {
+        name: '软萌·甜心',
+        css: `background: #fff0f5; color: #8b4789; border: 2px dashed #ffb7c5; border-radius: 20px; box-shadow: 0 4px 12px rgba(255,183,197,0.4); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px; ||| background: #f0f8ff; color: #6868a8; border: 2px dashed #add8e6; border-radius: 20px; box-shadow: 0 4px 12px rgba(173,216,230,0.4); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px;`
+    },
+    {
+        name: '梦幻·睡眠',
+        css: `background: linear-gradient(135deg, #e3f2fd 0%, #fff0f5 100%); color: #4a5a7b; border: 2px solid rgba(173, 216, 230, 0.4); border-radius: 18px; box-shadow: 0 3px 10px rgba(100, 149, 237, 0.2); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px; ||| background: linear-gradient(135deg, #fff0f5 0%, #ffe6f0 100%); color: #765681; border: 2px solid rgba(255, 192, 203, 0.4); border-radius: 18px; box-shadow: 0 3px 10px rgba(255, 182, 193, 0.2); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px;`
+    },
+    {
+        name: '星星·小美好',
+        css: `background: linear-gradient(135deg, #fffacd 0%, #fff8dc 100%); color: #766045; border: 2px solid rgba(255, 215, 0, 0.3); border-radius: 20px; box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px; ||| background: linear-gradient(135deg, #fff8dc 0%, #ffe4b5 100%); color: #8a6c57; border: 2px solid rgba(255, 222, 173, 0.4); border-radius: 20px; box-shadow: 0 4px 12px rgba(255, 228, 181, 0.25); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px;`
+    },
+    {
+        name: '粉心·甜蜜',
+        css: `background: linear-gradient(135deg, #ffe6f0 0%, #fff0f8 100%); color: #a6447d; border: 2px solid rgba(255, 182, 193, 0.5); border-radius: 22px; box-shadow: 0 5px 15px rgba(255, 105, 180, 0.2); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px; ||| background: linear-gradient(135deg, #fff0f8 0%, #ffe6f5 100%); color: #bf5e8e; border: 2px solid rgba(255, 192, 203, 0.5); border-radius: 22px; box-shadow: 0 5px 15px rgba(255, 182, 193, 0.25); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px;`
+    },
+    {
+        name: '云朵·梦境',
+        css: `background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); color: #4d80b3; border: 2px solid rgba(135, 206, 250, 0.4); border-radius: 24px; box-shadow: 0 4px 14px rgba(135, 206, 235, 0.25); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px; ||| background: linear-gradient(135deg, #e6f3ff 0%, #d4ebff 100%); color: #3d70a3; border: 2px solid rgba(173, 216, 230, 0.4); border-radius: 24px; box-shadow: 0 4px 14px rgba(176, 224, 230, 0.3); padding: 12px 16px; font-family: 'YouYuan', 'Round', sans-serif; font-weight: 600; letter-spacing: 1px;`
+    },
+    {
+        name: '赛博·霓虹',
+        css: `background: rgba(5, 20, 30, 0.9); border: 1px solid #00f3ff; color: #00f3ff; box-shadow: 0 0 10px rgba(0, 243, 255, 0.3), inset 0 0 5px rgba(0, 243, 255, 0.1); border-radius: 4px; letter-spacing: 1px; font-family: 'Consolas', 'Monaco', monospace; font-weight: bold; ||| background: rgba(30, 5, 20, 0.9); border: 1px solid #ff0055; color: #ff0055; box-shadow: 0 0 10px rgba(255, 0, 85, 0.3), inset 0 0 5px rgba(255, 0, 85, 0.1); border-radius: 4px; letter-spacing: 1px; font-family: 'Consolas', 'Monaco', monospace; font-weight: bold;`
+    },
+    {
+        name: '水墨·丹青',
+        css: `background: #fdfbf7; border-left: 4px solid #2b2b2b; color: #333; font-family: 'KaiTi', 'STKaiti', serif; font-weight: 600; letter-spacing: 1px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); border-radius: 2px; padding: 10px 15px; ||| background: #f2f2f2; border-right: 4px solid #8b0000; color: #333; font-family: 'KaiTi', 'STKaiti', serif; font-weight: 600; letter-spacing: 1px; box-shadow: -2px 2px 8px rgba(0,0,0,0.1); border-radius: 2px; padding: 10px 15px;`
+    },
+    {
+        name: '极简·磨砂',
+        css: `background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); color: #1f2937; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); font-family: system-ui, -apple-system, sans-serif; font-weight: 500; letter-spacing: 0.5px; ||| background: rgba(59, 130, 246, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.2); color: white; border-radius: 16px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3); font-family: system-ui, -apple-system, sans-serif; font-weight: 500; letter-spacing: 0.5px;`
+    }
+]
 
 const showUrlModal = ref(false)
 const urlModalTitle = ref('')
 const urlModalInput = ref('')
 const urlModalCallback = ref(null)
+
+function onPresetChange(event) {
+    const presetName = event.target.value
+    if (!presetName) {
+        localData.value.bubbleCss = ''
+        return
+    }
+    const preset = presetBubbles.find(p => p.name === presetName)
+    if (preset) {
+        localData.value.bubbleCss = preset.css
+    }
+}
 
 const openUrlPrompt = (title, callback) => {
     urlModalTitle.value = title
@@ -1234,26 +1579,30 @@ const handleBgUpload = async (e) => {
     }
 }
 
-const handleClearHistory = () => {
-    if (confirmingClear.value) {
-        chatStore.clearHistory(props.chatData.id)
-        showToast('记录已清空')
-        confirmingClear.value = false
-    } else {
-        confirmingClear.value = true
-        setTimeout(() => confirmingClear.value = false, 3000)
-    }
+const showResetConfirm = ref(false)
+const showClearConfirm = ref(false)
+const clearIncludeMemory = ref(false)
+const showDeleteConfirm = ref(false)
+
+const confirmReset = () => {
+    chatStore.resetCharacter(props.chatData.id)
+    showResetConfirm.value = false
+    showToast('角色已重置', 'success')
+    emit('close')
 }
 
-const handleDeleteChar = () => {
-    if (confirmingDelete.value) {
-        // chatStore.deleteChat(props.chatData.id) 
-        showToast('功能开发中...')
-        confirmingDelete.value = false
-    } else {
-        confirmingDelete.value = true
-        setTimeout(() => confirmingDelete.value = false, 3000)
-    }
+const confirmClearHistory = () => {
+    chatStore.clearHistory(props.chatData.id, { includeMemory: clearIncludeMemory.value })
+    showClearConfirm.value = false
+    clearIncludeMemory.value = false
+    showToast('记录已清除', 'success')
+}
+
+const confirmDelete = () => {
+    chatStore.deleteChat(props.chatData.id)
+    showDeleteConfirm.value = false
+    showToast('角色已删除', 'success')
+    emit('close')
 }
 
 const toggleWorldBook = (id) => {
@@ -1326,11 +1675,11 @@ const saveSettings = () => {
 
     if (success) {
         // 2. Add system notification if remark changed
-        // 2. Add system notification if remark changed (SKIP for new chats to avoid hiding friend request)
-        if (!props.chatData.isNew && newRemark !== undefined && newRemark !== oldRemark) {
+        // (SKIP for new chats, or if remark is cleared/empty)
+        if (!props.chatData.isNew && newRemark !== undefined && newRemark !== oldRemark && newRemark.trim() !== '') {
             chatStore.addMessage(props.chatData.id, {
                 role: 'system',
-                content: `${localData.value.userName || '用户'}将你的备注改成了${newRemark || '无'}`
+                content: `${localData.value.userName || '用户'}将你的备注改成了${newRemark}`
             })
         }
 
@@ -1351,12 +1700,9 @@ const saveSettings = () => {
 
 const handleManualSummary = async () => {
     try {
-        showToast('正在生成总结...')
-        const result = await chatStore.summarizeHistory(props.chatData.id)
-        if (result) showToast('总结已生成')
+        await chatStore.summarizeHistory(props.chatData.id)
     } catch (e) {
         console.error(e)
-        showToast('生成失败: ' + e.message)
     }
 }
 // Sticker Logic
@@ -1436,6 +1782,13 @@ function toggleAvatarShape() {
     localData.value.avatarShape = localData.value.avatarShape === 'circle' ? 'square' : 'circle'
 }
 
+onMounted(() => {
+    if (localData.value.locationSync) {
+        weatherService.enableLocationSync().then(() => {
+            locationInfo.value = weatherService.getLocationInfo()
+        })
+    }
+})
 </script>
 
 <style scoped>

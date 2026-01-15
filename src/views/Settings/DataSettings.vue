@@ -141,8 +141,13 @@
                         <div class="grid grid-cols-1 gap-4">
                             <div v-for="asset in assetOptions" :key="asset.id"
                                 class="group relative flex items-center gap-5 p-5 rounded-[32px] border-2 transition-all cursor-pointer overflow-hidden"
-                                :class="asset.enabled ? 'bg-white border-blue-500 shadow-xl shadow-blue-500/5' : 'bg-white/50 border-gray-100 opacity-60'"
-                                @click="asset.enabled = !asset.enabled">
+                                :class="enabledAssets.has(asset.id) ? 'bg-white border-blue-500 shadow-xl shadow-blue-500/5' : 'bg-white/50 border-gray-100 opacity-60'"
+                                @click="enabledAssets.has(asset.id) ? enabledAssets.delete(asset.id) : enabledAssets.add(asset.id)">
+
+                                <div v-if="enabledAssets.has(asset.id)"
+                                    class="absolute -right-4 -bottom-4 text-blue-500/5 rotate-12 transition-transform group-hover:scale-125">
+                                    <i :class="asset.icon" class="text-7xl"></i>
+                                </div>
 
                                 <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition-all relative z-10"
                                     :class="asset.color">
@@ -156,8 +161,8 @@
                                 </div>
 
                                 <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 z-10"
-                                    :class="asset.enabled ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-200' : 'border-gray-200 bg-white'">
-                                    <i v-if="asset.enabled"
+                                    :class="enabledAssets.has(asset.id) ? 'bg-blue-600 border-blue-600 shadow-lg shadow-blue-200' : 'border-gray-200 bg-white'">
+                                    <i v-if="enabledAssets.has(asset.id)"
                                         class="fa-solid fa-check text-white text-[10px] font-black"></i>
                                 </div>
                             </div>
@@ -206,7 +211,7 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useMomentsStore } from '@/stores/momentsStore'
@@ -221,6 +226,12 @@ const settingsStore = useSettingsStore()
 const stickerStore = useStickerStore()
 const worldBookStore = useWorldBookStore()
 
+onMounted(async () => {
+    // Force reload critical stores to ensure export data is fresh
+    await worldBookStore.loadEntries()
+    settingsStore.loadFromStorage()
+})
+
 const handleGoBack = () => router.back()
 
 // --- UI State ---
@@ -231,7 +242,7 @@ const modalStates = reactive({
 })
 
 // --- Export Configuration ---
-const assetOptions = ref([
+const assetOptions = computed(() => [
     { id: 'chats', name: '角色与聊天', desc: `${Object.keys(chatStore.chats || {}).length} 个生命体记忆`, icon: 'fa-solid fa-robot', color: 'bg-emerald-100 text-emerald-600', enabled: true },
     { id: 'moments', name: '朋友圈动态', desc: `${(momentsStore.moments || []).length} 条社交时空片段`, icon: 'fa-solid fa-camera-retro', color: 'bg-orange-100 text-orange-600', enabled: true },
     { id: 'settings', name: '系统核心参数', desc: 'API配置与自动化逻辑', icon: 'fa-solid fa-sliders', color: 'bg-blue-100 text-blue-600', enabled: true },
@@ -239,9 +250,15 @@ const assetOptions = ref([
     { id: 'worldbook', name: '世界书设定', desc: `${worldBookStore.books?.length || 0} 个逻辑定义单元`, icon: 'fa-solid fa-book-sparkles', color: 'bg-indigo-100 text-indigo-600', enabled: true },
     { id: 'stickers', name: '私有表情仓库', desc: `${stickerStore.stickers?.length || 0} 个静态/动态资源`, icon: 'fa-solid fa-icons', color: 'bg-amber-100 text-amber-600', enabled: true }
 ])
+// Maintain separate state for enabled status since computed is read-only for structure
+const enabledAssets = ref(new Set(['chats', 'moments', 'settings', 'decoration', 'worldbook', 'stickers']))
 
 const updateAllExport = (val) => {
-    assetOptions.value.forEach(opt => opt.enabled = val)
+    if (val) {
+        ['chats', 'moments', 'settings', 'decoration', 'worldbook', 'stickers'].forEach(id => enabledAssets.value.add(id))
+    } else {
+        enabledAssets.value.clear()
+    }
 }
 
 const handleOpenExport = () => {
@@ -256,7 +273,7 @@ const executeExport = () => {
         data: {}
     }
 
-    const activeIds = assetOptions.value.filter(o => o.enabled).map(o => o.id)
+    const activeIds = Array.from(enabledAssets.value)
 
     if (activeIds.includes('chats')) backup.data.chats = chatStore.chats
     if (activeIds.includes('moments')) backup.data.moments = momentsStore.moments

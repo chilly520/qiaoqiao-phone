@@ -382,8 +382,9 @@ const openSettings = () => {
 
 const saveSettings = () => {
     momentsStore.config.autoGenerateInterval = settingsForm.value.autoGenerateInterval
-    momentsStore.config.enabledCharacters = settingsForm.value.enabledCharacters
+    momentsStore.config.enabledCharacters = [...settingsForm.value.enabledCharacters]
     momentsStore.config.customPrompt = settingsForm.value.customPrompt
+    momentsStore.config.enabledWorldBookEntries = [...settingsForm.value.enabledWorldBookEntries]
 
     momentsStore.startAutoGeneration() // Restart loop with new interval
     showSettingsModal.value = false
@@ -788,7 +789,7 @@ onMounted(() => {
                                     class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group"
                                     @click="settingsForm.enabledCharacters.includes(chat.id) ? settingsForm.enabledCharacters = settingsForm.enabledCharacters.filter(id => id !== chat.id) : settingsForm.enabledCharacters.push(chat.id)">
                                     <input type="checkbox"
-                                        :checked="settingsForm.enabledCharacters.length === 0 || settingsForm.enabledCharacters.includes(chat.id)"
+                                        :checked="settingsForm.enabledCharacters.includes(chat.id)"
                                         class="accent-green-500">
                                     <img :src="chat.avatar" class="w-6 h-6 rounded">
                                     <span class="text-sm flex-1">{{ chat.name }}</span>
@@ -798,7 +799,7 @@ onMounted(() => {
                                         :title="confirmClearCharId === chat.id ? '点击确认清空' : '清空此角色动态'"></i>
                                 </div>
                             </div>
-                            <p class="text-[10px] text-gray-400 mt-2">* 不勾选默认为全部角色可用</p>
+                            <p class="text-[10px] text-gray-400 mt-2">* 未选中的角色将不会参与触发定时动态生成</p>
                         </div>
 
                         <!-- World Book Entries Selection -->

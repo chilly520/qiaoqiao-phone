@@ -40,6 +40,7 @@
                             <option value="html">HTML 卡片</option>
                             <option value="redpacket">红包</option>
                             <option value="transfer">转账</option>
+                            <option value="family_card">亲属卡</option>
                         </select>
                     </div>
 
@@ -114,7 +115,7 @@ const init = () => {
 }
 
 const normalizeType = (type) => {
-    if (['redpacket', 'transfer', 'image', 'voice', 'html'].includes(type)) return type
+    if (['redpacket', 'transfer', 'image', 'voice', 'html', 'family_card'].includes(type)) return type
     return 'text'
 }
 
@@ -196,6 +197,23 @@ const save = () => {
             base.content = '转账'
             base.note = b.content || '转账'
             base.amount = '520.00'
+        } else if (b.type === 'family_card') {
+            base.type = 'family_card'
+
+            // If already formatted, use as is
+            if (b.content && b.content.trim().startsWith('[FAMILY_CARD')) {
+                base.content = b.content
+            } else {
+                let amt = '5200'
+                let note = b.content || '亲属卡'
+
+                const match = b.content ? b.content.match(/^(\d+)(.*)/) : null
+                if (match) {
+                    amt = match[1]
+                    note = match[2].trim() || '亲属卡'
+                }
+                base.content = `[FAMILY_CARD:${amt}:${note}]`
+            }
         }
 
         return base

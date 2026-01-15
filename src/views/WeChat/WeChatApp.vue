@@ -250,8 +250,8 @@ const openChat = (chatId) => {
 }
 
 const openProfileFromChat = (charId) => {
-    // Navigate to dedicated Character Profile View
-    router.push({ name: 'character-profile', params: { charId } })
+    // Navigate to dedicated Character Profile View (Card Info first)
+    router.push({ name: 'character-info', params: { charId } })
 }
 
 const handleChatBack = () => {
@@ -326,21 +326,32 @@ const goBack = () => {
         currentChatId: chatStore.currentChatId
     })
 
-    // Close any open overlays first
+    // 1. Check if Moments is open
     if (showMoments.value) {
         console.log('[WeChatApp] Closing moments')
         showMoments.value = false
         momentsInitialProfileId.value = null
+
+        // Critical Fix: Pop history if we pushed it when opening moments
+        if (history.state?.profileOpen) {
+            history.back()
+        }
         return
     }
 
+    // 2. Check if Chat is open
     if (chatStore.currentChatId) {
         console.log('[WeChatApp] Closing chat')
         chatStore.currentChatId = null
+
+        // Critical Fix: Pop history if we pushed it when opening chat
+        if (history.state?.chatOpen) {
+            history.back()
+        }
         return
     }
 
-    // If no overlays are open, go back to home
+    // 3. If no overlays, go back to previous route (Home)
     console.log('[WeChatApp] Navigating to home')
     router.back()
 }
@@ -621,6 +632,14 @@ const goBack = () => {
                         <i class="fa-solid fa-qrcode text-gray-300 mr-2"></i>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
+
+                    <!-- Wallet Entry -->
+                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                        @click="router.push('/wallet')">
+                        <i class="fa-solid fa-wallet text-[#07c160] text-xl"></i>
+                        <span class="text-base text-gray-900 flex-1">钱包</span>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </div>
                     <div class="bg-white px-4 py-3 flex items-center gap-3 mt-2 cursor-pointer active:bg-gray-50"
                         @click="navigateToSettings">
                         <i class="fa-solid fa-gear text-blue-500 text-xl"></i>
@@ -639,7 +658,7 @@ const goBack = () => {
                     <i class="text-xl"
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
-                        }}</span>
+                    }}</span>
                 </div>
             </div>
         </template>

@@ -52,7 +52,7 @@
                 </select>
                 <input v-model="filterKeyword" type="text" placeholder="搜索日志..."
                     class="flex-1 bg-[#3c3c3c] text-ccc border border-[#555] rounded px-2 py-0.5 text-xs outline-none">
-                <button @click="loggerStore.autoScroll = !loggerStore.autoScroll"
+                <button @click="toggleAutoScroll"
                     class="text-[10px] px-2 py-1 rounded transition-colors"
                     :class="loggerStore.autoScroll ? 'bg-[#0e639c] text-white' : 'bg-[#3c3c3c] text-gray-400'">
                     自动滚动: {{ loggerStore.autoScroll ? 'ON' : 'OFF' }}
@@ -156,6 +156,14 @@ const expandedLogs = ref(new Set())
 const clearLogs = () => loggerStore.clearLogs()
 const exportLogs = () => loggerStore.exportLogs()
 const forceReview = () => { /* Triggered automatically by Vue reactivity */ }
+
+const toggleAutoScroll = () => {
+    loggerStore.autoScroll = !loggerStore.autoScroll
+    // If turning ON, scroll immediately
+    if (loggerStore.autoScroll) {
+        scrollToBottom()
+    }
+}
 
 const toggleLog = (id) => {
     if (expandedLogs.value.has(id)) {

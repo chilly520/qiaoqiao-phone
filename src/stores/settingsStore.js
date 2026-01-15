@@ -76,7 +76,12 @@ export const useSettingsStore = defineStore('settings', () => {
     })
     const weather = ref({
         virtualLocation: '',
-        realLocation: ''
+        realLocation: '',
+        // Live data synced from HomeView
+        temp: '--°',
+        desc: '获取中',
+        aqi: 'AQI --',
+        icon: 'fa-sun'
     })
     const compressQuality = ref(0.7)
     const drawing = ref({
@@ -255,6 +260,14 @@ export const useSettingsStore = defineStore('settings', () => {
         saveToStorage()
     }
     function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
+    function updateLiveWeather(data) {
+        weather.value.temp = data.temp
+        weather.value.desc = data.desc
+        weather.value.aqi = data.aqi
+        weather.value.icon = data.icon
+        weather.value.lastUpdate = Date.now()
+        saveToStorage()
+    }
     function setCompressQuality(val) { compressQuality.value = typeof val === 'string' ? parseFloat(val) : val; saveToStorage(); }
 
     // Drawing Action
@@ -365,7 +378,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
-        setWeatherConfig, setCompressQuality, setDrawingConfig,
+        setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport
     }
 })
