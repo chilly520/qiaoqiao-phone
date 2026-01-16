@@ -235,28 +235,8 @@
                         <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
 
-                            <!-- 1. HTML Card Layer -->
-                            <div v-if="shouldRenderCard && isValidMessage"
-                                class="mt-1 transition-all relative z-10 max-w-full" @contextmenu.prevent="emitContextMenu"
-                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
-                                @message="handleIframeMessage">
-                                <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
-                            </div>
-
-                            <!-- 2. Visual Content Layer (Image OR Text) -->
-
-                            <!-- Case A: Pure Image (No bubble bg, distinct from HTML) -->
-                            <div v-if="!shouldRenderCard && isImageMsg(msg)" class="msg-image bg-transparent"
-                                @contextmenu.prevent="emitContextMenu">
-                                <img :src="getImageSrc(msg)"
-                                    class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
-                                    @click="previewImage(getImageSrc(msg))" @error="handleImageError"
-                                    referrerpolicy="no-referrer">
-                            </div>
-
-                            <!-- Case B: Text Bubble (Sticker as inline / Text) -->
-                            <div v-else-if="!shouldRenderCard && cleanedContent" @contextmenu.prevent="emitContextMenu"
+                            <!-- 1. Text Bubble Layer (Sticker / Text) -->
+                            <div v-if="cleanedContent" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -266,12 +246,6 @@
                                     fontSize: (chatData?.bubbleSize || 15) + 'px',
                                     ...(computedBubbleStyle || {})
                                 }">
-                                <!-- Arrow -->
-                                <div v-if="shouldShowArrow"
-                                    class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#374151]' : 'left-[-6px] border-r-[6px] border-r-[#2a2520]'">
-                                </div>
-
                                 <!-- Quote -->
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
@@ -283,6 +257,24 @@
 
                                 <!-- Content -->
                                 <span v-html="formattedContent"></span>
+                            </div>
+
+                            <!-- 2. Image Layer -->
+                            <div v-if="isImageMsg(msg.content)" class="msg-image bg-transparent"
+                                @contextmenu.prevent="emitContextMenu">
+                                <img :src="getImageSrc(msg)"
+                                    class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
+                                    @click="previewImage(getImageSrc(msg))" @error="handleImageError"
+                                    referrerpolicy="no-referrer">
+                            </div>
+
+                            <!-- 3. HTML Card Layer -->
+                            <div v-if="shouldRenderCard && hasHtmlContent"
+                                class="mt-1 transition-all relative z-10 max-w-full" @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
+                                @message="handleIframeMessage">
+                                <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                             </div>
 
                             <!-- Bubble Timestamp -->
@@ -492,26 +484,17 @@ const hasHtmlContent = computed(() => {
     return html && html.trim().length > 0
 })
 
-// Check if message should be displayed
 const isValidMessage = computed(() => {
     // 1. If it's a family card, always show
     if (isFamilyCard.value) return true
 
-    // 2. If it's an AI-flagged HTML message, or it looks like a card and we have content
-    if (props.msg.type === 'html' || (isHtmlCard.value && hasHtmlContent.value)) {
-        return true
-    }
-
-    // 3. Fallback for broken cards: If it's flagged as a card but we couldn't extract content,
-    // we want to fall back to text display rather than hiding it.
-    // So we return true here so the 'div v-else-if="cleanedContent"' can pick it up.
-    if (isHtmlCard.value && !hasHtmlContent.value) return true
-
-    // 4. If it's an image, always show
+    // 2. If it's an image, always show
     if (isImageMsg(props.msg.content)) return true
 
-    // 5. If content is being streamed (from AI), check if there is ALREADY something worth showing 
-    // If it's just tags being removed, it's better to hide the bubble until text appears
+    // 3. If it's an HTML card, it's ONLY valid if it actually has renderable HTML content
+    if ((props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value) return true
+
+    // 4. Otherwise, only show if cleaned text content is not empty
     const clean = getCleanContent(ensureString(props.msg.content))
     return clean && clean.length > 0
 })
@@ -703,10 +686,11 @@ function getCleanContent(contentRaw) {
     // Filter 3: Garbage punctuation strings
     if (/^["'>}<{\[\]]+$/.test(clean.trim())) return '';
 
-    // Filter 4: HTML JSON head/tail cleanup (Last resort)
+    // Filter 4: HTML JSON cleanup (Surgical removal)
     if (clean.includes('"type"') && clean.includes('"html"')) {
-        // If it looks like a leaked JSON wrapper, strip the wrapper and keep only text before/after if any
-        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?\}/gi, '').trim();
+        // Only strip if it's a valid JSON block starting with { and ending with }
+        // This regex is more precise and avoids swallowing text BEFORE or AFTER the JSON
+        clean = clean.replace(/\{[\s\n]*"type"\s*:\s*"html"[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?\}/gi, '');
     }
 
 
@@ -950,40 +934,39 @@ function formatMessageContent(msg) {
     text = text.replace(/\[(.*?)\]/g, (match, name) => {
         let n = name.trim()
         
-        // Strip prefixes like "表情包:" or "STICKER:"
-        const prefixMatch = n.match(/^(?:表情包|STICKER|IMAGE|图片)[:：]\s*(.*)/i);
+        // Strip prefixes like "表情包:", "表情:", "表情-", "STICKER-", etc.
+        const prefixMatch = n.match(/^(?:表情包|表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
         if (prefixMatch) {
             n = prefixMatch[1].trim();
         }
 
-        // Skip specialized tags we might have missed or are recursive
-        // Also skip if it starts with DRAW: to avoid double processing if regex missed
-        if (n.toUpperCase().startsWith('DRAW:') || n === 'INNER_VOICE' || n === '/INNER_VOICE' || n.toUpperCase().startsWith('BIO:')) return match;
-
+        // Multi-pass Matching Strategy
         const charStickers = props.chatData?.emojis || []
-        const cm = charStickers.find(s => s.name === n)
-        if (cm) return `<img src="${cm.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${n}" />`
-        
-        const globalStickers = stickerStore.getStickers('global').find(s => s.name === n)
-        if (globalStickers) return `<img src="${globalStickers.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${n}" />`
-        
-        // Resilience 1: Strip trailing punctuation
-        const cleanPunc = n.replace(/[。.，,！!？?]+$/, '');
-        
-        // Resilience 2: Strip parentheticals (e.g. "求求你了 (求你之-舞)" -> "求求你了")
-        const cleanParen = n.replace(/\s*[\(（].*?[\)）]\s*$/, '');
+        const globalStickers = stickerStore.getStickers('global') || []
+        const allAvailable = [...charStickers, ...globalStickers]
 
-        // Resilience 3: Try both char and global with cleaned names
-        const candidates = [n, cleanPunc, cleanParen].filter(Boolean);
-        for (const cand of candidates) {
-            const mChar = charStickers.find(s => s.name === cand);
-            if (mChar) return `<img src="${mChar.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${cand}" />`
-            
-            const mGlobal = stickerStore.getStickers('global').find(s => s.name === cand);
-            if (mGlobal) return `<img src="${mGlobal.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${cand}" />`
+        // Helper: Clean a string for comparison (No emojis, no punctuation, lowercase)
+        const normalize = (s) => (s || '')
+            .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+            .replace(/[。.，,！!？?\-\s\(\)（）]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const nClean = normalize(n);
+        if (!nClean && !n) return match;
+
+        // 1. Precise Match (Raw or Cleaned name)
+        let found = allAvailable.find(s => s.name === n || normalize(s.name) === nClean);
+        
+        // 2. Fuzzy Match (If AI sent a partial name, try to find a sticker that CATEGORICALLY matches)
+        if (!found && nClean.length >= 2) {
+            found = allAvailable.find(s => normalize(s.name).includes(nClean) || nClean.includes(normalize(s.name)));
         }
 
-        return match; // Keep as text [Name] if not found, don't just swallow it
+        if (found) {
+            return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
+        }
+
     })
 
     try { return marked.parse(text) } catch (e) { return text }

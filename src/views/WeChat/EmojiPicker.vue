@@ -108,7 +108,7 @@
                         </div>
                         <!-- Sticker Name with Category Badge -->
                         <div class="w-full flex flex-col items-center gap-0.5">
-                            <span class="text-[10px] text-gray-500 truncate w-full text-center">{{ sticker.name }}</span>
+                            <span class="text-[10px] text-gray-500 truncate w-full text-center">{{ getDisplayName(sticker.name) }}</span>
                             <span v-if="sticker.category"
                                 class="text-[8px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">{{
                                     sticker.category }}</span>
@@ -304,6 +304,12 @@ const filteredStickers = computed(() => {
 
     return result
 })
+
+const getDisplayName = (name) => {
+    if (!name) return ''
+    // Strip trailing emojis for a cleaner UI look
+    return name.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim() || name
+}
 
 // Standard Emoji List (Subset)
 const simpleEmojiList = [
