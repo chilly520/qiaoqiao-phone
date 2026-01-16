@@ -8,9 +8,11 @@ export const useFavoritesStore = defineStore('favorites', () => {
         const saved = localStorage.getItem('wechat_favorites')
         if (saved) {
             try {
-                favorites.value = JSON.parse(saved)
+                const parsed = JSON.parse(saved)
+                favorites.value = Array.isArray(parsed) ? parsed : []
             } catch (e) {
                 console.error(e)
+                favorites.value = []
             }
         }
     }
@@ -37,7 +39,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
         return true
     }
 
-    function addBatchFavorite(msgs, chatName) {
+    function addBatchFavorite(msgs, chatName, avatarUrl) {
         if (!msgs || msgs.length === 0) return false
 
         const item = {
@@ -45,6 +47,8 @@ export const useFavoritesStore = defineStore('favorites', () => {
             type: 'chat_record',
             source: chatName,
             savedAt: Date.now(),
+            avatar: avatarUrl || '',
+            author: chatName || '聊天记录', // Ensure author exists for list view
             messages: msgs.map(m => ({
                 id: m.id,
                 role: m.role,

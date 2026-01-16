@@ -2,8 +2,7 @@
   <div class="safe-html-card w-full" :style="{ height: height + 'px' }">
     <iframe ref="iframeRef" :srcdoc="fullContent" class="w-full h-full border-none overflow-hidden"
       sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"
-      allowtransparency="true"
-      @load="adjustHeight"></iframe>
+      allowtransparency="true" @load="adjustHeight"></iframe>
   </div>
 </template>
 
@@ -22,9 +21,9 @@ const height = ref(0)
 const resizeObserver = ref(null)
 
 const fullContent = computed(() => {
-    const content = props.content || ''
+  const content = props.content || ''
 
-    const bootstrap = `
+  const bootstrap = `
     <style id="base-styles">
       /* 样式重置，确保HTML卡片不影响外部界面，同时保留内容的原始样式 */
       html, body {
@@ -180,7 +179,7 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
 .safe-html-card {
   transition: height 0.2s ease, opacity 0.3s ease;
   /* 移除布局隔离，避免影响高度计算 */
-  overflow: hidden;
+  /* overflow: hidden; -- 用户反馈会导致折叠界面被裁切，暂时移除 */
   /* 移除边框和阴影，让内容完全融入界面 */
   border-radius: 0;
   box-shadow: none;
@@ -206,5 +205,7 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
 .safe-html-card iframe {
   border-radius: 0;
   background: transparent;
+  width: 100%;
+  height: 100%;
 }
 </style>

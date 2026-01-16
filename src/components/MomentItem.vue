@@ -19,6 +19,10 @@ const stickerStore = useStickerStore()
 
 const router = useRouter()
 
+const vFocus = {
+    mounted: (el) => el.focus()
+}
+
 // --- State ---
 const showActionMenu = ref(false) // For Moment Menu (...)
 const showCommentMenu = ref(false) // For Comment Long-press Menu
@@ -55,6 +59,23 @@ const author = computed(() => {
     return { name: authorId, avatar: '' }
 })
 
+// Current User Avatar Context (For commenting on THIS moment)
+const currentUserAvatar = computed(() => {
+    // If interacting with a Character's post, use the specific user avatar for that character
+    if (props.moment?.authorId && chatStore.chats[props.moment.authorId]) {
+        return chatStore.chats[props.moment.authorId].userAvatar || settingsStore.personalization.userProfile.avatar
+    }
+    return settingsStore.personalization.userProfile.avatar
+})
+
+const currentUserName = computed(() => {
+    // If interacting with a Character's post, use the specific user name for that character
+    if (props.moment?.authorId && chatStore.chats[props.moment.authorId]) {
+        return chatStore.chats[props.moment.authorId].userName || settingsStore.personalization.userProfile.name
+    }
+    return settingsStore.personalization.userProfile.name
+})
+
 const isLiked = computed(() => (props.moment?.likes || []).includes(settingsStore.personalization.userProfile.name))
 
 const likeNames = computed(() => {
@@ -87,12 +108,13 @@ const getAuthorName = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.name
     // 首先尝试通过ID查找
     if (chatStore.chats[id]) {
-        return chatStore.chats[id].name
+        // Request 6: Use Remark/Alias if available
+        return chatStore.chats[id].remark || chatStore.chats[id].name
     }
     // 如果通过ID找不到，尝试通过名称查找
     const char = Object.values(chatStore.chats).find(c => c.name === id)
     if (char) {
-        return char.name
+        return char.remark || char.name
     }
     return id || '神秘人'
 }
@@ -138,17 +160,28 @@ const parsedContent = computed(() => {
     content = div.innerHTML
 
     // 1. Handle Mentions (@name)
-    // We match @ followed by non-whitespace characters
-    // We only highlight if it exists in the mentions array to avoid false positives
     if (props.moment?.mentions && props.moment.mentions.length > 0) {
         props.moment.mentions.forEach(mention => {
             const escapedName = mention.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
+            // Improved Regex: Removed \b to support Chinese names
+            const mentionRegex = new RegExp(`@${escapedName}(?!\\u200d)`, 'g')
             content = content.replace(mentionRegex, `<span class="inline-block px-1.5 py-0.5 mx-0.5 bg-blue-50 text-blue-500 rounded text-[14px] font-medium leading-tight">@${mention.name}</span>`)
         })
     }
 
-    // 2. Regex for [表情包:名称]
+    // Fix: Handle raw template literals that weren't parsed (e.g. ${user.name})
+    if (content.includes('${user.name}')) {
+        const uName = settingsStore.personalization.userProfile.name
+        content = content.replace(/\$\{user\.name\}/g, uName)
+    }
+
+    // 2. Handle Hashtags (#Topic )
+    // Requirement: # + content + space
+    content = content.replace(/#([^\s#]+)(\s|$)/g, (match, topic, spacer) => {
+        return `<span class="text-blue-500 font-medium">#${topic}</span>${spacer}`
+    })
+
+    // 3. Regex for [表情包:名称]
     const stickerRegex = /\[表情包:([^\]]+)\]/g
     return content.replace(stickerRegex, (match, name) => {
         let sticker = stickerStore.customStickers.find(s => s.name === name)
@@ -549,7 +582,7 @@ const navigateToAuthor = () => {
                 <div class="flex gap-2">
                     <input v-model="commentText" type="text"
                         class="flex-1 bg-white border border-gray-200 px-3 py-1.5 rounded outline-none text-sm"
-                        :placeholder="replyToComment ? '输入回复内容...' : '评论'" @keyup.enter="handleComment" autoFocus>
+                        :placeholder="replyToComment ? '输入回复内容...' : '评论'" @keyup.enter="handleComment" v-focus>
                     <div class="flex items-center gap-1">
                         <i class="fa-solid fa-at text-gray-400 cursor-pointer hover:text-blue-500"
                             @click="showCommentMentionList = !showCommentMentionList"></i>
@@ -569,11 +602,9 @@ const navigateToAuthor = () => {
                     <div class="flex items-center gap-2 p-1.5 rounded hover:bg-blue-50 cursor-pointer transition-colors"
                         @click="handleCommentMentionSelect({ id: 'user', name: settingsStore.personalization.userProfile.name })">
                         <div class="w-6 h-6 rounded bg-gray-200 shrink-0">
-                            <img :src="settingsStore.personalization.userProfile.avatar"
-                                class="w-full h-full object-cover rounded">
+                            <img :src="currentUserAvatar" class="w-full h-full object-cover rounded">
                         </div>
-                        <span class="text-xs font-bold text-gray-700">{{ settingsStore.personalization.userProfile.name
-                            }} (我自己)</span>
+                        <span class="text-xs font-bold text-gray-700">{{ currentUserName }} (我自己)</span>
                     </div>
                     <!-- Contacts -->
                     <div v-for="chat in chatStore.contactList" :key="chat.id"

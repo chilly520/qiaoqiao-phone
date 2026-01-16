@@ -56,16 +56,25 @@ function hasCustomIcon(appId) {
 // Functions matching original HTML
 function openApp(appId) {
   logger.info(`打开应用: ${appId}`)
+  const safeNavigate = (path) => {
+    router.push(path).catch(err => {
+      // Ignore navigation failures (duplicates, cancelled) to prevent Promise Rejection logs
+      if (err.name !== 'NavigationDuplicated' && !err.message.includes('Avoided redundant navigation')) {
+        logger.warn('Nav Warning', { path, error: err.message })
+      }
+    })
+  }
+
   if (appId === 'wechat') {
-    router.push('/wechat')
+    safeNavigate('/wechat')
   } else if (appId === 'search') {
-    router.push('/search')
+    safeNavigate('/search')
   } else if (appId === 'settings') {
-    router.push('/settings')
+    safeNavigate('/settings')
   } else if (appId === 'syslog') {
-    router.push('/system-logs')
+    safeNavigate('/system-logs')
   } else if (appId === 'worldbook') {
-    router.push('/worldbook')
+    safeNavigate('/worldbook')
   }
 }
 
@@ -335,7 +344,7 @@ onUnmounted(() => {
                 <span class="text-sm font-semibold text-white drop-shadow-md">{{ weatherDesc }}</span>
                 <span
                   class="text-[9px] text-white/80 bg-black/10 px-2 py-0.5 rounded-full mt-1 border border-white/10 uppercase tracking-tighter">{{
-                  weatherAqi }}</span>
+                    weatherAqi }}</span>
               </div>
               <!-- Temperature stays on Right Bottom -->
               <div class="flex flex-col items-end">

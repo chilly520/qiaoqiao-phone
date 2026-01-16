@@ -294,15 +294,16 @@ const favoriteSelectedMessages = () => {
     const chatName = chatData.value.name
     const selectedMsgs = msgs.value.filter(m => selectedMsgIds.value.has(m.id))
 
+    const chatAvatar = chatData.value.avatar || '/avatars/default.png'
     if (selectedMsgs.length > 1) {
         // Multi-select: add as batch
-        favoritesStore.addBatchFavorite(selectedMsgs, chatName)
+        favoritesStore.addBatchFavorite(selectedMsgs, chatName, chatAvatar)
     } else if (selectedMsgs.length === 1) {
         // Single message: add as single
         const msg = selectedMsgs[0]
         const avatarUrl = msg.role === 'user'
             ? (settingsStore.personalization.userProfile.avatar || '/avatars/user.png')
-            : (chatData.value.avatar || '/avatars/default.png')
+            : chatAvatar
         favoritesStore.addFavorite(msg, chatName, avatarUrl)
     }
 
@@ -662,14 +663,14 @@ const generateSeeImage = async () => {
         showToast('请输入生图提示词', 'info')
         return
     }
-    
+
     seeImageLoading.value = true
     try {
         console.log('开始生成图片:', seeImagePrompt.value)
         // 模拟生成图片（不调用API）
         // 这里我们只是模拟生成过程，实际项目中可以替换为真实的文生图API调用
         await new Promise(resolve => setTimeout(resolve, 1000))
-        
+
         // 将中文提示词转义成英文关键词
         const prompt = seeImagePrompt.value.trim()
         let englishPrompt = prompt
@@ -694,22 +695,22 @@ const generateSeeImage = async () => {
                 break
             }
         }
-        
+
         // 将中文提示词翻译为英文
         const translatedPrompt = await translateToEnglish(prompt)
         console.log('中文提示词:', prompt)
         console.log('翻译后的英文提示词:', translatedPrompt)
-        
+
         // 使用真实的生图API生成图片
         const generatedImageUrl = await generateImage(translatedPrompt)
         console.log('生成的图片URL:', generatedImageUrl)
-        
+
         // 添加到历史记录
         seeImageHistory.value.push(generatedImageUrl)
         currentHistoryIndex.value = seeImageHistory.value.length - 1
         seeImageResult.value = generatedImageUrl
         console.log('图片生成成功，历史记录长度:', seeImageHistory.value.length)
-        
+
         showToast('图片生成成功', 'success')
     } catch (error) {
         console.error('生成图片失败:', error)
@@ -725,14 +726,14 @@ const sendSeeImage = () => {
         showToast('请先生成图片', 'info')
         return
     }
-    
+
     // 添加图片消息到聊天界面（挂载，不发送）
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'image',
         content: seeImageResult.value
     })
-    
+
     // 关闭模态框
     showSeeImageModal.value = false
     // 清空状态
@@ -995,6 +996,7 @@ const getCleanSpeechText = (text) => {
 
     // Remove INNER_VOICE blocks completely
     clean = clean.replace(/\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/g, '');
+    clean = clean.replace(/\[INNER_VOICE\][\s\S]*?$/g, ''); // Handle unclosed at end
 
     // Remove Tags like [图片], [转账]
     clean = clean.replace(/\[[^\]]+\]/g, '');
@@ -1007,14 +1009,90 @@ const getCleanSpeechText = (text) => {
     return clean.trim();
 }
 
-const speakOne = (text, onEnd) => {
+const speakOne = async (text, onEnd) => {
     if (!text) return onEnd?.();
-    if (!window.speechSynthesis) return onEnd?.();
 
     // Use enhanced cleaner
     const cleanText = getCleanSpeechText(text);
-
     if (!cleanText || cleanText.length < 1) return onEnd?.();
+
+    // Check Engine
+    const engine = settingsStore.voice.engine;
+
+    if (engine === 'minimax') {
+        const config = settingsStore.voice.minimax;
+        if (!config.apiKey || !config.groupId) {
+            console.warn('MiniMax config missing');
+            // Fallback to browser
+        } else {
+            try {
+                // Determine model and voice from config
+                const modelId = config.modelId || 'speech-01-turbo';
+                const voiceId = config.voiceId || 'male-qn-qingse';
+
+                // Using T2A Pro Endpoint
+                const res = await fetch(`https://api.minimax.chat/v1/t2a_pro?GroupId=${config.groupId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + config.apiKey,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: modelId,
+                        text: cleanText,
+                        stream: false,
+                        voice_setting: {
+                            voice_id: voiceId,
+                            speed: 1.0,
+                            vol: 1.0,
+                            pitch: 0
+                        },
+                        audio_setting: {
+                            sample_rate: 32000,
+                            bitrate: 128000,
+                            format: 'mp3',
+                            channel: 1
+                        }
+                    })
+                });
+
+                if (res.ok) {
+                    const blob = await res.blob();
+                    // Cleanup old URL if needed, but for now just create new
+                    const url = URL.createObjectURL(blob);
+                    const audio = new Audio(url);
+
+                    audio.onended = () => {
+                        URL.revokeObjectURL(url);
+                        onEnd?.();
+                    };
+                    audio.onerror = (e) => {
+                        console.error('Audio Playback Error', e);
+                        URL.revokeObjectURL(url);
+                        onEnd?.();
+                    }
+                    audio.play().catch(e => {
+                        console.error('Playback failed', e);
+                        onEnd?.();
+                    });
+                    return; // Handled by MiniMax
+                } else {
+                    const errText = await res.text();
+                    console.error('MiniMax API Error', errText);
+                    if (errText.includes('401') || errText.includes('auth')) {
+                        showToast('MiniMax 鉴权失败，请检查设置', 'error');
+                    }
+                    // Fallback to browser
+                }
+            } catch (e) {
+                console.error('MiniMax Network Error', e);
+                // Fallback to browser
+            }
+        }
+    }
+
+    // Browser Fallback / Default
+    if (!window.speechSynthesis) return onEnd?.();
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = 'zh-CN';
@@ -1058,81 +1136,36 @@ watch(msgs, (newVal, oldVal) => {
     if (newVal.length > (oldVal?.length || 0)) {
         scrollToBottom()
 
-        console.log('TTS: 检测到新消息，消息总数:', newVal.length);
-        console.log('TTS: 聊天数据:', {
-            autoRead: chatData.value?.autoRead,
-            chatId: chatData.value?.id,
-            chatName: chatData.value?.name
-        });
-
         // AI finished generating. Check for unread messages if Auto Read is ON.
-        if (chatData.value?.autoRead) { // Check switch only (capability is usually true)
-            console.log('TTS: 自动朗读已开启，检查新消息');
+        // Logic fix: Allow reading if autoTTS is ON, and autoRead is NOT explicitly FALSE.
+        // This handles the case where autoRead is undefined (default).
+        const shouldRead = chatData.value?.autoTTS && (chatData.value?.autoRead !== false);
+
+        if (shouldRead) {
             // 只处理新添加的消息
             const newMsgCount = newVal.length - (oldVal?.length || 0);
-            console.log('TTS: 新消息数量:', newMsgCount);
             if (newMsgCount > 0) {
                 // 获取新添加的消息，按照顺序处理
                 const newlyAddedMsgs = newVal.slice(-newMsgCount);
-                console.log('TTS: 新添加的消息:', newlyAddedMsgs);
 
                 // 等待DOM更新完成，确保气泡已经渲染在界面上
                 nextTick(() => {
                     newlyAddedMsgs.forEach(msg => {
-                        console.log('TTS: 处理消息:', {
-                            id: msg.id,
-                            role: msg.role,
-                            type: msg.type,
-                            content: msg.content,
-                            hasId: msg.id !== undefined,
-                            alreadySpoken: spokenMsgIds.has(msg.id)
-                        });
-                        // 只朗读AI消息，不朗读用户消息
-                        console.log('TTS: 检查消息是否符合朗读条件:', {
-                            isAI: msg.role === 'ai',
-                            hasContent: !!msg.content,
-                            hasId: msg.id !== undefined,
-                            notSpoken: !spokenMsgIds.has(msg.id),
-                            messageType: msg.type
-                        });
-                        
                         if (
                             msg.role === 'ai' &&
                             msg.content &&
-                            // 检查消息ID是否存在
                             msg.id !== undefined &&
                             !spokenMsgIds.has(msg.id)
                         ) {
-                            console.log('TTS: 检测到新的AI消息，准备朗读:', msg.id);
-                            console.log('TTS: 消息类型:', msg.type, '消息内容:', msg.content);
                             // 清理文本内容，只保留需要朗读的部分
                             const cleanText = getCleanSpeechText(msg.content);
-                            console.log('TTS: 清理后的文本:', cleanText);
                             if (cleanText) {
-                                console.log('TTS: 开始朗读消息:', msg.id, '文本:', cleanText);
                                 speakMessage(cleanText, msg.id);
-                                console.log('TTS: 朗读命令已发送:', msg.id);
-                            } else {
-                                console.log('TTS: 清理后文本为空，跳过朗读:', msg.id);
                             }
-                        } else {
-                            console.log('TTS: 跳过消息:', {
-                                role: msg.role,
-                                type: msg.type,
-                                hasContent: !!msg.content,
-                                hasId: msg.id !== undefined,
-                                alreadySpoken: spokenMsgIds.has(msg.id),
-                                reason: msg.role !== 'ai' ? '不是AI消息' : 
-                                         !msg.content ? '无内容' :
-                                         msg.id === undefined ? '无消息ID' :
-                                         spokenMsgIds.has(msg.id) ? '已朗读过' : '其他原因'
-                            });
                         }
                     });
                 });
             }
-        } else {
-            console.log('TTS: 自动朗读未开启:', chatData.value?.autoRead);
         }
     }
 }, { deep: true })
@@ -2662,10 +2695,13 @@ onUnmounted(() => {
         <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />
         <ChatHistoryModal v-model="showHistoryModal" :targetMsgId="editTargetId" />
         <MusicPlayer />
-        
+
         <!-- See Image (Text to Image) Modal -->
-        <div v-if="showSeeImageModal" class="fixed inset-0 bg-gradient-to-br from-gray-900/80 to-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" @click="closeSeeImageModal">
-            <div class="bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200" @click.stop>
+        <div v-if="showSeeImageModal"
+            class="fixed inset-0 bg-gradient-to-br from-gray-900/80 to-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"
+            @click="closeSeeImageModal">
+            <div class="bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200"
+                @click.stop>
                 <!-- Header -->
                 <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white">
                     <h3 class="font-bold text-xl text-gray-800">见图</h3>
@@ -2673,19 +2709,19 @@ onUnmounted(() => {
                         <i class="fa-solid fa-xmark text-xl"></i>
                     </button>
                 </div>
-                
+
                 <!-- Body -->
                 <div class="p-6">
                     <!-- Prompt Input -->
                     <div class="mb-5">
                         <label class="block text-sm font-medium text-gray-600 mb-3">生图提示词</label>
-                        <textarea v-model="seeImagePrompt" 
+                        <textarea v-model="seeImagePrompt"
                             class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none resize-none text-gray-800"
                             rows="3" placeholder="请输入你想要生成的图片描述..."></textarea>
                     </div>
-                    
+
                     <!-- Generate Button -->
-                    <button @click="generateSeeImage" 
+                    <button @click="generateSeeImage"
                         class="w-full bg-gradient-to-r from-blue-400 to-blue-500 text-white font-medium py-3 px-4 rounded-lg hover:from-blue-500 hover:to-blue-600 transition-all mb-5 shadow-sm hover:shadow-md"
                         :disabled="seeImageLoading">
                         <span v-if="seeImageLoading">
@@ -2695,7 +2731,7 @@ onUnmounted(() => {
                             <i class="fa-solid fa-magic mr-2"></i>生成图片
                         </span>
                     </button>
-                    
+
                     <!-- Image Preview (if generated) -->
                     <div v-if="seeImageResult" class="mb-5">
                         <div class="flex items-center justify-between mb-3">
@@ -2704,39 +2740,35 @@ onUnmounted(() => {
                                 {{ currentHistoryIndex + 1 }}/{{ seeImageHistory.length }}
                             </div>
                         </div>
-                        <div 
-                            class="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white p-2"
-                            @touchstart="touchStart"
-                            @touchmove="touchMove"
-                            @touchend="touchEnd"
-                        >
+                        <div class="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white p-2"
+                            @touchstart="touchStart" @touchmove="touchMove" @touchend="touchEnd">
                             <img :src="seeImageResult" class="w-full h-auto rounded">
                         </div>
                     </div>
-                    
+
                     <!-- Image History Navigation -->
                     <div v-if="seeImageHistory.length > 0" class="mb-5">
                         <div class="flex items-center justify-center gap-3">
-                            <button @click="prevHistoryImage" 
+                            <button @click="prevHistoryImage"
                                 class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors"
                                 :disabled="currentHistoryIndex <= 0">
                                 <i class="fa-solid fa-chevron-left"></i>
                             </button>
-                            <button @click="regenerateSeeImage" 
+                            <button @click="regenerateSeeImage"
                                 class="flex-1 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg hover:from-gray-200 hover:to-gray-300 transition-all shadow-sm"
                                 :disabled="seeImageLoading">
                                 <i class="fa-solid fa-rotate-right mr-2"></i>重新生成
                             </button>
-                            <button @click="nextHistoryImage" 
+                            <button @click="nextHistoryImage"
                                 class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors"
                                 :disabled="currentHistoryIndex >= seeImageHistory.length - 1">
                                 <i class="fa-solid fa-chevron-right"></i>
                             </button>
                         </div>
                     </div>
-                    
+
                     <!-- Send Button -->
-                    <button @click="sendSeeImage" 
+                    <button @click="sendSeeImage"
                         class="w-full bg-gradient-to-r from-green-400 to-green-500 text-white font-medium py-3 px-4 rounded-lg hover:from-green-500 hover:to-green-600 transition-all shadow-sm hover:shadow-md"
                         :disabled="!seeImageResult || seeImageLoading">
                         <i class="fa-solid fa-paper-plane mr-2"></i>发送到聊天

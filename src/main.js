@@ -23,11 +23,24 @@ window.onerror = (message, source, lineno, colno, error) => {
 }
 
 window.onunhandledrejection = (event) => {
-    logger.error('Promise Rejection', { reason: event.reason })
+    // Extract meaningful info from the rejection reason
+    let reason = event.reason
+    if (reason instanceof Error) {
+        reason = {
+            message: reason.message,
+            stack: reason.stack,
+            name: reason.name
+        }
+    }
+    logger.error('Promise Rejection', { reason })
 }
 
 app.config.errorHandler = (err, vm, info) => {
     logger.error('Vue Error', { error: err.message, stack: err.stack, info })
+}
+// Suppress Vue Warnings (Yellow Box)
+app.config.warnHandler = (msg, vm, trace) => {
+    // Ignore warnings
 }
 
 // --- Navigation Logging (Disabled for noise reduction) ---
@@ -58,7 +71,7 @@ const initNotificationService = async () => {
             await notificationService.registerServiceWorker()
             logger.sys('Service Worker 注册成功')
         }
-        
+
         // Request notification permission
         const hasPermission = await notificationService.requestPermission()
         logger.sys(`通知权限: ${hasPermission ? '已授予' : '已拒绝'}`)

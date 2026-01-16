@@ -588,16 +588,29 @@ export const useChatStore = defineStore('chat', () => {
                 rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
                 // We don't advance auto index for manual summary
             } else {
-                // Auto Mode: Since last checkpoint
+                // Auto Mode: Chunked Catch-Up
                 const lastIndex = chat.lastSummaryIndex || 0
-                targetMsgs = chat.msgs.slice(lastIndex)
+                const summaryLimit = parseInt(chat.summaryLimit) || 50
+                const totalMsgs = chat.msgs.length
+                const backlog = totalMsgs - lastIndex
+
+                // Cap chunk size to summaryLimit (allow slight overflow +20 to avoid tiny tails)
+                let endIndex = totalMsgs
+                if (backlog > summaryLimit + 20) {
+                    endIndex = lastIndex + summaryLimit
+                    rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
+                    console.log(`[Summarize] Catch-up mode: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${totalMsgs - endIndex})`)
+                } else {
+                    rangeDesc = `自动增量`
+                }
+
+                targetMsgs = chat.msgs.slice(lastIndex, endIndex)
 
                 if (targetMsgs.length === 0) {
                     throw new Error('No new messages to summarize')
                 }
 
-                rangeDesc = `自动增量`
-                nextIndex = chat.msgs.length // Prepare for update
+                nextIndex = endIndex
             }
 
             // --- REPLICATED FROM OLD HTML (Transcript Mode) ---
@@ -677,6 +690,13 @@ export const useChatStore = defineStore('chat', () => {
             // Update index if it was an auto-summary (nextIndex was calculated)
             if (options.startIndex === undefined) {
                 chat.lastSummaryIndex = nextIndex
+
+                // RECURSION CHECK: If we still have a backlog greater than limit, trigger next batch automatically
+                const summaryLimit = parseInt(chat.summaryLimit) || 50
+                if (chat.msgs.length - nextIndex >= summaryLimit) {
+                    console.log('[Summarize] Triggering next batch in 3s...')
+                    setTimeout(() => checkAutoSummary(chatId), 3000)
+                }
             }
 
             saveChats()
@@ -693,15 +713,50 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // --- Proactive Chat Logic ---
-    let proactiveTimer = null
+    let proactiveWorker = null
 
     function startProactiveLoop() {
-        if (proactiveTimer) clearInterval(proactiveTimer)
-        proactiveTimer = setInterval(() => {
-            Object.keys(chats.value).forEach(chatId => {
-                checkProactive(chatId)
-            })
-        }, 60000) // Check every minute
+        // 1. Cleanup old worker
+        if (proactiveWorker) {
+            proactiveWorker.terminate()
+            proactiveWorker = null
+        }
+
+        // 2. Create Web Worker for background-resilient timing
+        const workerScript = `
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    setInterval(() => {
+                        self.postMessage('tick');
+                    }, 60000); // Check every minute
+                }
+            };
+        `;
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        proactiveWorker = new Worker(URL.createObjectURL(blob));
+
+        proactiveWorker.onmessage = (e) => {
+            if (e.data === 'tick') {
+                Object.keys(chats.value).forEach(chatId => {
+                    checkProactive(chatId)
+                })
+            }
+        }
+
+        // Start the worker
+        proactiveWorker.postMessage('start');
+
+        // 3. Visibility API Compensation (Check immediately when user returns)
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    console.log('[Proactive] App in foreground, checking missed triggers...');
+                    Object.keys(chats.value).forEach(chatId => {
+                        checkProactive(chatId)
+                    })
+                }
+            });
+        }
     }
 
     function checkProactive(chatId) {

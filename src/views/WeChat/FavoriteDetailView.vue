@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFavoritesStore } from '../../stores/favoritesStore'
 import { useStickerStore } from '../../stores/stickerStore'
@@ -11,10 +11,19 @@ const route = useRoute()
 const router = useRouter()
 const favoritesStore = useFavoritesStore()
 
-const itemId = route.params.id
+const itemId = computed(() => route.params.id)
 const item = computed(() => {
-    return favoritesStore.favorites.find(f => f.id == itemId)
+    // Robust comparison converting both to strings
+    if (!itemId.value) return null
+    return favoritesStore.favorites.find(f => String(f.id) === String(itemId.value))
 })
+
+const forceDelete = () => {
+    if (confirm('是否强制删除该无效记录?')) {
+        favoritesStore.removeFavorite(itemId.value)
+        router.back()
+    }
+}
 const stickerStore = useStickerStore()
 const chatStore = useChatStore()
 
@@ -75,13 +84,12 @@ const goBack = () => {
     router.back()
 }
 
-// Inner Voice Parsing
-const parsedInnerVoice = computed(() => {
-    if (!item.value) return null
-    if (item.value.type !== 'text' && item.value.type !== 'ai') return null
+// Inner Voice Helper (Reusable)
+const extractInnerVoice = (content) => {
+    if (!content) return null
 
     // Check for [INNER_VOICE] tag
-    const match = item.value.content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
+    const match = content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
     if (match) {
         try {
             return JSON.parse(match[1])
@@ -91,14 +99,35 @@ const parsedInnerVoice = computed(() => {
         }
     }
     // Also try direct JSON if it looks like it
-    if (item.value.content.trim().startsWith('{') && item.value.content.includes('"着装"')) {
+    if (content.trim().startsWith('{') && content.includes('"着装"')) {
         try {
-            return JSON.parse(item.value.content)
+            return JSON.parse(content)
         } catch (e) {
             return null
         }
     }
     return null
+}
+
+// Clean Message Helper (Reusable)
+const cleanMessage = (content) => {
+    if (!content) return ''
+    if (extractInnerVoice(content)) {
+        return content.replace(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i, '').trim()
+    }
+    return content
+}
+
+// Single Item Computeds (Using Helpers)
+const parsedInnerVoice = computed(() => {
+    if (!item.value) return null
+    if (item.value.type !== 'text' && item.value.type !== 'ai') return null
+    return extractInnerVoice(item.value.content)
+})
+
+const cleanContent = computed(() => {
+    if (!item.value) return ''
+    return cleanMessage(item.value.content)
 })
 
 // Helper to safely parse potentially double-encoded JSON in specific fields
@@ -122,15 +151,6 @@ const formattedThoughts = computed(() => {
         return parsed // { "心情": "...", "情绪": "...", ... }
     }
     return null // Return null if it's just a text string, handled by fallback
-})
-
-// Clean Content (Remove Inner Voice tag if parsed)
-const cleanContent = computed(() => {
-    if (!item.value) return ''
-    if (parsedInnerVoice.value) {
-        return item.value.content.replace(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i, '').trim()
-    }
-    return item.value.content
 })
 
 const formatDate = (ts) => {
@@ -172,7 +192,27 @@ const shareToChat = (chatId) => {
     })
 
     showShareModal.value = false
-    alert('已分享到聊天')
+    // alert('已分享到聊天')
+
+    // Check if current chat is the target chat, if not, redirect
+    if (chatStore.currentChatId !== chatId) {
+        chatStore.currentChatId = chatId
+        // Clear history modal if open? No, just route.
+        // Assuming route pattern is /chat/:id or handled via ChatWindow logic? 
+        // Checking router/index.js, there isn't a direct /chat/:id route visible in the 127 lines?
+        // Wait, HomeView likely handles it or WeChatApp.vue.
+        // Let's assume standard navigation:
+        // Actually router shows /wechat/profile/:charId.
+        // Let's try to just go back to home or the specific chat if we can find the route.
+        // There is no explicit /chat/:id route in the file I viewed. 
+        // It seems the chat is usually overlay or part of Home/WeChatApp state?
+        // Let's check how 'back' works. 
+        // Actually user said "跳转聊天页面".
+        // Let's assume navigating to /wechat implies opening the chat if currentChatId is set.
+        router.push('/wechat')
+    } else {
+        router.push('/wechat')
+    }
 }
 
 const chatsList = computed(() => {
@@ -181,6 +221,18 @@ const chatsList = computed(() => {
         ...chatStore.chats[id]
     }))
 })
+
+const renderMarkdown = (text) => {
+    try {
+        if (typeof marked.parse === 'function') {
+            return marked.parse(text)
+        }
+        return marked(text)
+    } catch (e) {
+        console.error('Markdown render error:', e)
+        return text
+    }
+}
 </script>
 
 <template>
@@ -221,14 +273,51 @@ const chatsList = computed(() => {
                 <!-- Chat Record Type -->
                 <div v-if="item.type === 'chat_record'" class="space-y-4">
                     <div class="text-xs text-[#d4af37] font-bold mb-4 flex items-center gap-2">
-                        <i class="fa-solid fa-comments"></i> 聊天记录记录 (共 {{ item.messages.length }} 条)
+                        <i class="fa-solid fa-comments"></i> 聊天记录 (共 {{ item.messages.length }} 条)
                     </div>
-                    <div v-for="m in item.messages" :key="m.id" class="border-b border-gray-50 pb-3 last:border-0">
+                    <div v-for="m in item.messages" :key="m.id"
+                        class="border-b border-gray-50 pb-6 last:border-0 last:pb-0">
                         <div class="flex justify-between items-center mb-1">
                             <span class="text-xs font-bold text-blue-600">{{ m.author }}</span>
                             <span class="text-[10px] text-gray-300">{{ formatDate(m.timestamp) }}</span>
                         </div>
-                        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{{ m.content }}</div>
+
+                        <!-- Main Text -->
+                        <div class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap"
+                            v-html="renderMarkdown(cleanMessage(m.content))"></div>
+
+                        <!-- Extracted Inner Voice in List -->
+                        <div v-if="extractInnerVoice(m.content)" class="mt-3">
+                            <div
+                                class="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-4 text-gray-200 shadow-md border border-gray-700">
+                                <div class="text-center text-[#d4af37] text-xs tracking-[0.2em] mb-3 opacity-80">· 内 心 独
+                                    白 ·</div>
+
+                                <!-- Thoughts -->
+                                <div class="text-sm leading-relaxed mb-4 font-light text-center px-2 italic">
+                                    "{{ extractInnerVoice(m.content).心声 || extractInnerVoice(m.content).thoughts ||
+                                        '...' }}"
+                                </div>
+
+                                <!-- Mini Grid -->
+                                <div class="grid grid-cols-1 gap-2 text-[10px]">
+                                    <div v-if="extractInnerVoice(m.content).着装"
+                                        class="border-t border-white/10 pt-2 text-gray-400">
+                                        <span class="text-[#d4af37] mr-2">着装</span>
+                                        <span v-if="typeof extractInnerVoice(m.content).着装 === 'string'">{{
+                                            extractInnerVoice(m.content).着装 }}</span>
+                                    </div>
+                                    <div v-if="extractInnerVoice(m.content).环境"
+                                        class="border-t border-white/10 pt-2 text-gray-400">
+                                        <span class="text-[#d4af37] mr-2">环境</span>{{ extractInnerVoice(m.content).环境 }}
+                                    </div>
+                                    <div v-if="extractInnerVoice(m.content).行为"
+                                        class="border-t border-white/10 pt-2 text-gray-400">
+                                        <span class="text-[#d4af37] mr-2">行为</span>{{ extractInnerVoice(m.content).行为 }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -244,7 +333,8 @@ const chatsList = computed(() => {
                             <template v-if="formattedThoughts">
                                 <div v-for="(val, key) in formattedThoughts" :key="key" class="mb-2">
                                     <span
-                                        class="opacity-60 text-xs text-[#d4af37] block mb-1 uppercase tracking-wider">{{ key }}</span>
+                                        class="opacity-60 text-xs text-[#d4af37] block mb-1 uppercase tracking-wider">{{
+                                            key }}</span>
                                     <span>"{{ val }}"</span>
                                 </div>
                             </template>
@@ -293,7 +383,7 @@ const chatsList = computed(() => {
 
                 <!-- Standard Text Content (if not special) -->
                 <div v-else-if="cleanContent" class="text-gray-800 text-base leading-7 whitespace-pre-wrap"
-                    v-html="marked(cleanContent)"></div>
+                    v-html="renderMarkdown(cleanContent)"></div>
 
                 <!-- Image Type -->
                 <div v-if="item.type === 'image'" class="mt-2">
@@ -304,8 +394,13 @@ const chatsList = computed(() => {
 
         </div>
 
-        <div v-else class="flex-1 flex items-center justify-center text-gray-400">
-            内容不存在
+        <div v-else class="flex-1 flex flex-col items-center justify-center text-gray-400 gap-4">
+            <span>内容不存在或已被删除</span>
+            <div class="text-xs text-gray-300">ID: {{ itemId }}</div>
+            <button @click="forceDelete"
+                class="text-red-400 text-sm border border-red-200 px-4 py-2 rounded-lg hover:bg-red-50">
+                强制清除记录
+            </button>
         </div>
 
         <!-- Share Selection Modal -->

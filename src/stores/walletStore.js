@@ -79,19 +79,117 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     // Decrease Balance (Pay)
-    function decreaseBalance(amount, title) {
+    // Supports intelligent payment method selection
+    function decreaseBalance(amount, title, preferredMethod = null) {
         const numAmount = parseFloat(amount)
-        if (balance.value >= numAmount) {
-            balance.value = parseFloat((balance.value - numAmount).toFixed(2))
-            addTransaction({
-                type: 'expense',
-                amount: numAmount,
-                title: title || '支出',
-                source: 'balance',
-                methodDetail: '零钱'
-            })
-            return true
+        if (numAmount <= 0) return false
+
+        // Determine Payment Order
+        // If preferredMethod is passed (e.g. from UI selection), try that first.
+        // Otherwise use global settings.
+        let methods = [...(paymentSettings.value.priority || ['balance', 'family', 'bank'])]
+
+        // Override logic if preferred provided
+        if (preferredMethod) {
+            methods = [preferredMethod, ...methods.filter(m => m !== preferredMethod)]
+        } else if (paymentSettings.value.defaultMethod) {
+            const def = paymentSettings.value.defaultMethod
+            methods = [def, ...methods.filter(m => m !== def)]
         }
+
+        for (const method of methods) {
+            if (method === 'balance') {
+                if (balance.value >= numAmount) {
+                    balance.value = parseFloat((balance.value - numAmount).toFixed(2))
+                    addTransaction({
+                        type: 'expense',
+                        amount: numAmount,
+                        title: title || '支出',
+                        source: 'balance',
+                        methodDetail: '零钱'
+                    })
+                    return true
+                }
+            } else if (method === 'family') {
+                // Find a family card with enough balance
+                let capableCard = null
+                const specificId = paymentSettings.value.selectedCardId
+
+                // 1. Try specifically selected card
+                if (specificId) {
+                    const specific = familyCards.value.find(c => c.id === specificId)
+                    if (specific && (specific.amount - specific.usedAmount) >= numAmount) {
+                        capableCard = specific
+                    }
+                }
+
+                // 2. Fallback to any capable card if specific fails
+                if (!capableCard) {
+                    capableCard = familyCards.value.find(c => (c.amount - c.usedAmount) >= numAmount)
+                }
+
+                if (capableCard) {
+                    capableCard.usedAmount = parseFloat((capableCard.usedAmount + numAmount).toFixed(2))
+
+                    // Add Transaction to Card History
+                    capableCard.transactions.push({
+                        id: `ftx_${Date.now()}`,
+                        type: 'expense',
+                        amount: numAmount,
+                        title: title || '支出',
+                        time: Date.now()
+                    })
+
+                    // Add to Main Bill
+                    addTransaction({
+                        type: 'expense',
+                        amount: numAmount,
+                        title: title || '支出',
+                        source: 'family',
+                        methodDetail: `${capableCard.remark || '亲属卡'}`
+                    })
+                    return true
+                }
+            } else if (method === 'bank') {
+                // Bank Card Logic
+                let capableCard = null
+                const specificId = paymentSettings.value.selectedCardId
+
+                // 1. Try specifically selected card
+                if (specificId) {
+                    const specific = bankCards.value.find(c => c.id === specificId)
+                    if (specific && Number(specific.balance || 0) >= numAmount) {
+                        capableCard = specific
+                    }
+                }
+
+                // 2. Fallback
+                if (!capableCard) {
+                    capableCard = bankCards.value.find(c => Number(c.balance || 0) >= numAmount)
+                }
+
+                if (capableCard) {
+                    capableCard.balance = parseFloat((capableCard.balance - numAmount).toFixed(2))
+                    capableCard.transactions.push({
+                        id: `btx_${Date.now()}`,
+                        type: 'expense',
+                        amount: numAmount,
+                        title: title || '支出',
+                        time: Date.now()
+                    })
+
+                    addTransaction({
+                        type: 'expense',
+                        amount: numAmount,
+                        title: title || '支出',
+                        source: 'bank',
+                        methodDetail: `${capableCard.bankName}(${capableCard.number.slice(-4)})`
+                    })
+                    return true
+                }
+            }
+        }
+
         return false
     }
 

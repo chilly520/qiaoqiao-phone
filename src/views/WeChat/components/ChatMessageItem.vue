@@ -154,7 +154,7 @@
                         <!-- CASE 6: Favorite Card (Shared Favorite) -->
                         <div v-else-if="isFavoriteCard"
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
-                            @click="$router.push('/wechat/favorite/' + favoriteCardData.favoriteId)">
+                            @click="$router.push('/favorites/' + favoriteCardData.favoriteId)">
                             <div class="p-4 flex flex-col gap-2">
                                 <div class="flex items-center gap-2 text-[#fabb05] mb-1">
                                     <i class="fa-solid fa-star"></i>
@@ -188,14 +188,7 @@
                             </div>
                         </div>
 
-                        <!-- Image -->
-                        <div v-else-if="msg.type === 'image' || isImageMsg(msg)" class="msg-image bg-transparent"
-                            @contextmenu.prevent="emitContextMenu">
-                            <img :src="getImageSrc(msg)" class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
-                                @click="previewImage(getImageSrc(msg))" @error="handleImageError">
-                        </div>
-
-                        <!-- Voice -->
+                        <!-- Voice (Moved up) -->
                         <div v-else-if="msg.type === 'voice'" class="flex flex-col w-full"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                             <div class="flex items-center gap-2" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
@@ -238,53 +231,67 @@
                             </div>
                         </div>
 
-                        <!-- HTML Card -->
-                        <div v-else-if="(msg.type === 'html' || isHtmlCard) && isValidMessage"
-                            class="w-full mt-1 transition-all relative z-10" @contextmenu.prevent="emitContextMenu"
-                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                            <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
-                        </div>
+                        <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
+                        <div v-else class="flex flex-col gap-2 w-full"
+                            :class="msg.role === 'user' ? 'items-end' : 'items-start'">
 
-
-
-                        <!-- Text Bubble -->
-                        <div v-else v-show="cleanedContent" @contextmenu.prevent="emitContextMenu"
-                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
-                            class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
-                            :class="[
-                                msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left',
-                            ]" :style="{
-                                fontSize: (chatData?.bubbleSize || 15) + 'px',
-                                ...(computedBubbleStyle || {})
-                            }">
-                            <!-- Arrow -->
-                            <div v-if="shouldShowArrow"
-                                class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#374151]' : 'left-[-6px] border-r-[6px] border-r-[#2a2520]'">
+                            <!-- 1. HTML Card Layer -->
+                            <div v-if="(msg.type === 'html' || isHtmlCard) && isValidMessage"
+                                class="w-full mt-1 transition-all relative z-10" @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                                <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                             </div>
 
-                            <!-- Quote -->
-                            <div v-if="msg.quote"
-                                class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
-                                <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                    }}
+                            <!-- 2. Visual Content Layer (Image OR Text) -->
+
+                            <!-- Case A: Pure Image (No bubble bg, distinct from HTML) -->
+                            <div v-if="!isHtmlCard && isImageMsg(msg)" class="msg-image bg-transparent"
+                                @contextmenu.prevent="emitContextMenu">
+                                <img :src="getImageSrc(msg)"
+                                    class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
+                                    @click="previewImage(getImageSrc(msg))" @error="handleImageError"
+                                    referrerpolicy="no-referrer">
+                            </div>
+
+                            <!-- Case B: Text Bubble (Sticker as inline / Text) -->
+                            <div v-else-if="cleanedContent" @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
+                                class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
+                                :class="[
+                                    msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left',
+                                ]" :style="{
+                                    fontSize: (chatData?.bubbleSize || 15) + 'px',
+                                    ...(computedBubbleStyle || {})
+                                }">
+                                <!-- Arrow -->
+                                <div v-if="shouldShowArrow"
+                                    class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
+                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#374151]' : 'left-[-6px] border-r-[6px] border-r-[#2a2520]'">
                                 </div>
-                                <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
+
+                                <!-- Quote -->
+                                <div v-if="msg.quote"
+                                    class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
+                                    <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
+                                    }}
+                                    </div>
+                                    <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
+                                </div>
+
+                                <!-- Content -->
+                                <span v-html="formattedContent"></span>
                             </div>
 
-                            <!-- Content -->
-                            <span v-html="formattedContent"></span>
-                        </div>
+                            <!-- Bubble Timestamp -->
+                            <div v-if="msg.timestamp" class="text-[10px] text-gray-400 mt-0.5 px-1">
+                                {{ new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
+                                    hour: '2-digit', minute: '2-digit'
+                                }) }}
+                            </div>
 
-                        <!-- Bubble Timestamp -->
-                        <div v-if="msg.timestamp" class="text-[10px] text-gray-400 mt-0.5 px-1">
-                            {{ new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                                hour: '2-digit', minute: '2-digit'
-                            }) }}
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -518,9 +525,21 @@ const isHtmlCard = computed(() => {
     if (props.msg.type === 'html') return true
     const c = ensureString(props.msg.content)
     // Robust check for HTML card JSON structure
-    return (c.includes('"type"') || c.includes('type:')) &&
+    if ((c.includes('"type"') || c.includes('type:')) &&
         (c.includes('"html"') || c.includes('html:')) &&
-        c.includes('<') && c.includes('>')
+        c.includes('<') && c.includes('>')) {
+        return true
+    }
+
+    // Check for RAW HTML content (starts with standard HTML tags)
+    const trimmed = c.trim()
+    if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
+        // Must contain block level elements to be considered a card
+        if (trimmed.includes('<div') || trimmed.includes('<html') || trimmed.includes('<body') || trimmed.includes('<style')) {
+            return true
+        }
+    }
+    return false
 })
 
 const isFavoriteCard = computed(() => props.msg.type === 'favorite_card')
@@ -663,8 +682,14 @@ function getCleanContent(contentRaw) {
     }
 
 
-    clean = clean.trim();
+    clean = clean.trim(); // Just trim
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
+
+    // Final pass for literal newlines that might have survived
+    if (clean.includes('\\n')) {
+        clean = clean.replace(/\\n/g, '\n');
+    }
+
     return clean;
 }
 
@@ -673,152 +698,75 @@ function getPureHtml(content) {
     const str = typeof content === 'string' ? content : JSON.stringify(content)
     const trimmed = str.trim()
 
-    // 1. 智能CSS过滤：只过滤明显的CSS代码块，避免误过滤正常HTML
-    if (trimmed.includes('/* 完全隔离的样式重置') && trimmed.includes(':root { all: initial !important;')) {
-        console.log('[getPureHtml] Filtering out excessive CSS code block');
-        return ''
-    }
-
-    // 2. 首先检查是否为完整的JSON格式
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-        try {
-            // 处理转义字符
-            let processedStr = str
-            // 先处理可能的双重转义
-            if (processedStr.includes('\\n')) {
-                processedStr = processedStr.replace(/\\n/g, '\n')
-                processedStr = processedStr.replace(/\\r/g, '\r')
-                processedStr = processedStr.replace(/\\t/g, '\t')
-                processedStr = processedStr.replace(/\\"/g, '\\"')
-            }
-            // 处理正常转义
-            processedStr = processedStr
-                .replace(/\\n/g, '\n')
-                .replace(/\\r/g, '\r')
-                .replace(/\\t/g, '\t')
-                .replace(/\\"/g, '"')
-                .replace(/\\'/g, "'")
-            
-            const parsed = JSON.parse(processedStr)
-            if (parsed.html && typeof parsed.html === 'string') {
-                const htmlContent = parsed.html.trim()
-                // 确保返回的是真正的HTML内容
-                if (htmlContent && (htmlContent.includes('<') && htmlContent.includes('>'))) {
-                    return htmlContent
-                }
-                return ''
-            }
-        } catch (e) {
-            // JSON解析失败，继续处理
-        }
-    }
-
-    // 2. 处理JSON格式的变体（可能有额外的引号或格式问题）
-    if (trimmed.includes('"type":"html"') || trimmed.includes("'type':'html'")) {
-        try {
-            // 清理可能的额外引号
-            let cleanedJson = trimmed
-                .replace(/^["']/, '')
-                .replace(/["']$/, '')
-                .trim()
-            
-            // 处理转义字符
-            cleanedJson = cleanedJson
-                .replace(/\\n/g, '\n')
-                .replace(/\\r/g, '\r')
-                .replace(/\\t/g, '\t')
-                .replace(/\\"/g, '"')
-                .replace(/\\'/g, "'")
-            
-            // 尝试解析
-            const parsed = JSON.parse(cleanedJson)
-            if (parsed.html && typeof parsed.html === 'string') {
-                const htmlContent = parsed.html.trim()
-                if (htmlContent && (htmlContent.includes('<') && htmlContent.includes('>'))) {
-                    return htmlContent
-                }
-            }
-        } catch (e) {
-            // 解析失败，继续处理
-        }
-    }
-
-    // 3. 过滤头尾碎片
-    // 头部碎片: { "type": "html", "html": " 或类似变体
-    const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
-    if (headerPattern.test(trimmed)) {
-        return ''
-    }
-    
-    // 尾部碎片: 各种可能的尾部格式
-    const tailPatterns = [
-        /^["']\s*$/,           // 单独的引号
-        /^["']\s*\}\s*$/,     // 引号加右大括号
-        /^\}\s*$/,             // 单独的右大括号
-        /^["']\s*\}\s*["']$/, // 引号包围的右大括号
-        /^\s*["']?\s*$/,        // 空白加引号
-        /^\s*\}\s*$/,           // 空白加右大括号
-        /^\s*["']\s*$/,         // 空白加引号
-        /^\s*&quot;\s*$/,        // HTML实体引号
-        /^\s*&quot;\s*\}\s*$/,  // HTML实体引号加右大括号
-        /^\s*'\s*$/,             // 单引号
-        /^\s*'\s*\}\s*$/,       // 单引号加右大括号
-        /^\s*&apos;\s*$/,        // HTML实体单引号
-        /^\s*&apos;\s*\}\s*$/   // HTML实体单引号加右大括号
-    ];
-    
-    for (const pattern of tailPatterns) {
-        if (pattern.test(trimmed)) {
-            return ''
-        }
-    }
-
-    // 4. 处理非JSON格式的HTML内容
-    // 清理可能的markdown代码块
-    let cleaned = trimmed
-        .replace(/^```(?:html|json|xml)?\s*\n?/gi, '')
-        .replace(/```\s*$/gi, '')
-        .trim()
-    
-    // 清理可能的[CARD]标签
-    cleaned = cleaned
-        .replace(/\[\s*CARD\s*\]/gi, '')
-        .replace(/\[\s*\/CARD\s*\]/gi, '')
-        .trim()
-
-    // 5. 尝试从混合内容中提取HTML
-    if (cleaned.includes('<') && cleaned.includes('>')) {
-        // 寻找第一个开始标签和最后一个结束标签
-        const startTagIndex = cleaned.indexOf('<')
-        const endTagIndex = cleaned.lastIndexOf('>')
-        if (startTagIndex !== -1 && endTagIndex !== -1 && endTagIndex > startTagIndex) {
-            const htmlContent = cleaned.substring(startTagIndex, endTagIndex + 1).trim()
-            if (htmlContent && htmlContent.length > 10) {
-                return htmlContent
-            }
-        }
-    }
-
-    // 6. 再次检查是否为碎片
-    if (cleaned.length < 50 && (!cleaned.includes('<') || !cleaned.includes('>'))) {
-        // 短内容且不包含HTML标签，可能是碎片
-        return ''
-    }
-
-    // 7. 处理转义序列
-    if (cleaned.includes('\\n') || cleaned.includes('\\t') || cleaned.includes('\\r') || cleaned.includes('\\"')) {
-        cleaned = cleaned
+    // Helper to unescape typical string escapes into actual characters
+    // This is useful because AI often outputs "\\n" (literal backslash+n) instead of "\n" (newline)
+    const unescapeContent = (text) => {
+        if (!text || typeof text !== 'string') return text;
+        return text
             .replace(/\\n/g, '\n')
             .replace(/\\r/g, '\r')
             .replace(/\\t/g, '\t')
-            .replace(/\\"/g, '"')
-            .replace(/\\'/g, "'")
+            .replace(/\\"/g, '"');
     }
 
-    // 8. 最终验证：确保返回的是有效的HTML内容
-    const finalTrimmed = cleaned.trim()
-    if (finalTrimmed && finalTrimmed.includes('<') && finalTrimmed.includes('>')) {
-        return finalTrimmed
+    // 1. Prioritize Standard JSON Parsing
+    // Do NOT pre-process the string with regexes that might break the JSON validity (like unescaping \n or quotes blindly)
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+            const parsed = JSON.parse(trimmed)
+            if (parsed.html && typeof parsed.html === 'string') {
+                // If the JSON parsed successfully, the string values are already JS strings.
+                // However, if the AI put literal "\n" text inside the string, we might want to convert it to real newline.
+                // But generally, JSON.parse handles the formatting.
+                // If the User sees "\n" on screen, it means the string value contains literal backslash+n.
+                // So we SHOULD unescape it for display.
+                return unescapeContent(parsed.html)
+            }
+        } catch (e) {
+            // JSON parse failed (maybe due to "type": "html" variants or bad quotes), fall through
+        }
+    }
+
+    // 2. Try to salvage "Type: HTML" variants if standard parse failed
+    if (trimmed.includes('"type":"html"') || trimmed.includes("'type':'html'") || trimmed.includes('type: "html"')) {
+        try {
+            // Mild cleanup for header/tail quotes if present
+            let cleanedJson = trimmed.replace(/^["']|["']$/g, '');
+            // Only unescape newlines to help parsing if the failure was due to raw newlines (which are invalid in JSON)
+            // But we must be careful not to double-unescape.
+            // Let's try parsing after a simple quote normalization
+            // If the string contains single quotes for JSON keys, we might need a parser that supports loose JSON
+            // But JSON.parse is strict.
+            // fallback to extraction is often safer than trying to fix broken JSON regex-wise.
+        } catch (e) { }
+    }
+
+    // 3. Robust Extraction (Fallback)
+    // If we can't parse it as JSON, look for the HTML content pattern directly.
+    // This handles cases where the JSON is malformed but the HTML payload is intact.
+    // We look for content between likely HTML tags.
+
+    // Strategy: Look for the 'html' field's value if possible, or just the first big <div>...</div> block
+
+    // Attempt to extract value of "html" key using regex
+    const htmlKeyMatch = trimmed.match(/"html"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})/);
+    if (htmlKeyMatch && htmlKeyMatch[1]) {
+        return unescapeContent(htmlKeyMatch[1]);
+    }
+
+    // If logic above failed, try seeking block tags
+    if (trimmed.includes('<') && trimmed.includes('>')) {
+        const startTagIndex = trimmed.indexOf('<')
+        const endTagIndex = trimmed.lastIndexOf('>')
+        if (startTagIndex !== -1 && endTagIndex !== -1 && endTagIndex > startTagIndex) {
+            const extracted = trimmed.substring(startTagIndex, endTagIndex + 1).trim()
+            // Should contain at least one known tag to be safe
+            if (extracted.includes('<div') || extracted.includes('<html') || extracted.includes('<style')) {
+                // When extracting a raw substring from a JSON-like string, it likely contains escaped quotes like \"
+                // We MUST unescape them to get valid HTML.
+                return unescapeContent(extracted)
+            }
+        }
     }
 
     return ''
@@ -944,9 +892,16 @@ function formatMessageContent(msg) {
         return '';
     }
 
-    // 1. Clean Internal System Tags (Fix for visual leakage)
+    // Force unescape specific chars before processing (Fix for garbled \n display)
     let text = getCleanContent(textRaw)
-        .replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
+
+    // Safety check: ensure we didn't miss any double-escaped newlines
+    if (text.includes('\\n')) {
+        text = text.replace(/\\n/g, '\n');
+    }
+
+    // Continue chaining processing on the 'text' variable
+    text = text.replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
         .replace(/Here is the original image:/gi, '') // Remove AI parroting
         .trim();
 
@@ -1036,8 +991,30 @@ function parseBubbleCss(cssString) {
 }
 
 function handleImageError(e) {
-    e.target.src = '/broken-image.png'
-    e.target.onerror = null
+    const target = e.target;
+    const retries = parseInt(target.getAttribute('data-retries') || '0');
+
+    if (retries < 3) {
+        console.log(`[ImageError] Retrying image load (${retries + 1}/3)...`);
+        target.setAttribute('data-retries', retries + 1);
+
+        // Add a small delay and try explicitly resetting src
+        setTimeout(() => {
+            const currentSrc = target.src;
+            // Append a timestamp if it looks like a generic URL to force cache bust
+            // But be careful with signed URLs
+            if (currentSrc.includes('pollinations.ai') || currentSrc.includes('dicebear')) {
+                const separator = currentSrc.includes('?') ? '&' : '?';
+                target.src = currentSrc + separator + '_retry=' + Date.now();
+            } else {
+                target.src = currentSrc;
+            }
+        }, 1000);
+        return;
+    }
+
+    target.src = '/broken-image.png'
+    target.onerror = null
 }
 
 function previewImage(src) {
