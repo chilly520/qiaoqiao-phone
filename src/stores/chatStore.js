@@ -1242,7 +1242,7 @@ ${contextMsgs}
                     const hours = Math.floor(diffMinutes / 60);
                     const mins = diffMinutes % 60;
                     const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
-                    lastUserMsg.content += ` （系统提示：${chat.userName || '用户'}已经${timeStr}没有理你了）`
+                    lastUserMsg.content += ` （系统提示：距离双方上一次互动时间为${timeStr}）`
                 }
             }
         }

@@ -1470,17 +1470,21 @@ export async function generateImage(prompt) {
     const negativeBoost = "(muscular:1.7), (bulky:1.6), (abs:1.7), (defined muscle:1.6), (six-pack:1.7), (bodybuilder:1.6), (fitness:1.4), huge shoulders, thick arms, muscular chest, (eight-pack:1.4), thick neck, (extra hands:2.0), (merged characters:1.8), (clipping), (messy fingers:1.5), (over-muscular:1.5), brutal, front-facing kiss, (merged faces:1.8), masculine girl, (athletic build:1.2)"
 
     let enhancedPrompt = ""
+    // Universal Anime Style Base
+    const animeStyleBase = "(anime style:1.5), (flat color:1.2), (cel shading:1.2), (2D:1.5), (clean lines), (illustration:1.2), (no 3D), (no photorealistic), (no realism)"
+
     if (isCouple) {
-        enhancedPrompt = `masterpiece, best quality, (flat cell shading anime:1.2), (side profile view:1.4), (pure side-on interaction:1.3), ${prompt}, (two distinct individuals), (each person has two hands), (no extra limbs), (slender lanky builds), (narrow sloping shoulders), detailed profiles, sharp lineart, 8k`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, (two distinct individuals), detailed profiles, sharp lineart`
     } else if (isMale) {
         const muscleStyle = hasAbs
-            ? "(maniacally thin silhouette:1.4), (sloping narrow shoulders:1.5), (twig-like arms:1.5), (no muscle bulk), (flat stomach with faint grey abdominal lines:1.3), (zero bicep definition), lanky boyish body"
-            : "(extremely skinny androgynous youth:1.4, malnourished-thin frame:1.3, narrow shoulders, flat chest, paper-thin)"
-        enhancedPrompt = `masterpiece, best quality, (flat shoujo anime style), (delicate pretty boy face:1.3), (sparkling eyes), ${muscleStyle}, ${prompt}, (long thin fingers), clean lineart, 8k`
+            ? "(lean muscular build)"
+            : "(slender build)"
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen face:1.2), ${muscleStyle}, ${prompt}, clean lineart`
     } else if (isFemale || isPerson) {
-        enhancedPrompt = `masterpiece, best quality, (detailed anime style:1.2), (beautiful face:1.2), (detailed eyes:1.2), (perfect anatomy:1.2), (petite:1.1), (slender build:1.1), (smooth skin:1.2), (soft feminine body:1.1), (flat stomach:1.2), ${prompt}, sharp focus, (stable anatomy), (clear hands and fingers), perfectly symmetrical face, vibrant colors, clear lineart, 8k`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime face:1.2), (detailed eyes:1.2), (petite:1.1), ${prompt}, sharp focus, vibrant colors, clear lineart`
     } else {
-        enhancedPrompt = `masterpiece, best quality, highres, photorealistic, ${prompt}, highly detailed texture, cinematic lighting, sharp focus, 8k`
+        // Fallback also anime
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, highly detailed, sharp focus, vibrant colors`
     }
 
     const seed = Math.floor(Math.random() * 1000000)
