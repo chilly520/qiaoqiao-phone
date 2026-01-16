@@ -17,7 +17,7 @@ const props = defineProps({
 })
 
 const iframeRef = ref(null)
-const height = ref(0)
+const height = ref(150) // Default start height to prevent collapse
 const resizeObserver = ref(null)
 
 const fullContent = computed(() => {
@@ -31,7 +31,8 @@ const fullContent = computed(() => {
         padding: 0 !important;
         border: 0 !important;
         width: 100% !important;
-        height: 100% !important;
+        /* height: 100% !important; Remove this to allow content to dictate height */
+        min-height: 100% !important;
         box-sizing: border-box !important;
       }
       
@@ -152,10 +153,14 @@ const adjustHeight = () => {
     }
 
     updateHeight()
+    // Retry height update for mobile rendering delay
+    setTimeout(updateHeight, 100)
+    setTimeout(updateHeight, 500)
 
     if (!resizeObserver.value) {
       resizeObserver.value = new ResizeObserver(updateHeight)
       resizeObserver.value.observe(body)
+      resizeObserver.value.observe(html) // Observe HTML too
     }
   }
 }
