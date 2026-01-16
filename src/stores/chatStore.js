@@ -1030,7 +1030,7 @@ export const useChatStore = defineStore('chat', () => {
         try {
             // Stop any previous generation
             if (currentAbortController) {
-                stopGeneration()
+                stopGeneration(true)
             }
             currentAbortController = new AbortController()
             const signal = currentAbortController.signal
