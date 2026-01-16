@@ -35,20 +35,24 @@ class BatteryMonitor {
     setupListeners() {
         if (!this.battery) return
 
-        this.battery.addEventListener('levelchange', () => {
+        const updateHandler = () => {
             this.updateBatteryInfo()
             this.notifyChange()
             this.checkLowBattery()
-        })
+        }
 
+        // Event Listeners
+        this.battery.addEventListener('levelchange', updateHandler)
         this.battery.addEventListener('chargingchange', () => {
-            this.updateBatteryInfo()
-            this.notifyChange()
-            // Reset notification flag when charging starts
+            updateHandler()
             if (this.charging) {
                 this.hasNotified = false
             }
         })
+
+        // Polling Fallback (Every 30s) - Fixes "imprecise sync" on some devices
+        if (this.pollInterval) clearInterval(this.pollInterval)
+        this.pollInterval = setInterval(updateHandler, 30000)
     }
 
     updateBatteryInfo() {
@@ -98,7 +102,7 @@ class BatteryMonitor {
     }
 
     destroy() {
-        // Clean up listeners if needed
+        if (this.pollInterval) clearInterval(this.pollInterval)
         this.callbacks = { onChange: [], onLowBattery: [] }
     }
 }

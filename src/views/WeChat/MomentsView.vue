@@ -781,7 +781,7 @@ onMounted(() => {
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-blue-500 truncate max-w-[120px]">{{ postForm.location || '选择位置'
-                                }}</span>
+                            }}</span>
                             <i class="fa-solid fa-chevron-right text-gray-300 text-[10px]"></i>
                         </div>
                     </div>
@@ -805,16 +805,17 @@ onMounted(() => {
         <!-- Settings Modal -->
         <div v-if="showSettingsModal" class="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-6"
             @click.self="showSettingsModal = false">
-            <div class="bg-white w-full max-w-[340px] rounded-2xl overflow-hidden shadow-2xl animate-scale-up">
-                <div class="p-5 pt-8">
-                    <div class="text-center font-bold text-gray-800 mb-2 text-lg">朋友圈实验室</div>
+            <div
+                class="bg-white w-full max-w-[340px] rounded-2xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[85vh]">
+                <div class="p-5 pt-8 flex-1 overflow-hidden flex flex-col">
+                    <div class="text-center font-bold text-gray-800 mb-2 text-lg shrink-0">朋友圈实验室</div>
                     <div
                         class="text-center text-[10px] text-blue-500 bg-blue-50 py-1.5 px-3 rounded-full inline-block mx-auto mb-6 flex items-center justify-center gap-1.5 border border-blue-100">
                         <i class="fa-solid fa-wand-magic-sparkles animate-pulse"></i>
                         已自动绑定世界书：智能感知背景设定
                     </div>
 
-                    <div class="space-y-6 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
+                    <div class="space-y-6 overflow-y-auto pr-1 custom-scrollbar flex-1 min-h-0">
                         <!-- Auto Frequency -->
                         <div>
                             <label class="text-xs text-gray-400 block mb-2 font-bold uppercase tracking-wider">自动生成频率
@@ -884,7 +885,7 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <div class="flex flex-col gap-2 mt-8">
+                    <div class="flex flex-col gap-2 mt-8 shrink-0">
                         <div class="flex gap-2">
                             <button
                                 class="flex-1 py-3 rounded-xl bg-orange-50 text-orange-500 font-bold active:bg-orange-100 transition-all text-xs border border-orange-100/50"

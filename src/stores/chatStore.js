@@ -1125,7 +1125,9 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Clean content by removing ALL inner voice blocks for display/splitting
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
-                const innerVoiceRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi;
+                // FIX: Use Safer Regex to prevent swallowing text if closing tag is missing
+                // Stop capturing if we see a closing tag, OR double newline, OR start of another command tag
+                const innerVoiceRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
 
                 // Extract ALL inner voice blocks
                 const allVoiceBlocks = [...fullContent.matchAll(innerVoiceRegex)];

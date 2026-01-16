@@ -255,7 +255,7 @@
                             </div>
 
                             <!-- Case B: Text Bubble (Sticker as inline / Text) -->
-                            <div v-else-if="cleanedContent" @contextmenu.prevent="emitContextMenu"
+                            <div v-else-if="!isHtmlCard && cleanedContent" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -523,19 +523,17 @@ const isFamilyCardReject = computed(() => {
 
 const isHtmlCard = computed(() => {
     if (props.msg.type === 'html') return true
-    const c = ensureString(props.msg.content)
-    // Robust check for HTML card JSON structure
-    if ((c.includes('"type"') || c.includes('type:')) &&
-        (c.includes('"html"') || c.includes('html:')) &&
-        c.includes('<') && c.includes('>')) {
-        return true
+    const c = ensureString(props.msg.content).trim()
+
+    // 1. JSON Wrapper Check
+    if ((c.startsWith('{') && c.endsWith('}')) || (c.includes('"type"') && c.includes('"html"'))) {
+        if (c.includes('"html"') && (c.includes('<') || c.includes('&lt;'))) return true
     }
 
-    // Check for RAW HTML content (starts with standard HTML tags)
-    const trimmed = c.trim()
-    if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
-        // Must contain block level elements to be considered a card
-        if (trimmed.includes('<div') || trimmed.includes('<html') || trimmed.includes('<body') || trimmed.includes('<style')) {
+    // 2. Raw HTML Check
+    if ((c.startsWith('<') && c.endsWith('>')) || (c.startsWith('&lt;') && c.endsWith('&gt;'))) {
+        const decoded = c.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        if (decoded.includes('<div') || decoded.includes('<html') || decoded.includes('<body') || decoded.includes('<style')) {
             return true
         }
     }
