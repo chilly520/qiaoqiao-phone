@@ -30,21 +30,39 @@ const fullContent = computed(() => {
         margin: 0 !important;
         padding: 0 !important;
         border: 0 !important;
-        width: auto !important; /* Changed from fit-content to auto */
-        display: inline-block !important; /* Changed from empty to inline-block */
+        width: auto !important;
+        display: inline-block !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
         background: transparent !important;
+        -webkit-tap-highlight-color: transparent;
       }
       
       * {
         box-sizing: border-box !important;
+      }
+
+      /* Visual Feedback for buttons */
+      [style*="cursor: pointer"], button, .button, a {
+        transition: transform 0.1s ease, opacity 0.1s ease !important;
+        user-select: none !important;
+      }
+      [style*="cursor: pointer"]:active, button:active, .button:active, a:active {
+        transform: scale(0.95) !important;
+        opacity: 0.8 !important;
       }
     </style>
     <script id="base-script">
       window.alert = function(msg) {
         console.log('[HTML Card Alert]:', msg);
       };
+      
+      // The Bridge: ALLOW cards to send messages back to the chat
+      window.sendToChat = function(text) {
+        if (!text) return;
+        window.parent.postMessage({ type: 'CHAT_SEND', text: text }, '*');
+      };
+
       document.body.style.opacity = '1';
     <\/script>
   `
@@ -89,18 +107,29 @@ const adjustHeight = () => {
     const body = doc.body
 
     // Restore context menu pass-through
+    const passEvent = (e) => {
+        const rect = iframe.getBoundingClientRect()
+        const evt = new (e.constructor)(e.type, {
+            ...e,
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: rect.left + (e.clientX || (e.touches?.[0]?.clientX) || 0),
+            clientY: rect.top + (e.clientY || (e.touches?.[0]?.clientY) || 0)
+        })
+        iframe.dispatchEvent(evt)
+    }
+
     doc.addEventListener('contextmenu', (e) => {
-      e.preventDefault()
-      const rect = iframe.getBoundingClientRect()
-      const evt = new MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: rect.left + e.clientX,
-        clientY: rect.top + e.clientY
-      })
-      iframe.dispatchEvent(evt)
+        e.preventDefault()
+        passEvent(e)
     })
+
+    // Bridge touches for long-press recognition
+    doc.addEventListener('mousedown', passEvent)
+    doc.addEventListener('touchstart', passEvent)
+    doc.addEventListener('mouseup', passEvent)
+    doc.addEventListener('touchend', passEvent)
 
     const updateSize = () => {
       // Trace both height and width

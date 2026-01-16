@@ -239,7 +239,8 @@
                             <div v-if="shouldRenderCard && isValidMessage"
                                 class="mt-1 transition-all relative z-10 max-w-full" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
+                                @message="handleIframeMessage">
                                 <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                             </div>
 
@@ -449,6 +450,19 @@ const handleCardClaim = (data) => {
     })
 
     console.log(`[Family Card] Successfully claimed card from ${cardOwnerName}`)
+}
+
+function handleIframeMessage(event) {
+    if (event.data && event.data.type === 'CHAT_SEND') {
+        const text = event.data.text;
+        console.log('[HTML Card] triggered send:', text);
+        // Logic to send message as user
+        chatStore.addMessage(props.chatData.id, {
+            role: 'user',
+            content: text
+        });
+        chatStore.sendMessageToAI(props.chatData.id);
+    }
 }
 
 // --- Computeds & Helpers ---
