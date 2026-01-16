@@ -551,10 +551,6 @@ export const useChatStore = defineStore('chat', () => {
                     content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
                     timestamp: Date.now()
                 }
-
-                // Browser notification using notification service
-                // Extract to separate function to avoid async/await in sync function
-                sendBrowserNotification(chatId, chat, newMsg)
             }
         }
 
@@ -1053,45 +1049,7 @@ ${contextMsgs}
         saveChats()
     }
 
-    // Send browser notification for new messages
-    async function sendBrowserNotification(chatId, chat, newMsg) {
-        try {
-            // Only send notification if:
-            // 1. App is in background (hidden) OR
-            // 2. User is in a different chat
-            if (typeof window === 'undefined') return
 
-            const isHidden = document.visibilityState === 'hidden'
-            const isDifferentChat = chatId !== currentChatId.value
-
-            if (!isHidden && !isDifferentChat) {
-                return
-            }
-
-            // Import notification service dynamically to avoid circular dependencies
-            const { notificationService } = await import('../utils/notificationService')
-
-            // Check if notification permission is granted
-            if (notificationService.hasPermission()) {
-                const notificationContent = newMsg.type === 'family_card' ? '[亲属卡]' :
-                    (newMsg.type === 'image' ? '[图片]' :
-                        (newMsg.content || '[消息]'))
-
-                notificationService.sendNotification(chat.name, {
-                    body: notificationContent,
-                    icon: chat.avatar || '/pwa-192x192.jpg',
-                    badge: '/pwa-192x192.jpg',
-                    data: {
-                        chatId: chatId,
-                        type: 'chat_message'
-                    },
-                    duration: 8000
-                })
-            }
-        } catch (error) {
-            console.error('Failed to send browser notification:', error)
-        }
-    }
 
     function updateMessage(chatId, msgId, updates) {
         console.log('[ChatStore updateMessage] START:', { chatId, msgId, updates })
@@ -1184,14 +1142,12 @@ ${contextMsgs}
                 const elapsedMs = now - chat.virtualTimeLastSync
                 currentVirtualTime = `${chat.virtualTime} (自对话刷新已过去 ${Math.floor(elapsedMs / 1000 / 60)} 分钟)`
             } else {
-                // Force strict clear format: YYYY/MM/DD HH:MM:SS Weekday
-                // This ensures the AI has no ambiguity about the current system time
+                // Force strict clear format: YYYY年MM月DD日 HH:mm:ss 星期X
+                // Match the style used in Inner Voice examples for better AI alignment
                 const d = new Date()
                 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
-                currentVirtualTime = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')} 星期${weekDays[d.getDay()]}`
+                currentVirtualTime = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')} 星期${weekDays[d.getDay()]}`
             }
-            // Debug Log
-            console.log('[DEBUG] Virtual Time sent to AI:', currentVirtualTime)
         }
 
         // 1. 准备上下文：根据设置动态截取消息历史
@@ -1283,7 +1239,8 @@ ${contextMsgs}
                     const hours = Math.floor(diffMinutes / 60);
                     const mins = diffMinutes % 60;
                     const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
-                    lastUserMsg.content += ` （系统提示：距离双方上一次互动时间为${timeStr}）`
+                    // More explicit system tag to ensure AI doesn't miss it
+                    lastUserMsg.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应（如：打招呼方式、困倦、正忙等，并简述你这段时间的动态）。】`
                 }
             }
         }

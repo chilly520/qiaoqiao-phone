@@ -154,6 +154,12 @@ watch(() => chatStore.notificationEvent, (evt) => {
     bannerData.value = evt
     showBanner.value = true
 
+    // ALSO trigger system notification (for real phone notification bar)
+    notificationService.sendNotification(evt.name || '新消息', {
+        body: evt.content,
+        icon: evt.avatar
+    })
+
     if (bannerTimer) clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => {
         showBanner.value = false
@@ -213,26 +219,26 @@ watch(() => chatStore.toastEvent, (evt) => {
         </div>
 
         <div v-if="showBanner && bannerData"
-            class="fixed top-2 left-4 right-4 z-[5000] cursor-pointer animate-slide-down" @click="handleBannerClick">
+            class="fixed top-2 left-0 right-0 z-[5000] px-3 cursor-pointer animate-slide-down" @click="handleBannerClick">
             <!-- Banner Container -->
             <div
-                class="w-full bg-[#8ec5fc]/90 backdrop-blur-xl shadow-lg rounded-[16px] p-3 flex items-center gap-3 border border-white/10 ring-1 ring-black/5">
+                class="w-full max-w-[500px] mx-auto bg-white/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[24px] p-3.5 flex items-center gap-3.5 border border-white/40 ring-1 ring-black/5 transition-all active:scale-[0.98]">
                 <!-- Avatar (Rounded Square - iOS Style) -->
-                <div class="w-[40px] h-[40px] rounded-[10px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
+                <div class="w-[44px] h-[44px] rounded-[12px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
                     <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
                     <div v-else class="w-full h-full bg-[#e1e1e1] flex items-center justify-center">
-                        <i class="fa-solid fa-user text-white text-base"></i>
+                        <i class="fa-solid fa-user text-white text-lg"></i>
                     </div>
                 </div>
 
                 <!-- Content -->
                 <div class="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                     <div class="flex items-center justify-between w-full">
-                        <span class="text-[15px] font-semibold text-[#1c1c1e] truncate">{{ bannerData.title }}</span>
+                        <span class="text-[15px] font-bold text-[#1c1c1e] truncate tracking-tight">{{ bannerData.name || bannerData.title }}</span>
                         <span
-                            class="text-[12px] text-[#1c1c1e]/40 font-medium whitespace-nowrap tracking-tight">现在</span>
+                            class="text-[11px] text-[#1c1c1e]/40 font-semibold whitespace-nowrap tracking-tight uppercase">现在</span>
                     </div>
-                    <div class="text-[13px] text-[#1c1c1e]/70 truncate leading-tight font-normal">{{ bannerData.content
+                    <div class="text-[14px] text-[#1c1c1e]/80 truncate leading-snug font-medium">{{ bannerData.content
                     }}</div>
                 </div>
             </div>
@@ -269,19 +275,18 @@ watch(() => chatStore.toastEvent, (evt) => {
 <style>
 @keyframes slideDown {
     from {
-        transform: translate(-50%, -120%);
+        transform: translateY(-120%);
         opacity: 0;
     }
 
     to {
-        transform: translate(-50%, 0);
+        transform: translateY(0);
         opacity: 1;
     }
 }
 
 .animate-slide-down {
-    animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    left: 50%;
+    animation: slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Toast Animation - Pure Vertical Fade */

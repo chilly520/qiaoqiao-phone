@@ -42,7 +42,7 @@
                 </div>
 
                 <!-- CASE 2: Regular Message -->
-                <div v-else class="flex gap-2 w-full" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+                <div v-else-if="isValidMessage" class="flex gap-2 w-full animate-fade-in" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
 
                     <!-- Avatar -->
                     <div class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
@@ -510,10 +510,8 @@ const isValidMessage = computed(() => {
     // 4. If it's an image, always show
     if (isImageMsg(props.msg.content)) return true
 
-    // 5. If content is being streamed (from AI), always show to prevent flickering
-    if (props.msg.isStreaming) return true
-
-    // 6. Otherwise, only show if cleaned content is not empty
+    // 5. If content is being streamed (from AI), check if there is ALREADY something worth showing 
+    // If it's just tags being removed, it's better to hide the bubble until text appears
     const clean = getCleanContent(ensureString(props.msg.content))
     return clean && clean.length > 0
 })
@@ -720,7 +718,10 @@ function getCleanContent(contentRaw) {
         clean = clean.replace(/\\n/g, '\n');
     }
 
-    return clean;
+    // FINAL GUARD: Filter all zero-width characters and re-trim
+    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+    
+    return clean.trim();
 }
 
 function getPureHtml(content) {

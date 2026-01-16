@@ -25,27 +25,47 @@ class NotificationService {
   }
 
   // Send a notification
-  sendNotification(title, options = {}) {
+  async sendNotification(title, options = {}) {
     if (!this.hasPermission()) {
       console.log('Notification permission not granted')
       return null
     }
 
-    try {
-      const notification = new Notification(title, {
-        icon: '/pwa-192x192.jpg',
-        badge: '/pwa-192x192.jpg',
-        ...options
-      })
+    const notificationOptions = {
+      icon: '/pwa-192x192.jpg',
+      badge: '/pwa-192x192.jpg',
+      vibrate: [200, 100, 200],
+      tag: options.tag || 'chat-notification',
+      renotify: true,
+      ...options
+    };
 
-      // Close notification after 5 seconds
+    // Try Service Worker registration first (More reliable for mobile/background)
+    if ('serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if (registration && registration.showNotification) {
+          await registration.showNotification(title, notificationOptions);
+          console.log('[NotificationService] Sent via ServiceWorker');
+          return true;
+        }
+      } catch (e) {
+        console.warn('[NotificationService] SW notification failed, falling back:', e);
+      }
+    }
+
+    // Fallback to standard Notification API
+    try {
+      const notification = new Notification(title, notificationOptions)
+
+      // Close notification after duration
       setTimeout(() => {
         notification.close()
       }, options.duration || 5000)
 
       return notification
     } catch (error) {
-      console.error('Failed to send notification:', error)
+      console.error('Failed to send notification via fallback:', error)
       return null
     }
   }

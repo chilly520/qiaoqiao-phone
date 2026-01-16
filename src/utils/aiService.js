@@ -97,7 +97,7 @@ export function generateContextPreview(chatId, char) {
         ? weatherService.getLocationContextText()
         : ''
 
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(char, userForSystem, stickers, worldInfoText, memoryText, patSettings, locationContext)
+
 
     // 2. Persona Context
     const personaContext = `
@@ -143,29 +143,36 @@ export function generateContextPreview(chatId, char) {
     // User request says "User Top 3 updates". Assuming just latest 3 for user if no pin logic for user.
     const userLatests = userMoments.slice(0, 3)
 
-    // "Moments Memory" (The latest N items from timeline)
-    // N = momentsLimit in char settings? Or hardcoded? Let's assume a default or verify if it exists.
-    // Defaulting to 5 as per user example.
-    const timelineLimit = 5
-    const timelineMoments = momentsStore.sortedMoments.slice(0, timelineLimit)
+    // 4. History (Context) with Time Delay Hint
+    const now = Date.now()
+    const aiMessages = recentMsgs.filter(m => m.role === 'ai')
+    const lastAiMsg = aiMessages.length > 0 ? aiMessages[aiMessages.length - 1] : null
+    const lastAiTime = lastAiMsg ? lastAiMsg.timestamp : now
+    const diffMinutes = Math.floor((now - lastAiTime) / 1000 / 60)
 
-    momentsContext = `
-【朋友圈状态】
-[${char.name}的主页]
-${charPinned.length > 0 ? charPinned.map(formatMoment).join('\n---\n') : '(无置顶)'}
+    // Current Virtual Time (Real-time calculation for preview)
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+    const d = new Date()
+    const currentVirtualTime = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')} 星期${weekDays[d.getDay()]}`
 
-[用户的主页]
-${userLatests.length > 0 ? userLatests.map(formatMoment).join('\n---\n') : '(无最新动态)'}
-
-[最新朋友圈时间流 (Top ${timelineLimit})]
-${timelineMoments.map(formatMoment).join('\n---\n')}
-    `.trim()
-
-    // 4. History (Context)
-    const historyText = recentMsgs.map(m => `${m.role === 'user' ? (char.userName || 'User') : char.name}: ${m.content}`).join('\n')
+    const historyText = recentMsgs.map((m, index) => {
+        let content = m.content
+        // Inject hint if it's the last message and delay > 1min
+        if (index === recentMsgs.length - 1 && m.role === 'user' && diffMinutes >= 1) {
+            const hours = Math.floor(diffMinutes / 60);
+            const mins = diffMinutes % 60;
+            const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
+            content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。】`
+        }
+        return `${m.role === 'user' ? (char.userName || 'User') : char.name}: ${content}`
+    }).join('\n')
 
     // 5. Summary
     const summaryText = char.summary || '（暂无自动总结）'
+
+    // Update system prompt with fresh virtual time for accurate preview
+    const charWithTime = { ...char, virtualTime: currentVirtualTime }
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, worldInfoText, memoryText, patSettings, locationContext)
 
     return {
         system: systemPrompt,
