@@ -808,8 +808,15 @@ export const useChatStore = defineStore('chat', () => {
     // Send browser notification for new messages
     async function sendBrowserNotification(chatId, chat, newMsg) {
         try {
-            // Only send notification if app is in background or different chat
-            if (typeof window === 'undefined' || chatId === currentChatId.value) {
+            // Only send notification if:
+            // 1. App is in background (hidden) OR
+            // 2. User is in a different chat
+            if (typeof window === 'undefined') return
+
+            const isHidden = document.visibilityState === 'hidden'
+            const isDifferentChat = chatId !== currentChatId.value
+
+            if (!isHidden && !isDifferentChat) {
                 return
             }
 

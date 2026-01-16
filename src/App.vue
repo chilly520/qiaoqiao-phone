@@ -5,6 +5,8 @@ import { useSettingsStore } from './stores/settingsStore'
 import { useChatStore } from './stores/chatStore'
 import { batteryMonitor } from './utils/batteryMonitor'
 
+import { notificationService } from './utils/notificationService'
+
 const route = useRoute()
 const router = useRouter()
 const store = useSettingsStore()
@@ -37,6 +39,24 @@ onMounted(() => {
             })
         }
     })
+
+    // Request Notification Permissions
+    const requestNotify = async () => {
+        const granted = await notificationService.requestPermission()
+        if (granted) console.log('[App] Notification permission granted')
+    }
+    
+    // Try immediately
+    requestNotify()
+
+    // Try on interaction (fallback)
+    const unlockNotifications = () => {
+        requestNotify()
+        window.removeEventListener('click', unlockNotifications)
+        window.removeEventListener('touchstart', unlockNotifications)
+    }
+    window.addEventListener('click', unlockNotifications, { once: true })
+    window.addEventListener('touchstart', unlockNotifications, { once: true })
 })
 onUnmounted(() => {
     if (timer) clearInterval(timer)
