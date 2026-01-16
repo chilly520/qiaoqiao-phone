@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人档案 - 深度杂志编辑版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Outfit:wght@300;400;600&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+            background: #fdfdfd;
+            color: #1a1a1a;
+        }
+
+        .serif-title {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+        }
+
+        .magazine-number {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 5rem;
+            color: rgba(0, 0, 0, 0.05);
+            position: absolute;
+            z-index: 0;
+            line-height: 1;
+        }
+
+        .editorial-line {
+            height: 1px;
+            background: #1a1a1a;
+            width: 40px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        .accent-box {
+            background: #f8f6f2;
+            border-radius: 8px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #888;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: #222;
+        }
+
+        .section-header {
+            border-bottom: 1.5px solid #1a1a1a;
+            padding-bottom: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
+
+        .chinese-tag {
+            font-size: 11px;
+            color: #a0a0a0;
+            font-weight: 400;
+            margin-left: 6px;
+            letter-spacing: 0;
+        }
+
+        .card-magazine {
+            border: 1px solid #eee;
+            background: #fff;
+            padding: 24px;
+            position: relative;
+        }
+
+        .card-magazine::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #1a1a1a;
+        }
+
+        .preference-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .photo-frame {
+            position: relative;
+            padding: 8px;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transform: rotate(-1deg);
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="flex justify-center p-0 md:p-10">
+    <div
+        class="w-full max-w-[390px] bg-white min-h-[844px] shadow-2xl relative overflow-hidden flex flex-col md:rounded-[40px] border-[12px] border-[#1a1a1a]">
+
+        <!-- Header: Editorial Style (Bilingual) -->
+        <div class="px-6 py-6 flex items-end justify-between border-b border-gray-100 bg-white sticky top-0 z-50">
+            <div>
+                <p class="text-[10px] font-bold tracking-[0.2em] text-gray-400 uppercase">Issue No. 01 / 档案刊号</p>
+                <h1 class="serif-title text-2xl mt-1 tracking-tight">THE PROFILE. <span
+                        class="chinese-tag text-lg">个人档案</span></h1>
+            </div>
+            <button
+                class="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-800 hover:bg-black hover:text-white transition-all shadow-sm active:scale-90">
+                <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 pb-40 scrollbar-hide">
+
+            <!-- Hero Layout -->
+            <div class="mt-8 flex gap-6 relative">
+                <div class="magazine-number top-0 -left-2">BIO</div>
+                <div class="w-3/5 relative z-10">
+                    <div class="photo-frame">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/korean_style_avatar_1768569935623.png"
+                            alt="Avatar" class="w-full aspect-[4/5] object-cover">
+                    </div>
+                </div>
+                <div class="w-2/5 flex flex-col justify-end pb-4">
+                    <h2 class="serif-title text-3xl mb-1">测试酱</h2>
+                    <p class="text-[11px] text-gray-400 uppercase tracking-widest leading-loose">Visual Artist<br>KOREAN
+                        VIBE</p>
+                    <div class="mt-4 flex flex-col gap-1">
+                        <span class="text-[10px] font-bold bg-black text-white px-2 py-0.5 w-fit">INFP</span>
+                        <span class="text-[10px] border border-black px-2 py-0.5 w-fit">Capricorn / 山羊座</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quote Section -->
+            <div class="mt-10 italic text-[13px] text-gray-500 leading-relaxed border-l-2 border-black pl-4">
+                “ 就算是微弱的光，只要在这个世界上存在着，就一定有它亮起的意义。” — <i>测试酱的深夜碎碎念</i>
+            </div>
+
+            <!-- Deep Info Grid (Bilingual Labels) -->
+            <div class="mt-10 grid grid-cols-2 gap-y-6 gap-x-8">
+                <div class="section-header col-span-2">
+                    <h3 class="serif-title text-lg">Identity Details <span class="chinese-tag">身分详情</span></h3>
+                </div>
+
+                <div class="flex flex-col">
+                    <span class="stat-label">Gender <span class="chinese-tag ml-1">性别</span></span>
+                    <span class="stat-value">Female / 少女</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="stat-label">Age <span class="chinese-tag ml-1">年龄</span></span>
+                    <span class="stat-value">19 Yrs</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="stat-label">Height <span class="chinese-tag ml-1">身高</span></span>
+                    <span class="stat-value">164 cm</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="stat-label">Weight <span class="chinese-tag ml-1">体重</span></span>
+                    <span class="stat-value">46.5 kg</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="stat-label">MBTI <span class="chinese-tag ml-1">人格</span></span>
+                    <span class="stat-value">INFP-T</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="stat-label">Flavor <span class="chinese-tag ml-1">气味</span></span>
+                    <span class="stat-value">White Peach / 白桃</span>
+                </div>
+            </div>
+
+            <!-- Preference Matrix (Depth Added) -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Preference Matrix <span class="chinese-tag">喜好矩阵</span></h3>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="accent-box p-4 border border-gray-100">
+                        <span class="stat-label text-[#88ba8b] block mb-3"><i class="fa-solid fa-heart mr-1"></i> Like /
+                            钟爱</span>
+                        <ul class="text-[12px] space-y-2 font-medium">
+                            <li><span class="preference-dot bg-[#88ba8b]"></span>冰美式无糖</li>
+                            <li><span class="preference-dot bg-[#88ba8b]"></span>底片摄影</li>
+                            <li><span class="preference-dot bg-[#88ba8b]"></span>深夜雨声</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <span class="stat-label text-gray-400 block mb-3"><i class="fa-solid fa-xmark mr-1"></i> Dislike
+                            / 厌恶</span>
+                        <ul class="text-[12px] space-y-2 font-medium text-gray-500">
+                            <li><span class="preference-dot bg-gray-300"></span>嘈杂的聚会</li>
+                            <li><span class="preference-dot bg-gray-300"></span>被命令做事</li>
+                            <li><span class="preference-dot bg-gray-300"></span>香菜和芹菜</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Soul Bonds (Deeper Narrative) -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Soul Bonds <span class="chinese-tag">灵魂羁绊</span></h3>
+                </div>
+                <div class="space-y-6">
+                    <div class="relative pl-6 border-l border-gray-100 py-1">
+                        <div class="absolute top-2 -left-[4.5px] w-2 h-2 rounded-full bg-black"></div>
+                        <span class="stat-label text-[9px] text-[#ff9a9e]">First Meet / 初见场景</span>
+                        <p class="text-[13px] mt-1 text-gray-600 leading-relaxed font-light">
+                            在那个喧闹的车站，你帮我捡起了掉落的胶卷。阳光洒在你侧脸的那一刻，我听到了快门按下的声音。
+                        </p>
+                    </div>
+                    <div class="relative pl-6 border-l border-gray-100 py-1">
+                        <div class="absolute top-2 -left-[4.5px] w-2 h-2 rounded-full bg-black"></div>
+                        <span class="stat-label text-[9px] text-[#ff9a9e]">Common Promise / 共同约定</span>
+                        <p class="text-[13px] mt-1 text-gray-600 leading-relaxed font-light">
+                            等攒够了思念，我们要一起去追那场还没看成的北极光。
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Routine & Lifestyle (New Brainstormed Content) -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Daily Routine <span class="chinese-tag">生活作息</span></h3>
+                </div>
+                <div
+                    class="flex items-center justify-between px-4 py-3 border border-dashed border-gray-300 rounded-xl">
+                    <div class="text-center">
+                        <span class="stat-label">Active / 活跃</span>
+                        <div class="stat-value text-sm mt-1">22:00 - 04:00</div>
+                    </div>
+                    <div class="w-[1px] h-8 bg-gray-200"></div>
+                    <div class="text-center">
+                        <span class="stat-label">Offline / 断网</span>
+                        <div class="stat-value text-sm mt-1">08:00 - 15:00</div>
+                    </div>
+                    <div class="w-[1px] h-8 bg-gray-200"></div>
+                    <div class="text-center">
+                        <span class="stat-label">Hobby / 嗜好</span>
+                        <div class="stat-value text-sm mt-1">Night Talk</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wardrobe & Style (Added Depth) -->
+            <div class="mt-12 mb-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Style Editorial <span class="chinese-tag">审美档案</span></h3>
+                </div>
+                <div class="card-magazine bg-[#fcfcfc]">
+                    <div class="grid grid-cols-2 gap-6">
+                        <div>
+                            <span class="stat-label block mb-2">Aesthetic / 审美</span>
+                            <p class="text-[12px] text-gray-500">简约韩系 / 莫兰迪色 / 极简主义</p>
+                        </div>
+                        <div>
+                            <span class="stat-label block mb-2">Element / 元素</span>
+                            <p class="text-[12px] text-gray-500">木质装饰 / 胶片滤镜 / 宽松棉麻</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Actions (Bilingual) -->
+        <div class="absolute bottom-0 left-0 right-0 p-8 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
+            <div class="flex items-center justify-center gap-4">
+                <button
+                    class="flex-1 h-12 border border-black text-black font-bold text-[11px] tracking-[0.2em] uppercase transition-all hover:bg-black hover:text-white active:scale-95 flex flex-col items-center justify-center leading-tight">
+                    <span>MOMENTS</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-60">朋友圈</span>
+                </button>
+                <button
+                    class="flex-1 h-12 bg-black text-white font-bold text-[11px] tracking-[0.2em] uppercase transition-all shadow-lg active:scale-95 flex flex-col items-center justify-center leading-tight">
+                    <span>MESSAGE</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-60">发消息</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>

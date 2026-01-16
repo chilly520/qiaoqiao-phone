@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人档案 - 终极画册融合版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Outfit:wght@300;400;600&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+            background: #fdfdfd;
+            color: #1a1a1a;
+        }
+
+        .serif-title {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+        }
+
+        .magazine-number {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 5rem;
+            color: rgba(0, 0, 0, 0.04);
+            position: absolute;
+            z-index: 0;
+            line-height: 1;
+        }
+
+        .accent-box {
+            background: #f8f6f2;
+            border-radius: 4px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #aaa;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        .section-header {
+            border-bottom: 1px solid #1a1a1a;
+            padding-bottom: 8px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
+
+        .chinese-tag {
+            font-size: 11px;
+            color: #b0b0b0;
+            font-weight: 400;
+            margin-left: 6px;
+            letter-spacing: 0;
+        }
+
+        .editorial-line {
+            height: 1px;
+            background: #1a1a1a;
+            width: 30px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        .photo-frame {
+            position: relative;
+            padding: 10px;
+            background: white;
+            box-shadow: 0 15px 45px rgba(0, 0, 0, 0.06);
+            transform: rotate(-1.5deg);
+        }
+
+        .dot-line {
+            position: relative;
+            padding-left: 20px;
+            border-left: 1px solid #eee;
+            margin-bottom: 25px;
+        }
+
+        .dot-line::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 6px;
+            width: 7px;
+            height: 7px;
+            background: #1a1a1a;
+            border-radius: 50%;
+        }
+
+        .preference-dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: #ddd;
+            margin-right: 8px;
+            display: inline-block;
+        }
+
+        .rotated-vibe {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            font-size: 10px;
+            letter-spacing: 0.3em;
+            color: #ddd;
+            font-weight: bold;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="flex justify-center p-0 md:p-6">
+    <div
+        class="w-full max-w-[390px] bg-white min-h-[844px] shadow-2xl relative overflow-hidden flex flex-col md:rounded-[40px] border-[12px] border-[#1a1a1a]">
+
+        <!-- Header (Editorial v4) -->
+        <div
+            class="px-6 py-6 flex items-end justify-between border-b border-gray-100 bg-white/90 backdrop-blur-md sticky top-0 z-50">
+            <div>
+                <p class="text-[9px] font-bold tracking-[0.4em] text-gray-400 uppercase">VOL. 01 / COLLECTION</p>
+                <h1 class="serif-title text-2xl mt-1 tracking-tight">THE ARCHIVE. <span
+                        class="chinese-tag text-lg">个人档案</span></h1>
+            </div>
+            <button
+                class="w-10 h-10 rounded-full border border-gray-100 flex items-center justify-center text-gray-800 hover:bg-black hover:text-white transition-all shadow-sm active:scale-95">
+                <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 pb-48 scrollbar-hide">
+
+            <!-- Hero Layout (Return to Asymmetric) -->
+            <div class="mt-10 flex gap-6 relative">
+                <div class="magazine-number top-0 -left-2">BIO</div>
+                <div class="w-2/3 relative z-10">
+                    <div class="photo-frame">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/korean_style_avatar_1768569935623.png"
+                            alt="Avatar" class="w-full aspect-[4/5] object-cover">
+                    </div>
+                </div>
+                <div class="w-1/3 flex flex-col justify-end pb-6">
+                    <div class="rotated-vibe mb-6">ARCHIVE IDENTITY</div>
+                    <div class="h-20 w-[1px] bg-gray-100 ml-4"></div>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <h2 class="serif-title text-4xl mb-1 tracking-tighter">测试酱</h2>
+                <div class="flex items-center gap-2">
+                    <span class="editorial-line"></span>
+                    <p class="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Aesthetic Creator / INFP-T
+                    </p>
+                </div>
+            </div>
+
+            <!-- Identity Details (Bilingual & Expanded) -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Identity Details <span class="chinese-tag">身分详情</span></h3>
+                </div>
+                <div class="grid grid-cols-2 gap-y-6 gap-x-8 px-2">
+                    <div class="flex flex-col">
+                        <span class="stat-label">Occupation <span class="chinese-tag">职业</span></span>
+                        <span class="stat-value">Concept Artist / 插画师</span>
+                    </div>
+                    <div class="flex flex-col px-4 py-2 accent-box border-l-4 border-black">
+                        <span class="stat-label">Status <span class="chinese-tag">情感状态</span></span>
+                        <span class="stat-value text-pink-500">In Secret Love / 被攻略中</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">Age <span class="chinese-tag">年龄</span></span>
+                        <span class="stat-value">19 Yrs</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">Birthday <span class="chinese-tag">生日</span></span>
+                        <span class="stat-value">Jan 16th / 山羊座</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">Height <span class="chinese-tag">身高</span></span>
+                        <span class="stat-value">164 cm</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">Weight <span class="chinese-tag">体重</span></span>
+                        <span class="stat-value">46.5 kg</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Heartbeat Quote -->
+            <div class="mt-12 bg-[#1a1a1a] text-white p-6 relative overflow-hidden">
+                <i class="fa-solid fa-quote-right absolute -right-4 -bottom-4 text-7xl text-white/5"></i>
+                <p class="text-[14px] leading-relaxed italic z-10 relative font-light">
+                    “ 所有的思念，最后都会化作画纸上的莫兰迪色色块，温柔地包裹住那个回不去的小时候。”
+                </p>
+            </div>
+
+            <!-- Like & Dislike Matrix (Restored Side-by-side) -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Preference Matrix <span class="chinese-tag">喜好矩阵</span></h3>
+                </div>
+                <div class="flex gap-4">
+                    <div class="flex-1 space-y-4">
+                        <span class="text-[10px] font-bold text-green-600 tracking-widest uppercase">Like / 钟爱</span>
+                        <div class="space-y-2">
+                            <div class="text-[12px] font-medium"><span class="preference-dot bg-green-200"></span>冰美式无糖
+                            </div>
+                            <div class="text-[12px] font-medium"><span class="preference-dot bg-green-200"></span>胶卷冲印味
+                            </div>
+                            <div class="text-[12px] font-medium"><span
+                                    class="preference-dot bg-green-200"></span>深夜的长途电话</div>
+                        </div>
+                    </div>
+                    <div class="w-[1px] bg-gray-100"></div>
+                    <div class="flex-1 space-y-4">
+                        <span class="text-[10px] font-bold text-red-400 tracking-widest uppercase">Dislike / 厌恶</span>
+                        <div class="space-y-2">
+                            <div class="text-[12px] font-medium text-gray-400"><span
+                                    class="preference-dot bg-red-100"></span>被强行安排聚会</div>
+                            <div class="text-[12px] font-medium text-gray-400"><span
+                                    class="preference-dot bg-red-100"></span>阴沉的冷战</div>
+                            <div class="text-[12px] font-medium text-gray-400"><span
+                                    class="preference-dot bg-red-100"></span>没有滤镜的照片</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Soul Bonds (Restored Narrative Timeline) -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Soul Bonds <span class="chinese-tag">灵魂羁绊</span></h3>
+                </div>
+                <div class="dot-line">
+                    <span class="stat-label text-[9px] text-gray-400">First Interaction / 初次交集</span>
+                    <p class="text-[13px] mt-1 text-gray-600 leading-relaxed font-light italic">
+                        你帮我找回了那本丢失的速写本。当时你眼中的认真，我画了整整一星期。
+                    </p>
+                </div>
+                <div class="dot-line" style="border-left: none;">
+                    <span class="stat-label text-[9px] text-gray-400">Common Destiny / 共同约定</span>
+                    <p class="text-[13px] mt-1 text-gray-600 leading-relaxed font-light italic">
+                        约好了，在这个冬天结束前，我们要去那个可以看到极光的书店。
+                    </p>
+                </div>
+            </div>
+
+            <!-- 发散内容：Traits & Habits (Quirks from v3) -->
+            <div class="mt-6 p-5 border border-dashed border-gray-200 rounded-lg">
+                <span class="stat-label block mb-4">Traits & Habits <span class="chinese-tag">癖好与习惯</span></span>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-[8px] mt-1 text-gray-300"></i>
+                        <p class="text-[11px] text-gray-500">思考时下意识<span class="text-black font-medium">绕指尖</span></p>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-[8px] mt-1 text-gray-300"></i>
+                        <p class="text-[11px] text-gray-500">不喜欢<span class="text-black font-medium">踩影子</span></p>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-[8px] mt-1 text-gray-300"></i>
+                        <p class="text-[11px] text-gray-500">雨天喜欢<span class="text-black font-medium">收集积水声音</span></p>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-[8px] mt-1 text-gray-300"></i>
+                        <p class="text-[11px] text-gray-500">睡前必须<span class="text-black font-medium">整理枕头</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Routine (Minimalised from v2) -->
+            <div class="mt-12 mb-20">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Daily Cycles <span class="chinese-tag">生理时钟</span></h3>
+                </div>
+                <div class="flex justify-between items-center px-2">
+                    <div class="text-center">
+                        <span class="stat-label">Wake / 醒来</span>
+                        <div class="stat-value text-xs mt-1">11:00 AM</div>
+                    </div>
+                    <div class="flex-1 h-[1px] bg-gray-100 mx-4"></div>
+                    <div class="text-center">
+                        <span class="stat-label">Peak / 巅峰</span>
+                        <div class="stat-value text-xs mt-1">02:00 AM</div>
+                    </div>
+                    <div class="flex-1 h-[1px] bg-gray-100 mx-4"></div>
+                    <div class="text-center">
+                        <span class="stat-label">Sleep / 沉睡</span>
+                        <div class="stat-value text-xs mt-1">05:30 AM</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Actions (v4 Minimalist) -->
+        <div class="absolute bottom-0 left-0 right-0 p-8 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
+            <div class="flex items-center justify-center gap-4">
+                <button
+                    class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all hover:bg-black hover:text-white active:scale-95 flex flex-col items-center justify-center leading-tight">
+                    <span>MOMENTS</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-50">朋友圈</span>
+                </button>
+                <button
+                    class="flex-1 h-12 bg-black text-white font-bold text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg active:scale-95 flex flex-col items-center justify-center leading-tight">
+                    <span>MESSAGE</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-50">发消息</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>

@@ -72,7 +72,7 @@ const router = createRouter({
         {
             path: '/wechat/profile/:charId',
             name: 'character-info',
-            component: () => import('../views/WeChat/CharacterInfoCard.vue')
+            component: () => import('../views/WeChat/CharacterProfileView.vue')
         },
         {
             path: '/moments/profile/:charId',

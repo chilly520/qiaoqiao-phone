@@ -667,7 +667,9 @@ function getCleanContent(contentRaw) {
     ];
 
     if (props.msg.role === 'ai' && toxicKeywords.some(k => clean.toLowerCase().includes(k))) {
-        if (clean.includes(';') || clean.includes(':')) return '';
+        // Only treat as toxic if it's NOT a sticker tag or bio tag
+        const isSafeTag = /\[(表情包|BIO|STICKER)/i.test(clean);
+        if (clean.includes(';') && !isSafeTag) return '';
     }
 
     // Filter 3: Garbage punctuation strings
@@ -843,16 +845,25 @@ function formatTimelineTime(timestamp) {
 
 function isImageMsg(msg) {
     if (!msg) return false
-    if (msg.type === 'image') return true
+    if (msg.type === 'image' || msg.type === 'sticker') return true
     const content = ensureString(msg.content)
     if (!content.trim()) return false
+    
+    // Direct Data/Blob URLs are always images
     if (content.includes('blob:') || content.includes('data:image/')) return true
+    
     const clean = getCleanContent(content).trim()
+    
+    // HTTP URL that ends with image extension and ONLY contains the URL
     if (clean.startsWith('http')) {
         const urlPart = clean.split('?')[0].toLowerCase()
-        if (urlPart.endsWith('.jpg') || urlPart.endsWith('.png') || urlPart.endsWith('.gif') || urlPart.endsWith('.jpeg')) return true
+        const isImageUrl = urlPart.endsWith('.jpg') || urlPart.endsWith('.png') || urlPart.endsWith('.gif') || urlPart.endsWith('.jpeg') || urlPart.endsWith('.webp');
+        if (isImageUrl && clean.split(/\s+/).length === 1) return true
     }
-    return /\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/i.test(clean)
+    
+    // ONLY treat as pure image if the entire cleaned message is just the [Tag]
+    const tagMatch = clean.match(/^\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]$/i)
+    return !!tagMatch
 }
 
 function getImageSrc(msg) {
@@ -914,7 +925,7 @@ function formatMessageContent(msg) {
         })
     }
 
-    text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '') // Remove image tags if any left
+    // text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '') // DESTRUCTIVE: Removed to let inline replacer handle it
 
     // 5. Highlight Mentions (@name)
     const userName = settingsStore.personalization.userProfile.name;
@@ -929,17 +940,38 @@ function formatMessageContent(msg) {
 
     // Sticker inline replacer (Standardized)
     text = text.replace(/\[(.*?)\]/g, (match, name) => {
-        const n = name.trim()
+        let n = name.trim()
+        
+        // Strip prefixes like "表情包:" or "STICKER:"
+        const prefixMatch = n.match(/^(?:表情包|STICKER|IMAGE|图片)[:：]\s*(.*)/i);
+        if (prefixMatch) {
+            n = prefixMatch[1].trim();
+        }
+
         // Skip specialized tags we might have missed or are recursive
         // Also skip if it starts with DRAW: to avoid double processing if regex missed
-        if (n.toUpperCase().startsWith('DRAW:') || n === 'INNER_VOICE' || n === '/INNER_VOICE') return match;
+        if (n.toUpperCase().startsWith('DRAW:') || n === 'INNER_VOICE' || n === '/INNER_VOICE' || n.toUpperCase().startsWith('BIO:')) return match;
 
         const charStickers = props.chatData?.emojis || []
         const cm = charStickers.find(s => s.name === n)
-        if (cm) return `<img src="${cm.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
-        const gm = stickerStore.getStickers('global').find(s => s.name === n)
-        if (gm) return `<img src="${gm.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
-        return match
+        if (cm) return `<img src="${cm.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${n}" />`
+        
+        const globalStickers = stickerStore.getStickers('global').find(s => s.name === n)
+        if (globalStickers) return `<img src="${globalStickers.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${n}" />`
+        
+        // Resilience 1: Strip trailing punctuation
+        const cleanPunc = n.replace(/[。.，,！!？?]+$/, '');
+        
+        // Resilience 2: Strip parentheticals (e.g. "求求你了 (求你之-舞)" -> "求求你了")
+        const cleanParen = n.replace(/\s*[\(（].*?[\)）]\s*$/, '');
+
+        const candidates = [cleanPunc, cleanParen].filter(c => c !== n);
+        for (const cand of candidates) {
+            const match = charStickers.find(s => s.name === cand) || stickerStore.getStickers('global').find(s => s.name === cand);
+            if (match) return `<img src="${match.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${cand}" />`
+        }
+
+        return match; // Keep as text [Name] if not found, don't just swallow it
     })
 
     try { return marked.parse(text) } catch (e) { return text }
@@ -1530,5 +1562,14 @@ function getHtmlContent(content) {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+.animate-bounce-subtle {
+    animation: bounce-subtle 2s infinite ease-in-out;
+}
+
+@keyframes bounce-subtle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
 }
 </style>

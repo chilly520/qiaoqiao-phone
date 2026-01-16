@@ -4,6 +4,7 @@ import { generateReply, generateSummary, generateImage, generateContextPreview }
 import { useLoggerStore } from './loggerStore'
 import { useWorldBookStore } from './worldBookStore'
 import { useMomentsStore } from './momentsStore'
+import { useSettingsStore } from './settingsStore'
 
 const DEFAULT_AVATARS = [
     '/avatars/小猫举爪.jpg',
@@ -23,7 +24,15 @@ export const useChatStore = defineStore('chat', () => {
     // State
     const chats = ref({}) // { 'char_id': { name: '...', avatar: '...', msgs: [], unreadCount: 0 } }
     const currentChatId = ref(null)
-    const isTyping = ref(false)
+    const typingStatus = ref({}) // { chatId: boolean }
+    const isTyping = computed({
+        get: () => !!typingStatus.value[currentChatId.value],
+        set: (val) => {
+            if (currentChatId.value) {
+                typingStatus.value[currentChatId.value] = val
+            }
+        }
+    })
     const notificationEvent = ref(null) // Global notification trigger
     const patEvent = ref(null) // Event: { chatId, target: 'ai'|'user' }
     const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
@@ -34,7 +43,8 @@ export const useChatStore = defineStore('chat', () => {
     const loadedMessageCounts = ref({}) // { chatId: 加载的消息数 }
 
     // AI Control
-    let currentAbortController = null;
+    const abortControllers = {} // { chatId: AbortController }
+    let currentAbortController = null; // Still keep for extreme backward compat if needed, but not used by main logic now
 
     function triggerPatEffect(chatId, target) {
         patEvent.value = {
@@ -48,15 +58,18 @@ export const useChatStore = defineStore('chat', () => {
         toastEvent.value = { id: Date.now(), message, type }
     }
 
-    function stopGeneration(silent = false) {
-        if (currentAbortController) {
-            currentAbortController.abort()
-            currentAbortController = null
+    function stopGeneration(silent = false, chatId = null) {
+        const id = chatId || currentChatId.value
+        if (!id) return
+
+        if (abortControllers[id]) {
+            abortControllers[id].abort()
+            delete abortControllers[id]
         }
 
-        if (isTyping.value) {
-            isTyping.value = false
-            console.log('[ChatStore] AI Generation/Delivery stopped by user.')
+        if (typingStatus.value[id]) {
+            typingStatus.value[id] = false
+            console.log(`[ChatStore] AI Generation for ${id} stopped.`)
             if (!silent) {
                 triggerToast('已中断生成', 'info')
             }
@@ -143,6 +156,30 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return false
 
+        // Robust Migration: Ensure bio structure exists and is reactive
+        if (!chat.bio) {
+            chat.bio = {
+                gender: '未知', age: '未知', birthday: '未知', zodiac: '未知', mbti: '未知',
+                height: '未知', weight: '未知', body: '未知', occupation: '未知', status: '未知',
+                scent: '未知', style: '未知', hobbies: [], idealType: '未知', heartbeatMoment: '暂无记录',
+                traits: [], routine: { awake: '未知', busy: '未知', deep: '未知' },
+                soulBonds: [], loveItems: [
+                    { name: '爱之物 I', image: '' }, { name: '爱之物 II', image: '' }, { name: '爱之物 III', image: '' }
+                ]
+            };
+            // Force re-assignment to ensure reactivity and persistence
+            chats.value[chatId] = { ...chat, bio: chat.bio };
+        }
+
+        // Deep safety for nested properties
+        if (!chat.bio.routine) chat.bio.routine = { awake: '未知', busy: '未知', deep: '未知' };
+        if (!chat.bio.hobbies) chat.bio.hobbies = [];
+        if (!chat.bio.traits) chat.bio.traits = [];
+        if (!chat.bio.soulBonds) chat.bio.soulBonds = [];
+        if (!chat.bio.loveItems) chat.bio.loveItems = [
+            { name: '爱之物 I', image: '' }, { name: '爱之物 II', image: '' }, { name: '爱之物 III', image: '' }
+        ];
+
         // EARLY FILTER: Reject JSON fragment messages (头尾碎片过滤)
         if (msg.content && typeof msg.content === 'string') {
             const trimmed = msg.content.trim();
@@ -196,7 +233,8 @@ export const useChatStore = defineStore('chat', () => {
         // 2. Type Auto-Detection (if not specified)
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|语音|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]/i)
+            // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|语音|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
@@ -339,38 +377,104 @@ export const useChatStore = defineStore('chat', () => {
                 });
             }
 
-            // Handle AI Sending [发红包:100:祝福语]
-            // Handle AI Sending [发红包:100:祝福语]
-            // [FIX] Only parse if type is text. If it is already redpacket/transfer (from sendMessageToAI), DO NOT re-parse, 
-            // because content already contains ID which this regex would incorrectly include in the note.
-            if (newMsg.type === 'text') {
-                const pRegex = /\[(发红包|转账)[:：](\d+(?:\.\d{1,2})?)[:：]?(.*?)\]/i
-                const pMatch = newMsg.content.match(pRegex)
-                if (pMatch) {
-                    const action = pMatch[1]
-                    newMsg.type = action === '发红包' ? 'redpacket' : 'transfer'
-                    newMsg.amount = parseFloat(pMatch[2])
-                    if (isNaN(newMsg.amount) || newMsg.amount <= 0.01) newMsg.amount = (Math.random() * 100 + 1).toFixed(2); // Fallback for invalid/zero amount
-                    newMsg.note = pMatch[3] || (action === '发红包' ? '恭喜发财，大吉大利' : '转账给您')
-                    newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                    newMsg.isClaimed = false
-                    newMsg.isRejected = false
-                    newMsg.content = ''
-                } else if (/[\\]?\[\s*FAMILY_CARD/i.test(newMsg.content)) {
-                    // NEW: Auto-detect Family Card
-                    // Only match if it's a proper [FAMILY_CARD] tag, not random text in HTML
-                    const content = String(newMsg.content || '').toUpperCase()
-                    // Check that it's not an HTML message with family card keyword in content
-                    if (!content.includes('<HTML') && !content.includes('<DIV') && !content.includes('<SPAN')) {
-                        newMsg.type = 'family_card'
-                        newMsg.isClaimed = false
-                        newMsg.isRejected = false
-                        // Add paymentId for family cards to enable ID-based operations
-                        newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                        // Do NOT clear content, because Family Card needs the tag for data parsing (amount, text, etc)
-                        // The ChatMessageItem will handle the mixed text display.
+        }
+
+        // 3.1 BIO (Personal Archive) Updates - Runs for both User and AI
+        if (newMsg.content.includes('[UPDATE_BIO:') || newMsg.content.includes('[BIO:')) {
+            const bioRegex = /\[(?:UPDATE_)?BIO:([^:]+):([^\]]+)\]/gi;
+            let match;
+            let bioUpdated = false;
+
+            // Map of keys to bio structure
+            const keyMap = {
+                'gender': 'gender', '性别': 'gender',
+                'age': 'age', '年龄': 'age',
+                'birthday': 'birthday', '生日': 'birthday',
+                'zodiac': 'zodiac', '星座': 'zodiac',
+                'mbti': 'mbti', '人格': 'mbti',
+                'height': 'height', '身高': 'height',
+                'weight': 'weight', '体重': 'weight',
+                'body': 'body', '身材': 'body',
+                'occupation': 'occupation', '职业': 'occupation',
+                'status': 'status', '婚姻': 'status', '情感': 'status',
+                'scent': 'scent', '气味': 'scent',
+                'style': 'style', '风格': 'style',
+                'idealtype': 'idealType', '理想型': 'idealType',
+                'heartbeat': 'heartbeatMoment', '心动时刻': 'heartbeatMoment'
+            };
+
+            while ((match = bioRegex.exec(newMsg.content)) !== null) {
+                const key = match[1].trim().toLowerCase();
+                let val = match[2].trim();
+
+                // Strip any HTML tags the AI might have included (ends "html" issue)
+                val = val.replace(/<[^>]*>/g, '').trim();
+
+                // Double check bio exists here to prevent "Cannot set properties of undefined"
+                if (!chat.bio) chat.bio = {};
+
+                if (keyMap[key]) {
+                    chat.bio[keyMap[key]] = val;
+                    bioUpdated = true;
+                } else if (key === 'hobby' || key === '爱好') {
+                    // Support multiple hobbies in one tag
+                    const list = val.split(/[，, ]+/).filter(v => v.trim());
+                    list.forEach(item => {
+                        if (!chat.bio.hobbies.includes(item)) {
+                            chat.bio.hobbies.push(item);
+                            bioUpdated = true;
+                        }
+                    });
+                } else if (key === 'trait' || key === '特质') {
+                    const list = val.split(/[，, ]+/).filter(v => v.trim());
+                    list.forEach(item => {
+                        if (!chat.bio.traits.includes(item)) {
+                            chat.bio.traits.push(item);
+                            bioUpdated = true;
+                        }
+                    });
+                } else if (key.startsWith('routine_')) {
+                    const rKey = key.split('_')[1].toLowerCase();
+                    if (chat.bio.routine && chat.bio.routine[rKey] !== undefined) {
+                        chat.bio.routine[rKey] = val;
+                        bioUpdated = true;
+                    }
+                } else if (key.startsWith('soulbond_')) {
+                    const label = key.split('_')[1];
+                    chat.bio.soulBonds.push({ label, text: val });
+                    bioUpdated = true;
+                } else if (key.startsWith('loveitem_')) {
+                    // Supported formats: [BIO:LoveItem_1_羽毛笔:Prompt] or [BIO:LoveItem_1:羽毛笔:Prompt]
+                    const parts = key.split(/[_:]/);
+                    const index = parseInt(parts[1]) - 1;
+                    let itemName = parts[2] || '爱之物';
+                    if (itemName === '物品名') itemName = '爱之物'; // Safety against literal placeholder
+
+                    // Clean value from potential HTML AI might have hallucinated
+                    const cleanVal = val.replace(/<[^>]*>/g, '').trim();
+
+                    if (index >= 0 && index < 3) {
+                        chat.bio.loveItems[index].name = itemName;
+                        generateImage(cleanVal).then(url => {
+                            chat.bio.loveItems[index].image = url;
+                            saveChats();
+                        });
+                        bioUpdated = true;
                     }
                 }
+            }
+
+            // Clean tags from visible content
+            newMsg.content = newMsg.content.replace(/\[(?:UPDATE_)?BIO:[^\]]+\]/gi, '').trim();
+
+            if (bioUpdated) {
+                // Final re-fetch and assignment to be absolutely sure reactivity takes hold
+                const currentChat = chats.value[chatId];
+                if (currentChat) {
+                    currentChat.bio = { ...chat.bio };
+                    chats.value = { ...chats.value };
+                }
+                saveChats();
             }
         }
 
@@ -403,7 +507,7 @@ export const useChatStore = defineStore('chat', () => {
             const contentStr = String(newMsg.content || '');
             const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
 
-            if (!isToxic) {
+            if (!isToxic && contentStr.trim().length > 0) {
                 // App internal notification event
                 notificationEvent.value = {
                     id: Date.now(),
@@ -463,6 +567,78 @@ export const useChatStore = defineStore('chat', () => {
         return newMsg
     }
 
+    async function analyzeCharacterArchive(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat) return;
+
+        const settingsStore = useSettingsStore();
+        const userProfile = settingsStore.personalization.userProfile;
+
+        // No toast or system message here as requested by user - let the UI spinner handle it
+        typingStatus.value[chatId] = true;
+
+        try {
+            // Source Data Collection - As requested by user
+            const charPrompt = chat.prompt || '暂无详细设定';
+            const userPersona = chat.userPersona || userProfile.persona || '无';
+            const userContext = `姓名：${userProfile.name} | 性别：${userProfile.gender || '未知'} | 个性：${userProfile.signature || ''} | 针对性设定：${userPersona}`;
+
+            // Full Memory Bank (Latest Summary + Historical Summaries)
+            const latestSummary = chat.summary || '';
+            const historicalMemories = (chat.memory || []).join('\n');
+            const fullMemoryLibrary = [latestSummary, historicalMemories].filter(s => s.trim()).join('\n\n') || '尚未建立持久记忆';
+
+            // Custom Context Limit from Chat Settings
+            const contextLimit = parseInt(chat.contextLimit) || 30;
+            const contextMsgs = chat.msgs.slice(-contextLimit)
+                .filter(m => m.role !== 'system')
+                .map(m => `${m.role === 'user' ? userProfile.name : chat.name}: ${m.content}`)
+                .join('\n');
+
+            const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称“我”的视角补全你自己的“灵魂档案”。
+档案内容必须完全符合你的性格、语气和对 ${userProfile.name} 的情感底色。不要以分析师的口吻说话。
+
+必须且只能使用 [BIO:键:值] 格式输出以下字段，不要输出任何开场白或解释。
+禁止在键或值中包含任何 HTML 代码、CSS 或其他编程语言（禁止任何 <div> 等标签）。
+严禁将键名作为占位符原样输出（严禁输出“物品名”，必须替换为真实的物品名）。
+
+【源数据库】
+1. 角色人设 (${chat.name}):
+${charPrompt}
+
+2. 用户人设 (${userProfile.name}):
+${userContext}
+
+3. 总结记忆库内容:
+${fullMemoryLibrary}
+
+4. 近期 ${contextLimit} 条真实对话片段 (用于捕捉语气与情感现状):
+${contextMsgs}
+---
+
+【输出规范】
+[BIO:性别:值] [BIO:年龄:值] [BIO:生日:值] [BIO:星座:值] [BIO:人格:MBTI] 
+[BIO:身高:值] [BIO:体重:值] [BIO:身材:描述] [BIO:职业:描述] [BIO:婚姻:描述] 
+[BIO:气味:描述] [BIO:风格:描述] [BIO:理想型:描述] [BIO:心动时刻:描述] 
+[BIO:爱好:值] (可多个) [BIO:特质:值] (可多个) 
+[BIO:Routine_awake:描述] [BIO:Routine_busy:描述] [BIO:Routine_deep:描述] 
+[BIO:SoulBond_实际标签名称:描述内容] 
+[BIO:LoveItem_1_实际物品名称:用于生图的英文Prompt] 
+[BIO:LoveItem_2_实际物品名称:用于生图的英文Prompt] 
+[BIO:LoveItem_3_实际物品名称:用于生图的英文Prompt]`;
+
+            const response = await generateReply([{ role: 'system', content: systemInstructions }], chat);
+            if (response && response.content) {
+                addMessage(chatId, { role: 'ai', content: response.content });
+            }
+            triggerToast('个人档案更新成功', 'success');
+        } catch (e) {
+            console.error('Bio analysis failed:', e);
+            triggerToast('解析失败，请检查网络', 'error');
+        } finally {
+            typingStatus.value[chatId] = false;
+        }
+    }
     function updateCharacter(chatId, updates) {
         if (chats.value[chatId]) {
             // Merge into a new object to trigger reactivity
@@ -526,7 +702,37 @@ export const useChatStore = defineStore('chat', () => {
                 timeAware: options.timeAware !== undefined ? options.timeAware : false,
                 avatarShape: options.avatarShape || 'square',
                 avatarFrame: options.avatarFrame || null,
-                userAvatarFrame: options.userAvatarFrame || null
+                userAvatarFrame: options.userAvatarFrame || null,
+                // Personal Archive (Bio) - V6 Magazine System
+                bio: {
+                    gender: options.gender || '未知',
+                    age: options.age || '未知',
+                    birthday: options.birthday || '未知',
+                    zodiac: options.zodiac || '未知',
+                    mbti: options.mbti || '未知',
+                    height: options.height || '未知',
+                    weight: options.weight || '未知',
+                    body: options.body || '未知',
+                    occupation: options.occupation || '未知',
+                    status: options.status || '未知',
+                    scent: options.scent || '未知',
+                    style: options.style || '未知',
+                    hobbies: [],
+                    idealType: '未知',
+                    heartbeatMoment: '暂无记录',
+                    traits: [],
+                    routine: {
+                        awake: '未知',
+                        busy: '未知',
+                        deep: '未知'
+                    },
+                    soulBonds: [],
+                    loveItems: [
+                        { name: '爱之物 I', image: '' },
+                        { name: '爱之物 II', image: '' },
+                        { name: '爱之物 III', image: '' }
+                    ]
+                }
             }
             saveChats()
         }
@@ -748,8 +954,13 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. Visibility API Compensation (Check immediately when user returns)
         if (typeof document !== 'undefined') {
+            let lastForegroundTime = Date.now()
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
+                    // Avoid double triggers within 2 seconds
+                    if (Date.now() - lastForegroundTime < 2000) return
+                    lastForegroundTime = Date.now()
+
                     console.log('[Proactive] App in foreground, checking missed triggers...');
                     Object.keys(chats.value).forEach(chatId => {
                         checkProactive(chatId)
@@ -767,6 +978,9 @@ export const useChatStore = defineStore('chat', () => {
         const lastMsg = (chat.msgs || []).slice(-1)[0]
         const lastMsgTime = lastMsg ? lastMsg.timestamp : now
         const diffMinutes = (now - lastMsgTime) / 1000 / 60
+
+        // Skip if already typing or waiting for reply to avoid duplicate parallel requests
+        if (typingStatus.value[chatId]) return
 
         // 1. Proactive Chat (界面内触发: 停留且可能没说话)
         // Only if currently viewing this chat
@@ -916,7 +1130,7 @@ export const useChatStore = defineStore('chat', () => {
             return
         }
 
-        isTyping.value = true
+        typingStatus.value[chatId] = true
 
         // --- 时间感知逻辑 ---
         const now = Date.now()
@@ -1035,12 +1249,12 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. 调用 AI
         try {
-            // Stop any previous generation
-            if (currentAbortController) {
-                stopGeneration(true)
+            // Stop any previous generation for THIS specific chat
+            if (abortControllers[chatId]) {
+                stopGeneration(true, chatId)
             }
-            currentAbortController = new AbortController()
-            const signal = currentAbortController.signal
+            abortControllers[chatId] = new AbortController()
+            const signal = abortControllers[chatId].signal
 
             let momentsAwareness = '' // Placeholder for moments context
 
@@ -1082,7 +1296,7 @@ export const useChatStore = defineStore('chat', () => {
             const result = await generateReply(context, charInfo, signal)
 
             // Clear controller on success
-            currentAbortController = null
+            delete abortControllers[chatId]
 
             if (result.error) {
                 addMessage(chatId, { role: 'system', content: `[系统错误] ${result.error}` })
@@ -1596,7 +1810,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- 4. Sequential Delivery ---
                 for (let i = 0; i < finalSegments.length; i++) {
-                    if (!isTyping.value) break;
+                    if (!typingStatus.value[chatId]) break;
 
                     const { type, content } = finalSegments[i];
                     let msgAdded = null;
@@ -1687,15 +1901,16 @@ export const useChatStore = defineStore('chat', () => {
                 }
             }
         } catch (e) {
-            isTyping.value = false;
-            currentAbortController = null;
+            typingStatus.value[chatId] = false;
+            delete abortControllers[chatId];
             if (e.name === 'AbortError' || e.message === 'Aborted') return;
             useLoggerStore().addLog('ERROR', 'AI响应处理失败', e.message);
             if (!(e.name === 'QuotaExceededError' || e.code === 22)) {
                 addMessage(chatId, { role: 'system', content: `请求失败: ${e.message}` });
             }
         } finally {
-            isTyping.value = false;
+            typingStatus.value[chatId] = false;
+            delete abortControllers[chatId];
         }
     }
 
@@ -1995,12 +2210,12 @@ export const useChatStore = defineStore('chat', () => {
 
     return {
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
-        stopGeneration, chats, currentChatId, isTyping, chatList, contactList,
+        stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
         deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext
+        getPreviewContext, analyzeCharacterArchive
     }
 })

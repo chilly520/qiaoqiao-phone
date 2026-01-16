@@ -19,6 +19,7 @@ import ChatRedPacketModal from './modals/ChatRedPacketModal.vue'
 import ChatTransferModal from './modals/ChatTransferModal.vue'
 import ChatInputBar from './components/ChatInputBar.vue'
 import ChatMessageItem from './components/ChatMessageItem.vue'
+import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -495,6 +496,31 @@ const cancelQuote = () => {
     currentQuote.value = null
 }
 
+const toggleAutoRead = () => {
+    if (!chatData.value) return
+
+    // If global capability is OFF, turn it ON (and ensure autoRead is ON)
+    if (!chatData.value.autoTTS) {
+        chatStore.updateCharacter(chatData.value.id, { autoTTS: true, autoRead: true })
+        showToast('已开启自动朗读', 'success')
+        return
+    }
+
+    // If capability is ON, toggle the active state
+    // Default of autoRead is effectively TRUE (if undefined), so we treat undefined as true.
+    const currentActive = chatData.value.autoRead !== false
+    const newState = !currentActive
+    
+    chatStore.updateCharacter(chatData.value.id, { autoRead: newState })
+    
+    if (newState) {
+        showToast('自动朗读已开启', 'success')
+    } else {
+        showToast('自动朗读已暂停', 'info')
+        if (window.speechSynthesis) window.speechSynthesis.cancel()
+    }
+}
+
 // Status Editing
 const showStatusModal = ref(false)
 const statusEditInput = ref('')
@@ -567,8 +593,7 @@ const handleAvatarClick = (msg) => {
         // Navigate to Character Info Card
         // If user, go to user profile (using 'user' ID or whatever logic you prefer)
         // Here we assume 'user' is a valid ID for the user profile, or we handle it.
-        const targetId = msg.role === 'user' ? 'user' : chatStore.currentChatId;
-        router.push({ name: 'character-info', params: { charId: targetId } });
+        emit('show-profile', msg.role === 'user' ? 'user' : chatStore.currentChatId);
 
         // Clear the timer reference
         avatarClickTimer = null
@@ -2126,33 +2151,12 @@ const getHtmlContent = (content) => {
     return content
 }
 
-const toggleAutoRead = () => {
-    if (!chatData.value.autoTTS) {
-        showToast('请先在"设置"中开启语音(TTS)功能', 'error')
-        return
-    }
-    const newVal = !chatData.value.autoRead
-    chatStore.updateCharacter(chatData.value.id, { autoRead: newVal })
 
-    if (newVal) {
-        showToast('已开启自动朗读', 'success')
-    } else {
-        showToast('已关闭自动朗读', 'info')
-        // Optional: stop current speaking
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel()
-        }
-    }
-}
 
 // UI Methods
 // Deprecated Inner Voice methods removed
 
 
-
-import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
-
-/* ... */
 
 // Family Card Logic
 const claimModalRef = ref(null)

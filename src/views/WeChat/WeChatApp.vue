@@ -250,8 +250,16 @@ const openChat = (chatId) => {
 }
 
 const openProfileFromChat = (charId) => {
-    // Navigate to dedicated Character Profile View (Card Info first)
-    router.push({ name: 'character-info', params: { charId } })
+    if (charId === 'user') {
+        // Go directly to Moments (My Album)
+        momentsInitialProfileId.value = 'user' // This will trigger filterAuthorId = 'user' in MomentsView
+        showMoments.value = true
+        const currentState = history.state || {}
+        if (!currentState.profileOpen) history.pushState({ ...currentState, profileOpen: true }, '')
+    } else {
+        // Navigate to dedicated Character Profile View (Card Info first)
+        router.push({ name: 'character-info', params: { charId } })
+    }
 }
 
 const handleChatBack = () => {
@@ -426,7 +434,7 @@ const handleImport = async (e) => {
         <input type="file" ref="importFileInput" class="hidden" accept=".json" @change="handleImport">
 
         <!-- Chat Window Overlay -->
-        <ChatWindow v-if="chatStore.currentChatId" class="absolute inset-0 z-50" @back="handleChatBack"
+        <ChatWindow v-if="chatStore.currentChatId" v-show="!showMoments" class="absolute inset-0 z-50" @back="handleChatBack"
             @show-profile="openProfileFromChat" />
 
         <!-- Context Menu (Restored) -->
@@ -516,8 +524,8 @@ const handleImport = async (e) => {
         </div>
 
         <!-- Moments View (New) -->
-        <MomentsView v-if="showMoments" class="fixed inset-0 z-[99999]"
-            style="top: 0; left: 0; width: 100vw; height: 100vh; background-color: #ededed;"
+        <MomentsView v-if="showMoments"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #ededed; z-index: 20000;"
             :initial-profile-id="momentsInitialProfileId" @back="goBack" />
 
         <!-- Main App Content (Hide when overlays are open to prevent misalignment) -->

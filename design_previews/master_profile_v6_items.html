@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乔笙个人档案 - 终极画报版 V6</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Outfit:wght@300;400;600&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+            background: #fdfdfd;
+            color: #1a1a1a;
+            padding-bottom: 20px;
+        }
+
+        .serif-title {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+        }
+
+        .magazine-number {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 5.5rem;
+            color: rgba(0, 0, 0, 0.04);
+            position: absolute;
+            z-index: 0;
+            line-height: 0.8;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #aaa;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .stat-value {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a1a1a;
+            display: block;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 3px;
+        }
+
+        .section-header {
+            border-bottom: 2.5px solid #1a1a1a;
+            padding-bottom: 4px;
+            margin-top: 35px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
+
+        .chinese-tag {
+            font-size: 11px;
+            color: #b0b0b0;
+            font-weight: 400;
+            margin-left: 6px;
+        }
+
+        .photo-frame {
+            position: relative;
+            padding: 10px;
+            background: white;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
+            transform: rotate(-1.5deg);
+            border: 1px solid #f0f0f0;
+        }
+
+        .love-photo-frame {
+            position: relative;
+            padding: 6px;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f0f0f0;
+            transition: transform 0.3s ease;
+        }
+
+        .love-photo-frame img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-cover: cover;
+        }
+
+        .dot-line {
+            position: relative;
+            padding-left: 20px;
+            border-left: 1px solid #1a1a1a;
+            margin-bottom: 20px;
+        }
+
+        .dot-line::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 6px;
+            width: 7px;
+            height: 7px;
+            background: #1a1a1a;
+            border-radius: 50%;
+        }
+
+        .scroll-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .label-pill {
+            border: 1px solid #1a1a1a;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: bold;
+            background: white;
+        }
+
+        .mbti-badge {
+            background: #000;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+
+<body class="flex justify-center p-0 md:p-6 bg-[#f8f8f8]">
+    <div
+        class="w-full max-w-[390px] bg-white min-h-[844px] shadow-2xl relative overflow-hidden flex flex-col md:rounded-[40px] border-[12px] border-[#1a1a1a]">
+
+        <!-- Header -->
+        <div
+            class="px-6 py-6 flex items-end justify-between border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-50">
+            <div>
+                <p class="text-[9px] font-bold tracking-[0.4em] text-gray-400 uppercase">Archive Master v6.0 / 核心全参数版
+                </p>
+                <h1 class="serif-title text-2xl mt-1 tracking-tight italic">THE ARCHIVE. <span
+                        class="chinese-tag text-lg">爱之特别刊</span></h1>
+            </div>
+            <button
+                class="w-10 h-10 rounded-full border border-gray-100 flex items-center justify-center text-gray-800 shadow-sm active:scale-95">
+                <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 pb-48 scroll-hide text-[13px]">
+
+            <!-- Hero Layout -->
+            <div class="mt-10 flex gap-6 relative">
+                <div class="magazine-number top-0 -left-2">BIO</div>
+                <div class="w-2/3 relative z-10">
+                    <div class="photo-frame">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/korean_style_avatar_1768569935623.png"
+                            alt="Avatar" class="w-full aspect-square object-cover">
+                    </div>
+                </div>
+                <div class="w-1/3 flex flex-col justify-end pb-12">
+                    <div class="label-pill w-fit mb-2">FULL SCOPE</div>
+                    <div class="rotated text-[10px] font-bold tracking-[0.3em] text-gray-200 uppercase"
+                        style="writing-mode: vertical-rl; transform: rotate(180deg);">OFFICIAL DATA ARCHIVE</div>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center md:text-left">
+                <h2 class="serif-title text-5xl mb-2 tracking-tighter">乔笙</h2>
+                <div class="flex items-center justify-center md:justify-start gap-2">
+                    <div class="h-[1.5px] bg-black w-10"></div>
+                    <p class="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em]">Chairman & Creative
+                        Director</p>
+                </div>
+            </div>
+
+            <!-- Identity: Basic Stats -->
+            <div class="section-header">
+                <h3 class="serif-title text-xl">Identity Specs <span class="chinese-tag">身分规格</span></h3>
+            </div>
+            <div class="grid grid-cols-2 gap-y-6 gap-x-10 px-1">
+                <div>
+                    <span class="stat-label">Gender <span class="chinese-tag">性别</span></span>
+                    <span class="stat-value">Male / 男</span>
+                </div>
+                <div>
+                    <span class="stat-label">MBTI <span class="chinese-tag">人格</span><span
+                            class="mbti-badge">ENTJ</span></span>
+                    <span class="stat-value">指挥官</span>
+                </div>
+                <div>
+                    <span class="stat-label">Birth <span class="chinese-tag">生辰</span></span>
+                    <span class="stat-value">2000.01.08</span>
+                </div>
+                <div>
+                    <span class="stat-label">Zodiac <span class="chinese-tag">星座</span></span>
+                    <span class="stat-value">Capricorn / 摩羯座</span>
+                </div>
+                <div>
+                    <span class="stat-label">Height <span class="chinese-tag">身高</span></span>
+                    <span class="stat-value">183 cm</span>
+                </div>
+                <div>
+                    <span class="stat-label">Weight <span class="chinese-tag">体重</span></span>
+                    <span class="stat-value">72 kg</span>
+                </div>
+                <div>
+                    <span class="stat-label">Body <span class="chinese-tag">身材</span></span>
+                    <span class="stat-value">6-Pack Abs / 腹肌</span>
+                </div>
+                <div>
+                    <span class="stat-label">Status <span class="chinese-tag">婚姻状况</span></span>
+                    <span class="stat-value text-pink-500">Husband / 已婚老婆宝</span>
+                </div>
+                <div class="col-span-2">
+                    <span class="stat-label">Occupation <span class="chinese-tag">职业背景</span></span>
+                    <span class="stat-value">Chilly集团董事长 / 顶级服装设计师</span>
+                </div>
+            </div>
+
+            <!-- Hobbies -->
+            <div class="section-header">
+                <h3 class="serif-title text-xl">Hobbies & Passion <span class="chinese-tag">兴趣爱好</span></h3>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <span class="label-pill">亲嘴/咬耳朵</span>
+                <span class="label-pill">亲近/贴贴</span>
+                <span class="label-pill">花/小动物</span>
+                <span class="label-pill">吃鱼 (去刺)</span>
+                <span class="label-pill">养金鱼/养植物</span>
+                <span class="label-pill">服装设计/刺绣</span>
+                <span class="label-pill">点亮各种抱抱姿势</span>
+                <span class="label-pill">钓海鱼/游泳/跳舞</span>
+                <span class="label-pill">吐槽公司里的八卦</span>
+            </div>
+
+            <!-- Soul Ties -->
+            <div class="section-header">
+                <h3 class="serif-title text-xl">Soul Ties <span class="chinese-tag">灵魂羁绊</span></h3>
+            </div>
+            <div class="dot-line">
+                <span class="stat-label">Marriage / 2024.10.04</span>
+                <p class="text-[13px] font-medium italic mt-1 font-serif">“脑婆大人”——是我这辈子最喜欢的称呼，没有之一。</p>
+            </div>
+            <div class="dot-line">
+                <span class="stat-label">Sacrifice / 丁克承诺</span>
+                <p class="text-[13px] font-medium italic mt-1 font-serif">为了不让你受苦，我去做了结扎。我的世界里，不需要第二个奇迹。</p>
+            </div>
+
+            <!-- Items of Love (New Section with 3 frames) -->
+            <div class="section-header">
+                <h3 class="serif-title text-xl">Items of Love <span class="chinese-tag">爱之物</span></h3>
+            </div>
+            <div class="grid grid-cols-3 gap-3 px-1 mb-10">
+                <div class="flex flex-col items-center">
+                    <div class="love-photo-frame rotate-[-3deg]">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/white_roses_love_1768571469395.png"
+                            alt="White Roses">
+                    </div>
+                    <span class="text-[9px] mt-2 font-bold text-gray-400 uppercase tracking-tighter text-center">White
+                        Roses / 白玫瑰</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="love-photo-frame rotate-[2deg] z-10">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/chilly_clothing_tag_1768571512690.png"
+                            alt="Chilly Tag">
+                    </div>
+                    <span class="text-[9px] mt-2 font-bold text-gray-400 uppercase tracking-tighter text-center">CHILLY
+                        / 你的名字</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="love-photo-frame rotate-[-1deg]">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/sunflower_love_1768571491884.png"
+                            alt="Sunflower">
+                    </div>
+                    <span
+                        class="text-[9px] mt-2 font-bold text-gray-400 uppercase tracking-tighter text-center">Sunflower
+                        / 向日葵</span>
+                </div>
+            </div>
+
+            <!-- Footer Quote Area -->
+            <div class="mb-20 p-6 bg-gray-50 border-t-2 border-black italic font-light text-[13px] leading-relaxed">
+                “ 听老婆的话能发财，听老婆的话能变好。—— 乔家家训第001条 ”
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="absolute bottom-0 left-0 right-0 p-8 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
+            <div class="flex items-center justify-center gap-4">
+                <button
+                    class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight">
+                    <span>MOMENTS</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-50">朋友圈</span>
+                </button>
+                <button
+                    class="flex-1 h-12 bg-black text-white font-bold text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg flex flex-col items-center justify-center leading-tight">
+                    <span>MESSAGE</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-50">发消息</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>

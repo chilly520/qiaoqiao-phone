@@ -34,6 +34,16 @@ const fullContent = computed(() => {
         /* height: 100% !important; Remove this to allow content to dictate height */
         min-height: 100% !important;
         box-sizing: border-box !important;
+        overflow: auto !important; /* Allow scroll but hide bar */
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      
+      /* Hide Webkit Scrollbars */
+      ::-webkit-scrollbar {
+        width: 0 !important;
+        height: 0 !important;
+        display: none !important;
       }
       
       /* 重置所有元素的样式 */

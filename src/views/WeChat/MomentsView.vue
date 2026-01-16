@@ -178,13 +178,22 @@ const goBack = () => {
 }
 
 const handleProfileBack = () => {
-    if (filterAuthorId.value === 'user') {
-        filterAuthorId.value = null
-    } else if (isCharacterMode.value) {
-        // If we opened as a character profile view, closing profile means closing the whole moments view
+    // If we are at the root of the "direct profile view" (e.g. opened My Album directly)
+    if (props.initialProfileId && (filterAuthorId.value === props.initialProfileId || showingProfileCharId.value === props.initialProfileId)) {
         goBack()
-    } else {
+        return
+    }
+
+    if (filterAuthorId.value) {
+        filterAuthorId.value = null
+        if (profileContextId.value) {
+             showingProfileCharId.value = profileContextId.value
+             profileContextId.value = null
+        }
+    } else if (showingProfileCharId.value) {
         showingProfileCharId.value = null
+    } else {
+        goBack()
     }
 }
 
@@ -531,25 +540,28 @@ const removeMention = (idx) => {
 onMounted(() => {
     momentsStore.startAutoGeneration()
     if (props.initialProfileId) {
-        showingProfileCharId.value = props.initialProfileId
+        if (props.initialProfileId === 'user') {
+            filterAuthorId.value = 'user'
+        } else {
+            showingProfileCharId.value = props.initialProfileId
+        }
     }
 })
 </script>
 
 <template>
-    <div class="moments-view w-full h-full bg-[#ededed] flex flex-col relative overflow-hidden" @contextmenu.prevent>
+    <div class="moments-view w-full h-full bg-[#ededed] flex flex-col overflow-hidden" @contextmenu.prevent>
         <!-- Notifications Page (Overlay) -->
         <div v-if="showNotifications" class="absolute inset-0 z-50 bg-white">
             <MomentsNotifications @back="showNotifications = false" @jump="handleNotificationJump" />
         </div>
 
         <!-- Header -->
-        <div class="h-[72px] pt-7 shrink-0 flex items-center justify-between px-4 bg-transparent absolute top-0 left-0 right-0 z-20 text-white transition-colors duration-300 overflow-hidden"
-            :class="{ 'bg-[#ededed] !text-black': filterAuthorId }">
+        <div class="h-[72px] pt-7 shrink-0 flex items-center justify-between px-4 bg-transparent absolute top-0 left-0 right-0 z-20 text-white transition-colors duration-300 overflow-hidden">
             <i class="fa-solid fa-chevron-left text-xl cursor-pointer drop-shadow-md"
-                @click="filterAuthorId ? clearFilter() : (showingProfileCharId ? handleProfileBack() : goBack())"></i>
-            <div v-if="filterAuthorId" class="flex-1 text-center font-bold text-lg truncate px-8">{{
-                filterAuthorId === 'user' ? '我的相册' : chatStore.chats[filterAuthorId]?.name }}的相册</div>
+                @click="handleProfileBack"></i>
+            <div v-if="filterAuthorId" class="flex-1 text-center font-bold text-lg truncate px-8 shadow-black drop-shadow-md">{{
+                filterAuthorId === 'user' ? '我的相册' : (chatStore.chats[filterAuthorId]?.name + '的相册') }}</div>
             <div v-else-if="showingProfileCharId" class="flex-1 text-center font-bold text-lg truncate px-8">详细资料</div>
             <div class="flex gap-5 items-center">
                 <!-- Notification Bell (Only show when not filtering individual) -->
@@ -623,7 +635,7 @@ onMounted(() => {
 
             <!-- Moments Feed -->
             <div class="px-0 pb-10"
-                :class="[filterAuthorId ? 'pt-[72px]' : (momentsStore.unreadCount > 0 ? 'pt-6' : 'pt-12')]">
+                :class="[momentsStore.unreadCount > 0 ? 'pt-6' : 'pt-12']">
                 <div v-if="filteredMoments.length === 0"
                     class="flex flex-col items-center justify-center py-20 opacity-30">
                     <i class="fa-solid fa-earth-asia text-5xl mb-4"></i>

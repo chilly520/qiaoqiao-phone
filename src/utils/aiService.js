@@ -10,7 +10,7 @@ import { weatherService } from './weatherService'
 import { SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
 import { RequestQueue } from './ai/requestQueue'
 
-const apiQueue = new RequestQueue(8, 10000); // 8 requests per 10 seconds
+const apiQueue = new RequestQueue(3, 60000); // 3 requests per 60 seconds (1 minute)
 
 export async function generateReply(messages, char, abortSignal) {
     // Wrapper to use Queue

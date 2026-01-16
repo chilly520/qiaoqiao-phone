@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人档案 - 韩系设计预览</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            color: #4a4a4a;
+            min-height: 100vh;
+        }
+
+        .korean-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 28px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+        }
+
+        .btn-korean {
+            background: linear-gradient(to right, #e9defa, #fce3e3);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-korean:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(233, 222, 250, 0.4);
+        }
+
+        .tag-korean {
+            background: #fff;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: #888;
+            border: 1px solid #f0f0f0;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #a0a0a0;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            display: block;
+            text-transform: uppercase;
+        }
+
+        .glass-header {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(253, 251, 251, 0.8);
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+
+<body class="flex justify-center bg-[#f8f9fa] p-0 md:p-4">
+    <div
+        class="w-full max-w-[390px] bg-white min-h-[844px] shadow-2xl relative overflow-hidden flex flex-col md:rounded-[40px] border-[8px] border-black md:border-gray-800">
+
+        <!-- Header -->
+        <div class="glass-header px-6 py-4 flex items-center justify-between">
+            <button class="text-gray-400 hover:text-gray-600 transition-colors">
+                <i class="fa-solid fa-chevron-left text-lg"></i>
+            </button>
+            <h1 class="text-[17px] font-semibold tracking-tight text-[#2d2d2d]">个人档案</h1>
+            <button
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#fdf2f2] text-[#ff9a9e] text-[12px] font-medium border border-[#ff9a9e]/20 transition-all active:scale-95 shadow-sm">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>解析</span>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 pb-24 scrollbar-hide">
+
+            <!-- Hero Section -->
+            <div class="mt-8 flex flex-col items-center">
+                <div class="relative group">
+                    <div
+                        class="w-[110px] h-[110px] rounded-[38px] overflow-hidden shadow-xl ring-4 ring-white transition-transform group-hover:scale-105 duration-500">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/korean_style_avatar_1768569935623.png"
+                            alt="Avatar" class="w-full h-full object-cover">
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-green-400 border-4 border-white rounded-full">
+                    </div>
+                </div>
+                <div class="mt-4 text-center">
+                    <h2 class="text-2xl font-semibold text-[#1a1a1a]">测试酱</h2>
+                    <p class="text-[13px] text-gray-400 mt-1 italic">“温柔地对待这个世界，世界也会温柔待你”</p>
+                </div>
+            </div>
+
+            <!-- Tags Section -->
+            <div class="mt-6 flex flex-wrap gap-2 justify-center">
+                <span class="tag-korean"># INFP</span>
+                <span class="tag-korean"># 摄影控</span>
+                <span class="tag-korean"># 芝士控</span>
+                <span class="tag-korean"># 猫咪守护者</span>
+            </div>
+
+            <!-- Archive Sections -->
+            <div class="mt-10 space-y-8">
+
+                <!-- Section: Personality -->
+                <div>
+                    <span class="section-title"><i class="fa-regular fa-face-smile-beam mr-2"></i>性格特质</span>
+                    <div class="korean-card p-5">
+                        <p class="text-[14px] leading-relaxed text-gray-600 italic">
+                            外冷内热，重度社恐但在熟人面前是个话痨。有着极强的共情能力，喜欢在深夜听怀旧的K-pop电台。
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Section: Life Style -->
+                <div>
+                    <span class="section-title"><i class="fa-regular fa-moon mr-2"></i>生活习性</span>
+                    <div class="korean-card p-5 space-y-3">
+                        <div class="flex justify-between items-center text-[13px]">
+                            <span class="text-gray-400">活跃时段</span>
+                            <span class="text-gray-700 font-medium">凌晨 2:00 - 清晨 10:00</span>
+                        </div>
+                        <div class="h-[1px] bg-gray-100"></div>
+                        <div class="flex justify-between items-center text-[13px]">
+                            <span class="text-gray-400">解压方式</span>
+                            <span class="text-gray-700 font-medium">整理书架、喝冰美式</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Key Memory -->
+                <div>
+                    <span class="section-title"><i class="fa-regular fa-heart mr-2"></i>重要记忆 & 羁绊</span>
+                    <div class="korean-card p-5">
+                        <div class="space-y-4">
+                            <div class="flex gap-3">
+                                <div
+                                    class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 shrink-0">
+                                    <i class="fa-solid fa-anchor text-xs"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-[13px] font-semibold">初次见面的海边</h4>
+                                    <p class="text-[12px] text-gray-400 mt-1">那天你穿了一件白衬衫，海风很大，但你的心跳很近。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white to-transparent pt-10">
+            <div class="grid grid-cols-2 gap-4">
+                <button
+                    class="h-14 flex items-center justify-center gap-2 border border-gray-100 rounded-[22px] text-gray-600 hover:bg-gray-50 transition-all font-medium text-[15px] shadow-sm active:scale-95">
+                    <i class="fa-regular fa-compass"></i>
+                    <span>朋友圈</span>
+                </button>
+                <button
+                    class="h-14 flex items-center justify-center gap-2 btn-korean text-white font-medium text-[15px] shadow-md shadow-[#e9defa] active:scale-95">
+                    <i class="fa-regular fa-comment-dots"></i>
+                    <span>发消息</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>

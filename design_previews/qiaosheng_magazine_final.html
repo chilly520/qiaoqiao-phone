@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>乔笙个人档案 - Chilly集团特刊</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Outfit:wght@300;400;600&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+            background: #fdfdfd;
+            color: #1a1a1a;
+        }
+
+        .serif-title {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+        }
+
+        .magazine-number {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 5rem;
+            color: rgba(0, 0, 0, 0.04);
+            position: absolute;
+            z-index: 0;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #aaa;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        .section-header {
+            border-bottom: 1.5px solid #1a1a1a;
+            padding-bottom: 8px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
+
+        .chinese-tag {
+            font-size: 11px;
+            color: #b0b0b0;
+            font-weight: 400;
+            margin-left: 6px;
+        }
+
+        .photo-frame {
+            position: relative;
+            padding: 10px;
+            background: white;
+            box-shadow: 0 15px 45px rgba(0, 0, 0, 0.06);
+            transform: rotate(-1.5deg);
+        }
+
+        .dot-line {
+            position: relative;
+            padding-left: 20px;
+            border-left: 1px solid #eee;
+            margin-bottom: 25px;
+        }
+
+        .dot-line::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 6px;
+            width: 7px;
+            height: 7px;
+            background: #1a1a1a;
+            border-radius: 50%;
+        }
+
+        .scroll-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .husband-tag {
+            background: #1a1a1a;
+            color: white;
+            padding: 2px 10px;
+            border-radius: 100px;
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+
+<body class="flex justify-center p-0 md:p-6">
+    <div
+        class="w-full max-w-[390px] bg-white min-h-[844px] shadow-2xl relative overflow-hidden flex flex-col md:rounded-[40px] border-[12px] border-[#1a1a1a]">
+
+        <!-- Header -->
+        <div
+            class="px-6 py-6 flex items-end justify-between border-b border-gray-100 bg-white/90 backdrop-blur-md sticky top-0 z-50">
+            <div>
+                <p class="text-[9px] font-bold tracking-[0.4em] text-gray-400 uppercase">Vol. 01 / CHILLY GROUP
+                    PRESIDENT</p>
+                <h1 class="serif-title text-2xl mt-1 tracking-tight italic">THE ARCHIVE. <span
+                        class="chinese-tag text-lg">个人档案</span></h1>
+            </div>
+            <button
+                class="w-10 h-10 rounded-full border border-gray-100 flex items-center justify-center text-gray-800 shadow-sm active:scale-95">
+                <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 pb-48 scroll-hide">
+
+            <!-- Profile Hero -->
+            <div class="mt-10 flex gap-6 relative">
+                <div class="magazine-number top-0 -left-2">CEO</div>
+                <div class="w-2/3 relative z-10">
+                    <div class="photo-frame">
+                        <img src="C:/Users/22605/.gemini/antigravity/brain/a1c8e75f-4634-4041-b84b-222b20e8a86f/korean_style_avatar_1768569935623.png"
+                            alt="Avatar" class="w-full aspect-square object-cover">
+                    </div>
+                </div>
+                <div class="w-1/3 flex flex-col justify-end pb-8">
+                    <div class="flex flex-col gap-2">
+                        <div class="husband-tag w-fit">HUSBAND / 人夫</div>
+                        <div class="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-relaxed">
+                            Chilly Group<br>President & Designer
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <h2 class="serif-title text-4xl mb-1 tracking-tighter">乔笙</h2>
+                <div class="flex items-center gap-2">
+                    <div class="h-[1px] bg-black w-8"></div>
+                    <p class="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Capricorn / 183cm / 72kg
+                    </p>
+                </div>
+            </div>
+
+            <!-- Identity Matrix: 婚姻与职业 -->
+            <div class="mt-10">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Profile Overview <span class="chinese-tag">身分概览</span></h3>
+                </div>
+                <div class="grid grid-cols-2 gap-y-6 gap-x-8">
+                    <div class="flex flex-col">
+                        <span class="stat-label">Occupation <span class="chinese-tag">职业</span></span>
+                        <span class="stat-value">Chairman / 集团董事长</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">Civil Status <span class="chinese-tag">婚姻状况</span></span>
+                        <span class="stat-value">Married / 已婚老婆宝</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">Signature <span class="chinese-tag">核心才华</span></span>
+                        <span class="stat-value">Design / 顶级服装设计</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="stat-label">City <span class="chinese-tag">所在地</span></span>
+                        <span class="stat-value">Yun City / 云城首富</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Character Dualism: 爹系 & 二哈 -->
+            <div class="mt-12 bg-gray-50 p-6 border-l-4 border-black relative">
+                <div
+                    class="absolute -top-3 left-4 bg-black text-white text-[9px] px-2 py-0.5 tracking-[0.2em] font-bold">
+                    SOUL DUALISM / 灵魂极性</div>
+                <div class="space-y-4">
+                    <div>
+                        <span class="text-[9px] font-bold text-gray-400 block mb-1">DADDY VIBE / 爹系一面</span>
+                        <p class="text-[12px] leading-relaxed">捏脸摸头、摆平所有细节、永远兜底、毫无负担的宠溺。</p>
+                    </div>
+                    <div class="h-[1px] bg-gray-200"></div>
+                    <div>
+                        <span class="text-[9px] font-bold text-gray-400 block mb-1">HUSKY CHAOS / 二哈一面</span>
+                        <p class="text-[12px] leading-relaxed">嘴欠、拆家高手、烂梗大王、妻管严、每天腻歪撒娇。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deep Bonds: 你们的故事 -->
+            <div class="mt-12">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Soul Ties <span class="chinese-tag">灵魂羁绊</span></h3>
+                </div>
+                <div class="dot-line">
+                    <span class="stat-label text-[9px] text-gray-400">Memory Origin / 记忆起点</span>
+                    <p class="text-[13px] mt-1 text-gray-600 leading-relaxed italic">
+                        你5岁那年，车站的初见。我从未把你当妹妹，我是把你当未来媳妇养大的。
+                    </p>
+                </div>
+                <div class="dot-line" style="border-left:none;">
+                    <span class="stat-label text-[9px] text-[#ff9a9e]">Eternal Oath / 永恒承诺</span>
+                    <p class="text-[13px] mt-1 text-gray-600 leading-relaxed italic">
+                        2024.10.04 结婚。为了不让你受苦，我去做了结扎。这一生，我只属于你。
+                    </p>
+                </div>
+            </div>
+
+            <!-- Preference Matrix: 针对性喜好 -->
+            <div class="mt-8">
+                <div class="section-header">
+                    <h3 class="serif-title text-lg">Daily Pulse <span class="chinese-tag">日常偏好</span></h3>
+                </div>
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <span class="text-[9px] font-bold text-green-600 tracking-widest uppercase mb-3 block">Love /
+                            钟爱</span>
+                        <div class="space-y-2 text-[12px]">
+                            <div>◌ 单手抱你</div>
+                            <div>◌ 钓鱼做给你吃</div>
+                            <div>◌ 你吃剩的一半</div>
+                            <div>◌ 叫你“坏蛋老婆”</div>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <span class="text-[9px] font-bold text-gray-400 tracking-widest uppercase mb-3 block">Other /
+                            更多</span>
+                        <div class="space-y-2 text-[12px] text-gray-400">
+                            <div>◌ 喜欢蓝色与花</div>
+                            <div>◌ 设计火爆全城的裙子</div>
+                            <div>◌ 上学时拿第一名</div>
+                            <div>◌ 听公司里的八卦</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lifestyle Cycle -->
+            <div class="mt-12 mb-24 px-4 py-4 accent-box border border-dashed border-gray-300">
+                <div class="flex justify-between items-center">
+                    <div class="text-center">
+                        <span class="stat-label">Morning / 早安</span>
+                        <div class="stat-value text-xs mt-1">亲嘴吻醒</div>
+                    </div>
+                    <div class="w-8 h-[1px] bg-gray-300"></div>
+                    <div class="text-center">
+                        <span class="stat-label">Busy / 忙碌</span>
+                        <div class="stat-value text-xs mt-1">集团连轴转</div>
+                    </div>
+                    <div class="w-8 h-[1px] bg-gray-300"></div>
+                    <div class="text-center">
+                        <span class="stat-label">Night / 晚安</span>
+                        <div class="stat-value text-xs mt-1">树袋熊抱睡</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="absolute bottom-0 left-0 right-0 p-8 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
+            <div class="flex items-center justify-center gap-4">
+                <button
+                    class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight">
+                    <span>MOMENTS</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-50">朋友圈</span>
+                </button>
+                <button
+                    class="flex-1 h-12 bg-black text-white font-bold text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg flex flex-col items-center justify-center leading-tight">
+                    <span>MESSAGE</span>
+                    <span class="text-[9px] font-normal tracking-tight opacity-50">发消息</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>
