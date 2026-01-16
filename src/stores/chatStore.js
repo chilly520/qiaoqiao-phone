@@ -230,6 +230,40 @@ export const useChatStore = defineStore('chat', () => {
             newMsg.content = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
         }
 
+        // 1.3 JSON Command Parsing (For Debugging/User Manual Input)
+        if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
+            const content = newMsg.content.trim();
+            // Look for any JSON-like structure that has "type":"html" or similar keywords
+            const suspectedHtml = (content.includes('"type"') && content.includes('"html"')) || (content.includes('<div') && content.includes('{'));
+
+            if (suspectedHtml) {
+                try {
+                    // ROBUST REGEX: Handles escaped quotes and multi-line content
+                    const robustHtmlRegex = /["']html["']\s*[:：]\s*["']((?:[^"\\]|\\.|[\r\n])*?)["']/;
+                    const htmlMatch = content.match(robustHtmlRegex);
+
+                    if (htmlMatch && htmlMatch[1]) {
+                        newMsg.type = 'html';
+                        newMsg.html = htmlMatch[1];
+                        newMsg.forceCard = true; // Flag for component to isolate
+                        console.log('[ChatStore] Detected Manual HTML Message (Robust Flag)');
+                    } else if (content.startsWith('{')) {
+                        // try JSON.parse as last resort (with newline sanitization)
+                        try {
+                            const parsed = JSON.parse(content.replace(/\n/g, '\\n').replace(/\r/g, '\\r'));
+                            if (parsed.html || parsed.content) {
+                                newMsg.type = 'html';
+                                newMsg.html = parsed.html || parsed.content;
+                                newMsg.forceCard = true;
+                            }
+                        } catch (e) { }
+                    }
+                } catch (e) {
+                    // Fail silently
+                }
+            }
+        }
+
         // 2. Type Auto-Detection (if not specified)
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
@@ -1174,13 +1208,20 @@ ${contextMsgs}
                 content = String(m.content || '')
             }
 
-            // Format Moment Card for AI perception
+            // Format Special Cards for AI perception
             if (m.type === 'moment_card') {
                 try {
                     const data = JSON.parse(content)
                     content = `[用户分享了一条朋友圈动态] 作者: ${data.author}, 文案: ${data.text}${data.image ? ' (包含一张图片)' : ''}`
                 } catch (e) {
                     content = '[朋友圈动态]'
+                }
+            } else if (m.type === 'favorite_card' || content.includes('"favoriteId"')) {
+                try {
+                    const data = JSON.parse(content)
+                    content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: \n${data.fullContent || data.preview || '暂无内容'}`
+                } catch (e) {
+                    content = '[收藏内容]'
                 }
             }
 
@@ -1458,10 +1499,11 @@ ${contextMsgs}
                         const interactions = momentData.interactions || momentData.互动 || []
                         const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片
 
-                        if (momentData && content) {
+                        if (momentData && (content || momentData.html)) {
                             const newMoment = {
                                 authorId: chatId,
                                 content: content,
+                                html: momentData.html, // Add HTML support
                                 images: [],
                                 imageDescriptions: [],
                                 interactions: interactions.map(i => ({

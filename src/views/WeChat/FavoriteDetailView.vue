@@ -29,7 +29,7 @@ const chatStore = useChatStore()
 
 // Combined Sticker Search Scope (Computed for efficiency)
 const allStickers = computed(() => {
-    const global = stickerStore.customStickers || []
+    const global = stickerStore.stickers || []
     const charStickers = Object.values(chatStore.chats).flatMap(c => c.emojis || [])
     return [...global, ...charStickers]
 })
@@ -178,10 +178,13 @@ const shareToChat = (chatId) => {
     if (item.value.type === 'single') {
         // Truncate preview if too long
         let p = item.value.content || ''
+        cardData.fullContent = p // Include full content for AI
         if (p.length > 50) p = p.substring(0, 50) + '...'
         cardData.preview = p
     } else if (item.value.type === 'chat_record' && item.value.messages?.length > 0) {
-        // Take first 2 as preview
+        // Full content for AI
+        cardData.fullContent = item.value.messages.map(m => `${m.author}: ${m.content}`).join('\n')
+        // Take first 2 as preview for UI
         cardData.preview = item.value.messages.slice(0, 2).map(m => `${m.author}: ${m.content}`).join('\n')
     }
 

@@ -15,6 +15,12 @@ const router = createRouter({
             component: () => import('../views/WeChat/WeChatApp.vue')
         },
         {
+            path: '/wechat/moments',
+            name: 'moments',
+            component: () => import('../views/WeChat/MomentsView.vue'),
+            props: route => ({ initialProfileId: route.query.author })
+        },
+        {
             path: '/settings',
             name: 'settings',
             component: () => import('../views/Settings/SettingsHome.vue')

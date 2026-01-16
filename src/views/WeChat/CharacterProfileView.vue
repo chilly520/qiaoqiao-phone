@@ -184,7 +184,7 @@
     <div class="absolute bottom-0 left-0 right-0 p-8 pt-4 pb-10 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
       <div class="flex items-center justify-center gap-4">
         <button
-          @click="$router.push(`/wechat/moments?author=${charId}`)"
+          @click="$router.push({ path: '/wechat/moments', query: { author: charId } })"
           class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight active:bg-gray-50"
         >
           <span>MOMENTS</span>

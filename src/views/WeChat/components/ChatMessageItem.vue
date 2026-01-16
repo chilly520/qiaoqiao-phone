@@ -62,7 +62,7 @@
                     <!-- Content Column -->
                     <div class="flex flex-col" :class="[
                         msg.role === 'user' ? 'items-end' : 'items-start',
-                        msg.type === 'html' ? 'w-full' : 'max-w-[80%]'
+                        (msg.type === 'html' || isHtmlCard) ? 'max-w-full' : 'max-w-[80%]'
                     ]">
 
                         <!-- Pay Card -->
@@ -232,12 +232,12 @@
                         </div>
 
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
-                        <div v-else class="flex flex-col gap-2 w-full"
+                        <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
 
                             <!-- 1. HTML Card Layer -->
-                            <div v-if="(msg.type === 'html' || isHtmlCard) && isValidMessage"
-                                class="w-full mt-1 transition-all relative z-10" @contextmenu.prevent="emitContextMenu"
+                            <div v-if="shouldRenderCard && isValidMessage"
+                                class="mt-1 transition-all relative z-10 max-w-full" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                                 <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
@@ -246,7 +246,7 @@
                             <!-- 2. Visual Content Layer (Image OR Text) -->
 
                             <!-- Case A: Pure Image (No bubble bg, distinct from HTML) -->
-                            <div v-if="!isHtmlCard && isImageMsg(msg)" class="msg-image bg-transparent"
+                            <div v-if="!shouldRenderCard && isImageMsg(msg)" class="msg-image bg-transparent"
                                 @contextmenu.prevent="emitContextMenu">
                                 <img :src="getImageSrc(msg)"
                                     class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
@@ -255,7 +255,7 @@
                             </div>
 
                             <!-- Case B: Text Bubble (Sticker as inline / Text) -->
-                            <div v-else-if="!isHtmlCard && cleanedContent" @contextmenu.prevent="emitContextMenu"
+                            <div v-else-if="!shouldRenderCard && cleanedContent" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -473,24 +473,33 @@ const formattedTime = computed(() => {
     return formatTime(props.msg.timestamp)
 })
 
+const hasHtmlContent = computed(() => {
+    const html = getPureHtml(props.msg.html || props.msg.content)
+    return html && html.trim().length > 0
+})
+
 // Check if message should be displayed
 const isValidMessage = computed(() => {
     // 1. If it's a family card, always show
     if (isFamilyCard.value) return true
 
-    // 2. If it's an HTML card, show only if content is not empty
-    if (isHtmlCard.value) {
-        const htmlContent = getPureHtml(props.msg.html || props.msg.content)
-        return htmlContent && htmlContent.length > 0
+    // 2. If it's an AI-flagged HTML message, or it looks like a card and we have content
+    if (props.msg.type === 'html' || (isHtmlCard.value && hasHtmlContent.value)) {
+        return true
     }
 
-    // 3. If it's an image, always show
+    // 3. Fallback for broken cards: If it's flagged as a card but we couldn't extract content,
+    // we want to fall back to text display rather than hiding it.
+    // So we return true here so the 'div v-else-if="cleanedContent"' can pick it up.
+    if (isHtmlCard.value && !hasHtmlContent.value) return true
+
+    // 4. If it's an image, always show
     if (isImageMsg(props.msg.content)) return true
 
-    // 4. If content is being streamed (from AI), always show to prevent flickering
+    // 5. If content is being streamed (from AI), always show to prevent flickering
     if (props.msg.isStreaming) return true
 
-    // 5. Otherwise, only show if cleaned content is not empty
+    // 6. Otherwise, only show if cleaned content is not empty
     const clean = getCleanContent(ensureString(props.msg.content))
     return clean && clean.length > 0
 })
@@ -522,22 +531,27 @@ const isFamilyCardReject = computed(() => {
 })
 
 const isHtmlCard = computed(() => {
-    if (props.msg.type === 'html') return true
+    // 1. Explicit type or flag
+    if (props.msg.type === 'html' || props.msg.forceCard) return true 
+    
+    // 2. Detect JSON wrapper in content
     const c = ensureString(props.msg.content).trim()
-
-    // 1. JSON Wrapper Check
-    if ((c.startsWith('{') && c.endsWith('}')) || (c.includes('"type"') && c.includes('"html"'))) {
-        if (c.includes('"html"') && (c.includes('<') || c.includes('&lt;'))) return true
+    if (c === '[HTML卡片]') return true
+    if (c.includes('"type"') && c.includes('"html"')) return true
+    
+    // 3. Raw HTML tags
+    if (c.includes('<div') || c.includes('<html') || c.includes('<style')) {
+        if (c.includes('{') || c.includes('}')) return true // likely code
     }
-
-    // 2. Raw HTML Check
-    if ((c.startsWith('<') && c.endsWith('>')) || (c.startsWith('&lt;') && c.endsWith('&gt;'))) {
-        const decoded = c.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-        if (decoded.includes('<div') || decoded.includes('<html') || decoded.includes('<body') || decoded.includes('<style')) {
-            return true
-        }
-    }
+    
     return false
+})
+
+const isHtmlContentCard = computed(() => isHtmlCard.value)
+const shouldRenderCard = computed(() => {
+    // Render the card if flagged OR if we have valid HTML content
+    if (props.msg.forceCard) return hasHtmlContent.value;
+    return (props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value
 })
 
 const isFavoriteCard = computed(() => props.msg.type === 'favorite_card')
@@ -643,7 +657,9 @@ function getCleanContent(contentRaw) {
     clean = clean.replace(new RegExp(`\\\\?\\[\\s*FAMILY_CARD(?:_APPLY|_REJECT)?\\s*${colonRegexStr}[\\s\\S]*?\\]`, 'gi'), '');
 
     // Aggressive CSS filter (AI Only)
-    if (props.msg.role === 'ai') {
+    const isSuspectedCard = content.includes('"type"') && content.includes('"html"');
+
+    if (props.msg.role === 'ai' && !isSuspectedCard) {
         // Filter 0: Remove JSON dumps / truncated JSON
         // 移除了对 "type":"html" 的过滤，避免HTML消息被误删
         if (clean.trim().startsWith('{') && (
@@ -666,7 +682,7 @@ function getCleanContent(contentRaw) {
         'right:', 'left:', 'top:', 'bottom:', 'width:', 'height:', 'filter:', 'blur', 'opacity'
     ];
 
-    if (props.msg.role === 'ai' && toxicKeywords.some(k => clean.toLowerCase().includes(k))) {
+    if (props.msg.role === 'ai' && !isSuspectedCard && toxicKeywords.some(k => clean.toLowerCase().includes(k))) {
         // Only treat as toxic if it's NOT a sticker tag or bio tag
         const isSafeTag = /\[(表情包|BIO|STICKER)/i.test(clean);
         if (clean.includes(';') && !isSafeTag) return '';
@@ -695,78 +711,55 @@ function getCleanContent(contentRaw) {
 
 function getPureHtml(content) {
     if (!content) return ''
-    const str = typeof content === 'string' ? content : JSON.stringify(content)
-    const trimmed = str.trim()
+    const str = ensureString(content)
+    let trimmed = str.trim()
 
     // Helper to unescape typical string escapes into actual characters
-    // This is useful because AI often outputs "\\n" (literal backslash+n) instead of "\n" (newline)
     const unescapeContent = (text) => {
         if (!text || typeof text !== 'string') return text;
         return text
             .replace(/\\n/g, '\n')
             .replace(/\\r/g, '\r')
             .replace(/\\t/g, '\t')
-            .replace(/\\"/g, '"');
+            .replace(/\\"/g, '"')
+            .replace(/\\'/g, "'")
+            .replace(/\\\\/g, '\\');
     }
 
-    // 1. Prioritize Standard JSON Parsing
-    // Do NOT pre-process the string with regexes that might break the JSON validity (like unescaping \n or quotes blindly)
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-        try {
-            const parsed = JSON.parse(trimmed)
-            if (parsed.html && typeof parsed.html === 'string') {
-                // If the JSON parsed successfully, the string values are already JS strings.
-                // However, if the AI put literal "\n" text inside the string, we might want to convert it to real newline.
-                // But generally, JSON.parse handles the formatting.
-                // If the User sees "\n" on screen, it means the string value contains literal backslash+n.
-                // So we SHOULD unescape it for display.
-                return unescapeContent(parsed.html)
-            }
-        } catch (e) {
-            // JSON parse failed (maybe due to "type": "html" variants or bad quotes), fall through
+    // 1. Pre-process: if it's wrapped in JSON quotes like "<html>...", strip them
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+        trimmed = trimmed.substring(1, trimmed.length - 1).trim();
+    }
+
+    // 2. Decode common HTML entities that might have been escaped by the store
+    const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+    // 3. Check if it's already raw HTML (possibly with escapes)
+    const findStart = (s) => {
+        const lower = s.toLowerCase();
+        const tags = ['<div', '<html', '<style', '<table', '<section', '<p', '<body', '<header'];
+        for (const tag of tags) {
+            const pos = lower.indexOf(tag);
+            if (pos !== -1) return pos;
+        }
+        return -1;
+    }
+
+    const startPos = findStart(decoded);
+    if (startPos !== -1) {
+        const endPos = decoded.lastIndexOf('>');
+        if (endPos > startPos) {
+            const extracted = decoded.substring(startPos, endPos + 1).trim();
+            // Important: always unescape escapes like \" or \n from the raw content
+            return unescapeContent(extracted);
         }
     }
 
-    // 2. Try to salvage "Type: HTML" variants if standard parse failed
-    if (trimmed.includes('"type":"html"') || trimmed.includes("'type':'html'") || trimmed.includes('type: "html"')) {
-        try {
-            // Mild cleanup for header/tail quotes if present
-            let cleanedJson = trimmed.replace(/^["']|["']$/g, '');
-            // Only unescape newlines to help parsing if the failure was due to raw newlines (which are invalid in JSON)
-            // But we must be careful not to double-unescape.
-            // Let's try parsing after a simple quote normalization
-            // If the string contains single quotes for JSON keys, we might need a parser that supports loose JSON
-            // But JSON.parse is strict.
-            // fallback to extraction is often safer than trying to fix broken JSON regex-wise.
-        } catch (e) { }
-    }
-
-    // 3. Robust Extraction (Fallback)
-    // If we can't parse it as JSON, look for the HTML content pattern directly.
-    // This handles cases where the JSON is malformed but the HTML payload is intact.
-    // We look for content between likely HTML tags.
-
-    // Strategy: Look for the 'html' field's value if possible, or just the first big <div>...</div> block
-
-    // Attempt to extract value of "html" key using regex
-    const htmlKeyMatch = trimmed.match(/"html"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})/);
-    if (htmlKeyMatch && htmlKeyMatch[1]) {
-        return unescapeContent(htmlKeyMatch[1]);
-    }
-
-    // If logic above failed, try seeking block tags
-    if (trimmed.includes('<') && trimmed.includes('>')) {
-        const startTagIndex = trimmed.indexOf('<')
-        const endTagIndex = trimmed.lastIndexOf('>')
-        if (startTagIndex !== -1 && endTagIndex !== -1 && endTagIndex > startTagIndex) {
-            const extracted = trimmed.substring(startTagIndex, endTagIndex + 1).trim()
-            // Should contain at least one known tag to be safe
-            if (extracted.includes('<div') || extracted.includes('<html') || extracted.includes('<style')) {
-                // When extracting a raw substring from a JSON-like string, it likely contains escaped quotes like \"
-                // We MUST unescape them to get valid HTML.
-                return unescapeContent(extracted)
-            }
-        }
+    // 4. Robust REGEX match for "html": "..." as fallback
+    const robustHtmlRegex = /["']html["']\s*[:：]\s*["']((?:[^"\\]|\\.|[\r\n])*?)["']/;
+    const match = str.match(robustHtmlRegex);
+    if (match && match[1]) {
+        return unescapeContent(match[1]);
     }
 
     return ''
@@ -965,10 +958,14 @@ function formatMessageContent(msg) {
         // Resilience 2: Strip parentheticals (e.g. "求求你了 (求你之-舞)" -> "求求你了")
         const cleanParen = n.replace(/\s*[\(（].*?[\)）]\s*$/, '');
 
-        const candidates = [cleanPunc, cleanParen].filter(c => c !== n);
+        // Resilience 3: Try both char and global with cleaned names
+        const candidates = [n, cleanPunc, cleanParen].filter(Boolean);
         for (const cand of candidates) {
-            const match = charStickers.find(s => s.name === cand) || stickerStore.getStickers('global').find(s => s.name === cand);
-            if (match) return `<img src="${match.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${cand}" />`
+            const mChar = charStickers.find(s => s.name === cand);
+            if (mChar) return `<img src="${mChar.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${cand}" />`
+            
+            const mGlobal = stickerStore.getStickers('global').find(s => s.name === cand);
+            if (mGlobal) return `<img src="${mGlobal.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${cand}" />`
         }
 
         return match; // Keep as text [Name] if not found, don't just swallow it

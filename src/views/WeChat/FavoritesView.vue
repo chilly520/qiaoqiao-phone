@@ -12,7 +12,7 @@ const chatStore = useChatStore()
 
 // Combined Sticker Search Scope
 const allStickers = computed(() => {
-    const global = stickerStore.customStickers || []
+    const global = stickerStore.stickers || []
     const charStickers = Object.values(chatStore.chats).flatMap(c => c.emojis || [])
     return [...global, ...charStickers]
 })

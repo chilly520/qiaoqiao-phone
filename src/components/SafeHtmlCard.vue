@@ -1,5 +1,5 @@
 <template>
-  <div class="safe-html-card w-full" :style="{ height: height + 'px' }">
+  <div class="safe-html-card" :style="{ height: height + 'px', width: width + 'px' }">
     <iframe ref="iframeRef" :srcdoc="fullContent" class="w-full h-full border-none overflow-hidden"
       sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"
       allowtransparency="true" @load="adjustHeight"></iframe>
@@ -17,7 +17,8 @@ const props = defineProps({
 })
 
 const iframeRef = ref(null)
-const height = ref(150) // Default start height to prevent collapse
+const height = ref(40)
+const width = ref(300) // Added width tracking
 const resizeObserver = ref(null)
 
 const fullContent = computed(() => {
@@ -25,74 +26,26 @@ const fullContent = computed(() => {
 
   const bootstrap = `
     <style id="base-styles">
-      /* 样式重置，确保HTML卡片不影响外部界面，同时保留内容的原始样式 */
       html, body {
         margin: 0 !important;
         padding: 0 !important;
         border: 0 !important;
-        width: 100% !important;
-        /* height: 100% !important; Remove this to allow content to dictate height */
-        min-height: 100% !important;
+        width: auto !important; /* Changed from fit-content to auto */
+        display: inline-block !important; /* Changed from empty to inline-block */
         box-sizing: border-box !important;
-        overflow: auto !important; /* Allow scroll but hide bar */
-        scrollbar-width: none !important;
-        -ms-overflow-style: none !important;
+        overflow: hidden !important;
+        background: transparent !important;
       }
       
-      /* Hide Webkit Scrollbars */
-      ::-webkit-scrollbar {
-        width: 0 !important;
-        height: 0 !important;
-        display: none !important;
-      }
-      
-      /* 重置所有元素的样式 */
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box !important;
-      }
-      
-      /* 移除所有可能干扰原始样式的样式定义 */
-      
-      /* 确保内容不会溢出 */
       * {
-        max-width: 100% !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-      }
-      
-      /* 确保iframe内容不会影响外部 */
-      iframe {
-        display: none !important;
+        box-sizing: border-box !important;
       }
     </style>
     <script id="base-script">
-      /* 重写alert函数，使用更美观的样式 */
       window.alert = function(msg) {
         console.log('[HTML Card Alert]:', msg);
-        const div = document.createElement('div');
-        div.id = 'custom-alert-bubble';
-        div.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(135, 206, 235, 0.95); color:#005a87; padding:20px 30px; border-radius:12px; z-index:999999; font-size:14px; text-align:center; box-shadow:0 8px 30px rgba(135, 206, 235, 0.4); min-width:200px; backdrop-filter:blur(12px); line-height:1.6; border: 1px solid rgba(255,255,255,0.6); font-weight:500; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; animation: card-fade-in 0.3s ease;";
-        div.innerHTML = String(msg).replace(/\\n/g, '<br>');
-        document.body.appendChild(div);
-        setTimeout(() => {
-          div.style.opacity = '0';
-          div.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-          div.style.transform = 'translate(-50%, -60%)';
-          setTimeout(() => div.remove(), 500);
-        }, 3000);
       };
-      
-      /* 防止卡片内容影响外部界面 */
-      window.addEventListener('message', function(e) {
-        console.log('[HTML Card Alert]:', e.data);
-      });
-      
-      /* 确保页面加载完成后应用样式 */
-      window.addEventListener('load', function() {
-        document.body.style.opacity = '1';
-      });
+      document.body.style.opacity = '1';
     <\/script>
   `
 
@@ -134,8 +87,8 @@ const adjustHeight = () => {
   if (iframe && iframe.contentWindow && iframe.contentWindow.document.body) {
     const doc = iframe.contentWindow.document
     const body = doc.body
-    const html = doc.documentElement
 
+    // Restore context menu pass-through
     doc.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       const rect = iframe.getBoundingClientRect()
@@ -149,28 +102,26 @@ const adjustHeight = () => {
       iframe.dispatchEvent(evt)
     })
 
-    const updateHeight = () => {
-      const newHeight = Math.max(
-        body.scrollHeight,
-        body.offsetHeight,
-        html.clientHeight,
-        html.scrollHeight,
-        html.offsetHeight
-      )
-      if (newHeight > 0) {
-        height.value = newHeight
+    const updateSize = () => {
+      // Trace both height and width
+      const rect = body.getBoundingClientRect()
+      const newHeight = rect.height || body.scrollHeight
+      const newWidth = rect.width || body.scrollWidth
+      
+      if (newHeight > 0) height.value = newHeight
+      if (newWidth > 0) {
+          // Constrain width to parent container
+          width.value = Math.min(newWidth, window.innerWidth * 0.85)
       }
     }
 
-    updateHeight()
-    // Retry height update for mobile rendering delay
-    setTimeout(updateHeight, 100)
-    setTimeout(updateHeight, 500)
+    updateSize()
+    setTimeout(updateSize, 300)
+    setTimeout(updateSize, 1000)
 
     if (!resizeObserver.value) {
-      resizeObserver.value = new ResizeObserver(updateHeight)
+      resizeObserver.value = new ResizeObserver(updateSize)
       resizeObserver.value.observe(body)
-      resizeObserver.value.observe(html) // Observe HTML too
     }
   }
 }
@@ -192,6 +143,8 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
 
 <style scoped>
 .safe-html-card {
+  display: inline-block; /* Ensure it doesn't take full width */
+  vertical-align: top;
   transition: height 0.2s ease, opacity 0.3s ease;
   /* 移除布局隔离，避免影响高度计算 */
   /* overflow: hidden; -- 用户反馈会导致折叠界面被裁切，暂时移除 */

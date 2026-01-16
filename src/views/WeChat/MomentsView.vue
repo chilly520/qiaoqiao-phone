@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useMomentsStore } from '../../stores/momentsStore'
 import MomentsNotifications from './MomentsNotifications.vue'
 import { useChatStore } from '../../stores/chatStore'
@@ -12,6 +12,7 @@ import { useWorldBookStore } from '../../stores/worldBookStore'
 import { generateImage, translateToEnglish } from '../../utils/aiService'
 
 const router = useRouter()
+const route = useRoute()
 const props = defineProps({
     initialProfileId: {
         type: String,
@@ -174,7 +175,11 @@ const currentProfileChar = computed(() => {
 
 // --- Actions ---
 const goBack = () => {
-    emit('back')
+    if (route.name === 'moments') {
+        router.back()
+    } else {
+        emit('back')
+    }
 }
 
 const handleProfileBack = () => {
@@ -537,15 +542,16 @@ const removeMention = (idx) => {
     postForm.value.mentions.splice(idx, 1)
 }
 
+// React to route query changes (for direct links from Profile)
+watch(() => route.query.author, (newVal) => {
+    if (newVal) {
+        filterAuthorId.value = newVal
+        showingProfileCharId.value = null
+    }
+}, { immediate: true })
+
 onMounted(() => {
     momentsStore.startAutoGeneration()
-    if (props.initialProfileId) {
-        if (props.initialProfileId === 'user') {
-            filterAuthorId.value = 'user'
-        } else {
-            showingProfileCharId.value = props.initialProfileId
-        }
-    }
 })
 </script>
 
