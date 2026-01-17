@@ -1015,8 +1015,16 @@ const processQueue = () => {
 };
 
 // Enhanced text cleaner for TTS
-const getCleanSpeechText = (text) => {
-    if (!text) return '';
+const getCleanSpeechText = (textRaw) => {
+    if (!textRaw) return '';
+    let text = ensureString(textRaw);
+    
+    // 1. Remove HTML Card JSON blocks FIRST (Critical for TTS)
+    if (text.includes('"type"') && text.includes('"html"')) {
+        // Greedy match until the LAST } to handle internal CSS { }
+        text = text.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
+    }
+
     let clean = text;
 
     // Remove INNER_VOICE blocks completely
@@ -1030,6 +1038,9 @@ const getCleanSpeechText = (text) => {
     // Support standard () and full-width （）
     clean = clean.replace(/\([^\)]*\)/g, '');
     clean = clean.replace(/（[^）]*）/g, '');
+    
+    // Final cleanup of any remaining HTML-like bits
+    clean = clean.replace(/<\/?[^>]+(>|$)/g, "");
 
     return clean.trim();
 }
@@ -1352,19 +1363,27 @@ const getCleanContent = (contentRaw) => {
         // If it's a data URL or blob, it's definitely an image, don't regex it
         if (content.includes('data:image/') || content.includes('blob:')) return '';
         // If it's just long text, still skip heavy regex if no voice marker
-        if (!content.includes('[INNER_VOICE]')) return content.trim();
+        if (!content.includes('[INNER_VOICE]') && !content.includes('"type"')) return content.trim();
     }
 
     // Remove Inner Voice block (Standard)
     let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '');
 
     // Remove Naked JSON blocks (Fallback) - Only if they contain specific Inner Voice keys
-    // to avoid deleting other JSONs like [CARD] or code blocks if user sends some.
     clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
+
+    // NEW: Remove HTML Card JSON blocks (Greedy)
+    if (clean.includes('"type"') && clean.includes('"html"')) {
+        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
+    }
 
     clean = clean.trim();
     // Remove Claim Tags
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
+    
+    // Filter out zero-width characters
+    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+    
     return clean;
 }
 
@@ -1881,8 +1900,6 @@ const formatMessageContent = (msg) => {
         .trim();
 
     // 2. Render [DRAW:...] as loading indicator
-    // IF the message is explicitly marked as drawing, show the loader.
-    // IF it's finished (isDrawing === false), hide the loader even if tag remains.
     if (msg.isDrawing !== false && text.toLowerCase().includes('[draw:')) {
         text = text.replace(/\[DRAW:\s*([\s\S]*?)\]/gi, (match, prompt) => {
             const truncated = prompt.length > 30 ? prompt.substring(0, 30) + '...' : prompt
@@ -1897,15 +1914,42 @@ const formatMessageContent = (msg) => {
     const familyCardRegex = /\\\\?\[\\s*FAMILY_CARD(?:_APPLY|_REJECT)?\\s*[:：][\\s\\S]*?\]/gi;
     text = text.replace(familyCardRegex, '');
 
-    // 4. Sticker inline replacer (Standardized)
-    text = text.replace(/\[表情包[:：](.*?)\]/g, (match, name) => {
-        const n = name.trim()
+    // 4. Sticker inline replacer (Standardized fuzzy matching)
+    text = text.replace(/\[(.*?)\]/g, (match, name) => {
+        let n = name.trim()
+        
+        // Strip prefixes
+        const prefixMatch = n.match(/^(?:表情包|表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
+        if (prefixMatch) n = prefixMatch[1].trim();
+
         const charStickers = chatData.value?.emojis || []
-        const charMatch = charStickers.find(s => s.name === n)
-        if (charMatch) return `<img src="${charMatch.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
-        const globalStickers = stickerStore.getStickers('global')
-        const globalMatch = globalStickers.find(s => s.name === n)
-        if (globalMatch) return `<img src="${globalMatch.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${n}" />`
+        const globalStickers = stickerStore.getStickers('global') || []
+        const allAvailable = [...charStickers, ...globalStickers]
+
+        const normalize = (s) => (s || '')
+            .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+            .replace(/[。.，,！!？?\-\s\(\)（）]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const nClean = normalize(n);
+        if (!nClean && !n) return match;
+
+        // Precise
+        let found = allAvailable.find(s => s.name === n || normalize(s.name) === nClean);
+        
+        // Fuzzy
+        if (!found && nClean.length >= 2) {
+            found = allAvailable.find(s => {
+                const sClean = normalize(s.name);
+                if (!sClean || sClean.length < 1) return false;
+                return sClean.includes(nClean);
+            });
+        }
+
+        if (found) {
+            return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${found.name}" />`
+        }
         return match
     })
 

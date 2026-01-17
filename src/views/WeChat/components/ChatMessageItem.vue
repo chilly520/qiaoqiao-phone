@@ -693,11 +693,12 @@ function getCleanContent(contentRaw) {
     // Filter 3: Garbage punctuation strings
     if (/^["'>}<{\[\]]+$/.test(clean.trim())) return '';
 
-    // Filter 4: HTML JSON cleanup (Greedy but surgical removal)
+    // Filter 4: HTML JSON cleanup (Greedy removal for internal braces support)
     if (clean.includes('"type"') && clean.includes('"html"')) {
-        // This regex matches the entire block from { to } that contains both keywords.
-        // It's greedy enough to handle internal quotes/brackets within the HTML string.
-        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?\}(?:\s*\}?)/gi, '');
+        // We match from { to the LAST } in the string if it contains "type":"html"
+        // This handles cases where the HTML content itself contains { } (like CSS)
+        // We use a greedy match [\\s\\S]* for the content between keywords
+        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
     }
 
 
