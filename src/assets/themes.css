@@ -24,7 +24,7 @@
     --text-secondary: #b08ea5;
     --border-color: rgba(255, 182, 193, 0.3);
     --accent-color: #ff69b4;
-    
+
     /* 圆角 */
     --radius-sm: 1rem;
     --radius-md: 1.5rem;
@@ -44,7 +44,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: 
+    background-image:
         radial-gradient(circle at 20% 30%, rgba(255, 105, 180, 0.1) 0%, transparent 40%),
         radial-gradient(circle at 80% 70%, rgba(230, 173, 216, 0.1) 0%, transparent 40%),
         radial-gradient(circle at 50% 50%, rgba(255, 192, 203, 0.08) 0%, transparent 60%);
@@ -68,8 +68,15 @@
 }
 
 @keyframes kawaii-float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 /* 所有白色背景 → 粉嫩渐变 */
@@ -98,10 +105,10 @@
     box-shadow: 0 6px 20px rgba(255, 105, 180, 0.25);
 }
 
-/* 主按钮 */
+/* 主按钮 - 兼容 Tailwind 选择器格式以支持主题替换 */
 [data-theme="kawaii"] .bg-blue-500,
 [data-theme="kawaii"] .bg-green-500,
-[data-theme="kawaii"] .bg-\[#07c160\] {
+[data-theme="kawaii"] .bg-\[\#07c160\] {
     background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%);
 }
 
@@ -188,7 +195,7 @@
 }
 
 [data-theme="business"] .bg-green-500,
-[data-theme="business"] .bg-\[#07c160\] {
+[data-theme="business"] .bg-\[\#07c160\] {
     background: #10b981;
 }
 
@@ -227,7 +234,7 @@
 
 /* 装饰 */
 [data-theme="dark"] .app-root::before {
-    background-image: 
+    background-image:
         radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.1) 0%, transparent 40%),
         radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.08) 0%, transparent 40%);
 }
@@ -280,7 +287,7 @@
 }
 
 [data-theme="dark"] .bg-green-500,
-[data-theme="dark"] .bg-\[#07c160\] {
+[data-theme="dark"] .bg-\[\#07c160\] {
     background: #34d399 !important;
 }
 
@@ -402,7 +409,7 @@
 }
 
 /* 确保消息在遮罩上方 */
-[data-theme="dark"] .chat-window .message-list > * {
+[data-theme="dark"] .chat-window .message-list>* {
     position: relative;
     z-index: 1;
 }
