@@ -437,9 +437,19 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                     if (applyMsg && !applyMsg.status) chatStore.updateMessage(chatData.value.id, applyMsg.id, { status: 'accepted' })
                 }
             }
+
+            // 4. Auto TTS (AI Only)
+            if (lastMsg.role === 'ai' && chatData.value?.autoRead !== false && chatData.value?.autoTTS) {
+                const textToSpeak = getCleanSpeechText(contentStr);
+                if (textToSpeak && !spokenMsgIds.has(lastMsg.id)) {
+                    console.log('[TTS] Auto-queueing message:', lastMsg.id);
+                    ttsQueue.value.push({ text: textToSpeak, msgId: lastMsg.id });
+                    processQueue();
+                }
+            }
         }
     }
-})
+});
 
 const computedBgStyle = computed(() => {
     if (!chatData.value) return {}
