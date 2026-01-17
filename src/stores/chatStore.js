@@ -1790,7 +1790,8 @@ ${contextMsgs}
                     const part = rawParts[i];
                     if (part === undefined) continue;
 
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD)/.test(part);
+                    const trimmedPart = part.trim();
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {

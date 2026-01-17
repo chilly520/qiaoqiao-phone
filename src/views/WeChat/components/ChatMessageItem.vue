@@ -495,8 +495,8 @@ const isValidMessage = computed(() => {
     // 1. If it's a family card, always show
     if (isFamilyCard.value) return true
 
-    // 2. If it's an image/sticker, always show
-    if (isImageMsg(props.msg)) return true
+    // 2. If it's an image/sticker, always show (check raw content to be safe)
+    if (isImageMsg(props.msg) || /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]/i.test(ensureString(props.msg.content))) return true
 
     // 3. If it's an HTML card, it's ONLY valid if it actually has renderable HTML content
     if ((props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value) return true
@@ -861,8 +861,8 @@ function isImageMsg(msg) {
         if (isImageUrl && clean.split(/\s+/).length === 1) return true
     }
     
-    // ONLY treat as pure image if the entire cleaned message is just the [Tag]
-    const tagMatch = clean.match(/^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i)
+    // Treat as pure image if the trimmed message is just the [Tag]
+    const tagMatch = clean.trim().match(/^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i)
     return !!tagMatch
 }
 
