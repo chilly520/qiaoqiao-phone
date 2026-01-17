@@ -53,8 +53,17 @@ const fullContent = computed(() => {
       }
     </style>
     <script id="base-script">
+      // Redirect alerts and modals to parent
       window.alert = function(msg) {
-        console.log('[HTML Card Alert]:', msg);
+        window.parent.postMessage({ type: 'CHAT_ALERT', text: msg }, '*');
+      };
+      window.confirm = function(msg) {
+        window.parent.postMessage({ type: 'CHAT_ALERT', text: 'Confirm requested: ' + msg }, '*');
+        return true; // Auto-confirm
+      };
+      window.prompt = function(msg) {
+        window.parent.postMessage({ type: 'CHAT_ALERT', text: 'Prompt requested: ' + msg }, '*');
+        return '';
       };
       
       // The Bridge: ALLOW cards to send messages back to the chat

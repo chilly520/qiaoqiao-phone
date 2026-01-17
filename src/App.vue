@@ -6,6 +6,7 @@ import { useChatStore } from './stores/chatStore'
 import { batteryMonitor } from './utils/batteryMonitor'
 
 import { notificationService } from './utils/notificationService'
+import { backgroundManager } from './utils/backgroundManager'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,13 +51,15 @@ onMounted(() => {
     requestNotify()
 
     // Try on interaction (fallback)
-    const unlockNotifications = () => {
+    const unlockKeepAlive = () => {
         requestNotify()
-        window.removeEventListener('click', unlockNotifications)
-        window.removeEventListener('touchstart', unlockNotifications)
+        backgroundManager.enable()
+        console.log('[App] Background keep-alive enabled via user gesture')
+        window.removeEventListener('click', unlockKeepAlive)
+        window.removeEventListener('touchstart', unlockKeepAlive)
     }
-    window.addEventListener('click', unlockNotifications, { once: true })
-    window.addEventListener('touchstart', unlockNotifications, { once: true })
+    window.addEventListener('click', unlockKeepAlive, { once: true })
+    window.addEventListener('touchstart', unlockKeepAlive, { once: true })
 })
 onUnmounted(() => {
     if (timer) clearInterval(timer)

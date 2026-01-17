@@ -236,8 +236,8 @@
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
 
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
-                            <!-- Only show bubble if there's actual text content AND it's not a standalone sticker -->
-                            <div v-if="cleanedContent && !isImageMsg(msg)" @contextmenu.prevent="emitContextMenu"
+                            <!-- Only show bubble if there's actual text content AND it's not a standalone sticker/HTML card -->
+                            <div v-if="cleanedContent && !isImageMsg(msg) && !isHtmlCard" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -277,7 +277,7 @@
 
                             <!-- 3. HTML Card Layer -->
                             <div v-if="shouldRenderCard && hasHtmlContent"
-                                class="mt-1 transition-all relative z-10 max-w-full" @contextmenu.prevent="emitContextMenu"
+                                class="mt-1 transition-all relative z-10 w-auto" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 @message="handleIframeMessage">

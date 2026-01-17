@@ -254,11 +254,14 @@ const toggleMessageSelection = (msgId) => {
 const selectToBottom = () => {
     if (selectedMsgIds.value.size === 0) return
 
-    const allMsgs = msgs.value
-    // Find the earliest message index in the current selection
+    // Use displayedMsgs (the current paginated view) instead of the full store history.
+    // This ensures we only select messages that are currently visible on the screen.
+    const visibleMsgs = displayedMsgs.value
+    
+    // Find the earliest message index in the visible selection
     let minIdx = -1
-    for (let i = 0; i < allMsgs.length; i++) {
-        if (selectedMsgIds.value.has(allMsgs[i].id)) {
+    for (let i = 0; i < visibleMsgs.length; i++) {
+        if (selectedMsgIds.value.has(visibleMsgs[i].id)) {
             minIdx = i
             break
         }
@@ -266,9 +269,9 @@ const selectToBottom = () => {
 
     if (minIdx === -1) return
 
-    // Select everything from the earliest selection to the end of the list
-    for (let i = minIdx; i < allMsgs.length; i++) {
-        selectedMsgIds.value.add(allMsgs[i].id)
+    // Select everything from the earliest selection to the end of the visible list
+    for (let i = minIdx; i < visibleMsgs.length; i++) {
+        selectedMsgIds.value.add(visibleMsgs[i].id)
     }
 }
 
@@ -371,24 +374,29 @@ const processMusicCommand = async (text) => {
 // --- Iframe / Card Communication Handler ---
 const handleIframeMessage = (event) => {
     const data = event.data
-    if (data && data.type === 'QIAOQIAO_CARD_ACTION') {
+    if (!data) return
+
+    // 1. Handle Alerts/Toasts from Card
+    if (data.type === 'CHAT_ALERT') {
+        showToast(data.text || '提醒', 'info')
+    }
+
+    // 2. Handle Actions (New Standard)
+    if (data.type === 'QIAOQIAO_CARD_ACTION' || data.type === 'CHAT_SEND') {
         console.log('[Card Action]', data)
+        const action = data.action || (data.type === 'CHAT_SEND' ? 'SEND_TEXT' : null)
+        const content = data.content || data.text
 
-        if (data.action === 'SEND_TEXT') {
-            // Validating inputs
-            if (!data.content || typeof data.content !== 'string') return
+        if (action === 'SEND_TEXT') {
+            if (!content || typeof content !== 'string') return
 
-            // Send as User
             chatStore.addMessage(chatData.value.id, {
                 role: 'user',
-                content: data.content
+                content: content
             })
 
-            // Trigger AI processing if requested
             if (data.autoReply) {
-                setTimeout(() => {
-                    generateAIResponse()
-                }, 500)
+                setTimeout(() => generateAIResponse(), 500)
             }
         }
     }
