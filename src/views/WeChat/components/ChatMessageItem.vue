@@ -1083,9 +1083,16 @@ function emitContextMenu(event) {
 // Long Press Logic
 let longPressTimer = null
 function startLongPress(event) {
+    // Capture coordinates immediately to prevent stale event issues
+    const touch = event.touches ? event.touches[0] : event;
+    const capturedEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        preventDefault: () => event.preventDefault?.()
+    };
+
     longPressTimer = setTimeout(() => {
-        const touch = event.touches ? event.touches[0] : event;
-        emitContextMenu(touch)
+        emitContextMenu(capturedEvent)
     }, 500)
 }
 function cancelLongPress() {

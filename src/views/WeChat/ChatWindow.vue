@@ -2015,13 +2015,19 @@ let longPressTimer = null
 
 // Use native contextmenu event (Desktop Right Click / Mobile Long Press)
 const handleContextMenu = (msg, event) => {
-    // Prevent browser menu
-    // Debug
-    // console.log('Context Menu Triggered', msg.id)
+    // Defensive check to prevent crashes if event is missing
+    if (!event) {
+        console.warn('[ContextMenu] Triggered without event data');
+        // Fallback to center of screen or previous known position
+        menuPosition.value = { x: window.innerWidth / 2 - 70, y: window.innerHeight / 2 - 230 };
+        selectedMsg.value = msg;
+        showContextMenu.value = true;
+        return;
+    }
 
-    // Position
-    let x = event.clientX
-    let y = event.clientY
+    // Position - Handle both MouseEvent and Touch (clientX exists on both Touch and Event normally)
+    let x = event.clientX || (event.touches && event.touches.length > 0 ? event.touches[0].clientX : 0)
+    let y = event.clientY || (event.touches && event.touches.length > 0 ? event.touches[0].clientY : 0)
 
     // Boundary checks (Menu is approx 140x460 now with multi-select and favorites)
     const menuWidth = 140
@@ -2051,10 +2057,15 @@ const handleContextMenu = (msg, event) => {
 
 // Manual Long Press (For Mouse "Click and Hold" or legacy Touch support)
 const startLongPress = (msg, event) => {
+    // Capture coordinates immediately
+    const touch = event.touches && event.touches.length > 0 ? event.touches[0] : event;
+    const capturedEvent = {
+        clientX: touch.clientX || 0,
+        clientY: touch.clientY || 0
+    };
+
     longPressTimer = setTimeout(() => {
-        // Trigger generic handler
-        const touch = event.touches ? event.touches[0] : event;
-        handleContextMenu(msg, touch)
+        handleContextMenu(msg, capturedEvent)
 
         // LOCK the menu closure for a short time to prevent "Release" from closing it
         menuLock.value = true
