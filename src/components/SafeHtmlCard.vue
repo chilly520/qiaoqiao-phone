@@ -28,12 +28,14 @@ const fullContent = computed(() => {
     <style id="base-styles">
       html, body {
         margin: 0 !important;
-        padding: 50px !important; /* Massive breathing room for animations */
+        padding: 10px !important; /* Minimal safety buffer for shadows/glows */
         border: 0 !important;
         width: auto !important;
-        display: inline-block !important;
+        display: flex !important; /* Centering helper */
+        justify-content: center !important;
+        align-items: center !important;
         box-sizing: border-box !important;
-        overflow: visible !important; /* Allow animations to bleed into the padded zone */
+        overflow: visible !important; 
         background: transparent !important;
         -webkit-tap-highlight-color: transparent;
       }
@@ -141,17 +143,14 @@ const adjustHeight = () => {
     doc.addEventListener('touchend', passEvent)
 
     const updateSize = () => {
-      // Trace both height and width
-      const rect = body.getBoundingClientRect()
+      // Trace the actual content dimensions
+      // Use scrollHeight/Width to catch full content even if body is flexed
+      const newHeight = body.scrollHeight
+      const newWidth = body.scrollWidth
       
-      // We SUBTRACT the padding from display but let the container be large enough
-      // Actually, if we want to show the overflow, the iframe MUST be large enough.
-      // So we keep the height/width as is but maybe add negative margins to the container?
-      // Better: Keep height/width but ensure the iframe doesn't clip.
-      
-      if (rect.height > 0) height.value = rect.height
-      if (rect.width > 0) {
-          width.value = Math.min(rect.width, window.innerWidth * 0.95)
+      if (newHeight > 0) height.value = newHeight
+      if (newWidth > 0) {
+          width.value = Math.min(newWidth, window.innerWidth * 0.9)
       }
     }
 
@@ -189,13 +188,7 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
   background: transparent;
   padding: 0;
   max-width: 100%;
-  overflow: visible !important;
-  
-  /* Use negative margins to perfectly offset the 50px internal padding.
-     This makes the 'logical' box of the card match the actual content,
-     while the iframe itself extends 50px outwards in every direction to show overflow. */
-  margin: -50px !important;
-  pointer-events: none;
+  overflow: hidden; /* Keep the card contained */
 }
 
 .safe-html-card iframe {
@@ -203,7 +196,6 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
   background: transparent !important;
   width: 100%;
   height: 100%;
-  pointer-events: auto;
   display: block;
 }
 
