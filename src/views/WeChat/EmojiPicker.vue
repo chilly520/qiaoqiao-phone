@@ -307,8 +307,11 @@ const filteredStickers = computed(() => {
 
 const getDisplayName = (name) => {
     if (!name) return ''
-    // Strip trailing emojis for a cleaner UI look
-    return name.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim() || name
+    // Strip emojis, Asian punctuation, and standard symbols for a cleaner UI look
+    return name
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+        .replace(/[。.，,！!？?：:\-\s\(\)（）]/g, '')
+        .trim() || name
 }
 
 // Standard Emoji List (Subset)

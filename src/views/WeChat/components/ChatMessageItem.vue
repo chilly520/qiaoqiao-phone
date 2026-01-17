@@ -236,7 +236,8 @@
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
 
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
-                            <div v-if="cleanedContent" @contextmenu.prevent="emitContextMenu"
+                            <!-- Only show bubble if there's actual text content AND it's not a standalone sticker -->
+                            <div v-if="cleanedContent && !isImageMsg(msg)" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -246,6 +247,12 @@
                                     fontSize: (chatData?.bubbleSize || 15) + 'px',
                                     ...(computedBubbleStyle || {})
                                 }">
+                                <!-- Arrow -->
+                                <div v-if="shouldShowArrow"
+                                    class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
+                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#374151]' : 'left-[-6px] border-r-[6px] border-r-[#2a2520]'">
+                                </div>
+
                                 <!-- Quote -->
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
@@ -259,8 +266,8 @@
                                 <span v-html="formattedContent"></span>
                             </div>
 
-                            <!-- 2. Image Layer -->
-                            <div v-if="isImageMsg(msg.content)" class="msg-image bg-transparent"
+                            <!-- 2. Image Layer (Standalone or separate) -->
+                            <div v-if="isImageMsg(msg)" class="msg-image bg-transparent"
                                 @contextmenu.prevent="emitContextMenu">
                                 <img :src="getImageSrc(msg)"
                                     class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
@@ -488,8 +495,8 @@ const isValidMessage = computed(() => {
     // 1. If it's a family card, always show
     if (isFamilyCard.value) return true
 
-    // 2. If it's an image, always show
-    if (isImageMsg(props.msg.content)) return true
+    // 2. If it's an image/sticker, always show
+    if (isImageMsg(props.msg)) return true
 
     // 3. If it's an HTML card, it's ONLY valid if it actually has renderable HTML content
     if ((props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value) return true
@@ -686,11 +693,11 @@ function getCleanContent(contentRaw) {
     // Filter 3: Garbage punctuation strings
     if (/^["'>}<{\[\]]+$/.test(clean.trim())) return '';
 
-    // Filter 4: HTML JSON cleanup (Surgical removal)
+    // Filter 4: HTML JSON cleanup (Greedy but surgical removal)
     if (clean.includes('"type"') && clean.includes('"html"')) {
-        // Only strip if it's a valid JSON block starting with { and ending with }
-        // This regex is more precise and avoids swallowing text BEFORE or AFTER the JSON
-        clean = clean.replace(/\{[\s\n]*"type"\s*:\s*"html"[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?\}/gi, '');
+        // This regex matches the entire block from { to } that contains both keywords.
+        // It's greedy enough to handle internal quotes/brackets within the HTML string.
+        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?\}(?:\s*\}?)/gi, '');
     }
 
 
@@ -959,8 +966,14 @@ function formatMessageContent(msg) {
         let found = allAvailable.find(s => s.name === n || normalize(s.name) === nClean);
         
         // 2. Fuzzy Match (If AI sent a partial name, try to find a sticker that CATEGORICALLY matches)
+        // CRITICAL FIX: Ensure normalized sticker name is not empty to avoid matching everything to ??
         if (!found && nClean.length >= 2) {
-            found = allAvailable.find(s => normalize(s.name).includes(nClean) || nClean.includes(normalize(s.name)));
+            found = allAvailable.find(s => {
+                const sClean = normalize(s.name);
+                if (!sClean || sClean.length < 1) return false;
+                // AI provided a sub-string of the sticker name (e.g., [委屈] matches "委屈哭哭")
+                return sClean.includes(nClean);
+            });
         }
 
         if (found) {
