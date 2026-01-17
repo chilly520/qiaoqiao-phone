@@ -862,7 +862,7 @@ function isImageMsg(msg) {
     }
     
     // ONLY treat as pure image if the entire cleaned message is just the [Tag]
-    const tagMatch = clean.match(/^\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]$/i)
+    const tagMatch = clean.match(/^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i)
     return !!tagMatch
 }
 
@@ -875,7 +875,7 @@ function getImageSrc(msg) {
         if (m) return m[0]
     }
     if (clean.startsWith('http') || clean.startsWith('blob:')) return clean
-    const match = clean.match(/\[(?:图片|IMAGE|表情包|STICKER)[:：](.*?)\]/i)
+    const match = clean.match(/\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：](.*?)\]/i)
     if (match) {
         const c = match[1].trim()
         if (c.startsWith('http') || c.startsWith('blob:') || c.startsWith('data:')) return c

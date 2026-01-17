@@ -1841,7 +1841,7 @@ const isImageMsg = (msg) => {
 
     // Tag check: contains [图片:...] or [表情包:...]
     // We use a more relaxed regex without strict ^ $ to handle potential surrounding chars/newlines
-    return /\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/i.test(clean)
+    return /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]/i.test(clean)
 }
 
 const getImageSrc = (msg) => {
@@ -1862,7 +1862,7 @@ const getImageSrc = (msg) => {
     if (clean.startsWith('http') || clean.startsWith('blob:')) return clean
 
     // 4. Extraction from tag [图片:URL] or [表情包:名称]
-    const match = clean.match(/\[(?:图片|IMAGE|表情包|STICKER)[:：](.*?)\]/i)
+    const match = clean.match(/\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：](.*?)\]/i)
     if (match) {
         const content = match[1].trim()
 

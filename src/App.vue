@@ -158,7 +158,8 @@ watch(() => chatStore.notificationEvent, (evt) => {
     showBanner.value = true
 
     // ALSO trigger system notification (for real phone notification bar)
-    notificationService.sendNotification(evt.name || '新消息', {
+    const notificationTitle = `[小手机] ${evt.name || '新消息'}`
+    notificationService.sendNotification(notificationTitle, {
         body: evt.content,
         icon: evt.avatar
     })
