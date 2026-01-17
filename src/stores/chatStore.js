@@ -1240,7 +1240,7 @@ ${contextMsgs}
                     const mins = diffMinutes % 60;
                     const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
                     // More explicit system tag to ensure AI doesn't miss it
-                    lastUserMsg.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应（如：打招呼方式、困倦、正忙等，并简述你这段时间的动态）。】`
+                    lastUserMsg.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应（如：打招呼方式、困倦、正忙等状态）。】`
                 }
             }
         }

@@ -134,4 +134,27 @@ const router = createRouter({
     ]
 })
 
+// --- Error Handling & Deployment Awareness ---
+// If we deploy a new version, old asset hashes change. 
+// When a user tries to click a new page, the browser fails to fetch the old .js file (ChunkLoadError).
+// This logic force-refreshes the page to the new version instead of letting the UI "freeze".
+router.onError((error, to) => {
+    if (error.message.includes('Failed to fetch dynamically imported module') ||
+        error.message.includes('Loading chunk')) {
+        console.warn('[Router] Deployment change detected. Force refreshing to load new assets...', error);
+        window.location.reload();
+    }
+});
+
+// --- UI Anti-Stall Guard ---
+// Ensure that when returning to Home (/), we clear any blocking states
+router.afterEach((to) => {
+    if (to.path === '/') {
+        // Force scroll to top
+        window.scrollTo(0, 0);
+        // Dispatch a global event to let components (like WeChat) know we are back at desktop
+        window.dispatchEvent(new CustomEvent('app-returned-to-desktop'));
+    }
+});
+
 export default router
