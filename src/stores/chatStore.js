@@ -1435,6 +1435,45 @@ ${contextMsgs}
                     triggerPatEffect(chatId, target);
                 }
 
+                // --- Handle [RECALL] / [撤回] Command ---
+                const recallRegex = /\[(?:RECALL|撤回)(?::(.+?))?\]/i
+                const recallMatch = properlyOrderedContent.match(recallRegex)
+                if (recallMatch) {
+                    const keyword = recallMatch[1] ? recallMatch[1].trim() : null
+                    const msgs = chat.msgs || []
+                    let targetIdx = -1
+
+                    if (keyword) {
+                        // Find last message from AI containing keyword
+                        for (let i = msgs.length - 1; i >= 0; i--) {
+                            if (msgs[i].role === 'ai' && !msgs[i].isRecallTip && ensureString(msgs[i].content).includes(keyword)) {
+                                targetIdx = i; break;
+                            }
+                        }
+                    } else {
+                        // Recall the last AI message
+                        for (let i = msgs.length - 1; i >= 0; i--) {
+                            if (msgs[i].role === 'ai' && !msgs[i].isRecallTip) {
+                                targetIdx = i; break;
+                            }
+                        }
+                    }
+
+                    if (targetIdx !== -1) {
+                        const originalMsg = msgs[targetIdx]
+                        const recallMsg = {
+                            ...originalMsg,
+                            type: 'system',
+                            content: `${chat.name || '对方'}撤回了一条消息`,
+                            isRecallTip: true,
+                            realContent: originalMsg.content
+                        }
+                        msgs.splice(targetIdx, 1, recallMsg)
+                        saveChats()
+                        useLoggerStore().addLog('AI', '指令执行: 撤回消息', { keyword, index: targetIdx })
+                    }
+                }
+
 
                 // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
                 // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)

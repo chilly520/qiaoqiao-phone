@@ -28,12 +28,12 @@ const fullContent = computed(() => {
     <style id="base-styles">
       html, body {
         margin: 0 !important;
-        padding: 0 !important;
+        padding: 50px !important; /* Massive breathing room for animations */
         border: 0 !important;
         width: auto !important;
         display: inline-block !important;
         box-sizing: border-box !important;
-        overflow: hidden !important;
+        overflow: visible !important; /* Allow animations to bleed into the padded zone */
         background: transparent !important;
         -webkit-tap-highlight-color: transparent;
       }
@@ -143,13 +143,15 @@ const adjustHeight = () => {
     const updateSize = () => {
       // Trace both height and width
       const rect = body.getBoundingClientRect()
-      const newHeight = rect.height || body.scrollHeight
-      const newWidth = rect.width || body.scrollWidth
       
-      if (newHeight > 0) height.value = newHeight
-      if (newWidth > 0) {
-          // Constrain width to parent container
-          width.value = Math.min(newWidth, window.innerWidth * 0.85)
+      // We SUBTRACT the padding from display but let the container be large enough
+      // Actually, if we want to show the overflow, the iframe MUST be large enough.
+      // So we keep the height/width as is but maybe add negative margins to the container?
+      // Better: Keep height/width but ensure the iframe doesn't clip.
+      
+      if (rect.height > 0) height.value = rect.height
+      if (rect.width > 0) {
+          width.value = Math.min(rect.width, window.innerWidth * 0.95)
       }
     }
 
@@ -181,21 +183,28 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
 
 <style scoped>
 .safe-html-card {
-  display: inline-block; /* Ensure it doesn't take full width */
+  display: inline-block;
   vertical-align: top;
-  transition: height 0.2s ease, opacity 0.3s ease;
-  /* 移除布局隔离，避免影响高度计算 */
-  /* overflow: hidden; -- 用户反馈会导致折叠界面被裁切，暂时移除 */
-  /* 移除边框和阴影，让内容完全融入界面 */
-  border-radius: 0;
-  box-shadow: none;
-  /* 完全透明背景 */
+  transition: height 0.2s ease, width 0.2s ease;
   background: transparent;
-  /* 移除内边距，让内容紧贴边缘 */
   padding: 0;
-  /* 防止内容溢出 */
   max-width: 100%;
-  word-wrap: break-word;
+  overflow: visible !important;
+  
+  /* Use negative margins to perfectly offset the 50px internal padding.
+     This makes the 'logical' box of the card match the actual content,
+     while the iframe itself extends 50px outwards in every direction to show overflow. */
+  margin: -50px !important;
+  pointer-events: none;
+}
+
+.safe-html-card iframe {
+  border: none !important;
+  background: transparent !important;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  display: block;
 }
 
 /* 响应式调整 */
