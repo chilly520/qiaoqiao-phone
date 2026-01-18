@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useChatStore } from '../../stores/chatStore'
@@ -74,7 +74,7 @@ const newConfig = () => {
         name: '新配置',
         baseUrl: 'http://127.0.0.1:7861/v1',
         apiKey: 'pwd',
-        model: 'gemini-2.5-pro-nothinking',
+        model: 'gemini-2.0-flash-exp',
         temperature: 0.7,
         maxTokens: 4096,
         // Advanced ST Params
@@ -111,21 +111,63 @@ const fetchModels = async () => {
     }
     
     try {
-        const response = await fetch(`${formData.value.baseUrl}/models`, {
-            headers: {
-                'Authorization': `Bearer ${formData.value.apiKey}`
+        let url = ''
+        let options = {}
+
+        if (formData.value.provider === 'gemini') {
+            // Google Gemini Native Provider
+            let base = formData.value.baseUrl.trim()
+            // Clean up trailing slash
+            base = base.replace(/\/+$/, '')
+            
+            // Auto-append v1beta if no version is specified
+            if (!base.includes('/v1')) {
+                base += '/v1beta'
             }
-        })
+            
+            url = `${base}/models?key=${formData.value.apiKey}`
+            options = { method: 'GET' }
+        } else {
+            // OpenAI Compatible Provider
+            url = `${formData.value.baseUrl}/models`
+            options = {
+                headers: {
+                    'Authorization': `Bearer ${formData.value.apiKey}`
+                }
+            }
+        }
+        
+        const response = await fetch(url, options)
         
         if (response.ok) {
             const data = await response.json()
-            // 支持两种格式: data.data 或 data.models
-            const models = data.data || data.models || []
-            availableModels.value = models.map(m => typeof m === 'string' ? m : m.id)
+            // OpenAI 格式: data.data; Gemini 格式: data.models
+            const rawModels = data.data || data.models || []
+            
+            // 处理模型 ID
+            availableModels.value = rawModels.map(m => {
+                if (typeof m === 'string') return m
+                
+                let id = m.id || m.name || ''
+                // Gemini 模型通常带有 "models/" 前缀，为了 UI 简洁这里去掉
+                if (formData.value.provider === 'gemini' && id.startsWith('models/')) {
+                    id = id.replace('models/', '')
+                }
+                return id
+            }).filter(id => {
+                // 过滤掉不相关的模型 (可选)
+                if (formData.value.provider === 'gemini') {
+                    return id.toLowerCase().includes('gemini')
+                }
+                return true
+            })
+
             showModelSelect.value = true
             chatStore.triggerToast(`已获取 ${availableModels.value.length} 个模型`, 'success')
         } else {
-            chatStore.triggerToast('拉取失败: ' + response.statusText, 'error')
+            const errorData = await response.json().catch(() => ({}))
+            const errorMsg = errorData.error?.message || response.statusText
+            chatStore.triggerToast('拉取失败: ' + errorMsg, 'error')
         }
     } catch (e) {
         chatStore.triggerToast('拉取失败: ' + e.message, 'error')
@@ -143,6 +185,20 @@ const selectModel = (modelId) => {
 const onConfigChange = () => {
     loadConfig()
 }
+
+// 自动填入官方地址
+const stopWatchProvider = ref(null)
+
+watch(() => formData.value.provider, (newProvider) => {
+    if (newProvider === 'gemini') {
+        const currentUrl = formData.value.baseUrl.trim()
+        // 如果当前地址为空，或者还是默认的本地地址，则自动切换成谷歌官方地址
+        if (!currentUrl || currentUrl.includes('127.0.0.1') || currentUrl.includes('localhost')) {
+            formData.value.baseUrl = 'https://generativelanguage.googleapis.com'
+            chatStore.triggerToast('已自动切换为 Gemini 官方接口地址', 'info')
+        }
+    }
+})
 </script>
 
 <template>
