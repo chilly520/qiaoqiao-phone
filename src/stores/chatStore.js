@@ -5,6 +5,7 @@ import { useLoggerStore } from './loggerStore'
 import { useWorldBookStore } from './worldBookStore'
 import { useMomentsStore } from './momentsStore'
 import { useSettingsStore } from './settingsStore'
+import { useMusicStore } from './musicStore'
 
 const DEFAULT_AVATARS = [
     '/avatars/小猫举爪.jpg',
@@ -126,6 +127,18 @@ export const useChatStore = defineStore('chat', () => {
             const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
 
             chat.msgs = chat.msgs.filter(m => {
+                // Filter out undefined/null/empty content for non-special types
+                if (m.type !== 'image' && m.type !== 'sticker' && m.type !== 'voice' && m.type !== 'redpacket' && m.type !== 'transfer' && m.type !== 'family_card' && m.type !== 'moment_card') {
+                    const s = String(m.content || '').trim();
+                    // Strict check: if it's literally "undefined" or empty
+                    if (!s || s === 'undefined' || s === 'null') {
+                        // Check if there is specialized type data (like HTML)
+                        if (!m.html && !m.forceCard) {
+                            return false; // Don't display garbage bubbles
+                        }
+                    }
+                }
+
                 if (!m.content || typeof m.content !== 'string') return true;
                 const trimmed = m.content.trim();
 
@@ -152,7 +165,7 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     // Actions
-    function addMessage(chatId, msg) {
+    async function addMessage(chatId, msg) {
         const chat = chats.value[chatId]
         if (!chat) return false
 
@@ -215,7 +228,14 @@ export const useChatStore = defineStore('chat', () => {
             claimTime: msg.claimTime || null,
             duration: msg.duration || 0,
             quote: msg.quote || null,
-            paymentId: msg.paymentId || null // Initialize paymentId
+            paymentId: msg.paymentId || null, // Initialize paymentId
+            hidden: msg.hidden || false // Detection for visualizer-only messages
+        }
+
+        // 1.0 STRICT CONTENT FILTER: Reject "undefined", "null", or empty content
+        if (newMsg.type === 'text' && (!newMsg.content || newMsg.content === 'undefined' || newMsg.content === 'null' || newMsg.content.trim() === '')) {
+            console.warn('[ChatStore] Rejected invalid content:', newMsg.content);
+            return false;
         }
 
         // 1.1 Critical: Ensure all payment messages have paymentId and standardized content
@@ -498,18 +518,203 @@ export const useChatStore = defineStore('chat', () => {
                 }
             }
 
-            // Clean tags from visible content
-            newMsg.content = newMsg.content.replace(/\[(?:UPDATE_)?BIO:[^\]]+\]/gi, '').trim();
+            // Note: We no longer strip tags from newMsg.content here. 
+            // We let the UI (ChatWindow.vue) handle formatting for display, 
+            // or we will handle it in a final pass below to ensure the AI 
+            // always sees its own tags in history.
 
             if (bioUpdated) {
-                // Final re-fetch and assignment to be absolutely sure reactivity takes hold
-                const currentChat = chats.value[chatId];
-                if (currentChat) {
-                    currentChat.bio = { ...chat.bio };
-                    chats.value = { ...chats.value };
-                }
                 saveChats();
             }
+        }
+
+
+
+        // 3.2 Moment Share Parsing (AI Only)
+        if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
+            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]*?)\]/i;
+            const match = newMsg.content.match(shareRegex);
+
+            if (match) {
+                let shareContent = match[1].trim();
+                let momentData = null;
+
+                try {
+                    // 1. Try JSON Parsing
+                    if (shareContent.startsWith('{')) {
+                        momentData = JSON.parse(shareContent);
+                    }
+                } catch (e) {
+                    console.warn('[ChatStore] Failed to parse Moment JSON, falling back to text', e);
+                }
+
+                // 2. Fallback: Treat as simple text/ID
+                if (!momentData) {
+                    // Check if it's a known Moment ID (simple check: if it exists in momentsStore?)
+                    // Since specific store access might be tricky here without circular dep or extra checking, 
+                    // we will treat it as a "New Moment Stub" or just text.
+                    // Improving UX: logic to fetch image if possible? 
+                    momentData = {
+                        id: crypto.randomUUID(), // Stub ID
+                        text: shareContent,
+                        author: chat.name,
+                        image: chat.avatar // Fallback image
+                    };
+                }
+
+                // Ensure essential fields
+                if (!momentData.id) momentData.id = crypto.randomUUID();
+                if (!momentData.author) momentData.author = chat.name;
+                if (!momentData.avatar) momentData.avatar = chat.avatar;
+
+                // Convert to Card Message
+                newMsg.type = 'moment_card';
+                newMsg.content = JSON.stringify(momentData); // Store structured data
+            }
+        }
+
+        // [MOVED UP] 7. Call Logic (Control & Content Interception)
+        // Must be done BEFORE adding to chat history to prevent pollution
+        const { useCallStore } = await import('./callStore')
+        const callStore = useCallStore()
+        let content = newMsg.content || '' // Local content var
+        const isCallActive = callStore.status === 'active';
+
+        // 7.1 User Content Interception
+        if (newMsg.role === 'user') {
+            if (callStore.status !== 'none' && callStore.status !== 'ended') {
+                // Add to transcript
+                callStore.addTranscriptLine('user', newMsg.content)
+                // Hide from background chat history
+                newMsg.hidden = true
+            }
+        }
+
+        // 7.2 AI Logic & Protocol Handling
+        if (newMsg.role === 'ai') {
+            // Priority 0: Music & Standalone Call Triggers
+            if (content.includes('[一起听歌:') || content.includes('<bgm>')) {
+                const { useMusicStore } = await import('./musicStore')
+                const musicStore = useMusicStore()
+                const musicMatch = content.match(/\[一起听歌:([\s\S]+?)\]/i) || content.match(/<bgm>([\s\S]+?)<\/bgm>/i)
+                if (musicMatch) {
+                    const songQuery = musicMatch[1].trim()
+                    musicStore.startTogether({ name: chat.name, avatar: chat.avatar })
+                    if (!musicStore.playerVisible) musicStore.togglePlayer()
+                    let songName = songQuery, singer = ''
+                    if (songQuery.includes('-')) {
+                        const parts = songQuery.split('-'), s = parts[0].trim(), n = parts[1].trim();
+                        singer = s; songName = n;
+                    }
+                    musicStore.searchMusic(songName, singer).then(results => {
+                        if (results?.[0]) musicStore.getSongUrl(results[0]).then(url => { if (url) musicStore.addSong(url); musicStore.loadSong(musicStore.playlist.length - 1); })
+                    })
+                }
+            }
+            if (content.includes('[停止听歌]')) {
+                const { useMusicStore } = await import('./musicStore')
+                const musicStore = useMusicStore()
+                musicStore.stopTogether()
+            }
+            if (content.includes('[语音通话]') || content.includes('[视频通话]')) {
+                const callType = content.includes('[视频通话]') ? 'video' : 'voice'
+                callStore.receiveCall({ name: chat.name, avatar: chat.avatar, id: chat.id }, callType)
+            }
+
+            // Priority 1: Handle standalone control tags or tags embedded with other content
+            if (content.includes('[接听]') && callStore.status === 'dialing') {
+                callStore.acceptCall()
+            }
+            if ((content.includes('[拒绝]') || content.includes('[拒接]')) && callStore.status === 'dialing') {
+                callStore.endCall()
+            }
+            if (content.includes('[挂断]') && isCallActive) {
+                callStore.endCall()
+            }
+
+            // Priority 2: Check for Call Protocol Block (Strict or Fuzzy)
+            const hasJsonLike = content.includes('{') && (content.includes('"speech"') || content.includes('"status"') || content.includes('"action"') || content.includes('"行为"') || content.includes('"心声"'));
+
+            if (content.includes('[CALL_START]') || content.includes('[CALL_END]') || (isCallActive && hasJsonLike)) {
+                console.log('[ChatStore] Call Protocol Detected (Enhanced)');
+
+                // Ensure we are in active state if we receive protocol data
+                // BUGFIX: Do NOT revive if status is 'ended'. Only accept if dialing/incoming/none.
+                if (callStore.status !== 'active' && callStore.status !== 'ended') {
+                    console.log('[ChatStore] Force accepting call due to protocol data');
+                    callStore.acceptCall();
+                }
+
+                // Extraction Logic
+                let callData = null;
+                let textOutsideJson = content;
+                try {
+                    const matches = content.match(/\{[\s\S]*?\}/g);
+                    if (matches) {
+                        const jsonCandidate = matches[matches.length - 1];
+                        callData = JSON.parse(jsonCandidate);
+                        textOutsideJson = content.replace(jsonCandidate, '').trim();
+                    }
+                } catch (e) { console.warn('[ChatStore] Enhanced JSON parse failed fallback', e); }
+
+                const protocolRegex = /\[CALL_START\]([\s\S]+?)\[CALL_END\]/i;
+                const tagMatch = content.match(protocolRegex);
+                if (tagMatch) {
+                    try {
+                        callData = JSON.parse(tagMatch[1]);
+                        textOutsideJson = content.replace(tagMatch[0], '').trim();
+                    } catch (e) { }
+                }
+
+                if (callData || textOutsideJson) {
+                    const speech = callData?.speech || callData?.["通话内容"] || callData?.text || textOutsideJson || '';
+                    const action = callData?.action || callData?.["行为"] || callData?.["动作"] || '';
+                    const statusVal = callData?.status || callData?.["状态"] || '';
+
+                    if (speech || action) callStore.addTranscriptLine('ai', speech, action);
+                    if (statusVal) callStore.updateStatus(statusVal);
+                    if (callData?.hangup) callStore.endCall();
+                }
+                newMsg.hidden = true; // Stay in history for context, but out of chat bubbles
+            }
+
+            // Priority 3: Fallback for Normal Text during Active Call
+            if (isCallActive && content && !content.includes('[CALL_START]')) {
+                const cleanText = content.replace(/\[.*?\]/g, '').trim();
+                if (cleanText) callStore.addTranscriptLine('ai', cleanText);
+                newMsg.hidden = true;
+            }
+
+            // --- Final context & Hiding Check ---
+            // Tag stripping patterns for checking if bubble will be empty
+            const protocolTags = [
+                /\{[\s\S]*?("speech"|"status"|"action"|"转发"|"心声"|"行为")[\s\S]*?\}/gi,
+                /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
+                /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
+                /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
+                /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
+                /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
+                /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
+                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
+            ];
+
+            let displayTest = content;
+            protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
+            const isEmptyDisplay = displayTest.trim().length === 0;
+
+            if (isEmptyDisplay && content.trim().length > 0) {
+                // If it's ONLY tags, hide it from the UI but PRESERVE the content for AI context
+                newMsg.hidden = true;
+            } else if (!newMsg.hidden && typeof newMsg.content === 'string') {
+                // If it HAS text, clean the tags for the bubble display
+                protocolTags.forEach(p => { newMsg.content = newMsg.content.replace(p, ''); });
+                newMsg.content = newMsg.content.trim();
+            }
+        }
+
+        // Filter out empty messages
+        if (!newMsg.content || newMsg.content.length === 0) {
+            return null;
         }
 
         // 4. Persistence
@@ -521,15 +726,6 @@ export const useChatStore = defineStore('chat', () => {
             chat.msgs.push(...newMsg._pendingSystemMessages)
             delete newMsg._pendingSystemMessages // Clean up
         }
-
-        // Log message action (debug level to avoid spam)
-        // Log message action (debug level to avoid spam)
-        // const logger = useLoggerStore()
-        // logger.debug(`${newMsg.role === 'user' ? '发送' : '接收'}消息`, {
-        //     chatName: chat.name,
-        //     type: newMsg.type,
-        //     msgId: newMsg.id
-        // })
 
         if (!chat.inChatList) chat.inChatList = true
         if (chatId !== currentChatId.value) {
@@ -556,41 +752,30 @@ export const useChatStore = defineStore('chat', () => {
 
 
         // Auto-generate system messages for family cards
-        const content = typeof newMsg.content === 'string' ? newMsg.content : ''
+        content = typeof newMsg.content === 'string' ? newMsg.content : ''
         const userName = chat.userName || '用户'
         const charName = chat.name || '对方'
 
-        // FAMILY_CARD_APPLY - User sent application
         if (content.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
             setTimeout(() => {
-                addMessage(chatId, {
-                    role: 'system',
-                    content: `${userName}正在向${charName}申请绑定亲属卡`
-                })
+                addMessage(chatId, { role: 'system', content: `${userName}正在向${charName}申请绑定亲属卡` })
             }, 100)
         }
 
-        // FAMILY_CARD - AI sent approval
         if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
             const match = content.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
             const cardName = match ? match[2] : '亲属卡'
             setTimeout(() => {
-                addMessage(chatId, {
-                    role: 'system',
-                    content: `${charName}向您发送了亲属卡「${cardName}」，点击领取`
-                })
+                addMessage(chatId, { role: 'system', content: `${charName}向您发送了亲属卡「${cardName}」，点击领取` })
             }, 100)
         }
 
-        // FAMILY_CARD_REJECT - AI rejected
         if (content.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
             setTimeout(() => {
-                addMessage(chatId, {
-                    role: 'system',
-                    content: `${charName}已拒绝${userName}的亲属卡申请`
-                })
+                addMessage(chatId, { role: 'system', content: `${charName}已拒绝${userName}的亲属卡申请` })
             }, 100)
         }
+
 
         checkAutoSummary(chatId)
         saveChats()
@@ -914,12 +1099,18 @@ ${contextMsgs}
             // Save to Memory
             if (!chat.memory) chat.memory = []
 
-            chat.memory.unshift({
+            const newMemoryItem = {
                 id: Date.now(),
                 timestamp: Date.now(),
                 range: rangeDesc,
                 content: summaryContent
-            })
+            }
+
+            // Update memory list (non-mutating for better reactivity)
+            chat.memory = [newMemoryItem, ...chat.memory]
+
+            // Also update the latest summary field for AI context
+            chat.summary = summaryContent
 
             triggerToast('总结已生成并存入记忆库', 'info')
 
@@ -2052,15 +2243,19 @@ ${contextMsgs}
     }
 
     function vacuumStorage() {
-        Object.keys(chats.value).forEach(chatId => {
-            const chat = chats.value[chatId]
-            if (chat.msgs && chat.msgs.length > 10) chat.msgs = chat.msgs.slice(-10)
-            const LargeLimit = 100000
-            if (chat.avatar && chat.avatar.length > LargeLimit) chat.avatar = ''
-            if (chat.userAvatar && chat.userAvatar.length > LargeLimit) chat.userAvatar = ''
-            if (chat.bgUrl && chat.bgUrl.length > LargeLimit) chat.bgUrl = ''
-            if (chat.memory && chat.memory.length > 5) chat.memory = chat.memory.slice(0, 5)
-        })
+        console.warn('[Storage] Quota exceeded. Attempting safe cleanup...');
+        // DEPRECATED: Old destructive logic removed.
+        // We do NOT want to auto-delete user messages or backgrounds without consent.
+
+        // Only try to clean up truly temporary/dispensable data if any
+        // e.g., clear old undo history, or temp caches (not implemented yet)
+
+        // Notify user instead of destroying data
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: { message: '存储空间已满！请立即导出备份或删除旧聊天，否则数据可能丢失！', type: 'error', duration: 10000 }
+            }));
+        }
     }
 
     function saveChats() {
@@ -2098,8 +2293,15 @@ ${contextMsgs}
                     localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value))
                     return true
                 } catch (retryErr) {
-                    Object.keys(chats.value).forEach(id => chats.value[id].msgs = [])
-                    localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value))
+                    // STOP!! DO NOT WIPE DATA ON ERROR
+                    console.error('[Storage] CRITICAL: Unable to save data. LocalStorage is full.', retryErr);
+
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('show-toast', {
+                            detail: { message: '严重警告：数据保存失败！空间已满，请勿刷新页面，立即导出数据！', type: 'error', duration: 10000 }
+                        }));
+                    }
+                    return false
                 }
             }
             return false

@@ -87,8 +87,105 @@ const updateCompressQuality = () => {
 
 
 
-const compressImages = () => {
-    chatStore.triggerToast('功能开发中：图片压缩算法待移植', 'info')
+// Image Compression Logic
+const compressImages = async () => {
+    if (!confirm('这将重新压缩所有现有的聊天图片，可能会略微降低清晰度以节省空间。\n确定要继续吗？')) return
+    
+    chatStore.triggerToast('正在压缩图片，请稍候...', 'info')
+    let count = 0
+    let savedSize = 0
+    
+    // Process
+    const chats = chatStore.chats
+    for (const chatId in chats) {
+        const msgs = chats[chatId].msgs || []
+        for (const msg of msgs) {
+            // Check for image content
+            const imgMatch = msg.content && typeof msg.content === 'string' && msg.content.match(/^\[图片:(data:image\/[^;]+;base64,[^\]]+)\]$/)
+            
+            if (imgMatch) {
+                try {
+                   const originalBase64 = imgMatch[1]
+                   // Re-compress using a helper (we'll inline a simple one or use utils if available)
+                   // Using simple canvas re-draw here for "retroactive" compression
+                    const newBase64 = await reCompressBase64(originalBase64, compressQuality.value)
+                    
+                    if (newBase64.length < originalBase64.length) {
+                        savedSize += (originalBase64.length - newBase64.length)
+                        msg.content = `[图片:${newBase64}]`
+                        count++
+                    }
+                } catch (e) {
+                    console.error('Compression failed for msg', msg.id, e)
+                }
+            }
+        }
+    }
+    
+    chatStore.saveChats()
+    calculateStorage()
+    chatStore.triggerToast(`压缩完成！处理了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+}
+
+// Helper to re-compress
+const reCompressBase64 = (base64, quality) => {
+    return new Promise((resolve) => {
+        const img = new Image()
+        img.src = base64
+        img.onload = () => {
+            const canvas = document.createElement('canvas')
+            // Cap max width to 600 if it was larger (force downsize)
+            let width = img.width
+            let height = img.height
+            const MAX_SIDE = 600
+            
+            if (width > height) {
+                if (width > MAX_SIDE) {
+                    height *= MAX_SIDE / width
+                    width = MAX_SIDE
+                }
+            } else {
+                if (height > MAX_SIDE) {
+                    width *= MAX_SIDE / height
+                    height = MAX_SIDE
+                }
+            }
+            
+            canvas.width = width
+            canvas.height = height
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(img, 0, 0, width, height)
+            resolve(canvas.toDataURL('image/jpeg', quality))
+        }
+        img.onerror = () => resolve(base64) // Fallback
+    })
+}
+
+const cleanAllImages = () => {
+    if (!confirm('确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为[已清理]。\n此操作不可撤销！')) return
+    
+    let count = 0
+    let savedSize = 0
+    
+    const chats = chatStore.chats
+    for (const chatId in chats) {
+        const msgs = chats[chatId].msgs || []
+        for (const msg of msgs) {
+             // Check for image content or raw Base64 blocks
+            if (msg.content && typeof msg.content === 'string') {
+                 if (msg.content.includes('[图片:data:image')) {
+                     const oldLen = msg.content.length
+                     msg.content = '[图片已清理]' // Replace with placeholder
+                     savedSize += oldLen
+                     count++
+                 }
+            }
+        }
+    }
+    
+    chatStore.saveChats()
+    calculateStorage()
+    chatStore.triggerToast(`清理完成！删除了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
 }
 
 const clearLogs = () => {
@@ -201,13 +298,21 @@ const clearChats = () => {
         <div>
             <h3 class="text-sm font-bold text-blue-500 mb-2 px-1">深度清理 (瘦身)</h3>
             
-            <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-4">
+             <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-4">
                  <button @click="clearLogs" class="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition border-b border-gray-100">
                      <div class="flex items-center gap-3">
                          <i class="fa-solid fa-terminal text-blue-500"></i>
                          <span class="text-sm text-gray-700 font-medium">清空系统日志</span>
                      </div>
                      <span class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">推荐</span>
+                 </button>
+                 
+                 <button @click="cleanAllImages" class="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition">
+                     <div class="flex items-center gap-3">
+                         <i class="fa-regular fa-image text-orange-500"></i>
+                         <span class="text-sm text-gray-700 font-medium">仅清理所有图片</span>
+                     </div>
+                     <span class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">保留文字</span>
                  </button>
             </div>
 

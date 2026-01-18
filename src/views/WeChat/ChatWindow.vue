@@ -7,6 +7,7 @@ import { useFavoritesStore } from '../../stores/favoritesStore'
 import { useStickerStore } from '../../stores/stickerStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useMusicStore } from '../../stores/musicStore'
+import { useCallStore } from '../../stores/callStore'
 
 import ChatActionPanel from './ChatActionPanel.vue'
 import ChatDetailSettings from './ChatDetailSettings.vue'
@@ -20,6 +21,7 @@ import ChatTransferModal from './modals/ChatTransferModal.vue'
 import ChatInputBar from './components/ChatInputBar.vue'
 import ChatMessageItem from './components/ChatMessageItem.vue'
 import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
+import CallStatusBar from '../../components/CallStatusBar.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -61,6 +63,7 @@ const stickerStore = useStickerStore()
 const walletStore = useWalletStore()
 const favoritesStore = useFavoritesStore()
 const musicStore = useMusicStore()
+const callStore = useCallStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -178,6 +181,21 @@ const handleProfileNavigation = (id) => {
         emit('show-profile', id)
     }, 300)
 }
+// Watch for call transcripts to trigger TTS
+watch(() => callStore.transcript.length, (newLen, oldLen) => {
+    if (newLen > oldLen && callStore.status === 'active') {
+        const lastLine = callStore.transcript[newLen - 1]
+        if (lastLine.role === 'ai' && chatData.value?.autoRead !== false) {
+            // Trigger TTS for call speech
+            ttsQueue.value.push({ 
+                text: lastLine.content, 
+                msgId: `call_tr_${newLen}_${Date.now()}` 
+            })
+            processQueue()
+        }
+    }
+})
+
 onMounted(() => {
     window.addEventListener('popstate', handleSettingsPopState)
 })
@@ -194,7 +212,8 @@ onUnmounted(() => {
 
 const displayedMsgs = computed(() => {
     if (!chatStore.currentChatId) return []
-    return chatStore.getDisplayedMessages(chatStore.currentChatId)
+    // Filter out hidden messages (e.g. call transcript lines)
+    return chatStore.getDisplayedMessages(chatStore.currentChatId).filter(m => !m.hidden)
 })
 
 const hasMoreMessages = computed(() => {
@@ -601,6 +620,7 @@ const handleAvatarClick = (msg) => {
     // Cancel any existing timer
     if (avatarClickTimer) {
         clearTimeout(avatarClickTimer)
+        avatarClickTimer = null
     }
 
     // Set a timer to handle the single click after a short delay
@@ -683,6 +703,30 @@ const handlePanelAction = (type) => {
     } else if (type === 'see-image') {
         // Show see image modal
         showSeeImageModal.value = true
+    } else if (type === 'voice-call') {
+        const char = chatData.value
+        if (char) {
+            callStore.startCall({ name: char.name, avatar: char.avatar, id: char.id }, 'voice')
+            // Trigger AI to respond to call
+            chatStore.addMessage(chatData.value.id, { 
+                role: 'system', 
+                content: `[System: ${chatStore.userName || '用户'} 正在给你打语音电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]` 
+            })
+            // Manually trigger the generation
+            chatStore.sendMessageToAI(chatData.value.id)
+        }
+    } else if (type === 'video-call') {
+        const char = chatData.value
+        if (char) {
+            callStore.startCall({ name: char.name, avatar: char.avatar, id: char.id }, 'video')
+            // Trigger AI to respond to call
+            chatStore.addMessage(chatData.value.id, { 
+                role: 'system', 
+                content: `[System: ${chatStore.userName || '用户'} 正在给你打视频电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]` 
+            })
+            // Manually trigger the generation
+            chatStore.sendMessageToAI(chatData.value.id)
+        }
     }
 }
 
@@ -1014,6 +1058,13 @@ const showToast = (msg, type = 'info') => {
 };
 
 const processQueue = () => {
+    // Stop if call ended
+    if (callStore.status === 'ended' || callStore.status === 'none') {
+        ttsQueue.value = [];
+        isSpeaking.value = false;
+        return;
+    }
+
     if (isSpeaking.value || ttsQueue.value.length === 0) return;
 
     isSpeaking.value = true;
@@ -1024,6 +1075,13 @@ const processQueue = () => {
         // 标记消息为已朗读
         if (msgId) {
             spokenMsgIds.add(msgId);
+        }
+
+        // Re-check call status before continuing
+        if (callStore.status === 'ended' || callStore.status === 'none') {
+             isSpeaking.value = false;
+             ttsQueue.value = [];
+             return;
         }
 
         isSpeaking.value = false;
@@ -1372,6 +1430,16 @@ const parseInnerVoice = (contentRaw) => {
     return null;
 }
 
+// Monitor Call Transcript for TTS (Since intercepted messages don't hit msgs list)
+watch(() => callStore.transcript.length, (newLen, oldLen) => {
+    if (newLen > oldLen) {
+        const lastLine = callStore.transcript[newLen - 1];
+        if (lastLine && lastLine.role === 'ai' && lastLine.content) {
+            addToQueue(lastLine.content);
+        }
+    }
+});
+
 const getCleanContent = (contentRaw) => {
     if (!contentRaw) return '';
     const content = ensureString(contentRaw);
@@ -1395,6 +1463,7 @@ const getCleanContent = (contentRaw) => {
         clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
     }
 
+    clean = clean.replace(/\[System:[\s\S]+?\]/gi, '');
     clean = clean.trim();
     // Remove Claim Tags
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
@@ -1913,6 +1982,14 @@ const formatMessageContent = (msg) => {
 
     // 1. Clean Internal System Tags (Fix for visual leakage)
     let text = getCleanContent(textRaw)
+        .replace(/\{[\s\S]*?("speech"|"status"|"action"|"转发"|"心声"|"行为")[\s\S]*?\}/gi, '') // Remove Call JSON
+        .replace(/\[CALL_START\][\s\S]*?\[CALL_END\]/gi, '') // Remove Call Blocks
+        .replace(/\[CALL_START\]|\[CALL_END\]/gi, '') // Remove Stray Tags
+        .replace(/\[(?:UPDATE_)?BIO:[^\]]+\]/gi, '') // Remove BIO Updates
+        .replace(/\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi, '') // Remove Moment Tags
+        .replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '') // Remove Music Tags
+        .replace(/\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi, '') // Remove Payment Logic Tags
+        .replace(/\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi, '') // Remove Basic Call Triggers
         .replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
         .replace(/Here is the original image:/gi, '') // Remove AI parroting
         .trim();
@@ -2227,6 +2304,18 @@ const getHtmlContent = (content) => {
 
 
 // UI Methods
+const handleToggleMusic = () => {
+    if (!musicStore.playerVisible) {
+        // Automatically start 'Together' mode when opening the player in Chat
+        if (chatData.value) {
+            musicStore.startTogether({
+                name: chatData.value.name,
+                avatar: chatData.value.avatar
+            })
+        }
+    }
+    musicStore.togglePlayer()
+}
 // Deprecated Inner Voice methods removed
 
 
@@ -2358,10 +2447,21 @@ onUnmounted(() => {
                         {{ chatData?.remark || chatData?.name }}
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
-                        <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
-                            :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'"></div>
-                        <span class="text-[10px] text-gray-500 truncate max-w-[150px] font-medium">{{
-                            chatData?.statusText || '在线' }}</span>
+
+                        
+                        <!-- Other Statuses (Only show if no active call) -->
+                        <template v-if="callStore.status === 'none'">
+                            <template v-if="musicStore.isListeningTogether">
+                                <i class="fa-solid fa-music text-[10px] text-green-500 animate-pulse"></i>
+                                <span class="text-[10px] text-green-600 font-bold">正在和你一起听歌</span>
+                            </template>
+                            <template v-else>
+                                <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
+                                    :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'"></div>
+                                <span class="text-[10px] text-gray-500 truncate max-w-[150px] font-medium">{{
+                                    chatData?.statusText || '在线' }}</span>
+                            </template>
+                        </template>
                     </div>
                 </div>
                 <div class="absolute right-1.5 flex items-center gap-0.5 text-black z-20">
@@ -2387,6 +2487,9 @@ onUnmounted(() => {
                     </div>
                 </div>
             </div>
+
+            <!-- Call Status (New Location: Top of Chat) -->
+            <CallStatusBar />
 
             <!-- Messages Area -->
             <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 relative z-10" ref="msgContainer"
@@ -2459,14 +2562,12 @@ onUnmounted(() => {
             </div>
 
             <!-- Input Area (Extracted) -->
-            <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef" :currentQuote="currentQuote"
+            <ChatInputBar v-if="!isMultiSelectMode && callStore.status !== 'active'" ref="chatInputBarRef" :currentQuote="currentQuote"
                 :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
                 @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
                 @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker"
-                @toggle-music="musicStore.togglePlayer" @regenerate="regenerateLastMessage"
+                @toggle-music="handleToggleMusic" @regenerate="regenerateLastMessage"
                 @cancel-quote="cancelQuote" />
-
-
 
             <!-- Multi-select Action Bar (Bottom Overlay) -->
             <div v-if="isMultiSelectMode"
@@ -2497,7 +2598,6 @@ onUnmounted(() => {
                         <span class="text-[10px] mt-0.5">删除</span>
                     </button>
                 </div>
-
                 <div class="w-8"></div> <!-- Spacer -->
             </div>
 
@@ -2508,6 +2608,13 @@ onUnmounted(() => {
             <!-- Emoji Picker -->
             <EmojiPicker v-if="showEmojiPicker" @select-emoji="handleEmojiSelect" @select-sticker="handleStickerSelect"
                 class="relative z-30 shadow-2xl" />
+
+            <!-- Call Visualizer (Global Overlay) -->
+            <CallVisualizer v-if="callStore.status !== 'none'" />
+
+            <!-- Media Previews -->
+            <ImagePreview v-if="previewImage" :src="previewImage" @close="previewImage = null" />
+            <VideoPreview v-if="previewVideo" :src="previewVideo" @close="previewVideo = null" />
 
             <!-- Hidden Input -->
             <input type="file" ref="imgUploadInput" class="hidden" accept="image/*" @change="handleImgUpload">

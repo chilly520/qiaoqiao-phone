@@ -48,6 +48,22 @@
         </div>
         <span class="text-xs text-[#888]">见图</span>
       </div>
+
+      <!-- Video Call -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'video-call')">
+        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+           <i class="fa-solid fa-video text-2xl text-[#07c160]"></i>
+        </div>
+        <span class="text-xs text-[#888]">视频通话</span>
+      </div>
+
+      <!-- Voice Call -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'voice-call')">
+        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+           <i class="fa-solid fa-phone text-2xl text-[#07c160]"></i>
+        </div>
+        <span class="text-xs text-[#888]">语音通话</span>
+      </div>
     </div>
   </div>
 </template>

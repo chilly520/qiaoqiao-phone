@@ -7,6 +7,8 @@ import { batteryMonitor } from './utils/batteryMonitor'
 
 import { notificationService } from './utils/notificationService'
 import { backgroundManager } from './utils/backgroundManager'
+import CallBanner from './components/CallBanner.vue'
+import CallVisualizer from './components/CallVisualizer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -268,11 +270,14 @@ watch(() => chatStore.toastEvent, (evt) => {
 
         <!-- Main Content Area -->
 
-        <!-- Main Content Area -->
         <div class="flex-1 w-full h-full overflow-hidden relative z-10 flex flex-col">
             <!-- 使用key强制组件重新渲染 -->
             <RouterView :key="routeKey" />
         </div>
+
+        <!-- Global Call Components -->
+        <CallBanner />
+        <CallVisualizer />
     </div>
 </template>
 

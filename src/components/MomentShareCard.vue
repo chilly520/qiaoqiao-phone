@@ -7,7 +7,8 @@ const props = defineProps({
 
 const momentData = computed(() => {
   try {
-    return typeof props.data === 'string' ? JSON.parse(props.data) : props.data
+    const parsed = typeof props.data === 'string' ? JSON.parse(props.data) : props.data
+    return parsed || {}
   } catch (e) {
     return {}
   }
@@ -15,38 +16,44 @@ const momentData = computed(() => {
 </script>
 
 <template>
-  <div
-    class="moment-share-card bg-white rounded-lg p-3 border border-gray-100 shadow-sm max-w-[240px] cursor-pointer active:bg-gray-50 transition-colors">
-    <div class="flex flex-col gap-2">
-      <!-- Author -->
-      <div class="flex items-center gap-2">
-        <i class="fa-solid fa-earth-asia text-[10px] text-gray-400"></i>
-        <span class="text-xs text-gray-500 font-medium">来自 {{ momentData.author || '朋友圈' }} 的分享</span>
+  <div class="moment-share-card bg-white rounded-[4px] border border-gray-200 shadow-sm w-[240px] overflow-hidden select-none">
+    
+    <!-- Title Area (If text exists) -->
+    <div class="p-3 pb-2" v-if="momentData.text">
+       <p class="text-[14px] text-black leading-snug line-clamp-2 font-medium">{{ momentData.text }}</p>
+    </div>
+
+    <!-- Content Area -->
+    <div class="px-3 pb-3 flex gap-2" :class="!momentData.text ? 'pt-3' : ''">
+      <!-- Image (Left) -->
+      <div v-if="momentData.image" class="w-[50px] h-[50px] shrink-0 bg-gray-100">
+         <img :src="momentData.image" class="w-full h-full object-cover">
+      </div>
+      <!-- Description/Fallback or just Right Side Spacer -->
+      <div v-else class="w-[50px] h-[50px] shrink-0 bg-gray-100 flex items-center justify-center text-gray-400">
+         <i class="fa-solid fa-image text-xl"></i>
       </div>
 
-      <!-- Content Preview -->
-      <div class="flex gap-2">
-        <div class="flex-1 min-w-0">
-          <p class="text-sm text-gray-800 line-clamp-3 leading-snug">{{ momentData.text || '分享了一条状态' }}</p>
-        </div>
-        <div v-if="momentData.image" class="w-12 h-12 rounded bg-gray-100 overflow-hidden shrink-0">
-          <img :src="momentData.image" class="w-full h-full object-cover">
-        </div>
-      </div>
-
-      <!-- Footer Label -->
-      <div class="border-t border-gray-50 pt-1.5 mt-1">
-        <span class="text-[10px] text-gray-400">朋友圈</span>
-      </div>
+       <!-- Right Side Info (Author/Source) -->
+       <div class="flex-1 flex flex-col justify-between py-0.5 max-w-[calc(100%-60px)]">
+           <div class="text-[12px] text-gray-500 line-clamp-2" v-if="!momentData.text">分享了一条动态</div>
+           <!-- Bottom Source Label -->
+           <div class="mt-auto flex items-center gap-1.5 pt-1">
+              <div class="w-3.5 h-3.5 rounded-sm flex items-center justify-center bg-gray-100">
+                  <i class="fa-solid fa-camera-retro text-[8px] text-gray-400"></i>
+              </div>
+              <span class="text-[10px] text-gray-400 scale-95 origin-left">朋友圈</span>
+           </div>
+       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.line-clamp-3 {
+.line-clamp-2 {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

@@ -2,7 +2,7 @@
   <div class="safe-html-card" :style="{ height: height + 'px', width: width + 'px' }">
     <iframe ref="iframeRef" :srcdoc="fullContent" class="w-full h-full border-none overflow-hidden"
       sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"
-      allowtransparency="true" @load="adjustHeight"></iframe>
+      allowtransparency="true" scrolling="no" @load="adjustHeight"></iframe>
   </div>
 </template>
 
@@ -28,16 +28,22 @@ const fullContent = computed(() => {
     <style id="base-styles">
       html, body {
         margin: 0 !important;
-        padding: 10px !important; /* Minimal safety buffer for shadows/glows */
+        padding: 10px !important; 
         border: 0 !important;
         width: auto !important;
-        display: flex !important; /* Centering helper */
+        display: flex !important;
         justify-content: center !important;
         align-items: center !important;
         box-sizing: border-box !important;
         overflow: visible !important; 
         background: transparent !important;
         -webkit-tap-highlight-color: transparent;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      
+      html::-webkit-scrollbar, body::-webkit-scrollbar {
+        display: none !important;
       }
       
       * {
@@ -148,9 +154,9 @@ const adjustHeight = () => {
       const newHeight = body.scrollHeight
       const newWidth = body.scrollWidth
       
-      if (newHeight > 0) height.value = newHeight
+      if (newHeight > 0) height.value = newHeight + 2
       if (newWidth > 0) {
-          width.value = Math.min(newWidth, window.innerWidth * 0.9)
+          width.value = Math.min(newWidth + 2, window.innerWidth * 0.9)
       }
     }
 
@@ -189,6 +195,12 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
   padding: 0;
   max-width: 100%;
   overflow: hidden; /* Keep the card contained */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.safe-html-card::-webkit-scrollbar {
+  display: none !important;
 }
 
 .safe-html-card iframe {

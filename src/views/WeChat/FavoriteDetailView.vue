@@ -10,12 +10,51 @@ import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 const route = useRoute()
 const router = useRouter()
 const favoritesStore = useFavoritesStore()
+const chatStore = useChatStore()
+const stickerStore = useStickerStore()
 
 const itemId = computed(() => route.params.id)
 const item = computed(() => {
     // Robust comparison converting both to strings
-    if (!itemId.value) return null
-    return favoritesStore.favorites.find(f => String(f.id) === String(itemId.value))
+    const id = itemId.value ? String(itemId.value) : null
+    if (!id) return null
+
+    // 1. Try Favorites Store First (Standard)
+    const fromStore = favoritesStore.favorites.find(f => String(f.id) === id)
+    if (fromStore) return fromStore
+
+    // 2. Fallback: Search in Chat History for "Virtual" Favorites (e.g. Call Records)
+    // This allows clicking "Favorite" cards in chat that aren't yet saved to the favorites list
+    // Iterate all chats
+    for (const chatId in chatStore.chats) {
+        const chat = chatStore.chats[chatId]
+        if (!chat.msgs) continue
+        
+        // Find message with matching favoriteId in its content JSON
+        for (let i = chat.msgs.length - 1; i >= 0; i--) { // Reverse search is faster for recent
+            const msg = chat.msgs[i]
+            if (msg.type === 'favorite_card' || msg.content.includes('"favoriteId"')) {
+                try {
+                    const content = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content
+                    if (content && String(content.favoriteId) === id) {
+                        return {
+                            id: content.favoriteId,
+                            type: 'text', // Render as simple text for now since it's a summary
+                            source: content.source,
+                            author: chat.name,
+                            avatar: chat.avatar,
+                            savedAt: content.savedAt || msg.timestamp,
+                            content: content.fullContent || content.preview // Use full content
+                        }
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+    }
+
+    return null
 })
 
 const forceDelete = () => {
@@ -24,8 +63,6 @@ const forceDelete = () => {
         router.back()
     }
 }
-const stickerStore = useStickerStore()
-const chatStore = useChatStore()
 
 // Combined Sticker Search Scope (Computed for efficiency)
 const allStickers = computed(() => {

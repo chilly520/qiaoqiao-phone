@@ -250,7 +250,7 @@
 
                                     <!-- Toggle Entry -->
                                     <div class="w-[32px] h-[18px] rounded-full relative cursor-pointer transition-colors duration-200 shrink-0"
-                                        :class="localData.worldBookLinks?.includes(entry.id) ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'"
+                                        :class="localData.worldBookLinks?.includes(entry.id) ? 'bg-emerald-500' : 'bg-[#e0e0e0]'"
                                         @click="toggleWorldBook(entry.id)">
                                         <div class="absolute top-[2px] bg-white w-[14px] h-[14px] rounded-full shadow-sm transition-transform duration-200"
                                             :class="localData.worldBookLinks?.includes(entry.id) ? 'left-[16px]' : 'left-[2px]'">
@@ -271,7 +271,7 @@
                 class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20">
                 <span class="text-sm text-gray-800">时间感知</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                    :class="localData.timeAware ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'"
+                    :class="localData.timeAware ? 'bg-emerald-500' : 'bg-[#e0e0e0]'"
                     @click="localData.timeAware = !localData.timeAware">
                     <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                         :class="localData.timeAware ? 'left-[22px]' : 'left-[2px]'"></div>
@@ -305,7 +305,7 @@
                 class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20">
                 <span class="text-sm text-gray-800">定位同步</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                    :class="localData.locationSync ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'" @click="toggleLocationSync">
+                    :class="localData.locationSync ? 'bg-emerald-500' : 'bg-[#e0e0e0]'" @click="toggleLocationSync">
                     <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                         :class="localData.locationSync ? 'left-[22px]' : 'left-[2px]'"></div>
                 </div>
@@ -338,7 +338,7 @@
                 class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20">
                 <span class="text-sm text-gray-800 font-bold">查岗（离开界面后触发）</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                    :class="localData.activeChat ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'"
+                    :class="localData.activeChat ? 'bg-emerald-500' : 'bg-[#e0e0e0]'"
                     @click="localData.activeChat = !localData.activeChat">
                     <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                         :class="localData.activeChat ? 'left-[22px]' : 'left-[2px]'"></div>
@@ -357,7 +357,7 @@
                 class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20">
                 <span class="text-sm text-gray-800 font-bold">主动发消息（界面内触发）</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                    :class="localData.proactiveChat ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'"
+                    :class="localData.proactiveChat ? 'bg-emerald-500' : 'bg-[#e0e0e0]'"
                     @click="localData.proactiveChat = !localData.proactiveChat">
                     <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                         :class="localData.proactiveChat ? 'left-[22px]' : 'left-[2px]'"></div>
@@ -419,7 +419,7 @@
                     <div class="flex items-center justify-between">
                         <span class="text-sm text-gray-800">自动总结 (Auto Summary)</span>
                         <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                            :class="localData.autoSummary ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'"
+                            :class="localData.autoSummary ? 'bg-emerald-500' : 'bg-[#e0e0e0]'"
                             @click="localData.autoSummary = !localData.autoSummary">
                             <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                                 :class="localData.autoSummary ? 'left-[22px]' : 'left-[2px]'"></div>
@@ -446,7 +446,7 @@
                         class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 bg-white/50 border border-white/20">
                         <span class="text-sm text-gray-800">启用 TTS</span>
                         <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                            :class="localData.autoTTS ? 'bg-[#07c160]' : 'bg-[#e0e0e0]'"
+                            :class="localData.autoTTS ? 'bg-emerald-500' : 'bg-[#e0e0e0]'"
                             @click="localData.autoTTS = !localData.autoTTS">
                             <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                                 :class="localData.autoTTS ? 'left-[22px]' : 'left-[2px]'"></div>
@@ -459,6 +459,50 @@
                         <input v-model="localData.voiceSpeed" type="range" min="0.5" max="2" step="0.1"
                             class="flex-1 h-1 bg-gray-300 rounded-lg accent-green-500">
                         <span class="text-xs w-6 text-right">{{ localData.voiceSpeed }}</span>
+                    </div>
+
+                    <!-- Call Virtual Avatar Settings -->
+                    <div class="mt-4 border-t border-gray-100 pt-3">
+                        <label class="text-xs text-gray-500 block mb-2">通话虚拟形象 (视频通话)</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- Character Call Avatar -->
+                            <div class="flex flex-col items-center gap-2">
+                                <span class="text-[10px] text-gray-400">角色形象</span>
+                                <div class="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 relative group cursor-pointer"
+                                     @click="triggerCallAvatarUpload('char')">
+                                    <img v-if="localData.callAvatarChar" :src="localData.callAvatarChar" class="w-full h-full object-cover">
+                                    <div v-else class="w-full h-full flex items-center justify-center text-gray-300">
+                                        <i class="fa-solid fa-camera"></i>
+                                    </div>
+                                    <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i class="fa-solid fa-pen text-white text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="flex gap-1">
+                                     <button class="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded hover:bg-gray-100" @click="promptCallAvatarUrl('char')">URL</button>
+                                     <button class="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded hover:bg-red-100" @click="localData.callAvatarChar = ''">清空</button>
+                                </div>
+                            </div>
+                            <!-- User Call Avatar -->
+                            <div class="flex flex-col items-center gap-2">
+                                <span class="text-[10px] text-gray-400">我的形象</span>
+                                <div class="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 relative group cursor-pointer"
+                                     @click="triggerCallAvatarUpload('user')">
+                                    <img v-if="localData.callAvatarUser" :src="localData.callAvatarUser" class="w-full h-full object-cover">
+                                    <div v-else class="w-full h-full flex items-center justify-center text-gray-300">
+                                        <i class="fa-solid fa-user"></i>
+                                    </div>
+                                    <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i class="fa-solid fa-pen text-white text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="flex gap-1">
+                                     <button class="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded hover:bg-gray-100" @click="promptCallAvatarUrl('user')">URL</button>
+                                     <button class="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded hover:bg-red-100" @click="localData.callAvatarUser = ''">清空</button>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="file" ref="callAvatarInput" class="hidden" accept="image/*" @change="handleCallAvatarChange">
                     </div>
                 </div>
 
@@ -1411,7 +1455,9 @@ const localData = ref({
     gender: '无',    // Add Char Gender
     avatarShape: 'square', // 'circle' or 'square'
     avatarFrame: null, // { id, url, name, scale, offsetX, offsetY }
-    userAvatarFrame: null
+    userAvatarFrame: null,
+    callAvatarChar: '', // New Call Avatar Fields
+    callAvatarUser: ''
 })
 
 // Sync props
@@ -1532,6 +1578,40 @@ const handleUserAvatarChange = async (e) => {
 const promptUserAvatarUrl = () => {
     openUrlPrompt('设置我的头像', (url) => {
         if (url) localData.value.userAvatar = url
+    })
+}
+
+// Call Avatar Handlers
+const callAvatarInput = ref(null)
+const currentCallAvatarTarget = ref('char') // 'char' or 'user'
+
+const triggerCallAvatarUpload = (target) => {
+    currentCallAvatarTarget.value = target
+    if (callAvatarInput.value) callAvatarInput.value.click()
+}
+
+const handleCallAvatarChange = async (e) => {
+    const file = e.target.files[0]
+    if (file) {
+        try {
+            const compressed = await compressImage(file, 200, 0.6)
+            if (currentCallAvatarTarget.value === 'char') {
+                 localData.value.callAvatarChar = compressed
+            } else {
+                 localData.value.callAvatarUser = compressed
+            }
+        } catch (err) {
+             console.error('Call avatar upload failed', err)
+        }
+    }
+}
+
+const promptCallAvatarUrl = (target) => {
+    openUrlPrompt('设置通话形象 URL', (url) => {
+        if (url) {
+             if (target === 'char') localData.value.callAvatarChar = url
+             else localData.value.callAvatarUser = url
+        }
     })
 }
 
@@ -1902,7 +1982,12 @@ const saveSettings = () => {
     // Capture final data state
     const finalData = JSON.parse(JSON.stringify(localData.value))
 
-    console.log('[Settings] Dispatching Update to Store:', finalData)
+    // CRITICAL: Protect live fields from being overwritten by stale local state
+    // These fields are updated in the background (AI analysis, messages, summaries)
+    const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'isSummarizing', 'unreadCount']
+    protectedFields.forEach(field => delete finalData[field])
+
+    console.log('[Settings] Dispatching Update to Store (Sanitized):', finalData)
 
     // 1. Update character in centralized store
     const success = chatStore.updateCharacter(props.chatData.id, finalData)

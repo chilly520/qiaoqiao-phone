@@ -36,7 +36,7 @@ const showPlaylistModal = ref(false)
 
 // Search State
 const searchQuery = ref('')
-const searchSource = ref('netease')
+const searchSource = ref('all')
 const searchResults = ref([])
 const isSearching = ref(false)
 const hasSearched = ref(false)
@@ -119,32 +119,53 @@ const importUrlSong = () => {
     alert('已导入链接')
     if (musicStore.playlist.length === 1) musicStore.loadSong(0)
 }
+
+const handleImageError = (e) => {
+    e.target.src = 'https://api.dicebear.com/7.x/shapes/svg?seed=music'
+    e.target.onerror = null
+}
 </script>
 
 <template>
   <div>
     <!-- Floating Player (Centered Modal Style from HTML) -->
-    <div v-if="playerVisible" class="music-player active">
+    <div v-if="playerVisible" class="music-player active" :class="{ 'together-mode': musicStore.isListeningTogether }">
         <!-- Header -->
         <div class="player-header">
             <button class="header-btn" title="最小化" @click="musicStore.togglePlayer">
                 <i class="fa-solid fa-chevron-down"></i>
             </button>
-            <div class="listening-time">一起听歌中...</div>
-            <button class="header-btn" title="关闭" @click="musicStore.pause(); musicStore.togglePlayer()">
+            <div class="listening-time" v-if="musicStore.isListeningTogether">
+                正在和 {{ musicStore.togetherPartner?.name || 'TA' }} 一起听歌 {{ musicStore.togetherDurationMinutes }} 分钟
+            </div>
+            <div class="listening-time" v-else>音乐播放器</div>
+            <button class="header-btn" title="关闭" @click="musicStore.stopTogether(); musicStore.pause(); musicStore.togglePlayer()">
                 <i class="fa-solid fa-power-off"></i>
             </button>
         </div>
 
-        <!-- Avatars -->
-        <div class="avatars-section">
-            <div class="avatar-wrapper">
-                <img :src="chatData.userAvatar" class="avatar">
-                <div class="heart-bubble"><i class="fa-solid fa-heart text-pink-500"></i></div>
-                <img :src="chatData.charAvatar" class="avatar">
+        <!-- Avatars Section (Listen Together Specific) -->
+        <div v-if="musicStore.isListeningTogether" class="together-avatars">
+            <div class="avatar-group">
+                <img :src="chatData.userAvatar" class="avatar user-avatar" @error="handleImageError">
+                <div class="connection-line">
+                    <div class="beat-line"></div>
+                </div>
+                <img :src="musicStore.togetherPartner?.avatar || chatData.charAvatar" class="avatar partner-avatar" @error="handleImageError">
+                <div class="heart-indicator"><i class="fa-solid fa-heart"></i></div>
             </div>
         </div>
-        <!-- Sound Wave (Visual Only) - Repositioned to be outside avatar-wrapper but within avatars-section or below it -->
+
+        <!-- Avatars (Normal Mode) -->
+        <div v-else class="avatars-section">
+            <div class="avatar-wrapper">
+                <img :src="chatData.userAvatar" class="avatar" @error="handleImageError">
+                <div class="heart-bubble"><i class="fa-solid fa-heart text-pink-500"></i></div>
+                <img :src="chatData.charAvatar" class="avatar" @error="handleImageError">
+            </div>
+        </div>
+
+        <!-- Sound Wave -->
         <div class="sound-wave" :class="{active: isPlaying}">
             <div class="wave-bar" v-for="i in 16" :key="i"></div>
         </div>
@@ -153,7 +174,7 @@ const importUrlSong = () => {
         <div class="disc-section">
             <div class="disc-container">
                 <div class="disc" :class="{spinning: isPlaying}">
-                    <img :src="currentSong?.cover || 'https://via.placeholder.com/150'" class="album-cover">
+                    <img :src="currentSong?.cover || 'https://api.dicebear.com/7.x/shapes/svg?seed=' + (currentSong?.song || 'music')" class="album-cover" @error="handleImageError">
                     <div class="disc-center"></div>
                 </div>
             </div>
@@ -165,10 +186,10 @@ const importUrlSong = () => {
             <div class="song-artist">{{ currentSong?.singer || '---' }}</div>
         </div>
 
-        <!-- Lyrics (Marquee) -->
+        <!-- Lyrics -->
         <div class="lyrics-section" @click="openSearch">
             <div class="lyrics-text" :class="{ 'has-lyric': musicStore.currentLyrics !== '♪ 暂无歌词' }">
-                {{ musicStore.currentLyrics }}
+                {{ musicStore.currentLyrics || '♪ ...' }}
             </div>
         </div>
 
@@ -194,12 +215,12 @@ const importUrlSong = () => {
 
         <!-- Toolbar -->
         <div class="toolbar">
-            <button class="toolbar-btn" :class="{active: musicStore.repeatMode !== 'off'}" @click="musicStore.switchMode('repeat')">
+            <button class="toolbar-btn" :class="{active: musicStore.repeatMode !== 'off'}" @click="musicStore.switchMode('repeat')" title="循环模式">
                 <i class="fa-solid" :class="musicStore.repeatMode === 'one' ? 'fa-repeat-1' : 'fa-repeat'"></i>
             </button>
-            <button class="toolbar-btn" @click="showSearchModal = true"><i class="fa-solid fa-magnifying-glass"></i></button>
-            <button class="toolbar-btn" @click="showPlaylistModal = true"><i class="fa-solid fa-list-ul"></i></button>
-            <button class="toolbar-btn" :class="{active: musicStore.isShuffling}" @click="musicStore.switchMode('shuffle')">
+            <button class="toolbar-btn" @click="showSearchModal = true" title="搜索"><i class="fa-solid fa-magnifying-glass"></i></button>
+            <button class="toolbar-btn" @click="showPlaylistModal = true" title="列表"><i class="fa-solid fa-list-ul"></i></button>
+            <button class="toolbar-btn" :class="{active: musicStore.isShuffling}" @click="musicStore.switchMode('shuffle')" title="随机播放">
                 <i class="fa-solid fa-shuffle"></i>
             </button>
         </div>
@@ -216,6 +237,7 @@ const importUrlSong = () => {
                     <input v-model="searchQuery" @keyup.enter="executeSearch" type="text" placeholder="搜索歌曲、歌手（例如：周杰伦-晴天）" class="search-input">
                     <!-- Source Selector -->
                     <select v-model="searchSource" class="source-select">
+                        <option value="all">全站搜索</option>
                         <option value="netease">网易云</option>
                         <option value="tencent">QQ音乐</option>
                     </select>
@@ -462,5 +484,99 @@ const importUrlSong = () => {
 @keyframes wave { 
     0%, 100% { height: 5px; opacity: 0.4; } 
     50% { height: 20px; opacity: 1; } 
+}
+
+/* Together Mode Styles */
+.together-mode {
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.together-avatars {
+    width: 100%;
+    height: 120px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.avatar-group {
+    display: flex;
+    align-items: center;
+    gap: 40px;
+    position: relative;
+}
+
+.avatar-group .avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+    z-index: 2;
+    background: #111;
+}
+
+.connection-line {
+    position: absolute;
+    left: 70px;
+    right: 70px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    top: 50%;
+    transform: translateY(-50%);
+    overflow: hidden;
+}
+
+.beat-line {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, #ccaa66, transparent);
+    animation: pulseLine 2s infinite linear;
+}
+
+@keyframes pulseLine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.heart-indicator {
+    position: absolute;
+    top: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ff4d4f;
+    font-size: 16px;
+    text-shadow: 0 0 10px rgba(255, 77, 79, 0.5);
+    animation: togetherHeart 1.5s infinite ease-in-out;
+    z-index: 3;
+}
+
+@keyframes togetherHeart {
+    0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.8; }
+    50% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+}
+
+.together-mode .disc-section {
+    margin-bottom: 25px;
+}
+
+.together-mode .disc {
+    width: 180px;
+    height: 180px;
+    border: 8px solid #000;
+    box-shadow: 0 15px 50px rgba(0,0,0,1), 0 0 20px rgba(204,170,102,0.1);
+}
+
+.together-mode .album-cover {
+    filter: brightness(0.9) contrast(1.1);
+}
+
+.together-mode .song-title {
+    color: #fff;
+    font-size: 19px;
+    letter-spacing: 0.5px;
 }
 </style>

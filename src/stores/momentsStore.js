@@ -176,22 +176,43 @@ export const useMomentsStore = defineStore('moments', () => {
 
         let realChar = null
         if (authorNameOrId !== 'user') {
-            realChar = Object.values(chatStore.chats).find(c => c.id === authorNameOrId || c.name === authorNameOrId || (c.remark && c.remark === authorNameOrId))
+            // Try explicit lookup if it looks like an ID
+            if (chatStore.chats[authorNameOrId]) {
+                realChar = chatStore.chats[authorNameOrId]
+            } else {
+                // Fuzzy lookup
+                realChar = Object.values(chatStore.chats).find(c => c.id === authorNameOrId || c.name === authorNameOrId || (c.remark && c.remark === authorNameOrId))
+            }
+
+            // Double check with fallbackName if explicit lookup failed but we have a name
+            if (!realChar && fallbackName) {
+                realChar = Object.values(chatStore.chats).find(c => c.name === fallbackName || c.remark === fallbackName)
+            }
         }
 
         let displayName = fallbackName || authorNameOrId
         if (realChar) {
             displayName = realChar.remark || realChar.name
-        } else if (typeof authorNameOrId === 'string' && (authorNameOrId.startsWith('virtual') || authorNameOrId.includes('-') || /^[a-z0-9]{15,}$/.test(authorNameOrId))) {
-            // Strictly detect/filter out garbage IDs like virtual-123 or technical hashes
-            displayName = (fallbackName && !fallbackName.includes('-')) ? fallbackName : '神秘好友'
-        } else if (authorNameOrId === 'user') {
-            displayName = settingsStore.personalization.userProfile.name
-        }
+        } else {
+            // Heuristic to detect garbage IDs/technical strings, but allow hyphens for valid names like "A-Small-Wang"
+            const isGarbageId = (str) => {
+                if (!str) return false
+                // If it starts with 'virtual-', it's an ID
+                if (str.startsWith('virtual-')) return true
+                // If it's a long alphanumeric string (UUID-like)
+                if (/^[a-z0-9-]{20,}$/.test(str)) return true
+                return false
+            }
 
-        // Final safety check: if displayName still looks like garbage, fallback to '神秘好友'
-        if (displayName && (displayName.startsWith('virtual') || /^[a-zA-Z0-9-]{15,}$/.test(displayName))) {
-            displayName = '神秘好友'
+            if (isGarbageId(authorNameOrId)) {
+                // If the primary ID is garbage, fallback to the provided name
+                // If fallback name is ALSO garbage or missing, then it's Mysterious
+                if (!fallbackName || isGarbageId(fallbackName)) {
+                    displayName = '神秘好友'
+                } else {
+                    displayName = fallbackName
+                }
+            }
         }
 
         if (!moment.likes) moment.likes = []
@@ -204,7 +225,8 @@ export const useMomentsStore = defineStore('moments', () => {
                 addNotification({
                     type: 'like',
                     actorName: displayName,
-                    actorAvatar: realChar ? realChar.avatar : `https://api.dicebear.com/7.x/notionists/svg?seed=${authorNameOrId}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
+                    // Fix: Use Real Char Avatar if available, otherwise generated one based on NAME (stable), not ID (which might change or be null)
+                    actorAvatar: realChar ? (realChar.avatar || '/avatars/default.png') : `https://api.dicebear.com/7.x/notionists/svg?seed=${displayName}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
                     content: '赞了你的动态',
                     momentId: moment.id,
                     momentImage: moment.images[0] || null,
@@ -233,11 +255,34 @@ export const useMomentsStore = defineStore('moments', () => {
 
         // Resolve real contact info
         let realChar = null
-        if (!comment.isVirtual) {
-            realChar = Object.values(chatStore.chats).find(c => c.id === comment.authorId || c.name === comment.authorName)
+        let finalAuthorName = ''
+        let finalAuthorAvatar = ''
+
+        const userName = settingsStore.personalization.userProfile.name
+        const userAvatar = settingsStore.personalization.userProfile.avatar
+
+        if (comment.authorId === 'user' || comment.authorName === 'user' || comment.authorName === userName) {
+            finalAuthorName = userName
+            finalAuthorAvatar = userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=Me`
+        } else {
+            // Priority 1: Try to find real char by ID
+            if (comment.authorId && chatStore.chats[comment.authorId]) {
+                realChar = chatStore.chats[comment.authorId]
+            }
+            // Priority 2: Try to find by Name
+            else if (comment.authorName) {
+                realChar = Object.values(chatStore.chats).find(c => c.name === comment.authorName || c.remark === comment.authorName)
+            }
+
+            if (realChar) {
+                finalAuthorName = realChar.remark || realChar.name
+                finalAuthorAvatar = realChar.avatar || '/avatars/default.png'
+            }
         }
-        const finalAuthorName = realChar ? (realChar.remark || realChar.name) : (comment.authorName || '神秘好友')
-        const finalAuthorAvatar = realChar ? realChar.avatar : (comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${comment.authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`)
+
+        // Fallback for Virtual characters (NPCs) or failed lookups
+        if (!finalAuthorName) finalAuthorName = comment.authorName || '神秘好友'
+        if (!finalAuthorAvatar) finalAuthorAvatar = comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${finalAuthorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`
 
         // Auto-extract mentions if not provided
         const finalMentions = [...(comment.mentions || [])]
@@ -280,7 +325,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 addNotification({
                     type: 'comment',
                     actorName: finalAuthorName,
-                    actorAvatar: finalAuthorAvatar,
+                    actorAvatar: finalAuthorAvatar, // Consistent Avatar
                     content: comment.content,
                     momentId: moment.id,
                     momentImage: moment.images[0] || null,

@@ -26,6 +26,7 @@ const vFocus = {
 // --- State ---
 const showActionMenu = ref(false) // For Moment Menu (...)
 const showCommentMenu = ref(false) // For Comment Long-press Menu
+const showShareModal = ref(false) // For Sharing Modal
 const activeComment = ref(null)
 const showCommentInput = ref(false)
 const commentText = ref('')
@@ -336,23 +337,27 @@ const handleEdit = () => {
 }
 
 const handleShare = () => {
-    if (chatStore.currentChatId) {
-        chatStore.addMessage(chatStore.currentChatId, {
-            role: 'user',
-            type: 'moment_card',
-            content: JSON.stringify({
-                id: props.moment.id,
-                author: author.value.name,
-                text: props.moment.content,
-                image: (props.moment.images || [])[0] || null
-            })
-        })
-        chatStore.triggerToast('已分享到聊天', 'success')
-        emit('back')
-    } else {
-        chatStore.triggerToast('请先打开一个聊天窗口', 'info')
-    }
+    // Open Contact Selector
+    showShareModal.value = true
     showActionMenu.value = false
+}
+
+const confirmShare = (contact) => {
+    if (!contact || !contact.id) return
+    
+    chatStore.addMessage(contact.id, {
+        role: 'user',
+        type: 'moment_card',
+        content: JSON.stringify({
+            id: props.moment.id,
+            author: author.value.name,
+            text: props.moment.content,
+            image: (props.moment.images || [])[0] || null
+        })
+    })
+    
+    showShareModal.value = false
+    chatStore.triggerToast('已分享', 'success')
 }
 
 const handleSummon = async () => {
@@ -654,6 +659,32 @@ const navigateToAuthor = () => {
                 <div class="border-t border-gray-100 p-2">
                     <button class="w-full py-2 text-gray-400 text-xs hover:text-gray-600"
                         @click="showCommentMenu = false">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contact Selector Modal for Sharing -->
+        <div v-if="showShareModal" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50"
+            @click="showShareModal = false">
+            <div class="bg-white w-[90%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[80vh]"
+                @click.stop>
+                <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                    <span class="font-bold text-gray-700">选择好友分享</span>
+                    <i class="fa-solid fa-xmark text-gray-400 cursor-pointer p-1" @click="showShareModal = false"></i>
+                </div>
+                <div class="overflow-y-auto flex-1 p-2 space-y-1">
+                    <div v-for="chat in chatStore.contactList" :key="chat.id"
+                        class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors border border-transparent hover:border-gray-100"
+                        @click="confirmShare(chat)">
+                        <div class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-gray-200">
+                            <img :src="chat.avatar" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="font-bold text-gray-800 text-sm">{{ chat.name }}</span>
+                            <span class="text-xs text-gray-400 truncate max-w-[150px]">{{ chat.signature || '暂无签名'
+                                }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

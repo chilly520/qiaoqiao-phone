@@ -100,6 +100,11 @@ const router = createRouter({
             name: 'gallery',
             component: () => import('../views/WeChat/GalleryView.vue')
         },
+        {
+            path: '/wechat/moments/detail/:id',
+            name: 'moment-detail',
+            component: () => import('../views/WeChat/MomentDetailView.vue')
+        },
         // Wallet Routes
         {
             path: '/wallet',

@@ -151,6 +151,14 @@
 
                         </div>
 
+                        <!-- CASE: Moment Card -->
+                        <div v-else-if="msg.type === 'moment_card'" @click="navigateToMoment(msg)" @contextmenu.prevent="emitContextMenu"
+                             class="cursor-pointer active:opacity-80 animate-fade-in w-full max-w-[300px]"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                             <MomentShareCard :data="msg.content" />
+                        </div>
+
                         <!-- CASE 6: Favorite Card (Shared Favorite) -->
                         <div v-else-if="isFavoriteCard"
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
@@ -306,6 +314,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import { useStickerStore } from '../../../stores/stickerStore'
 import { useChatStore } from '../../../stores/chatStore'
@@ -337,6 +346,7 @@ const stickerStore = useStickerStore()
 const chatStore = useChatStore()
 const walletStore = useWalletStore()
 const settingsStore = useSettingsStore()
+const router = useRouter()
 const localShowDetail = ref(false)
 const localShowTranscript = ref(false)
 const familyCardModal = ref(null)
@@ -405,6 +415,19 @@ const handleFamilyCardClick = () => {
         }, text || '亲属卡')
     }
 }
+
+// Navigate to moment detail
+const navigateToMoment = (msg) => {
+    try {
+        const data = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content
+        if (data.id) {
+            router.push(`/wechat/moments/detail/${data.id}`)
+        }
+    } catch(e) {
+        console.error('Failed to navigate to moment', e)
+    }
+}
+
 
 // Handle modal confirm
 const handleCardClaim = (data) => {
@@ -924,6 +947,11 @@ function formatMessageContent(msg) {
             </div>`
         })
     }
+
+    // 6. Handle bracketed text (Small font styling)
+    // Supports (), （）
+    const bracketRegex = /([\(（][\s\S]*?[\)）])/g;
+    text = text.replace(bracketRegex, '<span class="bracket-text">$1</span>');
 
     // text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '') // DESTRUCTIVE: Removed to let inline replacer handle it
 
@@ -1582,6 +1610,15 @@ function getHtmlContent(content) {
 
 .animate-bounce-subtle {
     animation: bounce-subtle 2s infinite ease-in-out;
+}
+
+.bracket-text {
+    font-size: 0.85em;
+    opacity: 0.7;
+    font-style: italic;
+    color: inherit;
+    display: inline-block;
+    filter: brightness(0.9);
 }
 
 @keyframes bounce-subtle {
