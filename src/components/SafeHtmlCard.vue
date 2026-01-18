@@ -123,18 +123,48 @@ const adjustHeight = () => {
     const doc = iframe.contentWindow.document
     const body = doc.body
 
-    // Restore context menu pass-through
+    // Restore context menu pass-through with high robustness
     const passEvent = (e) => {
-        const rect = iframe.getBoundingClientRect()
-        const evt = new (e.constructor)(e.type, {
-            ...e,
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX: rect.left + (e.clientX || (e.touches?.[0]?.clientX) || 0),
-            clientY: rect.top + (e.clientY || (e.touches?.[0]?.clientY) || 0)
-        })
-        iframe.dispatchEvent(evt)
+        if (!e) return;
+        try {
+            const rect = iframe.getBoundingClientRect()
+            
+            // Extract coordinates safely from various event types
+            let x = 0, y = 0
+            if (typeof e.clientX === 'number') {
+                x = e.clientX
+                y = e.clientY
+            } else if (e.touches && e.touches.length > 0) {
+                x = e.touches[0].clientX || 0
+                y = e.touches[0].clientY || 0
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                x = e.changedTouches[0].clientX || 0
+                y = e.changedTouches[0].clientY || 0
+            }
+
+            // Always use MouseEvent/PointerEvent for the bridge to ensure clientX/Y 
+            // are available for parent components like ChatMessageItem/ChatWindow.
+            // Using MouseEvent is the most compatible way to proxy interaction events.
+            const evt = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : 
+                                      (e.type === 'touchend' ? 'mouseup' : e.type), {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: rect.left + x,
+                clientY: rect.top + y,
+                detail: e.detail || 0,
+                button: e.button || 0,
+                buttons: e.buttons || 0,
+                ctrlKey: !!e.ctrlKey,
+                shiftKey: !!e.shiftKey,
+                altKey: !!e.altKey,
+                metaKey: !!e.metaKey
+            })
+            
+            iframe.dispatchEvent(evt)
+        } catch (err) {
+            console.warn('[SafeHtmlCard] Event bridge failed:', err)
+        }
     }
 
     doc.addEventListener('contextmenu', (e) => {

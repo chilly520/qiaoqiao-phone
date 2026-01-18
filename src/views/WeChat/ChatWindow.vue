@@ -1018,12 +1018,17 @@ const handleImgUpload = (event) => {
 }
 
 
-const scrollToBottom = () => {
+const scrollToBottom = (delay = 50) => {
     nextTick(() => {
-        if (msgContainer.value) {
-            msgContainer.value.scrollTop = msgContainer.value.scrollHeight
-        }
-    })
+        setTimeout(() => {
+            if (msgContainer.value) {
+                msgContainer.value.scrollTo({
+                    top: msgContainer.value.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }, delay);
+    });
 }
 
 const closePanels = () => {
@@ -1375,16 +1380,20 @@ const parseInnerVoice = (contentRaw) => {
 
     try {
         // 1. Tag Extraction [INNER_VOICE]...[/INNER_VOICE]
-        const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i);
+        const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/i);
 
         if (match && match[1]) {
             let jsonStr = match[1].trim();
             jsonStr = jsonStr.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
 
+            // Unescape backslashed quotes (AI often leaks these)
+            jsonStr = jsonStr.replace(/\\"/g, '"');
+            // Fix Chinese quotes
+            jsonStr = jsonStr.replace(/[“”]/g, '"');
+
             // Attempt standard parse first
             try {
-                // Try fixing outer quotes if Chinese
-                rawObj = JSON.parse(jsonStr.replace(/[“”]/g, '"'));
+                rawObj = JSON.parse(jsonStr);
             } catch (jsonErr) {
                 // FALLBACK REGEX for broken JSON
                 const cleanText = (regex) => {
@@ -1392,16 +1401,15 @@ const parseInnerVoice = (contentRaw) => {
                     return m ? m[2] : null;
                 }
 
-                // Non-greedy capture until quote + separator
-                const mind = cleanText(/"(mind|thoughts|想法|心声)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
-                const outfit = cleanText(/"(outfit|clothes|着装)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
-                const scene = cleanText(/"(scene|environment|环境)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
-                const action = cleanText(/"(action|behavior|行为)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const mind = cleanText(/"(?:mind|thoughts|想法|心声)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const outfit = cleanText(/"(?:outfit|clothes|着装)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const scene = cleanText(/"(?:scene|environment|环境)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                const action = cleanText(/"(?:action|behavior|行为)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
 
                 if (mind || action || outfit || scene) {
                     rawObj = { mind, outfit, scene, action };
-                } else {
-                    if (!jsonStr.trim().startsWith('{')) rawObj = { mind: jsonStr };
+                } else if (!jsonStr.trim().startsWith('{')) {
+                    rawObj = { mind: jsonStr };
                 }
             }
         } else {
@@ -2492,7 +2500,7 @@ onUnmounted(() => {
             <CallStatusBar />
 
             <!-- Messages Area -->
-            <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 relative z-10" ref="msgContainer"
+            <div class="flex-1 overflow-y-auto px-4 pt-4 pb-[100px] flex flex-col gap-4 relative z-10" ref="msgContainer"
                 @click="closePanels">
                 <!-- Message Content Area -->
 

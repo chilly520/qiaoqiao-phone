@@ -139,13 +139,18 @@ const parseVoiceData = (text) => {
         const raw = text.toString().trim()
         try {
             let jsonStr = raw.replace(/```json/g, '').replace(/```/g, '').trim()
-            if (jsonStr.includes('\\"')) jsonStr = jsonStr.replace(/\\"/g, '"')
+            // Robust Unescape
+            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+            // Fix Chinese Quotes
+            jsonStr = jsonStr.replace(/[“”]/g, '"')
+            
             if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
             const match = jsonStr.match(/\{[\s\S]*\}/)
             if (match) {
                 try { result = JSON.parse(match[0]) }
                 catch (e) {
-                    try { result = JSON.parse(match[0].replace(/\\"/g, '"').replace(/\\\\/g, '\\')) } catch (e2) { }
+                    // One more try for very messy AI JSON
+                    try { result = JSON.parse(match[0].replace(/\\/g, '')) } catch (e2) {}
                 }
             }
         } catch (e) { }
@@ -161,7 +166,7 @@ const parseVoiceData = (text) => {
             }
             const outfit = extract(['着装', 'outfit', 'clothes', 'clothing', 'OUTFIT'])
             const scene = extract(['环境', 'scene', 'environment', 'SCENE'])
-            const mind = extract(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', 'THOUGHTS', 'emotion', 'EMOTION'])
+            const mind = extract(['心心', '心声', 'thoughts', 'mind', 'inner_voice', 'thought', 'THOUGHTS', 'emotion', 'EMOTION'])
             const action = extract(['行为', 'action', 'behavior', 'ACTION', 'plan', 'PLAN'])
             if (outfit || scene || mind || action) {
                 result = { clothes: outfit, scene: scene, mind: mind, action: action }
@@ -173,14 +178,21 @@ const parseVoiceData = (text) => {
         const getString = (val) => {
             if (!val) return null
             if (typeof val === 'string') return val.replace(/###/g, '').trim()
-            if (typeof val === 'object') return (val.想法 || val.心情 || val.content || val.thought || val.mind || JSON.stringify(val)).replace(/###/g, '').trim()
-            return String(val).replace(/###/g, '').trim()
+            let str = ''
+            if (typeof val === 'object') {
+                str = val.想法 || val.心情 || val.content || val.thought || val.mind || JSON.stringify(val)
+            } else {
+                str = String(val)
+            }
+            return str.replace(/###/g, '').trim()
         }
+        
         let target = result
         if (result.content && typeof result.content === 'object') target = result.content
         else if (result.inner_voice && typeof result.inner_voice === 'object') target = result.inner_voice
 
-        if (typeof target["心声"] === 'object' && target["心声"] !== null) {
+        // Handle nested "心声" object vs flat structure
+        if (target && typeof target["心声"] === 'object' && target["心声"] !== null) {
             const inner = target["心声"]
             return {
                 clothes: getString(target["着装"] || target.outfit || target.clothes || inner.着装),
@@ -189,11 +201,14 @@ const parseVoiceData = (text) => {
                 action: getString(inner.行为 || target["行为"] || target.action || target.plan)
             }
         }
-        return {
-            clothes: getString(target["着装"] || target.clothes || target.outfit),
-            scene: getString(target["环境"] || target.scene || target.environment),
-            mind: getString(target["心声"] || target.mind || target.thought || target.thoughts || target.emotion),
-            action: getString(target["行为"] || target.action || target.behavior || target.plan)
+        
+        if (target) {
+            return {
+                clothes: getString(target["着装"] || target.clothes || target.outfit || target.clothes),
+                scene: getString(target["环境"] || target.scene || target.environment),
+                mind: getString(target["心声"] || target.mind || target.thought || target.thoughts || target.emotion),
+                action: getString(target["行为"] || target.action || target.behavior || target.plan)
+            }
         }
     }
     return null

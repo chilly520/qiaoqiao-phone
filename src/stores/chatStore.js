@@ -706,8 +706,10 @@ export const useChatStore = defineStore('chat', () => {
                 // If it's ONLY tags, hide it from the UI but PRESERVE the content for AI context
                 newMsg.hidden = true;
             } else if (!newMsg.hidden && typeof newMsg.content === 'string') {
-                // If it HAS text, clean the tags for the bubble display
-                protocolTags.forEach(p => { newMsg.content = newMsg.content.replace(p, ''); });
+                // If it HAS text, clean ONLY known strictly internal protocol tags for the bubble display
+                // We keep JSON-like content if it might be an HTML card, as ChatMessageItem will clean it during render
+                const strictlyInternalTags = protocolTags.filter(p => !p.source?.includes('html') && !p.source?.includes('speech'));
+                strictlyInternalTags.forEach(p => { newMsg.content = newMsg.content.replace(p, ''); });
                 newMsg.content = newMsg.content.trim();
             }
         }
