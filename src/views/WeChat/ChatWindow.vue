@@ -1307,11 +1307,14 @@ const handleDrawCommandInChat = async (msgId, prompt) => {
         console.log('[Draw Command] Image generated successfully. URL:', imageUrl)
         console.log('[Draw Command] Updating with chatId:', chatId, 'msgId:', msgId)
 
-        chatStore.updateMessage(chatId, msgId, {
-            content: imageUrl,
-            type: 'image',
-            isDrawing: false
-        })
+        // Update the message with the generated image but PRESERVE the original content/type 
+        // if it contained text/stickers/v-voice
+        const updateData = {
+            isDrawing: false,
+            image: imageUrl // Use a separate field to allow co-existence with text
+        }
+        
+        chatStore.updateMessage(chatId, msgId, updateData)
         showToast('绘图完成', 'success')
 
     } catch (e) {
@@ -1380,36 +1383,48 @@ const parseInnerVoice = (contentRaw) => {
 
     try {
         // 1. Tag Extraction [INNER_VOICE]...[/INNER_VOICE]
-        const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/i);
+        const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|(?=\[)|$)/i);
 
         if (match && match[1]) {
-            let jsonStr = match[1].trim();
-            jsonStr = jsonStr.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+            let rawPart = match[1].trim();
+            
+            // Greedily extract the first JSON-like block if present
+            const jsonBlock = rawPart.match(/\{[\s\S]*\}/);
+            let jsonStr = jsonBlock ? jsonBlock[0] : rawPart;
 
-            // Unescape backslashed quotes (AI often leaks these)
-            jsonStr = jsonStr.replace(/\\"/g, '"');
-            // Fix Chinese quotes
-            jsonStr = jsonStr.replace(/[“”]/g, '"');
+            // Unescape common AI leak formats
+            jsonStr = jsonStr.replace(/\\n/g, '\n')
+                           .replace(/\\"/g, '"')
+                           .replace(/[“”]/g, '"');
 
             // Attempt standard parse first
             try {
                 rawObj = JSON.parse(jsonStr);
             } catch (jsonErr) {
-                // FALLBACK REGEX for broken JSON
-                const cleanText = (regex) => {
-                    const m = jsonStr.match(regex);
-                    return m ? m[2] : null;
+                // FALLBACK for broken or partial JSON
+                if (!jsonStr.startsWith('{')) {
+                     // Try to wrap if it looks like keys and is naked
+                     if (jsonStr.includes(':')) {
+                         try { rawObj = JSON.parse('{' + jsonStr + '}'); } catch(e){}
+                     }
                 }
+                
+                if (!rawObj) {
+                    const cleanText = (regex) => {
+                        const m = jsonStr.match(regex);
+                        return m ? m[2] : null;
+                    }
 
-                const mind = cleanText(/"(?:mind|thoughts|想法|心声)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
-                const outfit = cleanText(/"(?:outfit|clothes|着装)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
-                const scene = cleanText(/"(?:scene|environment|环境)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
-                const action = cleanText(/"(?:action|behavior|行为)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                    const mind = cleanText(/"(?:mind|thoughts|想法|心声)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                    const outfit = cleanText(/"(?:outfit|clothes|着装)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                    const scene = cleanText(/"(?:scene|environment|环境)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
+                    const action = cleanText(/"(?:action|behavior|行为)"\s*[:：]\s*["“]([\s\S]*?)["”]\s*(?:,|}|$)/i);
 
-                if (mind || action || outfit || scene) {
-                    rawObj = { mind, outfit, scene, action };
-                } else if (!jsonStr.trim().startsWith('{')) {
-                    rawObj = { mind: jsonStr };
+                    if (mind || action || outfit || scene) {
+                        rawObj = { mind, outfit, scene, action };
+                    } else if (!jsonStr.trim().startsWith('{')) {
+                        rawObj = { mind: jsonStr };
+                    }
                 }
             }
         } else {
@@ -2500,7 +2515,7 @@ onUnmounted(() => {
             <CallStatusBar />
 
             <!-- Messages Area -->
-            <div class="flex-1 overflow-y-auto px-4 pt-4 pb-[100px] flex flex-col gap-4 relative z-10" ref="msgContainer"
+            <div class="flex-1 overflow-y-auto px-4 pt-4 pb-10 flex flex-col gap-4 relative z-10" ref="msgContainer"
                 @click="closePanels">
                 <!-- Message Content Area -->
 

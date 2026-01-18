@@ -140,18 +140,22 @@ const parseVoiceData = (text) => {
         try {
             let jsonStr = raw.replace(/```json/g, '').replace(/```/g, '').trim()
             // Robust Unescape
-            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+            jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
             // Fix Chinese Quotes
             jsonStr = jsonStr.replace(/[“”]/g, '"')
             
-            if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
-            const match = jsonStr.match(/\{[\s\S]*\}/)
-            if (match) {
-                try { result = JSON.parse(match[0]) }
-                catch (e) {
-                    // One more try for very messy AI JSON
-                    try { result = JSON.parse(match[0].replace(/\\/g, '')) } catch (e2) {}
-                }
+            // Greedily find valid JSON structure within the block
+            const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
+            if (jsonMatch) {
+                jsonStr = jsonMatch[0]
+            } else if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) {
+                jsonStr += '}'
+            }
+
+            try { result = JSON.parse(jsonStr) }
+            catch (e) {
+                // One more try for very messy AI JSON (double escaped)
+                try { result = JSON.parse(jsonStr.replace(/\\/g, '')) } catch (e2) {}
             }
         } catch (e) { }
 
@@ -221,7 +225,7 @@ const historyList = computed(() => {
     return msgs.filter(m => m.content && (m.type === 'inner_voice_card' || String(m.content).includes('[INNER_VOICE]')))
         .map(m => {
             let content = m.content
-            const match = String(m.content).match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/)
+            const match = String(m.content).match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|(?=\[)|$)/i)
             if (match) content = match[1]
             return { id: m.id, timestamp: m.timestamp, content: content }
         })

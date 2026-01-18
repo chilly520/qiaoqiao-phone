@@ -275,11 +275,11 @@
                             </div>
 
                             <!-- 2. Image Layer (Standalone or separate) -->
-                            <div v-if="isImageMsg(msg)" class="msg-image bg-transparent"
+                            <div v-if="isImageMsg(msg) || msg.image" class="msg-image bg-transparent"
                                 @contextmenu.prevent="emitContextMenu">
-                                <img :src="getImageSrc(msg)"
-                                    class="max-w-[150px] max-h-[150px] rounded-lg cursor-pointer"
-                                    @click="previewImage(getImageSrc(msg))" @error="handleImageError"
+                                <img :src="msg.image || getImageSrc(msg)"
+                                    class="max-w-[200px] max-h-[250px] rounded-lg cursor-pointer shadow-sm hover:shadow-md transition-shadow"
+                                    @click="previewImage(msg.image || getImageSrc(msg))" @error="handleImageError"
                                     referrerpolicy="no-referrer">
                             </div>
 
@@ -651,13 +651,25 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/gi, '');
     clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
     
-    // ATOMIC BLOCK REMOVAL for cards
-    if (isCard || clean.includes('<div') || clean.includes('"type"')) {
-        // 1. Remove Markdown
+    // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
+    if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:')) {
+        // 1. Remove Markdown code blocks
         clean = clean.replace(/```[\s\S]*?```/gi, '');
-        // 2. Remove JSON
-        clean = clean.replace(/\{[\s\n]*"type"\s*:\s*"html"[\s\S]*?\}/gi, '');
-        // 3. Remove HTML Block (First < to last >)
+        
+        // 2. Remove JSON-like structures that look like technical metadata
+        // Includes { "type": "html" }, { "心声": ... }, { "thoughts": ... } etc.
+        clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform)"[\s\S]*?\}/gi, '');
+        
+        // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
+        // This targets the specific "to { transform: rotate(360deg) }" leak
+        clean = clean.replace(/(?:^|\s)(?:to|from|[\.\#]?[a-zA-Z0-9\-\_]+)\s*\{[\s\S]*?\}/gi, '');
+
+        // 4. Remove standalone CSS properties if they leak outside blocks
+        clean = clean.replace(/transform:\s*rotate\([^\)]+\)/gi, '');
+        clean = clean.replace(/animation:\s*[^;\}]+;?/gi, '');
+
+        // 5. Remove HTML Blocks (First < to last >)
+        // We find all top-level <.../?> or <...>...</...> blocks
         const f = clean.indexOf('<');
         const l = clean.lastIndexOf('>');
         if (f !== -1 && l > f) {
@@ -668,20 +680,24 @@ function getCleanContent(contentRaw, isCard = false) {
         }
     }
 
-    // Fallback: Remove remaining tags
+    // Fallback: Remove remaining tags and technical remnants
     clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
     clean = clean.replace(/<[^>]+>/g, '');
+    clean = clean.replace(/&[a-z0-9#]+;/gi, ''); // HTML entities
 
     clean = clean.trim();
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET|HTML卡片)\]/gi, '').trim();
 
     // Final pass for logic symbols and garbage
     clean = clean.replace(/\\n/g, '\n');
+    // Remove trailing/leading punctuation that might be left from JSON stripping
     clean = clean.replace(/^[\s,;:"'}\]\[\\|/]+|[\s,;:"'}\]\[\\|/]+$/g, '');
 
     // FINAL GUARD: If it's a card and the remaining text is minimal, hide the bubble
-    if (isCard && (clean.length < 100)) {
-        if (!/[a-zA-Z0-9\u4e00-\u9fa5]/.test(clean) || clean.length < 5) {
+    if (isCard && (clean.length < 150)) {
+        // More aggressive: if there's no normal sentence structure, hide it
+        const hasNaturalLanguage = /[\u4e00-\u9fa5]/.test(clean) || (/[a-zA-Z]/.test(clean) && clean.split(' ').length > 2);
+        if (!hasNaturalLanguage || clean.length < 5) {
             return '';
         }
     }
@@ -862,28 +878,63 @@ function isImageMsg(msg) {
     return !!tagMatch
 }
 
+const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*(.*?)\s*\]/i;
+
+function normalizeStickerName(s) {
+    return (s || '')
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '') // Remove emojis
+        .replace(/[。.，,！!？?\-\s\(\)（）"'"““”‘’]/g, '') // Remove punctuation and quotes
+        .toLowerCase()
+        .trim();
+}
+
+function findSticker(name) {
+    if (!name) return null;
+    const n = name.trim();
+    const nClean = normalizeStickerName(n);
+    if (!nClean && !n) return null;
+
+    // Data source: character emojis + global emojis
+    const charStickers = props.chatData?.emojis || [];
+    const globalStickers = stickerStore.getStickers('global') || [];
+    const allAvailable = [...charStickers, ...globalStickers];
+
+    // 1. Precise Match (Raw or Cleaned name)
+    let found = allAvailable.find(s => s.name === n || normalizeStickerName(s.name) === nClean);
+
+    // 2. Fuzzy Match (Partial match)
+    if (!found && nClean.length >= 1) {
+        found = allAvailable.find(s => {
+            const sClean = normalizeStickerName(s.name);
+            return sClean && sClean.includes(nClean);
+        });
+    }
+    return found;
+}
+
 function getImageSrc(msg) {
     const content = ensureString(msg.content).trim()
     if (content.startsWith('data:image/')) return content
     const clean = getCleanContent(content).trim()
-    if (clean.includes('data:image/')) {
-        const m = clean.match(/data:image\/[^\]\s]+/)
-        if (m) return m[0]
+    
+    // Direct URL check
+    if (clean.startsWith('http') || clean.startsWith('blob:') || clean.startsWith('data:image/')) {
+        const urlMatch = clean.match(/(?:https?|blob|data):[^\]\s]+/);
+        if (urlMatch) return urlMatch[0];
     }
-    if (clean.startsWith('http') || clean.startsWith('blob:')) return clean
-    const match = clean.match(/\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：](.*?)\]/i)
+    
+    const match = clean.match(STICKER_REGEX)
     if (match) {
         const c = match[1].trim()
         if (c.startsWith('http') || c.startsWith('blob:') || c.startsWith('data:')) return c
 
-        // Sticker Lookup
-        const charStickers = props.chatData?.emojis || []
-        const charMatch = charStickers.find(s => s.name === c)
-        if (charMatch) return charMatch.url
-        const globalStickers = stickerStore.getStickers('global')
-        const globalMatch = globalStickers.find(s => s.name === c)
-        if (globalMatch) return globalMatch.url
-        return `https://api.dicebear.com/7.x/initials/svg?seed=${c}`
+        // Robust Lookup
+        const found = findSticker(c);
+        if (found) return found.url;
+        
+        // Fallback to Dicebear INITIALS (using cleaned name)
+        const seed = normalizeStickerName(c) || c;
+        return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
     }
     return clean
 }
@@ -949,38 +1000,12 @@ function formatMessageContent(msg) {
             n = prefixMatch[1].trim();
         }
 
-        // Multi-pass Matching Strategy
-        const charStickers = props.chatData?.emojis || []
-        const globalStickers = stickerStore.getStickers('global') || []
-        const allAvailable = [...charStickers, ...globalStickers]
-
-        // Helper: Clean a string for comparison (No emojis, no punctuation, lowercase)
-        const normalize = (s) => (s || '')
-            .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-            .replace(/[。.，,！!？?\-\s\(\)（）]/g, '')
-            .toLowerCase()
-            .trim();
-
-        const nClean = normalize(n);
-        if (!nClean && !n) return match;
-
-        // 1. Precise Match (Raw or Cleaned name)
-        let found = allAvailable.find(s => s.name === n || normalize(s.name) === nClean);
-        
-        // 2. Fuzzy Match (If AI sent a partial name, try to find a sticker that CATEGORICALLY matches)
-        if (!found && nClean.length >= 1) {
-            found = allAvailable.find(s => {
-                const sClean = normalize(s.name);
-                if (!sClean || sClean.length < 1) return false;
-                return sClean.includes(nClean);
-            });
-        }
-
+        const found = findSticker(n);
         if (found) {
             return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
         }
 
-        return match; // Return original [tag] if not found to avoid "undefined"
+        return match; 
     })
 
     try { return marked.parse(text) } catch (e) { return text }
