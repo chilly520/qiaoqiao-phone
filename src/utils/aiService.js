@@ -869,24 +869,31 @@ async function _generateReplyInternal(messages, char, signal) {
         let content = rawContent
         let innerVoice = null
 
-        // 提取 [INNER_VOICE]
-        const ivMatch = content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
+        // 提取 [INNER_VOICE] - 增强版正则，支持空格、连字符及缺失闭合标签
+        const ivMatch = content.match(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
+
         if (ivMatch) {
             try {
-                let jsonStr = ivMatch[1].trim()
-                // Robust Cleanup: Remove Markdown code blocks (```json ... ```)
-                // Also handles standard ```
-                jsonStr = jsonStr.replace(/^```json\s*/i, '')
-                    .replace(/^```\s*/, '')
-                    .replace(/\s*```$/, '')
+                let segment = ivMatch[1].trim()
+                // Robust Cleanup: Remove Markdown code blocks
+                segment = segment.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
 
-                innerVoice = JSON.parse(jsonStr)
+                // Try direct parse first
+                try {
+                    innerVoice = JSON.parse(segment)
+                } catch (e) {
+                    // Fallback: Find the FIRST JSON-like object '{ ... }' in the segment
+                    const jsonObjectMatch = segment.match(/\{[\s\S]*\}/)
+                    if (jsonObjectMatch) {
+                        innerVoice = JSON.parse(jsonObjectMatch[0].trim())
+                    } else {
+                        throw e // Rethrow if no object found
+                    }
+                }
             } catch (e) {
-                console.warn('Inner Voice JSON parse failed', e)
+                console.warn('[AI Service] Inner Voice JSON parse failed', e)
+                useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivMatch[1].substring(0, 100) })
             }
-            // Do NOT remove Inner Voice from content here. 
-            // We need the raw content in chatStore to attach it to the first message segment.
-            // content = content.replace(ivMatch[0], '').trim()
         }
 
         // Family Card Logic (Auto-Process) -> NOW LEGACY, REMOVED to let Frontend handle it
@@ -974,11 +981,16 @@ async function _generateReplyInternal(messages, char, signal) {
                     // Post-process
                     let content = rawRetry
                     let innerVoice = null
-                    const ivMatch = content.match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
+                    const ivMatch = content.match(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
                     if (ivMatch) {
                         try {
-                            let jsonStr = ivMatch[1].trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
-                            innerVoice = JSON.parse(jsonStr)
+                            let segment = ivMatch[1].trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
+                            try {
+                                innerVoice = JSON.parse(segment)
+                            } catch (e) {
+                                const jsonObjectMatch = segment.match(/\{[\s\S]*\}/)
+                                if (jsonObjectMatch) innerVoice = JSON.parse(jsonObjectMatch[0].trim())
+                            }
                         } catch (e) { }
                     }
                     content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()

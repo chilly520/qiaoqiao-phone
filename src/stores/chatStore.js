@@ -949,7 +949,11 @@ ${contextMsgs}
                         { name: '爱之物 II', image: '' },
                         { name: '爱之物 III', image: '' }
                     ]
-                }
+                },
+                // Summary State
+                summaryLimit: options.summaryLimit || 50,
+                lastSummaryCount: 0,
+                lastSummaryIndex: 0
             }
             saveChats()
         }
@@ -975,11 +979,14 @@ ${contextMsgs}
 
         const msgs = chat.msgs || []
         const summaryLimit = parseInt(chat.summaryLimit) || 50
-        const lastSummaryIndex = chat.lastSummaryIndex || 0
 
-        // Check if new messages exceed limit
-        if (msgs.length - lastSummaryIndex >= summaryLimit) {
-            console.log(`[AutoSummary] Triggered for ${chat.name}. New msgs: ${msgs.length - lastSummaryIndex}`)
+        // Use lastSummaryCount (total messages at last summary) for better diff
+        const lastCount = chat.lastSummaryCount || 0
+        const backlog = msgs.length - lastCount
+
+        // Check if new messages (since last summary) exceed limit
+        if (backlog >= summaryLimit) {
+            console.log(`[AutoSummary] Triggered for ${chat.name}. New msgs (backlog): ${backlog}, Limit: ${summaryLimit}`)
             summarizeHistory(chatId, { silent: true })
         }
     }
@@ -1013,16 +1020,16 @@ ${contextMsgs}
             } else {
                 // Auto Mode: Chunked Catch-Up
                 const lastIndex = chat.lastSummaryIndex || 0
+                const currentTotal = chat.msgs.length
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
-                const totalMsgs = chat.msgs.length
-                const backlog = totalMsgs - lastIndex
+                const backlog = currentTotal - lastIndex
 
-                // Cap chunk size to summaryLimit (allow slight overflow +20 to avoid tiny tails)
-                let endIndex = totalMsgs
-                if (backlog > summaryLimit + 20) {
+                // Process up to summaryLimit messages at a time
+                let endIndex = currentTotal
+                if (backlog > summaryLimit + 10) {
                     endIndex = lastIndex + summaryLimit
                     rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
-                    console.log(`[Summarize] Catch-up mode: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${totalMsgs - endIndex})`)
+                    console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${currentTotal - endIndex})`)
                 } else {
                     rangeDesc = `自动增量`
                 }
@@ -1117,14 +1124,16 @@ ${contextMsgs}
             triggerToast('总结已生成并存入记忆库', 'info')
 
             // Update index if it was an auto-summary (nextIndex was calculated)
+            // Update state ONLY for auto-summaries
             if (options.startIndex === undefined) {
                 chat.lastSummaryIndex = nextIndex
+                chat.lastSummaryCount = chat.msgs.length // Sync with current total
 
                 // RECURSION CHECK: If we still have a backlog greater than limit, trigger next batch automatically
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
                 if (chat.msgs.length - nextIndex >= summaryLimit) {
-                    console.log('[Summarize] Triggering next batch in 3s...')
-                    setTimeout(() => checkAutoSummary(chatId), 3000)
+                    console.log(`[Summarize] backlog still exists (${chat.msgs.length - nextIndex}). Continuing...`)
+                    setTimeout(() => checkAutoSummary(chatId), 1500)
                 }
             }
 
@@ -1537,20 +1546,22 @@ ${contextMsgs}
 
                 // Clean content by removing ALL inner voice blocks for display/splitting
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
-                // FIX: Use Safer Regex to prevent swallowing text if closing tag is missing
-                // Stop capturing if we see a closing tag, OR double newline, OR start of another command tag
-                const innerVoiceRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                // FIX: Use Strictly Bounded Regex (Case Insensitive + Space Aware)
+                // Stop at closing tag, OR start of another command, OR a newline followed by dialogue (non-JSON char)
+                const innerVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|(?=\n\s*[^\n\s\{"\['])|$)/gi;
 
-                // Extract ALL inner voice blocks
-                const allVoiceBlocks = [...fullContent.matchAll(innerVoiceRegex)];
-                // Take the first block as the canonical inner voice
-                const innerVoiceBlock = allVoiceBlocks.length > 0 ? allVoiceBlocks[0][0] : '';
+                // Extract ALL inner voice blocks for canonical storage
+                const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
+                const innerVoiceBlock = allVoiceMatches.length > 0 ? allVoiceMatches[0][0] : '';
 
-                // Remove ALL inner voice blocks from the content to get pure dialogue
-                const pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
+                // Create Dialogue-Only content for splitting logic
+                // Ensure we use the case-insensitive regex here too
+                let pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
 
                 // Reconstruct the full content with proper order: dialogue first, then inner voice
                 const properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
+
+                console.log(`[AI Reply] Dialogue length: ${pureDialogue.length}, InnerVoice: ${!!innerVoiceBlock}, Raw: ${fullContent.substring(0, 50)}...`);
 
                 // --- Handle [SET_PAT] Command ---
                 const patRegex = /\[SET_PAT:(.+?)(?::(.+?))?\]/i
@@ -1864,7 +1875,10 @@ ${contextMsgs}
                 const rejectRegex = /\[(拒收|退回)(红包|转账):([^\]]+)\]/g;
 
                 // --- Improved Content Cleaning ---
-                let cleanContent = properlyOrderedContent.replace(innerVoiceRegex, '')
+                // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
+                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|(?=\n\s*[^\n\s\{"\['])|$)/gi;
+                let cleanContent = properlyOrderedContent
+                    .replace(cleanVoiceRegex, '')
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
                     .replace(momentRegex, '')
@@ -1970,11 +1984,13 @@ ${contextMsgs}
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // --- Improved Splitting Logic (V10 - Placeholder Aware) ---
-                // We split by punctuation BUT avoid splitting if it seems to be inside a parenthesis or bracket
-                // Using a simpler exclusion for common cases
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|\/INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                // --- Improved Splitting Logic (V11 - Balanced Aware) ---
+                // We split by punctuation but keep segments meaningful.
+                // Avoid capturing nested parentheses in the split pattern itself if possible
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
+
+                useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
 
                 let rawSegments = [];
                 let currentRawSegment = "";
@@ -2360,6 +2376,8 @@ ${contextMsgs}
                     if (c.activeChat === undefined) c.activeChat = false
                     if (c.showInnerVoice === undefined) c.showInnerVoice = true
                     if (c.bgUrl === undefined) c.bgUrl = ''
+                    if (c.summaryLimit === undefined) c.summaryLimit = 50
+                    if (c.lastSummaryCount === undefined) c.lastSummaryCount = c.lastSummaryIndex || 0
                     c.isSummarizing = false
                 })
             } catch (e) { console.error(e) }

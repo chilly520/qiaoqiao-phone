@@ -279,6 +279,7 @@
                                 @contextmenu.prevent="emitContextMenu">
                                 <img :src="msg.image || getImageSrc(msg)"
                                     class="max-w-[200px] max-h-[250px] rounded-lg cursor-pointer shadow-sm hover:shadow-md transition-shadow"
+                                    :alt="ensureString(msg.content).substring(0, 20)"
                                     @click="previewImage(msg.image || getImageSrc(msg))" @error="handleImageError"
                                     referrerpolicy="no-referrer">
                             </div>
@@ -648,8 +649,11 @@ function getCleanContent(contentRaw, isCard = false) {
     let clean = content;
     
     // ... (inner voice removal, etc.)
-    clean = clean.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|$)/gi, '');
-    clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
+    // Removal of strictly internal protocol tags
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
+    
+    // Remove JSON metadata blocks (心声, 着装, status, etc.)
+    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata)"[\s\S]*?\}/gi, '');
     
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:')) {
@@ -690,8 +694,8 @@ function getCleanContent(contentRaw, isCard = false) {
 
     // Final pass for logic symbols and garbage
     clean = clean.replace(/\\n/g, '\n');
-    // Remove trailing/leading punctuation that might be left from JSON stripping
-    clean = clean.replace(/^[\s,;:"'}\]\[\\|/]+|[\s,;:"'}\]\[\\|/]+$/g, '');
+    // Remove trailing/leading punctuation but PRESERVE brackets [ ] as they are used for protocol tags
+    clean = clean.replace(/^[\s,;:"'}\\|/]+|[\s,;:"'}\\|/]+$/g, '');
 
     // FINAL GUARD: If it's a card and the remaining text is minimal, hide the bubble
     if (isCard && (clean.length < 150)) {
@@ -881,9 +885,11 @@ function isImageMsg(msg) {
 const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*(.*?)\s*\]/i;
 
 function normalizeStickerName(s) {
-    return (s || '')
+    if (!s) return '';
+    return s.toString()
+        .replace(/\.(?:png|jpg|gif|webp|jpeg|svg)$/i, '') // Remove standard extensions
         .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '') // Remove emojis
-        .replace(/[。.，,！!？?\-\s\(\)（）"'"““”‘’]/g, '') // Remove punctuation and quotes
+        .replace(/[。.，,！!？?\-\s\(\)（）"'"““”‘’\[\]]/g, '') // Remove punctuation, quotes and remaining brackets
         .toLowerCase()
         .trim();
 }
@@ -894,19 +900,23 @@ function findSticker(name) {
     const nClean = normalizeStickerName(n);
     if (!nClean && !n) return null;
 
-    // Data source: character emojis + global emojis
     const charStickers = props.chatData?.emojis || [];
     const globalStickers = stickerStore.getStickers('global') || [];
     const allAvailable = [...charStickers, ...globalStickers];
 
-    // 1. Precise Match (Raw or Cleaned name)
-    let found = allAvailable.find(s => s.name === n || normalizeStickerName(s.name) === nClean);
+    // 1. Precise Match (Raw)
+    let found = allAvailable.find(s => s.name === n);
+    if (found) return found;
 
-    // 2. Fuzzy Match (Partial match)
-    if (!found && nClean.length >= 1) {
+    // 2. Normalized Match
+    found = allAvailable.find(s => normalizeStickerName(s.name) === nClean);
+    if (found) return found;
+
+    // 3. Fuzzy Match (Partial)
+    if (nClean.length >= 1) {
         found = allAvailable.find(s => {
             const sClean = normalizeStickerName(s.name);
-            return sClean && sClean.includes(nClean);
+            return sClean && (sClean.includes(nClean) || nClean.includes(sClean));
         });
     }
     return found;
@@ -990,11 +1000,20 @@ function formatMessageContent(msg) {
         text = text.replace(mentionRegex, `<span class="text-blue-500 font-medium">@${name}</span>`)
     });
 
-    // Sticker inline replacer (Standardized)
-    text = text.replace(/\[(.*?)\]/g, (match, name) => {
+    // --- STICKER INLINE REPLACER ---
+    // Moved after marked.parse to prevent escaping
+    let html = '';
+    try { 
+        html = marked.parse(text);
+    } catch (e) { 
+        html = text; 
+    }
+
+    // Replace [StickerName] or [表情包: StickerName]
+    html = html.replace(/\[(.*?)\]/g, (match, name) => {
         let n = name.trim()
         
-        // Strip prefixes like "表情包:", "表情:", "表情-", "STICKER-", etc.
+        // Strip prefixes
         const prefixMatch = n.match(/^(?:表情包|表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
         if (prefixMatch) {
             n = prefixMatch[1].trim();
@@ -1006,9 +1025,9 @@ function formatMessageContent(msg) {
         }
 
         return match; 
-    })
+    });
 
-    try { return marked.parse(text) } catch (e) { return text }
+    return html;
 }
 
 function getDuration(msg) {
