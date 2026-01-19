@@ -1984,7 +1984,7 @@ const saveSettings = () => {
 
     // CRITICAL: Protect live fields from being overwritten by stale local state
     // These fields are updated in the background (AI analysis, messages, summaries)
-    const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'isSummarizing', 'unreadCount']
+    const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'lastSummaryCount', 'isSummarizing', 'unreadCount']
     protectedFields.forEach(field => delete finalData[field])
 
     console.log('[Settings] Dispatching Update to Store (Sanitized):', finalData)

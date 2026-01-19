@@ -1127,7 +1127,7 @@ ${contextMsgs}
             // Update state ONLY for auto-summaries
             if (options.startIndex === undefined) {
                 chat.lastSummaryIndex = nextIndex
-                chat.lastSummaryCount = chat.msgs.length // Sync with current total
+                chat.lastSummaryCount = nextIndex // Sync with progress, not just total, to allow catch-up in background
 
                 // RECURSION CHECK: If we still have a backlog greater than limit, trigger next batch automatically
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
@@ -2087,7 +2087,7 @@ ${contextMsgs}
                     if (part === undefined) continue;
 
                     const trimmedPart = part.trim();
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD)/.test(trimmedPart);
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {
@@ -2464,6 +2464,8 @@ ${contextMsgs}
                     if (c.showInnerVoice === undefined) c.showInnerVoice = true
                     if (c.bgUrl === undefined) c.bgUrl = ''
                     if (c.summaryLimit === undefined) c.summaryLimit = 50
+                    if (c.autoSummary === undefined) c.autoSummary = false
+                    if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0
                     if (c.lastSummaryCount === undefined) c.lastSummaryCount = c.lastSummaryIndex || 0
                     c.isSummarizing = false
                 })
