@@ -137,31 +137,39 @@ const parseVoiceData = (text) => {
         result = text
     } else {
         const raw = text.toString().trim()
+        
+        // 1. Extract potential JSON block
+        let jsonStr = raw.replace(/```json/gi, '').replace(/```/g, '').trim()
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+            jsonStr = jsonMatch[0]
+        }
+
+        // 2. Attempt Parse (Strategy A: Direct)
         try {
-            let jsonStr = raw.replace(/```json/g, '').replace(/```/g, '').trim()
-            // Robust Unescape
-            jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-            // Fix Chinese Quotes
-            jsonStr = jsonStr.replace(/[“”]/g, '"')
-            
-            // Greedily find valid JSON structure within the block
-            const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
-            if (jsonMatch) {
-                jsonStr = jsonMatch[0]
-            } else if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) {
-                jsonStr += '}'
-            } else if (!jsonStr.startsWith('{') && (jsonStr.trim().startsWith('"') || jsonStr.trim().startsWith("'")) && jsonStr.includes(':')) {
-                // Heuristic: If it starts with a quote and has a colon, assume it's a naked JSON body
-                jsonStr = '{' + jsonStr + ((jsonStr.endsWith('}') || jsonStr.trim().endsWith(',')) ? '' : '}')
+            result = JSON.parse(jsonStr)
+        } catch (e) {
+            // 3. Attempt Parse (Strategy B: Soft Fixes)
+            try {
+                // Fix trailing commas
+                let fixed = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
+                // Fix Chinese quotes
+                fixed = fixed.replace(/[“”]/g, '"')
+                result = JSON.parse(fixed)
+            } catch (e2) {
+                 // 4. Attempt Parse (Strategy C: Aggressive Unescape - Last Resort)
+                 // This handles double-escaped strings like "{\"key\":...}" which sometimes happens
+                 try {
+                     let aggressive = jsonStr.replace(/\\/g, '')
+                     if (aggressive.startsWith('"') && aggressive.endsWith('"')) {
+                         aggressive = aggressive.slice(1, -1)
+                     }
+                     result = JSON.parse(aggressive)
+                 } catch (e3) { }
             }
+        }
 
-            try { result = JSON.parse(jsonStr) }
-            catch (e) {
-                // One more try for very messy AI JSON (double escaped)
-                try { result = JSON.parse(jsonStr.replace(/\\/g, '')) } catch (e2) {}
-            }
-        } catch (e) { }
-
+        // 5. Fallback to Regex Extraction if JSON fail
         if (!result) {
             const extract = (keys) => {
                 for (let k of keys) {

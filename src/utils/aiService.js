@@ -1919,3 +1919,93 @@ export async function generateCompleteProfile(character, userProfile = {}) {
         throw e
     }
 }
+/**
+ * Generates a full profile set for a character:
+ * 1. Background Image (via prompt generation + image gen)
+ * 2. Signature (Status Text)
+ * 3. 3 "Pinned" Moments representing their core personality or backstory
+ */
+export async function generateCharacterProfile(char, userProfile) {
+    const settingsStore = useSettingsStore()
+    const { apiKey, baseUrl, model } = settingsStore.currentConfig
+
+    if (!apiKey) throw new Error('请先配置 API Key')
+
+    // 1. Generate Content (Signature + 3 Moments + Background Description)
+    const systemPrompt = `You are an expert character profiler.
+You need to generate a "WeChat Moments Profile" for a specific character based on their persona.
+The profile consists of:
+1. A short, poetic, or character-typical "Signature" (个性签名).
+2. A prompt for generating a background cover image that fits their vibe.
+3. 3 distinct "Moments" (social media posts) that highlight their personality, daily life, or hidden thoughts. These should be worthy of being "Pinned" (置顶).
+
+Character Name: ${char.name}
+Character Persona: ${char.prompt || 'Unknown'}
+Character Tags/World: ${(char.tags || []).join(', ')}
+
+User (Viewer) Name: ${userProfile.name}
+
+Output format must be JSON:
+{
+  "signature": "string (max 30 chars)",
+  "background_prompt": "string (english description for image generator)",
+  "moments": [
+    {
+      "content": "string (main text)",
+      "image_description": "string (visual description for image generator)"
+    },
+    ... (total 3)
+  ]
+}`
+
+    const response = await fetch(baseUrl + '/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: model,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Generate the profile for ${char.name}.` }
+            ],
+            response_format: { type: "json_object" }
+        })
+    })
+
+    if (!response.ok) {
+        throw new Error(`AI API Logic Error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const content = data.choices[0].message.content
+    let parsed
+    try {
+        parsed = JSON.parse(content)
+    } catch (e) {
+        // Simple fallback parsing if markdown code blocks exist
+        const jsonMatch = content.match(/\{[\s\S]*\}/)
+        if (jsonMatch) parsed = JSON.parse(jsonMatch[0])
+        else throw new Error('Failed to parse AI response')
+    }
+
+    // 2. Generate Images (Parallel)
+    // Background
+    const bgPrommise = generateImage(parsed.background_prompt || `${char.name} atmospheric background`)
+
+    // Moment Images
+    const momentPromises = parsed.moments.map(m => generateImage(m.image_description))
+
+    const [bgUrl, ...momentImages] = await Promise.all([bgPrommise, ...momentPromises])
+
+    // Assemble Result
+    return {
+        signature: parsed.signature,
+        backgroundUrl: bgUrl,
+        moments: parsed.moments.map((m, i) => ({
+            content: m.content,
+            images: [momentImages[i]]
+        }))
+    }
+}

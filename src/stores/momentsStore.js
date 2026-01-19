@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
-import { generateMomentContent, generateBatchMomentsWithInteractions, generateBatchInteractions, generateReplyToComment } from '../utils/aiService'
+import { generateMomentContent, generateBatchMomentsWithInteractions, generateBatchInteractions, generateReplyToComment, generateCharacterProfile } from '../utils/aiService'
 
 export const useMomentsStore = defineStore('moments', () => {
     const chatStore = useChatStore()
@@ -575,6 +575,63 @@ export const useMomentsStore = defineStore('moments', () => {
         notifications.value.forEach(n => n.isRead = true)
     }
 
+    async function generateAndApplyCharacterProfile(charId) {
+        const char = chatStore.chats[charId]
+        if (!char) return
+
+        const userProfile = {
+            name: settingsStore.personalization.userProfile.name
+        }
+
+        try {
+            const profileData = await generateCharacterProfile(char, userProfile)
+
+            // 1. Update Character Info (Signature & Background)
+            // Assuming chatStore has reactivity on chats
+            if (chatStore.chats[charId]) {
+                chatStore.chats[charId].statusText = profileData.signature
+                chatStore.chats[charId].momentsBackground = profileData.backgroundUrl
+                // Persist changes if necessary (usually handled by chatStore watchers)
+            }
+
+            // 2. Add New Moments
+            const newMomentIds = []
+            for (const mData of profileData.moments) {
+                const moment = addMoment({
+                    authorId: charId,
+                    content: mData.content,
+                    images: mData.images,
+                    visibility: 'public'
+                }, { skipAutoInteraction: true })
+                newMomentIds.push(moment.id)
+            }
+
+            // 3. Pin Logic (Replace pins for this character)
+            // First, remove existing pins that belong to this character
+            topMoments.value = topMoments.value.filter(pinnedId => {
+                const m = moments.value.find(xm => xm.id === pinnedId)
+                return m && m.authorId !== charId
+            })
+
+            // Then add new pins (limit global pins logic might apply, but here we force them)
+            // Note: Since topMoments is global, we might push out other people's pins if we are not careful.
+            // But based on user request "Change pins", implies these become the active pins.
+            // We just unshift them to top.
+            topMoments.value.unshift(...newMomentIds)
+
+            // Respect max limit (e.g., 3 or 9?). If limit is 3, others get removed.
+            // The user mentioned "3 pins".
+            if (topMoments.value.length > 3) {
+                topMoments.value = topMoments.value.slice(0, 3)
+            }
+
+            return true
+        } catch (e) {
+            console.error('Failed to generate profile', e)
+            throw e
+        }
+    }
+
     startAutoGeneration()
 
     return {
@@ -585,6 +642,7 @@ export const useMomentsStore = defineStore('moments', () => {
         clearAllMoments, clearCharacterMoments,
         addLike, removeLike, addComment, deleteComment,
         triggerAIInteractions, markNotificationsRead,
-        clearMyMoments, startAutoGeneration, batchGenerateAIMoments
+        clearMyMoments, startAutoGeneration, batchGenerateAIMoments,
+        generateAndApplyCharacterProfile
     }
 })
