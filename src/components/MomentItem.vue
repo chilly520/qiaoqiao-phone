@@ -51,12 +51,19 @@ const author = computed(() => {
     }
     // 首先尝试通过ID查找
     if (chatStore.chats[authorId]) {
-        return chatStore.chats[authorId]
+        const chat = chatStore.chats[authorId]
+        return {
+            ...chat,
+            name: chat.remark || chat.name // Use Remark Name
+        }
     }
     // 如果通过ID找不到，尝试通过名称查找
     const char = Object.values(chatStore.chats).find(c => c.name === authorId)
     if (char) {
-        return char
+        return {
+            ...char,
+            name: char.remark || char.name
+        }
     }
     // 如果都找不到，使用authorId作为名称，确保显示正确的作者名
     return { name: authorId, avatar: '' }
@@ -78,6 +85,14 @@ const currentUserName = computed(() => {
     }
     return settingsStore.personalization.userProfile.name
 })
+
+const getDisplayReplyName = (name) => {
+    if (!name) return ''
+    if (name === 'user' || name === '用户' || name === '我') {
+        return currentUserName.value
+    }
+    return name
+}
 
 const isLiked = computed(() => (props.moment?.likes || []).includes(settingsStore.personalization.userProfile.name))
 
@@ -572,7 +587,7 @@ const navigateToAuthor = () => {
                         <span class="text-[#576b95] font-bold">{{ comment.authorName || getAuthorName(comment.authorId)
                         }}</span>
                         <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
-                        <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ comment.replyTo }}</span>
+                        <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ getDisplayReplyName(comment.replyTo) }}</span>
                         <span class="text-gray-900">: </span>
                         <span class="text-gray-900" v-html="renderCommentContent(comment)"></span>
                     </div>
@@ -583,7 +598,7 @@ const navigateToAuthor = () => {
             <div v-if="showCommentInput"
                 class="mt-2 bg-gray-50 p-2 rounded flex flex-col gap-2 animate-fade-in border border-gray-100">
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
-                    <span>回复 <span class="text-blue-600 font-medium">{{ replyToComment.authorName }}</span></span>
+                    <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName) }}</span></span>
                     <i class="fa-solid fa-xmark cursor-pointer" @click="replyToComment = null"></i>
                 </div>
                 <div class="flex gap-2">

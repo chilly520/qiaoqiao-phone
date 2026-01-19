@@ -65,6 +65,8 @@ const postForm = ref({
 })
 const showMentionModal = ref(false)
 const customMentionInput = ref('')
+const showImageUrlInput = ref(false)
+const tempImageUrl = ref('')
 
 const showVisibilityPicker = ref(false)
 const showLocationPicker = ref(false)
@@ -538,6 +540,20 @@ const handleMentionSelect = (target) => {
     customMentionInput.value = ''
 }
 
+const confirmImageUrl = () => {
+    if (tempImageUrl.value.trim()) {
+        if (postForm.value.images.length < 9) {
+            postForm.value.images.push(tempImageUrl.value.trim())
+            tempImageUrl.value = ''
+            showImageUrlInput.value = false
+        } else {
+            chatStore.triggerToast('最多上传 9 张图片', 'error')
+        }
+    } else {
+        showImageUrlInput.value = false
+    }
+}
+
 const removeMention = (idx) => {
     postForm.value.mentions.splice(idx, 1)
 }
@@ -664,6 +680,24 @@ onMounted(() => {
             </div>
         </div>
 
+        <!-- Image URL Input Modal -->
+        <div v-if="showImageUrlInput" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50"
+            @click="showImageUrlInput = false">
+            <div class="bg-white w-[85%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl animate-scale-up p-4"
+                @click.stop>
+                <div class="font-bold text-gray-800 mb-3 text-center">添加网络图片</div>
+                <input v-model="tempImageUrl" type="text"
+                    class="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 mb-4"
+                    placeholder="粘贴图片链接 (http://...)" v-focus @keyup.enter="confirmImageUrl">
+                <div class="flex gap-3">
+                    <button class="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold active:bg-gray-200"
+                        @click="showImageUrlInput = false">取消</button>
+                    <button class="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold active:scale-95 transition-transform"
+                        @click="confirmImageUrl">确定</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Post Modal -->
         <div v-if="showPostModal" class="fixed inset-0 z-[100] bg-white animate-slide-up flex flex-col">
             <div class="h-[72px] pt-7 flex items-center justify-between px-4 border-b border-gray-100 shrink-0">
@@ -717,7 +751,7 @@ onMounted(() => {
                         @click="showEmojiPicker = true"></i>
                     <i class="fa-solid fa-at cursor-pointer hover:text-gray-800" @click="showMentionModal = true"></i>
                     <i class="fa-solid fa-link cursor-pointer hover:text-gray-800"
-                        @click="postForm.images.push(prompt('请输入图片URL'))"></i>
+                        @click="showImageUrlInput = true"></i>
                 </div>
 
                 <!-- Selected Mentions Display -->

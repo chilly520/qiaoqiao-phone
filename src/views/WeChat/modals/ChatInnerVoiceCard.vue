@@ -150,6 +150,9 @@ const parseVoiceData = (text) => {
                 jsonStr = jsonMatch[0]
             } else if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) {
                 jsonStr += '}'
+            } else if (!jsonStr.startsWith('{') && (jsonStr.trim().startsWith('"') || jsonStr.trim().startsWith("'")) && jsonStr.includes(':')) {
+                // Heuristic: If it starts with a quote and has a colon, assume it's a naked JSON body
+                jsonStr = '{' + jsonStr + ((jsonStr.endsWith('}') || jsonStr.trim().endsWith(',')) ? '' : '}')
             }
 
             try { result = JSON.parse(jsonStr) }

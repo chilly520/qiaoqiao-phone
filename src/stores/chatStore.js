@@ -1507,7 +1507,47 @@ ${contextMsgs}
             if (result.content) {
                 // Keep FULL content (with Inner Voice) for history context
                 // The UI (ChatWindow) handles hiding it via getCleanContent
-                const fullContent = result.content;
+                let fullContent = result.content;
+
+                // --- Pre-process: Auto-Fix Missing [/INNER_VOICE] ---
+                // If we detect [INNER_VOICE] but no closing tag, we try to auto-close it at the end of the JSON block
+                if (fullContent.match(/\[\s*INNER[-_ ]?VOICE\s*\]/i) && !fullContent.match(/\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]/i)) {
+                    const startMatch = fullContent.match(/\[\s*INNER[-_ ]?VOICE\s*\]/i);
+                    if (startMatch) {
+                        const startIndex = startMatch.index + startMatch[0].length;
+                        const jsonStart = fullContent.indexOf('{', startIndex);
+
+                        if (jsonStart !== -1) {
+                            let balance = 0;
+                            let inString = false;
+                            let isEscaped = false;
+                            let endPos = -1;
+
+                            for (let i = jsonStart; i < fullContent.length; i++) {
+                                const char = fullContent[i];
+                                if (isEscaped) { isEscaped = false; continue; }
+                                if (char === '\\') { isEscaped = true; continue; }
+                                if (char === '"') { inString = !inString; continue; }
+                                if (!inString) {
+                                    if (char === '{') balance++;
+                                    else if (char === '}') {
+                                        balance--;
+                                        if (balance === 0) {
+                                            endPos = i + 1; // Position after the closing brace
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (endPos !== -1) {
+                                // Auto-insert closing tag
+                                fullContent = fullContent.slice(0, endPos) + '\n[/INNER_VOICE]\n' + fullContent.slice(endPos);
+                                console.log('[ChatStore] Auto-closed missing [/INNER_VOICE] tag based on JSON balance');
+                            }
+                        }
+                    }
+                }
 
                 // Log AI reply content for debugging
                 useLoggerStore().info(`接收AI回复: ${chat.name}`, {
@@ -1548,7 +1588,7 @@ ${contextMsgs}
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
                 // FIX: Use Strictly Bounded Regex (Case Insensitive + Space Aware)
                 // Stop at closing tag, OR start of another command, OR a newline followed by dialogue (non-JSON char)
-                const innerVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|(?=\n\s*[^\n\s\{"\['])|$)/gi;
+                const innerVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
@@ -1876,7 +1916,7 @@ ${contextMsgs}
 
                 // --- Improved Content Cleaning ---
                 // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
-                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|(?=\n\s*[^\n\s\{"\['])|$)/gi;
+                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
                 let cleanContent = properlyOrderedContent
                     .replace(cleanVoiceRegex, '')
                     .replace(patRegex, '')
