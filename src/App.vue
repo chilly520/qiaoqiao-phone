@@ -149,6 +149,43 @@ const showBanner = ref(false)
 const bannerData = ref(null)
 let bannerTimer = null
 
+// Swipe Logic
+const bannerDragOffset = ref(0)
+const isBannerDragging = ref(false)
+let bannerStartX = 0
+
+const handleBannerPanStart = (e) => {
+    isBannerDragging.value = true
+    bannerStartX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+    bannerDragOffset.value = 0
+}
+
+const handleBannerPanMove = (e) => {
+    if (!isBannerDragging.value) return
+    const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX
+    bannerDragOffset.value = clientX - bannerStartX
+}
+
+const handleBannerPanEnd = () => {
+    if (!isBannerDragging.value) return
+    isBannerDragging.value = false
+    
+    // Threshold to dismiss
+    if (Math.abs(bannerDragOffset.value) > 100) {
+        showBanner.value = false
+        // Reset immediately so next pop is clean
+        setTimeout(() => { bannerDragOffset.value = 0 }, 300) 
+    } else {
+        // Bounce back
+        bannerDragOffset.value = 0
+    }
+}
+
+const handleBannerClickWrapper = () => {
+    if (Math.abs(bannerDragOffset.value) > 5) return // Ignore click if dragged
+    handleBannerClick()
+}
+
 watch(() => chatStore.notificationEvent, (evt) => {
     if (!evt) return
 
@@ -157,6 +194,7 @@ watch(() => chatStore.notificationEvent, (evt) => {
 
     // Trigger Banner
     bannerData.value = evt
+    bannerDragOffset.value = 0 // Reset pos
     showBanner.value = true
 
     // ALSO trigger system notification (for real phone notification bar)
@@ -181,7 +219,7 @@ const handleBannerClick = () => {
     showBanner.value = false
 }
 
-// --- Global Toast System ---
+// ... existing Global Toast System ...
 const showToast = ref(false)
 const toastData = ref({ message: '', type: 'info' })
 let toastTimer = null
@@ -225,10 +263,24 @@ watch(() => chatStore.toastEvent, (evt) => {
         </div>
 
         <div v-if="showBanner && bannerData"
-            class="fixed top-2 left-0 right-0 z-[5000] px-3 cursor-pointer animate-slide-down" @click="handleBannerClick">
+            class="fixed top-2 left-0 right-0 z-[5000] px-3 animate-slide-down">
             <!-- Banner Container -->
             <div
-                class="w-full max-w-[500px] mx-auto bg-white/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[24px] p-3.5 flex items-center gap-3.5 border border-white/40 ring-1 ring-black/5 transition-all active:scale-[0.98]">
+                class="w-full max-w-[500px] mx-auto bg-white/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[24px] p-3.5 flex items-center gap-3.5 border border-white/40 ring-1 ring-black/5 active:scale-[0.98] cursor-pointer touch-none select-none"
+                :style="{ 
+                    transform: `translateX(${bannerDragOffset}px)`, 
+                    transition: isBannerDragging ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s',
+                    opacity: 1 - Math.abs(bannerDragOffset) / 300
+                }"
+                @click="handleBannerClickWrapper"
+                @touchstart="handleBannerPanStart"
+                @touchmove="handleBannerPanMove"
+                @touchend="handleBannerPanEnd"
+                @mousedown="handleBannerPanStart"
+                @mousemove="handleBannerPanMove"
+                @mouseup="handleBannerPanEnd"
+                @mouseleave="handleBannerPanEnd"
+            >
                 <!-- Avatar (Rounded Square - iOS Style) -->
                 <div class="w-[44px] h-[44px] rounded-[12px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
                     <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
