@@ -1587,8 +1587,10 @@ ${contextMsgs}
                 // Clean content by removing ALL inner voice blocks for display/splitting
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
                 // FIX: Use Strictly Bounded Regex (Case Insensitive + Space Aware)
-                // Stop at closing tag, OR start of another command, OR a newline followed by dialogue (non-JSON char)
-                const innerVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                // Stop at closing tag, OR start of another command, OR end of file.
+                // NOTE: We do NOT use Lookahead for Newline+Bracket as strict delimiter here, to allow AI to continue comfortably.
+                // The explicit closing tag is preferred.
+                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi;
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
@@ -1597,14 +1599,47 @@ ${contextMsgs}
                 // Pure Dialogue extraction
                 let pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
 
-                // Failsafe: If regex failed but AI Service successfully parsed Inner Voice, reconstruct it
-                if (!innerVoiceBlock && result.innerVoice) {
-                    try {
-                        console.log('[ChatStore] Regex failed check, reconstructing Inner Voice from parsed result');
-                        const jsonContent = JSON.stringify(result.innerVoice, null, 2);
-                        innerVoiceBlock = `\n[INNER_VOICE]\n${jsonContent}\n[/INNER_VOICE]`;
-                    } catch (e) {
-                        console.error('[ChatStore] Failed to reconstruct Inner Voice', e);
+                // Failsafe: If regex failed but AI Service successfully parsed Inner Voice, OR if we can find a JSON block manually
+                if (!innerVoiceBlock) {
+                    if (result.innerVoice) {
+                        // Case A: AI Service already parsed it (reliable)
+                        try {
+                            console.log('[ChatStore] Regex failed check, reconstructing Inner Voice from parsed result');
+                            const jsonContent = JSON.stringify(result.innerVoice, null, 2);
+                            innerVoiceBlock = `\n[INNER_VOICE]\n${jsonContent}\n[/INNER_VOICE]`;
+                        } catch (e) {
+                            console.error('[ChatStore] Failed to reconstruct Inner Voice', e);
+                        }
+                    } else if (fullContent.includes('{') && (fullContent.includes('"status"') || fullContent.includes('"心声"'))) {
+                        // Case B: AI Service didn't catch it via regex, but there is JSON in there.
+                        // Try to find the last JSON block.
+                        try {
+                            const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+                            if (jsonMatch) {
+                                // Validate if it looks like inner voice
+                                const candidate = jsonMatch[0];
+                                if (candidate.includes('"status"') || candidate.includes('"心声"')) {
+                                    console.log('[ChatStore] Found raw JSON block, treating as Inner Voice');
+                                    innerVoiceBlock = `\n[INNER_VOICE]\n${candidate}\n[/INNER_VOICE]`;
+                                    // Remove this JSON from dialogue to prevent dupes
+                                    pureDialogue = pureDialogue.replace(candidate, '').trim();
+
+                                    // Also try to parse it to update status immediately
+                                    const ivObj = JSON.parse(candidate);
+                                    if (ivObj.status || ivObj.状态) {
+                                        const newStatus = ivObj.status || ivObj.状态;
+                                        if (newStatus && chat) {
+                                            chat.statusText = String(newStatus).substring(0, 30);
+                                            chat.isOnline = true;
+                                        }
+                                        // Update char info too
+                                        charInfo.mindscape = ivObj;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('[ChatStore] Failed to extract raw JSON fallback', e);
+                        }
                     }
                 }
 
@@ -1928,7 +1963,7 @@ ${contextMsgs}
                 // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
                 const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
                 let cleanContent = properlyOrderedContent
-                    .replace(cleanVoiceRegex, '')
+                    // .replace(cleanVoiceRegex, '') // KEEP INNER_VOICE for History/Card to read!
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
                     .replace(momentRegex, '')
@@ -1945,7 +1980,7 @@ ${contextMsgs}
                     .replace(/\[Image Reference ID:.*?\]/gi, '')
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
-                    .replace(/\[\/?(INNER_VOICE|MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
+                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
@@ -2037,7 +2072,9 @@ ${contextMsgs}
                 // --- Improved Splitting Logic (V11 - Balanced Aware) ---
                 // We split by punctuation but keep segments meaningful.
                 // Avoid capturing nested parentheses in the split pattern itself if possible
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+
+                // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2050,7 +2087,7 @@ ${contextMsgs}
                     if (part === undefined) continue;
 
                     const trimmedPart = part.trim();
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD)/.test(trimmedPart);
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {

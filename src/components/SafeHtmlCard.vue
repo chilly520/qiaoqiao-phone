@@ -18,7 +18,7 @@ const props = defineProps({
 
 const iframeRef = ref(null)
 const height = ref(40)
-const width = ref(300) // Added width tracking
+const width = ref(290) // Fixed safe width for mobile cards
 const resizeObserver = ref(null)
 
 const fullContent = computed(() => {
@@ -28,18 +28,17 @@ const fullContent = computed(() => {
     <style id="base-styles">
       html, body {
         margin: 0 !important;
-        padding: 10px !important; 
+        padding: 12px !important; 
         border: 0 !important;
-        width: auto !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
+        width: 100% !important;
+        height: auto !important;
+        display: block !important; /* Fix narrow strip issue: verify block layout */
         box-sizing: border-box !important;
-        overflow: visible !important; 
+        overflow-wrap: break-word !important;
+        word-wrap: break-word !important;
         background: transparent !important;
         -webkit-tap-highlight-color: transparent;
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       }
       
       html::-webkit-scrollbar, body::-webkit-scrollbar {
@@ -48,12 +47,14 @@ const fullContent = computed(() => {
       
       * {
         box-sizing: border-box !important;
+        max-width: 100% !important;
       }
 
       /* Visual Feedback for buttons */
       [style*="cursor: pointer"], button, .button, a {
         transition: transform 0.1s ease, opacity 0.1s ease !important;
         user-select: none !important;
+        cursor: pointer !important;
       }
       [style*="cursor: pointer"]:active, button:active, .button:active, a:active {
         transform: scale(0.95) !important;
@@ -79,6 +80,24 @@ const fullContent = computed(() => {
         if (!text) return;
         window.parent.postMessage({ type: 'CHAT_SEND', text: text }, '*');
       };
+
+      // Auto-Wire Static Menus: Make "cursor: pointer" elements interactive if they have no handlers
+      document.addEventListener('DOMContentLoaded', () => {
+         const interactives = document.querySelectorAll('[style*="cursor: pointer"], [style*="cursor:pointer"], .button');
+         interactives.forEach(el => {
+            if (!el.onclick) {
+               el.onclick = (e) => {
+                  e.stopPropagation(); // Stop bubbling to prevent double triggers
+                  const text = el.innerText.trim() || el.textContent.trim();
+                  // Remove brackets if present (common in AI menus like [ Option ])
+                  const cleanText = text.replace(/^\[\s*|\s*\]$/g, '').trim(); 
+                  if (cleanText) {
+                    window.sendToChat(cleanText);
+                  }
+               };
+            }
+         });
+      });
 
       document.body.style.opacity = '1';
     <\/script>
@@ -185,9 +204,8 @@ const adjustHeight = () => {
       const newWidth = body.scrollWidth
       
       if (newHeight > 0) height.value = newHeight + 2
-      if (newWidth > 0) {
-          width.value = Math.min(newWidth + 2, window.innerWidth * 0.9)
-      }
+      // FIX: Do not auto-shrink width. Keep it fixed/stable to allow text to wrap naturally without collapsing.
+      // width.value = ... 
     }
 
     updateSize()

@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { compressImage } from '../utils/imageUtils'
+import { useChatStore } from './chatStore'
 
 export const useStickerStore = defineStore('sticker', () => {
     const stickers = ref([])
     const STORAGE_KEY = 'wechat_global_emojis'
+    const chatStore = useChatStore()
 
     // Load Global Stickers
     function loadStickers() {
@@ -40,12 +42,12 @@ export const useStickerStore = defineStore('sticker', () => {
 
     // Add a new sticker
     function addSticker(url, name, scope = 'global', category = null) {
-        const targetList = getStickers(scope)
+        const targetList = getStickers(scope, scope !== 'global' ? (chatStore.chats[scope]?.emojis || []) : [])
         const finalName = name?.trim() || `Sticker_${Date.now()}`
 
         // Check for duplicates (By URL Only, as requested)
         if (targetList && targetList.some(s => s.url === url)) {
-            console.warn(`[StickerStore] Duplicate detected for URL. Skipping.`)
+            console.warn('[StickerStore] Duplicate detected for URL. Skipping.')
             return false
         }
 
@@ -65,6 +67,7 @@ export const useStickerStore = defineStore('sticker', () => {
             return true
         } else {
             // Character Scope: Return the sticker object
+            // Note: We do NOT save automatically here to support efficient batch import
             return newSticker
         }
     }
@@ -86,7 +89,17 @@ export const useStickerStore = defineStore('sticker', () => {
             compressImage(file, { maxWidth: 300, maxHeight: 300, quality: 0.8 }) // Stickers can be small
                 .then(base64 => {
                     const name = file.name.split('.')[0] || `Custom_${Date.now()}`
-                    addSticker(base64, name, scope)
+                    const result = addSticker(base64, name, scope)
+
+                    // IF we are in character scope, addSticker returns object but doesn't save. We MUST save here for single upload.
+                    if (scope !== 'global' && result && typeof result === 'object') {
+                        const chat = chatStore.chats[scope]
+                        if (chat) {
+                            const newEmojis = [...(chat.emojis || []), result]
+                            chatStore.updateCharacter(scope, { emojis: newEmojis })
+                        }
+                    }
+
                     resolve(base64)
                 })
                 .catch(err => {
@@ -109,13 +122,28 @@ export const useStickerStore = defineStore('sticker', () => {
         }
     }
 
+    function deleteBatchStickers(urls, scope = 'global') {
+        if (!urls || urls.length === 0) return
+
+        if (scope === 'global') {
+            stickers.value = stickers.value.filter(s => !urls.includes(s.url))
+            saveStickers()
+        } else {
+            const chat = chatStore.chats[scope]
+            if (chat && chat.emojis) {
+                const newEmojis = chat.emojis.filter(s => !urls.includes(s.url))
+                chatStore.updateCharacter(scope, { emojis: newEmojis })
+            }
+        }
+    }
+
     function clearAllStickers(scope = 'global') {
         if (scope === 'global') {
             stickers.value = []
             saveStickers()
         } else {
-            const chat = chatStore.chats[scope]
-            if (chat) {
+            // Use chatStore correctly
+            if (chatStore.chats[scope]) {
                 chatStore.updateCharacter(scope, { emojis: [] })
             }
         }
@@ -194,6 +222,7 @@ export const useStickerStore = defineStore('sticker', () => {
         uploadSticker,
 
         deleteSticker,
+        deleteBatchStickers,
         importStickersFromText,
         clearAllStickers
     }

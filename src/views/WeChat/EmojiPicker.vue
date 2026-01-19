@@ -447,9 +447,7 @@ const deleteSelectedStickers = () => {
     
     confirmMessage.value = `确定要删除选中的 ${selectedStickers.value.length} 个表情包吗？`
     confirmCallback.value = () => {
-        selectedStickers.value.forEach(url => {
-            stickerStore.deleteSticker(url, activeScope.value)
-        })
+        stickerStore.deleteBatchStickers([...selectedStickers.value], activeScope.value)
         
         showToast(`已删除 ${selectedStickers.value.length} 个表情包`)
         selectedStickers.value = []

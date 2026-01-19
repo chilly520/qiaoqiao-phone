@@ -18,6 +18,7 @@ const logger = useLoggerStore()
 
 // --- Global Error Handling ---
 window.onerror = (message, source, lineno, colno, error) => {
+    if (String(message).includes('ResizeObserver')) return true;
     logger.error('JS Runtime Error', { message, source, lineno, colno, stack: error?.stack })
     return false
 }
@@ -25,6 +26,16 @@ window.onerror = (message, source, lineno, colno, error) => {
 window.onunhandledrejection = (event) => {
     // Extract meaningful info from the rejection reason
     let reason = event.reason
+
+    // Filter out benign browser extension errors
+    // "Receiving end does not exist" is a common Chrome Extension communication error
+    // "The message port closed before a response was received" is another one
+    const msg = reason?.message || String(reason)
+    if (msg.includes('Receiving end does not exist') || msg.includes('message port closed') || msg.includes('ResizeObserver')) {
+        event.preventDefault(); // Prevent browser console error output
+        return
+    }
+
     if (reason instanceof Error) {
         reason = {
             message: reason.message,

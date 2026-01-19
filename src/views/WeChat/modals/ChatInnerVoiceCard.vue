@@ -225,13 +225,28 @@ const parseVoiceData = (text) => {
 const historyList = computed(() => {
     if (!props.chatId) return []
     const msgs = chatStore.chats[props.chatId]?.msgs || []
-    return msgs.filter(m => m.content && (m.type === 'inner_voice_card' || String(m.content).includes('[INNER_VOICE]')))
-        .map(m => {
-            let content = m.content
-            const match = String(m.content).match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|(?=\[)|$)/i)
-            if (match) content = match[1]
-            return { id: m.id, timestamp: m.timestamp, content: content }
-        })
+    
+    // Robust Regex matching the one used in Store (Relaxed spaces)
+    const voiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i;
+
+    return msgs.filter(m => {
+        if (!m.content) return false;
+        if (m.type === 'inner_voice_card') return true;
+        // Test content against regex OR check for raw JSON characteristics
+        const str = String(m.content);
+        return voiceRegex.test(str) || (str.includes('{') && (str.includes('"status"') || str.includes('“status”') || str.includes('"心声"') || str.includes('“心声”')));
+    }).map(m => {
+        let content = m.content;
+        if (typeof content === 'string') {
+            const match = content.match(voiceRegex);
+            if (match) {
+                content = match[1]; // Extract just the JSON part
+            }
+            // Fallback: If no tag match but filter passed, it's likely raw JSON or missing tags. 
+            // Let the parseVoiceData function handle the extraction from the raw string.
+        }
+        return { id: m.id, timestamp: m.timestamp, content: content };
+    });
 })
 
 const currentVoice = computed(() => historyList.value[currentIndex.value])

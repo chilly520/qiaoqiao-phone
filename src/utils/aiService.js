@@ -870,7 +870,7 @@ async function _generateReplyInternal(messages, char, signal) {
         let innerVoice = null
 
         // 提取 [INNER_VOICE] - 增强版正则，支持空格、连字符及缺失闭合标签
-        const ivMatch = content.match(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
+        const ivMatch = content.match(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
 
         if (ivMatch) {
             try {

@@ -563,11 +563,15 @@ const isHtmlCard = computed(() => {
     // 2. Detect JSON wrapper in content
     const c = ensureString(props.msg.content).trim()
     if (c === '[HTML卡片]') return true
-    if (c.includes('"type"') && c.includes('"html"')) return true
+    
+    // Robust JSON check: "type": "html" OR "html": "..."
+    // This handles cases where AI forgets "type" or the [CARD] tag
+    if ((c.includes('"type"') && c.includes('"html"')) || (c.includes('"html"') && c.includes('{') && c.includes('}'))) return true
     
     // 3. Raw HTML tags
     if (c.includes('<div') || c.includes('<html') || c.includes('<style')) {
-        if (c.includes('{') || c.includes('}')) return true // likely code
+        // If it looks like code (has braces) OR has extensive HTML structure
+        if (c.includes('{') || c.includes('}') || c.includes('</')) return true 
     }
     
     return false
@@ -596,11 +600,12 @@ const familyCardData = computed(() => {
     const content = ensureString(props.msg.content)
 
     // Recovery for HTML JSON Garbage
-    if ((props.msg.type === 'html' && props.msg.role === 'ai') || (content.includes('"type":"html"') && content.includes('亲属卡'))) {
-        if (content.includes('拒绝')) {
+    // Check if it's an HTML card acting as a logic carrier (e.g. Reject)
+    if ((props.msg.type === 'html' && props.msg.role === 'ai') || (content.includes('"html"') && content.includes('拒绝'))) {
+        if (content.includes('拒绝') || content.includes('reject')) {
             return { amount: '0', text: '对方拒绝了您的申请', isReject: true }
         }
-        return { amount: '5200', text: '这是您的零花钱，请收好~', isReject: false }
+        // If it's just a generic HTML card, don't force it to be a family card unless explicit
     }
 
     // 预处理：有时候AI会把卡片放在代码块里，或者转义，先简单清理一下转义符
@@ -652,6 +657,9 @@ function getCleanContent(contentRaw, isCard = false) {
     // Removal of strictly internal protocol tags
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
     
+    // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
+    clean = clean.replace(/\[CARD\]([\s\S]*?)\[\/CARD\]/gi, '');
+
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata)"[\s\S]*?\}/gi, '');
     
@@ -661,12 +669,17 @@ function getCleanContent(contentRaw, isCard = false) {
         clean = clean.replace(/```[\s\S]*?```/gi, '');
         
         // 2. Remove JSON-like structures that look like technical metadata
-        // Includes { "type": "html" }, { "心声": ... }, { "thoughts": ... } etc.
+        // Includes { "type": "html" }, { "html": ... }, { "心声": ... } etc.
+        // Relaxed matching for "html" key without "type"
+        clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
         clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform)"[\s\S]*?\}/gi, '');
         
         // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
         // This targets the specific "to { transform: rotate(360deg) }" leak
         clean = clean.replace(/(?:^|\s)(?:to|from|[\.\#]?[a-zA-Z0-9\-\_]+)\s*\{[\s\S]*?\}/gi, '');
+
+        // 3.1 Remove CSS Keyframe Percentages (e.g. "50% { ... }")
+        clean = clean.replace(/(?:^|\s)\d+%\s*\{[\s\S]*?\}/gi, '');
 
         // 4. Remove standalone CSS properties if they leak outside blocks
         clean = clean.replace(/transform:\s*rotate\([^\)]+\)/gi, '');
@@ -1013,7 +1026,10 @@ function formatMessageContent(msg) {
     html = html.replace(/\[(.*?)\]/g, (match, name) => {
         let n = name.trim()
         
-        // Strip prefixes
+        // Strip prefixes, but EXCLUDE DRAW commands
+        // If it starts with DRAW:, it is NOT a sticker.
+        if (n.toUpperCase().startsWith('DRAW:')) return match;
+
         const prefixMatch = n.match(/^(?:表情包|表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
         if (prefixMatch) {
             n = prefixMatch[1].trim();
@@ -1022,6 +1038,15 @@ function formatMessageContent(msg) {
         const found = findSticker(n);
         if (found) {
             return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
+        }
+
+        // Fallback: If sticker not found but it was explicitly tagged as a sticker/image,
+        // render a placeholder to indicate "Missing Sticker" instead of raw text or nothing.
+        // Uses Dicebear Initials as a consistent visual placeholder.
+        if (n && n.length > 0) {
+             const seed = n;
+             const fallbackUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
+             return `<img src="${fallbackUrl}" class="w-12 h-12 inline-block mx-1 align-middle opacity-80 rounded shadow-sm" alt="${n}" title="${n}" />`;
         }
 
         return match; 
