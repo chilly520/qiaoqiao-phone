@@ -229,7 +229,7 @@ async function _generateReplyInternal(messages, char, signal) {
         persona: char.userPersona || '',
         gender: char.userGender || realUserProfile.gender || '未知',
         signature: realUserProfile.signature || '',
-        avatarUrl: realUserProfile.avatar || char.userAvatarUrl || ''
+        avatarUrl: char.userAvatar || char.userAvatarUrl || realUserProfile.avatar || ''
     }
 
     // World Book Logic
