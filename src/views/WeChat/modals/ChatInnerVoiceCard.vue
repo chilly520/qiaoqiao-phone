@@ -213,7 +213,7 @@ const parseVoiceData = (text) => {
             return {
                 clothes: getString(target["着装"] || target.clothes || target.outfit || target.clothes),
                 scene: getString(target["环境"] || target.scene || target.environment),
-                mind: getString(target["心声"] || target.mind || target.thought || target.thoughts || target.emotion),
+                mind: getString(target["心声"] || target.mind || target.thought || target.thoughts || target.emotion || target["情绪"] || target["想法"]),
                 action: getString(target["行为"] || target.action || target.behavior || target.plan)
             }
         }

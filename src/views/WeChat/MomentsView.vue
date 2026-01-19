@@ -51,6 +51,12 @@ const showingProfileCharId = ref(null)
 const filterAuthorId = ref(null)
 const showNotifications = ref(false)
 const profileContextId = ref(null) // New: preserve profile context when viewing individual feed
+const selectedMoment = ref(null)
+
+const handleShowDetail = (moment) => {
+    selectedMoment.value = moment
+}
+
 
 // Post Form
 const postForm = ref({
@@ -578,6 +584,22 @@ onMounted(() => {
             <MomentsNotifications @back="showNotifications = false" @jump="handleNotificationJump" />
         </div>
 
+        <!-- Moment Detail Overlay -->
+        <div v-if="selectedMoment" class="absolute inset-0 z-[60] bg-[#ededed] flex flex-col animate-slide-up">
+            <!-- Header -->
+            <div class="h-[72px] pt-7 shrink-0 flex items-center px-4 bg-[#ededed] border-b border-gray-200 z-20">
+                <i class="fa-solid fa-chevron-left text-xl cursor-pointer text-black" @click="selectedMoment = null"></i>
+                <span class="flex-1 text-center font-bold text-lg text-black">动态详情</span>
+                <div class="w-5"></div>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto no-scrollbar pt-4">
+                <MomentItem :moment="selectedMoment" :isDetail="true" 
+                    @back="selectedMoment = null" @edit="handleEditMoment"
+                    @show-profile="id => { selectedMoment = null; id === 'user' ? handleUserAvatarClick() : (showingProfileCharId = id) }" /> 
+            </div>
+        </div>
+
         <!-- Header -->
         <div class="h-[72px] pt-7 shrink-0 flex items-center justify-between px-4 bg-transparent absolute top-0 left-0 right-0 z-20 text-white transition-colors duration-300 overflow-hidden">
             <i class="fa-solid fa-chevron-left text-xl cursor-pointer drop-shadow-md"
@@ -665,7 +687,7 @@ onMounted(() => {
                 </div>
 
                 <MomentItem v-for="moment in filteredMoments" :key="moment.id" :id="moment.id" :moment="moment"
-                    @back="goBack" @edit="handleEditMoment"
+                    @back="goBack" @edit="handleEditMoment" @show-detail="handleShowDetail(moment)"
                     @show-profile="id => id === 'user' ? handleUserAvatarClick() : (showingProfileCharId = id)" />
             </div>
 

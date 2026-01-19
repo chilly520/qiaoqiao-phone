@@ -1575,19 +1575,22 @@ const openInnerVoiceModal = () => {
     for (let i = rawMsgs.length - 1; i >= 0; i--) {
         const m = rawMsgs[i]
         if (m.role === 'ai' && m.content && m.content.includes('INNER_VOICE')) {
-            // Only parse if potential tag exists to save Regex time
-            if (parseInnerVoice(m.content)) {
-                foundMsg = m
-                break
-            }
+            // Found the latest message with potential Inner Voice
+            foundMsg = m
+            break
         }
     }
 
     if (foundMsg) {
         const data = parseInnerVoice(foundMsg.content);
+        // Even if local parsing fails, we pass the ID to the modal so it can try its own robust parsing
+        currentInnerVoiceMsgId.value = foundMsg.id;
+        
         if (data) {
             currentInnerVoice.value = { ...data, id: foundMsg.id };
-            currentInnerVoiceMsgId.value = foundMsg.id;
+        } else {
+            // Fallback object to prevent null errors if used elsewhere
+            currentInnerVoice.value = { id: foundMsg.id }; 
         }
     } else {
         currentInnerVoice.value = null;

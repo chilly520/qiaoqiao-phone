@@ -7,10 +7,14 @@ import { useRouter } from 'vue-router'
 import { useStickerStore } from '../stores/stickerStore'
 
 const props = defineProps({
-    moment: Object
+    moment: Object,
+    isDetail: {
+        type: Boolean,
+        default: false
+    }
 })
 
-const emit = defineEmits(['back', 'edit', 'showProfile'])
+const emit = defineEmits(['back', 'edit', 'showProfile', 'show-detail'])
 
 const momentsStore = useMomentsStore()
 const chatStore = useChatStore()
@@ -403,13 +407,29 @@ const handleDeleteClick = () => {
     }
 }
 
+
+
 const formatTime = (ts) => {
-    const now = Date.now()
-    const diff = (now - ts) / 1000
-    if (diff < 60) return '刚刚'
-    if (diff < 3600) return Math.floor(diff / 60) + '分钟前'
-    if (diff < 86400) return Math.floor(diff / 3600) + '小时前'
-    return new Date(ts).toLocaleDateString()
+    if (!ts) return ''
+    const date = new Date(ts)
+    const now = new Date()
+    
+    // Helper for zero padding
+    const pad = (n) => n.toString().padStart(2, '0')
+    
+    const timeStr = `${pad(date.getHours())}:${pad(date.getMinutes())}`
+    
+    // If today
+    if (date.toDateString() === now.toDateString()) {
+        return timeStr
+    }
+    
+    // If this year
+    if (date.getFullYear() === now.getFullYear()) {
+        return `${pad(date.getMonth() + 1)}月${pad(date.getDate())}日 ${timeStr}`
+    }
+    
+    return `${date.getFullYear()}年${pad(date.getMonth() + 1)}月${pad(date.getDate())}日 ${timeStr}`
 }
 
 const navigateToAuthor = () => {
@@ -431,7 +451,7 @@ const navigateToAuthor = () => {
         </div>
 
         <!-- Content -->
-        <div class="flex-1 min-w-0">
+        <div class="flex-1 min-w-0" @click="!isDetail && emit('show-detail')">
             <!-- Name -->
             <h3 class="text-[#576b95] font-bold text-base mb-1 cursor-pointer hover:underline inline-block"
                 @click="navigateToAuthor">{{ author?.name }}</h3>
@@ -578,18 +598,30 @@ const navigateToAuthor = () => {
 
                 <!-- Comments -->
                 <div v-if="(props.moment?.comments || []).length > 0" class="px-3 py-1.5 space-y-1">
-                    <div v-for="comment in (props.moment?.comments || [])" :key="comment.id"
-                        class="text-sm cursor-pointer px-2 py-1 rounded transition-colors"
+                    <div v-for="comment in (isDetail ? (props.moment?.comments || []) : (props.moment?.comments || []).slice(0, 4))" :key="comment.id"
+                        class="text-sm cursor-pointer px-2 py-1 rounded transition-colors flex justify-between items-start group"
                         :class="activeComment && activeComment.id === comment.id && showCommentMenu ? 'bg-gray-200' : 'hover:bg-gray-100'"
                         @touchstart="handleCommentTouchStart($event, comment)" @touchmove="handleCommentTouchMove"
-                        @touchend="handleCommentTouchEnd" @click="handleCommentClick(comment)"
+                        @touchend="handleCommentTouchEnd" @click.stop="handleCommentClick(comment)"
                         @contextmenu="handleCommentContextMenu($event, comment)" title="长按操作">
-                        <span class="text-[#576b95] font-bold">{{ comment.authorName || getAuthorName(comment.authorId)
-                        }}</span>
-                        <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
-                        <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ getDisplayReplyName(comment.replyTo) }}</span>
-                        <span class="text-gray-900">: </span>
-                        <span class="text-gray-900" v-html="renderCommentContent(comment)"></span>
+                        
+                        <div class="flex-1">
+                            <span class="text-[#576b95] font-bold">{{ comment.authorName || getAuthorName(comment.authorId) }}</span>
+                            <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
+                            <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ getDisplayReplyName(comment.replyTo) }}</span>
+                            <span class="text-gray-900">: </span>
+                            <span class="text-gray-900" v-html="renderCommentContent(comment)"></span>
+                        </div>
+
+                        <!-- Timestamp (Detail View Only) -->
+                        <span v-if="isDetail" class="text-[10px] text-gray-400 ml-2 mt-0.5 shrink-0 tabular-nums">
+                            {{ formatTime(comment.timestamp).split(' ').pop() }}
+                        </span>
+                    </div>
+
+                    <!-- View More Hint -->
+                    <div v-if="!isDetail && (props.moment?.comments || []).length > 4" class="px-2 py-1 text-xs text-blue-500 font-medium cursor-pointer" @click.stop="emit('show-detail')">
+                         共 {{ (props.moment?.comments || []).length }} 条评论...
                     </div>
                 </div>
             </div>

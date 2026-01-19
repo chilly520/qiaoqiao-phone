@@ -480,16 +480,7 @@ export const useMomentsStore = defineStore('moments', () => {
         } catch (e) { /* silent */ }
     }
 
-    // Auto Gen Loop
-    let autoGenTimer = null
-    function startAutoGeneration() {
-        if (autoGenTimer) clearInterval(autoGenTimer)
-        const intervalMs = config.value.autoGenerateInterval * 60 * 1000
-        if (intervalMs <= 0) return
-        autoGenTimer = setInterval(() => {
-            if (Math.random() > 0.6) batchGenerateAIMoments(1)
-        }, intervalMs)
-    }
+
 
     async function batchGenerateAIMoments(count = 1, specificCharacters = null) {
         const candidates = specificCharacters || Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id))
@@ -540,7 +531,40 @@ export const useMomentsStore = defineStore('moments', () => {
                     }
                 }
             }
-        } catch (e) { console.error(e) }
+        } catch (e) {
+            console.error(e)
+        } finally {
+            // Update last generate time regardless of success to prevent spam loops on error
+            lastGenerateTime.value = Date.now()
+            localStorage.setItem('wechat_moments_last_gen', lastGenerateTime.value)
+        }
+    }
+
+    // Auto Gen Loop
+    let autoGenTimer = null
+    function startAutoGeneration() {
+        if (autoGenTimer) clearInterval(autoGenTimer)
+        const intervalMs = config.value.autoGenerateInterval * 60 * 1000
+        if (intervalMs <= 0) return
+
+        // 1. Initial Check: Catch up if missed while closed/backgrounded
+        const now = Date.now()
+        const elapsed = now - lastGenerateTime.value
+        if (elapsed > intervalMs) {
+            console.log('[MomentsStore] Auto-gen overdue, triggering immediately...')
+            batchGenerateAIMoments(1)
+        }
+
+        // 2. Start Timer
+        autoGenTimer = setInterval(() => {
+            // Re-check time to be robust against background throttling (which might wake up late)
+            const currentElapsed = Date.now() - lastGenerateTime.value
+            if (currentElapsed >= intervalMs) {
+                if (Math.random() > 0.6) {
+                    batchGenerateAIMoments(1)
+                }
+            }
+        }, 60000) // Check every minute instead of the full interval
     }
 
     function addNotification(payload) {

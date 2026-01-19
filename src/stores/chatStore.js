@@ -1592,11 +1592,21 @@ ${contextMsgs}
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
-                const innerVoiceBlock = allVoiceMatches.length > 0 ? allVoiceMatches[0][0] : '';
+                let innerVoiceBlock = allVoiceMatches.length > 0 ? allVoiceMatches[0][0] : '';
 
-                // Create Dialogue-Only content for splitting logic
-                // Ensure we use the case-insensitive regex here too
+                // Pure Dialogue extraction
                 let pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
+
+                // Failsafe: If regex failed but AI Service successfully parsed Inner Voice, reconstruct it
+                if (!innerVoiceBlock && result.innerVoice) {
+                    try {
+                        console.log('[ChatStore] Regex failed check, reconstructing Inner Voice from parsed result');
+                        const jsonContent = JSON.stringify(result.innerVoice, null, 2);
+                        innerVoiceBlock = `\n[INNER_VOICE]\n${jsonContent}\n[/INNER_VOICE]`;
+                    } catch (e) {
+                        console.error('[ChatStore] Failed to reconstruct Inner Voice', e);
+                    }
+                }
 
                 // Reconstruct the full content with proper order: dialogue first, then inner voice
                 const properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
