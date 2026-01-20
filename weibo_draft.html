@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Weibo Prototype - 微博草稿</title>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --wb-orange: #ff8200;
+            --wb-red: #e6162d;
+            --wb-bg: #f2f2f2;
+            --wb-card-bg: #ffffff;
+            --wb-text-main: #333333;
+            --wb-text-sub: #939393;
+            --wb-link: #4d73a1;
+            --wb-divider: #efefef;
+            --glass: rgba(255, 255, 255, 0.9);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--wb-bg);
+            color: var(--wb-text-main);
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* --- View System --- */
+        .page-view {
+            display: none;
+            padding-bottom: 70px;
+            min-height: 100vh;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .page-view.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* --- Global Header --- */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 8px 15px;
+        }
+
+        .search-bar {
+            background: #ededed;
+            border-radius: 20px;
+            padding: 8px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--wb-text-sub);
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--wb-text-sub);
+            padding: 5px 0;
+        }
+
+        .nav-tabs span.active {
+            color: var(--wb-text-main);
+            font-weight: bold;
+            position: relative;
+        }
+
+        .nav-tabs span.active::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 25px;
+            height: 3px;
+            background: var(--wb-orange);
+            border-radius: 10px;
+        }
+
+        /* --- Feed View --- */
+        .post-card {
+            background: var(--wb-card-bg);
+            margin-top: 10px;
+            padding: 15px;
+        }
+
+        .post-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-name {
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        .user-meta {
+            font-size: 11px;
+            color: var(--wb-text-sub);
+        }
+
+        .follow-btn {
+            color: var(--wb-orange);
+            font-size: 13px;
+            font-weight: bold;
+            border: 1px solid var(--wb-orange);
+            padding: 2px 10px;
+            border-radius: 15px;
+        }
+
+        .post-content {
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .post-tag {
+            color: var(--wb-link);
+            text-decoration: none;
+        }
+
+        .post-images {
+            display: grid;
+            gap: 5px;
+            margin-bottom: 12px;
+        }
+
+        .grid-1 {
+            grid-template-columns: 1fr;
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .post-images img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .post-actions {
+            display: flex;
+            justify-content: space-around;
+            padding-top: 12px;
+            border-top: 1px solid var(--wb-divider);
+            color: var(--wb-text-sub);
+            font-size: 13px;
+        }
+
+        /* --- Hot Search View --- */
+        .hot-list {
+            background: white;
+            padding: 0 15px;
+        }
+
+        .hot-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--wb-divider);
+            gap: 15px;
+        }
+
+        .hot-rank {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffb11a;
+            width: 24px;
+            text-align: center;
+        }
+
+        .hot-rank.top {
+            color: #fe2d46;
+        }
+
+        .hot-title {
+            flex: 1;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .hot-tag {
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            color: white;
+            background: #fe2d46;
+        }
+
+        .hot-tag.new {
+            background: #ffb11a;
+        }
+
+        .hot-meta {
+            font-size: 11px;
+            color: var(--wb-text-sub);
+            margin-left: 5px;
+        }
+
+        /* --- Messages View --- */
+        .msg-list {
+            background: white;
+        }
+
+        .msg-item {
+            display: flex;
+            padding: 15px;
+            gap: 12px;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .msg-content {
+            flex: 1;
+        }
+
+        .msg-top {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .msg-user {
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        .msg-time {
+            font-size: 11px;
+            color: var(--wb-text-sub);
+        }
+
+        .msg-text {
+            font-size: 13px;
+            color: var(--wb-text-sub);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 250px;
+        }
+
+        /* --- Profile View --- */
+        .profile-header {
+            background: white;
+            padding: 20px;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .profile-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 140px;
+            background: linear-gradient(to bottom, #ff8200, #ffb200);
+            z-index: 0;
+        }
+
+        .profile-top-bar {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            z-index: 10;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        .profile-main {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding-top: 60px;
+        }
+
+        .profile-avatar {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            border: 4px solid white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .profile-name {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 12px;
+            color: var(--wb-text-main);
+        }
+
+        .profile-id {
+            font-size: 13px;
+            color: var(--wb-text-sub);
+            margin-bottom: 5px;
+        }
+
+        .profile-stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin: 20px 0 10px;
+            width: 100%;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-num {
+            font-weight: bold;
+            font-size: 18px;
+            display: block;
+            color: var(--wb-text-main);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--wb-text-sub);
+        }
+
+        /* --- Bottom Nav --- */
+        nav.bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--glass);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            display: flex;
+            justify-content: space-around;
+            height: 60px;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+            padding-bottom: env(safe-area-inset-bottom);
+            z-index: 200;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--wb-text-main);
+            font-size: 10px;
+            width: 20%;
+            cursor: pointer;
+        }
+
+        .nav-item i {
+            font-size: 22px;
+            margin-bottom: 2px;
+        }
+
+        .nav-item.active {
+            color: var(--wb-orange);
+        }
+
+        .post-btn {
+            width: 44px;
+            height: 44px;
+            background: var(--wb-orange);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            margin-top: -10px;
+            box-shadow: 0 4px 12px rgba(255, 130, 0, 0.4);
+        }
+
+        /* --- AI Generate Buttons (Header Version) --- */
+        .ai-header-btn {
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+            white-space: nowrap;
+        }
+
+        .ai-header-btn:active {
+            transform: scale(0.95);
+            opacity: 0.9;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding: 12px 15px 0;
+            /* Added padding for consistency */
+        }
+
+        .header-title {
+            font-weight: bold;
+            font-size: 17px;
+            flex: 1;
+            text-align: center;
+        }
+
+        /* --- Post Modal --- */
+        .post-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .post-modal.active {
+            display: flex;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .modal-content {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .post-textarea {
+            width: 100%;
+            height: 200px;
+            border: none;
+            outline: none;
+            font-size: 17px;
+            resize: none;
+            font-family: inherit;
+            padding-bottom: 10px;
+        }
+
+        .post-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            padding: 10px 0;
+            color: #666;
+            border-top: 1px solid #f2f2f2;
+        }
+
+        .tool-item {
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .tool-item:active {
+            opacity: 0.5;
+        }
+
+        .tool-item i {
+            font-size: 22px;
+        }
+
+        .tool-item.ai {
+            color: #a855f7;
+        }
+
+        .post-options {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .option-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: #f2f2f2;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #555;
+            cursor: pointer;
+        }
+
+        .option-chip i {
+            font-size: 14px;
+        }
+
+        .option-chip input {
+            border: none;
+            background: transparent;
+            outline: none;
+            font-size: 13px;
+            width: 100px;
+            color: #333;
+        }
+
+        .send-btn {
+            background: var(--wb-orange);
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            opacity: 0.5;
+        }
+
+        .send-btn.ready {
+            opacity: 1;
+        }
+
+        /* --- Search Sub Views --- */
+        .search-sub-view {
+            display: none;
+        }
+
+        .search-sub-view.active {
+            display: block;
+        }
+
+        /* --- Topic Styles --- */
+        .topic-list {
+            background: white;
+        }
+
+        .topic-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            gap: 12px;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .topic-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            object-fit: cover;
+        }
+
+        .topic-info h4 {
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+
+        .topic-info p {
+            font-size: 12px;
+            color: var(--wb-text-sub);
+        }
+
+        /* --- Topic Detail View --- */
+        .topic-detail-header {
+            background: white;
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: sticky;
+            top: 0;
+            z-index: 110;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .back-btn {
+            font-size: 20px;
+            color: var(--wb-text-main);
+            cursor: pointer;
+        }
+
+        .topic-info-banner {
+            background: white;
+            padding: 20px 15px;
+            margin-bottom: 10px;
+        }
+
+        .topic-info-banner h2 {
+            font-size: 20px;
+            margin-bottom: 8px;
+            color: var(--wb-orange);
+        }
+
+        .topic-info-stats {
+            font-size: 13px;
+            color: var(--wb-text-sub);
+            display: flex;
+            gap: 20px;
+        }
+
+        /* --- Settings Modal --- */
+        .settings-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #f2f2f2;
+            z-index: 1100;
+            display: none;
+            flex-direction: column;
+            animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .settings-modal.active {
+            display: flex;
+        }
+
+        .settings-header {
+            background: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--wb-divider);
+            position: sticky;
+            top: 0;
+        }
+
+        .settings-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px 0;
+        }
+
+        .settings-section {
+            background: white;
+            margin-bottom: 15px;
+            padding: 0 15px;
+        }
+
+        .form-group {
+            display: flex;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #f9f9f9;
+        }
+
+        .form-group:last-child {
+            border-bottom: none;
+        }
+
+        .form-label {
+            width: 90px;
+            font-size: 15px;
+            color: #333;
+        }
+
+        .form-input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 15px;
+            text-align: right;
+            color: #666;
+        }
+
+        .cert-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px 0 15px;
+        }
+
+        .cert-btn {
+            border: 1px solid #ddd;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .cert-btn.active {
+            background: #fff0e0;
+            color: var(--wb-orange);
+            border-color: var(--wb-orange);
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 15px;
+            background: white;
+        }
+
+        .action-sub-btn {
+            background: #f8f8f8;
+            border: 1px solid #eeeeee;
+            padding: 12px 5px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 12px;
+            color: #555;
+            cursor: pointer;
+        }
+
+        .action-sub-btn:active {
+            background: #eee;
+        }
+
+        .footer-btns {
+            padding: 20px 15px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .footer-btns button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+        }
+
+        .btn-cancel {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .btn-save {
+            background: var(--wb-orange);
+            color: white;
+        }
+
+        /* --- Following List --- */
+        .following-list {
+            background: white;
+        }
+
+        .follow-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            gap: 12px;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .follow-item img {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+        }
+
+        .follow-info {
+            flex: 1;
+        }
+
+        .follow-info h4 {
+            font-size: 15px;
+            font-weight: bold;
+        }
+
+        .follow-info p {
+            font-size: 12px;
+            color: var(--wb-text-sub);
+            margin-top: 2px;
+        }
+
+        .follow-status-btn {
+            border: 1px solid #ddd;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 13px;
+            color: #999;
+        }
+
+        /* --- User Profile (Generic) --- */
+        .user-profile-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            width: 100%;
+            padding: 0 40px;
+        }
+
+        .user-profile-actions button {
+            flex: 1;
+            padding: 8px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border: 1px solid var(--wb-orange);
+        }
+
+        .btn-follow {
+            background: var(--wb-orange);
+            color: white;
+        }
+
+        .btn-chat {
+            background: white;
+            color: var(--wb-orange);
+        }
+
+        /* --- Chat Window (DM) --- */
+        .chat-window {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #f2f2f2;
+        }
+
+        .chat-header {
+            background: white;
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid var(--wb-divider);
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .bubble {
+            max-width: 75%;
+            padding: 10px 14px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.4;
+            position: relative;
+        }
+
+        .bubble.received {
+            align-self: flex-start;
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+
+        .bubble.sent {
+            align-self: flex-end;
+            background: var(--wb-orange);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-footer {
+            background: white;
+            padding: 10px 15px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-top: 1px solid var(--wb-divider);
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #f5f5f5;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            outline: none;
+            font-size: 15px;
+        }
+
+        .chat-send-btn {
+            color: var(--wb-orange);
+            font-weight: bold;
+            font-size: 15px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- View: DM Chat Window -->
+    <div id="view-dm-chat" class="page-view">
+        <div class="chat-window">
+            <div class="chat-header">
+                <i class="fa-solid fa-chevron-left back-btn" id="hide-dm-chat"></i>
+                <div style="font-weight: bold; font-size: 17px;" id="dm-chat-name">用户名</div>
+            </div>
+            <div class="chat-messages">
+                <div class="bubble received">你好呀！最近怎么样？</div>
+                <div class="bubble sent">我也很挺好的，刚才看到你发的微博了。</div>
+                <div class="bubble received">哈哈，谢谢关注任务！</div>
+            </div>
+            <div class="chat-footer">
+                <i class="fa-solid fa-microphone" style="font-size: 20px; color: #666;"></i>
+                <input type="text" class="chat-input" placeholder="输入消息...">
+                <i class="fa-solid fa-face-smile" style="font-size: 20px; color: #666;"></i>
+                <i class="fa-solid fa-plus" style="font-size: 20px; color: #666;"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- View: Following List -->
+    <div id="view-following" class="page-view">
+        <div class="topic-detail-header">
+            <i class="fa-solid fa-chevron-left back-btn" id="hide-following"></i>
+            <div style="font-weight: bold; font-size: 17px;">关注列表</div>
+        </div>
+        <main class="following-list">
+            <div class="follow-item" data-user="数码快报">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily">
+                <div class="follow-info">
+                    <h4>数码快报</h4>
+                    <p>数码领域的全能选手</p>
+                </div>
+                <div class="follow-status-btn">已关注</div>
+            </div>
+            <div class="follow-item" data-user="讨论达人A">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1">
+                <div class="follow-info">
+                    <h4>讨论达人A</h4>
+                    <p>热爱分享，热爱生活</p>
+                </div>
+                <div class="follow-status-btn">已关注</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- View: User Profile (Generic) -->
+    <div id="view-user-profile" class="page-view">
+        <div class="topic-detail-header"
+            style="position: absolute; background: transparent; border: none; color: white;">
+            <i class="fa-solid fa-chevron-left back-btn" id="hide-user-profile"></i>
+        </div>
+        <div class="profile-header">
+            <div class="profile-bg" style="background: linear-gradient(to bottom, #4d73a1, #5ac8fa);"></div>
+            <div class="profile-main">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily" class="profile-avatar"
+                    id="other-user-avatar">
+                <div class="profile-name" id="other-user-name">数码快报</div>
+                <div class="profile-id">ID: 10293847 | 官方认证</div>
+                <div class="user-profile-actions">
+                    <button class="btn-follow">已关注</button>
+                    <button class="btn-chat">私信</button>
+                </div>
+                <div class="profile-stats">
+                    <div class="stat-item"><span class="stat-num">8.2k</span><span class="stat-label">微博</span></div>
+                    <div class="stat-item"><span class="stat-num">1.2k</span><span class="stat-label">关注</span></div>
+                    <div class="stat-item"><span class="stat-num">500k</span><span class="stat-label">粉丝</span></div>
+                </div>
+            </div>
+        </div>
+        <div style="padding: 15px; font-weight: bold;">Ta的微博</div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="settings-modal">
+        <div class="settings-header">
+            <span style="font-weight: bold; font-size: 17px;">设置</span>
+            <i class="fa-solid fa-xmark" id="close-settings" style="font-size: 20px; color: #999; cursor: pointer;"></i>
+        </div>
+        <div class="settings-content">
+            <!-- Basic Profile -->
+            <div class="settings-section">
+                <div class="form-group"><span class="form-label">微博名</span><input type="text" class="form-input"
+                        placeholder="输入微博名" value="乔乔酱"></div>
+                <div class="form-group"><span class="form-label">头像URL</span><input type="text" class="form-input"
+                        placeholder="输入头像链接"></div>
+                <div class="form-group"><span class="form-label">个人简介</span><input type="text" class="form-input"
+                        placeholder="输入简介"></div>
+                <div class="form-group"><span class="form-label">地区</span><input type="text" class="form-input"
+                        placeholder="如：四川 成都"></div>
+            </div>
+
+            <!-- Stats -->
+            <div class="settings-section">
+                <div class="form-group"><span class="form-label">初始关注</span><input type="number" class="form-input"
+                        value="125"></div>
+                <div class="form-group"><span class="form-label">初始粉丝</span><input type="text" class="form-input"
+                        value="1.5m"></div>
+            </div>
+
+            <!-- Certification -->
+            <div class="settings-section" style="padding-top: 15px;">
+                <div style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">认证设置 (开关: <input type="checkbox"
+                        checked>)</div>
+                <div class="cert-options">
+                    <div class="cert-btn active">微博个人认证</div>
+                    <div class="cert-btn">微博官方认证</div>
+                    <div class="cert-btn">体育认证</div>
+                    <div class="cert-btn">校园大使</div>
+                </div>
+            </div>
+
+            <!-- System Bindings -->
+            <div style="padding: 10px 15px; font-size: 13px; color: #999;">系统与绑定</div>
+            <div class="action-grid">
+                <div class="action-sub-btn"><i class="fa-solid fa-book"
+                        style="display: block; margin-bottom: 5px;"></i>世界书绑定</div>
+                <div class="action-sub-btn"><i class="fa-solid fa-id-card"
+                        style="display: block; margin-bottom: 5px;"></i>角色绑定</div>
+                <div class="action-sub-btn" style="color: #e6162d;"><i class="fa-solid fa-eraser"
+                        style="display: block; margin-bottom: 5px;"></i>角色微博清空</div>
+                <div class="action-sub-btn" style="color: #e6162d;"><i class="fa-solid fa-trash-can"
+                        style="display: block; margin-bottom: 5px;"></i>清空所有内容</div>
+                <div class="action-sub-btn"><i class="fa-solid fa-clock"
+                        style="display: block; margin-bottom: 5px;"></i>定时发微博</div>
+            </div>
+
+            <div class="footer-btns">
+                <button class="btn-cancel" id="cancel-settings">取消</button>
+                <button class="btn-save">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View: Topic Detail (Discussion) -->
+    <div id="view-topic-detail" class="page-view">
+        <div class="topic-detail-header">
+            <i class="fa-solid fa-chevron-left back-btn" id="hide-topic-detail"></i>
+            <div style="font-weight: bold; font-size: 17px;" id="topic-detail-title">话题讨论</div>
+        </div>
+        <div class="topic-info-banner">
+            <h2 id="topic-banner-title">#话题名称#</h2>
+            <div class="topic-info-stats">
+                <span>1.5亿 阅读</span>
+                <span>85.4万 讨论</span>
+            </div>
+        </div>
+        <main class="feed">
+            <article class="post-card">
+                <div class="post-header">
+                    <div class="user-info">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1" class="user-avatar">
+                        <div>
+                            <div class="user-name">讨论达人A</div>
+                            <div class="user-meta">2分钟前 · 广东</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="post-content">这就是大家都在讨论的话题吗？我觉得非常有意义，希望后续能有更多进展！</div>
+                <div class="post-actions">
+                    <div class="action-item"><i class="fa-solid fa-share-nodes"></i> 45</div>
+                    <div class="action-item"><i class="fa-solid fa-comment-dots"></i> 12</div>
+                    <div class="action-item"><i class="fa-solid fa-heart"></i> 89</div>
+                </div>
+            </article>
+            <article class="post-card">
+                <div class="post-header">
+                    <div class="user-info">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion2" class="user-avatar">
+                        <div>
+                            <div class="user-name">路人甲</div>
+                            <div class="user-meta">10分钟前 · 四川</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="post-content">打卡讨论，关注后续动态。</div>
+                <div class="post-actions">
+                    <div class="action-item"><i class="fa-solid fa-share-nodes"></i> 2</div>
+                    <div class="action-item"><i class="fa-solid fa-comment-dots"></i> 8</div>
+                    <div class="action-item"><i class="fa-solid fa-heart"></i> 24</div>
+                </div>
+            </article>
+        </main>
+    </div>
+
+    <!-- View: Home -->
+    <div id="view-home" class="page-view active">
+        <header>
+            <div class="header-top">
+                <div style="width: 60px;"></div> <!-- Left spacer -->
+                <div class="header-title">微博</div>
+                <button class="ai-header-btn">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> AI微博
+                </button>
+            </div>
+            <div class="search-bar">
+                <i class="fa-solid fa-search"></i>
+                <span>大家都在搜：乔乔的小手机上线了</span>
+            </div>
+            <div class="nav-tabs">
+                <span>关注</span>
+                <span class="active">推荐</span>
+            </div>
+        </header>
+        <main class="feed">
+            <article class="post-card">
+                <div class="post-header">
+                    <div class="user-info">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=QiaoQiao" class="user-avatar">
+                        <div>
+                            <div class="user-name">乔乔酱 <i class="fa-solid fa-crown"
+                                    style="color:#f5c32d; font-size: 10px;"></i></div>
+                            <div class="user-meta">15分钟前 · iPhone 16 Pro Max</div>
+                        </div>
+                    </div>
+                    <div class="follow-btn">+ 关注</div>
+                </div>
+                <div class="post-content">今天终于把微博组件的初稿做出来啦！大家觉得这个界面怎么样？还缺什么功能尽管提哦~</div>
+                <div class="post-images grid-1">
+                    <img src="https://picsum.photos/seed/wb1/800/500">
+                </div>
+                <div class="post-actions">
+                    <div class="action-item"><i class="fa-solid fa-share-nodes"></i> 128</div>
+                    <div class="action-item"><i class="fa-solid fa-comment-dots"></i> 256</div>
+                    <div class="action-item"><i class="fa-solid fa-heart"></i> 1.2k</div>
+                </div>
+            </article>
+        </main>
+    </div>
+
+    <!-- View: Hot Search (Trending) -->
+    <div id="view-search" class="page-view">
+        <header>
+            <div class="header-top">
+                <div style="width: 60px;"></div>
+                <div class="header-title">热搜广场</div>
+                <button class="ai-header-btn">
+                    <i class="fa-solid fa-fire-sparkles"></i> AI热议
+                </button>
+            </div>
+            <div class="search-bar">
+                <i class="fa-solid fa-fire" style="color: #ff8200"></i>
+                <span>搜热搜、找趣事</span>
+            </div>
+            <div class="nav-tabs">
+                <span class="active" onclick="switchSearchSub('hot', this)">热搜榜</span>
+                <span onclick="switchSearchSub('topic', this)">超话</span>
+                <span onclick="switchSearchSub('ent', this)">文娱榜</span>
+            </div>
+        </header>
+
+        <div id="sub-view-hot" class="search-sub-view active">
+            <main class="hot-list">
+                <div class="hot-item">
+                    <span class="hot-rank top">1</span>
+                    <span class="hot-title">乔乔的小手机正式上线</span>
+                    <span class="hot-tag">爆</span>
+                    <span class="hot-meta">450万</span>
+                </div>
+                <div class="hot-item">
+                    <span class="hot-rank top">2</span>
+                    <span class="hot-title">如何评价 Antigravity 的 UI 设计</span>
+                    <span class="hot-tag">新</span>
+                    <span class="hot-meta">320万</span>
+                </div>
+                <div class="hot-item">
+                    <span class="hot-rank top">3</span>
+                    <span class="hot-title">大熊猫成功接机乔乔</span>
+                    <span class="hot-tag">热</span>
+                    <span class="hot-meta">280万</span>
+                </div>
+                <div class="hot-item">
+                    <span class="hot-rank">4</span>
+                    <span class="hot-title">成都今日气温回升</span>
+                    <span class="hot-tag new">新</span>
+                    <span class="hot-meta">150万</span>
+                </div>
+            </main>
+
+            <!-- Hot Search Square (The Discovery Feed) -->
+            <section class="hot-square">
+                <div style="padding: 15px 15px 5px; font-weight: bold; color: var(--wb-text-main); font-size: 15px;">
+                    <i class="fa-solid fa-shapes" style="color: var(--wb-orange); margin-right: 5px;"></i> 热搜广场
+                </div>
+
+                <article class="post-card" style="margin-top: 5px;">
+                    <div class="post-header">
+                        <div class="user-info">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily" class="user-avatar">
+                            <div>
+                                <div class="user-name">数码快报</div>
+                                <div class="user-meta">刚刚 · 来自 微博视频号</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="post-content">
+                        <a href="#" class="post-tag">#乔乔的小手机正式上线#</a> 终于等到了！这一代系统流畅度简直无敌，尤其是那个 AI
+                        语音助手，聪明得不像话。测评视频已出，大家快来围观！
+                    </div>
+                    <div class="post-images grid-1">
+                        <div style="position:relative;">
+                            <img src="https://picsum.photos/seed/tech/800/450" style="filter: brightness(0.9);">
+                            <i class="fa-solid fa-play"
+                                style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font-size:40px; text-shadow: 0 2px 10px rgba(0,0,0,0.3);"></i>
+                        </div>
+                    </div>
+                    <div class="post-actions">
+                        <div class="action-item"><i class="fa-solid fa-share-nodes"></i> 8k</div>
+                        <div class="action-item"><i class="fa-solid fa-comment-dots"></i> 1.5k</div>
+                        <div class="action-item"><i class="fa-solid fa-heart"></i> 12k</div>
+                    </div>
+                </article>
+
+                <article class="post-card">
+                    <div class="post-header">
+                        <div class="user-info">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=DesignMaster" class="user-avatar">
+                            <div>
+                                <div class="user-name">UI设计大赏</div>
+                                <div class="user-meta">10分钟前 · 网页端</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="post-content">
+                        关于 <a href="#" class="post-tag">#如何评价 Antigravity 的 UI 设计#</a>：我觉得最惊艳的是它的微交互。那种丝滑的回弹感，真的是目前很多主流
+                        App
+                        都做不到的。
+                    </div>
+                    <div class="post-images grid-3">
+                        <img src="https://picsum.photos/seed/ui1/300/300">
+                        <img src="https://picsum.photos/seed/ui2/300/300">
+                        <img src="https://picsum.photos/seed/ui3/300/300">
+                    </div>
+                    <div class="post-actions">
+                        <div class="action-item"><i class="fa-solid fa-share-nodes"></i> 450</div>
+                        <div class="action-item"><i class="fa-solid fa-comment-dots"></i> 230</div>
+                        <div class="action-item"><i class="fa-solid fa-heart"></i> 890</div>
+                    </div>
+                </article>
+            </section>
+        </div>
+
+        <div id="sub-view-topic" class="search-sub-view">
+            <main class="topic-list">
+                <div class="topic-item">
+                    <img src="https://picsum.photos/seed/topic1/100/100" class="topic-avatar">
+                    <div class="topic-info">
+                        <h4>#乔乔的小手机#</h4>
+                        <p>1.2亿阅读 · 50万讨论</p>
+                    </div>
+                </div>
+                <div class="topic-item">
+                    <img src="https://picsum.photos/seed/topic2/100/100" class="topic-avatar">
+                    <div class="topic-info">
+                        <h4>#Antigravity生态#</h4>
+                        <p>8500万阅读 · 12万讨论</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+        <div id="sub-view-ent" class="search-sub-view">
+            <main class="hot-list">
+                <div class="hot-item">
+                    <span class="hot-rank top">1</span>
+                    <span class="hot-title">某知名影星新戏开机</span>
+                    <span class="hot-tag">热</span>
+                    <span class="hot-meta">220万</span>
+                </div>
+                <div class="hot-item">
+                    <span class="hot-rank top">2</span>
+                    <span class="hot-title">年度最佳单曲奖项公布</span>
+                    <span class="hot-tag">新</span>
+                    <span class="hot-meta">180万</span>
+                </div>
+                <div class="hot-item">
+                    <span class="hot-rank top">3</span>
+                    <span class="hot-title">综艺《乔乔的假期》路透</span>
+                    <span class="hot-tag">荐</span>
+                    <span class="hot-meta">150万</span>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- View: Search Results -->
+    <div id="view-search-results" class="page-view">
+        <div class="topic-detail-header">
+            <i class="fa-solid fa-chevron-left back-btn" id="hide-search-results"></i>
+            <div
+                style="flex: 1; background: #f2f2f2; border-radius: 20px; padding: 5px 15px; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-search" style="color: #999;"></i>
+                <input type="text" id="search-input-active" value="乔乔"
+                    style="border: none; background: transparent; outline: none; width: 100%;">
+            </div>
+        </div>
+        <main class="feed">
+            <div style="padding: 12px 15px; color: var(--wb-text-sub); font-size: 13px;">相关微博</div>
+            <article class="post-card">
+                <div class="post-header">
+                    <div class="user-info">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=SearchUser1" class="user-avatar">
+                        <div>
+                            <div class="user-name">数码爱好者</div>
+                            <div class="user-meta">1小时前</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="post-content">刚才搜了一下关于 <span style="color: var(--wb-orange)">乔乔</span> 的消息，发现动态还挺多的。</div>
+                <div class="post-actions">
+                    <div class="action-item"><i class="fa-solid fa-heart"></i> 12</div>
+                </div>
+            </article>
+        </main>
+    </div>
+
+    <!-- View: Messages (DMs) -->
+    <div id="view-msg" class="page-view">
+        <header
+            style="display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: white; border-bottom: 1px solid var(--wb-divider);">
+            <div style="width: 80px;"></div> <!-- Placeholder to balance -->
+            <div style="font-weight: bold;">消息</div>
+            <button class="ai-header-btn">
+                <i class="fa-solid fa-wand-magic"></i> 生成回复
+            </button>
+        </header>
+        <main class="msg-list">
+            <div class="msg-item">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Friend1" class="user-avatar">
+                <div class="msg-content">
+                    <div class="msg-top">
+                        <span class="msg-user">系统通知</span>
+                        <span class="msg-time">下午 2:30</span>
+                    </div>
+                    <div class="msg-text">您的账号被评为今日“最有才华博主”！</div>
+                </div>
+            </div>
+            <div class="msg-item">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Friend2" class="user-avatar">
+                <div class="msg-content">
+                    <div class="msg-top">
+                        <span class="msg-user">小助手</span>
+                        <span class="msg-time">昨天</span>
+                    </div>
+                    <div class="msg-text">你有一条新的博文待审核，请点击查看详细信息。</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- View: Profile (Me) -->
+    <div id="view-me" class="page-view">
+        <div class="profile-header">
+            <div class="profile-bg"></div>
+            <!-- Settings Button -->
+            <div class="profile-top-bar">
+                <i class="fa-solid fa-gear"></i>
+            </div>
+            <div class="profile-main">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=QiaoQiao" class="profile-avatar">
+                <div class="profile-name">乔乔酱</div>
+                <div class="profile-id">ID: 88888888 | 狮子座 · 成都</div>
+                <div class="profile-stats">
+                    <div class="stat-item"><span class="stat-num">125</span><span class="stat-label">微博</span></div>
+                    <div class="stat-item" id="me-following-stat"><span class="stat-num">3.2k</span><span
+                            class="stat-label">关注</span></div>
+                    <div class="stat-item"><span class="stat-num">1.5m</span><span class="stat-label">粉丝</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="post-card" style="margin-top: 10px; text-align: center; color: #999; padding: 40px 20px;">
+            <i class="fa-solid fa-feather-pointed"
+                style="font-size: 30px; margin-bottom: 10px; display: block; opacity: 0.3;"></i>
+            <p>还没有发布过微博哦，去记录生活吧~</p>
+        </div>
+    </div>
+
+    <!-- Post Modal -->
+    <div id="post-modal" class="post-modal">
+        <div class="modal-header">
+            <span id="close-post" style="cursor: pointer; color: #666;">取消</span>
+            <span style="font-weight: bold;">发微博</span>
+            <button class="send-btn" id="send-btn">发布</button>
+        </div>
+        <div class="modal-content">
+            <textarea class="post-textarea" id="post-input" placeholder="分享新鲜事..."></textarea>
+
+            <div class="post-toolbar">
+                <div class="tool-item"><i class="fa-solid fa-image" style="color: #4cd964;"></i></div>
+                <div class="tool-item ai"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                <div class="tool-item"><i class="fa-solid fa-at" style="color: #5ac8fa;"></i></div>
+                <div class="tool-item"><i class="fa-solid fa-hashtag" style="color: #ff9500;"></i></div>
+                <div class="tool-item"><i class="fa-solid fa-face-smile" style="color: #ffcc00;"></i></div>
+            </div>
+
+            <div class="post-options">
+                <div class="option-chip"><i class="fa-solid fa-location-dot"
+                        style="color: #4d73a1;"></i><span>添加地点</span></div>
+                <div class="option-chip"><i class="fa-solid fa-mobile-screen-button"></i><input type="text"
+                        placeholder="机型: iPhone 16 Pro Max"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" data-view="home">
+            <i class="fa-solid fa-house"></i>
+            <span>微博</span>
+        </div>
+        <div class="nav-item" data-view="search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span>热搜</span>
+        </div>
+        <div class="nav-item">
+            <div class="post-btn"><i class="fa-solid fa-plus"></i></div>
+        </div>
+        <div class="nav-item" data-view="msg">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>消息</span>
+        </div>
+        <div class="nav-item" data-view="me">
+            <i class="fa-solid fa-user"></i>
+            <span>我</span>
+        </div>
+    </nav>
+
+    <script>
+        // Tab switching within Home
+        document.querySelectorAll('#view-home .nav-tabs span').forEach(tab => {
+            tab.addEventListener('click', function () {
+                this.parentElement.querySelector('.active').classList.remove('active');
+                this.classList.add('active');
+            });
+        });
+
+        // Navigation between main views
+        document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+            item.addEventListener('click', function () {
+                const targetViewId = 'view-' + this.getAttribute('data-view');
+
+                // Update bottom nav UI
+                document.querySelector('.nav-item.active').classList.remove('active');
+                this.classList.add('active');
+
+                // Switch visible view
+                document.querySelectorAll('.page-view').forEach(view => {
+                    view.classList.remove('active');
+                });
+                document.getElementById(targetViewId).classList.add('active');
+            });
+        });
+
+        // Search Sub-view Switching
+        function switchSearchSub(view, el) {
+            // Update tabs UI
+            el.parentElement.querySelector('.active').classList.remove('active');
+            el.classList.add('active');
+
+            // Switch sub-views
+            document.querySelectorAll('.search-sub-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('sub-view-' + view).classList.add('active');
+        }
+
+        // Post Modal Logic
+        const postModal = document.getElementById('post-modal');
+        const postInput = document.getElementById('post-input');
+        const sendBtn = document.getElementById('send-btn');
+        const bottomPostBtn = document.querySelector('.post-btn');
+
+        // Open empty modal from bottom nav
+        bottomPostBtn.parentElement.addEventListener('click', () => {
+            postInput.value = '';
+            sendBtn.classList.remove('ready');
+            postModal.classList.add('active');
+        });
+
+        // Close modal
+        document.getElementById('close-post').addEventListener('click', () => {
+            postModal.classList.remove('active');
+        });
+
+        // Search Navigation
+        document.querySelectorAll('.search-bar').forEach(bar => {
+            bar.addEventListener('click', () => {
+                document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+                document.getElementById('view-search-results').classList.add('active');
+                document.getElementById('search-input-active').focus();
+            });
+        });
+
+        document.getElementById('hide-search-results').addEventListener('click', () => {
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-search').classList.add('active');
+        });
+
+        // Initialize hot search clicks for newly added items
+        function refreshItemClicks() {
+            document.querySelectorAll('.hot-item').forEach(item => {
+                if (!item.dataset.listened) {
+                    item.style.cursor = 'pointer';
+                    item.addEventListener('click', function () {
+                        const title = this.querySelector('.hot-title').innerText;
+                        enterTopicDetail(title);
+                    });
+                    item.dataset.listened = "true";
+                }
+            });
+        }
+        refreshItemClicks();
+
+        // Topic/Sub-view switching should trigger click refresh if items are dynamic
+        const originalSwitchSearchSub = switchSearchSub;
+        switchSearchSub = function (view, el) {
+            originalSwitchSearchSub(view, el);
+            refreshItemClicks();
+        }
+
+        // Listen for topic item clicks
+        document.querySelectorAll('.topic-item').forEach(item => {
+            item.style.cursor = 'pointer';
+            item.addEventListener('click', function () {
+                const title = this.querySelector('h4').innerText.replace(/#/g, '');
+                enterTopicDetail(title);
+            });
+        });
+
+        function enterTopicDetail(title) {
+            // Update labels
+            document.getElementById('topic-detail-title').innerText = title;
+            document.getElementById('topic-banner-title').innerText = `#${title}#`;
+
+            // Switch view
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-topic-detail').classList.add('active');
+        }
+
+        // Back from topic detail
+        document.getElementById('hide-topic-detail').addEventListener('click', () => {
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-search').classList.add('active');
+        });
+
+        // Settings Modal Logic
+        const settingsModal = document.getElementById('settings-modal');
+        document.querySelector('.profile-top-bar').addEventListener('click', () => {
+            settingsModal.classList.add('active');
+        });
+
+        document.getElementById('close-settings').addEventListener('click', () => settingsModal.classList.remove('active'));
+        document.getElementById('cancel-settings').addEventListener('click', () => settingsModal.classList.remove('active'));
+
+        document.querySelectorAll('.cert-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                this.parentElement.querySelector('.active').classList.remove('active');
+                this.classList.add('active');
+            });
+        });
+
+        // Following/Profile Navigation
+        document.getElementById('me-following-stat').addEventListener('click', () => {
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-following').classList.add('active');
+        });
+
+        document.getElementById('hide-following').addEventListener('click', () => {
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-me').classList.add('active');
+        });
+
+        function enterUserProfile(name, avatar) {
+            document.getElementById('other-user-name').innerText = name;
+            document.getElementById('other-user-avatar').src = avatar;
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-user-profile').classList.add('active');
+        }
+
+        document.getElementById('hide-user-profile').addEventListener('click', () => {
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-search').classList.add('active');
+        });
+
+        // DM Chat Navigation
+        function enterDMChat(name) {
+            document.getElementById('dm-chat-name').innerText = name;
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-dm-chat').classList.add('active');
+        }
+
+        document.querySelector('.btn-chat').addEventListener('click', () => {
+            const name = document.getElementById('other-user-name').innerText;
+            enterDMChat(name);
+        });
+
+        document.querySelectorAll('.msg-item').forEach(item => {
+            item.style.cursor = 'pointer';
+            item.addEventListener('click', function () {
+                const name = this.querySelector('.msg-user').innerText;
+                enterDMChat(name);
+            });
+        });
+
+        document.getElementById('hide-dm-chat').addEventListener('click', () => {
+            document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+            document.getElementById('view-msg').classList.add('active');
+        });
+
+        // Delegate clicks for avatars in feed and list
+        document.body.addEventListener('click', (e) => {
+            const avatar = e.target.closest('.user-avatar, .follow-item img');
+            if (avatar) {
+                const nameEl = avatar.closest('.post-header, .follow-item').querySelector('.user-name, h4');
+                const name = nameEl ? nameEl.innerText : "微博用户";
+                enterUserProfile(name, avatar.src);
+            }
+        });
+
+        postInput.addEventListener('input', () => {
+            if (postInput.value.trim().length > 0) {
+                sendBtn.classList.add('ready');
+            } else {
+                sendBtn.classList.remove('ready');
+            }
+        });
+    </script>
+</body>
+
+</html>
+```
