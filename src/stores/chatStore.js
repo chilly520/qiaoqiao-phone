@@ -2535,12 +2535,19 @@ ${contextMsgs}
         }
     }
 
+    const isLoaded = ref(false)
+
     // INITIALIZATION: Load data then check for empty state
     loadChats().then(() => {
+        isLoaded.value = true
         if (Object.keys(chats.value).length === 0) {
+            console.log('[Storage] Empty state detected, initializing demo data...')
             initDemoData();
             saveChats();
         }
+    }).catch(err => {
+        console.error('[Storage] Crucial load failure:', err)
+        isLoaded.value = true // Still mark as loaded to allow UI recovery
     });
 
     function addSystemMessage(content) {
@@ -2630,6 +2637,6 @@ ${contextMsgs}
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive
+        getPreviewContext, analyzeCharacterArchive, isLoaded
     }
 })

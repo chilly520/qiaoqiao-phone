@@ -18,7 +18,7 @@ class GitHubBackup {
     async uploadFull(data) {
         try {
             const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))))
-            
+
             // 获取现有文件的 SHA（如果存在）
             let sha = null
             try {
@@ -59,7 +59,9 @@ class GitHubBackup {
     async downloadFull() {
         try {
             const file = await this.getFile(this.fileName)
+            if (!file || !file.content) throw new Error('云端文件内容为空')
             const content = decodeURIComponent(escape(atob(file.content.replace(/\n/g, ''))))
+            if (!content || content.trim() === '') throw new Error('解析内容为空')
             return JSON.parse(content)
         } catch (error) {
             console.error('[GitHub Backup] Download failed:', error)
@@ -74,11 +76,11 @@ class GitHubBackup {
         try {
             const jsonStr = JSON.stringify(data, null, 2)
             const chunks = this.splitIntoChunks(jsonStr, 1024 * 1024) // 1MB per chunk
-            
+
             for (let i = 0; i < chunks.length; i++) {
                 const chunkFileName = `${this.fileName}.part${i}`
                 const content = btoa(chunks[i])
-                
+
                 await fetch(`${this.baseUrl}/${chunkFileName}`, {
                     method: 'PUT',
                     headers: {
@@ -90,7 +92,7 @@ class GitHubBackup {
                         content: content
                     })
                 })
-                
+
                 if (onProgress) {
                     onProgress((i + 1) / chunks.length * 100)
                 }
@@ -118,12 +120,12 @@ class GitHubBackup {
             // 读取元数据
             const metadata = await this.getMetadata()
             const chunks = []
-            
+
             for (let i = 0; i < metadata.chunks; i++) {
                 const chunkFileName = `${this.fileName}.part${i}`
                 const file = await this.getFile(chunkFileName)
                 chunks.push(atob(file.content.replace(/\n/g, '')))
-                
+
                 if (onProgress) {
                     onProgress((i + 1) / metadata.chunks * 100)
                 }

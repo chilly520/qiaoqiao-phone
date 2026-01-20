@@ -443,9 +443,23 @@ async function handlePullFromCloud() {
     const backupService = new GitHubBackup(githubConfig.value)
     const remoteData = await backupService.downloadFull()
     if (remoteData) {
-      chatStore.chats = remoteData
-      chatStore.saveChats()
-      chatStore.triggerToast('✅ 云端数据加载成功', 'success')
+      // Compatibility: check for nested data property
+      const payload = remoteData.data || remoteData
+      if (payload && typeof payload === 'object') {
+        if (payload.chats) {
+          chatStore.chats = payload.chats
+          await chatStore.saveChats()
+        }
+        // Also try to restore other parts if present in cloud backup
+        if (payload.moments) momentsStore.moments = payload.moments
+        if (payload.apiConfigs) settingsStore.apiConfigs = payload.apiConfigs
+        if (payload.personalization) settingsStore.personalization = payload.personalization
+
+        chatStore.triggerToast('✅ 云端数据恢复成功', 'success')
+        setTimeout(() => window.location.reload(), 1000)
+      } else {
+        throw new Error('云端文件格式非法')
+      }
     }
   } catch (err) {
     chatStore.triggerToast('加载失败: ' + err.message, 'error')
@@ -468,11 +482,17 @@ function onFileSelected(event) {
 
   const reader = new window.FileReader()
   reader.onload = (e) => {
+    const result = e.target.result
+    if (!result || result.trim() === '') {
+      chatStore.triggerToast('文件内容为空', 'error')
+      selectedImportFile.value = null
+      return
+    }
     try {
-      selectedImportData.value = JSON.parse(e.target.result)
-      chatStore.triggerToast('文件内容校验通过', 'success')
+      selectedImportData.value = JSON.parse(result)
+      chatStore.triggerToast('文件加载成功，点击“立刻还原”', 'success')
     } catch (err) {
-      chatStore.triggerToast('JSON格式错误，解析失败', 'error')
+      chatStore.triggerToast('JSON解析失败: ' + err.message, 'error')
       selectedImportFile.value = null
     }
   }
@@ -482,26 +502,37 @@ function onFileSelected(event) {
 function handleFileImport() {
   if (!selectedImportData.value) return
 
-  const payload = selectedImportData.value.data || selectedImportData.value
-
   try {
-    if (payload.chats) {
+    const raw = selectedImportData.value
+    // Smart Detection: backup might be wrapped in .data or just raw
+    let payload = raw.data || raw
+
+    // Support for truly legacy array format (pre-v2)
+    if (Array.isArray(payload)) {
+      payload = { chats: payload.reduce((acc, c) => { if (c.id) acc[c.id] = c; return acc; }, {}) }
+    }
+
+    let restoredCount = 0
+    if (payload.chats && typeof payload.chats === 'object') {
       chatStore.chats = payload.chats
       chatStore.saveChats()
+      restoredCount++
     }
-    if (payload.moments) momentsStore.moments = payload.moments
-    if (payload.apiConfigs) settingsStore.apiConfigs = payload.apiConfigs
-    if (payload.personalization) settingsStore.personalization = payload.personalization
-    if (payload.worldbook) worldBookStore.books = payload.worldbook
-    if (payload.stickers) stickerStore.stickers = payload.stickers
 
-    if (settingsStore.saveToStorage) settingsStore.saveToStorage()
+    if (payload.moments) { momentsStore.moments = payload.moments; restoredCount++; }
+    if (payload.apiConfigs) { settingsStore.apiConfigs = payload.apiConfigs; restoredCount++; }
+    if (payload.personalization) { settingsStore.personalization = payload.personalization; restoredCount++; }
+    if (payload.worldbook) { worldBookStore.books = payload.worldbook; restoredCount++; }
+    if (payload.stickers) { stickerStore.stickers = payload.stickers; restoredCount++; }
 
-    chatStore.triggerToast('🚀 系统还原完成，正在热更新...', 'success')
-    selectedImportFile.value = null
-
-    // Delay reload to let user see toast
-    setTimeout(() => { window.location.reload() }, 1500)
+    if (restoredCount > 0) {
+      if (settingsStore.saveToStorage) settingsStore.saveToStorage()
+      chatStore.triggerToast('🚀 系统还原完成，正在热重启...', 'success')
+      selectedImportFile.value = null
+      setTimeout(() => { window.location.reload() }, 1500)
+    } else {
+      chatStore.triggerToast('未在文件中找到有效数据', 'error')
+    }
   } catch (err) {
     chatStore.triggerToast('还原失败: ' + err.message, 'error')
   }
