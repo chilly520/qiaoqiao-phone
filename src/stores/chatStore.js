@@ -6,6 +6,13 @@ import { useWorldBookStore } from './worldBookStore'
 import { useMomentsStore } from './momentsStore'
 import { useSettingsStore } from './settingsStore'
 import { useMusicStore } from './musicStore'
+import localforage from 'localforage'
+
+// Configure localforage
+localforage.config({
+    name: 'qiaoqiao-phone',
+    storeName: 'chats'
+});
 
 const DEFAULT_AVATARS = [
     '/avatars/小猫举爪.jpg',
@@ -2407,121 +2414,93 @@ ${contextMsgs}
         }
     }
 
-    function saveChats() {
+    async function saveChats() {
         // LAST LINE OF DEFENSE: Filter JSON fragments before saving
         Object.values(chats.value).forEach(chat => {
             if (chat.msgs && Array.isArray(chat.msgs)) {
-                const originalLength = chat.msgs.length;
                 chat.msgs = chat.msgs.filter(m => {
                     if (!m.content || typeof m.content !== 'string') return true;
                     const trimmed = m.content.trim();
-
-                    // Filter header fragment
                     const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
                     if (headerPattern.test(trimmed)) return false;
-
-                    // Filter tail fragment
                     if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
-
                     return true;
                 });
-
-                if (chat.msgs.length < originalLength) {
-                    console.log(`[SaveChats] Filtered ${originalLength - chat.msgs.length} fragment(s) from chat ${chat.name}`);
-                }
             }
         });
 
         try {
-            localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value))
+            // Use IndexedDB for large data
+            await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
+            // Small marker in localStorage to trigger 'storage' events for cross-tab sync if needed
+            localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
             return true
         } catch (e) {
-            if (e.name === 'QuotaExceededError' || e.code === 22) {
-                vacuumStorage()
-                try {
-                    localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value))
-                    return true
-                } catch (retryErr) {
-                    // STOP!! DO NOT WIPE DATA ON ERROR
-                    console.error('[Storage] CRITICAL: Unable to save data. LocalStorage is full.', retryErr);
-
-                    if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new CustomEvent('show-toast', {
-                            detail: { message: '严重警告：数据保存失败！空间已满，请勿刷新页面，立即导出数据！', type: 'error', duration: 10000 }
-                        }));
-                    }
-                    return false
-                }
+            console.error('[Storage] localforage save failed:', e);
+            // Fallback for extreme cases
+            try {
+                localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value));
+            } catch (innerE) {
+                vacuumStorage();
             }
             return false
         }
     }
 
-    function loadChats() {
-        const saved = localStorage.getItem('qiaoqiao_chats')
-        if (saved) {
-            try {
-                chats.value = JSON.parse(saved)
+    async function loadChats() {
+        try {
+            // 1. Try modern IndexedDB first
+            let saved = await localforage.getItem('qiaoqiao_chats_v2');
 
-                // --- DATA SANITIZER (Fix for CSS leakage) ---
+            // 2. Migration from old localStorage
+            if (!saved) {
+                const legacy = localStorage.getItem('qiaoqiao_chats');
+                if (legacy) {
+                    console.log('[Storage] Migrating legacy data to IndexedDB...');
+                    saved = JSON.parse(legacy);
+                    await localforage.setItem('qiaoqiao_chats_v2', saved);
+                    // Don't remove legacy immediately for safety, but mark it
+                    localStorage.setItem('qiaoqiao_migrated', 'true');
+                }
+            }
+
+            if (saved) {
+                chats.value = saved;
+
+                // --- DATA SANITIZER ---
                 Object.values(chats.value).forEach(c => {
                     if (c.msgs && Array.isArray(c.msgs)) {
                         c.msgs = c.msgs.filter(m => {
-                            if (!m.content) return true
-
-                            // Skip filtering for HTML type messages
-                            if (m.type === 'html') return true
-
-                            const s = String(m.content).trim()
-
-                            // NEW: Filter JSON fragments (头尾碎片)
+                            if (!m.content) return true;
+                            if (m.type === 'html') return true;
+                            const s = String(m.content).trim();
+                            // Filter toxic leftovers
                             const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
-                            if (headerPattern.test(s)) {
-                                console.log('[LoadChats] Filtered header fragment');
-                                return false;
-                            }
-                            if (s === '"' || s === '"}' || s === '" }' || s === "'}'" || s === "' }") {
-                                console.log('[LoadChats] Filtered tail fragment:', s);
-                                return false;
-                            }
-
-                            // Filter toxic CSS messages
-                            if (s.includes('display:') && s.includes('flex')) return false
-                            if (s.includes('background:') && s.includes('gradient')) return false
-                            if (s.trim().startsWith('{') && s.trim().endsWith('}') && s.includes('style')) return false
-                            if (/^\s*isplay:\s*flex/.test(s)) return false; // Fix truncated display: flex
-
-                            // Also fix Family Card type if it was missed
-                            if (/\\?\[\s*FAMILY_CARD/i.test(s) && m.type !== 'family_card') {
-                                m.type = 'family_card'
-                            }
-
-                            return true
-                        })
+                            if (headerPattern.test(s)) return false;
+                            if (s === '"' || s === '"}' || s === '" }' || s === "'}'" || s === "' }") return false;
+                            if (s.includes('display:') && s.includes('flex')) return false;
+                            return true;
+                        });
                     }
-                })
-                // --------------------------------------------
 
-                Object.keys(chats.value).forEach(key => {
-                    const c = chats.value[key]
-                    if (c.activeChat === undefined) c.activeChat = false
-                    if (c.showInnerVoice === undefined) c.showInnerVoice = true
-                    if (c.bgUrl === undefined) c.bgUrl = ''
-                    if (c.summaryLimit === undefined) c.summaryLimit = 50
-                    if (c.autoSummary === undefined) c.autoSummary = false
-                    if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0
-                    if (c.lastSummaryCount === undefined) c.lastSummaryCount = c.lastSummaryIndex || 0
-                    c.isSummarizing = false
-                })
-            } catch (e) { console.error(e) }
+                    // Defaults
+                    if (c.autoSummary === undefined) c.autoSummary = false;
+                    if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0;
+                    c.isSummarizing = false;
+                });
+            }
+        } catch (e) {
+            console.error('[Storage] Load failed:', e);
         }
     }
 
-    loadChats()
-    if (Object.keys(chats.value).length === 0) {
-        initDemoData()
-        saveChats()
-    }
+    // INITIALIZATION: Load data then check for empty state
+    loadChats().then(() => {
+        if (Object.keys(chats.value).length === 0) {
+            initDemoData();
+            saveChats();
+        }
+    });
 
     function addSystemMessage(content) {
         if (!currentChatId.value) return
