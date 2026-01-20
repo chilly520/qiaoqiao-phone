@@ -688,7 +688,7 @@
                         <div class="flex justify-between items-center mb-2 pb-2 border-b border-gray-100">
                             <span class="font-bold text-gray-700">总计 (Total Context)</span>
                             <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
-                                }}</span>
+                            }}</span>
                         </div>
 
                         <!-- Breakdown List -->
@@ -1158,27 +1158,34 @@ const contextLabels = {
 }
 
 const showTokenDetailModal = () => {
-    // Load Preview Data
-    const raw = chatStore.getPreviewContext(props.chatData.id)
-    if (raw) {
-        contextPreviewData.value = raw
-        // Calculate tokens locally for preview consistency
-        let total = 0
-        const counts = {}
-        for (const k in raw) {
-            const text = raw[k] || ''
-            const len = text.length
-            const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length
-            const other = len - chinese
-            // 1CN=1, 3EN=1
-            const count = chinese + Math.ceil(other / 3)
-            counts[k] = count
-            total += count
+    try {
+        // Load Preview Data
+        const raw = chatStore.getPreviewContext(props.chatData.id)
+        if (raw) {
+            contextPreviewData.value = raw
+            // Calculate tokens locally for preview consistency
+            let total = 0
+            const counts = {}
+            for (const k in raw) {
+                const text = raw[k] || ''
+                const len = text.length
+                const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length
+                const other = len - chinese
+                // 1CN=1, 3EN=1
+                const count = chinese + Math.ceil(other / 3)
+                counts[k] = count
+                total += count
+            }
+            counts.total = total
+            contextTokenCounts.value = counts
+            showTokenModal.value = true
+        } else {
+            showToast('无法生成上下文预览')
         }
-        counts.total = total
-        contextTokenCounts.value = counts
+    } catch (e) {
+        console.error('ShowTokenDetailModal Error:', e)
+        showToast('加载失败，请重试')
     }
-    showTokenModal.value = true
 }
 
 const toggleContextExpand = (key) => {

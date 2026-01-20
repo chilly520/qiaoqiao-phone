@@ -4,7 +4,7 @@ import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
 import { useMomentsStore } from '../stores/momentsStore'
 import { useWalletStore } from '../stores/walletStore'
-import { useChatStore } from '../stores/chatStore'
+// import { useChatStore } from '../stores/chatStore'
 import { weatherService } from './weatherService'
 
 import { SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
@@ -53,25 +53,17 @@ export function generateContextPreview(chatId, char) {
     const recentMsgs = (char.msgs || []).slice(-limit)
     const combinedText = recentMsgs.map(m => m.content).join('\n')
 
-    // Manually trigger world book (Since checkTrigger is not in store yet)
-    // 1. Identify which books are active for this char
-    // Char stores linked book IDs in char.tags or config.worldBookLinks? 
-    // Wait, chatStore.resetCharacter says 'tags: chat.tags || [] // WorldBook'
-    // Let's assume char.tags contains book IDs.
-    const activeBookIds = char.tags || []
-    // Also check localData-like structure if stored differently? 
-    // In chatStore, tags is used.
+    // Manually trigger world book
+    const activeBookIds = char.worldBookLinks || char.tags || []
 
     // 2. Collect entries
     let activeEntries = []
-    if (activeBookIds.length > 0 && worldBookStore.books) {
+    if (activeBookIds.length > 0 && worldBookStore && worldBookStore.books) {
         activeBookIds.forEach(bookId => {
             const book = worldBookStore.books.find(b => b.id === bookId)
             if (book && book.entries) {
                 book.entries.forEach(entry => {
-                    // Check keys
                     if (entry.keys && entry.keys.length > 0) {
-                        // Simple inclusion check
                         const isHit = entry.keys.some(k => combinedText.includes(k))
                         if (isHit) activeEntries.push(entry)
                     }
@@ -92,19 +84,16 @@ export function generateContextPreview(chatId, char) {
     const patSettings = { action: char.patAction, suffix: char.patSuffix }
 
     // Location Context
-    // We only check per-chat locationSync toggle. We assume if it's on, data is available.
     const locationContext = char.locationSync
         ? weatherService.getLocationContextText()
         : ''
-
-
 
     // 2. Persona Context
     const personaContext = `
 【角色设定】
 姓名：${char.name}
 性别：${char.gender || '未知'}
-描述：${char.prompt || '无'}
+描述：${char.prompt || char.description || '无'}
 
 【用户设定】
 姓名：${char.userName || '用户'}
@@ -113,35 +102,44 @@ export function generateContextPreview(chatId, char) {
     `.trim()
 
     // 3. Moments Context (The complex part)
-    // Logic matches user request: Char Profile + 3 Pinned + User Profile + User Top 3 + Latest N Moments
     let momentsContext = ''
-    const momentsList = momentsStore.moments
+    if (momentsStore && momentsStore.moments) {
+        const momentsList = momentsStore.moments
+        const topMoments = momentsStore.topMoments || []
 
-    // Helper to format moment
-    const formatMoment = (m) => {
-        const timeStr = new Date(m.timestamp).toLocaleString('zh-CN', { hour12: false })
-        let text = `[时间: ${timeStr}] ${m.authorId === char.id ? char.name : (m.authorName || '用户')}: ${m.content}`
-        if (m.imageDescriptions && m.imageDescriptions.length > 0) {
-            text += `\n(图片内容: ${m.imageDescriptions.join(', ')})`
+        // Helper to format moment
+        const formatMoment = (m) => {
+            if (!m) return ''
+            const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { hour12: false }) : '未知时间'
+            let text = `[时间: ${timeStr}] ${m.authorId === char.id ? char.name : (m.authorName || '用户')}: ${m.content}`
+            if (m.imageDescriptions && m.imageDescriptions.length > 0) {
+                text += `\n(图片内容: ${m.imageDescriptions.join(', ')})`
+            }
+            if (m.comments && m.comments.length > 0) {
+                const commentsText = m.comments.map(c => `  - ${c.authorName}${c.replyTo ? '回复' + c.replyTo : ''}: ${c.content}`).join('\n')
+                text += `\n  (评论互动):\n${commentsText}`
+            }
+            return text
         }
-        // Interactions
-        if (m.comments && m.comments.length > 0) {
-            const commentsText = m.comments.map(c => `  - ${c.authorName}${c.replyTo ? '回复' + c.replyTo : ''}: ${c.content}`).join('\n')
-            text += `\n  (评论互动):\n${commentsText}`
+
+        // Char Moments
+        const charMoments = momentsList.filter(m => m.authorId === char.id)
+        const charPinned = charMoments.filter(m => topMoments.includes(m.id)).slice(0, 3)
+
+        // User Moments
+        const userMoments = momentsList.filter(m => !m.authorId || m.authorId === 'user')
+        const userLatests = userMoments.slice(0, 3)
+
+        // Combine into context string
+        const parts = []
+        if (charPinned.length > 0) {
+            parts.push(`【${char.name}的置顶朋友圈】\n${charPinned.map(formatMoment).join('\n---\n')}`)
         }
-        return text
+        if (userLatests.length > 0) {
+            parts.push(`【${char.userName || '用户'}的最新朋友圈】\n${userLatests.map(formatMoment).join('\n---\n')}`)
+        }
+        momentsContext = parts.join('\n\n')
     }
-
-    // Char Moments
-    const charMoments = momentsList.filter(m => m.authorId === char.id)
-    const charPinned = charMoments.filter(m => momentsStore.topMoments.includes(m.id)).slice(0, 3)
-
-    // User Moments (Assuming user authorId is empty or specific ID? Usually empty for main user in this app or 'user')
-    // Adjust logic if User ID is stored differently. Assuming 'user' or null.
-    const userMoments = momentsList.filter(m => !m.authorId || m.authorId === 'user')
-    // User doesn't exactly have "Pinned" in store usually, so just latest 3 for "User Top 3" or just latest 3?
-    // User request says "User Top 3 updates". Assuming just latest 3 for user if no pin logic for user.
-    const userLatests = userMoments.slice(0, 3)
 
     // 4. History (Context) with Time Delay Hint
     const now = Date.now()
