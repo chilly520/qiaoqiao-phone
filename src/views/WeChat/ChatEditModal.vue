@@ -149,6 +149,17 @@ const normalizeContent = (msg) => {
         }
     }
 
+    // For image messages, attempt to extract the URL or prompt
+    if (msg.type === 'image' || msg.type === 'sticker') {
+        const urlMatch = content.match(/\[(?:图片|IMAGE|表情包|STICKER)[:：]\s*([\s\S]*?)\s*\]/i);
+        if (urlMatch) return urlMatch[1].trim();
+        
+        const drawMatch = content.match(/\[DRAW[:：]\s*([\s\S]*?)\s*\]/i);
+        if (drawMatch) return drawMatch[1].trim();
+        
+        return content;
+    }
+
     // Remove ONLY the Inner Voice block (non-greedy)
     content = content.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '').trim()
 

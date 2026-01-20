@@ -874,12 +874,16 @@ function formatTimelineTime(timestamp) {
 
 function isImageMsg(msg) {
     if (!msg) return false
-    if (msg.type === 'image' || msg.type === 'sticker') return true
     const content = ensureString(msg.content)
     if (!content.trim()) return false
     
     // Direct Data/Blob URLs are always images
     if (content.includes('blob:') || content.includes('data:image/')) return true
+    
+    // If it's labeled as image/sticker type, but is currently DRAWING, we want to show it as text (loading card)
+    if ((msg.type === 'image' || msg.type === 'sticker') && content.toUpperCase().includes('[DRAW:')) return false;
+
+    if (msg.type === 'image' || msg.type === 'sticker') return true
     
     const clean = getCleanContent(content).trim()
     
@@ -985,12 +989,13 @@ function formatMessageContent(msg) {
         .trim();
 
     // 2. Render [DRAW:...] as loading indicator
-    if (msg.isDrawing !== false && text.toLowerCase().includes('[draw:')) {
+    if (msg.isDrawing !== false && /\[DRAW:\s*[\s\S]*?\]/i.test(text)) {
         text = text.replace(/\[DRAW:\s*([\s\S]*?)\]/gi, (match, prompt) => {
-            const truncated = prompt.length > 30 ? prompt.substring(0, 30) + '...' : prompt
-            return `<div class="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 my-1">
-                <i class="fa-solid fa-spinner fa-spin text-blue-500"></i>
-                <span class="text-sm text-blue-700">正在绘制: ${truncated}</span>
+            const promptText = prompt.trim();
+            const truncated = promptText.length > 30 ? promptText.substring(0, 30) + '...' : promptText
+            return `<div class="inline-flex items-center gap-2 bg-blue-50/10 border border-blue-400/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm overflow-hidden max-w-full">
+                <i class="fa-solid fa-spinner fa-spin text-blue-400"></i>
+                <span class="text-xs text-blue-200/80 whitespace-nowrap overflow-hidden text-ellipsis">AI 正在绘制: ${truncated}</span>
             </div>`
         })
     }

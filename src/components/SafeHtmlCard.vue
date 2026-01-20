@@ -81,20 +81,27 @@ const fullContent = computed(() => {
         window.parent.postMessage({ type: 'CHAT_SEND', text: text }, '*');
       };
 
-      // Auto-Wire Static Menus: Make "cursor: pointer" elements interactive if they have no handlers
+      // Auto-Wire Static Menus: Make elements interactive ONLY if they look like intentional menu items
       document.addEventListener('DOMContentLoaded', () => {
-         const interactives = document.querySelectorAll('[style*="cursor: pointer"], [style*="cursor:pointer"], .button');
+         const interactives = document.querySelectorAll('[style*="cursor: pointer"], [style*="cursor:pointer"], .button, .menu-item');
          interactives.forEach(el => {
-            if (!el.onclick) {
-               el.onclick = (e) => {
-                  e.stopPropagation(); // Stop bubbling to prevent double triggers
-                  const text = el.innerText.trim() || el.textContent.trim();
-                  // Remove brackets if present (common in AI menus like [ Option ])
-                  const cleanText = text.replace(/^\[\s*|\s*\]$/g, '').trim(); 
-                  if (cleanText) {
-                    window.sendToChat(cleanText);
-                  }
-               };
+            // Only auto-wire if:
+            // 1. No existing onclick property
+            // 2. Not a structural element (summary, details, header)
+            // 3. EITHER has a specific class OR contains bracketed text like "[ 选项 ]"
+            const isStructural = /^(H[1-6]|SUMMARY|DETAILS|NAV|FOOTER)$/i.test(el.tagName);
+            if (!el.onclick && !isStructural) {
+               const text = (el.innerText || el.textContent || '').trim();
+               const isMenuFormat = /^\[\s*.*\s*\]$/.test(text); // Matches "[ Text ]"
+               const hasSpecificClass = el.classList.contains('menu-item') || el.classList.contains('chat-button');
+               
+               if (isMenuFormat || hasSpecificClass) {
+                  el.onclick = (e) => {
+                     e.stopPropagation();
+                     const cleanText = text.replace(/^\[\s*|\s*\]$/g, '').trim(); 
+                     if (cleanText) window.sendToChat(cleanText);
+                  };
+               }
             }
          });
       });

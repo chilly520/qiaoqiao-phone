@@ -1220,12 +1220,10 @@ const openMemoryLib = () => {
     showMemoryModal.value = true
 }
 
-const deleteMemory = (reversedIndex) => {
+const deleteMemory = (index) => {
     const chat = chatStore.chats[props.chatData.id]
     if (chat && chat.memory) {
-        // Convert reversed index to original array index
-        const originalIndex = chat.memory.length - 1 - reversedIndex
-        chat.memory.splice(originalIndex, 1)
+        chat.memory.splice(index, 1)
         chatStore.saveChats()
         showToast('已删除')
     }
@@ -1235,12 +1233,8 @@ const deleteMemory = (reversedIndex) => {
 const editingIndex = ref(-1)
 const editingContent = ref('')
 
-const startEdit = (reversedIndex, mem) => {
-    // Convert reversed index to original array index
-    const chat = chatStore.chats[props.chatData.id]
-    const originalIndex = chat.memory.length - 1 - reversedIndex
-    editingIndex.value = reversedIndex // Store reversed index for UI
-    // Handle object vs string memory format
+const startEdit = (index, mem) => {
+    editingIndex.value = index
     editingContent.value = typeof mem === 'object' ? (mem.content || '') : mem
 }
 
@@ -1249,19 +1243,17 @@ const cancelEdit = () => {
     editingContent.value = ''
 }
 
-const saveEdit = (reversedIndex) => {
+const saveEdit = (index) => {
     const chat = chatStore.chats[props.chatData.id]
     if (chat && chat.memory) {
-        // Convert reversed index to original array index
-        const originalIndex = chat.memory.length - 1 - reversedIndex
-        if (chat.memory[originalIndex]) {
+        if (chat.memory[index]) {
             // Prepare updated memory
-            const original = chat.memory[originalIndex]
+            const original = chat.memory[index]
             if (typeof original === 'object') {
                 original.content = editingContent.value
                 original.updatedAt = Date.now()
             } else {
-                chat.memory[originalIndex] = editingContent.value
+                chat.memory[index] = editingContent.value
             }
 
             chatStore.saveChats()

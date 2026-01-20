@@ -288,7 +288,7 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|语音|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
@@ -308,7 +308,7 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.note = val2 || '转账给您'
                     newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                     newMsg.content = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
-                } else if (tagType === '图片') {
+                } else if (tagType === '图片' || tagType === 'DRAW') {
                     newMsg.type = 'image'
                 } else if (tagType === '语音') {
                     newMsg.type = 'voice'
@@ -857,14 +857,23 @@ ${contextMsgs}
         }
     }
     function updateCharacter(chatId, updates) {
-        if (chats.value[chatId]) {
-            // Merge into a new object to trigger reactivity
-            chats.value[chatId] = { ...chats.value[chatId], ...updates }
-            // Re-assign the whole chats object to ensure top-level reactivity
-            chats.value = { ...chats.value }
-            return saveChats()
+        const chat = chats.value[chatId]
+        if (!chat) return false
+
+        // Merge into a new object to trigger reactivity
+        chats.value[chatId] = { ...chat, ...updates }
+
+        // Re-assign the whole chats object to ensure top-level reactivity
+        chats.value = { ...chats.value }
+
+        // Immediately check for auto-summary if settings changed (like enabling it or changing limit)
+        if (updates.autoSummary || updates.summaryLimit) {
+            console.log(`[Store] Summary settings updated for ${chat.name}. Re-checking...`)
+            checkAutoSummary(chatId)
         }
-        return false
+
+        saveChats()
+        return true
     }
 
     // Refactored: ID is optional (last arg) to support UI creation
@@ -987,6 +996,7 @@ ${contextMsgs}
         // Check if new messages (since last summary) exceed limit
         if (backlog >= summaryLimit) {
             console.log(`[AutoSummary] Triggered for ${chat.name}. New msgs (backlog): ${backlog}, Limit: ${summaryLimit}`)
+            useLoggerStore().info(`触发自动总结: ${chat.name}`, { backlog, limit: summaryLimit })
             summarizeHistory(chatId, { silent: true })
         }
     }
@@ -1123,16 +1133,23 @@ ${contextMsgs}
 
             triggerToast('总结已生成并存入记忆库', 'info')
 
-            // Update index if it was an auto-summary (nextIndex was calculated)
-            // Update state ONLY for auto-summaries
-            if (options.startIndex === undefined) {
-                chat.lastSummaryIndex = nextIndex
-                chat.lastSummaryCount = nextIndex // Sync with progress, not just total, to allow catch-up in background
+            // Advance the summary pointers if we just summarized a range that covers new ground
+            const currentMaxIndex = chat.lastSummaryIndex || 0
+            const summarizedEndIndex = options.endIndex !== undefined ? options.endIndex : nextIndex
 
-                // RECURSION CHECK: If we still have a backlog greater than limit, trigger next batch automatically
+            if (summarizedEndIndex > currentMaxIndex) {
+                console.log(`[Summarize] Advancing pointers: ${currentMaxIndex} -> ${summarizedEndIndex}`)
+                chat.lastSummaryIndex = summarizedEndIndex
+                chat.lastSummaryCount = summarizedEndIndex // Sync progress tracker
+            }
+
+            // RECURSION CHECK: If we are in auto mode (no manual range) and still have a backlog, trigger next batch
+            if (options.startIndex === undefined) {
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
-                if (chat.msgs.length - nextIndex >= summaryLimit) {
-                    console.log(`[Summarize] backlog still exists (${chat.msgs.length - nextIndex}). Continuing...`)
+                const remainingBacklog = chat.msgs.length - summarizedEndIndex
+
+                if (remainingBacklog >= summaryLimit) {
+                    console.log(`[Summarize] Backlog still exists (${remainingBacklog} msgs). Scheduling next chunk...`)
                     setTimeout(() => checkAutoSummary(chatId), 1500)
                 }
             }
@@ -1243,6 +1260,8 @@ ${contextMsgs}
 
     // Start loop on init
     startProactiveLoop()
+
+
 
     function deleteMessage(chatId, msgId) {
         const chat = chats.value[chatId]
@@ -1607,34 +1626,49 @@ ${contextMsgs}
                             console.log('[ChatStore] Regex failed check, reconstructing Inner Voice from parsed result');
                             const jsonContent = JSON.stringify(result.innerVoice, null, 2);
                             innerVoiceBlock = `\n[INNER_VOICE]\n${jsonContent}\n[/INNER_VOICE]`;
+
+                            // If it wasn't caught by the regex, it's likely untagged JSON in the text
+                            // We need to find and remove it from pureDialogue
+                            if (pureDialogue.includes('{') && (pureDialogue.includes('"status"') || pureDialogue.includes('"心声"'))) {
+                                const blocks = [...pureDialogue.matchAll(/\{[\s\S]*?\}/g)]
+                                for (let i = blocks.length - 1; i >= 0; i--) {
+                                    const block = blocks[i][0]
+                                    if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"')) {
+                                        pureDialogue = pureDialogue.replace(block, '').trim()
+                                        break
+                                    }
+                                }
+                            }
                         } catch (e) {
                             console.error('[ChatStore] Failed to reconstruct Inner Voice', e);
                         }
                     } else if (fullContent.includes('{') && (fullContent.includes('"status"') || fullContent.includes('"心声"'))) {
-                        // Case B: AI Service didn't catch it via regex, but there is JSON in there.
-                        // Try to find the last JSON block.
+                        // Case B: AI Service didn't catch it, and it's not in result, but looks like JSON is there.
                         try {
-                            const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
-                            if (jsonMatch) {
-                                // Validate if it looks like inner voice
-                                const candidate = jsonMatch[0];
-                                if (candidate.includes('"status"') || candidate.includes('"心声"')) {
-                                    console.log('[ChatStore] Found raw JSON block, treating as Inner Voice');
+                            // Non-greedy scan for JSON blocks with specific keywords
+                            const blocks = [...fullContent.matchAll(/\{[\s\S]*?\}/g)]
+                            for (let i = blocks.length - 1; i >= 0; i--) {
+                                const candidate = blocks[i][0]
+                                if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
+                                    console.log('[ChatStore] Found raw JSON block in fallback, treating as Inner Voice');
                                     innerVoiceBlock = `\n[INNER_VOICE]\n${candidate}\n[/INNER_VOICE]`;
-                                    // Remove this JSON from dialogue to prevent dupes
                                     pureDialogue = pureDialogue.replace(candidate, '').trim();
 
-                                    // Also try to parse it to update status immediately
-                                    const ivObj = JSON.parse(candidate);
-                                    if (ivObj.status || ivObj.状态) {
-                                        const newStatus = ivObj.status || ivObj.状态;
-                                        if (newStatus && chat) {
-                                            chat.statusText = String(newStatus).substring(0, 30);
-                                            chat.isOnline = true;
+                                    // Parse it to update status immediately
+                                    try {
+                                        const ivObj = JSON.parse(candidate);
+                                        if (ivObj.status || ivObj.状态 || ivObj["心声"]) {
+                                            const newStatus = ivObj.status || ivObj.状态 || (typeof ivObj["心声"] === 'string' ? ivObj["心声"] : null);
+                                            if (newStatus && chat) {
+                                                chat.statusText = String(newStatus).substring(0, 30);
+                                                chat.isOnline = true;
+                                            }
+                                            charInfo.mindscape = ivObj;
                                         }
-                                        // Update char info too
-                                        charInfo.mindscape = ivObj;
+                                    } catch (parseErr) {
+                                        console.warn('[ChatStore] Fallback JSON parse failed, but using block anyway', candidate.substring(0, 50));
                                     }
+                                    break;
                                 }
                             }
                         } catch (e) {
@@ -2215,8 +2249,18 @@ ${contextMsgs}
                             (async () => {
                                 try {
                                     const imageUrl = await generateImage(drawMatch[1].trim());
-                                    updateMessage(chatId, targetMsgId, { content: content.replace(drawMatch[0], `[图片:${imageUrl}]`) });
-                                } catch (err) { updateMessage(chatId, targetMsgId, { content: content.replace(drawMatch[0], '(绘画失败)') }); }
+                                    // Get the current message from store to preserve any appended tags (like INNER_VOICE)
+                                    const currentMsg = chat.msgs.find(m => m.id === targetMsgId);
+                                    let newContent = currentMsg ? currentMsg.content : content;
+                                    newContent = newContent.replace(drawMatch[0], `[图片:${imageUrl}]`);
+
+                                    updateMessage(chatId, targetMsgId, {
+                                        type: 'image',
+                                        content: newContent
+                                    });
+                                } catch (err) {
+                                    updateMessage(chatId, targetMsgId, { content: content.replace(drawMatch[0], '(绘画失败)') });
+                                }
                             })();
                         }
                     }

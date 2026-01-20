@@ -869,30 +869,73 @@ async function _generateReplyInternal(messages, char, signal) {
         let content = rawContent
         let innerVoice = null
 
-        // 提取 [INNER_VOICE] - 增强版正则，支持空格、连字符及缺失闭合标签
-        const ivMatch = content.match(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
+        // 提取 [INNER_VOICE] - 增强并发掘能力
+        const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i
+        let ivMatch = content.match(ivPattern)
+        let ivSegment = ivMatch ? ivMatch[1].trim() : null
 
-        if (ivMatch) {
+        // FALLBACK: 如果没找到标签，但文本里有看起来像心声的 JSON 块
+        if (!ivSegment && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"'))) {
+            // 尝试寻找最后一个包含关键词的大括号块
+            const blocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
+            for (let i = blocks.length - 1; i >= 0; i--) {
+                const block = blocks[i][0]
+                if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"thought"')) {
+                    ivSegment = block
+                    console.log('[AI Service] Found untagged Inner Voice block via keyword scan')
+                    break
+                }
+            }
+        }
+
+        if (ivSegment) {
             try {
-                let segment = ivMatch[1].trim()
                 // Robust Cleanup: Remove Markdown code blocks
-                segment = segment.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
+                let cleanSegment = ivSegment.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
 
                 // Try direct parse first
                 try {
-                    innerVoice = JSON.parse(segment)
+                    innerVoice = JSON.parse(cleanSegment)
                 } catch (e) {
-                    // Fallback: Find the FIRST JSON-like object '{ ... }' in the segment
-                    const jsonObjectMatch = segment.match(/\{[\s\S]*\}/)
+                    // Fallback 1: Find the FIRST JSON-like object '{ ... }' in the segment (if it was a partial match)
+                    const jsonObjectMatch = cleanSegment.match(/\{[\s\S]*\}/)
                     if (jsonObjectMatch) {
                         innerVoice = JSON.parse(jsonObjectMatch[0].trim())
                     } else {
-                        throw e // Rethrow if no object found
+                        throw e
                     }
                 }
             } catch (e) {
-                console.warn('[AI Service] Inner Voice JSON parse failed', e)
-                useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivMatch[1].substring(0, 100) })
+                // FALLBACK 2: Regex Violence (From old version logic)
+                // If JSON.parse totally fails, we extract fields one by one
+                console.warn('[AI Service] JSON parse failed, triggering Regex Violence fallback', e)
+
+                const extractField = (keys) => {
+                    for (let k of keys) {
+                        const reg = new RegExp(`(?:"|\\\\")?${k}(?:"|\\\\")?\\s*[:：]\\s*(?:"|\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:"|\\\\")?(?:,|}|$)`, 'i');
+                        const m = ivSegment.match(reg);
+                        if (m && m[1]) return m[1].replace(/\\"/g, '"').trim();
+                    }
+                    return null;
+                };
+
+                const status = extractField(['status', '状态', '当前状态', '心情']);
+                const outfit = extractField(['着装', 'outfit', 'clothes', 'clothing', '穿着']);
+                const scene = extractField(['环境', 'scene', 'environment', '场景']);
+                const mind = extractField(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', '情绪', '情感', '想法']);
+                const action = extractField(['行为', 'action', 'behavior', 'plan', '动作']);
+
+                if (status || outfit || scene || mind || action) {
+                    innerVoice = {
+                        status: status || "",
+                        着装: outfit || "",
+                        环境: scene || "",
+                        心声: mind || "",
+                        行为: action || ""
+                    }
+                } else {
+                    useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivSegment.substring(0, 150) })
+                }
             }
         }
 
