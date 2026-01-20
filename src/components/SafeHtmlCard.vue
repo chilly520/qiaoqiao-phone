@@ -83,21 +83,24 @@ const fullContent = computed(() => {
 
       // Auto-Wire Static Menus: Make elements interactive ONLY if they look like intentional menu items
       document.addEventListener('DOMContentLoaded', () => {
-         const interactives = document.querySelectorAll('[style*="cursor: pointer"], [style*="cursor:pointer"], .button, .menu-item');
+         // MORE AGGRESSIVE: Include all generic buttons and links-that-act-like-buttons
+         const interactives = document.querySelectorAll('[style*="cursor: pointer"], [style*="cursor:pointer"], .button, .menu-item, button, a[href="#"], [role="button"]');
          interactives.forEach(el => {
             // Only auto-wire if:
             // 1. No existing onclick property
             // 2. Not a structural element (summary, details, header)
-            // 3. EITHER has a specific class OR contains bracketed text like "[ 选项 ]"
+            // 3. Has non-empty text
             const isStructural = /^(H[1-6]|SUMMARY|DETAILS|NAV|FOOTER)$/i.test(el.tagName);
             if (!el.onclick && !isStructural) {
                const text = (el.innerText || el.textContent || '').trim();
-               const isMenuFormat = /^\[\s*.*\s*\]$/.test(text); // Matches "[ Text ]"
-               const hasSpecificClass = el.classList.contains('menu-item') || el.classList.contains('chat-button');
+               // If it's a button tag, we always assume it's actionable
+               const alwaysAction = el.tagName === 'BUTTON' || el.classList.contains('chat-button') || el.getAttribute('role') === 'button';
+               const isMenuFormat = /^\[\s*.*\s*\]$/.test(text); 
                
-               if (isMenuFormat || hasSpecificClass) {
+               if (text && (isMenuFormat || alwaysAction || el.classList.contains('menu-item'))) {
                   el.onclick = (e) => {
                      e.stopPropagation();
+                     // Clean text: removing brackets if they exist
                      const cleanText = text.replace(/^\[\s*|\s*\]$/g, '').trim(); 
                      if (cleanText) window.sendToChat(cleanText);
                   };
@@ -151,51 +154,51 @@ const adjustHeight = () => {
 
     // Restore context menu pass-through with high robustness
     const passEvent = (e) => {
-        if (!e) return;
-        try {
-            const rect = iframe.getBoundingClientRect()
-            
-            // Extract coordinates safely from various event types
-            let x = 0, y = 0
-            if (typeof e.clientX === 'number') {
-                x = e.clientX
-                y = e.clientY
-            } else if (e.touches && e.touches.length > 0) {
-                x = e.touches[0].clientX || 0
-                y = e.touches[0].clientY || 0
-            } else if (e.changedTouches && e.changedTouches.length > 0) {
-                x = e.changedTouches[0].clientX || 0
-                y = e.changedTouches[0].clientY || 0
-            }
+      if (!e) return;
+      try {
+        const rect = iframe.getBoundingClientRect()
 
-            // Always use MouseEvent/PointerEvent for the bridge to ensure clientX/Y 
-            // are available for parent components like ChatMessageItem/ChatWindow.
-            // Using MouseEvent is the most compatible way to proxy interaction events.
-            const evt = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : 
-                                      (e.type === 'touchend' ? 'mouseup' : e.type), {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                clientX: rect.left + x,
-                clientY: rect.top + y,
-                detail: e.detail || 0,
-                button: e.button || 0,
-                buttons: e.buttons || 0,
-                ctrlKey: !!e.ctrlKey,
-                shiftKey: !!e.shiftKey,
-                altKey: !!e.altKey,
-                metaKey: !!e.metaKey
-            })
-            
-            iframe.dispatchEvent(evt)
-        } catch (err) {
-            console.warn('[SafeHtmlCard] Event bridge failed:', err)
+        // Extract coordinates safely from various event types
+        let x = 0, y = 0
+        if (typeof e.clientX === 'number') {
+          x = e.clientX
+          y = e.clientY
+        } else if (e.touches && e.touches.length > 0) {
+          x = e.touches[0].clientX || 0
+          y = e.touches[0].clientY || 0
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+          x = e.changedTouches[0].clientX || 0
+          y = e.changedTouches[0].clientY || 0
         }
+
+        // Always use MouseEvent/PointerEvent for the bridge to ensure clientX/Y 
+        // are available for parent components like ChatMessageItem/ChatWindow.
+        // Using MouseEvent is the most compatible way to proxy interaction events.
+        const evt = new MouseEvent(e.type === 'touchstart' ? 'mousedown' :
+          (e.type === 'touchend' ? 'mouseup' : e.type), {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: rect.left + x,
+          clientY: rect.top + y,
+          detail: e.detail || 0,
+          button: e.button || 0,
+          buttons: e.buttons || 0,
+          ctrlKey: !!e.ctrlKey,
+          shiftKey: !!e.shiftKey,
+          altKey: !!e.altKey,
+          metaKey: !!e.metaKey
+        })
+
+        iframe.dispatchEvent(evt)
+      } catch (err) {
+        console.warn('[SafeHtmlCard] Event bridge failed:', err)
+      }
     }
 
     doc.addEventListener('contextmenu', (e) => {
-        e.preventDefault()
-        passEvent(e)
+      e.preventDefault()
+      passEvent(e)
     })
 
     // Bridge touches for long-press recognition
@@ -209,7 +212,7 @@ const adjustHeight = () => {
       // Use scrollHeight/Width to catch full content even if body is flexed
       const newHeight = body.scrollHeight
       const newWidth = body.scrollWidth
-      
+
       if (newHeight > 0) height.value = newHeight + 2
       // FIX: Do not auto-shrink width. Keep it fixed/stable to allow text to wrap naturally without collapsing.
       // width.value = ... 
@@ -249,7 +252,8 @@ console.log('[SafeHtmlCard] Initial content:', props.content ? props.content.sub
   background: transparent;
   padding: 0;
   max-width: 100%;
-  overflow: hidden; /* Keep the card contained */
+  overflow: hidden;
+  /* Keep the card contained */
   -ms-overflow-style: none;
   scrollbar-width: none;
 }

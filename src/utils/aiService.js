@@ -1236,7 +1236,7 @@ Strictly output ONLY the English prompt text without any explanations.`
     ]
 
     try {
-        const result = await _generateReplyInternal(messages, { name: 'Translator' }, null)
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'Translator' }, null])
         if (result.error) return text
         return result.content || text
     } catch (e) {
@@ -1286,7 +1286,7 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name }, null)
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name }, null])
         if (result.error) throw new Error(result.error)
 
         // Parse the JSON from AI response
@@ -1408,7 +1408,7 @@ ${userContextText}
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name: 'MomentsGenerator' }, null)
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'MomentsGenerator' }, null])
         if (result.error) throw new Error(result.error)
 
         // Parse JSON array from AI response

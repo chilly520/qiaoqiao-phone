@@ -29,7 +29,7 @@ const item = computed(() => {
     for (const chatId in chatStore.chats) {
         const chat = chatStore.chats[chatId]
         if (!chat.msgs) continue
-        
+
         // Find message with matching favoriteId in its content JSON
         for (let i = chat.msgs.length - 1; i >= 0; i--) { // Reverse search is faster for recent
             const msg = chat.msgs[i]
@@ -80,15 +80,26 @@ const specialContent = computed(() => {
     // For 'single' types, content is directly on item. For legacy 'text', same.
     const content = item.value.content || ''
 
-    // 1. HTML Card
-    if (content.startsWith('[CARD]')) {
+    // 1. HTML Card (Explicit 'html' type or Text with specific markers)
+    // Fix: Remove newlines to allow JSON parsing if AI added them for formatting
+    if (item.value.type === 'html' || content.startsWith('[CARD]') || (content.trim().startsWith('{') && content.includes('"type"'))) {
         try {
-            const json = JSON.parse(content.replace('[CARD]', '').trim())
-            if (json.type === 'html') {
-                return { type: 'html', html: json.html }
+            let jsonStr = content;
+            if (content.startsWith('[CARD]')) {
+                jsonStr = content.replace('[CARD]', '').trim();
+            }
+
+            // Aggressively clean newlines which break JSON.parse
+            // We assume the JSON structure doesn't rely on newlines, effectively minifying it.
+            jsonStr = jsonStr.replace(/[\r\n]/g, '');
+
+            // Try parsing
+            const json = JSON.parse(jsonStr);
+            if (json.type === 'html' || json.html) {
+                return { type: 'html', html: json.html || json.content };
             }
         } catch (e) {
-            console.error('Invalid Card JSON', e)
+            // console.error('Invalid Card JSON', e);
         }
     }
 
@@ -107,8 +118,58 @@ const specialContent = computed(() => {
         return { type: 'sticker_placeholder', name: val }
     }
 
+    // 3. Text that is actually an Image URL (Fix for Issue 1)
+    if (item.value.type === 'text' || item.value.type === 'single') {
+        const trimmed = content.trim();
+        // Check if it's a pure URL (no spaces, starts with http/data)
+        if (/^https?:\/\/[^\s]+$/.test(trimmed) || /^data:image\/[^\s]+$/.test(trimmed)) {
+            // Highly likely an image
+            return { type: 'image_url', url: trimmed }; // New special type
+        }
+        // Also handle [图片:URL] format if it somehow got saved as text content
+        const imgMatch = trimmed.match(/^\[图片:(https?:\/\/[^\]]+)\]$/);
+        if (imgMatch) {
+            return { type: 'image_url', url: imgMatch[1] };
+        }
+    }
+
+    // 4. Fallback: If JSON parsing failed but it looks like our JSON HTML wrapper
+    // Regex to capture content inside "html": "..." or "html": '...'
+    // Handling multiline content specifically.
+    if (content.includes('"type": "html"') || content.includes('"type":"html"')) {
+        // IMPROVED REGEX: Greedy match until the last quote before the closing brace '}'
+        // This handles cases where inner quotes are NOT escaped properly (e.g. onclick="...")
+        const htmlMatch = content.match(/"html"\s*:\s*(["'])([\s\S]*)\1\s*\}/);
+
+        if (htmlMatch) {
+            const rawStr = htmlMatch[2];
+            // Try to unescape by treating it as a JSON string value
+            try {
+                // If it used single quotes in the match, we might need to be careful, but standard JSON uses double.
+                // Re-wrap in double quotes to parse standard JSON string escapes
+                const unescaped = JSON.parse(`"${rawStr}"`);
+                console.log('[FavoriteDetail] Recovered and Unescaped HTML via Greedy Regex');
+                return { type: 'html', html: unescaped };
+            } catch (e) {
+                // Fallback to raw if unescaping fails (likely due to the bad quotes that required this regex)
+                // If we are here, it means JSON.parse failed, so the string probably has raw newlines/quotes.
+                // We return the raw string which browsers often tolerate in innerHTML.
+                console.log('[FavoriteDetail] Recovered HTML (Raw - Greedy) via Regex');
+                return { type: 'html', html: rawStr };
+            }
+        }
+    }
+
     return null
 })
+
+const cleanImageUrl = (content) => {
+    if (!content) return '';
+    // Strip [图片:URL] format if present
+    const match = content.match(/\[图片:(.+?)\]/);
+    if (match) return match[1];
+    return content;
+}
 
 const deleteCurrentItem = () => {
     if (confirm('确认删除这条收藏吗?')) {
@@ -273,6 +334,38 @@ const renderMarkdown = (text) => {
         return text
     }
 }
+
+// --- Toast Logic ---
+const toastMsg = ref('')
+const toastType = ref('info') // info, success, warning
+let toastTimer = null
+
+const showToast = (msg, type = 'info') => {
+    toastMsg.value = msg
+    toastType.value = type
+    if (toastTimer) clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => {
+        toastMsg.value = ''
+    }, 3000)
+}
+
+// --- Event Listener for HTML Card Alerts ---
+import { onMounted, onUnmounted } from 'vue'
+
+const handleMessage = (event) => {
+    if (event.data && event.data.type === 'CHAT_ALERT') {
+        showToast(event.data.text, 'info')
+    }
+}
+
+onMounted(() => {
+    window.addEventListener('message', handleMessage)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('message', handleMessage)
+    if (toastTimer) clearTimeout(toastTimer)
+})
 </script>
 
 <template>
@@ -409,11 +502,13 @@ const renderMarkdown = (text) => {
                     </div>
                 </div>
 
-                <!-- Special Content (Card/Sticker) -->
+                <!-- Special Content (Card/Sticker/ImageURL) -->
                 <div v-if="specialContent">
-                    <SafeHtmlCard v-if="specialContent.type === 'html'" :htmlContent="specialContent.html" />
+                    <SafeHtmlCard v-if="specialContent.type === 'html'" :content="specialContent.html" />
                     <img v-else-if="specialContent.type === 'sticker'" :src="specialContent.url"
                         class="max-w-[150px] rounded-lg">
+                    <img v-else-if="specialContent.type === 'image_url'" :src="specialContent.url"
+                        class="rounded-lg max-w-full border border-gray-100">
                     <div v-else-if="specialContent.type === 'sticker_placeholder'"
                         class="inline-flex items-center gap-2 bg-gray-50 px-4 py-3 rounded-lg text-gray-600 border border-gray-200">
                         <i class="fa-regular fa-image text-lg"></i>
@@ -427,10 +522,11 @@ const renderMarkdown = (text) => {
 
                 <!-- Image Type -->
                 <div v-if="item.type === 'image'" class="mt-2">
-                    <img :src="item.content" class="rounded-lg max-w-full border border-gray-100">
+                    <img :src="cleanImageUrl(item.content)" class="rounded-lg max-w-full border border-gray-100">
                 </div>
 
             </div>
+
 
         </div>
 
@@ -463,6 +559,13 @@ const renderMarkdown = (text) => {
                     <div v-if="chatsList.length === 0" class="text-center py-6 text-gray-400 text-sm">暂无联系人</div>
                 </div>
             </div>
+        </div>
+        <!-- Custom Toast -->
+        <div v-if="toastMsg"
+            class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[2000] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 backdrop-blur-md border border-white/20"
+            :class="toastType === 'success' ? 'bg-green-500/90 text-white' : 'bg-gray-800/90 text-white'">
+            <i class="fa-solid" :class="toastType === 'success' ? 'fa-check-circle' : 'fa-circle-info'"></i>
+            <span class="font-medium text-sm">{{ toastMsg }}</span>
         </div>
     </div>
 </template>

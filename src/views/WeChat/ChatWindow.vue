@@ -187,9 +187,9 @@ watch(() => callStore.transcript.length, (newLen, oldLen) => {
         const lastLine = callStore.transcript[newLen - 1]
         if (lastLine.role === 'ai' && chatData.value?.autoRead !== false) {
             // Trigger TTS for call speech
-            ttsQueue.value.push({ 
-                text: lastLine.content, 
-                msgId: `call_tr_${newLen}_${Date.now()}` 
+            ttsQueue.value.push({
+                text: lastLine.content,
+                msgId: `call_tr_${newLen}_${Date.now()}`
             })
             processQueue()
         }
@@ -234,9 +234,14 @@ const loadMoreMessages = () => {
 }
 
 // 监听聊天切换，重置分页
+// 监听聊天切换，重置分页并瞬间滚动到底部
 watch(() => chatStore.currentChatId, (newId) => {
     if (newId) {
         chatStore.resetPagination(newId)
+        // Instant scroll to bottom on chat switch
+        scrollToBottom(true)
+        // Double check for layout shifts
+        setTimeout(() => scrollToBottom(true), 100)
     }
 })
 
@@ -247,7 +252,14 @@ const addToFavorites = (msg) => {
         ? (settingsStore.personalization.userProfile.avatar || '/avatars/user.png')
         : (chatData.value.avatar || '/avatars/default.png')
 
-    favoritesStore.addFavorite(msg, chatName, avatarUrl)
+    // FIX: Handle Generated Images (which are type='text' but have 'image' prop)
+    const msgToSave = { ...msg }
+    if (msg.image) {
+        msgToSave.type = 'image'
+        msgToSave.content = msg.image
+    }
+
+    favoritesStore.addFavorite(msgToSave, chatName, avatarUrl)
     showToast('已收藏', 'success')
 }
 
@@ -276,7 +288,7 @@ const selectToBottom = () => {
     // Use displayedMsgs (the current paginated view) instead of the full store history.
     // This ensures we only select messages that are currently visible on the screen.
     const visibleMsgs = displayedMsgs.value
-    
+
     // Find the earliest message index in the visible selection
     let minIdx = -1
     for (let i = 0; i < visibleMsgs.length; i++) {
@@ -491,6 +503,33 @@ const computedBgStyle = computed(() => {
 
 const msgContainer = ref(null)
 
+// Robust Scroll to Bottom
+const scrollToBottom = (instant = false) => {
+    nextTick(() => {
+        const el = msgContainer.value
+        if (!el) return
+
+        // Use a slightly larger target to ensure we hit bottom despite sub-pixel rendering
+        const target = el.scrollHeight + 100
+
+        el.scrollTo({
+            top: target,
+            behavior: instant ? 'auto' : 'smooth'
+        })
+    })
+}
+
+// Initial Scroll Logic
+onMounted(() => {
+    // Immediate scroll (Invisible to user ideally)
+    scrollToBottom(true)
+
+    // Retries to handle image loading/layout shifts
+    setTimeout(() => scrollToBottom(true), 50)
+    setTimeout(() => scrollToBottom(true), 200)
+    setTimeout(() => scrollToBottom(true), 500)
+})
+
 const currentQuote = ref(null) // New State
 const showActionPanel = ref(false)
 const showSettings = ref(false)
@@ -547,9 +586,9 @@ const toggleAutoRead = () => {
     // Default of autoRead is effectively TRUE (if undefined), so we treat undefined as true.
     const currentActive = chatData.value.autoRead !== false
     const newState = !currentActive
-    
+
     chatStore.updateCharacter(chatData.value.id, { autoRead: newState })
-    
+
     if (newState) {
         showToast('自动朗读已开启', 'success')
     } else {
@@ -708,9 +747,9 @@ const handlePanelAction = (type) => {
         if (char) {
             callStore.startCall({ name: char.name, avatar: char.avatar, id: char.id }, 'voice')
             // Trigger AI to respond to call
-            chatStore.addMessage(chatData.value.id, { 
-                role: 'system', 
-                content: `[System: ${chatStore.userName || '用户'} 正在给你打语音电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]` 
+            chatStore.addMessage(chatData.value.id, {
+                role: 'system',
+                content: `[System: ${chatStore.userName || '用户'} 正在给你打语音电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]`
             })
             // Manually trigger the generation
             chatStore.sendMessageToAI(chatData.value.id)
@@ -720,9 +759,9 @@ const handlePanelAction = (type) => {
         if (char) {
             callStore.startCall({ name: char.name, avatar: char.avatar, id: char.id }, 'video')
             // Trigger AI to respond to call
-            chatStore.addMessage(chatData.value.id, { 
-                role: 'system', 
-                content: `[System: ${chatStore.userName || '用户'} 正在给你打视频电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]` 
+            chatStore.addMessage(chatData.value.id, {
+                role: 'system',
+                content: `[System: ${chatStore.userName || '用户'} 正在给你打视频电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]`
             })
             // Manually trigger the generation
             chatStore.sendMessageToAI(chatData.value.id)
@@ -1018,18 +1057,8 @@ const handleImgUpload = (event) => {
 }
 
 
-const scrollToBottom = (delay = 50) => {
-    nextTick(() => {
-        setTimeout(() => {
-            if (msgContainer.value) {
-                msgContainer.value.scrollTo({
-                    top: msgContainer.value.scrollHeight,
-                    behavior: 'smooth'
-                });
-            }
-        }, delay);
-    });
-}
+// Old scrollToBottom removed to resolve conflict
+// The robust implementation is now at the top of the file.
 
 const closePanels = () => {
     showActionPanel.value = false
@@ -1084,9 +1113,9 @@ const processQueue = () => {
 
         // Re-check call status before continuing
         if (callStore.status === 'ended' || callStore.status === 'none') {
-             isSpeaking.value = false;
-             ttsQueue.value = [];
-             return;
+            isSpeaking.value = false;
+            ttsQueue.value = [];
+            return;
         }
 
         isSpeaking.value = false;
@@ -1099,7 +1128,7 @@ const processQueue = () => {
 const getCleanSpeechText = (textRaw) => {
     if (!textRaw) return '';
     let text = ensureString(textRaw);
-    
+
     // 1. Remove HTML Card JSON blocks FIRST (Critical for TTS)
     if (text.includes('"type"') && text.includes('"html"')) {
         // Greedy match until the LAST } to handle internal CSS { }
@@ -1119,7 +1148,7 @@ const getCleanSpeechText = (textRaw) => {
     // Support standard () and full-width （）
     clean = clean.replace(/\([^\)]*\)/g, '');
     clean = clean.replace(/（[^）]*）/g, '');
-    
+
     // Final cleanup of any remaining HTML-like bits
     clean = clean.replace(/<\/?[^>]+(>|$)/g, "");
 
@@ -1313,7 +1342,7 @@ const handleDrawCommandInChat = async (msgId, prompt) => {
             isDrawing: false,
             image: imageUrl // Use a separate field to allow co-existence with text
         }
-        
+
         chatStore.updateMessage(chatId, msgId, updateData)
         showToast('绘图完成', 'success')
 
@@ -1387,15 +1416,15 @@ const parseInnerVoice = (contentRaw) => {
 
         if (match && match[1]) {
             let rawPart = match[1].trim();
-            
+
             // Greedily extract the first JSON-like block if present
             const jsonBlock = rawPart.match(/\{[\s\S]*\}/);
             let jsonStr = jsonBlock ? jsonBlock[0] : rawPart;
 
             // Unescape common AI leak formats
             jsonStr = jsonStr.replace(/\\n/g, '\n')
-                           .replace(/\\"/g, '"')
-                           .replace(/[“”]/g, '"');
+                .replace(/\\"/g, '"')
+                .replace(/[“”]/g, '"');
 
             // Attempt standard parse first
             try {
@@ -1403,12 +1432,12 @@ const parseInnerVoice = (contentRaw) => {
             } catch (jsonErr) {
                 // FALLBACK for broken or partial JSON
                 if (!jsonStr.startsWith('{')) {
-                     // Try to wrap if it looks like keys and is naked
-                     if (jsonStr.includes(':')) {
-                         try { rawObj = JSON.parse('{' + jsonStr + '}'); } catch(e){}
-                     }
+                    // Try to wrap if it looks like keys and is naked
+                    if (jsonStr.includes(':')) {
+                        try { rawObj = JSON.parse('{' + jsonStr + '}'); } catch (e) { }
+                    }
                 }
-                
+
                 if (!rawObj) {
                     const cleanText = (regex) => {
                         const m = jsonStr.match(regex);
@@ -1481,19 +1510,32 @@ const getCleanContent = (contentRaw) => {
     // Remove Naked JSON blocks (Fallback) - Only if they contain specific Inner Voice keys
     clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
 
-    // NEW: Remove HTML Card JSON blocks (Greedy)
+    // NEW: Remove HTML Card JSON blocks (Greedy & Robust)
     if (clean.includes('"type"') && clean.includes('"html"')) {
-        clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
+        // Find first { and last } to remove the entire block
+        // This prevents regex from stopping early on } inside CSS or HTML content
+        const start = clean.indexOf('{');
+        const end = clean.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            // Double check it's likely the card
+            const snippet = clean.substring(start, end + 1);
+            if (snippet.includes('"type"') && snippet.includes('"html"')) {
+                clean = clean.substring(0, start) + clean.substring(end + 1);
+            }
+        } else {
+            // Fallback regex if structure is complex
+            clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
+        }
     }
 
     clean = clean.replace(/\[System:[\s\S]+?\]/gi, '');
     clean = clean.trim();
     // Remove Claim Tags
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
-    
+
     // Filter out zero-width characters
     clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    
+
     return clean;
 }
 
@@ -1585,12 +1627,12 @@ const openInnerVoiceModal = () => {
         const data = parseInnerVoice(foundMsg.content);
         // Even if local parsing fails, we pass the ID to the modal so it can try its own robust parsing
         currentInnerVoiceMsgId.value = foundMsg.id;
-        
+
         if (data) {
             currentInnerVoice.value = { ...data, id: foundMsg.id };
         } else {
             // Fallback object to prevent null errors if used elsewhere
-            currentInnerVoice.value = { id: foundMsg.id }; 
+            currentInnerVoice.value = { id: foundMsg.id };
         }
     } else {
         currentInnerVoice.value = null;
@@ -2038,7 +2080,7 @@ const formatMessageContent = (msg) => {
     // 4. Sticker inline replacer (Standardized fuzzy matching)
     text = text.replace(/\[(.*?)\]/g, (match, name) => {
         let n = name.trim()
-        
+
         // Strip prefixes
         const prefixMatch = n.match(/^(?:表情包|表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
         if (prefixMatch) n = prefixMatch[1].trim();
@@ -2058,7 +2100,7 @@ const formatMessageContent = (msg) => {
 
         // Precise
         let found = allAvailable.find(s => s.name === n || normalize(s.name) === nClean);
-        
+
         // Fuzzy
         if (!found && nClean.length >= 2) {
             found = allAvailable.find(s => {
@@ -2474,7 +2516,7 @@ onUnmounted(() => {
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
 
-                        
+
                         <!-- Other Statuses (Only show if no active call) -->
                         <template v-if="callStore.status === 'none'">
                             <template v-if="musicStore.isListeningTogether">
@@ -2588,11 +2630,11 @@ onUnmounted(() => {
             </div>
 
             <!-- Input Area (Extracted) -->
-            <ChatInputBar v-if="!isMultiSelectMode && callStore.status !== 'active'" ref="chatInputBarRef" :currentQuote="currentQuote"
-                :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
-                @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
-                @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker"
-                @toggle-music="handleToggleMusic" @regenerate="regenerateLastMessage"
+            <ChatInputBar v-if="!isMultiSelectMode && callStore.status !== 'active'" ref="chatInputBarRef"
+                :currentQuote="currentQuote" :chatData="chatData" :isTyping="chatStore.isTyping"
+                :musicVisible="musicStore.playerVisible" @send="handleSendMessage" @generate="generateAIResponse"
+                @stop-generate="chatStore.stopGeneration" @toggle-panel="toggleActionPanel"
+                @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic" @regenerate="regenerateLastMessage"
                 @cancel-quote="cancelQuote" />
 
             <!-- Multi-select Action Bar (Bottom Overlay) -->
@@ -2999,7 +3041,8 @@ onUnmounted(() => {
                         @touchstart.stop.prevent="handleMenuAction('edit')"><i class="fa-solid fa-pen w-5"></i> 编辑</div>
                     <div class="ctx-item" @click.stop="handleMenuAction('history')"
                         @touchstart.stop.prevent="handleMenuAction('history')"><i
-                            class="fa-solid fa-clock-rotate-left w-5"></i> 编辑历史</div>
+                            class="fa-solid fa-clock-rotate-left w-5"></i>
+                        编辑历史</div>
                     <div class="ctx-item" @click.stop="handleMenuAction('copy')"
                         @touchstart.stop.prevent="handleMenuAction('copy')"><i class="fa-regular fa-copy w-5"></i> 复制
                     </div>
@@ -3008,13 +3051,15 @@ onUnmounted(() => {
                         引用</div>
                     <div class="ctx-item" @click.stop="handleMenuAction('recall')"
                         @touchstart.stop.prevent="handleMenuAction('recall')"><i
-                            class="fa-solid fa-rotate-left w-5"></i> 撤回</div>
+                            class="fa-solid fa-rotate-left w-5"></i> 撤回
+                    </div>
                     <div class="ctx-item" @click.stop="handleMenuAction('fav')"
                         @touchstart.stop.prevent="handleMenuAction('fav')"><i class="fa-regular fa-star w-5"></i> 收藏
                     </div>
                     <div class="ctx-item" @click.stop="handleMenuAction('listen')"
                         @touchstart.stop.prevent="handleMenuAction('listen')"><i
-                            class="fa-solid fa-volume-high w-5"></i> 听音</div>
+                            class="fa-solid fa-volume-high w-5"></i> 听音
+                    </div>
                     <div class="ctx-divider my-1 border-t border-white/10"></div>
                     <div class="ctx-item" @click.stop="handleMenuAction('multi')"
                         @touchstart.stop.prevent="handleMenuAction('multi')"><i class="fa-solid fa-list-check w-5"></i>

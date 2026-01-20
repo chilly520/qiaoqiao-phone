@@ -51,10 +51,10 @@ const loadGalleryData = () => {
       console.error('Failed to parse gallery data:', e)
     }
   }
-  
+
   // 从聊天记录中提取所有生成的图片
   extractImagesFromChats()
-  
+
   // 更新分组计数
   updateGroupCounts()
 }
@@ -62,12 +62,29 @@ const loadGalleryData = () => {
 // 从聊天记录中提取图片
 const extractImagesFromChats = () => {
   const existingImageUrls = new Set(galleryData.value.images.map(img => img.url))
-  
+
   // 遍历所有聊天
   Object.keys(chatStore.chats).forEach(chatId => {
     const chat = chatStore.chats[chatId]
     if (chat && chat.msgs) {
       chat.msgs.forEach(msg => {
+        if (msg.image) {
+          // AI Generated Image attached to text
+          if (msg.image.startsWith('http') || msg.image.startsWith('data:image')) {
+            const imageUrl = msg.image
+            if (!existingImageUrls.has(imageUrl)) {
+              galleryData.value.images.push({
+                id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                url: imageUrl,
+                name: `Generated ${galleryData.value.images.length + 1}`,
+                groupId: 'default',
+                createdAt: msg.timestamp || Date.now()
+              })
+              existingImageUrls.add(imageUrl)
+            }
+          }
+        }
+
         // 检查图片消息
         if (msg.type === 'image' && msg.content) {
           let imageUrl = msg.content
@@ -90,7 +107,7 @@ const extractImagesFromChats = () => {
       })
     }
   })
-  
+
   // 保存更新后的数据
   saveGalleryData()
 }
@@ -223,11 +240,11 @@ const shareToFriend = (friendId) => {
       type: 'image',
       content: previewImage.value.url
     }, false)
-    
+
     showShareModal.value = false
     previewImage.value = null
     showPreview.value = false
-    
+
     // 跳转到被分享的人聊天界面
     chatStore.currentChatId = friendId
     router.push('/wechat')
@@ -259,7 +276,7 @@ const toggleImageSelection = (imageId) => {
 // 删除选中图片
 const deleteSelectedImages = () => {
   if (selectedImages.value.length === 0) return
-  
+
   const deleteCount = selectedImages.value.length
   galleryData.value.images = galleryData.value.images.filter(img => !selectedImages.value.includes(img.id))
   saveGalleryData()
@@ -273,12 +290,30 @@ const scanImages = () => {
   // 从聊天记录中重新提取所有图片
   const existingImageUrls = new Set(galleryData.value.images.map(img => img.url))
   let scanCount = 0
-  
+
   // 遍历所有聊天
   Object.keys(chatStore.chats).forEach(chatId => {
     const chat = chatStore.chats[chatId]
     if (chat && chat.msgs) {
       chat.msgs.forEach(msg => {
+        if (msg.image) {
+          // AI Generated Image attached to text
+          if (msg.image.startsWith('http') || msg.image.startsWith('data:image')) {
+            const imageUrl = msg.image
+            if (!existingImageUrls.has(imageUrl)) {
+              galleryData.value.images.push({
+                id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                url: imageUrl,
+                name: `Generated ${galleryData.value.images.length + 1}`,
+                groupId: 'default',
+                createdAt: msg.timestamp || Date.now()
+              })
+              existingImageUrls.add(imageUrl)
+              scanCount++
+            }
+          }
+        }
+
         // 检查图片消息
         if (msg.type === 'image' && msg.content) {
           let imageUrl = msg.content
@@ -302,7 +337,7 @@ const scanImages = () => {
       })
     }
   })
-  
+
   if (scanCount > 0) {
     saveGalleryData()
     chatStore.triggerToast(`扫描完成，新增 ${scanCount} 张图片`, 'success')
@@ -355,13 +390,10 @@ onMounted(() => {
 
     <!-- 分组导航 -->
     <div class="bg-white px-4 py-2 border-b border-gray-200 overflow-x-auto whitespace-nowrap">
-      <div 
-        v-for="group in galleryData.groups" 
-        :key="group.id"
+      <div v-for="group in galleryData.groups" :key="group.id"
         class="inline-block px-4 py-1.5 mr-2 rounded-full text-sm cursor-pointer transition"
         :class="activeGroup === group.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'"
-        @click="switchGroup(group.id)"
-      >
+        @click="switchGroup(group.id)">
         {{ group.name }} <span class="ml-1 opacity-75">({{ group.count }})</span>
       </div>
     </div>
@@ -369,26 +401,19 @@ onMounted(() => {
     <!-- 图片网格 -->
     <div class="flex-1 overflow-y-auto p-2">
       <div class="grid grid-cols-4 gap-2">
-        <div 
-          v-for="image in filteredImages" 
-          :key="image.id"
-          class="relative aspect-square bg-gray-200 rounded overflow-hidden cursor-pointer"
-        >
+        <div v-for="image in filteredImages" :key="image.id"
+          class="relative aspect-square bg-gray-200 rounded overflow-hidden cursor-pointer">
           <img :src="image.url" class="w-full h-full object-cover" @click="openPreview(image)">
-          <div 
-            class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate cursor-pointer"
-            @click.stop="openRenameModal(image)"
-          >
+          <div class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate cursor-pointer"
+            @click.stop="openRenameModal(image)">
             {{ image.name }}
           </div>
-          <div v-if="isSelectMode" class="absolute top-1 left-1 w-5 h-5 bg-white/80 flex items-center justify-center rounded-full cursor-pointer">
-            <input 
-              type="checkbox" 
-              :checked="selectedImages.includes(image.id)"
-              @change="toggleImageSelection(image.id)"
-              class="w-4 h-4 rounded-full appearance-none bg-white border-2 border-gray-300 checked:bg-blue-500 checked:border-blue-500 relative"
-            >
-            <div v-if="selectedImages.includes(image.id)" class="absolute inset-0 flex items-center justify-center text-white text-xs">
+          <div v-if="isSelectMode"
+            class="absolute top-1 left-1 w-5 h-5 bg-white/80 flex items-center justify-center rounded-full cursor-pointer">
+            <input type="checkbox" :checked="selectedImages.includes(image.id)" @change="toggleImageSelection(image.id)"
+              class="w-4 h-4 rounded-full appearance-none bg-white border-2 border-gray-300 checked:bg-blue-500 checked:border-blue-500 relative">
+            <div v-if="selectedImages.includes(image.id)"
+              class="absolute inset-0 flex items-center justify-center text-white text-xs">
               <i class="fa-solid fa-check"></i>
             </div>
           </div>
@@ -429,14 +454,11 @@ onMounted(() => {
       <div class="bg-white w-full rounded-t-xl p-4 animate-slide-up">
         <div class="text-center font-bold mb-4">选择好友</div>
         <div class="grid grid-cols-4 gap-4 mb-6">
-          <div 
-            v-for="friend in chatStore.contactList" 
-            :key="friend.id"
-            class="flex flex-col items-center cursor-pointer"
-            @click="shareToFriend(friend.id)"
-          >
+          <div v-for="friend in chatStore.contactList" :key="friend.id"
+            class="flex flex-col items-center cursor-pointer" @click="shareToFriend(friend.id)">
             <div class="w-12 h-12 rounded-full overflow-hidden mb-1">
-              <img :src="friend.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${friend.name || 'AI'}`" class="w-full h-full object-cover">
+              <img :src="friend.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${friend.name || 'AI'}`"
+                class="w-full h-full object-cover">
             </div>
             <span class="text-xs text-center truncate w-full">{{ friend.name }}</span>
           </div>
@@ -449,30 +471,19 @@ onMounted(() => {
     <div v-if="showRenameModal" class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center">
       <div class="bg-white w-[85%] max-w-[320px] rounded-xl p-5 animate-scale-up">
         <div class="text-center font-bold mb-4">重命名图片</div>
-        <input 
-          v-model="newImageName" 
-          type="text" 
-          class="w-full h-10 border-b-2 border-green-500 outline-none text-base mb-4"
-          placeholder="请输入新名称"
-          autofocus
-        >
+        <input v-model="newImageName" type="text"
+          class="w-full h-10 border-b-2 border-green-500 outline-none text-base mb-4" placeholder="请输入新名称" autofocus>
         <div class="mb-6">
           <label class="text-xs text-gray-400 block mb-1">分组</label>
-          <select 
-            v-model="newImageGroup" 
-            class="w-full h-10 border-b-2 border-green-500 outline-none text-base"
-          >
-            <option 
-              v-for="group in galleryData.groups.filter(g => g.id !== 'all')" 
-              :key="group.id"
-              :value="group.id"
-            >
+          <select v-model="newImageGroup" class="w-full h-10 border-b-2 border-green-500 outline-none text-base">
+            <option v-for="group in galleryData.groups.filter(g => g.id !== 'all')" :key="group.id" :value="group.id">
               {{ group.name }}
             </option>
           </select>
         </div>
         <div class="flex gap-3">
-          <button @click="showRenameModal = false" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button>
+          <button @click="showRenameModal = false"
+            class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button>
           <button @click="confirmRename" class="flex-1 py-2 rounded-lg bg-green-500 text-white font-medium">确定</button>
         </div>
       </div>
@@ -482,16 +493,13 @@ onMounted(() => {
     <div v-if="showAddGroupModal" class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center">
       <div class="bg-white w-[85%] max-w-[320px] rounded-xl p-5 animate-scale-up">
         <div class="text-center font-bold mb-4">新建分组</div>
-        <input 
-          v-model="newGroupName" 
-          type="text" 
-          class="w-full h-10 border-b-2 border-green-500 outline-none text-base mb-6"
-          placeholder="请输入分组名称"
-          autofocus
-        >
+        <input v-model="newGroupName" type="text"
+          class="w-full h-10 border-b-2 border-green-500 outline-none text-base mb-6" placeholder="请输入分组名称" autofocus>
         <div class="flex gap-3">
-          <button @click="showAddGroupModal = false" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button>
-          <button @click="confirmAddGroup" class="flex-1 py-2 rounded-lg bg-green-500 text-white font-medium">确定</button>
+          <button @click="showAddGroupModal = false"
+            class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button>
+          <button @click="confirmAddGroup"
+            class="flex-1 py-2 rounded-lg bg-green-500 text-white font-medium">确定</button>
         </div>
       </div>
     </div>
@@ -504,6 +512,7 @@ onMounted(() => {
     transform: translateY(100%);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -519,6 +528,7 @@ onMounted(() => {
     transform: scale(0.9);
     opacity: 0;
   }
+
   to {
     transform: scale(1);
     opacity: 1;

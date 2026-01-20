@@ -76,6 +76,11 @@ const router = createRouter({
             component: () => import('../views/WorldBook/WorldBookApp.vue')
         },
         {
+            path: '/weibo',
+            name: 'weibo',
+            component: () => import('../views/WeiboApp.vue')
+        },
+        {
             path: '/wechat/profile/:charId',
             name: 'character-info',
             component: () => import('../views/WeChat/CharacterProfileView.vue')
@@ -135,6 +140,11 @@ const router = createRouter({
             path: '/wallet/family-cards/:id',
             name: 'wallet-family-card-detail',
             component: () => import('../views/Wallet/WalletFamilyCardDetail.vue')
+        },
+        {
+            path: '/wallet/bill/statistics',
+            name: 'wallet-bill-statistics',
+            component: () => import('../views/Wallet/WalletStatisticsView.vue')
         }
     ]
 })

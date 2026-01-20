@@ -9,7 +9,7 @@
             <button class="w-10 h-full text-gray-800 flex items-center justify-center" @click="$emit('close')">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>
-            <span class="font-bold text-gray-800">角色设置</span>
+            <span class="font-bold text-gray-800">角色设置 - {{ localData.name }}</span>
             <button @click="saveSettings"
                 class="ml-auto text-green-600 font-bold text-sm bg-green-100 px-3 py-1 rounded mr-2">保存</button>
         </div>
@@ -469,40 +469,53 @@
                             <div class="flex flex-col items-center gap-2">
                                 <span class="text-[10px] text-gray-400">角色形象</span>
                                 <div class="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 relative group cursor-pointer"
-                                     @click="triggerCallAvatarUpload('char')">
-                                    <img v-if="localData.callAvatarChar" :src="localData.callAvatarChar" class="w-full h-full object-cover">
+                                    @click="triggerCallAvatarUpload('char')">
+                                    <img v-if="localData.callAvatarChar" :src="localData.callAvatarChar"
+                                        class="w-full h-full object-cover">
                                     <div v-else class="w-full h-full flex items-center justify-center text-gray-300">
                                         <i class="fa-solid fa-camera"></i>
                                     </div>
-                                    <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div
+                                        class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <i class="fa-solid fa-pen text-white text-xs"></i>
                                     </div>
                                 </div>
                                 <div class="flex gap-1">
-                                     <button class="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded hover:bg-gray-100" @click="promptCallAvatarUrl('char')">URL</button>
-                                     <button class="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded hover:bg-red-100" @click="localData.callAvatarChar = ''">清空</button>
+                                    <button
+                                        class="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded hover:bg-gray-100"
+                                        @click="promptCallAvatarUrl('char')">URL</button>
+                                    <button
+                                        class="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded hover:bg-red-100"
+                                        @click="localData.callAvatarChar = ''">清空</button>
                                 </div>
                             </div>
                             <!-- User Call Avatar -->
                             <div class="flex flex-col items-center gap-2">
                                 <span class="text-[10px] text-gray-400">我的形象</span>
                                 <div class="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 relative group cursor-pointer"
-                                     @click="triggerCallAvatarUpload('user')">
-                                    <img v-if="localData.callAvatarUser" :src="localData.callAvatarUser" class="w-full h-full object-cover">
+                                    @click="triggerCallAvatarUpload('user')">
+                                    <img v-if="localData.callAvatarUser" :src="localData.callAvatarUser"
+                                        class="w-full h-full object-cover">
                                     <div v-else class="w-full h-full flex items-center justify-center text-gray-300">
                                         <i class="fa-solid fa-user"></i>
                                     </div>
-                                    <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div
+                                        class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                         <i class="fa-solid fa-pen text-white text-xs"></i>
                                     </div>
                                 </div>
                                 <div class="flex gap-1">
-                                     <button class="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded hover:bg-gray-100" @click="promptCallAvatarUrl('user')">URL</button>
-                                     <button class="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded hover:bg-red-100" @click="localData.callAvatarUser = ''">清空</button>
+                                    <button
+                                        class="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded hover:bg-gray-100"
+                                        @click="promptCallAvatarUrl('user')">URL</button>
+                                    <button
+                                        class="text-[10px] text-red-400 bg-red-50 px-1.5 py-0.5 rounded hover:bg-red-100"
+                                        @click="localData.callAvatarUser = ''">清空</button>
                                 </div>
                             </div>
                         </div>
-                        <input type="file" ref="callAvatarInput" class="hidden" accept="image/*" @change="handleCallAvatarChange">
+                        <input type="file" ref="callAvatarInput" class="hidden" accept="image/*"
+                            @change="handleCallAvatarChange">
                     </div>
                 </div>
 
@@ -1452,6 +1465,10 @@ const localData = ref({
     callAvatarUser: ''
 })
 
+
+
+
+
 // Sync props
 watch(() => props.chatData, (newVal) => {
     if (newVal && !isSaving.value) {
@@ -1467,6 +1484,10 @@ watch(() => props.chatData, (newVal) => {
         if (!dataCopy.userAvatar) {
             dataCopy.userAvatar = chatStore.getRandomAvatar ? chatStore.getRandomAvatar() : '/avatars/小猫开心.jpg'
         }
+
+        // Ensure gender fields are present
+        if (!dataCopy.gender) dataCopy.gender = '无'
+        if (!dataCopy.userGender) dataCopy.userGender = '无'
 
         localData.value = { ...localData.value, ...dataCopy }
 
@@ -1588,12 +1609,12 @@ const handleCallAvatarChange = async (e) => {
         try {
             const compressed = await compressImage(file, 200, 0.6)
             if (currentCallAvatarTarget.value === 'char') {
-                 localData.value.callAvatarChar = compressed
+                localData.value.callAvatarChar = compressed
             } else {
-                 localData.value.callAvatarUser = compressed
+                localData.value.callAvatarUser = compressed
             }
         } catch (err) {
-             console.error('Call avatar upload failed', err)
+            console.error('Call avatar upload failed', err)
         }
     }
 }
@@ -1601,8 +1622,8 @@ const handleCallAvatarChange = async (e) => {
 const promptCallAvatarUrl = (target) => {
     openUrlPrompt('设置通话形象 URL', (url) => {
         if (url) {
-             if (target === 'char') localData.value.callAvatarChar = url
-             else localData.value.callAvatarUser = url
+            if (target === 'char') localData.value.callAvatarChar = url
+            else localData.value.callAvatarUser = url
         }
     })
 }
@@ -1950,6 +1971,10 @@ const saveSettings = () => {
     isSaving.value = true
 
     console.log('[Settings] Save Clicked - Preparing Data for ID:', props.chatData.id)
+
+    // Validation / Defaulting
+    if (!localData.value.gender) localData.value.gender = '无'
+    if (!localData.value.userGender) localData.value.userGender = '无'
 
     // Check for Remark Change
     const oldRemark = props.chatData.remark

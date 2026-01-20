@@ -75,6 +75,8 @@ function openApp(appId) {
     safeNavigate('/system-logs')
   } else if (appId === 'worldbook') {
     safeNavigate('/worldbook')
+  } else if (appId === 'weibo') {
+    safeNavigate('/weibo')
   }
 }
 

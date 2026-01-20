@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { compressImage } from '../utils/imageUtils'
 import { useChatStore } from './chatStore'
+import { defaultStickers } from './defaultStickers'
 
 export const useStickerStore = defineStore('sticker', () => {
     const stickers = ref([])
@@ -214,6 +215,28 @@ export const useStickerStore = defineStore('sticker', () => {
 
     // Initialize
     loadStickers()
+    initializeDefaults()
+
+    function initializeDefaults() {
+        if (!defaultStickers || defaultStickers.length === 0) return
+
+        // Optimize: Convert existing URLs to Set for O(1) lookup
+        const existingUrls = new Set(stickers.value.map(s => s.url))
+        let addedCount = 0
+
+        defaultStickers.forEach(def => {
+            if (!existingUrls.has(def.url)) {
+                stickers.value.push(def)
+                existingUrls.add(def.url)
+                addedCount++
+            }
+        })
+
+        if (addedCount > 0) {
+            saveStickers()
+            console.log(`[StickerStore] Added ${addedCount} new default stickers.`)
+        }
+    }
 
     return {
         stickers,

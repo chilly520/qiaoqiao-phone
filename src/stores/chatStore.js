@@ -1038,20 +1038,31 @@ ${contextMsgs}
                 // Auto Mode: Chunked Catch-Up
                 const lastIndex = chat.lastSummaryIndex || 0
                 const currentTotal = chat.msgs.length
+
+                // FIX: Reset index if it exceeds current message count (Corruption/Truncation recovery)
+                if (lastIndex > currentTotal) {
+                    console.warn(`[Summarize] Index mismatch detected (Index: ${lastIndex}, Total: ${currentTotal}). Resetting to 0.`);
+                    chat.lastSummaryIndex = 0;
+                    // Recursive retry with fresh state
+                    return summarizeHistory(chatId, options);
+                }
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
                 const backlog = currentTotal - lastIndex
+
 
                 // Process up to summaryLimit messages at a time
                 let endIndex = currentTotal
                 if (backlog > summaryLimit + 10) {
-                    endIndex = lastIndex + summaryLimit
+                    endIndex = parseInt(lastIndex) + summaryLimit // Force Int
                     rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
                     console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${currentTotal - endIndex})`)
                 } else {
                     rangeDesc = `自动增量`
                 }
 
+                console.log('[Summarize DEBUG]', { lastIndex, endIndex, currentTotal, msgsLen: chat.msgs.length, typeofLast: typeof lastIndex })
                 targetMsgs = chat.msgs.slice(lastIndex, endIndex)
+
 
                 if (targetMsgs.length === 0) {
                     throw new Error('No new messages to summarize')
@@ -1248,7 +1259,7 @@ ${contextMsgs}
                 // Usually we want AI to initiate if they were the last one to speak OR if user was
                 // But user specifically said "Regardless of whether I speak or not"
                 // We inject a hidden hint for proactive
-                sendMessageToAI(chatId, { hiddenHint: `（你已经在界面内陪了用户 ${Math.floor(diffMinutes)} 分钟了，可以主动找个话题开启聊天）` })
+                sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没和用户互动了，要不要主动说点什么？）` })
             }
         }
 
@@ -1259,7 +1270,9 @@ ${contextMsgs}
                 // But for now, simple 1-time trigger logic
                 if (!chat._lastActiveTriggeredTime || (now - chat._lastActiveTriggeredTime > chat.activeInterval * 60000)) {
                     chat._lastActiveTriggeredTime = now
-                    sendMessageToAI(chatId, { hiddenHint: `（用户已经离开聊天界面 ${Math.floor(diffMinutes)} 分钟了，可以主动发消息查岗）` })
+                    const d = new Date()
+                    const timeStr = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+                    sendMessageToAI(chatId, { hiddenHint: `（现在是${timeStr}，你已经 ${Math.floor(diffMinutes)} 分钟没和用户互动了，要不要给点反应呢？）` })
                 }
             }
         }
@@ -1486,10 +1499,14 @@ ${contextMsgs}
 
             const charInfo = {
                 name: chat.name || '角色',
+                gender: chat.gender || '无',
                 description: (chat.prompt || '') + momentsAwareness,
                 memory: chat.memory || [],
                 userName: chat.userName || '用户',
+                userGender: chat.userGender || '无',
                 userPersona: chat.userPersona || '',
+                userAvatarUrl: chat.userAvatar,
+                avatarUrl: chat.avatar,
                 worldBookLinks: chat.worldBookLinks,
                 emojis: chat.emojis,
                 virtualTime: currentVirtualTime,
@@ -2155,7 +2172,9 @@ ${contextMsgs}
                         content = cardBlocks[cardBlocks.length - 1 - index];
                         finalSegments.push({ type: 'card', content });
                     } else if (content.startsWith('[表情包:')) {
-                        finalSegments.push({ type: 'sticker', content: content.trim() });
+                        // Extract sticker name properly
+                        const stickerName = content.match(/\[表情包[:：](.+?)\]/)?.[1] || content;
+                        finalSegments.push({ type: 'sticker', content: stickerName.trim() });
                     } else if (content.startsWith('[语音:')) {
                         finalSegments.push({ type: 'voice', content: content.substring(4, content.length - 1).trim() });
                     } else if (content.startsWith('[DRAW:')) {
@@ -2244,31 +2263,53 @@ ${contextMsgs}
                         pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt }));
 
                     } else if (type === 'sticker') {
-                        msgAdded = addMessage(chatId, { role: 'ai', content, quote: i === 0 ? aiQuote : null });
+                        // Ensure sticker content is just the name/filename if needed, or keeping full tag if components handle it
+                        // The store usually expects just the name or url depending on implementation. 
+                        // Based on ChatMessageItem, type 'sticker' usually expects content to be the sticker name or url.
+                        // We stripped the brackets in the segmenting phase above.
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'sticker', content, quote: i === 0 ? aiQuote : null });
                     } else if (type === 'voice') {
                         msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1 });
                     } else if (type === 'draw') {
-                        // (Drawing logic handled after adding message)
-                        msgAdded = addMessage(chatId, { role: 'ai', content, quote: i === 0 ? aiQuote : null });
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
-                        if (drawMatch && msgAdded) {
-                            const targetMsgId = msgAdded.id;
-                            (async () => {
-                                try {
-                                    const imageUrl = await generateImage(drawMatch[1].trim());
-                                    // Get the current message from store to preserve any appended tags (like INNER_VOICE)
-                                    const currentMsg = chat.msgs.find(m => m.id === targetMsgId);
-                                    let newContent = currentMsg ? currentMsg.content : content;
-                                    newContent = newContent.replace(drawMatch[0], `[图片:${imageUrl}]`);
+                        if (drawMatch) {
+                            // 1. Add a temporary "Generating" placeholder (System message or special type)
+                            // OR add the image message immediately with a "loading" state if supported.
+                            // For now, we will add a text message with the command HIDDEN (or temporary text) then replace it.
 
-                                    updateMessage(chatId, targetMsgId, {
-                                        type: 'image',
-                                        content: newContent
-                                    });
-                                } catch (err) {
-                                    updateMessage(chatId, targetMsgId, { content: content.replace(drawMatch[0], '(绘画失败)') });
-                                }
-                            })();
+                            // User request: "绘画指令没隐藏". So we should NOT show the [DRAW:...] text.
+                            // We create a placeholder message that says "正在绘图..."
+                            msgAdded = await addMessage(chatId, {
+                                role: 'ai',
+                                type: 'text',
+                                content: '🎨 正在根据灵感绘图...',
+                                quote: i === 0 ? aiQuote : null
+                            });
+
+                            // Safe ID retrieval - Now safe because we awaited addMessage
+                            const targetMsgId = msgAdded?.id;
+
+                            if (!targetMsgId) {
+                                console.error('[ChatStore] Failed to get ID for placeholder message (addMessage failed?). Aborting image update.');
+                            } else {
+                                (async () => {
+                                    try {
+                                        const imageUrl = await generateImage(drawMatch[1].trim());
+
+                                        // Replace the placeholder with the actual image
+                                        updateMessage(chatId, targetMsgId, {
+                                            type: 'image', // Change type to image
+                                            content: `[图片:${imageUrl}]`, // Standard format
+                                            image: imageUrl // Ensure direct link for Gallery
+                                        });
+                                    } catch (err) {
+                                        updateMessage(chatId, targetMsgId, {
+                                            type: 'text',
+                                            content: `(绘画失败: ${err.message})`
+                                        });
+                                    }
+                                })();
+                            }
                         }
                     }
 
