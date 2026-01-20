@@ -68,7 +68,6 @@ export const useStickerStore = defineStore('sticker', () => {
             return true
         } else {
             // Character Scope: Return the sticker object
-            // Note: We do NOT save automatically here to support efficient batch import
             return newSticker
         }
     }
@@ -80,19 +79,17 @@ export const useStickerStore = defineStore('sticker', () => {
                 reject('No file')
                 return
             }
-            if (file.size > 5 * 1024 * 1024) { // Increased limit before compression (5MB)
+            if (file.size > 5 * 1024 * 1024) {
                 alert('原图太大 (建议<5MB)')
                 reject('Too large')
                 return
             }
 
-            // Compress first
-            compressImage(file, { maxWidth: 300, maxHeight: 300, quality: 0.8 }) // Stickers can be small
+            compressImage(file, { maxWidth: 300, maxHeight: 300, quality: 0.8 })
                 .then(base64 => {
                     const name = file.name.split('.')[0] || `Custom_${Date.now()}`
                     const result = addSticker(base64, name, scope)
 
-                    // IF we are in character scope, addSticker returns object but doesn't save. We MUST save here for single upload.
                     if (scope !== 'global' && result && typeof result === 'object') {
                         const chat = chatStore.chats[scope]
                         if (chat) {
@@ -143,7 +140,6 @@ export const useStickerStore = defineStore('sticker', () => {
             stickers.value = []
             saveStickers()
         } else {
-            // Use chatStore correctly
             if (chatStore.chats[scope]) {
                 chatStore.updateCharacter(scope, { emojis: [] })
             }
@@ -165,22 +161,12 @@ export const useStickerStore = defineStore('sticker', () => {
             let name = ''
             let url = ''
 
-            // Smart Separator Detection
-            // 1. Priority: Chinese colon (avoid http: interference)
             let sepIndex = line.indexOf('：')
-
-            // 2. If no Chinese colon, try English colon ONLY if it's a separator (not part of ://)
             if (sepIndex === -1) {
                 const engIndex = line.indexOf(':')
                 if (engIndex > -1) {
-                    // Check if this : is followed by // (making it part of a URL)
                     const isUrlStart = line.substring(engIndex, engIndex + 3) === '://'
-                    if (isUrlStart) {
-                        // If it's a URL but there's ANOTHER colon before it, the first one was the name
-                        // But indexOf gives us the first one. So if the FIRST colon is ://, we assume no name separator
-                    } else {
-                        sepIndex = engIndex
-                    }
+                    if (!isUrlStart) sepIndex = engIndex
                 }
             }
 
@@ -188,7 +174,6 @@ export const useStickerStore = defineStore('sticker', () => {
                 name = line.substring(0, sepIndex).trim()
                 url = line.substring(sepIndex + 1).trim()
             } else if (line.startsWith('http')) {
-                // Standalone URL
                 url = line
                 name = `Sticker_${Date.now()}_${Math.floor(Math.random() * 1000)}`
             }
@@ -220,7 +205,6 @@ export const useStickerStore = defineStore('sticker', () => {
     function initializeDefaults() {
         if (!defaultStickers || defaultStickers.length === 0) return
 
-        // Optimize: Convert existing URLs to Set for O(1) lookup
         const existingUrls = new Set(stickers.value.map(s => s.url))
         let addedCount = 0
 
@@ -243,7 +227,6 @@ export const useStickerStore = defineStore('sticker', () => {
         getStickers,
         addSticker,
         uploadSticker,
-
         deleteSticker,
         deleteBatchStickers,
         importStickersFromText,
