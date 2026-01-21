@@ -223,7 +223,7 @@ async function _generateReplyInternal(messages, char, signal) {
     // Use user info passed in 'char' object (per-chat settings) or global user profile
     const realUserProfile = settingsStore.personalization?.userProfile || {};
     const userProfile = {
-        name: char.userName || realUserProfile.nickname || '用户',
+        name: char.userName || realUserProfile.name || '用户',
         persona: char.userPersona || '',
         gender: char.userGender || realUserProfile.gender || '未知',
         signature: realUserProfile.signature || '',
@@ -255,13 +255,17 @@ async function _generateReplyInternal(messages, char, signal) {
                 return typeof c === 'string' ? c : JSON.stringify(c)
             }).join('\n')
 
+            const lowerContext = contextText.toLowerCase()
             boundEntries.forEach(entry => {
                 if (!entry) return
                 if (!entry.keys || (Array.isArray(entry.keys) && entry.keys.length === 0)) {
                     activeEntries.push(`[常驻] ${entry.name || '未命名'}: ${entry.content || ''} `)
                     return
                 }
-                const isHit = Array.isArray(entry.keys) && entry.keys.some(key => key && contextText.includes(key))
+                const isHit = Array.isArray(entry.keys) && entry.keys.some(key => {
+                    if (!key) return false
+                    return lowerContext.includes(String(key).toLowerCase())
+                })
                 if (isHit) {
                     activeEntries.push(`[触发] ${entry.name || '未命名'}: ${entry.content || ''} `)
                 }

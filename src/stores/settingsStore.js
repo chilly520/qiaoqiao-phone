@@ -299,12 +299,10 @@ export const useSettingsStore = defineStore('settings', () => {
         console.log('[SettingsStore] Current drawing state after save:', JSON.stringify(drawing.value))
     }
 
-    // Data Management
+    // Data Management (LEGACY - Use BackupSettings.vue or localforage directly)
     function getChatListForExport() {
-        try {
-            const chatData = localStorage.getItem('qiaoqiao_chats')
-            return chatData ? JSON.parse(chatData) : []
-        } catch (e) { return [] }
+        console.warn('getChatListForExport is legacy. Use chatStore directly.')
+        return []
     }
 
     function exportData(options = {}) {
@@ -358,10 +356,19 @@ export const useSettingsStore = defineStore('settings', () => {
         } catch (e) { return false }
     }
 
-    function resetAppData(options = {}) {
-        if (options.wechat) localStorage.removeItem('qiaoqiao_chats')
+    async function resetAppData(options = {}) {
+        if (options.wechat) {
+            localStorage.removeItem('qiaoqiao_chats')
+            localStorage.removeItem('wechat_chats') // Legacy key
+            try {
+                const localforage = (await import('localforage')).default
+                await localforage.removeItem('qiaoqiao_chats_v2')
+            } catch (e) { }
+        }
         if (options.wallet) localStorage.removeItem('qiaoqiao_wallet')
         if (options.settings) localStorage.removeItem('qiaoqiao_settings')
+        if (options.moments) localStorage.removeItem('wechat_moments')
+
         window.location.reload()
     }
 

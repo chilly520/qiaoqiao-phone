@@ -1168,11 +1168,7 @@ const showTokenDetailModal = () => {
             const counts = {}
             for (const k in raw) {
                 const text = raw[k] || ''
-                const len = text.length
-                const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length
-                const other = len - chinese
-                // 1CN=1, 3EN=1
-                const count = chinese + Math.ceil(other / 3)
+                const count = chatStore.estimateTokens(text)
                 counts[k] = count
                 total += count
             }
