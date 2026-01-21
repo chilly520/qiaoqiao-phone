@@ -274,11 +274,11 @@
                                 <span v-html="formattedContent"></span>
                             </div>
 
-                            <!-- 2. Image Layer (Standalone or separate) -->
                             <div v-if="isImageMsg(msg) || msg.image" class="msg-image bg-transparent"
                                 @contextmenu.prevent="emitContextMenu">
                                 <img :src="msg.image || getImageSrc(msg)"
                                     class="max-w-[200px] max-h-[250px] rounded-lg cursor-pointer shadow-sm hover:shadow-md transition-shadow"
+                                    :class="{ 'animate-bounce-subtle': msg.type === 'sticker' || isSticker(msg) }"
                                     :alt="ensureString(msg.content).substring(0, 20)"
                                     @click="previewImage(msg.image || getImageSrc(msg))" @error="handleImageError"
                                     referrerpolicy="no-referrer">
@@ -880,23 +880,31 @@ function isImageMsg(msg) {
     // Direct Data/Blob URLs are always images
     if (content.includes('blob:') || content.includes('data:image/')) return true
     
-    // If it's labeled as image/sticker type, but is currently DRAWING, we want to show it as text (loading card)
+    // If it's currently DRAWING, we want to show it as text (loading card)
     if ((msg.type === 'image' || msg.type === 'sticker') && content.toUpperCase().includes('[DRAW:')) return false;
 
-    if (msg.type === 'image' || msg.type === 'sticker') return true
-    
     const clean = getCleanContent(content).trim()
     
-    // HTTP URL that ends with image extension and ONLY contains the URL
-    if (clean.startsWith('http')) {
-        const urlPart = clean.split('?')[0].toLowerCase()
-        const isImageUrl = urlPart.endsWith('.jpg') || urlPart.endsWith('.png') || urlPart.endsWith('.gif') || urlPart.endsWith('.jpeg') || urlPart.endsWith('.webp');
-        if (isImageUrl && clean.split(/\s+/).length === 1) return true
+    // Check if it's purely a tag or URL
+    const isTagOnly = /^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i.test(clean)
+    const isUrlOnly = clean.startsWith('http') && clean.split(/\s+/).length === 1 && 
+                     (clean.split('?')[0].toLowerCase().match(/\.(jpg|png|gif|jpeg|webp)$/i))
+    
+    // If it has a specific type, AND it doesn't contain other substantial text, treat as standalone image
+    if (msg.type === 'image' || msg.type === 'sticker') {
+        // If it's just the tag or it's "[图片]", it's definitely standalone
+        if (isTagOnly || clean === '[图片]') return true
+        // If it was sent with an image URL/base64 in content (legacy), and no other text
+        if (isUrlOnly || clean.startsWith('data:image/')) return true
     }
     
-    // Treat as pure image if the trimmed message is just the [Tag]
-    const tagMatch = clean.trim().match(/^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i)
-    return !!tagMatch
+    return isTagOnly || !!isUrlOnly
+}
+
+function isSticker(msg) {
+    if (!msg) return false
+    const content = ensureString(msg.content)
+    return STICKER_REGEX.test(content)
 }
 
 const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*(.*?)\s*\]/i;

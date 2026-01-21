@@ -1070,8 +1070,8 @@ const handleImgUpload = (event) => {
             chatStore.addMessage(chatStore.currentChatId, {
                 role: 'user',
                 type: 'image',
-                // Explicitly sanitize base64 to prevent any appended text issues at source
-                content: base64.replace(/[^A-Za-z0-9+/=:,;]/g, '')
+                content: '[图片]',
+                image: base64.replace(/[^A-Za-z0-9+/=:,;]/g, '')
             })
             showActionPanel.value = false
             scrollToBottom()
@@ -1245,6 +1245,57 @@ const currentEffect = ref(effectTypes[8]);
 const currentEffectIndex = ref(8);
 
 // --- Modal Logic ---
+const parseInnerVoice = (text) => {
+    if (!text) return null
+    let content = text
+    const voiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i
+    const match = String(text).match(voiceRegex)
+    if (match) {
+        content = match[1]
+    }
+
+    try {
+        let jsonStr = String(content).replace(/```json/gi, '').replace(/```/g, '').trim()
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
+        if (jsonMatch) jsonStr = jsonMatch[0]
+
+        let result = null
+        try {
+            result = JSON.parse(jsonStr)
+        } catch (e) {
+            let fixed = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
+            fixed = fixed.replace(/[“”]/g, '"')
+            try { result = JSON.parse(fixed) } catch (e2) { }
+        }
+
+        if (result) {
+            const getString = (val) => {
+                if (!val) return ''
+                if (typeof val === 'string') return val.trim()
+                return (val.想法 || val.content || val.thought || val.mind || JSON.stringify(val)).trim()
+            }
+            let target = result
+            if (result.content && typeof result.content === 'object') target = result.content
+            if (target["心声"]) {
+                const inner = target["心声"]
+                return {
+                    clothes: getString(target["着装"] || target.outfit || inner.着装),
+                    scene: getString(target["环境"] || target.scene || inner.环境),
+                    mind: getString(inner.想法 || inner.心情 || inner.content || inner.thought),
+                    action: getString(inner.行为 || target["行为"] || target.action)
+                }
+            }
+            return {
+                clothes: getString(target["着装"] || target.clothes || target.outfit),
+                scene: getString(target["环境"] || target.scene || target.environment),
+                mind: getString(target["心声"] || target.mind || target.thought || target.thoughts),
+                action: getString(target["行为"] || target.action || target.behavior)
+            }
+        }
+    } catch (e) { }
+    return null
+}
+
 const showInnerVoiceModal = ref(false)
 const showHistoryList = ref(false)
 const showDeleteConfirm = ref(false)
@@ -1260,14 +1311,14 @@ const voiceHistoryList = computed(() => {
             if (voiceData) {
                 list.push({
                     id: msg.id,
-                    timestamp: msg.timestamp || Date.now(), // Ensure timestamp exists
+                    timestamp: msg.timestamp || Date.now(),
                     data: voiceData,
-                    preview: voiceData.thoughts || voiceData.mind || '...'
+                    preview: voiceData.mind || '...'
                 });
             }
         }
     });
-    return list.reverse(); // Newest first
+    return list.reverse();
 });
 
 const toggleVoiceHistory = () => {
@@ -1276,44 +1327,28 @@ const toggleVoiceHistory = () => {
 
 const loadHistoryItem = (item) => {
     currentInnerVoice.value = { ...item.data, id: item.id };
-    // Randomize effect for "fresh" feel
     const randomIdx = Math.floor(Math.random() * effectTypes.length);
     currentEffectIndex.value = randomIdx;
     currentEffect.value = effectTypes[randomIdx];
-
     showHistoryList.value = false;
 }
 
 const openInnerVoiceModal = () => {
-    // Reset view state
     showHistoryList.value = false;
-
-    // Initialize Effects (Randomize)
     const randomIdx = Math.floor(Math.random() * effectTypes.length);
     currentEffectIndex.value = randomIdx;
     currentEffect.value = effectTypes[randomIdx];
 
-    // Find the last AI message with Inner Voice (Scan backwards efficiently)
     const rawMsgs = msgs.value
     let foundMsg = null
     const voiceTagRegex = /\[\s*INNER[\s-_]*VOICE\s*\]/i;
-
-    console.log('[InnerVoiceModal] Scanning for Voice in ' + rawMsgs.length + ' messages');
 
     for (let i = rawMsgs.length - 1; i >= 0; i--) {
         const m = rawMsgs[i]
         if (m.role === 'ai' && m.content) {
             const hasTag = voiceTagRegex.test(m.content);
             const hasJson = m.content.includes('{') && (m.content.includes('"status"') || m.content.includes('"心声"'));
-            
-            // Console log for debugging the "Stuck at 145" issue
-            if (i >= rawMsgs.length - 3) {
-                console.log(`[InnerVoiceModal] Checking Msg ${m.id} (${i}): Tag=${hasTag}, JSON=${hasJson}, ContentPreview=${m.content.substring(0, 50)}...`);
-            }
-
             if (hasTag || hasJson) {
-                // Found the latest message with potential Inner Voice
-                // We accept JSON-only fallback as well since parseInnerVoice handles it
                 foundMsg = m
                 break
             }
@@ -1321,28 +1356,18 @@ const openInnerVoiceModal = () => {
     }
 
     if (foundMsg) {
-        console.log('[InnerVoiceModal] Found target message:', foundMsg.id);
         const data = parseInnerVoice(foundMsg.content);
-        // Even if local parsing fails, we pass the ID to the modal so it can try its own robust parsing
         currentInnerVoiceMsgId.value = foundMsg.id;
-
         if (data) {
             currentInnerVoice.value = { ...data, id: foundMsg.id };
         } else {
-            // Fallback object to prevent null errors if used elsewhere
             currentInnerVoice.value = { id: foundMsg.id };
         }
     } else {
         currentInnerVoice.value = null;
         currentInnerVoiceMsgId.value = null;
     }
-
     showInnerVoiceModal.value = true
-
-    // Initialize Canvas
-    nextTick(() => {
-        initVoiceCanvas();
-    });
 }
 
 const closeInnerVoiceModal = () => {
@@ -2033,13 +2058,14 @@ const handleEmojiSelect = (emoji) => {
 };
 
 const handleStickerSelect = (sticker) => {
-    // Send as Image Message
+    // Send as Sticker Tag (Same as AI)
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
-        type: 'image',
-        content: sticker.url
+        type: 'sticker',
+        content: `[表情包: ${sticker.name || '表情'}]`,
+        image: sticker.url
     });
-    showEmojiPicker.value = false; // Close after sending sticker
+    showEmojiPicker.value = false;
     nextTick(() => scrollToBottom());
 }
 
@@ -2210,9 +2236,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         </template>
                     </div>
                 </div>
-                <div class="absolute right-1.5 flex items-center gap-0.5 text-black z-20">
-                    <!-- Auto TTS Button (Controls Automatic Reading, dependent on Capability Switch) -->
-                    <div class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
+                <div class="absolute right-2 flex items-center gap-1.5 text-black z-20">
+                    <!-- Auto TTS Button -->
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
                         :class="{ 'opacity-30': !chatData?.autoTTS }" @click="toggleAutoRead"
                         :title="chatData?.autoTTS ? (chatData?.autoRead ? '关闭自动朗读' : '开启自动朗读') : 'TTS功能未启用'">
                         <i class="fa-solid"
@@ -2220,7 +2246,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     </div>
 
                     <!-- Inner Voice Button -->
-                    <div class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
+                    <div class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
                         @click="openInnerVoiceModal" title="心声">
                         <i class="fa-solid fa-heart transition-all duration-300 text-pink-500 animate-heartbeat"></i>
                     </div>
