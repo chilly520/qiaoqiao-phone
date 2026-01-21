@@ -1659,7 +1659,7 @@ const openInnerVoiceModal = () => {
 
     for (let i = rawMsgs.length - 1; i >= 0; i--) {
         const m = rawMsgs[i]
-        if (m.role === 'ai' && m.content && m.content.includes('INNER_VOICE')) {
+        if (m.role === 'ai' && m.content && /\[\s*INNER[\s-_]*VOICE\s*\]/i.test(m.content)) {
             // Found the latest message with potential Inner Voice
             foundMsg = m
             break

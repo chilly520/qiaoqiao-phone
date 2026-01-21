@@ -686,10 +686,18 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // Priority 3: Fallback for Normal Text during Active Call
+            // FIX: Do NOT hide normal text messages even if call is active. Only hide Protocol.
+            // This prevents "Missing Message" bugs if call state desyncs.
             if (isCallActive && content && !content.includes('[CALL_START]')) {
-                const cleanText = content.replace(/\[.*?\]/g, '').trim();
-                if (cleanText) callStore.addTranscriptLine('ai', cleanText);
-                newMsg.hidden = true;
+                // REVERT: User explicitly requested TO KEEP parentheses if AI outputs them.
+                // let cleanText = content.replace(/\[.*?\]/g, '').trim();
+                // if (/^[\(（].*[\)）]$/.test(cleanText)) {
+                //    cleanText = cleanText.substring(1, cleanText.length - 1).trim();
+                // }
+
+                // If we have content, we should SHOW it, not hide it.
+                // callStore.addTranscriptLine('ai', cleanText); 
+                // newMsg.hidden = true; // DISABLED HIDING
             }
 
             // --- Final context & Hiding Check ---
@@ -2171,9 +2179,9 @@ ${contextMsgs}
                         const index = parseInt(placeholderMatch[1]);
                         content = cardBlocks[cardBlocks.length - 1 - index];
                         finalSegments.push({ type: 'card', content });
-                    } else if (content.startsWith('[表情包:')) {
-                        // Extract sticker name properly
-                        const stickerName = content.match(/\[表情包[:：](.+?)\]/)?.[1] || content;
+                    } else if (/^\[(?:表情包|表情-包)[:：].*?\]$/.test(content.trim())) {
+                        // Extract sticker name properly (Robust)
+                        const stickerName = content.match(/\[(?:表情包|表情-包)[:：](.+?)\]/)?.[1] || content;
                         finalSegments.push({ type: 'sticker', content: stickerName.trim() });
                     } else if (content.startsWith('[语音:')) {
                         finalSegments.push({ type: 'voice', content: content.substring(4, content.length - 1).trim() });
