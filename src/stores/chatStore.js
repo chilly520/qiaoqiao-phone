@@ -1657,8 +1657,8 @@ ${contextMsgs}
                 // FIX: Use Strictly Bounded Regex (Case Insensitive + Space Aware)
                 // Stop at closing tag, OR start of another command, OR end of file.
                 // NOTE: We do NOT use Lookahead for Newline+Bracket as strict delimiter here, to allow AI to continue comfortably.
-                // The explicit closing tag is preferred.
-                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi;
+                // The explicit closing tag is preferred, but we must stop if we see another major system tag.
+                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)/gi;
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
@@ -1676,7 +1676,7 @@ ${contextMsgs}
                             const jsonContent = JSON.stringify(result.innerVoice, null, 2);
                             innerVoiceBlock = `\n[INNER_VOICE]\n${jsonContent}\n[/INNER_VOICE]`;
 
-                            // If it wasn't caught by the regex, it's likely untagged JSON in the text
+                            // If it's not caught by the regex, it's likely untagged JSON in the text
                             // We need to find and remove it from pureDialogue
                             if (pureDialogue.includes('{') && (pureDialogue.includes('"status"') || pureDialogue.includes('"心声"'))) {
                                 const blocks = [...pureDialogue.matchAll(/\{[\s\S]*?\}/g)]
@@ -1713,6 +1713,9 @@ ${contextMsgs}
                                                 chat.isOnline = true;
                                             }
                                             charInfo.mindscape = ivObj;
+
+                                            // Debug log
+                                            useLoggerStore().debug('Successfully updated Mindscape from fallback', ivObj);
                                         }
                                     } catch (parseErr) {
                                         console.warn('[ChatStore] Fallback JSON parse failed, but using block anyway', candidate.substring(0, 50));
@@ -1837,6 +1840,7 @@ ${contextMsgs}
                             ...originalMsg,
                             type: 'system',
                             content: `${chat.name || '对方'}撤回了一条消息`,
+                            isRecallTip: true,
                             isRecallTip: true,
                             realContent: originalMsg.content
                         }
@@ -2157,7 +2161,7 @@ ${contextMsgs}
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
                 // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2197,9 +2201,8 @@ ${contextMsgs}
                         content = cardBlocks[cardBlocks.length - 1 - index];
                         finalSegments.push({ type: 'card', content });
                     } else if (/^\[(?:表情包|表情-包)[:：].*?\]$/.test(content.trim())) {
-                        // Extract sticker name properly (Robust)
-                        const stickerName = content.match(/\[(?:表情包|表情-包)[:：](.+?)\]/)?.[1] || content;
-                        finalSegments.push({ type: 'sticker', content: stickerName.trim() });
+                        // Keep full content (tag) so frontend can parse it with regex
+                        finalSegments.push({ type: 'sticker', content: content.trim() });
                     } else if (content.startsWith('[语音:')) {
                         finalSegments.push({ type: 'voice', content: content.substring(4, content.length - 1).trim() });
                     } else if (content.startsWith('[DRAW:')) {

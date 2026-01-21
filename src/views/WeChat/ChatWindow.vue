@@ -1455,7 +1455,8 @@ const parseInnerVoice = (contentRaw) => {
 
     try {
         // 1. Tag Extraction [INNER_VOICE]...[/INNER_VOICE]
-        const match = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/(?:INNER_)?VOICE\]|\[\/INNER_OICE\]|(?=\[)|$)/i);
+        // Updated regex to allow spaces/underscores (Robust)
+        const match = content.match(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\[)|$)/i);
 
         if (match && match[1]) {
             let rawPart = match[1].trim();
@@ -1653,20 +1654,34 @@ const openInnerVoiceModal = () => {
     currentEffect.value = effectTypes[randomIdx];
 
     // Find the last AI message with Inner Voice (Scan backwards efficiently)
-    // Optimization: Do NOT copy/reverse the entire array.
     const rawMsgs = msgs.value
     let foundMsg = null
+    const voiceTagRegex = /\[\s*INNER[\s-_]*VOICE\s*\]/i;
+
+    console.log('[InnerVoiceModal] Scanning for Voice in ' + rawMsgs.length + ' messages');
 
     for (let i = rawMsgs.length - 1; i >= 0; i--) {
         const m = rawMsgs[i]
-        if (m.role === 'ai' && m.content && /\[\s*INNER[\s-_]*VOICE\s*\]/i.test(m.content)) {
-            // Found the latest message with potential Inner Voice
-            foundMsg = m
-            break
+        if (m.role === 'ai' && m.content) {
+            const hasTag = voiceTagRegex.test(m.content);
+            const hasJson = m.content.includes('{') && (m.content.includes('"status"') || m.content.includes('"心声"'));
+            
+            // Console log for debugging the "Stuck at 145" issue
+            if (i >= rawMsgs.length - 3) {
+                console.log(`[InnerVoiceModal] Checking Msg ${m.id} (${i}): Tag=${hasTag}, JSON=${hasJson}, ContentPreview=${m.content.substring(0, 50)}...`);
+            }
+
+            if (hasTag || hasJson) {
+                // Found the latest message with potential Inner Voice
+                // We accept JSON-only fallback as well since parseInnerVoice handles it
+                foundMsg = m
+                break
+            }
         }
     }
 
     if (foundMsg) {
+        console.log('[InnerVoiceModal] Found target message:', foundMsg.id);
         const data = parseInnerVoice(foundMsg.content);
         // Even if local parsing fails, we pass the ID to the modal so it can try its own robust parsing
         currentInnerVoiceMsgId.value = foundMsg.id;
@@ -2158,7 +2173,7 @@ const formatMessageContent = (msg) => {
         }
 
         if (found) {
-            return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle" alt="${found.name}" />`
+            return `<img src="${found.url}" onerror="this.src='/broken-image.png'" class="w-16 h-16 inline-block mx-1 align-middle" alt="${found.name}" />`
         }
         return match
     })
@@ -2178,6 +2193,17 @@ const currentVoiceIndex = computed(() => {
     // So Newest (idx 0) should be Length. Oldest (idx Max) should be 1.
     return idx === -1 ? '--' : (voiceHistoryList.value.length - idx).toString().padStart(2, '0')
 })
+
+const speakMessage = (text) => {
+    if (!text) return
+    const cleanText = getCleanContent(text).replace(/\[.*?\]/g, '')
+    if (!cleanText.trim()) return
+
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(cleanText)
+    utterance.lang = 'zh-CN'
+    window.speechSynthesis.speak(utterance)
+}
 
 const previewImage = (src) => {
     window.open(src, '_blank')
