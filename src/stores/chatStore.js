@@ -1492,9 +1492,9 @@ ${contextMsgs}
                     content = '[收藏内容]'
                 }
             } else if (m.type === 'voice') {
-                content = `[语音消息] ${content}`
+                content = `(系统:语音消息) ${content}`
             } else if (m.type === 'image' || m.type === 'sticker') {
-                content = `[图片消息] ${content}`
+                content = `(系统:图片消息) ${content}`
             }
 
             if (m.role === 'ai') {
@@ -2120,6 +2120,9 @@ ${contextMsgs}
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
                     .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
+                    // Strip system context hints parrotted by AI
+                    .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE)消息[\]\)]?/gi, '')
+                    .replace(/\[(?:图片消息|语音消息)\]/gi, '')
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
@@ -2213,7 +2216,7 @@ ${contextMsgs}
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
                 // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2255,8 +2258,13 @@ ${contextMsgs}
                     } else if (/^\[(?:表情包|表情-包)[:：].*?\]$/.test(content.trim())) {
                         // Keep full content (tag) so frontend can parse it with regex
                         finalSegments.push({ type: 'sticker', content: content.trim() });
-                    } else if (content.startsWith('[语音:')) {
-                        finalSegments.push({ type: 'voice', content: content.substring(4, content.length - 1).trim() });
+                    } else if (content.startsWith('[语音')) {
+                        // Support both [语音:text] and [语音消息] text
+                        let voiceContent = content.replace(/^\[语音(消息)?[:：]?\s*/, '').replace(/\]$/, '');
+                        finalSegments.push({ type: 'voice', content: voiceContent.trim() });
+                    } else if (content.startsWith('[图片')) {
+                        // AI sometimes outputs [图片] or [图片消息]
+                        finalSegments.push({ type: 'text', content: '[图片]' }); // Handled as image msg by type: 'text' + content: '[图片]'
                     } else if (content.startsWith('[DRAW:')) {
                         finalSegments.push({ type: 'draw', content: content.trim() });
                     } else {
