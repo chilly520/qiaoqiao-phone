@@ -330,6 +330,8 @@ export const useSettingsStore = defineStore('settings', () => {
         try {
             const data = JSON.parse(jsonContent)
             let importCount = 0
+
+            // 1. Settings Import
             if (data.settings) {
                 const currentSettings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
                 const mergedSettings = { ...currentSettings, ...data.settings }
@@ -337,23 +339,54 @@ export const useSettingsStore = defineStore('settings', () => {
                 loadFromStorage()
                 importCount++
             }
+
+            // 2. Chat Data Import (Modern IndexedDB Support)
             if (data.chats) {
-                const currentChats = JSON.parse(localStorage.getItem('qiaoqiao_chats') || '[]')
-                const mergedChats = [...currentChats]
-                data.chats.forEach(importedChat => {
-                    const index = mergedChats.findIndex(c => c.id === importedChat.id)
-                    if (index !== -1) mergedChats[index] = importedChat
-                    else mergedChats.push(importedChat)
-                })
-                localStorage.setItem('qiaoqiao_chats', JSON.stringify(mergedChats))
-                importCount++
+                try {
+                    const localforage = (await import('localforage')).default
+                    localforage.config({ name: 'qiaoqiao-phone', storeName: 'chats' });
+
+                    // Attempt to load current data from IndexedDB
+                    let currentChats = await localforage.getItem('qiaoqiao_chats_v2') || {};
+
+                    // Merge
+                    const importedChats = Array.isArray(data.chats) ? data.chats : Object.values(data.chats);
+                    importedChats.forEach(chat => {
+                        if (chat.id) {
+                            currentChats[chat.id] = { ...(currentChats[chat.id] || {}), ...chat };
+                        }
+                    });
+
+                    // Save back to IndexedDB
+                    await localforage.setItem('qiaoqiao_chats_v2', currentChats);
+
+                    // Also update legacy localStorage for backward compat (optional but keeps sync)
+                    localStorage.setItem('qiaoqiao_chats', JSON.stringify(currentChats));
+
+                    importCount++
+                    console.log('[SettingsStore] Successfully imported/merged chat data into IndexedDB');
+                } catch (e) {
+                    console.error('[SettingsStore] Failed to import chat data to IndexedDB:', e);
+                }
             }
+
             if (data.wallet) {
                 localStorage.setItem('qiaoqiao_wallet', JSON.stringify(data.wallet))
                 importCount++
             }
+
+            if (importCount > 0) {
+                // If in browser context, reload to let stores re-init
+                if (typeof window !== 'undefined') {
+                    window.location.reload();
+                }
+            }
+
             return importCount > 0
-        } catch (e) { return false }
+        } catch (e) {
+            console.error('[SettingsStore] Import failed:', e);
+            return false
+        }
     }
 
     async function resetAppData(options = {}) {

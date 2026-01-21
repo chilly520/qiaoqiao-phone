@@ -313,11 +313,6 @@ const navigateToSettings = () => {
 
 // 初始化演示数据
 onMounted(() => {
-    if (chatStore.chatList.length === 0) {
-        chatStore.initDemoData()
-    }
-
-
     window.addEventListener('popstate', handlePopState)
 })
 

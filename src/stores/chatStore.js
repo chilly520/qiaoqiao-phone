@@ -2456,6 +2456,11 @@ ${contextMsgs}
     }
 
     async function saveChats() {
+        if (!isLoaded.value) {
+            console.warn('[Storage] saveChats ignored: data not yet loaded from DB.');
+            return false;
+        }
+
         // LAST LINE OF DEFENSE: Filter JSON fragments before saving
         Object.values(chats.value).forEach(chat => {
             if (chat.msgs && Array.isArray(chat.msgs)) {
@@ -2493,15 +2498,23 @@ ${contextMsgs}
             // 1. Try modern IndexedDB first
             let saved = await localforage.getItem('qiaoqiao_chats_v2');
 
-            // 2. Migration from old localStorage
-            if (!saved) {
+            // 2. Migration from old localStorage (Improved: attempt recovery if not yet marked as migrated)
+            const isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
+            if (!isMigrated) {
                 const legacy = localStorage.getItem('qiaoqiao_chats');
                 if (legacy) {
-                    console.log('[Storage] Migrating legacy data to IndexedDB...');
-                    saved = JSON.parse(legacy);
-                    await localforage.setItem('qiaoqiao_chats_v2', saved);
-                    // Don't remove legacy immediately for safety, but mark it
-                    localStorage.setItem('qiaoqiao_migrated', 'true');
+                    console.log('[Storage] Found legacy data. Performing migration/recovery...');
+                    try {
+                        const legacyData = JSON.parse(legacy);
+                        // MERGE logic: If we have existing data (like accidental demo data), 
+                        // we merge them, prioritizing legacy data for matching IDs to recover lost history.
+                        saved = { ...(saved || {}), ...legacyData };
+                        await localforage.setItem('qiaoqiao_chats_v2', saved);
+                        localStorage.setItem('qiaoqiao_migrated', 'true');
+                        console.log('[Storage] Migration/Recovery completed successfully.');
+                    } catch (err) {
+                        console.error('[Storage] Legacy parse failed during recovery:', err);
+                    }
                 }
             }
 
