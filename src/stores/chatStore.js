@@ -1493,6 +1493,8 @@ ${contextMsgs}
                 }
             } else if (m.type === 'voice') {
                 content = `[语音消息] ${content}`
+            } else if (m.type === 'image' || m.type === 'sticker') {
+                content = `[图片消息] ${content}`
             }
 
             if (m.role === 'ai') {
@@ -1522,7 +1524,8 @@ ${contextMsgs}
                 id: m.id,
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
-                type: m.type || 'text'
+                type: m.type || 'text',
+                image: m.image
             }
         })
 

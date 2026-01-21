@@ -893,12 +893,18 @@ const sendSeeImage = () => {
         return
     }
 
-    // 添加图片消息到聊天界面（挂载，不发送）
+    // 添加图片消息到聊天界面
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'image',
-        content: seeImageResult.value
+        content: `[图片: ${seeImagePrompt.value || '手绘图'}]`,
+        image: seeImageResult.value
     })
+
+    // 自动触发 AI 回复，让角色对图片做出评价
+    setTimeout(() => {
+        chatStore.sendMessageToAI(chatStore.currentChatId)
+    }, 500)
 
     // 关闭模态框
     showSeeImageModal.value = false

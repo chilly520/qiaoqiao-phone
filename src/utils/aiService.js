@@ -335,8 +335,15 @@ async function _generateReplyInternal(messages, char, signal) {
 
     messages.forEach(msg => {
         if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) return
-        const content = msg.content || ''
 
+        // 1. Explicit image property (New standard)
+        if (msg.image) {
+            totalImagesCount++
+            return
+        }
+
+        // 2. Look for images/stickers in content (Legacy/Inline)
+        const content = msg.content || ''
         if (typeof content === 'string') {
             if (content.startsWith('data:image/')) {
                 totalImagesCount++
@@ -359,7 +366,32 @@ async function _generateReplyInternal(messages, char, signal) {
         if (msg.role === 'user' || msg.role === 'assistant') {
             let content = msg.content || ''
 
-            // 1. Check if the content is a raw base64 image string (untagged)
+            // 1. Priority: msg.image property (New standard)
+            if (msg.image) {
+                const isVisionEnabled = currentImageIndex >= visionStartIndex
+                currentImageIndex++
+
+                if (isVisionEnabled) {
+                    const imageId = msg.id || 'curr';
+                    const refText = ` [Image Reference ID: ${imageId}]`;
+                    const roleText = msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）'
+
+                    return {
+                        role: msg.role === 'assistant' ? 'assistant' : 'user',
+                        content: [
+                            { type: 'text', text: `${roleText}${refText}\n${content}` },
+                            { type: 'image_url', image_url: { url: msg.image } }
+                        ]
+                    }
+                } else {
+                    return {
+                        role: msg.role === 'assistant' ? 'assistant' : 'user',
+                        content: `${content} [图片: (由于上下文过长，旧图片视觉信息已忽略)]`
+                    }
+                }
+            }
+
+            // 2. Fallback: Check if the content is a raw base64 image string (untagged)
             if (typeof content === 'string' && content.startsWith('data:image/')) {
                 const isVisionEnabled = currentImageIndex >= visionStartIndex
                 currentImageIndex++
