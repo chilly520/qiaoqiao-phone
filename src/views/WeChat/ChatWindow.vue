@@ -2194,9 +2194,9 @@ const currentVoiceIndex = computed(() => {
     return idx === -1 ? '--' : (voiceHistoryList.value.length - idx).toString().padStart(2, '0')
 })
 
-const speakMessage = (text) => {
+const playMessageTTS = (text) => {
     if (!text) return
-    const cleanText = getCleanContent(text).replace(/\[.*?\]/g, '')
+    const cleanText = getCleanSpeechText(text).replace(/\[.*?\]/g, '')
     if (!cleanText.trim()) return
 
     window.speechSynthesis.cancel()
@@ -2338,7 +2338,7 @@ const handleMenuAction = (action) => {
             }
             break
         case 'listen':
-            speakMessage(selectedMsg.value.content)
+            playMessageTTS(selectedMsg.value.content)
             break
         case 'delete':
             if (idx !== -1) {
