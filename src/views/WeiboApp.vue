@@ -208,6 +208,10 @@ function onTopicClick(title) {
     enterTopicDetail(cleanTitle)
 }
 
+function likePost(postId) {
+  weiboStore.toggleLike(postId)
+}
+
 </script>
 
 <template>
@@ -270,7 +274,7 @@ function onTopicClick(title) {
           <div class="post-actions" v-if="post.stats">
             <div class="action-item"><i class="fa-solid fa-share-nodes"></i> {{ weiboStore.formatNumber(post.stats.share) }}</div>
             <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}</div>
-            <div class="action-item"><i class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
+            <div class="action-item" :class="{ 'liked': post.isLiked }" @click="likePost(post.id)"><i class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
           </div>
         </article>
       </main>
@@ -992,6 +996,33 @@ header {
   border-top: 1px solid var(--wb-divider);
   color: var(--wb-text-sub);
   font-size: 13px;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-item:hover {
+  color: var(--wb-orange);
+}
+
+.action-item.liked {
+  color: #fe2c55;
+}
+
+.action-item.liked i {
+  color: #fe2c55;
+  animation: heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes heartPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.4); }
+  100% { transform: scale(1); }
 }
 
 /* Hot List */

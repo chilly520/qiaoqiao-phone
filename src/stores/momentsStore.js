@@ -175,42 +175,28 @@ export const useMomentsStore = defineStore('moments', () => {
         if (!canInteractWithMoment(moment, authorNameOrId)) return
 
         let realChar = null
-        if (authorNameOrId !== 'user') {
-            // Try explicit lookup if it looks like an ID
+        let displayName = fallbackName || authorNameOrId
+
+        if (authorNameOrId === 'user') {
+            displayName = settingsStore.personalization.userProfile.name
+        } else {
+            // Try lookup
             if (chatStore.chats[authorNameOrId]) {
                 realChar = chatStore.chats[authorNameOrId]
             } else {
-                // Fuzzy lookup
                 realChar = Object.values(chatStore.chats).find(c => c.id === authorNameOrId || c.name === authorNameOrId || (c.remark && c.remark === authorNameOrId))
             }
 
-            // Double check with fallbackName if explicit lookup failed but we have a name
             if (!realChar && fallbackName) {
                 realChar = Object.values(chatStore.chats).find(c => c.name === fallbackName || c.remark === fallbackName)
             }
-        }
 
-        let displayName = fallbackName || authorNameOrId
-        if (realChar) {
-            displayName = realChar.remark || realChar.name
-        } else {
-            // Heuristic to detect garbage IDs/technical strings, but allow hyphens for valid names like "A-Small-Wang"
-            const isGarbageId = (str) => {
-                if (!str) return false
-                // If it starts with 'virtual-', it's an ID
-                if (str.startsWith('virtual-')) return true
-                // If it's a long alphanumeric string (UUID-like)
-                if (/^[a-z0-9-]{20,}$/.test(str)) return true
-                return false
-            }
-
-            if (isGarbageId(authorNameOrId)) {
-                // If the primary ID is garbage, fallback to the provided name
-                // If fallback name is ALSO garbage or missing, then it's Mysterious
-                if (!fallbackName || isGarbageId(fallbackName)) {
-                    displayName = '神秘好友'
-                } else {
-                    displayName = fallbackName
+            if (realChar) {
+                displayName = realChar.remark || realChar.name
+            } else {
+                const isGarbage = (str) => str && (str.startsWith('virtual-') || /^[a-z0-9-]{20,}$/.test(str))
+                if (isGarbage(authorNameOrId)) {
+                    displayName = (fallbackName && !isGarbage(fallbackName)) ? fallbackName : '神秘好友'
                 }
             }
         }
@@ -225,7 +211,6 @@ export const useMomentsStore = defineStore('moments', () => {
                 addNotification({
                     type: 'like',
                     actorName: displayName,
-                    // Fix: Use Real Char Avatar if available, otherwise generated one based on NAME (stable), not ID (which might change or be null)
                     actorAvatar: realChar ? (realChar.avatar || '/avatars/default.png') : `https://api.dicebear.com/7.x/notionists/svg?seed=${displayName}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
                     content: '赞了你的动态',
                     momentId: moment.id,

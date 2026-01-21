@@ -109,6 +109,25 @@ export const useWeiboStore = defineStore('weibo', {
             this.saveData()
         },
 
+        toggleLike(postId) {
+            const post = this.posts.find(p => p.id === postId)
+            if (post) {
+                if (!post.stats) post.stats = { like: 0, comment: 0, share: 0 }
+
+                // Initialize liked status if not present
+                if (typeof post.isLiked === 'undefined') post.isLiked = false;
+
+                if (post.isLiked) {
+                    post.stats.like = Math.max(0, post.stats.like - 1)
+                    post.isLiked = false
+                } else {
+                    post.stats.like += 1
+                    post.isLiked = true
+                }
+                this.saveData()
+            }
+        },
+
         deletePost(postId) {
             const idx = this.posts.findIndex(p => p.id === postId)
             if (idx !== -1) {

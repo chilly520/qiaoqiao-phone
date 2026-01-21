@@ -229,9 +229,6 @@ const toggleLike = () => {
         chatStore.triggerToast('已点赞', 'info')
     }
     showActionMenu.value = false
-    if (!isLiked.value) {
-        momentsStore.triggerAIInteractions(props.moment.id)
-    }
 }
 
 const handleComment = () => {
