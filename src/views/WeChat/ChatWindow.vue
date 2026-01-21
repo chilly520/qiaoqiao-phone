@@ -196,15 +196,64 @@ watch(() => callStore.transcript.length, (newLen, oldLen) => {
     }
 })
 
-onMounted(() => {
+let resizeObserver = null
+onMounted(async () => {
     window.addEventListener('popstate', handleSettingsPopState)
+    
+    // Initial scroll setup
+    scrollToBottom(true)
+    setTimeout(() => scrollToBottom(true), 50)
+    setTimeout(() => scrollToBottom(true), 200)
+
+    // Robust Scroll-on-Resize logic (Handles AI streaming, images, etc.)
+    if (window.ResizeObserver && msgContainer.value) {
+        resizeObserver = new ResizeObserver(() => {
+            const el = msgContainer.value
+            if (!el) return
+            const threshold = 150
+            const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+            if (isNearBottom) {
+                scrollToBottom(false)
+            }
+        })
+        resizeObserver.observe(msgContainer.value)
+    }
+
+    // Battery Initialization
+    const initialized = await batteryMonitor.init()
+    if (initialized) {
+        batteryInitialized.value = true
+        const info = batteryMonitor.getBatteryInfo()
+        batteryLevel.value = info.level
+        batteryCharging.value = info.charging
+        batteryMonitor.onChange((info) => {
+            batteryLevel.value = info.level
+            batteryCharging.value = info.charging
+        })
+        batteryMonitor.onLowBattery((info) => {
+            if (!chatData.value || info.charging) return
+            const systemMsg = {
+                id: `sys_battery_${Date.now()}`,
+                role: 'system',
+                content: `[系统提醒] 当前设备电量为 ${info.level}%，建议尽快充电。`,
+                timestamp: Date.now(),
+                type: 'system'
+            }
+            chatStore.addMessage(chatData.value.id, systemMsg)
+        })
+    }
 })
+
 onUnmounted(() => {
     window.removeEventListener('popstate', handleSettingsPopState)
-    // Abort AI if leaving the chat?
-    // User requested to KEEP generating even if they leave (e.g. go to home screen).
-    // So we comment this out.
-    // chatStore.stopGeneration(true) 
+    if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+    }
+    if (batteryInitialized.value) {
+        batteryMonitor.destroy()
+    }
+    delete window.qiaoqiao_receiveFamilyCard
 })
 
 // ===== 优化后的分页逻辑 =====
@@ -519,16 +568,7 @@ const scrollToBottom = (instant = false) => {
     })
 }
 
-// Initial Scroll Logic
-onMounted(() => {
-    // Immediate scroll (Invisible to user ideally)
-    scrollToBottom(true)
 
-    // Retries to handle image loading/layout shifts
-    setTimeout(() => scrollToBottom(true), 50)
-    setTimeout(() => scrollToBottom(true), 200)
-    setTimeout(() => scrollToBottom(true), 500)
-})
 
 const currentQuote = ref(null) // New State
 const showActionPanel = ref(false)
@@ -1280,8 +1320,11 @@ watch(() => chatStore.isTyping, (isTyping) => {
 
 watch(msgs, (newVal, oldVal) => {
     if (newVal.length > (oldVal?.length || 0)) {
-        scrollToBottom()
-
+        // Use nextTick + small delay to ensure DOM is ready and layout is stable
+        nextTick(() => {
+            scrollToBottom(newVal.length - oldVal.length === 1 && newVal[newVal.length-1].role === 'user')
+        })
+        
         // AI finished generating. Check for unread messages if Auto Read is ON.
         // Logic fix: Allow reading if autoTTS is ON, and autoRead is NOT explicitly FALSE.
         // This handles the case where autoRead is undefined (default).
@@ -1680,9 +1723,10 @@ const handleSendMessage = (payload) => {
     }
 
     currentQuote.value = null
-    nextTick(() => {
-        scrollToBottom()
-    })
+    // Use true for instant scroll when sending, providing immediate feedback
+    scrollToBottom(true)
+    // Double check after a short delay for any rendering shifts
+    setTimeout(() => scrollToBottom(false), 100)
 }
 
 
@@ -2429,46 +2473,11 @@ const handleClaimConfirm = (data) => {
     showToast('领取成功！已存入钱包', 'success')
 }
 
-// Battery Monitoring Lifecycle
-onMounted(async () => {
-    /* ... battery init ... */
-    const initialized = await batteryMonitor.init()
-    if (initialized) {
-        batteryInitialized.value = true
-        const info = batteryMonitor.getBatteryInfo()
-        batteryLevel.value = info.level
-        batteryCharging.value = info.charging
-        batteryMonitor.onChange((info) => {
-            batteryLevel.value = info.level
-            batteryCharging.value = info.charging
-        })
-        batteryMonitor.onLowBattery((info) => {
-            if (!chatData.value || info.charging) return
-            const systemMsg = {
-                id: `sys_battery_${Date.now()}`,
-                role: 'system',
-                content: `[系统提醒] 当前设备电量为 ${info.level}%，建议尽快充电。`,
-                timestamp: Date.now(),
-                type: 'system'
-            }
-            chatStore.addMessage(chatData.value.id, systemMsg)
-        })
-    }
-
-    // Family Card Global Handler
-    window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
-        const charName = chatStore.chats[fromCharId]?.name || '亲属'
-        claimModalRef.value?.open({ uuid, amount, note, fromCharId }, `${charName}的亲属卡`)
-    }
-})
-
-onUnmounted(() => {
-    // Clean up battery monitor
-    if (batteryInitialized.value) {
-        batteryMonitor.destroy()
-    }
-    delete window.qiaoqiao_receiveFamilyCard
-})
+// Family Card Global Handler
+window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
+    const charName = chatStore.chats[fromCharId]?.name || '亲属'
+    claimModalRef.value?.open({ uuid, amount, note, fromCharId }, `${charName}的亲属卡`)
+}
 </script>
 
 <template>
