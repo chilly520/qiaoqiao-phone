@@ -141,7 +141,7 @@ export function generateContextPreview(chatId, char) {
         momentsContext = parts.join('\n\n')
     }
 
-    // 4. History (Context) with Time Delay Hint
+    // 5. History (Context) with Time Delay Hint
     const now = Date.now()
     const aiMessages = recentMsgs.filter(m => m.role === 'ai')
     const lastAiMsg = aiMessages.length > 0 ? aiMessages[aiMessages.length - 1] : null

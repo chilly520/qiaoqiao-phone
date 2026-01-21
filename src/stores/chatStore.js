@@ -2635,7 +2635,7 @@ ${contextMsgs}
         currentChat, addMessage, updateMessage, createChat, deleteChat,
         deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
-        sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage,
+        sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
         getPreviewContext, analyzeCharacterArchive, isLoaded
     }
