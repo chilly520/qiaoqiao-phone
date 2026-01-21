@@ -77,6 +77,8 @@ function openApp(appId) {
     safeNavigate('/worldbook')
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
+  } else if (appId === 'reset') {
+    location.reload()
   }
 }
 
@@ -492,7 +494,7 @@ onUnmounted(() => {
         <span class="text-[10px] text-white font-medium drop-shadow-md">世界书</span>
       </div>
 
-      <div class="flex flex-col items-center gap-1 cursor-pointer group">
+      <div class="flex flex-col items-center gap-1 cursor-pointer group" @click="openApp('reset')">
         <div id="icon-reset" :style="getIconStyle('reset')"
           class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
           <svg v-if="!hasCustomIcon('reset')" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ec4899"
