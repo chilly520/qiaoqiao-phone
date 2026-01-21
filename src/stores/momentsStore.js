@@ -219,6 +219,9 @@ export const useMomentsStore = defineStore('moments', () => {
                 })
             }
         }
+
+        // Force reactivity to ensure computed properties update
+        moments.value = [...moments.value]
     }
 
     function removeLike(momentId, authorId) {
@@ -333,6 +336,9 @@ export const useMomentsStore = defineStore('moments', () => {
         if (comment.authorId === 'user') {
             triggerCommentReply(moment.id, comment)
         }
+
+        // Force reactivity for UI update
+        moments.value = [...moments.value]
     }
 
     function deleteComment(momentId, commentId) {

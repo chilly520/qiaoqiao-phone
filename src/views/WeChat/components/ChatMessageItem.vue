@@ -657,6 +657,11 @@ function getCleanContent(contentRaw, isCard = false) {
     // Removal of strictly internal protocol tags
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
     
+    // Remove Moment Interaction tags from display bubble
+    clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[COMMENT[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[REPLY[:：]\s*[^\]]+\]/gi, '');
+
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
     clean = clean.replace(/\[CARD\]([\s\S]*?)\[\/CARD\]/gi, '');
 

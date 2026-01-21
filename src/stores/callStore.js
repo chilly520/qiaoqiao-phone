@@ -105,6 +105,27 @@ export const useCallStore = defineStore('call', () => {
     }
 
     const rejectCall = () => {
+        if (status.value === 'none') return
+
+        const currentPartner = partner.value
+        const callTypeLabel = type.value === 'video' ? '视频通话' : '语音通话'
+        const chatStore = useChatStore()
+
+        let userName = '我'
+        try {
+            const settings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
+            userName = settings.personalization?.userProfile?.name || '我'
+        } catch (e) { }
+
+        if (currentPartner?.id) {
+            chatStore.addMessage(currentPartner.id, {
+                role: 'system',
+                type: 'system',
+                content: `【${userName}挂断了${currentPartner.name}的${callTypeLabel}。】`,
+                timestamp: Date.now()
+            })
+        }
+
         stopRingtone()
         status.value = 'none'
         partner.value = null
@@ -127,13 +148,42 @@ export const useCallStore = defineStore('call', () => {
         const finalDuration = durationText.value
         const callTypeLabel = type.value === 'video' ? '视频通话' : '语音通话'
         const currentPartner = partner.value
-        const wasDialing = status.value === 'dialing'
+        const wasDialingOrIncoming = status.value === 'dialing' || status.value === 'incoming'
         const shouldSave = status.value === 'active'
 
         status.value = 'ended'
 
-        // Save to chat history as a packaged card
         const chatStore = useChatStore()
+
+        // Add System message for "Call Ended" or "Hung up/Rejected"
+        if (currentPartner?.id) {
+            if (wasDialingOrIncoming) {
+                // Same logic as rejectCall but inside endCall for cleanup flow
+                let userName = '我'
+                try {
+                    // Try to get dynamic name if possible in this context
+                    const settings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
+                    userName = settings.personalization?.userProfile?.name || '我'
+                } catch (e) { }
+
+                chatStore.addMessage(currentPartner.id, {
+                    role: 'system',
+                    type: 'system',
+                    content: `【${userName}挂断了${currentPartner.name}的${callTypeLabel}。】`,
+                    timestamp: Date.now()
+                })
+            } else if (shouldSave) {
+                // Active call ended normally
+                chatStore.addMessage(currentPartner.id, {
+                    role: 'system',
+                    type: 'system',
+                    content: `通话结束：${finalDuration}`,
+                    timestamp: Date.now()
+                })
+            }
+        }
+
+        // Save to chat history as a packaged card (Favorite Card)
         if (currentPartner?.id && shouldSave) {
             // Generate summary from transcript
             const dialogueCount = transcript.value.length
@@ -164,7 +214,7 @@ export const useCallStore = defineStore('call', () => {
         }
 
         // If it was just dialing, exit immediately. Otherwise show "Ended" for 1.5s
-        const exitDelay = wasDialing ? 0 : 1500
+        const exitDelay = wasDialingOrIncoming ? 0 : 1500
 
         setTimeout(() => {
             if (status.value === 'ended') {

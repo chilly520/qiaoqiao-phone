@@ -774,6 +774,7 @@ export const useChatStore = defineStore('chat', () => {
                 /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
                 /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
                 /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
+                /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
                 /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
             ];
 
@@ -796,6 +797,18 @@ export const useChatStore = defineStore('chat', () => {
         // Filter out empty messages
         if (!newMsg.content || newMsg.content.length === 0) {
             return null;
+        }
+
+        // 3.3 Moment Reference Indexing
+        if (newMsg.type === 'moment_card') {
+            try {
+                const data = typeof newMsg.content === 'string' ? JSON.parse(newMsg.content) : newMsg.content;
+                if (data && data.id) {
+                    newMsg._momentReferenceId = data.id;
+                }
+            } catch (e) {
+                console.warn('[ChatStore] Could not index moment_card ID:', e);
+            }
         }
 
         // 4. Persistence
@@ -1480,21 +1493,27 @@ ${contextMsgs}
             // Format Special Cards for AI perception
             if (m.type === 'moment_card') {
                 try {
-                    const data = JSON.parse(content)
-                    content = `[用户分享了一条朋友圈动态] 作者: ${data.author}, 文案: ${data.text}${data.image ? ' (包含一张图片)' : ''}`
+                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                    content = `[用户分享了一条朋友圈动态] 作者: ${data.author || '未知'}, 文案: ${data.text || '（无文案）'}${data.image ? ' (包含一张图片)' : ''} ID: ${data.id || 'unknown'}`
+                    // If vision is enabled, extract the image URL so AI can "see" it
+                    if (data.image) m.image = data.image;
+                    // Track most recent shared moment for ID fallback
+                    m._momentReferenceId = data.id;
                 } catch (e) {
                     content = '[朋友圈动态]'
                 }
+            } else if (m.type === 'favorite_card' || (typeof m.content === 'string' && m.content.includes('"source"'))) {
                 try {
-                    const data = JSON.parse(content)
+                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: \n${data.fullContent || data.preview || '暂无内容'}`
+                    if (data.image) m.image = data.image; // Also extract image for favorites if exists
                 } catch (e) {
                     content = '[收藏内容]'
                 }
             } else if (m.type === 'voice') {
-                content = `(系统:语音消息) ${content}`
+                content = content // No extra hint needed, voice is usually handled or transcribed
             } else if (m.type === 'image' || m.type === 'sticker') {
-                content = `(系统:图片消息) ${content}`
+                content = content // Image is now passed via m.image multimodal object
             }
 
             if (m.role === 'ai') {
@@ -1961,28 +1980,44 @@ ${contextMsgs}
                 }
 
                 // --- Handle Active Interactions [LIKE], [COMMENT], [REPLY] ---
-                const likeRegex = /\[LIKE[:：]\s*(m-[^\]]+)\]/gi;
+                const likeRegex = /\[LIKE[:：]\s*([^\]\s]+)\]/gi;
                 let likeMatch;
                 while ((likeMatch = likeRegex.exec(properlyOrderedContent)) !== null) {
-                    momentsStore.addLike(likeMatch[1], chatId, chat.name);
+                    let targetId = likeMatch[1].trim();
+                    // Fallback Logic: Try to find actual moment if ID is hallucinated
+                    if (!momentsStore.moments.some(m => m.id === targetId)) {
+                        const ref = [...chat.msgs].reverse().find(m => m._momentReferenceId);
+                        if (ref) targetId = ref._momentReferenceId;
+                    }
+                    momentsStore.addLike(targetId, chatId, chat.name);
                 }
 
-                const commentRegex = /\[COMMENT[:：]\s*(m-[^\]]+)[:：]\s*([\s\S]+?)\]/gi;
+                const commentRegex = /\[COMMENT[:：]\s*([^\]\s:]+)[:：]\s*([\s\S]+?)\]/gi;
                 let commentMatch;
                 while ((commentMatch = commentRegex.exec(properlyOrderedContent)) !== null) {
-                    momentsStore.addComment(commentMatch[1], {
+                    let targetId = commentMatch[1].trim();
+                    if (!momentsStore.moments.some(m => m.id === targetId)) {
+                        const ref = [...chat.msgs].reverse().find(m => m._momentReferenceId);
+                        if (ref) targetId = ref._momentReferenceId;
+                    }
+                    momentsStore.addComment(targetId, {
                         authorId: chatId,
                         authorName: chat.name,
                         content: commentMatch[2].trim()
                     });
                 }
 
-                const momentActionReplyRegex = /\[REPLY[:：]\s*(m-[^\]]+)[:：]\s*(c-[^\]]+)[:：]\s*([\s\S]+?)\]/gi;
+                const momentActionReplyRegex = /\[REPLY[:：]\s*([^\]\s:]+)[:：]\s*([^\]\s:]+)[:：]\s*([\s\S]+?)\]/gi;
                 let momentActionReplyMatch;
                 while ((momentActionReplyMatch = momentActionReplyRegex.exec(properlyOrderedContent)) !== null) {
-                    const momentId = momentActionReplyMatch[1];
-                    const commentId = momentActionReplyMatch[2];
+                    let momentId = momentActionReplyMatch[1].trim();
+                    const commentId = momentActionReplyMatch[2].trim();
                     const content = momentActionReplyMatch[3].trim();
+
+                    if (!momentsStore.moments.some(m => m.id === momentId)) {
+                        const ref = [...chat.msgs].reverse().find(m => m._momentReferenceId);
+                        if (ref) momentId = ref._momentReferenceId;
+                    }
 
                     const moment = momentsStore.moments.find(m => m.id === momentId);
                     const targetComment = moment?.comments.find(c => c.id === commentId);
@@ -2108,6 +2143,9 @@ ${contextMsgs}
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
+                    .replace(/\[LIKE[:：].*?\]/gi, '') // SCRUB INTERACTIONS FROM BUBBLES
+                    .replace(/\[COMMENT[:：].*?\]/gi, '')
+                    .replace(/\[REPLY[:：].*?\]/gi, '')
                     .replace(/\[MUSIC:\s*.*?\]/gi, '') // Remove MUSIC command tags
                     // Aggressively clean AI's manual quote explanations like "引用来自 我 的消息..."
                     .replace(/[（\(]引用来自.*?[）\)]/gi, '')
@@ -2216,7 +2254,7 @@ ${contextMsgs}
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
                 // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：].*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);

@@ -374,7 +374,10 @@ async function _generateReplyInternal(messages, char, signal) {
                 if (isVisionEnabled) {
                     const imageId = msg.id || 'curr';
                     const refText = ` [Image Reference ID: ${imageId}]`;
-                    const roleText = msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）'
+
+                    let roleText = msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）'
+                    if (msg.type === 'moment_card') roleText = '（用户分享了一条朋友圈动态）'
+                    else if (msg.type === 'favorite_card') roleText = '（用户分享了一个收藏网页/内容）'
 
                     return {
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
