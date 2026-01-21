@@ -2141,6 +2141,9 @@ const formatMessageContent = (msg) => {
 
         const nClean = normalize(n);
         if (!nClean && !n) return match;
+        
+        // FIX: Prevent sentences or system logs like [正在通话...] from being matched as stickers
+        if (nClean.length > 15) return match;
 
         // Precise
         let found = allAvailable.find(s => s.name === n || normalize(s.name) === nClean);

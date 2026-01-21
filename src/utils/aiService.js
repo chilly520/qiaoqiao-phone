@@ -155,6 +155,18 @@ export function generateContextPreview(chatId, char) {
 
     const historyText = recentMsgs.map((m, index) => {
         let content = m.content
+
+        // Parse Special Types for AI Context
+        if (m.type === 'favorite_card' || (content && content.includes('"source":"通话记录"'))) {
+            try {
+                const data = JSON.parse(content);
+                content = `[系统消息] ${data.title || '通话'} 已结束。时长：${data.preview || ''}`;
+            } catch (e) { content = '[通话记录]'; }
+        } else if (m.type === 'voice') {
+            // Ensure voice content is text (transcript)
+            content = `[语音消息] ${content}`;
+        }
+
         // Inject hint if it's the last message and delay > 1min
         if (index === recentMsgs.length - 1 && m.role === 'user' && diffMinutes >= 1) {
             const hours = Math.floor(diffMinutes / 60);

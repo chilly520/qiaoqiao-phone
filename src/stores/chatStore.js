@@ -646,43 +646,59 @@ export const useChatStore = defineStore('chat', () => {
                 console.log('[ChatStore] Call Protocol Detected (Enhanced)');
 
                 // Ensure we are in active state if we receive protocol data
-                // BUGFIX: Do NOT revive if status is 'ended'. Only accept if dialing/incoming/none.
-                if (callStore.status !== 'active' && callStore.status !== 'ended') {
-                    console.log('[ChatStore] Force accepting call due to protocol data');
+                // BUGFIX: Do NOT revive if status is 'ended' or 'none'. Only accept if dialing/incoming.
+                // This prevents "Zombie Calls" where user hangs up but AI sends one last packet.
+                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
+                    console.log('[ChatStore] Auto-accepting established call due to protocol data');
                     callStore.acceptCall();
                 }
 
-                // Extraction Logic
-                let callData = null;
-                let textOutsideJson = content;
-                try {
-                    const matches = content.match(/\{[\s\S]*?\}/g);
-                    if (matches) {
-                        const jsonCandidate = matches[matches.length - 1];
-                        callData = JSON.parse(jsonCandidate);
-                        textOutsideJson = content.replace(jsonCandidate, '').trim();
-                    }
-                } catch (e) { console.warn('[ChatStore] Enhanced JSON parse failed fallback', e); }
-
-                const protocolRegex = /\[CALL_START\]([\s\S]+?)\[CALL_END\]/i;
-                const tagMatch = content.match(protocolRegex);
-                if (tagMatch) {
+                // If user hung up (none) but AI is still sending frames, we should probably output text fallback
+                // but for now, let's just process it if active, otherwise ignore protocol logic to avoid hidden ghosts
+                if (callStore.status !== 'active') {
+                    // Fallback: If not active, do NOT hide. Let it fall through to normal text processing (if any)
+                    // or if it strictly matches protocol, we might want to just show the speech part as text.
+                    // IMPORTANT: Returning control here treats it as normal text below?
+                    // Verify flow. If we don't set newMsg.hidden=true, it shows as text.
+                } else {
+                    // Extraction Logic (Only if Active)
+                    let callData = null;
+                    let textOutsideJson = content;
                     try {
-                        callData = JSON.parse(tagMatch[1]);
-                        textOutsideJson = content.replace(tagMatch[0], '').trim();
-                    } catch (e) { }
-                }
+                        const matches = content.match(/\{[\s\S]*?\}/g);
+                        if (matches) {
+                            const jsonCandidate = matches[matches.length - 1];
+                            callData = JSON.parse(jsonCandidate);
+                            textOutsideJson = content.replace(jsonCandidate, '').trim();
+                        }
+                    } catch (e) { console.warn('[ChatStore] Enhanced JSON parse failed fallback', e); }
 
-                if (callData || textOutsideJson) {
-                    const speech = callData?.speech || callData?.["通话内容"] || callData?.text || textOutsideJson || '';
-                    const action = callData?.action || callData?.["行为"] || callData?.["动作"] || '';
-                    const statusVal = callData?.status || callData?.["状态"] || '';
+                    const protocolRegex = /\[CALL_START\]([\s\S]+?)\[CALL_END\]/i;
+                    const tagMatch = content.match(protocolRegex);
+                    if (tagMatch) {
+                        try {
+                            callData = JSON.parse(tagMatch[1]);
+                            textOutsideJson = content.replace(tagMatch[0], '').trim();
+                        } catch (e) { }
+                    }
 
-                    if (speech || action) callStore.addTranscriptLine('ai', speech, action);
-                    if (statusVal) callStore.updateStatus(statusVal);
-                    if (callData?.hangup) callStore.endCall();
+                    if (callData || textOutsideJson) {
+                        let speech = callData?.speech || callData?.["通话内容"] || callData?.text || textOutsideJson || '';
+                        const action = callData?.action || callData?.["行为"] || callData?.["动作"] || '';
+                        const statusVal = callData?.status || callData?.["状态"] || '';
+
+                        // CLEAN TTS: Remove parentheses from speech
+                        if (speech) {
+                            speech = speech.replace(/[\(（][^\)）]*[\)）]/g, '').trim();
+                        }
+
+                        if (speech || action) callStore.addTranscriptLine('ai', speech, action);
+                        if (statusVal) callStore.updateStatus(statusVal);
+                        if (callData?.hangup) callStore.endCall();
+                    }
+                    newMsg.hidden = true; // Stay in history for context, but out of chat bubbles
+                    return; // Stop processing this message as text
                 }
-                newMsg.hidden = true; // Stay in history for context, but out of chat bubbles
             }
 
             // Priority 3: Fallback for Normal Text during Active Call
@@ -1421,13 +1437,14 @@ ${contextMsgs}
                 } catch (e) {
                     content = '[朋友圈动态]'
                 }
-            } else if (m.type === 'favorite_card' || content.includes('"favoriteId"')) {
                 try {
                     const data = JSON.parse(content)
                     content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: \n${data.fullContent || data.preview || '暂无内容'}`
                 } catch (e) {
                     content = '[收藏内容]'
                 }
+            } else if (m.type === 'voice') {
+                content = `[语音消息] ${content}`
             }
 
             if (m.role === 'ai') {
