@@ -154,8 +154,8 @@ export const useMusicStore = defineStore('music', () => {
 
     if (togetherTimer) clearInterval(togetherTimer)
     togetherTimer = setInterval(() => {
-      if (isPlaying.value) {
-        togetherElapsedSeconds.value++
+      if (togetherStartTime.value) {
+        togetherElapsedSeconds.value = Math.floor((Date.now() - togetherStartTime.value) / 1000)
       }
     }, 1000)
     saveToStorage()

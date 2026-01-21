@@ -600,21 +600,69 @@ export const useChatStore = defineStore('chat', () => {
         // 7.2 AI Logic & Protocol Handling
         if (newMsg.role === 'ai') {
             // Priority 0: Music & Standalone Call Triggers
-            if (content.includes('[一起听歌:') || content.includes('<bgm>')) {
+            // Added [MUSIC:...] handling
+            if (content.includes('[一起听歌:') || content.includes('<bgm>') || content.includes('[MUSIC:')) {
                 const { useMusicStore } = await import('./musicStore')
                 const musicStore = useMusicStore()
-                const musicMatch = content.match(/\[一起听歌:([\s\S]+?)\]/i) || content.match(/<bgm>([\s\S]+?)<\/bgm>/i)
+                const musicMatch = content.match(/\[一起听歌:([\s\S]+?)\]/i) || content.match(/<bgm>([\s\S]+?)<\/bgm>/i) || content.match(/\[MUSIC:\s*(?:search\s+)?([\s\S]+?)\]/i);
+
                 if (musicMatch) {
                     const songQuery = musicMatch[1].trim()
-                    musicStore.startTogether({ name: chat.name, avatar: chat.avatar })
+
+                    // 1. Announce "Together Mode" if not already active
+                    // User wants "X initiated Listen Together"
+                    if (!musicStore.isListeningTogether) {
+                        addMessage(chatId, {
+                            role: 'system',
+                            type: 'system', // Display as "X initiated..."
+                            content: `${chat.name} 发起了 一起听歌`
+                        })
+                        musicStore.startTogether({ name: chat.name, avatar: chat.avatar })
+                    } else {
+                        // Even if active, ensure state is fresh
+                        musicStore.startTogether({ name: chat.name, avatar: chat.avatar })
+                    }
+
                     if (!musicStore.playerVisible) musicStore.togglePlayer()
+
                     let songName = songQuery, singer = ''
                     if (songQuery.includes('-')) {
                         const parts = songQuery.split('-'), s = parts[0].trim(), n = parts[1].trim();
+                        // Heuristic: usually "Singer - Song" or "Song - Singer"? 
+                        // AI log: "周杰伦 - 告白气球" -> Singer - Song
                         singer = s; songName = n;
                     }
-                    musicStore.searchMusic(songName, singer).then(results => {
-                        if (results?.[0]) musicStore.getSongUrl(results[0]).then(url => { if (url) musicStore.addSong(url); musicStore.loadSong(musicStore.playlist.length - 1); })
+
+                    musicStore.searchMusic(songName, singer).then(async results => {
+                        if (results?.[0]) {
+                            const song = results[0];
+                            const url = await musicStore.getSongUrl(song);
+                            if (url) {
+                                musicStore.addSong(url);
+                                musicStore.loadSong(musicStore.playlist.length - 1);
+
+                                // 2. Add Song Card to Chat
+                                // Style matching the user's "Image 4" request (Standard Card UI)
+                                const cardHtml = `
+                                <div class="flex items-center gap-3 p-3 bg-white/90 rounded-xl shadow-sm border border-gray-100 max-w-[240px]">
+                                    <img src="${song.cover || '/default-music.png'}" class="w-14 h-14 rounded-lg bg-gray-100 object-cover flex-shrink-0" onerror="this.src='/default-music.png'" />
+                                    <div class="flex-1 min-w-0 flex flex-col justify-center">
+                                        <div class="font-bold text-[15px] leading-tight text-gray-800 truncate mb-1">${song.song}</div>
+                                        <div class="text-xs text-gray-500 truncate">${song.singer || '未知歌手'}</div>
+                                    </div>
+                                    <div class="absolute top-2 right-2">
+                                        <i class="fa-solid fa-music text-pink-400 text-xs opacity-50"></i>
+                                    </div>
+                                </div>`;
+
+                                addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'html', // Use HTML type for rich card
+                                    content: `[分享音乐: ${song.song}]`, // Fallback text
+                                    html: cardHtml
+                                });
+                            }
+                        }
                     })
                 }
             }
@@ -2057,6 +2105,7 @@ ${contextMsgs}
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
+                    .replace(/\[MUSIC:\s*.*?\]/gi, '') // Remove MUSIC command tags
                     // Aggressively clean AI's manual quote explanations like "引用来自 我 的消息..."
                     .replace(/[（\(]引用来自.*?[）\)]/gi, '')
                     .replace(/引用[^：:。^！]*[：:。^！]/gi, '')
