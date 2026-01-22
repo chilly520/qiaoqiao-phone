@@ -199,7 +199,7 @@ watch(() => callStore.transcript.length, (newLen, oldLen) => {
 let resizeObserver = null
 onMounted(async () => {
     window.addEventListener('popstate', handleSettingsPopState)
-    
+
     // Initial scroll setup
     scrollToBottom(true)
     setTimeout(() => scrollToBottom(true), 50)
@@ -520,12 +520,7 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
 
             // 4. Auto TTS (AI Only)
             if (lastMsg.role === 'ai' && chatData.value?.autoRead !== false && chatData.value?.autoTTS) {
-                const textToSpeak = getCleanSpeechText(contentStr);
-                if (textToSpeak && !spokenMsgIds.has(lastMsg.id)) {
-                    console.log('[TTS] Auto-queueing message:', lastMsg.id);
-                    ttsQueue.value.push({ text: textToSpeak, msgId: lastMsg.id });
-                    processQueue();
-                }
+                speakMessage(contentStr, lastMsg.id);
             }
         }
     }
@@ -1137,6 +1132,63 @@ const showToast = (msg, type = 'info') => {
     }, 3000);
 };
 
+// --- TTS Engine Core ---
+const speakOne = (text, onEnd, interrupt = false) => {
+    if (!text || !window.speechSynthesis) {
+        if (onEnd) onEnd();
+        return;
+    }
+
+    // Only cancel if explicitly requested (e.g. user manually clicked a new bubble)
+    if (interrupt) {
+        window.speechSynthesis.cancel();
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    // Choose Chinese voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const zhVoice = voices.find(v => v.lang.includes('zh-CN') || v.lang.includes('zh-SG'));
+    if (zhVoice) utterance.voice = zhVoice;
+
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => {
+        isSpeaking.value = false;
+        if (onEnd) onEnd();
+    };
+
+    utterance.onerror = (event) => {
+        // 'interrupted' is expected when we force cancel, ignore it.
+        if (event.error !== 'interrupted') {
+            console.error('[TTS] Error:', event);
+        }
+        isSpeaking.value = false;
+        if (onEnd) onEnd();
+    };
+
+    // Chrome bug workaround: small delay ensures speak works after cancel
+    setTimeout(() => {
+        window.speechSynthesis.speak(utterance);
+    }, interrupt ? 50 : 0);
+};
+
+const speakMessage = (text, msgId = null, force = false) => {
+    if (!text) return;
+    const cleanText = getCleanSpeechText(text);
+    if (!cleanText) return;
+
+    // Prevent duplicate reading of the same message in auto-mode
+    if (!force && msgId && spokenMsgIds.has(msgId)) return;
+
+    // If waiting strictly for auto-read, check queue
+    console.log('[TTS] Queueing:', cleanText.substring(0, 20) + '...');
+    ttsQueue.value.push({ text: cleanText, msgId });
+    processQueue();
+};
+
 const processQueue = () => {
     // Only stop explicitly if call ENDED (allow 'none' for normal chat AutoTTS)
     if (callStore.status === 'ended') {
@@ -1151,6 +1203,7 @@ const processQueue = () => {
     const queueItem = ttsQueue.value.shift();
     const { text, msgId } = queueItem;
 
+    // Auto-process queue should NOT interrupt previous (queue logic handles order)
     speakOne(text, () => {
         // 标记消息为已朗读
         if (msgId) {
@@ -1165,9 +1218,9 @@ const processQueue = () => {
         }
 
         isSpeaking.value = false;
-        // Pause slightly between bubbles
-        setTimeout(processQueue, 500);
-    });
+        // Pause slightly between bubbles for natural pacing
+        setTimeout(processQueue, 300);
+    }, false); // interrupt = false
 };
 
 // ... (skipping context)
@@ -1227,6 +1280,36 @@ const getCleanContent = (contentRaw) => {
     clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
 
     return clean;
+}
+
+const getCleanSpeechText = (text) => {
+    if (!text) return '';
+    let clean = ensureString(text);
+
+    // 1. Remove Inner Voice Protocol
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
+
+    // 2. Extract content from voice tags instead of deleting them entirely
+    clean = clean.replace(/\[语音(?:消息)?[:：]?\s*(.*?)\]/gi, '$1');
+
+    // 3. Remove other non-speech Protocol Tags
+    clean = clean.replace(/\[(图片|表情|表情包|红包|转账|CARD|DRAW|MOMENT|SET_|NUDGE|HTML卡片|领取红包|RECEIVE_RED_PACKET)[:：]?.*?\]/gi, '');
+
+    // 4. Remove Moment Interaction tags
+    clean = clean.replace(/\[(LIKE|COMMENT|REPLY)[:：]\s*[^\]]+\]/gi, '');
+
+    // 5. Remove JSON blocks (robust match for metadata)
+    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata|html)"[\s\S]*?\}/gi, '');
+
+    // 6. Remove Markdown Formatting
+    clean = clean.replace(/#+\s/g, ''); // Headers
+    clean = clean.replace(/[*_~`]/g, ''); // Bold, italic, etc.
+    clean = clean.replace(/\[(.*?)\]\(.*?\)/g, '$1'); // Links [text](url) -> text
+
+    // 7. Final Clean up
+    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, ''); // Zero-width characters
+
+    return clean.trim();
 }
 
 
@@ -1630,20 +1713,25 @@ const handleVoiceClick = ({ msg, showTranscript }) => {
 
         if (msg.role === 'ai') {
             const text = getCleanSpeechText(msg.content)
-            // 移除spokenMsgIds检查，允许重复朗读
-            ttsQueue.value.push({ text, msgId: msg.id });
-            processQueue();
+            // Force play -> This will now respect the logic in speakOne to optionally cancel
+            // For manual click, we generally WANT to interrupt whatever is auto-playing.
+            // So we can clear the queue and force this one.
+            window.speechSynthesis.cancel();
+            ttsQueue.value = []; // Clear auto queue
+
+            // Re-queue this specific message
+            console.log('[TTS] Manual Trigger:', msg.id);
+            speakOne(text, () => {
+                msg.isPlaying = false;
+            }, true); // interrupt = true
+
             // 确保设置isPlayed为true并更新到聊天存储
-            msg.isPlayed = true
-            chatStore.updateMessage(chatData.value.id, msg.id, { isPlayed: true })
+            msg.isPlayed = true;
+            chatStore.updateMessage(chatData.value.id, msg.id, { isPlayed: true });
         } else {
             // User voice fallback
             showToast('暂不支持播放用户语音', 'info')
         }
-
-        setTimeout(() => {
-            msg.isPlaying = false
-        }, duration)
     } else {
         // 关闭时停止朗读
         msg.isPlaying = false
@@ -1827,7 +1915,7 @@ const formatMessageContent = (msg) => {
 
         const nClean = normalize(n);
         if (!nClean && !n) return match;
-        
+
         // FIX: Prevent sentences or system logs like [正在通话...] from being matched as stickers
         if (nClean.length > 15) return match;
 

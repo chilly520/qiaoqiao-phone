@@ -1511,7 +1511,7 @@ ${contextMsgs}
                     content = '[收藏内容]'
                 }
             } else if (m.type === 'voice') {
-                content = content // No extra hint needed, voice is usually handled or transcribed
+                content = `[语音:${content}]`
             } else if (m.type === 'image' || m.type === 'sticker') {
                 content = content // Image is now passed via m.image multimodal object
             }
@@ -1895,28 +1895,21 @@ ${contextMsgs}
                                 targetIdx = i; break;
                             }
                         }
-                    } else {
-                        // Recall the last AI message
-                        for (let i = msgs.length - 1; i >= 0; i--) {
-                            if (msgs[i].role === 'ai' && !msgs[i].isRecallTip) {
-                                targetIdx = i; break;
-                            }
-                        }
                     }
+                    // Fallback to "last one" removed as per user request ("太智障了")
 
                     if (targetIdx !== -1) {
-                        const originalMsg = msgs[targetIdx]
-                        const recallMsg = {
-                            ...originalMsg,
+                        const originalMsg = msgs[targetIdx];
+                        // Using Object.assign to avoid spread operator ambiguity in some IDEs
+                        const recallMsg = Object.assign({}, originalMsg, {
                             type: 'system',
                             content: `${chat.name || '对方'}撤回了一条消息`,
                             isRecallTip: true,
-                            isRecallTip: true,
-                            realContent: originalMsg.content
-                        }
-                        msgs.splice(targetIdx, 1, recallMsg)
-                        saveChats()
-                        useLoggerStore().addLog('AI', '指令执行: 撤回消息', { keyword, index: targetIdx })
+                            realContent: originalMsg.content || ''
+                        });
+                        msgs.splice(targetIdx, 1, recallMsg);
+                        saveChats();
+                        useLoggerStore().addLog('AI', '指令执行: 撤回消息', { keyword, index: targetIdx });
                     }
                 }
 
@@ -1966,13 +1959,13 @@ ${contextMsgs}
                                 }
                             }
 
-                            momentsStore.addMoment(newMoment)
+                            const momentResult = momentsStore.addMoment(newMoment);
 
                             addMessage(chatId, {
                                 type: 'system',
                                 content: `"${chat.name}" 发布了一条朋友圈`,
-                                isRecallTip: true
-                            })
+                                _momentReferenceId: momentResult.id  // Store reference for follow-up
+                            });
                         }
                     } catch (e) {
                         console.error('[ChatStore] Failed to parse [MOMENT]', e)

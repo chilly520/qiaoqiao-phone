@@ -1788,7 +1788,9 @@ ${historyStr}
    - **reply**：【关键】针对已有评论的回复。如果“已有评论”不为空，请务必生成 1-2 条回复来形成对话线程。
 2. **总数要求**：评论 (comment) + 回复 (reply) 总计必须达到 3-6 条。
 3. **内容风格**：短小、口语化、像真人微信。不要客套话。
-4. 【严禁】绝对不要生成任何代表用户（User/我）的点赞、评论或回复。所有的点赞和评论者必须是其他角色或虚拟NPC。
+4. 【绝对严禁】绝对不要生成任何代表用户（即：${userProfile.name}）的点赞、评论或回复。用户是观众，不是你模拟的对象。
+   - **禁止**在 authorName 中使用 "${userProfile.name}"、"我"、"User" 或 "用户"。
+   - 所有的点赞和评论者必须是其他好友角色或虚拟NPC。
 5. 【重要：去重与分配】
    - 严禁所有评论都来自同一个人。
    - 同一个角色**可以**既点赞又评论。
@@ -1815,11 +1817,24 @@ ${historyStr}
         if (!jsonMatch) return []
 
         const interactions = JSON.parse(jsonMatch[0])
-        return interactions.map(item => ({
-            ...item,
-            // Ensure ID is matched if it's an existing char
-            authorId: item.isVirtual ? `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` : (item.authorId || charInfos.find(c => c.name === item.authorName)?.id || null)
-        }))
+        const userName = userProfile.name || '我'
+
+        return interactions
+            .filter(item => {
+                // Pre-filter: Absolutely forbid any interaction where the author is the user
+                const authorId = String(item.authorId || '').toLowerCase()
+                const authorName = String(item.authorName || '')
+                if (authorId === 'user' || authorName === userName || authorName === 'User' || authorName === '用户') {
+                    console.warn(`[aiService] Filtered out AI-generated interaction from forbidden author (user): ${authorName}`);
+                    return false
+                }
+                return true
+            })
+            .map(item => ({
+                ...item,
+                // Ensure ID is matched if it's an existing char
+                authorId: item.isVirtual ? `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` : (item.authorId || charInfos.find(c => c.name === item.authorName)?.id || null)
+            }))
 
     } catch (e) {
         console.error('[aiService] Batch interactions failed', e)

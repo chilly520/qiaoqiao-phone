@@ -4,6 +4,13 @@ import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
 import { generateMomentContent, generateBatchMomentsWithInteractions, generateBatchInteractions, generateReplyToComment, generateCharacterProfile } from '../utils/aiService'
+import localforage from 'localforage'
+
+// Configure localforage for moments
+const momentsDB = localforage.createInstance({
+    name: 'qiaoqiao-phone',
+    storeName: 'moments'
+});
 
 export const useMomentsStore = defineStore('moments', () => {
     const chatStore = useChatStore()
@@ -11,24 +18,52 @@ export const useMomentsStore = defineStore('moments', () => {
     const worldBookStore = useWorldBookStore()
 
     // --- State ---
-    const moments = ref(JSON.parse(localStorage.getItem('wechat_moments') || '[]'))
+    const moments = ref([])
     const lastGenerateTime = ref(parseInt(localStorage.getItem('wechat_moments_last_gen') || '0'))
     const notifications = ref(JSON.parse(localStorage.getItem('wechat_moments_notifications') || '[]'))
-    const topMoments = ref(JSON.parse(localStorage.getItem('wechat_moments_top') || '[]')) // IDs of pinned moments (max 3)
-    const summoningIds = ref(new Set()) // Track moments currently being interacted by AI
+    const topMoments = ref(JSON.parse(localStorage.getItem('wechat_moments_top') || '[]'))
+    const summoningIds = ref(new Set())
 
-    // Configs - Initialize from LocalStorage
-    const savedConfig = JSON.parse(localStorage.getItem('wechat_moments_config') || '{}')
+    // Async Initialization
+    const isInitialized = ref(false)
+    async function initStore() {
+        try {
+            const savedMoments = await momentsDB.getItem('all_moments')
+            if (savedMoments && Array.isArray(savedMoments)) {
+                // Merge persisted moments with any added during the async initialization window
+                const currentCount = moments.value.length
+                moments.value = [...savedMoments, ...moments.value]
+                console.log(`[MomentsStore] DB Loaded ${savedMoments.length} items. Merged with ${currentCount} new items.`)
+            }
+            isInitialized.value = true
+        } catch (e) {
+            console.error('[MomentsStore] DB Init failed', e)
+            moments.value = JSON.parse(localStorage.getItem('wechat_moments') || '[]')
+            isInitialized.value = true
+        }
+    }
+    initStore()
+
     const config = ref({
-        autoGenerateInterval: savedConfig.autoGenerateInterval !== undefined ? savedConfig.autoGenerateInterval : 30,
-        enabledCharacters: savedConfig.enabledCharacters || [],
-        enabledWorldBookEntries: savedConfig.enabledWorldBookEntries || [],
-        customPrompt: savedConfig.customPrompt || ''
+        autoGenerateInterval: 30,
+        enabledCharacters: [],
+        enabledWorldBookEntries: [],
+        customPrompt: ''
     })
 
+    // Load static configs from localStorage (they are small)
+    try {
+        const savedConfig = JSON.parse(localStorage.getItem('wechat_moments_config') || '{}')
+        if (savedConfig.autoGenerateInterval !== undefined) config.value.autoGenerateInterval = savedConfig.autoGenerateInterval
+        config.value.enabledCharacters = savedConfig.enabledCharacters || []
+        config.value.enabledWorldBookEntries = savedConfig.enabledWorldBookEntries || []
+        config.value.customPrompt = savedConfig.customPrompt || ''
+    } catch (e) { }
+
     // Persistence
-    watch(moments, (val) => {
-        localStorage.setItem('wechat_moments', JSON.stringify(val))
+    watch(moments, async (val) => {
+        if (!isInitialized.value) return
+        await momentsDB.setItem('all_moments', JSON.parse(JSON.stringify(val)))
     }, { deep: true })
 
     watch(notifications, (val) => {
@@ -46,14 +81,8 @@ export const useMomentsStore = defineStore('moments', () => {
     // --- Getters ---
     const sortedMoments = computed(() => {
         const all = [...moments.value]
-        // Sort by Pinned First, then by Timestamp
-        return all.sort((a, b) => {
-            const aPinned = topMoments.value.includes(a.id)
-            const bPinned = topMoments.value.includes(b.id)
-            if (aPinned && !bPinned) return -1
-            if (!aPinned && bPinned) return 1
-            return b.timestamp - a.timestamp
-        })
+        // Global feed sorts strictly by Timestamp
+        return all.sort((a, b) => b.timestamp - a.timestamp)
     })
 
     // --- Actions ---
@@ -97,7 +126,7 @@ export const useMomentsStore = defineStore('moments', () => {
             })
         }
 
-        if (!options.skipAutoInteraction && !data.interactions) {
+        if (!options.skipAutoInteraction && (!data.interactions || data.interactions.length === 0)) {
             // New post triggers AI thinking/interactions (only if AI didn't pre-define them)
             // This applies to both User posts and AI Character posts
             triggerAIInteractions(id)

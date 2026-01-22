@@ -42,7 +42,8 @@
                 </div>
 
                 <!-- CASE 2: Regular Message -->
-                <div v-else-if="isValidMessage" class="flex gap-2 w-full animate-fade-in" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+                <div v-else-if="isValidMessage" class="flex gap-2 w-full animate-fade-in"
+                    :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
 
                     <!-- Avatar -->
                     <div class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
@@ -152,11 +153,12 @@
                         </div>
 
                         <!-- CASE: Moment Card -->
-                        <div v-else-if="msg.type === 'moment_card'" @click="navigateToMoment(msg)" @contextmenu.prevent="emitContextMenu"
-                             class="cursor-pointer active:opacity-80 animate-fade-in w-full max-w-[300px]"
-                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                             <MomentShareCard :data="msg.content" />
+                        <div v-else-if="msg.type === 'moment_card'" @click="navigateToMoment(msg)"
+                            @contextmenu.prevent="emitContextMenu"
+                            class="cursor-pointer active:opacity-80 animate-fade-in w-full max-w-[300px]"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <MomentShareCard :data="msg.content" />
                         </div>
 
                         <!-- CASE 6: Favorite Card (Shared Favorite) -->
@@ -206,7 +208,7 @@
                                         (msg.isPlaying || false) ? 'voice-playing-effect' : ''
                                     ]"
                                     :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px' }"
-                                    @click="toggleVoice" @contextmenu.prevent="emitContextMenu">
+                                    @click="handleToggleVoice" @contextmenu.prevent="emitContextMenu">
 
                                     <!-- Wave Animation - Enhanced Sound Wave with 5 bars -->
                                     <div class="voice-wave"
@@ -355,6 +357,8 @@ const familyDetailModal = ref(null)
 const isPressing = ref(false)
 const pressTimer = ref(null)
 
+// Settings History Sync
+
 // Handle Family Card Click (Open Modal)
 const handleFamilyCardClick = () => {
     console.log('[Family Card Click]', {
@@ -424,7 +428,7 @@ const navigateToMoment = (msg) => {
         if (data.id) {
             router.push(`/wechat/moments/detail/${data.id}`)
         }
-    } catch(e) {
+    } catch (e) {
         console.error('Failed to navigate to moment', e)
     }
 }
@@ -558,22 +562,22 @@ const isFamilyCardReject = computed(() => {
 
 const isHtmlCard = computed(() => {
     // 1. Explicit type or flag
-    if (props.msg.type === 'html' || props.msg.forceCard) return true 
-    
+    if (props.msg.type === 'html' || props.msg.forceCard) return true
+
     // 2. Detect JSON wrapper in content
     const c = ensureString(props.msg.content).trim()
     if (c === '[HTML卡片]') return true
-    
+
     // Robust JSON check: "type": "html" OR "html": "..."
     // This handles cases where AI forgets "type" or the [CARD] tag
     if ((c.includes('"type"') && c.includes('"html"')) || (c.includes('"html"') && c.includes('{') && c.includes('}'))) return true
-    
+
     // 3. Raw HTML tags
     if (c.includes('<div') || c.includes('<html') || c.includes('<style')) {
         // If it looks like code (has braces) OR has extensive HTML structure
-        if (c.includes('{') || c.includes('}') || c.includes('</')) return true 
+        if (c.includes('{') || c.includes('}') || c.includes('</')) return true
     }
-    
+
     return false
 })
 
@@ -652,11 +656,11 @@ function getCleanContent(contentRaw, isCard = false) {
     const trimmed = content.trim();
     // ... (rest of filtering logic)
     let clean = content;
-    
+
     // ... (inner voice removal, etc.)
     // Removal of strictly internal protocol tags
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
-    
+
     // Remove Moment Interaction tags from display bubble
     clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[COMMENT[:：]\s*[^\]]+\]/gi, '');
@@ -667,18 +671,18 @@ function getCleanContent(contentRaw, isCard = false) {
 
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata)"[\s\S]*?\}/gi, '');
-    
+
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:')) {
         // 1. Remove Markdown code blocks
         clean = clean.replace(/```[\s\S]*?```/gi, '');
-        
+
         // 2. Remove JSON-like structures that look like technical metadata
         // Includes { "type": "html" }, { "html": ... }, { "心声": ... } etc.
         // Relaxed matching for "html" key without "type"
         clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
         clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform)"[\s\S]*?\}/gi, '');
-        
+
         // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
         // This targets the specific "to { transform: rotate(360deg) }" leak
         clean = clean.replace(/(?:^|\s)(?:to|from|[\.\#]?[a-zA-Z0-9\-\_]+)\s*\{[\s\S]*?\}/gi, '');
@@ -695,10 +699,10 @@ function getCleanContent(contentRaw, isCard = false) {
         const f = clean.indexOf('<');
         const l = clean.lastIndexOf('>');
         if (f !== -1 && l > f) {
-             const sub = clean.substring(f, l+1);
-             if (sub.includes('<div') || sub.includes('<style') || sub.includes('style=')) {
-                 clean = clean.substring(0, f) + clean.substring(l+1);
-             }
+            const sub = clean.substring(f, l + 1);
+            if (sub.includes('<div') || sub.includes('<style') || sub.includes('style=')) {
+                clean = clean.substring(0, f) + clean.substring(l + 1);
+            }
         }
     }
 
@@ -726,7 +730,7 @@ function getCleanContent(contentRaw, isCard = false) {
 
     // FINAL GUARD: Filter all zero-width characters and re-trim
     clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-    
+
     return clean.trim();
 }
 
@@ -790,18 +794,18 @@ function getPureHtml(content) {
         let raw = str.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();
         // If it contains JSON markers but also starts with a tag, it's messy
         if (raw.includes('{') && raw.includes('"') && raw.includes('<')) {
-             const tagMatch = raw.match(/<[\s\S]*>/);
-             if (tagMatch) return unescapeContent(tagMatch[0]);
+            const tagMatch = raw.match(/<[\s\S]*>/);
+            if (tagMatch) return unescapeContent(tagMatch[0]);
         }
         return unescapeContent(raw);
     }
-    
+
     // 6. Last resort: if it's JSON but we missed the html key somehow
     try {
         const parsed = JSON.parse(str.replace(/```[\s\S]*?```/g, '').trim());
         if (parsed.html) return unescapeContent(parsed.html);
         if (parsed.content && parsed.content.includes('<')) return unescapeContent(parsed.content);
-    } catch(e) {}
+    } catch (e) { }
 
     return ''
 }
@@ -881,20 +885,20 @@ function isImageMsg(msg) {
     if (!msg) return false
     const content = ensureString(msg.content)
     if (!content.trim()) return false
-    
+
     // Direct Data/Blob URLs are always images
     if (content.includes('blob:') || content.includes('data:image/')) return true
-    
+
     // If it's currently DRAWING, we want to show it as text (loading card)
     if ((msg.type === 'image' || msg.type === 'sticker') && content.toUpperCase().includes('[DRAW:')) return false;
 
     const clean = getCleanContent(content).trim()
-    
+
     // Check if it's purely a tag or URL
     const isTagOnly = /^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i.test(clean)
-    const isUrlOnly = clean.startsWith('http') && clean.split(/\s+/).length === 1 && 
-                     (clean.split('?')[0].toLowerCase().match(/\.(jpg|png|gif|jpeg|webp)$/i))
-    
+    const isUrlOnly = clean.startsWith('http') && clean.split(/\s+/).length === 1 &&
+        (clean.split('?')[0].toLowerCase().match(/\.(jpg|png|gif|jpeg|webp)$/i))
+
     // If it has a specific type, AND it doesn't contain other substantial text, treat as standalone image
     if (msg.type === 'image' || msg.type === 'sticker') {
         // If it's just the tag or it's "[图片]", it's definitely standalone
@@ -902,7 +906,7 @@ function isImageMsg(msg) {
         // If it was sent with an image URL/base64 in content (legacy), and no other text
         if (isUrlOnly || clean.startsWith('data:image/')) return true
     }
-    
+
     return isTagOnly || !!isUrlOnly
 }
 
@@ -956,13 +960,13 @@ function getImageSrc(msg) {
     const content = ensureString(msg.content).trim()
     if (content.startsWith('data:image/')) return content
     const clean = getCleanContent(content).trim()
-    
+
     // Direct URL check
     if (clean.startsWith('http') || clean.startsWith('blob:') || clean.startsWith('data:image/')) {
         const urlMatch = clean.match(/(?:https?|blob|data):[^\]\s]+/);
         if (urlMatch) return urlMatch[0];
     }
-    
+
     const match = clean.match(STICKER_REGEX)
     if (match) {
         const c = match[1].trim()
@@ -971,7 +975,7 @@ function getImageSrc(msg) {
         // Robust Lookup
         const found = findSticker(c);
         if (found) return found.url;
-        
+
         // Fallback to Dicebear INITIALS (using cleaned name)
         const seed = normalizeStickerName(c) || c;
         return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
@@ -1034,16 +1038,16 @@ function formatMessageContent(msg) {
     // --- STICKER INLINE REPLACER ---
     // Moved after marked.parse to prevent escaping
     let html = '';
-    try { 
+    try {
         html = marked.parse(text);
-    } catch (e) { 
-        html = text; 
+    } catch (e) {
+        html = text;
     }
 
     // Replace [StickerName] or [表情包: StickerName]
     html = html.replace(/\[(.*?)\]/g, (match, name) => {
         let n = name.trim()
-        
+
         // Strip prefixes, but EXCLUDE DRAW commands
         // If it starts with DRAW:, it is NOT a sticker.
         if (n.toUpperCase().startsWith('DRAW:')) return match;
@@ -1062,12 +1066,12 @@ function formatMessageContent(msg) {
         // render a placeholder to indicate "Missing Sticker" instead of raw text or nothing.
         // Uses Dicebear Initials as a consistent visual placeholder.
         if (n && n.length > 0) {
-             const seed = n;
-             const fallbackUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
-             return `<img src="${fallbackUrl}" class="w-12 h-12 inline-block mx-1 align-middle opacity-80 rounded shadow-sm" alt="${n}" title="${n}" />`;
+            const seed = n;
+            const fallbackUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
+            return `<img src="${fallbackUrl}" class="w-12 h-12 inline-block mx-1 align-middle opacity-80 rounded shadow-sm" alt="${n}" title="${n}" />`;
         }
 
-        return match; 
+        return match;
     });
 
     return html;
@@ -1148,7 +1152,7 @@ function previewImage(src) {
     window.open(src, '_blank')
 }
 
-function toggleVoice() {
+function handleToggleVoice() {
     localShowTranscript.value = !localShowTranscript.value
     // Only play voice for AI messages, not user's own voice messages
     if (props.msg.role !== 'user') {
@@ -1681,7 +1685,14 @@ function getHtmlContent(content) {
 }
 
 @keyframes bounce-subtle {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-3px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-3px);
+    }
 }
 </style>

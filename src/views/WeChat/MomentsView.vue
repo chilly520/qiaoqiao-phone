@@ -169,10 +169,27 @@ const allWorldBookEntries = computed(() => {
 
 // Filtered moments based on authorId
 const filteredMoments = computed(() => {
-    if (!momentsStore || !momentsStore.sortedMoments) return []
-    const all = momentsStore.sortedMoments.filter(m => m && typeof m === 'object' && m.id)
-    if (!filterAuthorId.value) return all
-    return all.filter(m => m.authorId === filterAuthorId.value)
+    if (!momentsStore || !momentsStore.moments) return []
+    
+    // 1. Get all moments
+    let all = [...momentsStore.moments]
+    
+    // 2. Filter by author if viewing a profile
+    if (filterAuthorId.value) {
+        all = all.filter(m => m.authorId === filterAuthorId.value)
+        
+        // 3. Profile View: Sort by Pinned First, then by Timestamp
+        return all.sort((a, b) => {
+            const aPinned = momentsStore.topMoments.includes(a.id)
+            const bPinned = momentsStore.topMoments.includes(b.id)
+            if (aPinned && !bPinned) return -1
+            if (!aPinned && bPinned) return 1
+            return b.timestamp - a.timestamp
+        })
+    } else {
+        // 4. Global Feed: Strictly Chronological (Using the store's pre-sorted getter)
+        return momentsStore.sortedMoments
+    }
 })
 
 // ... existing code ...
