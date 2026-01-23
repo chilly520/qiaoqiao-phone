@@ -1293,7 +1293,8 @@ const getCleanSpeechText = (text) => {
     clean = clean.replace(/\[语音(?:消息)?[:：]?\s*(.*?)\]/gi, '$1');
 
     // 3. Remove other non-speech Protocol Tags
-    clean = clean.replace(/\[(图片|表情|表情包|红包|转账|CARD|DRAW|MOMENT|SET_|NUDGE|HTML卡片|领取红包|RECEIVE_RED_PACKET)[:：]?.*?\]/gi, '');
+    clean = clean.replace(/\[DRAW:[\s\S]*?\]/gi, ''); // Distinctly remove DRAW tags first
+    clean = clean.replace(/\[(图片|表情|表情包|红包|转账|CARD|MOMENT|SET_|NUDGE|HTML卡片|领取红包|RECEIVE_RED_PACKET)[:：]?.*?\]/gi, '');
 
     // 4. Remove Moment Interaction tags
     clean = clean.replace(/\[(LIKE|COMMENT|REPLY)[:：]\s*[^\]]+\]/gi, '');
@@ -2671,7 +2672,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                                }}</span></div>
+                        }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

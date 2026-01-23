@@ -12,7 +12,7 @@ export const useLoggerStore = defineStore('logger', () => {
         localStorage.removeItem('system_logs')
     }
 
-    const MAX_LOGS = 50 // Increased to keep more logs
+    const MAX_LOGS = 150 // Increased to keep more logs
     const autoScroll = ref(true)
 
     const saveLogs = () => {

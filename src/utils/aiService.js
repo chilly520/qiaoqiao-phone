@@ -195,7 +195,7 @@ export function generateContextPreview(chatId, char) {
 }
 
 // Renamed original generateReply to _generateReplyInternal
-async function _generateReplyInternal(messages, char, signal) {
+async function _generateReplyInternal(messages, char, signal, options = {}) {
     const settingsStore = useSettingsStore()
     const stickerStore = useStickerStore()
 
@@ -551,7 +551,7 @@ async function _generateReplyInternal(messages, char, signal) {
     const charAvatar = char.avatar
     const isImage = (s) => typeof s === 'string' && (s.trim().length > 0)
 
-    if (isImage(userAvatar) || isImage(charAvatar)) {
+    if ((isImage(userAvatar) || isImage(charAvatar)) && !options.skipVisualContext) {
         const contentParts = [{ type: 'text', text: '【视觉情报：重要参考】以下是我（AI角色）和用户当前的头像图片。这些图片仅供你建立对人物外貌的认知，请优先处理当前的对话或任务，无需专门针对头像图片进行回复或分析。' }]
 
         const [userB64, charB64] = await Promise.all([
@@ -1465,7 +1465,7 @@ ${userContextText}
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'MomentsGenerator' }, null])
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'MomentsGenerator' }, null, { skipVisualContext: true }])
         if (result.error) throw new Error(result.error)
 
         // Parse JSON array from AI response
@@ -1817,7 +1817,7 @@ ${historyStr}
 ]
 `
     try {
-        const result = await _generateReplyInternal([{ role: 'system', content: systemPrompt }], { name: 'System' }, null)
+        const result = await _generateReplyInternal([{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true })
         if (result.error) return []
 
         // Parse JSON
@@ -1881,7 +1881,8 @@ ${historicalContext ? `\n${historicalContext}` : ''}
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name }, null)
+        // Skip visual context to prevent AI from getting distracted by analyzing avatars instead of generating comments
+        const result = await _generateReplyInternal(messages, { name }, null, { skipVisualContext: true })
         if (result.error) return null
 
         // Cleanup response (sometimes AI adds quotes or prefixes)
@@ -1978,7 +1979,7 @@ export async function generateCompleteProfile(character, userProfile = {}) {
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name: '主页生成' }, null)
+        const result = await _generateReplyInternal(messages, { name: '主页生成' }, null, { skipVisualContext: true })
         if (result.error) throw new Error(result.content)
 
         // Parse JSON
