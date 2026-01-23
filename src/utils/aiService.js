@@ -1467,6 +1467,7 @@ ${userContextText}
 4. 语言自然、生活化
 5. imagePrompt 如果提供，必须是英文
 6. 【严禁】绝对不要生成任何代表用户（User/我）的点赞、评论或回复。点赞和评论者必须是角色列表中的人或虚拟NPC。
+7. 【格式强制】互动者的 'authorName' 必须是正常的中文昵称（如 "林深"、"隔壁老王"），**严禁**使用 'char_linshen'、'user_123' 等技术ID，也**严禁**使用纯数字。
 
 ${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
 ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}
@@ -1522,6 +1523,26 @@ ${userContextText}
                     if (interaction.content && interaction.content.includes('User')) {
                         interaction.content = interaction.content.replace(/User/g, userName)
                     }
+
+                    // Fix: Sanitize numeric/ID-like authorNames from AI hallucination
+                    if (interaction.authorName) {
+                        if (/^\d+$/.test(interaction.authorName)) {
+                            interaction.authorName = '热心群友'
+                        } else if (interaction.authorName.startsWith('char_') || interaction.authorName.startsWith('user_')) {
+                            // Attempt to strip prefix if AI leaks variables like char_linshen
+                            interaction.authorName = interaction.authorName.replace(/^(char|user)_/i, '')
+                        }
+                    }
+
+                    // Fix: Sanitize numeric/ID-like replyTo
+                    if (interaction.replyTo) {
+                        if (/^\d+$/.test(interaction.replyTo)) {
+                            interaction.replyTo = '朋友'
+                        } else if (interaction.replyTo.startsWith('char_') || interaction.replyTo.startsWith('user_')) {
+                            interaction.replyTo = interaction.replyTo.replace(/^(char|user)_/i, '')
+                        }
+                    }
+
                     // Mentions in interactions
                     if (!interaction.mentions) interaction.mentions = []
 
