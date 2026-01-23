@@ -6,6 +6,7 @@ import { useMomentsStore } from '../stores/momentsStore'
 import { useWalletStore } from '../stores/walletStore'
 // import { useChatStore } from '../stores/chatStore'
 import { weatherService } from './weatherService'
+import { batteryMonitor } from './batteryMonitor'
 
 import { SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
 import { RequestQueue } from './ai/requestQueue'
@@ -311,14 +312,22 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
 
-        // Location Context
         const locationContext = char.locationSync
             ? weatherService.getLocationContextText()
             : ''
 
+        // Battery Context
+        const batteryInfo = batteryMonitor.getBatteryInfo()
+        const batteryContext = batteryInfo
+            ? `\n【手机电量】${batteryInfo.level}%${batteryInfo.charging ? ' (正在充电)' : ''}${batteryInfo.isLow ? ' (电量告急)' : ''}`
+            : ''
+
+        // Append battery info to location context (Environmental Context)
+        const finalEnvContext = locationContext + batteryContext
+
         systemMsg = {
             role: 'system',
-            content: SYSTEM_PROMPT_TEMPLATE(char || {}, userProfile, availableStickers, worldInfoText, memoryText, patSettings, locationContext)
+            content: SYSTEM_PROMPT_TEMPLATE(char || {}, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext)
         }
     }
 
