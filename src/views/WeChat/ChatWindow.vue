@@ -1306,10 +1306,24 @@ const getCleanSpeechText = (text) => {
     clean = clean.replace(/[*_~`]/g, ''); // Bold, italic, etc.
     clean = clean.replace(/\[(.*?)\]\(.*?\)/g, '$1'); // Links [text](url) -> text
 
-    // 7. Final Clean up
+    // 7. Remove HTML tags
+    clean = clean.replace(/<[^>]*>/g, '');
+
+    // 8. Remove content in parentheses (CN/EN) - e.g. (laughs), （笑）
+    // Using non-greedy match for content inside
+    clean = clean.replace(/[\(（][^\)）]*[\)）]/g, '');
+
+    // 9. Final Clean up
     clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, ''); // Zero-width characters
+    // Decode HTML entities (basic ones) to avoid reading "&nbsp;" literally
+    clean = clean.replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"');
 
     return clean.trim();
+
 }
 
 
@@ -2657,7 +2671,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

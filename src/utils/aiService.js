@@ -790,6 +790,8 @@ async function _generateReplyInternal(messages, char, signal) {
     })
 
     try {
+        console.log(`[AI Request] (${provider})`, { endpoint, model, msgCount: fullMessages.length })
+
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: reqHeaders,
@@ -797,6 +799,13 @@ async function _generateReplyInternal(messages, char, signal) {
         })
 
         let data;
+
+        if (response.ok) {
+            data = await response.json().catch(() => null); // Clone stream safety not needed here as we await json
+            // Clone check: If we read json here, we can't read text in !ok block easily if we shared logic.
+            // But here structure is separated.
+            console.log('[AI Response Raw]', data)
+        }
 
         if (!response.ok) {
             const errText = await response.text()
@@ -861,9 +870,8 @@ async function _generateReplyInternal(messages, char, signal) {
             } else {
                 throw new Error(errorMsg)
             }
-        } else {
-            data = await response.json()
         }
+        // else data is already set above
 
         // Log Full Response (Success)
         useLoggerStore().addLog('AI', 'AI响应 (Response)', data)
