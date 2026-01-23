@@ -552,7 +552,7 @@ async function _generateReplyInternal(messages, char, signal) {
     const isImage = (s) => typeof s === 'string' && (s.trim().length > 0)
 
     if (isImage(userAvatar) || isImage(charAvatar)) {
-        const contentParts = [{ type: 'text', text: '【视觉情报：重要参考】以下是我（AI角色）和用户当前的头像图片。请根据这些图片来识别我们的样貌。' }]
+        const contentParts = [{ type: 'text', text: '【视觉情报：重要参考】以下是我（AI角色）和用户当前的头像图片。这些图片仅供你建立对人物外貌的认知，请优先处理当前的对话或任务，无需专门针对头像图片进行回复或分析。' }]
 
         const [userB64, charB64] = await Promise.all([
             resolveToBase64(userAvatar),
