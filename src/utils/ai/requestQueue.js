@@ -106,7 +106,8 @@ export class RequestQueue {
             // Log error to System Logs UI
             const logger = useLoggerStore();
             if (logger) {
-                logger.addLog('ERROR', `API Request Failed: ${error.message} `, error);
+                // Simplified log (Detailed error already logged by _generateReplyInternal usually)
+                // logger.addLog('ERROR', `API Request Failed: ${error.message} `, error);
             }
 
             task.reject(error);

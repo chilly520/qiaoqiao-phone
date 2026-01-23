@@ -790,6 +790,18 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     })
 
     try {
+        if (model.toLowerCase().includes('gemini')) {
+            // Gemini (native) json format
+            if (fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
+                reqBody.generationConfig = { response_mime_type: "application/json" };
+            }
+        } else {
+            // OpenAI compatible json object mode
+            if (fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
+                reqBody.response_format = { type: "json_object" };
+            }
+        }
+
         console.log(`[AI Request] (${provider})`, { endpoint, model, msgCount: fullMessages.length })
 
         const response = await fetch(endpoint, {
