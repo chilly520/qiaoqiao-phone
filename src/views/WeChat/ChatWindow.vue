@@ -1072,7 +1072,7 @@ const handleImgUpload = (event) => {
                 role: 'user',
                 type: 'image',
                 content: '[图片]',
-                image: base64.replace(/[^A-Za-z0-9+/=:,;]/g, '')
+                image: base64
             })
             showActionPanel.value = false
             scrollToBottom()
@@ -1085,7 +1085,8 @@ const handleImgUpload = (event) => {
                 chatStore.addMessage(chatStore.currentChatId, {
                     role: 'user',
                     type: 'image',
-                    content: e.target.result
+                    content: '[图片]',
+                    image: e.target.result
                 })
                 showActionPanel.value = false
                 scrollToBottom()
@@ -1787,7 +1788,10 @@ const handlePayClick = (msg) => {
 }
 
 const isMsgVisible = (msg) => {
-    // Always show Pay/Image
+    if (msg.hidden) return false
+    if (msg.role === 'user' || msg.role === 'ai') return true
+    
+    // For System messages, check content
     const content = ensureString(msg.content)
     if (msg.type === 'redpacket' || msg.type === 'transfer' || content.includes('[红包]') || content.includes('[转账]')) return true
     if (msg.type === 'image' || isImageMsg(msg)) return true

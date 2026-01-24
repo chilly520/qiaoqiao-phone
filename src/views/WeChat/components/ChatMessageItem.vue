@@ -295,6 +295,15 @@
                                 <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                             </div>
 
+                            <!-- 4. Empty/Protocol Placeholder (Clickable Fallback) -->
+                            <div v-if="!cleanedContent && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && msg.type !== 'voice'"
+                                @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
+                                class="px-3 py-1.5 text-[11px] text-gray-400 italic bg-gray-100/30 border border-dashed border-gray-200 rounded-lg opacity-60 hover:opacity-100 transition-opacity">
+                                [协议/空内容消息 - 右键编辑/删除]
+                            </div>
+
                             <!-- Bubble Timestamp -->
                             <div v-if="msg.timestamp" class="text-[10px] text-gray-400 mt-0.5 px-1">
                                 {{ new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
@@ -520,18 +529,15 @@ const hasHtmlContent = computed(() => {
 })
 
 const isValidMessage = computed(() => {
-    // 1. If it's a family card, always show
-    if (isFamilyCard.value) return true
+    // 1. If it's a system message, it must have content
+    if (props.msg.role === 'system') {
+        const clean = getCleanContent(ensureString(props.msg.content))
+        return clean && clean.length > 0
+    }
 
-    // 2. If it's an image/sticker, always show (check raw content to be safe)
-    if (isImageMsg(props.msg) || /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]/i.test(ensureString(props.msg.content))) return true
-
-    // 3. If it's an HTML card, it's ONLY valid if it actually has renderable HTML content
-    if ((props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value) return true
-
-    // 4. Otherwise, only show if cleaned text content is not empty
-    const clean = getCleanContent(ensureString(props.msg.content))
-    return clean && clean.length > 0
+    // 2. For AI and User, we almost always show the message to allow right-click editing
+    // even if the content is "invisible" (like pure protocols)
+    return true;
 })
 
 const formattedContent = computed(() => formatMessageContent(props.msg))
@@ -892,22 +898,33 @@ function isImageMsg(msg) {
     // If it's currently DRAWING, we want to show it as text (loading card)
     if ((msg.type === 'image' || msg.type === 'sticker') && content.toUpperCase().includes('[DRAW:')) return false;
 
+    // Use msg.image property if available (Antigravity persistence fix)
+    if (msg.image && (msg.image.startsWith('http') || msg.image.startsWith('data:'))) return true;
+
     const clean = getCleanContent(content).trim()
 
-    // Check if it's purely a tag or URL
-    const isTagOnly = /^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i.test(clean)
+    // URL check
     const isUrlOnly = clean.startsWith('http') && clean.split(/\s+/).length === 1 &&
         (clean.split('?')[0].toLowerCase().match(/\.(jpg|png|gif|jpeg|webp)$/i))
+    if (isUrlOnly) return true;
 
-    // If it has a specific type, AND it doesn't contain other substantial text, treat as standalone image
-    if (msg.type === 'image' || msg.type === 'sticker') {
-        // If it's just the tag or it's "[图片]", it's definitely standalone
-        if (isTagOnly || clean === '[图片]') return true
-        // If it was sent with an image URL/base64 in content (legacy), and no other text
-        if (isUrlOnly || clean.startsWith('data:image/')) return true
+    // Sticker check (Only return true if it exists or is a URL)
+    const match = clean.match(STICKER_REGEX)
+    if (match) {
+        const c = match[1].trim()
+        if (c.startsWith('http') || c.startsWith('blob:') || c.startsWith('data:')) return true
+        
+        // Return TRUE only if we have a standalone tag AND it's a known sticker
+        // This ensures broken stickers fall back to text bubble
+        const found = findSticker(c);
+        if (found) {
+            // Check if it's purely just the sticker tag
+            const isTagOnly = /^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i.test(clean)
+            return isTagOnly
+        }
     }
 
-    return isTagOnly || !!isUrlOnly
+    return false
 }
 
 function isSticker(msg) {
@@ -980,7 +997,13 @@ function getImageSrc(msg) {
         const seed = normalizeStickerName(c) || c;
         return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
     }
-    return clean
+    
+    // Final check for the whole string being a valid URL/data URL
+    if (clean.startsWith('http') || clean.startsWith('blob:') || clean.startsWith('data:image/')) {
+        return clean;
+    }
+
+    return null
 }
 
 function formatMessageContent(msg) {
@@ -1062,15 +1085,8 @@ function formatMessageContent(msg) {
             return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
         }
 
-        // Fallback: If sticker not found but it was explicitly tagged as a sticker/image,
-        // render a placeholder to indicate "Missing Sticker" instead of raw text or nothing.
-        // Uses Dicebear Initials as a consistent visual placeholder.
-        if (n && n.length > 0) {
-            const seed = n;
-            const fallbackUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
-            return `<img src="${fallbackUrl}" class="w-12 h-12 inline-block mx-1 align-middle opacity-80 rounded shadow-sm" alt="${n}" title="${n}" />`;
-        }
-
+        // Fallback: If sticker not found, return the original match to render as text
+        // This allows the user to see the hallucinated name and edit it.
         return match;
     });
 

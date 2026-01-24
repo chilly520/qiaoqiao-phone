@@ -47,7 +47,15 @@
                     <!-- Content Input -->
                     <textarea v-model="block.content"
                         class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all resize-y placeholder-gray-400 font-mono leading-relaxed"
-                        placeholder="请输入消息内容..."></textarea>
+                        :placeholder="block.type === 'image' ? '请输入图片提示词或标签, 如: [图片]' : '请输入消息内容...'"></textarea>
+
+                    <!-- Image URL Input -->
+                    <div v-if="block.type === 'image' || block.type === 'sticker'" class="mt-2">
+                        <label class="text-[10px] text-gray-400 ml-1">图片/表情包 URL 或 Base64</label>
+                        <textarea v-model="block.image"
+                            class="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-xs min-h-[60px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-y placeholder-gray-400 font-mono"
+                            placeholder="输入图片地址或 data:image/..."></textarea>
+                    </div>
                 </div>
 
                 <!-- Add Button -->
@@ -107,7 +115,10 @@ const init = () => {
         blocks.value = [{
             role: msg.role,
             type: normalizeType(msg.type),
-            content: normalizeContent(msg)
+            content: normalizeContent(msg),
+            image: msg.image || '',
+            sticker: msg.sticker || '',
+            html: msg.html || ''
         }]
     } else {
         blocks.value = []
@@ -194,10 +205,13 @@ const save = () => {
             timestamp: Date.now()
         }
 
-        if (b.type === 'image') {
-            base.type = 'image'
-            // Check emoji format
-            // (Stub: Keeping simple URL storage for now)
+        if (b.type === 'image' || b.type === 'sticker') {
+            base.type = b.type
+            base.image = b.image
+            base.sticker = b.sticker
+            if (!base.content || base.content === '') {
+                base.content = b.type === 'image' ? '[图片]' : '[表情包]'
+            }
         } else if (b.type === 'voice') {
             base.type = 'voice'
             base.text = b.content

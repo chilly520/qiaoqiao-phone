@@ -31,6 +31,10 @@ export const useFavoritesStore = defineStore('favorites', () => {
             msgId: msg.id,
             msgType: msg.type || 'text',
             content: msg.content,
+            image: msg.image || null,
+            sticker: msg.sticker || null,
+            html: msg.html || null,
+            forceCard: msg.forceCard || false,
             author: msg.role === 'ai' ? chatName : '我',
             avatar: avatarUrl || ''
         }
@@ -54,6 +58,10 @@ export const useFavoritesStore = defineStore('favorites', () => {
                 role: m.role,
                 type: m.type || 'text',
                 content: m.content,
+                image: m.image || null,
+                sticker: m.sticker || null,
+                html: m.html || null,
+                forceCard: m.forceCard || false,
                 timestamp: m.timestamp,
                 author: m.role === 'ai' ? chatName : '我'
             }))
