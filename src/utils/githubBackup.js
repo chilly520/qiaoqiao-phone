@@ -60,7 +60,17 @@ class GitHubBackup {
         try {
             const file = await this.getFile(this.fileName)
             if (!file || !file.content) throw new Error('云端文件内容为空')
-            const content = decodeURIComponent(escape(atob(file.content.replace(/\n/g, ''))))
+
+            // Fix Chinese Character Decoding
+            const rawContent = file.content.replace(/\n/g, '')
+            let content = ''
+            try {
+                content = decodeURIComponent(escape(atob(rawContent)))
+            } catch (e) {
+                // Fallback for different encoding strategies
+                content = atob(rawContent)
+            }
+
             if (!content || content.trim() === '') throw new Error('解析内容为空')
             return JSON.parse(content)
         } catch (error) {
