@@ -1905,7 +1905,7 @@ ${contextMsgs}
 
 
                 // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
-                const momentsStore = useMomentsStore()
+                // const momentsStore = useMomentsStore() // Already declared at top of function
 
                 // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
                 const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;

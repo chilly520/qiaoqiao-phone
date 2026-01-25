@@ -395,7 +395,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         chatStore.triggerToast('正在召唤朋友前来互动...', 'info')
 
-        const allCharIds = Object.keys(chatStore.chats)
+        const allCharIds = chatStore.chats ? Object.keys(chatStore.chats) : []
         if (allCharIds.length === 0) {
             summoningIds.value.delete(momentId)
             return
@@ -520,7 +520,7 @@ export const useMomentsStore = defineStore('moments', () => {
         const settingsStore = useSettingsStore()
         const worldBookStore = useWorldBookStore()
 
-        const candidates = specificCharacters || Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id))
+        const candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id)) : [])
         if (candidates.length === 0) return
 
         const chars = candidates.map(id => ({ id, name: chatStore.chats[id].name, persona: chatStore.chats[id].prompt, recentChats: '' }))

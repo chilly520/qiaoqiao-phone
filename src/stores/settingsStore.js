@@ -116,7 +116,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
         try {
             const data = JSON.parse(saved)
-            console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
+            if (data) {
+                console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
+            } else {
+                console.warn('[SettingsStore] LocalStorage data is null/invalid.')
+                return
+            }
 
             if (data.apiConfigs) apiConfigs.value = data.apiConfigs
             if (data.currentConfigIndex !== undefined) currentConfigIndex.value = data.currentConfigIndex
@@ -457,6 +462,6 @@ export const useSettingsStore = defineStore('settings', () => {
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig,
-        exportData, importData, resetAppData, resetGlobalData, getChatListForExport
+        exportData, importData, resetAppData, resetGlobalData
     }
 })
