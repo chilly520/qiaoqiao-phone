@@ -129,45 +129,34 @@ export const useChatStore = defineStore('chat', () => {
 
         const chat = chats.value[currentChatId.value];
 
-        // REAL-TIME FILTER: Remove JSON fragments from display
-        if (chat.msgs && Array.isArray(chat.msgs)) {
-            const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+        const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
 
-            chat.msgs = chat.msgs.filter(m => {
-                // Filter out undefined/null/empty content for non-special types
-                if (m.type !== 'image' && m.type !== 'sticker' && m.type !== 'voice' && m.type !== 'redpacket' && m.type !== 'transfer' && m.type !== 'family_card' && m.type !== 'moment_card') {
-                    const s = String(m.content || '').trim();
-                    // Strict check: if it's literally "undefined" or empty
-                    if (!s || s === 'undefined' || s === 'null') {
-                        // Check if there is specialized type data (like HTML)
-                        if (!m.html && !m.forceCard) {
-                            return false; // Don't display garbage bubbles
-                        }
-                    }
+        // REAL-TIME FILTER: Remove JSON fragments from display without mutating state
+        const filteredMsgs = (chat.msgs || []).filter(m => {
+            // Filter out undefined/null/empty content for non-special types
+            if (m.type !== 'image' && m.type !== 'sticker' && m.type !== 'voice' && m.type !== 'redpacket' && m.type !== 'transfer' && m.type !== 'family_card' && m.type !== 'moment_card') {
+                const s = String(m.content || '').trim();
+                if (!s || s === 'undefined' || s === 'null') {
+                    if (!m.html && !m.forceCard) return false;
                 }
+            }
 
-                if (!m.content || typeof m.content !== 'string') return true;
-                const trimmed = m.content.trim();
+            if (!m.content || typeof m.content !== 'string') return true;
+            const trimmed = m.content.trim();
 
-                // Filter header fragment
-                if (headerPattern.test(trimmed)) {
-                    console.log('[CurrentChat] Hiding header fragment in real-time');
-                    return false;
-                }
+            // Filter header fragment
+            if (headerPattern.test(trimmed)) return false;
 
-                // Filter tail fragment
-                if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") {
-                    console.log('[CurrentChat] Hiding tail fragment in real-time:', trimmed);
-                    return false;
-                }
+            // Filter tail fragment
+            if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
 
-                return true;
-            });
-        }
+            return true;
+        });
 
         return {
             id: currentChatId.value,
-            ...chat
+            ...chat,
+            msgs: filteredMsgs
         }
     })
 
@@ -1383,23 +1372,6 @@ ${contextMsgs}
     }
 
 
-
-    function deleteMessages(chatId, msgIds) {
-        const chat = chats.value[chatId]
-        if (!chat) return
-
-        const originalCount = chat.msgs.length
-        // Convert strict Set/Array to Set for lookup
-        const idsToRemove = new Set(msgIds)
-
-        chat.msgs = chat.msgs.filter(m => !idsToRemove.has(m.id))
-
-        if (chat.msgs.length !== originalCount) {
-            saveChats()
-            return true
-        }
-        return false
-    }
 
     function toggleSearch(chatId) {
         const chat = chats.value[chatId]
@@ -2810,6 +2782,6 @@ ${contextMsgs}
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive, isLoaded
+        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch
     }
 })

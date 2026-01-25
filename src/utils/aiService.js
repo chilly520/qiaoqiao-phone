@@ -830,11 +830,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
         }
 
-        // [Web Search Helper Hint]
         if (char.searchEnabled) {
             const searchHint = "\n\n【System Order: Web Search Enabled】You have access to real-time information via web search tools. When asked about current events, specific facts, or data after your cutoff, please prioritize using your search tools to provide accurate, up-to-date answers.";
-            if (finalMessages.length > 0) {
-                const lastMsg = finalMessages[0];
+            if (finalMessages && finalMessages.length > 0) {
+                const lastMsg = finalMessages[0]; // Usually the system-user merged message
                 if (typeof lastMsg.content === 'string') lastMsg.content += searchHint;
                 else if (Array.isArray(lastMsg.content)) lastMsg.content.push({ type: 'text', text: searchHint });
             }
