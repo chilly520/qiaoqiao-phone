@@ -151,8 +151,8 @@ const router = createRouter({
 router.onError((error, to) => {
     if (error.message.includes('Failed to fetch dynamically imported module') ||
         error.message.includes('Loading chunk')) {
-        console.warn('[Router] Deployment change detected. Force refreshing to load new assets...', error);
-        window.location.reload();
+        console.error('[Router] Module load failed! Auto-refresh disabled for debugging.', error);
+        // window.location.reload(); 
     }
 });
 

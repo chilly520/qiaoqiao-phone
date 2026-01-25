@@ -4,7 +4,6 @@ import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
 import { useMomentsStore } from '../stores/momentsStore'
 import { useWalletStore } from '../stores/walletStore'
-// import { useChatStore } from '../stores/chatStore'
 import { weatherService } from './weatherService'
 import { batteryMonitor } from './batteryMonitor'
 
@@ -98,6 +97,13 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
 }
 
 export async function generateReply(messages, char, abortSignal) {
+    const loggerStore = useLoggerStore()
+    const config = useSettingsStore().apiConfig || {}
+    const stickerStore = useStickerStore()
+    const worldBookStore = useWorldBookStore()
+    const momentsStore = useMomentsStore()
+    const walletStore = useWalletStore()
+
     // Wrapper to use Queue
     // Pass abortSignal as 3rd arg to internal function
     return apiQueue.enqueue(_generateReplyInternal, [messages, char, abortSignal], abortSignal);

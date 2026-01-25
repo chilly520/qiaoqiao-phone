@@ -3862,3 +3862,5 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
     transform: translate(-50%, 0);
 }
 </style>
+   
+ 

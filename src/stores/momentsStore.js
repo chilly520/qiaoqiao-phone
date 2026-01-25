@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
-import { generateMomentContent, generateBatchMomentsWithInteractions, generateBatchInteractions, generateReplyToComment, generateCharacterProfile } from '../utils/aiService'
+// aiService will be imported dynamically in actions to prevent circular dependencies
 import localforage from 'localforage'
 
 // Configure localforage for moments
@@ -13,9 +13,7 @@ const momentsDB = localforage.createInstance({
 });
 
 export const useMomentsStore = defineStore('moments', () => {
-    const chatStore = useChatStore()
-    const settingsStore = useSettingsStore()
-    const worldBookStore = useWorldBookStore()
+    // Moved useStore calls inside functions to avoid circular instantiation
 
     // --- State ---
     const moments = ref([])
@@ -175,6 +173,8 @@ export const useMomentsStore = defineStore('moments', () => {
 
     function canInteractWithMoment(moment, authorNameOrId) {
         if (!moment) return false
+        const settingsStore = useSettingsStore()
+        const chatStore = useChatStore()
         const userName = settingsStore.personalization.userProfile.name
         const isUser = authorNameOrId === 'user' || authorNameOrId === userName
 
@@ -200,6 +200,9 @@ export const useMomentsStore = defineStore('moments', () => {
     function addLike(momentId, authorNameOrId, fallbackName = null) {
         const moment = moments.value.find(m => m.id === momentId)
         if (!moment) return
+
+        const chatStore = useChatStore()
+        const settingsStore = useSettingsStore()
 
         if (!canInteractWithMoment(moment, authorNameOrId)) return
 
@@ -269,6 +272,9 @@ export const useMomentsStore = defineStore('moments', () => {
         // Duplicate check: prevent identical comments in the same moment
         const isDuplicate = moment.comments.some(c => c.content.trim() === comment.content.trim())
         if (isDuplicate) return
+
+        const settingsStore = useSettingsStore()
+        const chatStore = useChatStore()
 
         // Resolve real contact info
         let realChar = null
@@ -384,6 +390,9 @@ export const useMomentsStore = defineStore('moments', () => {
         if (summoningIds.value.has(momentId)) return
         summoningIds.value.add(momentId)
 
+        const chatStore = useChatStore()
+        const settingsStore = useSettingsStore()
+
         chatStore.triggerToast('正在召唤朋友前来互动...', 'info')
 
         const allCharIds = Object.keys(chatStore.chats)
@@ -463,6 +472,9 @@ export const useMomentsStore = defineStore('moments', () => {
         const moment = moments.value.find(m => m.id === momentId)
         if (!moment) return
 
+        const chatStore = useChatStore()
+        const settingsStore = useSettingsStore()
+
         const potentialRepliers = []
         if (moment.authorId !== 'user' && chatStore.chats[moment.authorId]) {
             potentialRepliers.push({ id: moment.authorId, priority: 'high', char: chatStore.chats[moment.authorId] })
@@ -476,7 +488,8 @@ export const useMomentsStore = defineStore('moments', () => {
         await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000))
 
         try {
-            const reply = await generateReplyToComment({
+            const ai = await import('../utils/aiService')
+            const reply = await ai.generateReplyToComment({
                 name: replier.char.name,
                 persona: replier.char.prompt,
                 worldContext: (replier.char.tags || []).join(', ')
@@ -503,6 +516,10 @@ export const useMomentsStore = defineStore('moments', () => {
 
 
     async function batchGenerateAIMoments(count = 1, specificCharacters = null) {
+        const chatStore = useChatStore()
+        const settingsStore = useSettingsStore()
+        const worldBookStore = useWorldBookStore()
+
         const candidates = specificCharacters || Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id))
         if (candidates.length === 0) return
 
@@ -520,7 +537,8 @@ export const useMomentsStore = defineStore('moments', () => {
                 worldContext = activeEntries.map(e => `[${e.name}]: ${e.content}`).join('\n')
             }
 
-            const momentsData = await generateBatchMomentsWithInteractions({
+            const ai = await import('../utils/aiService')
+            const momentsData = await ai.generateBatchMomentsWithInteractions({
                 characters: chars,
                 worldContext: worldContext,
                 customPrompt: customPrompt,
@@ -596,6 +614,8 @@ export const useMomentsStore = defineStore('moments', () => {
     }
 
     async function generateAndApplyCharacterProfile(charId) {
+        const chatStore = useChatStore()
+        const settingsStore = useSettingsStore()
         const char = chatStore.chats[charId]
         if (!char) return
 
@@ -604,7 +624,8 @@ export const useMomentsStore = defineStore('moments', () => {
         }
 
         try {
-            const profileData = await generateCharacterProfile(char, userProfile)
+            const ai = await import('../utils/aiService')
+            const profileData = await ai.generateCharacterProfile(char, userProfile)
 
             // 1. Update Character Info (Signature & Background)
             // Assuming chatStore has reactivity on chats

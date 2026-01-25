@@ -44,7 +44,7 @@ export const useChatStore = defineStore('chat', () => {
     const notificationEvent = ref(null) // Global notification trigger
     const patEvent = ref(null) // Event: { chatId, target: 'ai'|'user' }
     const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
-    const momentsStore = useMomentsStore()
+    // const momentsStore = useMomentsStore() // Removed to prevent circular instantiation loop
 
     // Pagination State
     const messagePageSize = ref(50) // 每页显示50条消息
@@ -125,38 +125,14 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     const currentChat = computed(() => {
-        if (!currentChatId.value || !chats.value[currentChatId.value]) return null
+        const id = currentChatId.value
+        if (!id || !chats.value[id]) return null
+        const chat = chats.value[id]
 
-        const chat = chats.value[currentChatId.value];
-
-        const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
-
-        // REAL-TIME FILTER: Remove JSON fragments from display without mutating state
-        const filteredMsgs = (chat.msgs || []).filter(m => {
-            // Filter out undefined/null/empty content for non-special types
-            if (m.type !== 'image' && m.type !== 'sticker' && m.type !== 'voice' && m.type !== 'redpacket' && m.type !== 'transfer' && m.type !== 'family_card' && m.type !== 'moment_card') {
-                const s = String(m.content || '').trim();
-                if (!s || s === 'undefined' || s === 'null') {
-                    if (!m.html && !m.forceCard) return false;
-                }
-            }
-
-            if (!m.content || typeof m.content !== 'string') return true;
-            const trimmed = m.content.trim();
-
-            // Filter header fragment
-            if (headerPattern.test(trimmed)) return false;
-
-            // Filter tail fragment
-            if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
-
-            return true;
-        });
-
+        // Return a fresh object with the ID to ensure compatibility
         return {
             id: currentChatId.value,
-            ...chat,
-            msgs: filteredMsgs
+            ...chat
         }
     })
 
@@ -1443,6 +1419,7 @@ ${contextMsgs}
 
     // 调用 AI 逻辑
     async function sendMessageToAI(chatId, options = {}) {
+        const momentsStore = useMomentsStore()
         const chat = chats.value[chatId]
         if (!chat) return
 
@@ -1928,6 +1905,8 @@ ${contextMsgs}
 
 
                 // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
+                const momentsStore = useMomentsStore()
+
                 // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
                 const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
                 const momentMatch = properlyOrderedContent.match(momentRegex);
