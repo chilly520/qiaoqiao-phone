@@ -997,6 +997,7 @@ ${contextMsgs}
                 summaryPrompt: '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。',
                 autoTTS: false,
                 showInnerVoice: true,
+                searchEnabled: options.searchEnabled || false,
                 // New Settings
                 voiceId: '',
                 voiceSpeed: 1.0,
@@ -1383,6 +1384,33 @@ ${contextMsgs}
 
 
 
+    function deleteMessages(chatId, msgIds) {
+        const chat = chats.value[chatId]
+        if (!chat) return
+
+        const originalCount = chat.msgs.length
+        // Convert strict Set/Array to Set for lookup
+        const idsToRemove = new Set(msgIds)
+
+        chat.msgs = chat.msgs.filter(m => !idsToRemove.has(m.id))
+
+        if (chat.msgs.length !== originalCount) {
+            saveChats()
+            return true
+        }
+        return false
+    }
+
+    function toggleSearch(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat) return
+        chat.searchEnabled = !chat.searchEnabled
+        saveChats()
+        triggerToast(chat.searchEnabled ? '🌐 已开启联网模式' : '📴 已关闭联网模式', 'info')
+    }
+
+
+
     function updateMessage(chatId, msgId, updates) {
         console.log('[ChatStore updateMessage] START:', { chatId, msgId, updates })
         const chat = chats.value[chatId]
@@ -1445,6 +1473,12 @@ ${contextMsgs}
     async function sendMessageToAI(chatId, options = {}) {
         const chat = chats.value[chatId]
         if (!chat) return
+
+        // Pass searchEnabled to AI service options
+        const aiOptions = {
+            ...options,
+            searchEnabled: chat.searchEnabled
+        }
 
         // --- Silent Sharing Interception ---
         const lastMsg = (chat.msgs || []).slice(-1)[0]
@@ -1611,7 +1645,8 @@ ${contextMsgs}
                 worldBookLinks: chat.worldBookLinks,
                 emojis: chat.emojis,
                 virtualTime: currentVirtualTime,
-                canDraw: true
+                canDraw: true,
+                searchEnabled: aiOptions.searchEnabled
             }
 
             // Inject Drawing Capability Hint globally if not explicitly disabled

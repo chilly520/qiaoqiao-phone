@@ -36,6 +36,10 @@
             <!-- Music -->
             <i class="fa-solid fa-music cursor-pointer hover:text-yellow-600 transition-colors"
                 :class="{ 'text-yellow-500': musicVisible }" @click="$emit('toggle-music')" title="音乐 (一起听歌)"></i>
+
+            <!-- Web Search -->
+            <i class="fa-solid fa-globe cursor-pointer hover:text-blue-600 transition-colors"
+                :class="{ 'text-blue-500': searchEnabled }" @click="$emit('toggle-search')" title="联网搜索"></i>
         </div>
 
         <!-- Row 2: Input Box + Actions -->
@@ -89,12 +93,13 @@ const props = defineProps({
     currentQuote: Object,
     chatData: Object,
     isTyping: Boolean,
-    musicVisible: Boolean
+    musicVisible: Boolean,
+    searchEnabled: Boolean
 })
 
 const emit = defineEmits([
     'send', 'generate', 'stop-generate',
-    'toggle-panel', 'toggle-emoji', 'toggle-music', 'regenerate',
+    'toggle-panel', 'toggle-emoji', 'toggle-music', 'toggle-search', 'regenerate',
     'cancel-quote'
 ])
 

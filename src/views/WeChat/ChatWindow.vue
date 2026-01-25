@@ -2449,9 +2449,12 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <!-- Input Area (Extracted) -->
             <ChatInputBar v-if="!isMultiSelectMode && callStore.status !== 'active'" ref="chatInputBarRef"
                 :currentQuote="currentQuote" :chatData="chatData" :isTyping="chatStore.isTyping"
-                :musicVisible="musicStore.playerVisible" @send="handleSendMessage" @generate="generateAIResponse"
+                :musicVisible="musicStore.playerVisible" :searchEnabled="chatData?.searchEnabled"
+                @send="handleSendMessage" @generate="generateAIResponse"
                 @stop-generate="chatStore.stopGeneration" @toggle-panel="toggleActionPanel"
-                @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic" @regenerate="regenerateLastMessage"
+                @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
+                @toggle-search="() => chatStore.toggleSearch(chatData?.id)"
+                @regenerate="regenerateLastMessage"
                 @cancel-quote="cancelQuote" />
 
             <!-- Multi-select Action Bar (Bottom Overlay) -->

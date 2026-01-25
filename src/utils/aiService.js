@@ -767,7 +767,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
                 { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
                 { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-            ]
+            ],
+            ...(char.searchEnabled && {
+                tools: [{ google_search: {} }]
+            })
         }
     } else {
         // --- OPENAI / PROXY MODE ---
@@ -827,6 +830,16 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
         }
 
+        // [Web Search Helper Hint]
+        if (char.searchEnabled) {
+            const searchHint = "\n\n【System Order: Web Search Enabled】You have access to real-time information via web search tools. When asked about current events, specific facts, or data after your cutoff, please prioritize using your search tools to provide accurate, up-to-date answers.";
+            if (finalMessages.length > 0) {
+                const lastMsg = finalMessages[0];
+                if (typeof lastMsg.content === 'string') lastMsg.content += searchHint;
+                else if (Array.isArray(lastMsg.content)) lastMsg.content.push({ type: 'text', text: searchHint });
+            }
+        }
+
         // **Critical**: Do NOT include safety_settings here to match HTML fix
         // [FIX] Global Safety Cap for Max Tokens
         // User settings might be absurdly high (e.g. 3M), but most models only support 4k/8k/64k.
@@ -850,6 +863,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             ...(config.presence_penalty !== undefined && Number(config.presence_penalty) !== 0 && { presence_penalty: Number(config.presence_penalty) }),
             ...(config.repetition_penalty !== undefined && Number(config.repetition_penalty) !== 1.0 && { repetition_penalty: Number(config.repetition_penalty) }),
             ...(config.min_p !== undefined && Number(config.min_p) > 0 && { min_p: Number(config.min_p) }),
+            ...(char.searchEnabled && {
+                // For OpenAI Compatible Search (Supported by some providers like Perplexity/DeepSeek/SiliconFlow)
+                tools: [
+                    { type: 'web_search' },
+                    { type: 'builtin_tool', name: 'google_search_retrieval' } // Compatibility for some Gemini-OpenAI proxies
+                ]
+            })
         }
 
         // Remove thinking_budget if present
