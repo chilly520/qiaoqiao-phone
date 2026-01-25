@@ -462,6 +462,7 @@ export const useSettingsStore = defineStore('settings', () => {
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig,
-        exportData, importData, resetAppData, resetGlobalData
+        exportData, importData, resetAppData, resetGlobalData,
+        exportFullData, importFullData
     }
 })
