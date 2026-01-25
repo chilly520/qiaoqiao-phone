@@ -309,7 +309,7 @@ export const useSettingsStore = defineStore('settings', () => {
      * FULL SYSTEM EXPORT: Aggregates data from ALL stores (IndexedDB + LocalStorage)
      * This is the "Engine" for migration packages and cloud sync.
      */
-    async function exportFullData(selection = {}) {
+    async function exportFullData(selection = {}, injectedData = {}) {
         const localforage = (await import('localforage')).default
         const data = {
             version: '2.1',
@@ -329,20 +329,38 @@ export const useSettingsStore = defineStore('settings', () => {
         // --- 1. IndexedDB Assets (Async) ---
         try {
             if (s.chats) {
-                data.payload.chats = await localforage.getItem('qiaoqiao_chats_v2');
+                if (injectedData.chats) {
+                    data.payload.chats = injectedData.chats;
+                    console.log('[Export] Using injected chats');
+                } else {
+                    data.payload.chats = await localforage.getItem('qiaoqiao_chats_v2');
+                }
             }
             if (s.moments) {
-                const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
-                data.payload.moments = await momentsDB.getItem('all_moments');
-                data.payload.momentsTop = localStorage.getItem('wechat_moments_top');
-                data.payload.momentsNotifications = localStorage.getItem('wechat_moments_notifications');
+                if (injectedData.moments) {
+                    data.payload.moments = injectedData.moments;
+                    data.payload.momentsTop = injectedData.momentsTop;
+                    data.payload.momentsNotifications = injectedData.momentsNotifications;
+                    console.log('[Export] Using injected moments');
+                } else {
+                    const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
+                    data.payload.moments = await momentsDB.getItem('all_moments');
+                    data.payload.momentsTop = localStorage.getItem('wechat_moments_top');
+                    data.payload.momentsNotifications = localStorage.getItem('wechat_moments_notifications');
+                }
             }
             if (s.worldbook) {
-                data.payload.worldbook = await localforage.getItem('wechat_worldbook_books');
+                if (injectedData.worldbook) {
+                    data.payload.worldbook = injectedData.worldbook;
+                    console.log('[Export] Using injected worldbook');
+                } else {
+                    data.payload.worldbook = await localforage.getItem('wechat_worldbook_books');
+                }
             }
         } catch (e) { console.error('[Export] IndexedDB failed:', e); }
 
         // --- 2. LocalStorage Assets ---
+        // Also check injected for some of these if available
         const storageMap = {
             settings: 'qiaoqiao_settings',
             stickers: 'wechat_global_emojis',
@@ -357,6 +375,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
         for (const [key, lsKey] of Object.entries(storageMap)) {
             if (!s[key]) continue;
+
+            if (injectedData[key]) {
+                data.payload[key] = injectedData[key];
+                continue;
+            }
+
             const val = localStorage.getItem(lsKey);
             if (val) {
                 try { data.payload[key] = JSON.parse(val); }

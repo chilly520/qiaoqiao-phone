@@ -408,7 +408,20 @@ async function handleConfirmExport() {
   chatStore.triggerToast('🚀 正在打包全系统资产...', 'info')
   
   try {
-    const backupData = await settingsStore.exportFullData(selectionState.value)
+    // Collect data directly from stores to ensure we export what is in memory
+    const injectedData = {
+        chats: JSON.parse(JSON.stringify(chatStore.chats || {})),
+        moments: JSON.parse(JSON.stringify(momentsStore.moments || [])),
+        momentsTop: JSON.parse(JSON.stringify(momentsStore.topMoments || [])),
+        momentsNotifications: JSON.parse(JSON.stringify(momentsStore.notifications || [])),
+        worldbook: JSON.parse(JSON.stringify(worldBookStore.books || [])),
+        stickers: JSON.parse(JSON.stringify(stickerStore.stickers || [])),
+        favorites: JSON.parse(JSON.stringify(chatStore.favorites || [])), // Assuming favorites in chatStore or similar
+        // Add other store data as needed if they are in memory
+    }
+    
+    // Pass injectedData to exportFullData
+    const backupData = await settingsStore.exportFullData(selectionState.value, injectedData)
     
     const backupBlob = new window.Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' })
     const downloadUrl = window.URL.createObjectURL(backupBlob)
