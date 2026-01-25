@@ -434,6 +434,14 @@ onMounted(async () => {
   // Ensure data is loaded
   await worldBookStore.loadEntries()
   settingsStore.loadFromStorage()
+  
+  // DEBUG: Check if store methods are exposed
+  console.log('[BackupSettings] Checking settingsStore exports:', Object.keys(settingsStore))
+  if (typeof settingsStore.exportFullData !== 'function') {
+    console.error('[BackupSettings] CRITICAL: exportFullData is MISSING from store!')
+  } else {
+    console.log('[BackupSettings] Verified: exportFullData is available.')
+  }
 
   const savedConfig = window.localStorage.getItem('github_backup_config')
   if (savedConfig) {
