@@ -374,53 +374,89 @@ export const useSettingsStore = defineStore('settings', () => {
         try {
             const localforage = (await import('localforage')).default
             const raw = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
+            console.log('[Import] Raw keys:', Object.keys(raw));
             const payload = raw.payload || raw.data || raw; // Handle various wrap formats
+            console.log('[Import] Payload keys:', Object.keys(payload));
 
             let count = 0;
 
+            // --- Compatibility Helper: Find key case-insensitively or via aliases ---
+            const findKey = (obj, keys) => {
+                const lowerKeys = keys.map(k => k.toLowerCase());
+                for (const k of Object.keys(obj)) {
+                    if (lowerKeys.includes(k.toLowerCase())) return obj[k];
+                }
+                return undefined;
+            };
+
             // --- 1. IndexedDB Restore ---
-            if (payload.chats) {
-                await localforage.setItem('qiaoqiao_chats_v2', payload.chats);
+            const chatsData = payload.chats || payload.qiaoqiao_chats || payload.wechat_chats || findKey(payload, ['chats', 'chat', 'history']);
+            if (chatsData) {
+                console.log('[Import] Restoring chats...');
+                await localforage.setItem('qiaoqiao_chats_v2', chatsData);
                 localStorage.setItem('qiaoqiao_migrated', 'true');
                 count++;
             }
-            if (payload.moments) {
+
+            const momentsData = payload.moments || payload.wechat_moments || findKey(payload, ['moments', 'moment', 'feed']);
+            if (momentsData) {
+                console.log('[Import] Restoring moments...');
                 const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
-                await momentsDB.setItem('all_moments', payload.moments);
-                if (payload.momentsTop) localStorage.setItem('wechat_moments_top', typeof payload.momentsTop === 'string' ? payload.momentsTop : JSON.stringify(payload.momentsTop));
-                if (payload.momentsNotifications) localStorage.setItem('wechat_moments_notifications', typeof payload.momentsNotifications === 'string' ? payload.momentsNotifications : JSON.stringify(payload.momentsNotifications));
+                await momentsDB.setItem('all_moments', momentsData);
+
+                const mTop = payload.momentsTop || payload.topMoments || payload.wechat_moments_top;
+                if (mTop) localStorage.setItem('wechat_moments_top', typeof mTop === 'string' ? mTop : JSON.stringify(mTop));
+
+                const mNotif = payload.momentsNotifications || payload.notifications || payload.wechat_moments_notifications;
+                if (mNotif) localStorage.setItem('wechat_moments_notifications', typeof mNotif === 'string' ? mNotif : JSON.stringify(mNotif));
+
                 count++;
             }
-            if (payload.worldbook) {
-                await localforage.setItem('wechat_worldbook_books', payload.worldbook);
+
+            const wbData = payload.worldbook || payload.wechat_worldbook_books || findKey(payload, ['worldbook', 'books']);
+            if (wbData) {
+                console.log('[Import] Restoring worldbook...');
+                await localforage.setItem('wechat_worldbook_books', wbData);
                 count++;
             }
 
             // --- 2. LocalStorage Restore ---
-            const storageMap = {
-                settings: 'qiaoqiao_settings',
-                stickers: 'wechat_global_emojis',
-                favorites: 'wechat_favorites',
-                logs: 'system_logs',
-                wallet: 'qiaoqiao_wallet',
-                weibo: 'wechat_weibo_data',
-                music: 'musicPlaylist',
-                avatarFrames: 'avatar_frames',
-                calls: 'wechat_calls'
+            // Map: Internal Store Key -> [Possible Backup Keys]
+            const storageMapping = {
+                'qiaoqiao_settings': ['settings', 'config', 'qiaoqiao_settings', 'setup'],
+                'wechat_global_emojis': ['stickers', 'emojis', 'wechat_global_emojis'],
+                'wechat_favorites': ['favorites', 'favs', 'wechat_favorites'],
+                'system_logs': ['logs', 'system_logs', 'log'],
+                'qiaoqiao_wallet': ['wallet', 'money', 'qiaoqiao_wallet'],
+                'wechat_weibo_data': ['weibo', 'wechat_weibo_data', 'blogs'],
+                'musicPlaylist': ['music', 'playlist', 'musicPlaylist'],
+                'avatar_frames': ['avatarFrames', 'frames', 'avatar_frames'],
+                'wechat_calls': ['calls', 'callHistory', 'wechat_calls']
             };
 
-            for (const [key, lsKey] of Object.entries(storageMap)) {
-                if (payload[key]) {
-                    const dataStr = typeof payload[key] === 'string' ? payload[key] : JSON.stringify(payload[key]);
+            for (const [lsKey, aliases] of Object.entries(storageMapping)) {
+                // Direct match fallback
+                let val = payload[aliases[0]] // check primary first
+                if (val === undefined) val = findKey(payload, aliases)
+
+                // If the payload IS the localStorage dump (flat key match)
+                if (val === undefined && payload[lsKey]) val = payload[lsKey]
+
+                if (val !== undefined) {
+                    console.log(`[Import] Restoring ${lsKey} from alias match...`);
+                    const dataStr = typeof val === 'string' ? val : JSON.stringify(val);
                     localStorage.setItem(lsKey, dataStr);
                     count++;
                 }
             }
 
+            console.log(`[Import] Total restored items: ${count}`);
+
             if (count > 0) {
                 setTimeout(() => window.location.reload(), 1000);
                 return true;
             }
+            console.warn('[Import] No matching keys found in payload!');
             return false;
         } catch (e) {
             console.error('[Import] Full import failed:', e);
