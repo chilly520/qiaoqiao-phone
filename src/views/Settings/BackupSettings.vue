@@ -54,7 +54,7 @@
             </div>
             <div>
               <div class="text-sm font-bold text-gray-700">全量自动同步</div>
-              <div class="text-[10px] text-gray-400">设置同步间隔 (分钟)</div>
+              <div class="text-[10px] text-gray-400">上次备份: {{ lastSyncSuccess }}</div>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -177,6 +177,36 @@
         </button>
       </div>
 
+      <!-- 危险操作区 (从数据管理移动至此) -->
+      <div class="glass-panel p-5 rounded-[20px] bg-red-50/10 border-red-100/30">
+        <div class="flex items-center gap-2 mb-4">
+          <div
+            class="w-10 h-10 rounded-full bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center text-white shadow-lg shadow-red-100">
+            <i class="fa-solid fa-skull-crossbones text-lg"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-lg text-gray-800">危险操作区</h2>
+            <p class="text-[9px] text-red-400 font-bold uppercase tracking-widest">Permanent Destruction</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <button @click="initResetApp"
+            class="flex flex-col items-center justify-center gap-2 py-4 rounded-2xl bg-white border border-red-100 text-rose-500 font-bold active:bg-red-50 active:scale-95 transition-all shadow-sm">
+            <i class="fa-solid fa-rotate-left text-lg"></i>
+            <span class="text-[10px]">重置应用</span>
+          </button>
+          <button @click="initPurgeAll"
+            class="flex flex-col items-center justify-center gap-2 py-4 rounded-2xl bg-rose-600 text-white font-bold active:bg-red-700 active:scale-95 transition-all shadow-lg shadow-red-50">
+            <i class="fa-solid fa-dumpster-fire text-lg"></i>
+            <span class="text-[10px]">彻底清空</span>
+          </button>
+        </div>
+        <p class="mt-4 text-[9px] text-gray-400 text-center leading-relaxed">
+          <b>提示：</b>重置应用将保留设置但删除数据；彻底清空将销毁所有记录与配置。执行前请务必完成云端同步。
+        </p>
+      </div>
+
     </div>
 
     <!-- Hidden Inputs -->
@@ -246,6 +276,35 @@
         </div>
       </div>
     </Transition>
+
+    <!-- Safety Confirmation Modal -->
+    <Transition name="fade">
+      <div v-if="showConfirmModal"
+        class="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-8"
+        @click.self="showConfirmModal = false">
+        <div class="bg-white w-full max-w-sm rounded-[48px] p-10 shadow-2xl text-center">
+          <div
+            class="w-24 h-24 bg-rose-50 text-rose-500 rounded-[32px] flex items-center justify-center text-4xl mx-auto mb-8 shadow-xl shadow-rose-100">
+            <i class="fa-solid fa-triangle-exclamation animate-pulse"></i>
+          </div>
+          <h3 class="text-2xl font-black text-gray-900 mb-3">确定执行核心重置？</h3>
+          <p class="text-xs text-gray-400 mb-10 px-4 leading-relaxed font-bold uppercase tracking-tighter">
+            对应数据将<span class="text-rose-500">永久销毁</span>，这是不可撤销的操作。
+          </p>
+
+          <div class="flex flex-col gap-4">
+            <button @click="processAtomicReset"
+              class="w-full py-5 bg-rose-500 text-white rounded-[24px] font-black shadow-xl shadow-rose-200 active:scale-95 transition-all text-sm">
+              是的，确认永久删除
+            </button>
+            <button @click="showConfirmModal = false"
+              class="w-full py-4 text-gray-400 font-black text-xs uppercase tracking-widest hover:text-gray-600">
+              取消操作
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -283,16 +342,24 @@ let syncTimer = null
 const isPushing = ref(false)
 const isPulling = ref(false)
 const uploadProgress = ref(0)
+const lastSyncSuccess = ref(window.localStorage.getItem('github_last_sync_time') || '从未')
 const autoArchiveEnabled = ref(false)
 
 const showExportModal = ref(false)
+const showConfirmModal = ref(false)
+const resetType = ref('') // 'app' or 'global'
 const selectionState = ref({
   chats: true,
   moments: true,
   settings: true,
   decoration: true,
   worldbook: true,
-  stickers: true
+  stickers: true,
+  favorites: true,
+  wallet: true,
+  weibo: true,
+  music: true,
+  logs: true
 })
 
 // --- Computed ---
@@ -301,8 +368,13 @@ const exportOptionList = computed(() => [
   { id: 'moments', name: '朋友圈动态', desc: `${(momentsStore.moments || []).length} 条朋友圈及评论`, icon: 'fa-solid fa-camera-retro', color: 'bg-orange-100 text-orange-600', enabled: selectionState.value.moments },
   { id: 'settings', name: '系统核心配置', desc: 'API设置、音量及天气参数', icon: 'fa-solid fa-screwdriver-wrench', color: 'bg-blue-100 text-blue-600', enabled: selectionState.value.settings },
   { id: 'decoration', name: '美化与自定义', desc: '壁纸、图标映及全局CSS', icon: 'fa-solid fa-wand-magic-sparkles', color: 'bg-purple-100 text-purple-600', enabled: selectionState.value.decoration },
-  { id: 'worldbook', name: '世界书设定', desc: `${worldBookStore.books?.length || 0} 个完整词库项目`, icon: 'fa-solid fa-book-sparkles', color: 'bg-indigo-100 text-indigo-600', enabled: selectionState.value.worldbook },
-  { id: 'stickers', name: '表情包图库', desc: `${stickerStore.stickers?.length || 0} 个收藏表情资源`, icon: 'fa-solid fa-face-laugh-squint', color: 'bg-amber-100 text-amber-600', enabled: selectionState.value.stickers }
+  { id: 'worldbook', name: '世界书设定', desc: `${worldBookStore.books?.length || 0} 个词库词条`, icon: 'fa-solid fa-book-sparkles', color: 'bg-indigo-100 text-indigo-600', enabled: selectionState.value.worldbook },
+  { id: 'stickers', name: '表情包图库', desc: `${stickerStore.stickers?.length || 0} 个收藏表情资源`, icon: 'fa-solid fa-face-laugh-squint', color: 'bg-amber-100 text-amber-600', enabled: selectionState.value.stickers },
+  { id: 'favorites', name: '我的收藏', desc: '收藏的消息、网页与卡片', icon: 'fa-solid fa-star', color: 'bg-yellow-100 text-yellow-600', enabled: selectionState.value.favorites },
+  { id: 'wallet', name: '钱包资产', desc: '虚拟零钱、银行卡记录', icon: 'fa-solid fa-wallet', color: 'bg-red-100 text-red-600', enabled: selectionState.value.wallet },
+  { id: 'weibo', name: '微博数据', desc: '微博账号及浏览记录', icon: 'fa-solid fa-share-nodes', color: 'bg-rose-100 text-rose-600', enabled: selectionState.value.weibo },
+  { id: 'music', name: '音乐记录', desc: '播放历史及同步听歌状态', icon: 'fa-solid fa-music', color: 'bg-cyan-100 text-cyan-600', enabled: selectionState.value.music },
+  { id: 'logs', name: '系统运行日志', desc: '便于迁移后排查问题', icon: 'fa-solid fa-list-ul', color: 'bg-gray-200 text-gray-600', enabled: selectionState.value.logs }
 ])
 
 const chatCount = computed(() => Object.keys(chatStore.chats || {}).length)
@@ -331,39 +403,18 @@ function setExportAll(val) {
 
 function handleOpenExportModal() { showExportModal.value = true }
 
-function handleConfirmExport() {
-  const backupData = {
-    version: '2.0',
-    timestamp: Date.now(),
-    type: 'qiaoqiao_full_migration',
-    data: {}
-  }
-  const s = selectionState.value
-
-  if (s.chats) backupData.data.chats = chatStore.chats
-  if (s.moments) backupData.data.moments = momentsStore.moments
-  if (s.settings) {
-    backupData.data.apiConfigs = settingsStore.apiConfigs
-    backupData.data.currentConfigIndex = settingsStore.currentConfigIndex
-    backupData.data.personalization = { ...settingsStore.personalization }
-    backupData.data.voice = settingsStore.voice
-    backupData.data.weather = settingsStore.weather
-    backupData.data.drawing = settingsStore.drawing
-  }
-  if (s.decoration) {
-    backupData.data.customCss = settingsStore.personalization.customCss
-    backupData.data.theme = settingsStore.personalization.theme
-    backupData.data.wallpaper = settingsStore.personalization.wallpaper
-  }
-  if (s.worldbook) backupData.data.worldbook = worldBookStore.books
-  if (s.stickers) backupData.data.stickers = stickerStore.stickers
-
+async function handleConfirmExport() {
+  isPushing.value = true
+  chatStore.triggerToast('🚀 正在打包全系统资产...', 'info')
+  
   try {
+    const backupData = await settingsStore.exportFullData(selectionState.value)
+    
     const backupBlob = new window.Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' })
     const downloadUrl = window.URL.createObjectURL(backupBlob)
     const anchor = window.document.createElement('a')
     anchor.href = downloadUrl
-    anchor.download = `QiaoQiao_Migration_${new Date().toISOString().split('T')[0]}.json`
+    anchor.download = `QiaoQiao_Full_Migration_${new Date().toISOString().split('T')[0]}.json`
     window.document.body.appendChild(anchor)
     anchor.click()
     window.document.body.removeChild(anchor)
@@ -373,6 +424,8 @@ function handleConfirmExport() {
     chatStore.triggerToast('✅ 迁移数据包生成完成', 'success')
   } catch (err) {
     chatStore.triggerToast('导出失败: ' + err.message, 'error')
+  } finally {
+    isPushing.value = false
   }
 }
 
@@ -393,6 +446,9 @@ onMounted(async () => {
       console.warn('Failed to parse saved github config', e)
     }
   }
+  const savedInterval = window.localStorage.getItem('auto_sync_interval')
+  if (savedInterval) syncInterval.value = parseInt(savedInterval) || 30
+
   if (window.localStorage.getItem('auto_sync_enabled') === 'true') {
     autoSync.value = true
     runAutoSync()
@@ -411,6 +467,14 @@ watch(autoSync, (isEnabled) => {
   isEnabled ? runAutoSync() : stopAutoSync()
 })
 
+watch(syncInterval, (newVal) => {
+  window.localStorage.setItem('auto_sync_interval', newVal.toString())
+  if (autoSync.value) {
+    stopAutoSync()
+    runAutoSync()
+  }
+})
+
 watch(autoArchiveEnabled, (isEnabled) => {
   window.localStorage.setItem('auto_archive_enabled', isEnabled.toString())
 })
@@ -423,14 +487,27 @@ async function handlePushToCloud() {
   isPushing.value = true
   uploadProgress.value = 0
   try {
-    uploadProgress.value = 35
+    uploadProgress.value = 20
+    chatStore.triggerToast('正在聚合系统数据...', 'info')
+    
+    // FETCH FULL DATA INSTEAD OF JUST CHATS
+    const backupData = await settingsStore.exportFullData() 
+    
+    uploadProgress.value = 50
     const backupService = new GitHubBackup(githubConfig.value)
-    await backupService.uploadFull(chatStore.chats)
+    
+    // Option to use stream for very large data if needed, but for now Full is fine
+    await backupService.uploadFull(backupData)
+    
     uploadProgress.value = 100
-    chatStore.triggerToast('✅ 数据已加密并同步至云端', 'success')
+    const timeStr = new Date().toLocaleString()
+    lastSyncSuccess.value = timeStr
+    window.localStorage.setItem('github_last_sync_time', timeStr)
+    
+    chatStore.triggerToast('✅ 全量同步成功', 'success')
     setTimeout(() => { uploadProgress.value = 0 }, 1500)
   } catch (err) {
-    chatStore.triggerToast('同步失败: ' + err.message, 'error')
+    chatStore.triggerToast('云端备份失败: ' + err.message, 'error')
   } finally { isPushing.value = false }
 }
 
@@ -440,29 +517,20 @@ async function handlePullFromCloud() {
 
   isPulling.value = true
   try {
+    chatStore.triggerToast('正在自云端拉取全量包...', 'info')
     const backupService = new GitHubBackup(githubConfig.value)
     const remoteData = await backupService.downloadFull()
+    
     if (remoteData) {
-      // Compatibility: check for nested data property
-      const payload = remoteData.data || remoteData
-      if (payload && typeof payload === 'object') {
-        if (payload.chats) {
-          chatStore.chats = payload.chats
-          await chatStore.saveChats()
-        }
-        // Also try to restore other parts if present in cloud backup
-        if (payload.moments) momentsStore.moments = payload.moments
-        if (payload.apiConfigs) settingsStore.apiConfigs = payload.apiConfigs
-        if (payload.personalization) settingsStore.personalization = payload.personalization
-
-        chatStore.triggerToast('✅ 云端数据恢复成功', 'success')
-        setTimeout(() => window.location.reload(), 1000)
+      const success = await settingsStore.importFullData(remoteData)
+      if (success) {
+        chatStore.triggerToast('✅ 数据恢复成功，正在重启', 'success')
       } else {
-        throw new Error('云端文件格式非法')
+        throw new Error('导入引擎处理失败')
       }
     }
   } catch (err) {
-    chatStore.triggerToast('加载失败: ' + err.message, 'error')
+    chatStore.triggerToast('云端恢复失败: ' + err.message, 'error')
   } finally { isPulling.value = false }
 }
 
@@ -490,51 +558,51 @@ function onFileSelected(event) {
     }
     try {
       selectedImportData.value = JSON.parse(result)
-      chatStore.triggerToast('文件加载成功，点击“立刻还原”', 'success')
+      chatStore.triggerToast('数据包加载成功', 'success')
     } catch (err) {
-      chatStore.triggerToast('JSON解析失败: ' + err.message, 'error')
+      chatStore.triggerToast('解析失败: ' + err.message, 'error')
       selectedImportFile.value = null
     }
   }
   reader.readAsText(file)
 }
 
-function handleFileImport() {
+async function handleFileImport() {
   if (!selectedImportData.value) return
-
   try {
-    const raw = selectedImportData.value
-    // Smart Detection: backup might be wrapped in .data or just raw
-    let payload = raw.data || raw
-
-    // Support for truly legacy array format (pre-v2)
-    if (Array.isArray(payload)) {
-      payload = { chats: payload.reduce((acc, c) => { if (c.id) acc[c.id] = c; return acc; }, {}) }
-    }
-
-    let restoredCount = 0
-    if (payload.chats && typeof payload.chats === 'object') {
-      chatStore.chats = payload.chats
-      chatStore.saveChats()
-      restoredCount++
-    }
-
-    if (payload.moments) { momentsStore.moments = payload.moments; restoredCount++; }
-    if (payload.apiConfigs) { settingsStore.apiConfigs = payload.apiConfigs; restoredCount++; }
-    if (payload.personalization) { settingsStore.personalization = payload.personalization; restoredCount++; }
-    if (payload.worldbook) { worldBookStore.books = payload.worldbook; restoredCount++; }
-    if (payload.stickers) { stickerStore.stickers = payload.stickers; restoredCount++; }
-
-    if (restoredCount > 0) {
-      if (settingsStore.saveToStorage) settingsStore.saveToStorage()
-      chatStore.triggerToast('🚀 系统还原完成，正在热重启...', 'success')
-      selectedImportFile.value = null
-      setTimeout(() => { window.location.reload() }, 1500)
+    const success = await settingsStore.importFullData(selectedImportData.value)
+    if (success) {
+      chatStore.triggerToast('🚀 系统还原完成，热重启中...', 'success')
     } else {
-      chatStore.triggerToast('未在文件中找到有效数据', 'error')
+      chatStore.triggerToast('还原失败：未找到有效数据负载', 'error')
     }
   } catch (err) {
-    chatStore.triggerToast('还原失败: ' + err.message, 'error')
+    chatStore.triggerToast('致命错误: ' + err.message, 'error')
+  }
+}
+
+// --- Atomic Reset Logic ---
+const initResetApp = () => {
+  resetType.value = 'app'
+  showConfirmModal.value = true
+}
+
+const initPurgeAll = () => {
+  resetType.value = 'global'
+  showConfirmModal.value = true
+}
+
+const processAtomicReset = () => {
+  showConfirmModal.value = false
+  if (resetType.value === 'app') {
+    settingsStore.resetAppData({
+      settings: false,
+      wechat: true,
+      wallet: true
+    })
+    chatStore.triggerToast('应用数据已重置完成', 'success')
+  } else {
+    settingsStore.resetGlobalData()
   }
 }
 
@@ -590,5 +658,15 @@ onUnmounted(() => stopAutoSync())
 
 .custom-scrollbar::-webkit-scrollbar {
   width: 0;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

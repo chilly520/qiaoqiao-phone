@@ -69,21 +69,12 @@ const settingsCards = [
     },
     {
         title: '数据备份',
-        subtitle: 'GitHub 云端, 本地导出',
+        subtitle: 'GitHub 云端, 本地导出, 重置',
         icon: 'fa-solid fa-cloud-arrow-up',
         gradient: 'from-indigo-100 to-indigo-200',
         iconColor: 'text-indigo-600',
         subtitleColor: 'text-gray-500',
         page: 'backup'
-    },
-    {
-        title: '数据管理',
-        subtitle: '导出, 导入, 重置数据',
-        icon: 'fa-solid fa-database',
-        gradient: 'from-purple-100 to-purple-200',
-        iconColor: 'text-purple-600',
-        subtitleColor: 'text-gray-500',
-        page: 'data'
     }
 ]
 </script>

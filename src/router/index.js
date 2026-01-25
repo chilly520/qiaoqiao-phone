@@ -51,11 +51,6 @@ const router = createRouter({
             component: () => import('../views/Settings/StorageSettings.vue')
         },
         {
-            path: '/settings/data',
-            name: 'settings-data',
-            component: () => import('../views/Settings/DataSettings.vue')
-        },
-        {
             path: '/settings/drawing',
             name: 'settings-drawing',
             component: () => import('../views/Settings/DrawingSettings.vue')

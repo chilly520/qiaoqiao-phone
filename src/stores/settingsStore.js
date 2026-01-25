@@ -300,94 +300,132 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     // Data Management (LEGACY - Use BackupSettings.vue or localforage directly)
-    function getChatListForExport() {
-        console.warn('getChatListForExport is legacy. Use chatStore directly.')
-        return []
-    }
+    /**
+     * FULL SYSTEM EXPORT: Aggregates data from ALL stores (IndexedDB + LocalStorage)
+     * This is the "Engine" for migration packages and cloud sync.
+     */
+    async function exportFullData(selection = {}) {
+        const localforage = (await import('localforage')).default
+        const data = {
+            version: '2.1',
+            timestamp: Date.now(),
+            type: 'qiaoqiao_full_migration',
+            payload: {}
+        };
 
-    function exportData(options = {}) {
-        const exportContent = { timestamp: Date.now(), version: '2.0', type: 'qiaoqiao_backup' }
-        if (options.settings) {
-            const settings = localStorage.getItem('qiaoqiao_settings')
-            if (settings) exportContent.settings = JSON.parse(settings)
-        }
-        if (options.wechat) {
-            const chatData = localStorage.getItem('qiaoqiao_chats')
-            if (chatData) {
-                let chats = JSON.parse(chatData)
-                if (options.selectedChats?.length > 0) chats = chats.filter(c => options.selectedChats.includes(c.id))
-                exportContent.chats = chats
-            }
-        }
-        if (options.wallet) {
-            const wallet = localStorage.getItem('qiaoqiao_wallet')
-            if (wallet) exportContent.wallet = JSON.parse(wallet)
-        }
-        return JSON.stringify(exportContent, null, 2)
-    }
+        const s = {
+            chats: true, moments: true, settings: true,
+            worldbook: true, stickers: true, favorites: true,
+            wallet: true, weibo: true, music: true,
+            avatarFrames: true, calls: true, logs: true,
+            ...selection
+        };
 
-    async function importData(jsonContent) {
+        // --- 1. IndexedDB Assets (Async) ---
         try {
-            const data = JSON.parse(jsonContent)
-            let importCount = 0
+            if (s.chats) {
+                data.payload.chats = await localforage.getItem('qiaoqiao_chats_v2');
+            }
+            if (s.moments) {
+                const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
+                data.payload.moments = await momentsDB.getItem('all_moments');
+                data.payload.momentsTop = localStorage.getItem('wechat_moments_top');
+                data.payload.momentsNotifications = localStorage.getItem('wechat_moments_notifications');
+            }
+            if (s.worldbook) {
+                data.payload.worldbook = await localforage.getItem('wechat_worldbook_books');
+            }
+        } catch (e) { console.error('[Export] IndexedDB failed:', e); }
 
-            // 1. Settings Import
-            if (data.settings) {
-                const currentSettings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
-                const mergedSettings = { ...currentSettings, ...data.settings }
-                localStorage.setItem('qiaoqiao_settings', JSON.stringify(mergedSettings))
-                loadFromStorage()
-                importCount++
+        // --- 2. LocalStorage Assets ---
+        const storageMap = {
+            settings: 'qiaoqiao_settings',
+            stickers: 'wechat_global_emojis',
+            favorites: 'wechat_favorites',
+            logs: 'system_logs',
+            wallet: 'qiaoqiao_wallet',
+            weibo: 'wechat_weibo_data',
+            music: 'musicPlaylist',
+            avatarFrames: 'avatar_frames',
+            calls: 'wechat_calls'
+        };
+
+        for (const [key, lsKey] of Object.entries(storageMap)) {
+            if (!s[key]) continue;
+            const val = localStorage.getItem(lsKey);
+            if (val) {
+                try { data.payload[key] = JSON.parse(val); }
+                catch (e) { data.payload[key] = val; }
+            }
+        }
+
+        return data;
+    }
+
+    /**
+     * FULL SYSTEM IMPORT: Distributes data back to all stores and triggers persistence.
+     */
+    async function importFullData(jsonContent) {
+        try {
+            const localforage = (await import('localforage')).default
+            const raw = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
+            const payload = raw.payload || raw.data || raw; // Handle various wrap formats
+
+            let count = 0;
+
+            // --- 1. IndexedDB Restore ---
+            if (payload.chats) {
+                await localforage.setItem('qiaoqiao_chats_v2', payload.chats);
+                localStorage.setItem('qiaoqiao_migrated', 'true');
+                count++;
+            }
+            if (payload.moments) {
+                const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
+                await momentsDB.setItem('all_moments', payload.moments);
+                if (payload.momentsTop) localStorage.setItem('wechat_moments_top', typeof payload.momentsTop === 'string' ? payload.momentsTop : JSON.stringify(payload.momentsTop));
+                if (payload.momentsNotifications) localStorage.setItem('wechat_moments_notifications', typeof payload.momentsNotifications === 'string' ? payload.momentsNotifications : JSON.stringify(payload.momentsNotifications));
+                count++;
+            }
+            if (payload.worldbook) {
+                await localforage.setItem('wechat_worldbook_books', payload.worldbook);
+                count++;
             }
 
-            // 2. Chat Data Import (Modern IndexedDB Support)
-            if (data.chats) {
-                try {
-                    const localforage = (await import('localforage')).default
-                    localforage.config({ name: 'qiaoqiao-phone', storeName: 'chats' });
+            // --- 2. LocalStorage Restore ---
+            const storageMap = {
+                settings: 'qiaoqiao_settings',
+                stickers: 'wechat_global_emojis',
+                favorites: 'wechat_favorites',
+                logs: 'system_logs',
+                wallet: 'qiaoqiao_wallet',
+                weibo: 'wechat_weibo_data',
+                music: 'musicPlaylist',
+                avatarFrames: 'avatar_frames',
+                calls: 'wechat_calls'
+            };
 
-                    // Attempt to load current data from IndexedDB
-                    let currentChats = await localforage.getItem('qiaoqiao_chats_v2') || {};
-
-                    // Merge
-                    const importedChats = Array.isArray(data.chats) ? data.chats : Object.values(data.chats);
-                    importedChats.forEach(chat => {
-                        if (chat.id) {
-                            currentChats[chat.id] = { ...(currentChats[chat.id] || {}), ...chat };
-                        }
-                    });
-
-                    // Save back to IndexedDB
-                    await localforage.setItem('qiaoqiao_chats_v2', currentChats);
-
-                    // Also update legacy localStorage for backward compat (optional but keeps sync)
-                    localStorage.setItem('qiaoqiao_chats', JSON.stringify(currentChats));
-
-                    importCount++
-                    console.log('[SettingsStore] Successfully imported/merged chat data into IndexedDB');
-                } catch (e) {
-                    console.error('[SettingsStore] Failed to import chat data to IndexedDB:', e);
+            for (const [key, lsKey] of Object.entries(storageMap)) {
+                if (payload[key]) {
+                    const dataStr = typeof payload[key] === 'string' ? payload[key] : JSON.stringify(payload[key]);
+                    localStorage.setItem(lsKey, dataStr);
+                    count++;
                 }
             }
 
-            if (data.wallet) {
-                localStorage.setItem('qiaoqiao_wallet', JSON.stringify(data.wallet))
-                importCount++
+            if (count > 0) {
+                setTimeout(() => window.location.reload(), 1000);
+                return true;
             }
-
-            if (importCount > 0) {
-                // If in browser context, reload to let stores re-init
-                if (typeof window !== 'undefined') {
-                    window.location.reload();
-                }
-            }
-
-            return importCount > 0
+            return false;
         } catch (e) {
-            console.error('[SettingsStore] Import failed:', e);
-            return false
+            console.error('[Import] Full import failed:', e);
+            return false;
         }
     }
+
+    // LEGACY METHODS (Wrapped for compat)
+    function exportData(options) { return JSON.stringify(exportFullData(options)); }
+    async function importData(json) { return await importFullData(json); }
 
     async function resetAppData(options = {}) {
         if (options.wechat) {

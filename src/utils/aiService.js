@@ -13,6 +13,90 @@ import { RequestQueue } from './ai/requestQueue'
 
 const apiQueue = new RequestQueue(3, 60000); // 3 requests per 60 seconds (1 minute)
 
+/* --- Avatar Description Cache Logic --- */
+const AVATAR_DESC_CACHE_KEY = 'qiaoqiao_avatar_descriptions';
+const getAvatarDescCache = () => {
+    try {
+        const saved = localStorage.getItem(AVATAR_DESC_CACHE_KEY);
+        return saved ? JSON.parse(saved) : {};
+    } catch (e) { return {}; }
+};
+const saveAvatarDescCache = (cache) => {
+    localStorage.setItem(AVATAR_DESC_CACHE_KEY, JSON.stringify(cache));
+};
+
+/**
+ * Internal helper to get a text description for an avatar to save context/logs.
+ */
+async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, model) {
+    if (!url || !b64) return null;
+    const cache = getAvatarDescCache();
+    if (cache[url]) return cache[url];
+
+    console.log(`[AI Vision] Fetching new description for avatar: ${url.substring(0, 30)}...`);
+
+    try {
+        let body = {};
+        let headers = { 'Content-Type': 'application/json' };
+        let targetUrl = endpoint;
+
+        if (provider === 'gemini') {
+            const parts = b64.split(';base64,');
+            const mime = parts[0].replace('data:', '');
+            const data = parts[1].replace(/[^A-Za-z0-9+/=]/g, '');
+
+            body = {
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { text: `请为名字叫"${name}"的人物的头像提供一段简短的视觉描述（15字以内）。重点描述发色、发型、衣服和神态。请以 "[DESC: 描述内容]" 的格式返回。` },
+                        { inline_data: { mime_type: mime, data: data } }
+                    ]
+                }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: 100 }
+            };
+            const sep = targetUrl.includes('?') ? '&' : '?';
+            targetUrl = `${targetUrl}${sep}key=${apiKey}`;
+            if (!targetUrl.includes(':generateContent')) targetUrl = targetUrl.replace(/\/v1beta\/.*/, '') + `/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        } else {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+            body = {
+                model: model,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: `请为"${name}"的头像提供简短中文描述（15字内）。格式：[DESC: 内容]` },
+                        { type: 'image_url', image_url: { url: b64 } }
+                    ]
+                }],
+                max_tokens: 100
+            };
+        }
+
+        const resp = await fetch(targetUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+        const resData = await resp.json();
+
+        let desc = '';
+        if (provider === 'gemini') {
+            desc = resData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } else {
+            desc = resData.choices?.[0]?.message?.content || '';
+        }
+
+        const match = desc.match(/\[DESC:\s*(.*?)\]/);
+        const finalDesc = match ? match[1].trim() : desc.trim().substring(0, 50);
+
+        if (finalDesc && finalDesc.length > 2) {
+            cache[url] = finalDesc;
+            saveAvatarDescCache(cache);
+            return finalDesc;
+        }
+    } catch (e) {
+        console.error('[AI Vision] Avatar description fail:', e);
+    }
+    return null;
+}
+
 export async function generateReply(messages, char, abortSignal) {
     // Wrapper to use Queue
     // Pass abortSignal as 3rd arg to internal function
@@ -331,15 +415,33 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
     }
 
-    // Process messages for Vision API (Multimodal)
-    // Convert [图片:URL] or [表情包:名称] to { type: "image_url", image_url: { url: "..." } }
+    // --- Helper: Resolve Image URL to Base64 (Vision Proxy) ---
+    const resolveToBase64 = async (url) => {
+        if (!url || typeof url !== 'string') return null
+        if (url.startsWith('data:image')) return url
+        try {
+            const resp = await fetch(url)
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+            const blob = await resp.blob()
+            return new Promise((resolve) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result)
+                reader.onerror = () => resolve(null)
+                reader.readAsDataURL(blob)
+            })
+        } catch (e) {
+            console.warn('[AI Vision] Failed to resolve image to base64:', url, e)
+            return null // Fallback will use original URL
+        }
+    }
+
     // Process messages for Vision API (Multimodal)
     // Convert [图片:URL] or [表情包:名称] to { type: "image_url", image_url: { url: "..." } }
     // OPTIMIZATION: Only send the LAST 5 images to the AI to prevent massive payloads.
 
     // 1. First, count total images to determine the cutoff index
     let totalImagesCount = 0
-    const visionLimit = 5
+    const visionLimit = 2 // Updated from 5 to 2 to minimize context length
     const imageRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
 
     messages.forEach(msg => {
@@ -368,8 +470,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     const visionStartIndex = Math.max(0, totalImagesCount - visionLimit)
     let currentImageIndex = 0
 
-    const formattedMessages = (messages || []).map(msg => {
-        if (!msg) return { role: 'user', content: '' }
+    const formattedMessages = []
+    for (const msg of (messages || [])) {
+        if (!msg) {
+            formattedMessages.push({ role: 'user', content: '' })
+            continue
+        }
 
         // Only process User/AI messages for AI Vision perception
         if (msg.role === 'user' || msg.role === 'assistant') {
@@ -388,18 +494,23 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     if (msg.type === 'moment_card') roleText = '（用户分享了一条朋友圈动态）'
                     else if (msg.type === 'favorite_card') roleText = '（用户分享了一个收藏网页/内容）'
 
-                    return {
+                    // Resolve to B64 if remote
+                    const imgUrl = (msg.image.startsWith('http')) ? (await resolveToBase64(msg.image) || msg.image) : msg.image;
+
+                    formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
                             { type: 'text', text: `${roleText}${refText}\n${content}` },
-                            { type: 'image_url', image_url: { url: msg.image } }
+                            { type: 'image_url', image_url: { url: imgUrl } }
                         ]
-                    }
+                    })
+                    continue
                 } else {
-                    return {
+                    formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: `${content} [图片: (由于上下文过长，旧图片视觉信息已忽略)]`
-                    }
+                    })
+                    continue
                 }
             }
 
@@ -412,19 +523,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     const imageId = msg.id || 'curr';
                     const refText = ` [Image Reference ID: ${imageId}]`;
 
-                    return {
+                    formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
                             { type: 'text', text: (msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）') + refText },
                             { type: 'image_url', image_url: { url: content } }
                         ]
-                    }
+                    })
+                    continue
                 } else {
                     // Placeholder for older images
-                    return {
+                    formattedMessages.push({
                         role: msg.role,
                         content: `[图片: (历史图片已省略以节省流量)]`
-                    }
+                    })
+                    continue
                 }
             }
 
@@ -439,140 +552,114 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 currentImageIndex++
 
                 if (isVisionEnabled) {
-                    return {
+                    const imgUrl = (matchedSticker.url.startsWith('http')) ? (await resolveToBase64(matchedSticker.url) || matchedSticker.url) : matchedSticker.url;
+                    formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
                             { type: 'text', text: msg.role === 'user' ? `（用户发送了表情包: ${matchedSticker.name}）` : `[表情包:${matchedSticker.name}]` },
-                            { type: 'image_url', image_url: { url: matchedSticker.url } }
+                            { type: 'image_url', image_url: { url: imgUrl } }
                         ]
-                    }
+                    })
+                    continue
                 } else {
-                    return {
+                    formattedMessages.push({
                         role: msg.role,
                         content: `[表情包: ${matchedSticker.name}]` // Just keep text
-                    }
+                    })
+                    continue
                 }
             }
 
             // 3. Handle potential [图片:URL] and [表情包:名称] within text
-            // Regex to find either format (Updated to support data:image for local uploads)
             const combinedRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
             let lastIndex = 0
             let match
-
-            // Reset regex
             combinedRegex.lastIndex = 0
 
             while ((match = combinedRegex.exec(content)) !== null) {
-                // Add text before the tag
                 if (match.index > lastIndex) {
-                    contentParts.push({
-                        type: 'text',
-                        text: content.substring(lastIndex, match.index)
-                    })
+                    contentParts.push({ type: 'text', text: content.substring(lastIndex, match.index) })
                 }
 
-                // Check if this part is a vision-capable item
                 const isVisionEnabled = currentImageIndex >= visionStartIndex
                 currentImageIndex++
 
                 if (match[1]) {
-                    // Match group 1: [图片:URL]
                     if (isVisionEnabled) {
-                        // Text Injection for Context Reference (Set Avatar support)
-                        // Use Reference ID for ALL images to save massive tokens
-                        // AI can use [SET_AVATAR: <ID>] to reference this image
                         const imageId = msg.id || 'curr';
                         contentParts.push({ type: 'text', text: ` [Image Reference ID: ${imageId}]` });
-
-                        // Optional: Still provide clean URLs for non-base64 (external links)
                         if (!match[1].startsWith('data:')) {
                             contentParts.push({ type: 'text', text: ` [Image URL: ${match[1]}]` });
                         }
-
-                        // Vision API always gets the image (controlled by visionLimit=5)
-                        contentParts.push({ type: 'image_url', image_url: { url: match[1] } })
+                        const finalImgUrl = (match[1].startsWith('http')) ? (await resolveToBase64(match[1]) || match[1]) : match[1];
+                        contentParts.push({ type: 'image_url', image_url: { url: finalImgUrl } })
                     } else {
                         contentParts.push({ type: 'text', text: `[图片: ${match[1].startsWith('data:') ? '(历史图片)' : match[1]}]` })
                     }
                 } else if (match[2]) {
-                    // Match group 2: [表情包:名称]
                     const stickerName = match[2].trim()
                     const sticker = allStickers.find(s => s.name === stickerName)
 
                     if (sticker) {
                         if (isVisionEnabled) {
+                            const finalStickerUrl = (sticker.url.startsWith('http')) ? (await resolveToBase64(sticker.url) || sticker.url) : sticker.url;
                             contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
-                            contentParts.push({ type: 'image_url', image_url: { url: sticker.url } })
+                            contentParts.push({ type: 'image_url', image_url: { url: finalStickerUrl } })
                         } else {
                             contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                         }
                     } else {
-                        // Sticker not found, treat as text
-                        // Decrement index because we didn't actually process a real image/sticker that the AI "sees" as visual
                         currentImageIndex--
                         contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                     }
                 }
-
                 lastIndex = combinedRegex.lastIndex
             }
 
-            // Add remaining text
             if (lastIndex < content.length) {
-                contentParts.push({
-                    type: 'text',
-                    text: content.substring(lastIndex)
-                })
+                contentParts.push({ type: 'text', text: content.substring(lastIndex) })
             }
 
-            // If we found any parts, return the multimodal version
             if (contentParts.length > 0) {
-                return { role: msg.role === 'assistant' ? 'assistant' : 'user', content: contentParts }
+                formattedMessages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: contentParts })
+            } else {
+                formattedMessages.push(msg)
             }
-        }
-
-        // Default: return message as-is
-        return msg
-    })
-
-    // --- Visual Context Injection (Avatars) ---
-    // Helper function to resolve image to base64 for AI vision
-    const resolveToBase64 = async (url) => {
-        if (!url || typeof url !== 'string') return null
-        if (url.startsWith('data:image')) return url
-        try {
-            const resp = await fetch(url)
-            const blob = await resp.blob()
-            return new Promise((resolve) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result)
-                reader.readAsDataURL(blob)
-            })
-        } catch (e) {
-            console.warn('[AI Visual Context] Failed to resolve avatar to base64:', url, e)
-            return null
+        } else {
+            formattedMessages.push(msg)
         }
     }
 
+    // --- Visual Context Injection (Avatars) ---
     const visualContextMessages = []
     const userAvatar = realUserProfile?.avatar
     const charAvatar = char.avatar
     const isImage = (s) => typeof s === 'string' && (s.trim().length > 0)
 
     if ((isImage(userAvatar) || isImage(charAvatar)) && !options.skipVisualContext) {
-        const contentParts = [{ type: 'text', text: '【视觉情报：重要参考】以下是我（AI角色）和用户当前的头像图片。这些图片仅供你建立对人物外貌的认知，请优先处理当前的对话或任务，无需专门针对头像图片进行回复或分析。' }]
-
         const [userB64, charB64] = await Promise.all([
             resolveToBase64(userAvatar),
             resolveToBase64(charAvatar)
         ])
 
-        if (userB64) {
+        // Use cached descriptions if available to save log space and token count
+        const [userDesc, charDesc] = await Promise.all([
+            getOrFetchAvatarDesc(userAvatar, userB64, userProfile.name, provider, apiKey, apiUrl, model),
+            getOrFetchAvatarDesc(charAvatar, charB64, char.name, provider, apiKey, apiUrl, model)
+        ])
+
+        const contentParts = [{ type: 'text', text: '【视觉情报：人物外貌】以下是当前对话参与者的外貌特征参考：' }]
+
+        if (userDesc) {
+            contentParts.push({ type: 'text', text: `用户 (${userProfile.name}) 的头像描述：${userDesc}` })
+        } else if (userB64) {
             contentParts.push({ type: 'text', text: `这是用户 (${userProfile.name}) 的当前头像：` })
             contentParts.push({ type: 'image_url', image_url: { url: userB64 } })
         }
-        if (charB64) {
+
+        if (charDesc) {
+            contentParts.push({ type: 'text', text: `我 (${char.name}) 的当前头像描述：${charDesc}` })
+        } else if (charB64) {
             contentParts.push({ type: 'text', text: `这是我 (${char.name}) 的当前头像：` })
             contentParts.push({ type: 'image_url', image_url: { url: charB64 } })
         }
