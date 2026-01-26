@@ -1153,8 +1153,11 @@ const speakOne = (text, onEnd, interrupt = false) => {
     if (zhVoice) utterance.voice = zhVoice;
 
     utterance.lang = 'zh-CN';
-    utterance.rate = 1.0;
+    // Use character specific voice speed or default to 1.0
+    const charSpeed = chatStore.currentChat?.voiceSpeed
+    utterance.rate = charSpeed ? parseFloat(charSpeed) : 1.0;
     utterance.pitch = 1.0;
+
 
     utterance.onend = () => {
         isSpeaking.value = false;
@@ -1979,6 +1982,11 @@ const playMessageTTS = (text) => {
 
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(cleanText)
+    
+    // Antigravity Fix: Apply character speed
+    const charSpeed = chatStore.currentChat?.voiceSpeed
+    utterance.rate = charSpeed ? parseFloat(charSpeed) : 1.0;
+    
     utterance.lang = 'zh-CN'
     window.speechSynthesis.speak(utterance)
 }
@@ -3862,5 +3870,6 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
     transform: translate(-50%, 0);
 }
 </style>
-   
+  
+ 
  
