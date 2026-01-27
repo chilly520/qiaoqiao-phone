@@ -219,6 +219,16 @@ const handleBannerClick = () => {
     showBanner.value = false
 }
 
+// --- Location System ---
+const handleLocationClick = () => {
+    const current = store.weather.userLocation?.name || ''
+    const newLoc = window.prompt('请输入当前位置 (格式: 省 > 市 > 区/街道):', current)
+    if (newLoc !== null) {
+        store.setUserLocation({ name: newLoc })
+        chatStore.triggerToast('📍 位置已更新', 'success')
+    }
+}
+
 // ... existing Global Toast System ...
 const showToast = ref(false)
 const toastData = ref({ message: '', type: 'info' })
@@ -253,6 +263,15 @@ watch(() => chatStore.toastEvent, (evt) => {
             :style="statusBarStyle">
             <span class="font-bold text-[13px] tracking-wide">{{ currentTime }}</span>
             <div class="flex items-center gap-1.5">
+                <!-- User Location Setting -->
+                <div class="flex items-center gap-1 cursor-pointer hover:opacity-70 px-1 rounded transition-opacity"
+                    @click="handleLocationClick" title="设置当前位置">
+                    <i class="fa-solid fa-location-dot"
+                        :class="statusBarStyle.color === '#ffffff' ? 'text-[10px]' : 'text-[10px] opacity-70'"></i>
+                    <span v-if="store.weather.userLocation?.name"
+                        class="text-[10px] max-w-[60px] truncate opacity-80">{{
+                            store.weather.userLocation.name.split('>').pop().trim() }}</span>
+                </div>
                 <i class="fa-solid fa-signal"
                     :class="statusBarStyle.color === '#ffffff' ? 'text-[11px]' : 'text-[11px] opacity-80'"></i>
                 <i class="fa-solid fa-wifi"

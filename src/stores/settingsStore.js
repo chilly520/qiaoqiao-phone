@@ -77,6 +77,10 @@ export const useSettingsStore = defineStore('settings', () => {
     const weather = ref({
         virtualLocation: '',
         realLocation: '',
+        userLocation: {
+            name: '北京市 > 朝阳区 > 某某街道',
+            coords: { lat: 39.9042, lng: 116.4074 }
+        },
         // Live data synced from HomeView
         temp: '--°',
         desc: '获取中',
@@ -262,6 +266,10 @@ export const useSettingsStore = defineStore('settings', () => {
     function resetVoiceSettings() {
         voice.value.engine = 'browser'
         voice.value.minimax = { groupId: '', apiKey: '', modelId: 'speech-01-turbo', voiceId: '' }
+        saveToStorage()
+    }
+    function setUserLocation(location) {
+        weather.value.userLocation = { ...weather.value.userLocation, ...location }
         saveToStorage()
     }
     function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
@@ -533,7 +541,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
-        setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig,
+        setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig, setUserLocation,
         exportData, importData, resetAppData, resetGlobalData,
         exportFullData, importFullData
     }

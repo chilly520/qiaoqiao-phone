@@ -402,9 +402,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
 
-        const locationContext = char.locationSync
-            ? weatherService.getLocationContextText()
-            : ''
+        // Environmental Context (Location & Battery)
+        const userLoc = settingsStore.weather?.userLocation || {}
+        const userLocText = `\n【用户位置】${userLoc.name || '未知'}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
 
         // Battery Context
         const batteryInfo = batteryMonitor.getBatteryInfo()
@@ -412,8 +412,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             ? `\n【手机电量】${batteryInfo.level}%${batteryInfo.charging ? ' (正在充电)' : ''}${batteryInfo.isLow ? ' (电量告急)' : ''}`
             : ''
 
-        // Append battery info to location context (Environmental Context)
-        const finalEnvContext = locationContext + batteryContext
+        // Append all to environmental context
+        const finalEnvContext = locationContext + userLocText + batteryContext
 
         systemMsg = {
             role: 'system',

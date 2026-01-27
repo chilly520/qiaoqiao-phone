@@ -9,20 +9,23 @@
                 <button class="voice-modal-header-btn" @click="$emit('close')">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
-                <div class="header-title">Mindscape</div>
+                <div class="header-tab-group">
+                    <div class="header-tab" :class="{ active: activeTab === 'main' }" @click="activeTab = 'main'">
+                        Mindscape</div>
+                    <div class="header-tab" :class="{ active: activeTab === 'stats' }" @click="activeTab = 'stats'">
+                        State</div>
+                </div>
                 <div class="flex gap-2">
                     <button class="voice-modal-header-btn" @click="toggleHistory" title="历史记录">
                         <i class="fa-solid fa-clock-rotate-left"></i>
-                    </button>
-                    <button class="voice-modal-header-btn" @click="deleteCurrent" title="删除当前">
-                        <i class="fa-solid fa-trash-can" style="font-size: 14px;"></i>
                     </button>
                 </div>
             </div>
 
             <!-- Body -->
             <div class="voice-modal-body">
-                <div v-if="!showHistory" id="voice-character-view" class="animate-fade-in">
+                <!-- Tab 1: Main Mindscape -->
+                <div v-if="!showHistory && activeTab === 'main'" id="voice-character-view" class="animate-fade-in">
                     <div class="voice-header-group">
                         <div class="voice-char-avatar-box">
                             <img :src="chatData.avatar" alt="Avatar">
@@ -50,9 +53,75 @@
                             </div>
                         </div>
 
-                        <div class="voice-info-block mt-6">
+                        <div class="voice-info-block mt-4">
                             <div class="voice-label">ACTION 姿态</div>
                             <div class="voice-text-content">{{ currentVoiceContent.action || '—' }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: State & Positioning -->
+                <div v-else-if="!showHistory && activeTab === 'stats'" class="animate-fade-in flex flex-col gap-6">
+                    <!-- Top Status -->
+                    <div class="stats-entry-group">
+                        <div class="stats-row">
+                            <div class="stats-item">
+                                <div class="stats-label">DATE 日期</div>
+                                <div class="stats-value">{{ currentVoiceContent.stats?.date || '—' }}</div>
+                            </div>
+                            <div class="stats-item text-right">
+                                <div class="stats-label">TIME 时间</div>
+                                <div class="stats-value font-mono">{{ currentVoiceContent.stats?.time || '—' }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bars -->
+                    <div class="stats-bars-group">
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>EMOTION 情绪</span>
+                                <span>{{ currentVoiceContent.stats?.emotion || 0 }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill emotion"
+                                    :style="{ width: (currentVoiceContent.stats?.emotion || 0) + '%' }"></div>
+                            </div>
+                        </div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>SPIRIT 精神</span>
+                                <span>{{ currentVoiceContent.stats?.spirit || 0 }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill spirit"
+                                    :style="{ width: (currentVoiceContent.stats?.spirit || 0) + '%' }"></div>
+                            </div>
+                        </div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>MOOD 心情</span>
+                                <span>{{ currentVoiceContent.stats?.mood || 0 }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill mood"
+                                    :style="{ width: (currentVoiceContent.stats?.mood || 0) + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Location -->
+                    <div class="location-card">
+                        <div class="stats-label mb-2">LOCATION 当前位置</div>
+                        <div class="location-text">{{ currentVoiceContent.stats?.location || '未知位置' }}</div>
+
+                        <!-- Mini Map Visualization -->
+                        <div class="mini-map-container mt-4">
+                            <div class="map-bg"></div>
+                            <div class="map-point user" title="用户位置"></div>
+                            <div class="map-point char" title="角色位置"></div>
+                            <div class="map-distance-line"></div>
+                            <div class="map-distance-label">{{ currentVoiceContent.stats?.distance || '距离未知' }}</div>
                         </div>
                     </div>
                 </div>
@@ -75,15 +144,21 @@
             <div class="voice-modal-footer">
                 <span class="footer-count">NO.{{ (currentIndex + 1).toString().padStart(2, '0') }} · {{
                     formatTime(currentVoice?.timestamp) }}</span>
-                <div class="effect-badge" @click="toggleEffect">
-                    {{ currentEffect.name }}
+                <div class="flex gap-2">
+                    <button class="voice-modal-header-btn opacity-50 hover:opacity-100" @click="deleteCurrent"
+                        title="删除当前">
+                        <i class="fa-solid fa-trash-can" style="font-size: 14px;"></i>
+                    </button>
+                    <div class="effect-badge" @click="toggleEffect">
+                        {{ currentEffect.name }}
+                    </div>
                 </div>
             </div>
 
             <!-- Delete Confirm Overlay -->
             <div v-if="showDeleteConfirm"
                 class="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
-                <div class="text-[#e6dcc0] mb-6">确定要删除这条心声记录吗？</div>
+                <div class="text-[#e6dcc0] mb-6 font-serif">确定要删除这条记录吗？</div>
                 <div class="flex gap-4">
                     <button @click="showDeleteConfirm = false"
                         class="px-6 py-2 text-gray-400 border border-gray-600 rounded-full text-sm">取消</button>
@@ -112,6 +187,7 @@ const voiceCanvas = ref(null)
 const showHistory = ref(false)
 const showDeleteConfirm = ref(false)
 const currentIndex = ref(0)
+const activeTab = ref('main')
 
 // --- Effect Types from Old File ---
 const effectTypes = [
@@ -137,92 +213,51 @@ const parseVoiceData = (text) => {
         result = text
     } else {
         const raw = text.toString().trim()
-        
+
         // 1. Extract potential JSON block
-        let jsonStr = raw.replace(/```json/gi, '').replace(/```/g, '').trim()
+        let jsonStr = raw.replace(/\[INNER[\s-_]*VOICE\]/i, '')
+            .replace(/\[\/INNER[\s-_]*VOICE\]/i, '')
+            .replace(/```json/gi, '').replace(/```/g, '').trim()
+
         const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
             jsonStr = jsonMatch[0]
         }
 
-        // 2. Attempt Parse (Strategy A: Direct)
+        // 2. Attempt Parse
         try {
             result = JSON.parse(jsonStr)
         } catch (e) {
-            // 3. Attempt Parse (Strategy B: Soft Fixes)
             try {
-                // Fix trailing commas
                 let fixed = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
-                // Fix Chinese quotes
                 fixed = fixed.replace(/[“”]/g, '"')
                 result = JSON.parse(fixed)
             } catch (e2) {
-                 // 4. Attempt Parse (Strategy C: Aggressive Unescape - Last Resort)
-                 // This handles double-escaped strings like "{\"key\":...}" which sometimes happens
-                 try {
-                     let aggressive = jsonStr.replace(/\\/g, '')
-                     if (aggressive.startsWith('"') && aggressive.endsWith('"')) {
-                         aggressive = aggressive.slice(1, -1)
-                     }
-                     result = JSON.parse(aggressive)
-                 } catch (e3) { }
+                // Aggressive extraction...
             }
         }
 
-        // 5. Fallback to Regex Extraction if JSON fail
-        if (!result) {
-            const extract = (keys) => {
-                for (let k of keys) {
-                    const reg = new RegExp(`(?:\\\\")?${k}(?:\\\\")?\\s*[:：]\\s*(?:\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:\\\\")?(?:,|}|$)`, 'i')
-                    const m = raw.match(reg)
-                    if (m && m[1]) return m[1].replace(/\\"/g, '"').replace(/###/g, '').trim()
-                }
-                return null
+        // Fallback or JSON processing
+        if (result) {
+            const getString = (val) => {
+                if (!val) return null
+                if (typeof val === 'string') return val.replace(/###/g, '').trim()
+                if (typeof val === 'object') return val.content || val.thought || JSON.stringify(val).replace(/###/g, '').trim()
+                return String(val)
             }
-            const outfit = extract(['着装', 'outfit', 'clothes', 'clothing', 'OUTFIT'])
-            const scene = extract(['环境', 'scene', 'environment', 'SCENE'])
-            const mind = extract(['心心', '心声', 'thoughts', 'mind', 'inner_voice', 'thought', 'THOUGHTS', 'emotion', 'EMOTION'])
-            const action = extract(['行为', 'action', 'behavior', 'ACTION', 'plan', 'PLAN'])
-            if (outfit || scene || mind || action) {
-                result = { clothes: outfit, scene: scene, mind: mind, action: action }
-            }
-        }
-    }
 
-    if (result) {
-        const getString = (val) => {
-            if (!val) return null
-            if (typeof val === 'string') return val.replace(/###/g, '').trim()
-            let str = ''
-            if (typeof val === 'object') {
-                str = val.想法 || val.心情 || val.content || val.thought || val.mind || JSON.stringify(val)
-            } else {
-                str = String(val)
-            }
-            return str.replace(/###/g, '').trim()
-        }
-        
-        let target = result
-        if (result.content && typeof result.content === 'object') target = result.content
-        else if (result.inner_voice && typeof result.inner_voice === 'object') target = result.inner_voice
+            let target = result
+            // Check for nested structure: result.INNER_VOICE or result.inner_voice
+            if (result.INNER_VOICE) target = result.INNER_VOICE
+            else if (result.inner_voice) target = result.inner_voice
 
-        // Handle nested "心声" object vs flat structure
-        if (target && typeof target["心声"] === 'object' && target["心声"] !== null) {
-            const inner = target["心声"]
+            // Map the final fields
             return {
-                clothes: getString(target["着装"] || target.outfit || target.clothes || inner.着装),
-                scene: getString(target["环境"] || target.scene || inner.环境),
-                mind: getString(inner.想法 || inner.心情 || inner.content || inner.thought),
-                action: getString(inner.行为 || target["行为"] || target.action || target.plan)
-            }
-        }
-        
-        if (target) {
-            return {
-                clothes: getString(target["着装"] || target.clothes || target.outfit || target.clothes),
-                scene: getString(target["环境"] || target.scene || target.environment),
-                mind: getString(target["心声"] || target.mind || target.thought || target.thoughts || target.emotion || target["情绪"] || target["想法"]),
-                action: getString(target["行为"] || target.action || target.behavior || target.plan)
+                clothes: getString(target.着装 || target.outfit || target.clothes),
+                scene: getString(target.环境 || target.scene || target.environment),
+                mind: getString(target.心声 || target.mind || target.thought || target.thoughts || target.emotion),
+                action: getString(target.行为 || target.action || target.behavior || target.plan),
+                stats: target.stats || target[" stats"] || null
             }
         }
     }
@@ -233,7 +268,7 @@ const parseVoiceData = (text) => {
 const historyList = computed(() => {
     if (!props.chatId) return []
     const msgs = chatStore.chats[props.chatId]?.msgs || []
-    
+
     // Robust Regex matching the one used in Store (Relaxed spaces)
     const voiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i;
 
@@ -502,6 +537,192 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     align-items: center;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     background: rgba(10, 10, 12, 0.8);
+}
+
+.header-tab-group {
+    display: flex;
+    gap: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 4px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-tab {
+    font-size: 11px;
+    color: #8c7e63;
+    letter-spacing: 2px;
+    padding: 4px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: 0.3s;
+    text-transform: uppercase;
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.header-tab.active {
+    background: #d4af37;
+    color: #000;
+    text-shadow: none;
+    font-weight: bold;
+}
+
+.stats-entry-group {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 16px;
+    border-radius: 12px;
+    border-left: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.stats-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.stats-item {
+    flex: 1;
+}
+
+.stats-label {
+    font-size: 10px;
+    color: #8c7e63;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.stats-value {
+    color: #dcdcdc;
+    font-size: 14px;
+    font-weight: 300;
+}
+
+.stats-bars-group {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 0 4px;
+}
+
+.bar-label-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #8c7e63;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.bar-track {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s ease-out;
+}
+
+.bar-fill.emotion {
+    background: linear-gradient(to right, #d4af37, #ffcf33);
+}
+
+.bar-fill.spirit {
+    background: linear-gradient(to right, #8c7e63, #d4af37);
+}
+
+.bar-fill.mood {
+    background: linear-gradient(to right, #615a4b, #8c7e63);
+}
+
+.location-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.location-text {
+    font-size: 13px;
+    color: #dcdcdc;
+    font-weight: 300;
+    line-height: 1.5;
+}
+
+.mini-map-container {
+    height: 120px;
+    background: #0d0d0f;
+    border-radius: 12px;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+}
+
+.map-bg {
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(rgba(212, 175, 55, 0.15) 1px, transparent 1px),
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 20px 20px, 40px 40px, 40px 40px;
+    opacity: 0.5;
+}
+
+.map-point {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    position: absolute;
+    box-shadow: 0 0 10px currentColor;
+    z-index: 2;
+}
+
+.map-point.user {
+    color: #d4af37;
+    background: #d4af37;
+    top: 30%;
+    left: 40%;
+}
+
+.map-point.char {
+    color: #fff;
+    background: #fff;
+    top: 60%;
+    left: 70%;
+}
+
+.map-distance-line {
+    position: absolute;
+    top: 30%;
+    left: 40%;
+    width: 38%;
+    height: 38%;
+    border-top: 1px dashed rgba(212, 175, 55, 0.4);
+    transform: rotate(45deg);
+    transform-origin: 0 0;
+    z-index: 1;
+}
+
+.map-distance-label {
+    position: absolute;
+    bottom: 8px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 10px;
+    color: #d4af37;
+    font-family: font-mono;
+    border: 1px solid rgba(212, 175, 55, 0.2);
 }
 
 .header-title {
