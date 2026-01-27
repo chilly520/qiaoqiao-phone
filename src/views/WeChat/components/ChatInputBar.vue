@@ -37,6 +37,10 @@
             <!-- Web Search -->
             <i class="fa-solid fa-globe cursor-pointer hover:text-blue-600 transition-colors"
                 :class="{ 'text-blue-500': searchEnabled }" @click="$emit('toggle-search')" title="联网搜索"></i>
+
+            <!-- Current Location (Manual) -->
+            <i class="fa-solid fa-location-dot cursor-pointer hover:text-green-600 transition-colors"
+                @click="settingsStore.showLocationInput = true" title="当前位置"></i>
         </div>
 
         <!-- Row 2: Input Box + Actions -->
@@ -85,6 +89,9 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
+import { useSettingsStore } from '../../../stores/settingsStore'
+
+const settingsStore = useSettingsStore()
 
 const props = defineProps({
     currentQuote: Object,
@@ -175,15 +182,27 @@ defineExpose({
 }
 
 @keyframes pulse-blue {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.1); opacity: 0.8; }
-    100% { transform: scale(1); opacity: 1; }
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 /* Hide scrollbar for functionality toolbar */
 .no-scrollbar::-webkit-scrollbar {
     display: none;
 }
+
 .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;

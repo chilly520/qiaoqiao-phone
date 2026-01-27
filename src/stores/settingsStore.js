@@ -64,6 +64,8 @@ export const useSettingsStore = defineStore('settings', () => {
         presets: []
     })
 
+    const showLocationInput = ref(false)
+
     // --- 3. Other States ---
     const voice = ref({
         engine: 'browser',
@@ -537,7 +539,7 @@ export const useSettingsStore = defineStore('settings', () => {
         apiConfigs, currentConfigIndex, currentConfig, apiConfig,
         personalization, voice, weather, compressQuality, drawing,
         updateConfig, createConfig, deleteConfig,
-        saveToStorage, loadFromStorage,
+        saveToStorage, loadFromStorage, showLocationInput,
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,

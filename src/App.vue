@@ -220,14 +220,27 @@ const handleBannerClick = () => {
 }
 
 // --- Location System ---
+const locationInputValue = ref('')
+
 const handleLocationClick = () => {
-    const current = store.weather.userLocation?.name || ''
-    const newLoc = window.prompt('请输入当前位置 (格式: 省 > 市 > 区/街道):', current)
-    if (newLoc !== null) {
-        store.setUserLocation({ name: newLoc })
+    locationInputValue.value = store.weather.userLocation?.name || ''
+    store.showLocationInput = true
+}
+
+const confirmLocation = () => {
+    if (locationInputValue.value.trim()) {
+        store.setUserLocation({ name: locationInputValue.value })
         chatStore.triggerToast('📍 位置已更新', 'success')
     }
+    store.showLocationInput = false
 }
+
+// Watch global state to sync internal value
+watch(() => store.showLocationInput, (val) => {
+    if (val) {
+        locationInputValue.value = store.weather.userLocation?.name || ''
+    }
+})
 
 // ... existing Global Toast System ...
 const showToast = ref(false)
@@ -342,6 +355,46 @@ watch(() => chatStore.toastEvent, (evt) => {
         <!-- Global Call Components -->
         <CallBanner />
         <CallVisualizer />
+
+        <!-- Custom Location Input Modal -->
+        <Transition name="fade">
+            <div v-if="store.showLocationInput"
+                class="fixed inset-0 z-[10000] flex items-center justify-center p-6 backdrop-blur-md bg-black/20"
+                @click.self="store.showLocationInput = false">
+                <div
+                    class="w-full max-w-[320px] bg-white/90 backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] border border-white/40 p-6 animate-scale-in">
+                    <div class="flex flex-col gap-4">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-600">
+                                <i class="fa-solid fa-location-dot text-xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-[17px] font-bold text-gray-900 tracking-tight">设置位置</h3>
+                                <p class="text-[12px] text-gray-500 font-medium">输入当前地理信息</p>
+                            </div>
+                        </div>
+
+                        <div class="relative">
+                            <input v-model="locationInputValue" type="text" placeholder="省 > 市 > 区/街道"
+                                class="w-full bg-black/5 border-none rounded-2xl px-4 py-3 text-[15px] focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+                                @keyup.enter="confirmLocation" autofocus />
+                        </div>
+
+                        <div class="flex gap-3 mt-2">
+                            <button @click="store.showLocationInput = false"
+                                class="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-600 text-[15px] font-bold active:scale-95 transition-all">
+                                取消
+                            </button>
+                            <button @click="confirmLocation"
+                                class="flex-1 py-3 rounded-2xl bg-blue-500 text-white text-[15px] font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
+                                确定
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Transition>
     </div>
 </template>
 
@@ -360,6 +413,32 @@ watch(() => chatStore.toastEvent, (evt) => {
 
 .animate-slide-down {
     animation: slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 
 /* Toast Animation - Pure Vertical Fade */
