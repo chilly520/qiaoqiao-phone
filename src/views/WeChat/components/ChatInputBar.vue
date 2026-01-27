@@ -24,10 +24,7 @@
             <i class="fa-regular fa-face-smile cursor-pointer hover:text-gray-800 transition-colors"
                 @click.stop="$emit('toggle-emoji')" title="表情"></i>
 
-            <!-- Call (Phone) -->
-            <div class="relative group">
-                <i class="fa-solid fa-phone-volume cursor-pointer hover:text-gray-800 transition-colors" title="通话"></i>
-            </div>
+
 
             <!-- Regenerate -->
             <i class="fa-solid fa-rotate-right cursor-pointer hover:text-blue-500 transition-colors"
