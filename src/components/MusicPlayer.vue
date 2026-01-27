@@ -901,6 +901,8 @@ const handleImageError = (e) => {
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    padding: 12px;
+    padding-bottom: 20px;
     z-index: 30000;
     backdrop-filter: blur(12px) contrast(0.9);
     animation: modalFadeIn 0.3s ease-out;
@@ -918,14 +920,13 @@ const handleImageError = (e) => {
 
 .modal {
     background: linear-gradient(180deg, #1e1e1e, #121212);
-    border-radius: 28px 28px 0 0;
-    padding: 20px 18px 30px;
+    border-radius: 24px;
+    padding: 20px 18px 24px;
     width: 100%;
     max-width: 320px;
-    max-height: 85vh;
-    border: 1px solid rgba(204, 170, 102, 0.15);
-    border-bottom: none;
-    box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.8);
+    max-height: 80vh;
+    border: 1px solid rgba(204, 170, 102, 0.2);
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6), 0 10px 30px rgba(0, 0, 0, 0.4);
     transform: translateY(0);
     animation: modalSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
