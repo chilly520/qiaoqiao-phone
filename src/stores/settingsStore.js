@@ -397,7 +397,15 @@ export const useSettingsStore = defineStore('settings', () => {
     async function importFullData(jsonContent) {
         try {
             const localforage = (await import('localforage')).default
-            const raw = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
+            let raw = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
+
+            // Critical Fix: Strip Vue Proxies to prevent DataCloneError in IndexedDB
+            if (typeof raw === 'object' && raw !== null) {
+                try { raw = JSON.parse(JSON.stringify(raw)) } catch (e) {
+                    console.error('Failed to strip proxies:', e)
+                }
+            }
+
             console.log('[Import] Raw keys:', Object.keys(raw));
             const payload = raw.payload || raw.data || raw; // Handle various wrap formats
             console.log('[Import] Payload keys:', Object.keys(payload));

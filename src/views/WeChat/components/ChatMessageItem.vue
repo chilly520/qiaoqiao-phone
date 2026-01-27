@@ -716,7 +716,7 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[CARD\]([\s\S]*?)\[\/CARD\]/gi, '');
 
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
-    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata)"[\s\S]*?\}/gi, '');
+    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata)"[\s\S]*?\}/gi, '');
 
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {
@@ -727,7 +727,7 @@ function getCleanContent(contentRaw, isCard = false) {
         // Includes { "type": "html" }, { "html": ... }, { "心声": ... } etc.
         // Relaxed matching for "html" key without "type"
         clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
-        clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform)"[\s\S]*?\}/gi, '');
+        clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform|stats|spirit)"[\s\S]*?\}/gi, '');
 
         // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
         // Improved: Handle nested braces by matching from @keyframes/to/from/selector until the matching closing brace is found

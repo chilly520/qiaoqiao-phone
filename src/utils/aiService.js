@@ -179,6 +179,16 @@ export function generateContextPreview(chatId, char) {
         ? weatherService.getLocationContextText()
         : ''
 
+    const userLoc = settingsStore.weather?.userLocation || {}
+    const userLocText = `\n【用户位置】${userLoc.name || '未知'}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
+
+    const batteryInfo = batteryMonitor.getBatteryInfo()
+    const batteryContext = batteryInfo
+        ? `\n【手机电量】${batteryInfo.level}%${batteryInfo.charging ? ' (正在充电)' : ''}${batteryInfo.isLow ? ' (电量告急)' : ''}`
+        : ''
+
+    const finalEnvContext = locationContext + userLocText + batteryContext
+
     // 2. Persona Context
     const personaContext = `
 【角色设定】
@@ -273,7 +283,7 @@ export function generateContextPreview(chatId, char) {
 
     // Update system prompt with fresh virtual time for accurate preview
     const charWithTime = { ...char, virtualTime: currentVirtualTime }
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, worldInfoText, memoryText, patSettings, locationContext)
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, worldInfoText, memoryText, patSettings, finalEnvContext)
 
     return {
         system: systemPrompt,
@@ -403,6 +413,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
 
         // Environmental Context (Location & Battery)
+        const locationContext = char.locationSync
+            ? weatherService.getLocationContextText()
+            : ''
+
         const userLoc = settingsStore.weather?.userLocation || {}
         const userLocText = `\n【用户位置】${userLoc.name || '未知'}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
 

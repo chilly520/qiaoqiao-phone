@@ -78,8 +78,7 @@ function openApp(appId) {
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
   } else if (appId === 'reset') {
-    // Calling store method to reset personalization but keeping presets
-    store.resetAllPersonalization()
+    // Just reload the app state/page, do NOT wipe personalization
     location.reload()
   }
 }
