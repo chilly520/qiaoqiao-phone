@@ -48,7 +48,7 @@ onMounted(() => {
         const granted = await notificationService.requestPermission()
         if (granted) console.log('[App] Notification permission granted')
     }
-    
+
     // Try immediately
     requestNotify()
 
@@ -169,12 +169,12 @@ const handleBannerPanMove = (e) => {
 const handleBannerPanEnd = () => {
     if (!isBannerDragging.value) return
     isBannerDragging.value = false
-    
+
     // Threshold to dismiss
     if (Math.abs(bannerDragOffset.value) > 100) {
         showBanner.value = false
         // Reset immediately so next pop is clean
-        setTimeout(() => { bannerDragOffset.value = 0 }, 300) 
+        setTimeout(() => { bannerDragOffset.value = 0 }, 300)
     } else {
         // Bounce back
         bannerDragOffset.value = 0
@@ -239,7 +239,8 @@ watch(() => chatStore.toastEvent, (evt) => {
 </script>
 
 <template>
-    <div class="app-root w-full h-[100dvh] relative overflow-hidden flex flex-col text-gray-800" :style="globalStyles"
+    <div class="app-root w-full min-h-[100dvh] h-[100dvh] relative overflow-hidden flex flex-col text-gray-800"
+        :style="[globalStyles, { paddingBottom: 'var(--safe-area-inset-bottom)' }]"
         :data-theme="store.personalization.theme">
         <!-- Dynamic Styles Block -->
         <component is="style" v-if="customCss">{{ customCss }}</component>
@@ -262,25 +263,16 @@ watch(() => chatStore.toastEvent, (evt) => {
             </div>
         </div>
 
-        <div v-if="showBanner && bannerData"
-            class="fixed top-2 left-0 right-0 z-[5000] px-3 animate-slide-down">
+        <div v-if="showBanner && bannerData" class="fixed top-2 left-0 right-0 z-[5000] px-3 animate-slide-down">
             <!-- Banner Container -->
-            <div
-                class="w-full max-w-[500px] mx-auto bg-white/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[24px] p-3.5 flex items-center gap-3.5 border border-white/40 ring-1 ring-black/5 active:scale-[0.98] cursor-pointer touch-none select-none"
-                :style="{ 
-                    transform: `translateX(${bannerDragOffset}px)`, 
+            <div class="w-full max-w-[500px] mx-auto bg-white/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[24px] p-3.5 flex items-center gap-3.5 border border-white/40 ring-1 ring-black/5 active:scale-[0.98] cursor-pointer touch-none select-none"
+                :style="{
+                    transform: `translateX(${bannerDragOffset}px)`,
                     transition: isBannerDragging ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s',
                     opacity: 1 - Math.abs(bannerDragOffset) / 300
-                }"
-                @click="handleBannerClickWrapper"
-                @touchstart="handleBannerPanStart"
-                @touchmove="handleBannerPanMove"
-                @touchend="handleBannerPanEnd"
-                @mousedown="handleBannerPanStart"
-                @mousemove="handleBannerPanMove"
-                @mouseup="handleBannerPanEnd"
-                @mouseleave="handleBannerPanEnd"
-            >
+                }" @click="handleBannerClickWrapper" @touchstart="handleBannerPanStart"
+                @touchmove="handleBannerPanMove" @touchend="handleBannerPanEnd" @mousedown="handleBannerPanStart"
+                @mousemove="handleBannerPanMove" @mouseup="handleBannerPanEnd" @mouseleave="handleBannerPanEnd">
                 <!-- Avatar (Rounded Square - iOS Style) -->
                 <div class="w-[44px] h-[44px] rounded-[12px] overflow-hidden shrink-0 shadow-sm bg-black/5 relative">
                     <img v-if="bannerData.avatar" :src="bannerData.avatar" class="w-full h-full object-cover" />
@@ -292,7 +284,8 @@ watch(() => chatStore.toastEvent, (evt) => {
                 <!-- Content -->
                 <div class="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
                     <div class="flex items-center justify-between w-full">
-                        <span class="text-[15px] font-bold text-[#1c1c1e] truncate tracking-tight">{{ bannerData.name || bannerData.title }}</span>
+                        <span class="text-[15px] font-bold text-[#1c1c1e] truncate tracking-tight">{{ bannerData.name ||
+                            bannerData.title }}</span>
                         <span
                             class="text-[11px] text-[#1c1c1e]/40 font-semibold whitespace-nowrap tracking-tight uppercase">现在</span>
                     </div>

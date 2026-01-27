@@ -16,9 +16,14 @@ app.use(router)
 
 const logger = useLoggerStore()
 
-// --- Global Error Handling ---
 window.onerror = (message, source, lineno, colno, error) => {
-    if (String(message).includes('ResizeObserver')) return true;
+    const msg = String(message)
+    // Filter out benign browser extension errors or ResizeObserver noise
+    if (msg.includes('Receiving end does not exist') ||
+        msg.includes('message port closed') ||
+        msg.includes('ResizeObserver')) {
+        return true // Silence the error
+    }
     logger.error('JS Runtime Error', { message, source, lineno, colno, stack: error?.stack })
     return false
 }
