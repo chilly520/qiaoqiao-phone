@@ -78,6 +78,8 @@ function openApp(appId) {
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
   } else if (appId === 'reset') {
+    // Calling store method to reset personalization but keeping presets
+    store.resetAllPersonalization()
     location.reload()
   }
 }
@@ -141,7 +143,9 @@ function handleScroll() {
   if (!pagesContainer.value) return
   const scrollPos = pagesContainer.value.scrollLeft
   const pageWidth = pagesContainer.value.offsetWidth
-  currentPage.value = Math.round(scrollPos / pageWidth)
+  if (pageWidth > 0) {
+    currentPage.value = Math.round(scrollPos / pageWidth)
+  }
 }
 
 // --- Weather Logic ---
@@ -465,7 +469,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Dock (Fixed Footer) -->
-    <div class="dock-container" style="padding-bottom: 20px;">
+    <div class="dock-container">
       <div class="flex flex-col items-center gap-1 cursor-pointer group" @click="openApp('settings')">
         <div id="icon-settings" :style="getIconStyle('settings')"
           class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">

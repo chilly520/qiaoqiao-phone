@@ -25,17 +25,7 @@ export const useSettingsStore = defineStore('settings', () => {
         icons: {
             app: 'wechat',
             url: '',
-            map: {
-                wechat: '/icons/wechat.png',
-                search: '/icons/search.png',
-                weibo: '/icons/weibo.png',
-                couple: '/icons/couple.png',
-                games: '/icons/games.png',
-                settings: '/icons/settings.png',
-                worldbook: '/icons/worldbook.png',
-                reset: '/icons/reset.png',
-                syslog: '/icons/syslog.png'
-            }
+            map: {}
         },
         widgets: {
             card1: '/widgets/bg_card1.jpg',
