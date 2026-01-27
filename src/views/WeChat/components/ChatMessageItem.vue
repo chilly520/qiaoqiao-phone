@@ -332,6 +332,7 @@ import { useStickerStore } from '../../../stores/stickerStore'
 import { useChatStore } from '../../../stores/chatStore'
 import { useWalletStore } from '../../../stores/walletStore'
 import { useSettingsStore } from '../../../stores/settingsStore'
+import { parseWeChatEmojis } from '../../../utils/emojiParser'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
 import FamilyCardClaimModal from '../FamilyCardClaimModal.vue'
@@ -679,7 +680,7 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata)"[\s\S]*?\}/gi, '');
 
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
-    if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:')) {
+    if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {
         // 1. Remove Markdown code blocks
         clean = clean.replace(/```[\s\S]*?```/gi, '');
 
@@ -690,15 +691,19 @@ function getCleanContent(contentRaw, isCard = false) {
         clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform)"[\s\S]*?\}/gi, '');
 
         // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
-        // This targets the specific "to { transform: rotate(360deg) }" leak
-        clean = clean.replace(/(?:^|\s)(?:to|from|[\.\#]?[a-zA-Z0-9\-\_]+)\s*\{[\s\S]*?\}/gi, '');
+        // This targets the specific "#bin-toggle:checked ~ .b { ... }" and "to { transform: rotate(360deg) }" leaks
+        // Aggressive: Matches from potential selectors until the closing brace
+        clean = clean.replace(/(?:^|\s)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');
 
         // 3.1 Remove CSS Keyframe Percentages (e.g. "50% { ... }")
         clean = clean.replace(/(?:^|\s)\d+%\s*\{[\s\S]*?\}/gi, '');
 
         // 4. Remove standalone CSS properties if they leak outside blocks
+        clean = clean.replace(/transform:\s*scale\([^\)]+\)/gi, '');
         clean = clean.replace(/transform:\s*rotate\([^\)]+\)/gi, '');
         clean = clean.replace(/animation:\s*[^;\}]+;?/gi, '');
+        clean = clean.replace(/cursor:\s*[^;\}]+;?/gi, '');
+        clean = clean.replace(/transition:\s*[^;\}]+;?/gi, '');
 
         // 5. Remove HTML Blocks (First < to last >)
         // We find all top-level <.../?> or <...>...</...> blocks
@@ -757,61 +762,51 @@ function getPureHtml(content) {
             .replace(/\\\\/g, '\\');
     }
 
-    // 1. Pre-process: if it's wrapped in JSON quotes like "<html>...", strip them
-    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-        trimmed = trimmed.substring(1, trimmed.length - 1).trim();
-    }
-
-    // 2. Decode common HTML entities that might have been escaped by the store
-    const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-
-    // 3. Check if it's already raw HTML (possibly with escapes)
-    const findStart = (s) => {
-        const lower = s.toLowerCase();
-        const tags = ['<div', '<html', '<style', '<table', '<section', '<p', '<body', '<header'];
-        for (const tag of tags) {
-            const pos = lower.indexOf(tag);
-            if (pos !== -1) return pos;
-        }
-        return -1;
-    }
-
-    const startPos = findStart(decoded);
-    if (startPos !== -1) {
-        const endPos = decoded.lastIndexOf('>');
-        if (endPos > startPos) {
-            const extracted = decoded.substring(startPos, endPos + 1).trim();
-            // Important: always unescape escapes like \" or \n from the raw content
-            return unescapeContent(extracted);
-        }
-    }
-
-    // 4. Robust content extraction if structured regex fails
-    // Match EVERYTHING between "html": " and the final " before the closing }
-    // Use a more relaxed regex that doesn't care about greedy matching as much
-    const htmlBlockRegex = /["']html["']\s*[:：]\s*["']([\s\S]*?)["']\s*\}?\s*$/;
-    const match = str.match(htmlBlockRegex);
-    if (match && match[1]) {
-        return unescapeContent(match[1]);
-    }
-
-    // 5. If it's just raw HTML without JSON keys
-    if (str.includes('<div') || str.includes('<style')) {
-        let raw = str.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();
-        // If it contains JSON markers but also starts with a tag, it's messy
-        if (raw.includes('{') && raw.includes('"') && raw.includes('<')) {
-            const tagMatch = raw.match(/<[\s\S]*>/);
-            if (tagMatch) return unescapeContent(tagMatch[0]);
-        }
-        return unescapeContent(raw);
-    }
-
-    // 6. Last resort: if it's JSON but we missed the html key somehow
+    // 1. Unified Favorites Store Logic: Aggressive JSON cleanup
+    // Favor standard-like JSON first (stripping whitespace/newlines)
     try {
-        const parsed = JSON.parse(str.replace(/```[\s\S]*?```/g, '').trim());
-        if (parsed.html) return unescapeContent(parsed.html);
-        if (parsed.content && parsed.content.includes('<')) return unescapeContent(parsed.content);
-    } catch (e) { }
+        let jsonStr = trimmed;
+        if (trimmed.startsWith('[CARD]')) jsonStr = trimmed.replace('[CARD]', '').trim();
+        
+        // Remove markdown backticks if present
+        jsonStr = jsonStr.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();
+
+        // Cleaning newlines that typically break JSON.parse in technical responses
+        const cleanedJson = jsonStr.replace(/[\r\n]/g, '');
+        const parsed = JSON.parse(cleanedJson);
+        if (parsed.type === 'html' || parsed.html) {
+            return unescapeContent(parsed.html || parsed.content);
+        }
+    } catch (e) {
+        // Standard JSON failed, move to regex recovery
+    }
+
+    // 2. Favorites Regex Logic: Greedy match until the last quote before closing }
+    // This handles unescaped quotes inside the HTML content
+    if (trimmed.includes('"type":') || trimmed.includes('"html":')) {
+        const htmlMatch = str.match(/"html"\s*:\s*(["'])([\s\S]*)\1\s*\}/);
+        if (htmlMatch) {
+            const rawStr = htmlMatch[2];
+            try {
+                // Try to parse just the string part to handle escapes
+                return JSON.parse(`"${rawStr}"`);
+            } catch (e) {
+                // Final fallback: return the raw greedy match (tolerant browsers)
+                return unescapeContent(rawStr);
+            }
+        }
+    }
+
+    // 3. Raw Fallback: If it's pure HTML or contains markers
+    const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    const startIdx = decoded.toLowerCase().indexOf('<div') !== -1 ? decoded.toLowerCase().indexOf('<div') : decoded.toLowerCase().indexOf('<style');
+    
+    if (startIdx !== -1) {
+        const endIdx = decoded.lastIndexOf('>');
+        if (endIdx > startIdx) {
+            return unescapeContent(decoded.substring(startIdx, endIdx + 1));
+        }
+    }
 
     return ''
 }
@@ -1089,6 +1084,10 @@ function formatMessageContent(msg) {
         // This allows the user to see the hallucinated name and edit it.
         return match;
     });
+
+    // --- WECHAT EMOJI FALLBACK ---
+    // Handle [微笑] [心] etc.
+    html = parseWeChatEmojis(html);
 
     return html;
 }

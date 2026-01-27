@@ -476,11 +476,23 @@ export const useSettingsStore = defineStore('settings', () => {
 
             console.log(`[Import] Total restored items: ${count}`);
 
+            // If count is 0, let's try a last-resort "Flat Import" 
+            // This handles files that might just be a direct dump of a single store.
+            if (count === 0) {
+                console.log('[Import] Trying flat import fallback...');
+                // Check if the payload ITSELF looks like a chats object or a settings object
+                if (payload.chats || (typeof payload === 'object' && Object.values(payload).some(v => v.msgs))) {
+                    console.log('[Import] Detected flat chats structure, applying...');
+                    await localforage.setItem('qiaoqiao_chats_v2', payload.chats || payload);
+                    count++;
+                }
+            }
+
             if (count > 0) {
                 setTimeout(() => window.location.reload(), 1000);
                 return true;
             }
-            console.warn('[Import] No matching keys found in payload!');
+            console.warn('[Import] No matching keys found in payload!', payload);
             return false;
         } catch (e) {
             console.error('[Import] Full import failed:', e);

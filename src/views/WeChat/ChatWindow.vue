@@ -1147,15 +1147,22 @@ const speakOne = (text, onEnd, interrupt = false) => {
 
     const utterance = new SpeechSynthesisUtterance(text);
 
+    utterance.lang = 'zh-CN';
+    
     // Choose Chinese voice if available
     const voices = window.speechSynthesis.getVoices();
     const zhVoice = voices.find(v => v.lang.includes('zh-CN') || v.lang.includes('zh-SG'));
     if (zhVoice) utterance.voice = zhVoice;
 
-    utterance.lang = 'zh-CN';
-    // Use character specific voice speed or default to 1.0
+    // Use character specific voice speed or default to 1.0 (Robust Parsing)
     const charSpeed = chatStore.currentChat?.voiceSpeed
-    utterance.rate = charSpeed ? parseFloat(charSpeed) : 1.0;
+    let rate = parseFloat(charSpeed);
+    if (isNaN(rate) || !rate) rate = 1.0;
+    
+    // Clamp to reasonable browser limits (0.1 to 10)
+    utterance.rate = Math.min(Math.max(rate, 0.1), 3.0); 
+
+    console.log('[TTS] speakOne rate:', utterance.rate, 'Origin:', charSpeed, 'ChatID:', chatStore.currentChat?.id);
     utterance.pitch = 1.0;
 
 
@@ -1983,9 +1990,13 @@ const playMessageTTS = (text) => {
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(cleanText)
     
-    // Antigravity Fix: Apply character speed
+    // Antigravity Fix: Apply character speed (Robust)
     const charSpeed = chatStore.currentChat?.voiceSpeed
-    utterance.rate = charSpeed ? parseFloat(charSpeed) : 1.0;
+    let rate = parseFloat(charSpeed);
+    if (isNaN(rate) || !rate) rate = 1.0;
+    utterance.rate = Math.min(Math.max(rate, 0.1), 3.0);
+    
+    console.log('[TTS] playMessageTTS rate:', utterance.rate, 'Origin:', charSpeed);
     
     utterance.lang = 'zh-CN'
     window.speechSynthesis.speak(utterance)

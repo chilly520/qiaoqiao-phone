@@ -456,7 +456,7 @@
                         placeholder="角色 Voice ID (MiniMax)">
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-400">语速</span>
-                        <input v-model="localData.voiceSpeed" type="range" min="0.5" max="2" step="0.1"
+                        <input v-model.number="localData.voiceSpeed" type="range" min="0.5" max="2" step="0.1"
                             class="flex-1 h-1 bg-gray-300 rounded-lg accent-green-500">
                         <span class="text-xs w-6 text-right">{{ localData.voiceSpeed }}</span>
                     </div>
@@ -901,6 +901,30 @@
                         取消
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Summary Modal (Restore) -->
+    <div v-if="showManualSummaryModal"
+        class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        @click.self="showManualSummaryModal = false">
+        <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up">
+            <h3 class="text-lg font-bold text-gray-900 mb-2 text-center">执行手动总结</h3>
+            <p class="text-xs text-gray-500 mb-4 text-center leading-relaxed">
+                将立即分析未总结的消息积压。<br>
+                也可以输入范围 (如 1-50) 强制总结旧消息。
+            </p>
+            
+            <input v-model="manualSummaryRange" type="text" 
+                class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm outline-none focus:border-purple-400 transition-all mb-4"
+                placeholder="留空则自动增量 (或者输入 1-100)">
+
+            <div class="flex gap-3">
+                <button class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold"
+                    @click="showManualSummaryModal = false">取消</button>
+                <button class="flex-1 py-2.5 rounded-xl bg-purple-600 text-white font-bold shadow-lg shadow-purple-200"
+                    @click="handleConfirmManualSummary">开始总结</button>
             </div>
         </div>
     </div>
@@ -2037,11 +2061,26 @@ const saveSettings = () => {
     }
 }
 
-const handleManualSummary = async () => {
+const handleConfirmManualSummary = async () => {
+    const options = {}
+    if (manualSummaryRange.value && manualSummaryRange.value.trim()) {
+        const parts = manualSummaryRange.value.split(/[-: ]+/)
+        if (parts.length === 2) {
+            options.startIndex = parseInt(parts[0]) - 1 // 1-based to 0-based
+            options.endIndex = parseInt(parts[1])
+        }
+    }
+    
+    showManualSummaryModal.value = false
     try {
-        await chatStore.summarizeHistory(props.chatData.id)
+        // Must await to catch errors from store
+        const result = await chatStore.summarizeHistory(props.chatData.id, options)
+        if (!result.success && result.error) {
+             showToast('总结失败: ' + result.error)
+        }
     } catch (e) {
         console.error(e)
+        showToast('执行异常')
     }
 }
 // Sticker Logic

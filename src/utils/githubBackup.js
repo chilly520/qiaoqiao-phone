@@ -71,10 +71,16 @@ class GitHubBackup {
                 content = atob(rawContent)
             }
 
-            if (!content || content.trim() === '') throw new Error('解析内容为空')
-            return JSON.parse(content)
+            if (!content || content.trim() === '' || content === '{}') {
+                throw new Error('解析内容为空或无效');
+            }
+            const parsed = JSON.parse(content);
+            if (!parsed || Object.keys(parsed).length === 0) {
+                throw new Error('备份数据包为空 (无有效负载)');
+            }
+            return parsed;
         } catch (error) {
-            console.error('[GitHub Backup] Download failed:', error)
+            console.error('[GitHub Backup] Download failed:', error);
             throw error
         }
     }

@@ -869,10 +869,23 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             ...(config.repetition_penalty !== undefined && Number(config.repetition_penalty) !== 1.0 && { repetition_penalty: Number(config.repetition_penalty) }),
             ...(config.min_p !== undefined && Number(config.min_p) > 0 && { min_p: Number(config.min_p) }),
             ...(char.searchEnabled && {
-                // For OpenAI Compatible Search (Supported by some providers like Perplexity/DeepSeek/SiliconFlow)
+                // [FIX] Use strictly standard 'function' type to avoid 422 errors on most providers.
+                // Even for search-capable proxies, they usually prefer functions or internal model flags.
                 tools: [
-                    { type: 'web_search' },
-                    { type: 'builtin_tool', name: 'google_search_retrieval' } // Compatibility for some Gemini-OpenAI proxies
+                    {
+                        type: 'function',
+                        function: {
+                            name: 'web_search',
+                            description: 'Search the web for real-time information and facts.',
+                            parameters: {
+                                type: 'object',
+                                properties: {
+                                    query: { type: 'string', description: 'The search query string' }
+                                },
+                                required: ['query']
+                            }
+                        }
+                    }
                 ]
             })
         }

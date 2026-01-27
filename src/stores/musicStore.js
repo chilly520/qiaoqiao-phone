@@ -14,6 +14,7 @@ export const useMusicStore = defineStore('music', () => {
   const isShuffling = ref(false)
   const repeatMode = ref('off') // 'off', 'one', 'all'
   const playerVisible = ref(false)
+  const isMinimized = ref(false)
 
   // Audio Element (managed globally or within store context to persist across routes if needed)
   // Ideally, use a dedicated Audio object
@@ -23,7 +24,9 @@ export const useMusicStore = defineStore('music', () => {
   const currentSong = computed(() => playlist.value[currentIndex.value] || null)
   const duration = ref(0)
   const currentTime = ref(0)
-  const currentLyrics = ref('♪ ...')
+  const currentLyrics = ref('♪ ...') // Raw text for legacy or flat display
+  const parsedLyrics = ref([]) // Array of { time, text }
+  const currentLyricIndex = ref(-1)
 
   // Listen Together State
   const isListeningTogether = ref(false)
@@ -138,6 +141,13 @@ export const useMusicStore = defineStore('music', () => {
       nextIndex = (currentIndex.value + 1) % playlist.value.length
     }
     loadSong(nextIndex)
+  }
+
+  const seek = (time) => {
+    if (!isNaN(time) && isFinite(time)) {
+      audio.currentTime = time
+      currentTime.value = time
+    }
   }
 
   const prev = () => {
@@ -266,17 +276,40 @@ export const useMusicStore = defineStore('music', () => {
     return null
   }
 
+  const parseLrc = (lrc) => {
+    const lines = lrc.split(/\r?\n/)
+    const result = []
+    const timeRegex = /\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g
+
+    lines.forEach(line => {
+      const times = []
+      let match
+      while ((match = timeRegex.exec(line)) !== null) {
+        const min = parseInt(match[1])
+        const sec = parseInt(match[2])
+        const ms = match[3] ? parseInt(match[3].padEnd(3, '0')) : 0
+        times.push(min * 60 + sec + ms / 1000)
+      }
+
+      const text = line.replace(/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/g, '').trim()
+      if (text) {
+        times.forEach(t => {
+          result.push({ time: t, text })
+        })
+      }
+    })
+
+    return result.sort((a, b) => a.time - b.time)
+  }
+
   const getLyrics = async (id, source) => {
     const sourceKey = (source === 'QQ音乐' || source === 'tencent') ? 'tencent' : 'netease'
-
-    // Try different types: 'lyric' is often default, but integer types (1, 2, 3) are sometimes required
     const types = ['lyric', '1', '2', '3']
 
     for (const t of types) {
       const url = `/api-music/v2/music/${sourceKey}?id=${id}&type=${t}`
       try {
         const res = await Http_Get(url)
-        // Some APIs might return success with different structure or specific content
         if (res?.code === 200 || res?.status === 'success' || (res?.data && !res.code)) {
           const data = res.data || res
           let lyric = ''
@@ -287,22 +320,26 @@ export const useMusicStore = defineStore('music', () => {
           else if (data.data && typeof data.data.lyric === 'string') lyric = data.data.lyric
 
           if (lyric && lyric.trim().length > 5) {
-            // Remove all bracketed timestamps [00:00.00] or [00:00:00]
-            const cleanedLyric = lyric
-              .replace(/\[\d{2,}:\d{2}(?:\.\d{1,3})?\]/g, '')
-              .replace(/\[\d{2}:\d{2}:\d{2}\]/g, '')
-              .replace(/\n+/g, ' ')
-              .trim()
-
-            if (cleanedLyric.length > 2) return cleanedLyric
+            // Check if it's LRC format (contains timestamps)
+            if (/\[\d{2,}:\d{2}/.test(lyric)) {
+              parsedLyrics.value = parseLrc(lyric)
+              // Store first few lines as currentLyrics for display summary
+              currentLyrics.value = parsedLyrics.value.slice(0, 3).map(l => l.text).join(' ') || '♪ ...'
+            } else {
+              // Flat text fallback
+              parsedLyrics.value = []
+              currentLyrics.value = lyric.replace(/\s+/g, ' ').trim()
+            }
+            return currentLyrics.value
           }
         }
       } catch (e) {
         console.warn(`Fetch lyrics type ${t} failed`, e)
       }
-      await new Promise(r => setTimeout(r, 150))
+      await new Promise(r => setTimeout(r, 100))
     }
 
+    parsedLyrics.value = []
     return '♪ 暂无歌词'
   }
 
@@ -319,10 +356,80 @@ export const useMusicStore = defineStore('music', () => {
     saveToStorage()
   }
 
+  /**
+   * Automatically play music from a BGM tag found in AI messages.
+   * Format: <bgm>SongName - Artist</bgm> or <bgm>当前bgm:SongName - Artist</bgm>
+   */
+  const playFromBgmTag = async (tagContent) => {
+    if (!tagContent) return
+
+    // Clean prefix logic from studied scripts
+    let cleaned = tagContent.replace(/当前bgm[:：]/i, '').replace(/\[|\]/g, '').trim()
+    if (!cleaned) return
+
+    let songName = cleaned
+    let artistName = ''
+
+    if (cleaned.includes(' - ')) {
+      const parts = cleaned.split(' - ')
+      songName = parts[0].trim()
+      artistName = parts[1].trim()
+    } else if (cleaned.includes('-')) {
+      const parts = cleaned.split('-')
+      // Many people write Singer - Song, others Song - Singer. 
+      // Our searchMusic handles this by combining them in fuzzy search.
+      songName = parts[1] || parts[0]
+      artistName = parts[0]
+    }
+
+    useLoggerStore().addLog('AI', '检测到 BGM 指令', { tag: tagContent, search: `${songName} ${artistName}` })
+
+    try {
+      // Search across all providers
+      const results = await searchMusic(songName, artistName, 'all')
+      if (results && results.length > 0) {
+        // Pick top result
+        const topResult = results[0]
+        const fullSong = await getSongUrl(topResult)
+
+        if (fullSong && fullSong.url) {
+          // Check if already in playlist
+          const exists = playlist.value.findIndex(s => s.id === fullSong.id)
+          if (exists !== -1) {
+            loadSong(exists, true)
+          } else {
+            addSong(fullSong)
+            loadSong(playlist.value.length - 1, true)
+          }
+
+          // Make player visible for better UX parity with the studied userscript
+          playerVisible.value = true
+          return true
+        }
+      }
+    } catch (e) {
+      console.warn('[MusicStore] Auto BGM play failed', e)
+    }
+    return false
+  }
+
   // Setup Audio Listeners
   audio.addEventListener('timeupdate', () => {
     currentTime.value = audio.currentTime
     duration.value = audio.duration
+
+    // Update Sync Lyrics
+    if (parsedLyrics.value.length > 0) {
+      let activeIdx = -1
+      for (let i = 0; i < parsedLyrics.value.length; i++) {
+        if (audio.currentTime >= parsedLyrics.value[i].time) {
+          activeIdx = i
+        } else {
+          break
+        }
+      }
+      currentLyricIndex.value = activeIdx
+    }
   })
 
   audio.addEventListener('ended', () => {
@@ -352,12 +459,14 @@ export const useMusicStore = defineStore('music', () => {
     isShuffling,
     repeatMode,
     playerVisible,
+    isMinimized,
     currentSong,
     duration,
     currentTime,
     currentLyrics,
 
     togglePlayer,
+    toggleMinimize: () => { isMinimized.value = !isMinimized.value },
     play,
     pause,
     togglePlay,
@@ -374,6 +483,21 @@ export const useMusicStore = defineStore('music', () => {
     togetherPartner,
     togetherDurationMinutes,
     startTogether,
-    stopTogether
+    stopTogether,
+
+    parsedLyrics,
+    currentLyricIndex,
+    seek,
+    activeLyricText: computed(() => {
+      if (parsedLyrics.value.length === 0) return currentLyrics.value
+      const active = parsedLyrics.value[currentLyricIndex.value]
+      return active ? active.text : '♪ ...'
+    }),
+    nextLyricText: computed(() => {
+      if (parsedLyrics.value.length === 0) return ''
+      const next = parsedLyrics.value[currentLyricIndex.value + 1]
+      return next ? next.text : ''
+    }),
+    playFromBgmTag
   }
 })

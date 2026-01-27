@@ -5,6 +5,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useRouter } from 'vue-router'
 import { useStickerStore } from '../stores/stickerStore'
+import { parseWeChatEmojis } from '../utils/emojiParser'
 
 const props = defineProps({
     moment: Object,
@@ -170,6 +171,10 @@ const renderCommentContent = (comment) => {
             content = content.replace(mentionRegex, `<span class="text-blue-500 font-medium">@${mention.name}</span>`)
         })
     }
+
+    // Handle WeChat Emojis
+    content = parseWeChatEmojis(content)
+
     return content
 }
 
@@ -205,7 +210,7 @@ const parsedContent = computed(() => {
 
     // 3. Regex for [表情包:名称]
     const stickerRegex = /\[表情包:([^\]]+)\]/g
-    return content.replace(stickerRegex, (match, name) => {
+    content = content.replace(stickerRegex, (match, name) => {
         let sticker = stickerStore.customStickers.find(s => s.name === name)
         if (!sticker && !isUser.value && props.moment?.authorId) {
             const char = chatStore.chats[props.moment.authorId]
@@ -218,6 +223,11 @@ const parsedContent = computed(() => {
         }
         return match
     })
+
+    // 4. Handle WeChat Emojis [微笑] [心]
+    content = parseWeChatEmojis(content)
+
+    return content
 })
 
 // --- Actions ---

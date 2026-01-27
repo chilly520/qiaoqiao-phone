@@ -1,5 +1,6 @@
 <script setup>
 import { useRouter } from 'vue-router'
+import versionInfo from '../../version.json'
 
 const router = useRouter()
 
@@ -117,6 +118,14 @@ const settingsCards = [
                 </div>
                 <!-- Right Side: Chevron Arrow -->
                 <i class="fa-solid fa-chevron-right text-xs opacity-50"></i>
+            </div>
+        </div>
+
+        <!-- Version Info at the bottom of settings list -->
+        <div class="py-8 flex flex-col items-center justify-center gap-1 opacity-20">
+            <div class="text-[10px] font-mono tracking-wider font-bold">QIAQIAO OS</div>
+            <div class="text-[9px] font-mono">
+                Version: {{ versionInfo.version }} ({{ versionInfo.buildTime }})
             </div>
         </div>
     </div>

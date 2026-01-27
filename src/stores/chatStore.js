@@ -130,8 +130,10 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[id]
 
         // Return a fresh object with the ID to ensure compatibility
+        // Default voiceSpeed to 1.0 if missing (Legacy Data Support)
         return {
             id: currentChatId.value,
+            voiceSpeed: 1.0,
             ...chat
         }
     })
@@ -1043,6 +1045,7 @@ ${contextMsgs}
     }
 
     // Auto Summary Logic
+    // Auto Summary Logic
     function checkAutoSummary(chatId) {
         const chat = chats.value[chatId]
         if (!chat || !chat.autoSummary) return
@@ -1054,7 +1057,18 @@ ${contextMsgs}
         const summaryLimit = parseInt(chat.summaryLimit) || 50
 
         // Use lastSummaryCount (total messages at last summary) for better diff
-        const lastCount = chat.lastSummaryCount || 0
+        let lastCount = chat.lastSummaryCount || 0
+
+        // PROACTIVE FIX: If lastCount exceeds current msgs length (e.g. deletion occurred), we must clamp it to avoid negative backlog
+        // This ensures the counter resets to current length, so new messages immediately start accumulating towards limit
+        if (lastCount > msgs.length) {
+            console.log('[AutoSummary] Clamping lastCount (deletion detected)', lastCount, '->', msgs.length)
+            chat.lastSummaryCount = msgs.length
+            chat.lastSummaryIndex = Math.min(chat.lastSummaryIndex || 0, msgs.length)
+            lastCount = msgs.length
+            // Don't saveChats() here to avoid I/O loop, it will save when summary triggers or next message adds
+        }
+
         const backlog = msgs.length - lastCount
 
         // Check if new messages (since last summary) exceed limit
@@ -1606,6 +1620,15 @@ ${contextMsgs}
 2. 只有在真正需要发图时才使用该指令。`
             charInfo.description += drawingHint
 
+            // Music Awareness (Listen Together)
+            const musicStore = useMusicStore()
+            if (musicStore.isListeningTogether && musicStore.currentSong) {
+                const song = musicStore.currentSong
+                const musicHint = `\n\n【当前正在一起听歌】\n你正和用户一起听：${song.song} - ${song.singer}。
+你可以对这首歌发表看法，或者在觉得氛围合适时，使用 <bgm>歌名 - 歌手</bgm> 格式切换下一首符合当前氛围的歌曲。`
+                charInfo.description += musicHint
+            }
+
             // Log the context being sent to AI for debugging
             useLoggerStore().addLog('AI', '网络请求 (即时上下文)', {
                 contextMessages: context.length,
@@ -1793,6 +1816,17 @@ ${contextMsgs}
                 const properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
 
                 console.log(`[AI Reply] Dialogue length: ${pureDialogue.length}, InnerVoice: ${!!innerVoiceBlock}, Raw: ${fullContent.substring(0, 50)}...`);
+
+                // --- Handle <bgm> Tag ---
+                const bgmRegex = /<bgm>([\s\S]*?)<\/bgm>/i;
+                const bgmMatch = properlyOrderedContent.match(bgmRegex);
+                if (bgmMatch) {
+                    const tagContent = bgmMatch[1].trim();
+                    const musicStore = useMusicStore();
+                    // Trigger asynchronous music search and playback
+                    musicStore.playFromBgmTag(tagContent);
+                    console.log('[ChatStore] BGM Tag detected:', tagContent);
+                }
 
                 // --- Handle [SET_PAT] Command ---
                 const patRegex = /\[SET_PAT:(.+?)(?::(.+?))?\]/i
