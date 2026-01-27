@@ -259,6 +259,41 @@
                             </div>
                         </div>
 
+                        <!-- CASE: Weibo Card -->
+                        <div v-else-if="isWeiboCard && weiboCardData"
+                            class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
+                            @click="$router.push('/weibo')"> <!-- Simple nav for now -->
+                            <div class="flex flex-col">
+                                <!-- Top: Content Snippet -->
+                                <div
+                                    class="p-4 pb-2 text-[14px] text-gray-800 leading-relaxed font-songti line-clamp-3">
+                                    {{ weiboCardData.summary }}
+                                </div>
+
+                                <!-- Middle: Image/Media -->
+                                <div v-if="weiboCardData.image" class="w-full h-32 bg-gray-100 relative">
+                                    <img :src="weiboCardData.image" class="w-full h-full object-cover">
+                                    <div class="absolute inset-0 bg-black/5"></div>
+                                </div>
+                                <div v-else class="h-2 w-full"></div>
+
+                                <!-- Bottom: Source -->
+                                <div
+                                    class="px-3 py-2 bg-gray-50 flex items-center justify-between border-t border-gray-100">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-5 h-5 rounded-full overflow-hidden">
+                                            <img :src="weiboCardData.avatar" class="w-full h-full object-cover">
+                                        </div>
+                                        <span class="text-xs text-gray-500 font-bold">@{{ weiboCardData.author }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1 opacity-50">
+                                        <i class="fa-brands fa-weibo text-[#ff8200] text-xs"></i>
+                                        <span class="text-[10px] transform scale-90 text-gray-400">微博</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -556,9 +591,33 @@ const isValidMessage = computed(() => {
         return clean && clean.length > 0
     }
 
-    // 2. For AI and User, we almost always show the message to allow right-click editing
-    // even if the content is "invisible" (like pure protocols)
-    return true;
+    // 2. Card & Media Checks
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value) return true
+    if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg)) return true
+
+    // 3. Text Content Filtering
+    const content = ensureString(props.msg.content).trim()
+    const clean = getCleanContent(content)
+
+    // If the displayed content is empty...
+    if (!clean || clean.length === 0) {
+        // ...and it looks like a protocol/metadata object, HIDE IT.
+        if (content.startsWith('{') && (
+            content.includes('"status"') ||
+            content.includes('"mind"') ||
+            content.includes('"着装"') ||
+            content.includes('"心声"') ||
+            content.includes('"mood"')
+        )) {
+            return false
+        }
+
+        // Hide BIO updates
+        if (content.match(/^\[(?:UPDATE_)?BIO:/i)) return false
+    }
+
+    // Default: Show (render the placeholder if empty, to allow debug/delete)
+    return true
 })
 
 const formattedContent = computed(() => formatMessageContent(props.msg))
@@ -616,6 +675,17 @@ const shouldRenderCard = computed(() => {
 })
 
 const isFavoriteCard = computed(() => props.msg.type === 'favorite_card')
+const isWeiboCard = computed(() => props.msg.type === 'weibo_card')
+
+const weiboCardData = computed(() => {
+    if (!isWeiboCard.value) return null
+    try {
+        const content = ensureString(props.msg.content)
+        return JSON.parse(content)
+    } catch (e) {
+        return null
+    }
+})
 
 const favoriteCardData = computed(() => {
     if (!isFavoriteCard.value) return null

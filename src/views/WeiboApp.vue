@@ -13,15 +13,30 @@ const worldBookStore = useWorldBookStore()
 onMounted(async () => {
   await weiboStore.initStore()
   // Ensure chat/worldbook data is loaded for bindings
-  if (worldBookStore.books.length === 0) worldBookStore.loadEntries() 
+  if (worldBookStore.books.length === 0) worldBookStore.loadEntries()
   // Chat store usually auto-inits but we can ensure contacts are ready
+
+  // Ensure initial posts exist if empty
+  if (weiboStore.posts.length === 0) {
+    weiboStore.addPost({
+      author: '乔乔',
+      avatar: '/avatars/乔乔.jpg',
+      content: '今天天气真好，想出去玩！☀️ #日常 #心情',
+      images: [],
+      stats: { share: 12, comment: 34, like: 156 }
+    })
+  }
 })
 
 // --- State ---
 const activeView = ref('home')
 const activeSearchSub = ref('hot')
 const showPostModal = ref(false)
+
 const showSettingsModal = ref(false)
+const showShareModal = ref(false)
+const selectedPostToShare = ref(null)
+const activeCommentPostId = ref(null) // ID of the post with expanded comments
 
 const postText = ref('')
 const searchText = ref('乔乔')
@@ -77,7 +92,7 @@ function enterUserProfile(name, avatar) {
 function hideUserProfile() {
   // Simple history logic: go back to search or previous. 
   // For simplicity matching the prototype:
-  switchView('search') 
+  switchView('search')
 }
 
 // --- DM Chat ---
@@ -100,7 +115,44 @@ function closePostModal() {
   showPostModal.value = false
 }
 
-// --- Search Results ---
+
+
+// --- Share Logic ---
+function openShareModal(post) {
+  selectedPostToShare.value = post
+  showShareModal.value = true
+}
+
+function sharePostTo(contactId) {
+  if (!selectedPostToShare.value) return
+
+  const post = selectedPostToShare.value
+  const chatName = chatStore.chats[contactId]?.name || '好友'
+
+  // Create Post Snippet for the card
+  const cardContent = JSON.stringify({
+    postId: post.id,
+    author: post.author,
+    avatar: post.avatar,
+    content: post.content,
+    image: post.images && post.images.length > 0 ? post.images[0] : null,
+    summary: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : '')
+  })
+
+  chatStore.addMessage(contactId, {
+    role: 'user', // User is sharing it
+    type: 'weibo_card', // New type
+    content: cardContent
+  })
+
+  // Toast / Feeback
+  alert(`已分享给 ${chatName}`)
+  showShareModal.value = false
+  weiboStore.toggleLike(post.id) // Optional: Auto-like when sharing? Maybe not.
+  // Increment share count locally for effect
+  if (post.stats) post.stats.share++
+}
+
 function openSearchResults() {
   switchView('search-results')
   // Autofocus logic could go here if needed
@@ -124,16 +176,16 @@ function openSettings() {
 function saveSettings() {
   // Split form back into user and settings
   const { name, avatar, bio, region, following, fans, verified, verifyType, vipLevel, ...settingsRest } = settingsForm.value
-  
+
   weiboStore.updateUserProfile({ name, avatar, bio, region, following, fans, verified, verifyType, vipLevel })
-  
+
   // Clean up settings update (boundWorldBooks etc are handled directly usually, but if form has them:)
   weiboStore.updateSettings({
-     timerEnabled: settingsRest.timerEnabled,
-     timerFrequency: settingsRest.timerFrequency
-     // arrays are usually handled by specific toggles, but here we sync if changed
+    timerEnabled: settingsRest.timerEnabled,
+    timerFrequency: settingsRest.timerFrequency
+    // arrays are usually handled by specific toggles, but here we sync if changed
   })
-  
+
   showSettingsModal.value = false
 }
 
@@ -148,10 +200,10 @@ function triggerAvatarUpload() {
 }
 function handleAvatarFile(e) {
   const file = e.target.files[0]
-  if(file) {
+  if (file) {
     const reader = new FileReader()
     reader.onload = (ev) => {
-       settingsForm.value.avatar = ev.target.result
+      settingsForm.value.avatar = ev.target.result
     }
     reader.readAsDataURL(file)
   }
@@ -173,13 +225,13 @@ function toggleBookBind(id) {
 
 function clearCharPosts() {
   const charId = settingsForm.value.selectedCharToClear
-  if(charId) {
-     weiboStore.clearPostsByChar(charId)
-     alert('已清空该角色的微博')
+  if (charId) {
+    weiboStore.clearPostsByChar(charId)
+    alert('已清空该角色的微博')
   }
 }
 function clearAll() {
-  if(confirm('确定要清空所有内容吗？不可恢复。')) {
+  if (confirm('确定要清空所有内容吗？不可恢复。')) {
     weiboStore.clearAllPosts()
   }
 }
@@ -203,14 +255,117 @@ function onAvatarClick(name, avatarSrc) {
 }
 
 function onTopicClick(title) {
-    // Remove # if present for the title display, but keep consistent
-    const cleanTitle = title.replace(/#/g, '')
-    enterTopicDetail(cleanTitle)
+  // Remove # if present for the title display, but keep consistent
+  const cleanTitle = title.replace(/#/g, '')
+  enterTopicDetail(cleanTitle)
 }
 
 function likePost(postId) {
   weiboStore.toggleLike(postId)
 }
+
+function toggleComments(postId) {
+  if (activeCommentPostId.value === postId) {
+    activeCommentPostId.value = null
+  } else {
+    activeCommentPostId.value = postId
+  }
+}
+
+function likeComment(postId, commentIndex) {
+  const post = weiboStore.posts.find(p => p.id === postId)
+  if (post && post.comments && post.comments[commentIndex]) {
+    const c = post.comments[commentIndex]
+    if (!c.isLiked) {
+      c.likes++
+      c.isLiked = true
+    } else {
+      c.likes--
+      c.isLiked = false
+    }
+  }
+}
+
+function deleteComment(postId, commentIndex) {
+  const post = weiboStore.posts.find(p => p.id === postId)
+  if (post && post.comments) {
+    if (confirm('确定删除这条评论吗？')) {
+      post.comments.splice(commentIndex, 1)
+      if (post.stats) post.stats.comment--
+    }
+  }
+}
+
+// --- AI Generator Logic ---
+import { generateReply } from '../utils/aiService'
+
+async function handleGenerateEffect() {
+  if (weiboStore.posts.length === 0) return alert('先发一条微博吧！')
+
+  // Pick a random post to comment on (prioritize recent ones)
+  const targetPost = weiboStore.posts[0]
+
+  // Visual Feedback: Spin the icon
+  const btnIcon = document.querySelector('.fa-wand-magic-sparkles')
+  if (btnIcon) btnIcon.classList.add('fa-spin')
+
+  try {
+    // 1. Generate Content via AI
+    const prompt = `你现在是微博上的吃瓜网友。
+请阅读这条微博内容：“${targetPost.content}”
+请生成 3 条不同的网友评论。
+要求：
+1. 风格各异（有的搞笑，有的羡慕，有的吃瓜）。
+2. 口语化，可以使用颜文字。
+3. 每条评论一行。不要带序号。
+4. 不要包含任何解释性文字，只返回评论内容。`
+
+    const res = await generateReply(prompt, 'system') // Use system role to bypass specific persona
+    const comments = res.split('\n').filter(c => c.trim().length > 0)
+
+    // 2. Add Comments
+    comments.forEach(text => {
+      const randomUser = getRandomNetizen()
+      weiboStore.addComment(targetPost.id, {
+        author: randomUser.name,
+        avatar: randomUser.avatar,
+        content: text.trim(),
+        time: Date.now(),
+        likes: Math.floor(Math.random() * 20),
+        isVip: Math.random() > 0.8
+      })
+    })
+
+    // 3. Update Stats
+    if (targetPost.stats) {
+      targetPost.stats.comment += comments.length
+      targetPost.stats.like += Math.floor(Math.random() * 10) + 5
+    }
+
+    // Toast
+    alert(`已生成 ${comments.length} 条新互动！`)
+
+  } catch (e) {
+    console.error(e)
+    alert('生成神评失败，请稍后再试')
+  } finally {
+    if (btnIcon) btnIcon.classList.remove('fa-spin')
+  }
+}
+
+const NETIZEN_NAMES = ['吃瓜少女', '熬夜冠军', '纯爱战士', '没睡醒的猫', '冲浪达人', '芋泥波波', '这里是XX', '某不知名网友', '热心市民']
+const NETIZEN_AVATARS = [
+  '/avatars/小猫举爪.jpg', '/avatars/小猫吃芒果.jpg', '/avatars/小猫吃草莓.jpg',
+  '/avatars/小猫喝茶.jpg', '/avatars/小猫坏笑.jpg', '/avatars/小猫开心.jpg'
+]
+
+function getRandomNetizen() {
+  return {
+    name: NETIZEN_NAMES[Math.floor(Math.random() * NETIZEN_NAMES.length)],
+    avatar: NETIZEN_AVATARS[Math.floor(Math.random() * NETIZEN_AVATARS.length)]
+  }
+}
+
 
 </script>
 
@@ -220,11 +375,12 @@ function likePost(postId) {
     <div v-show="activeView === 'home'" class="page-view active">
       <header>
         <div class="header-top">
-          <div style="width: 60px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 14px;" @click="exitApp">
+          <div style="width: 60px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 14px;"
+            @click="exitApp">
             <i class="fa-solid fa-chevron-left"></i> 返回
           </div>
           <div class="header-title">微博</div>
-          <button class="ai-header-btn">
+          <button class="ai-header-btn" @click="handleGenerateEffect">
             <i class="fa-solid fa-wand-magic-sparkles"></i> AI微博
           </button>
         </div>
@@ -244,23 +400,28 @@ function likePost(postId) {
               <div class="avatar-container" style="position: relative; display: inline-block;">
                 <img :src="post.avatar" class="user-avatar">
                 <!-- Verification Badge for Post Author (ME) -->
-                <img v-if="post.authorId === 'me' && userProfile.verified && userProfile.verifyType === '微博个人认证'" src="/icons/weibo_verify_individual.png" class="verify-badge-img-small">
-                <img v-if="post.authorId === 'me' && userProfile.verified && (userProfile.verifyType === '微博官方认证' || userProfile.verifyType === '微博机构认证')" src="/icons/weibo_verify_org.png" class="verify-badge-img-small">
+                <img v-if="post.authorId === 'me' && userProfile.verified && userProfile.verifyType === '微博个人认证'"
+                  src="/icons/weibo_verify_individual.png" class="verify-badge-img-small">
+                <img
+                  v-if="post.authorId === 'me' && userProfile.verified && (userProfile.verifyType === '微博官方认证' || userProfile.verifyType === '微博机构认证')"
+                  src="/icons/weibo_verify_org.png" class="verify-badge-img-small">
                 <!-- Simulation for specific other users if needed, or generic VIP logic -->
               </div>
               <div>
-                <div class="user-name" :class="{ 'vip-name': (post.authorId === 'me' && userProfile.vipLevel > 0) || (post.authorId !== 'me' && post.isVip) }">
-                   {{ post.author }}
-                   <!-- VIP Crown for Current User -->
-                   <span v-if="post.authorId === 'me' && userProfile.vipLevel > 0" class="vip-crown" :class="'level-' + userProfile.vipLevel">
-                      <i class="fa-solid fa-crown"></i>
-                      <span class="vip-level-num">{{ userProfile.vipLevel }}</span>
-                   </span>
-                   <!-- Static/Simulation VIP for Others -->
-                   <span v-if="post.isVip && post.authorId !== 'me'" class="vip-crown level-5">
-                      <i class="fa-solid fa-crown"></i>
-                      <span class="vip-level-num">5</span>
-                   </span>
+                <div class="user-name"
+                  :class="{ 'vip-name': (post.authorId === 'me' && userProfile.vipLevel > 0) || (post.authorId !== 'me' && post.isVip) }">
+                  {{ post.author }}
+                  <!-- VIP Crown for Current User -->
+                  <span v-if="post.authorId === 'me' && userProfile.vipLevel > 0" class="vip-crown"
+                    :class="'level-' + userProfile.vipLevel">
+                    <i class="fa-solid fa-crown"></i>
+                    <span class="vip-level-num">{{ userProfile.vipLevel }}</span>
+                  </span>
+                  <!-- Static/Simulation VIP for Others -->
+                  <span v-if="post.isVip && post.authorId !== 'me'" class="vip-crown level-5">
+                    <i class="fa-solid fa-crown"></i>
+                    <span class="vip-level-num">5</span>
+                  </span>
                 </div>
                 <div class="user-meta">{{ post.time }} · {{ post.device || 'Weibo Client' }}</div>
               </div>
@@ -268,13 +429,49 @@ function likePost(postId) {
             <div class="follow-btn" v-if="post.authorId !== 'me'">+ 关注</div>
           </div>
           <div class="post-content">{{ post.content }}</div>
-          <div class="post-images" :class="'grid-' + (post.images ? post.images.length : 0)" v-if="post.images && post.images.length">
+          <div class="post-images" :class="'grid-' + (post.images ? post.images.length : 0)"
+            v-if="post.images && post.images.length">
             <img v-for="(img, idx) in post.images" :key="idx" :src="img">
           </div>
           <div class="post-actions" v-if="post.stats">
-            <div class="action-item"><i class="fa-solid fa-share-nodes"></i> {{ weiboStore.formatNumber(post.stats.share) }}</div>
-            <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}</div>
-            <div class="action-item" :class="{ 'liked': post.isLiked }" @click="likePost(post.id)"><i class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
+            <div class="action-item" @click="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{
+              weiboStore.formatNumber(post.stats.share) }}</div>
+            <div class="action-item" @click="toggleComments(post.id)"
+              :class="{ 'active-action': activeCommentPostId === post.id }">
+              <i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}
+            </div>
+            <div class="action-item" :class="{ 'liked': post.isLiked }" @click="likePost(post.id)"><i
+                class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
+          </div>
+
+          <!-- Comment Section -->
+          <div class="comment-section" v-if="activeCommentPostId === post.id">
+            <div class="comment-list" v-if="post.comments && post.comments.length > 0">
+              <div class="comment-item" v-for="(comment, cIdx) in post.comments" :key="cIdx">
+                <img :src="comment.avatar" class="comment-avatar">
+                <div class="comment-body">
+                  <div class="comment-user" :class="{ 'vip-name': comment.isVip }">
+                    {{ comment.author }}
+                    <span v-if="comment.isVip" class="vip-crown level-3"><i class="fa-solid fa-crown"></i></span>
+                  </div>
+                  <div class="comment-text">{{ comment.content }}</div>
+                  <div class="comment-footer">
+                    <span class="comment-time">刚刚</span>
+                    <div class="comment-actions">
+                      <span @click="deleteComment(post.id, cIdx)" class="delete-btn">删除</span>
+                      <span @click="likeComment(post.id, cIdx)" :class="{ 'liked': comment.isLiked }">
+                        <i class="fa-regular fa-thumbs-up" v-if="!comment.isLiked"></i>
+                        <i class="fa-solid fa-thumbs-up" v-else></i>
+                        {{ comment.likes || 0 }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="empty-comments" v-else>
+              暂无评论，点击顶部魔法棒生成神评！✨
+            </div>
           </div>
         </article>
       </main>
@@ -337,7 +534,8 @@ function likePost(postId) {
 
           <article class="post-card" style="margin-top: 5px;">
             <div class="post-header">
-              <div class="user-info" @click="onAvatarClick('数码快报', 'https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily')">
+              <div class="user-info"
+                @click="onAvatarClick('数码快报', 'https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily')">
                 <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily" class="user-avatar">
                 <div>
                   <div class="user-name">数码快报</div>
@@ -352,7 +550,8 @@ function likePost(postId) {
             <div class="post-images grid-1">
               <div style="position:relative;">
                 <img src="https://picsum.photos/seed/tech/800/450" style="filter: brightness(0.9);">
-                <i class="fa-solid fa-play" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font-size:40px; text-shadow: 0 2px 10px rgba(0,0,0,0.3);"></i>
+                <i class="fa-solid fa-play"
+                  style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font-size:40px; text-shadow: 0 2px 10px rgba(0,0,0,0.3);"></i>
               </div>
             </div>
             <div class="post-actions">
@@ -411,16 +610,19 @@ function likePost(postId) {
     <div v-show="activeView === 'search-results'" class="page-view active">
       <div class="topic-detail-header">
         <i class="fa-solid fa-chevron-left back-btn" @click="hideSearchResults"></i>
-        <div style="flex: 1; background: #f2f2f2; border-radius: 20px; padding: 5px 15px; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+        <div
+          style="flex: 1; background: #f2f2f2; border-radius: 20px; padding: 5px 15px; font-size: 14px; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-search" style="color: #999;"></i>
-          <input type="text" v-model="searchText" style="border: none; background: transparent; outline: none; width: 100%;">
+          <input type="text" v-model="searchText"
+            style="border: none; background: transparent; outline: none; width: 100%;">
         </div>
       </div>
       <main class="feed">
         <div style="padding: 12px 15px; color: var(--wb-text-sub); font-size: 13px;">相关微博</div>
         <article class="post-card">
           <div class="post-header">
-            <div class="user-info" @click="onAvatarClick('数码爱好者', 'https://api.dicebear.com/7.x/avataaars/svg?seed=SearchUser1')">
+            <div class="user-info"
+              @click="onAvatarClick('数码爱好者', 'https://api.dicebear.com/7.x/avataaars/svg?seed=SearchUser1')">
               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=SearchUser1" class="user-avatar">
               <div>
                 <div class="user-name">数码爱好者</div>
@@ -428,7 +630,8 @@ function likePost(postId) {
               </div>
             </div>
           </div>
-          <div class="post-content">刚才搜了一下关于 <span style="color: var(--wb-orange)">{{ searchText }}</span> 的消息，发现动态还挺多的。</div>
+          <div class="post-content">刚才搜了一下关于 <span style="color: var(--wb-orange)">{{ searchText }}</span> 的消息，发现动态还挺多的。
+          </div>
           <div class="post-actions">
             <div class="action-item"><i class="fa-solid fa-heart"></i> 12</div>
           </div>
@@ -438,7 +641,8 @@ function likePost(postId) {
 
     <!-- View: Messages (DMs) -->
     <div v-show="activeView === 'msg'" class="page-view active">
-      <header style="display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: white; border-bottom: 1px solid var(--wb-divider);">
+      <header
+        style="display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: white; border-bottom: 1px solid var(--wb-divider);">
         <div style="width: 80px;"></div>
         <div style="font-weight: bold;">消息</div>
         <button class="ai-header-btn">
@@ -481,29 +685,35 @@ function likePost(postId) {
             <img :src="userProfile.avatar" class="profile-avatar">
             <!-- Verification Badge Below Avatar -->
             <!-- Verification Badge Below Avatar -->
-            <img v-if="userProfile.verified && userProfile.verifyType === '微博个人认证'" src="/icons/weibo_verify_individual.png" class="verify-badge-avatar-img">
-            <img v-if="userProfile.verified && (userProfile.verifyType === '微博官方认证' || userProfile.verifyType === '微博机构认证')" src="/icons/weibo_verify_org.png" class="verify-badge-avatar-img">
+            <img v-if="userProfile.verified && userProfile.verifyType === '微博个人认证'"
+              src="/icons/weibo_verify_individual.png" class="verify-badge-avatar-img">
+            <img
+              v-if="userProfile.verified && (userProfile.verifyType === '微博官方认证' || userProfile.verifyType === '微博机构认证')"
+              src="/icons/weibo_verify_org.png" class="verify-badge-avatar-img">
           </div>
           <div class="profile-name" :class="{ 'vip-name': userProfile.vipLevel > 0 }">
             {{ userProfile.name }}
             <!-- VIP Crown Next to Name -->
             <span v-if="userProfile.vipLevel > 0" class="vip-crown" :class="'level-' + userProfile.vipLevel">
-               <i class="fa-solid fa-crown"></i>
-               <span class="vip-level-num">{{ userProfile.vipLevel }}</span>
+              <i class="fa-solid fa-crown"></i>
+              <span class="vip-level-num">{{ userProfile.vipLevel }}</span>
             </span>
           </div>
           <div class="profile-id">{{ userProfile.bio }}</div>
           <div class="profile-stats">
             <div class="stat-item"><span class="stat-num">
-              {{ weiboStore.posts.filter(p => p.authorId === 'me').length }}
-            </span><span class="stat-label">微博</span></div>
-            <div class="stat-item" @click="openFollowing"><span class="stat-num">{{ weiboStore.formatNumber(userProfile.following) }}</span><span class="stat-label">关注</span></div>
-            <div class="stat-item"><span class="stat-num">{{ weiboStore.formatNumber(userProfile.fans) }}</span><span class="stat-label">粉丝</span></div>
+                {{weiboStore.posts.filter(p => p.authorId === 'me').length}}
+              </span><span class="stat-label">微博</span></div>
+            <div class="stat-item" @click="openFollowing"><span class="stat-num">{{
+              weiboStore.formatNumber(userProfile.following) }}</span><span class="stat-label">关注</span></div>
+            <div class="stat-item"><span class="stat-num">{{ weiboStore.formatNumber(userProfile.fans) }}</span><span
+                class="stat-label">粉丝</span></div>
           </div>
         </div>
       </div>
       <div class="post-card" style="margin-top: 10px; text-align: center; color: #999; padding: 40px 20px;">
-        <i class="fa-solid fa-feather-pointed" style="font-size: 30px; margin-bottom: 10px; display: block; opacity: 0.3;"></i>
+        <i class="fa-solid fa-feather-pointed"
+          style="font-size: 30px; margin-bottom: 10px; display: block; opacity: 0.3;"></i>
         <p>还没有发布过微博哦，去记录生活吧~</p>
       </div>
     </div>
@@ -525,8 +735,10 @@ function likePost(postId) {
           <div class="tool-item"><i class="fa-solid fa-face-smile" style="color: #ffcc00;"></i></div>
         </div>
         <div class="post-options">
-          <div class="option-chip"><i class="fa-solid fa-location-dot" style="color: #4d73a1;"></i><span>添加地点</span></div>
-          <div class="option-chip"><i class="fa-solid fa-mobile-screen-button"></i><input type="text" placeholder="机型: iPhone 16 Pro Max"></div>
+          <div class="option-chip"><i class="fa-solid fa-location-dot" style="color: #4d73a1;"></i><span>添加地点</span>
+          </div>
+          <div class="option-chip"><i class="fa-solid fa-mobile-screen-button"></i><input type="text"
+              placeholder="机型: iPhone 16 Pro Max"></div>
         </div>
       </div>
     </div>
@@ -537,18 +749,22 @@ function likePost(postId) {
         <i class="fa-solid fa-house"></i>
         <span>微博</span>
       </div>
-      <div class="nav-item" :class="{ active: activeView.includes('search') || activeView === 'topic-detail' }" @click="switchView('search')">
+      <div class="nav-item" :class="{ active: activeView.includes('search') || activeView === 'topic-detail' }"
+        @click="switchView('search')">
         <i class="fa-solid fa-magnifying-glass"></i>
         <span>热搜</span>
       </div>
       <div class="nav-item" @click="openPostModal('')">
         <div class="post-btn"><i class="fa-solid fa-plus"></i></div>
       </div>
-      <div class="nav-item" :class="{ active: activeView === 'msg' || activeView === 'dm-chat' }" @click="switchView('msg')">
+      <div class="nav-item" :class="{ active: activeView === 'msg' || activeView === 'dm-chat' }"
+        @click="switchView('msg')">
         <i class="fa-solid fa-paper-plane"></i>
         <span>消息</span>
       </div>
-      <div class="nav-item" :class="{ active: activeView === 'me' || activeView === 'following' || activeView === 'user-profile' }" @click="switchView('me')">
+      <div class="nav-item"
+        :class="{ active: activeView === 'me' || activeView === 'following' || activeView === 'user-profile' }"
+        @click="switchView('me')">
         <i class="fa-solid fa-user"></i>
         <span>我</span>
       </div>
@@ -572,7 +788,8 @@ function likePost(postId) {
       <main class="feed">
         <article class="post-card">
           <div class="post-header">
-            <div class="user-info" @click="onAvatarClick('讨论达人A', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1')">
+            <div class="user-info"
+              @click="onAvatarClick('讨论达人A', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1')">
               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1" class="user-avatar">
               <div>
                 <div class="user-name">讨论达人A</div>
@@ -592,14 +809,22 @@ function likePost(postId) {
         <div style="font-weight: bold; font-size: 17px;">关注列表</div>
       </div>
       <main class="following-list">
-        <div class="follow-item" @click="onAvatarClick('数码快报', 'https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily')">
+        <div class="follow-item"
+          @click="onAvatarClick('数码快报', 'https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily')">
           <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily">
-          <div class="follow-info"><h4>数码快报</h4><p>数码领域的全能选手</p></div>
+          <div class="follow-info">
+            <h4>数码快报</h4>
+            <p>数码领域的全能选手</p>
+          </div>
           <div class="follow-status-btn">已关注</div>
         </div>
-        <div class="follow-item" @click="onAvatarClick('讨论达人A', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1')">
+        <div class="follow-item"
+          @click="onAvatarClick('讨论达人A', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1')">
           <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Discussion1">
-          <div class="follow-info"><h4>讨论达人A</h4><p>热爱分享，热爱生活</p></div>
+          <div class="follow-info">
+            <h4>讨论达人A</h4>
+            <p>热爱分享，热爱生活</p>
+          </div>
           <div class="follow-status-btn">已关注</div>
         </div>
       </main>
@@ -657,178 +882,186 @@ function likePost(postId) {
         <span style="font-weight: bold; font-size: 17px;">设置</span>
         <i class="fa-solid fa-xmark" @click="closeSettings" style="font-size: 20px; color: #999; cursor: pointer;"></i>
       </div>
-      
+
       <div class="settings-tabs">
-          <div class="tab-item" :class="{ active: settingsTab === 'profile' }" @click="settingsTab = 'profile'">
-             基本信息
-          </div>
-          <div class="tab-item" :class="{ active: settingsTab === 'binding' }" @click="settingsTab = 'binding'">
-             绑定与数据
-          </div>
+        <div class="tab-item" :class="{ active: settingsTab === 'profile' }" @click="settingsTab = 'profile'">
+          基本信息
+        </div>
+        <div class="tab-item" :class="{ active: settingsTab === 'binding' }" @click="settingsTab = 'binding'">
+          绑定与数据
+        </div>
       </div>
 
       <div class="settings-content" v-if="settingsTab === 'profile'">
         <div class="settings-group">
-            <div class="avatar-edit" @click="triggerAvatarUpload">
-                <img :src="settingsForm.avatar" class="edit-avatar">
-                <div class="edit-overlay"><i class="fa-solid fa-camera"></i></div>
-                <input type="file" ref="fileInput" @change="handleAvatarFile" style="display:none" accept="image/*">
-            </div>
-            
-            <div class="form-row">
-                <label>微博名</label>
-                <input type="text" v-model="settingsForm.name" placeholder="设置你的微博名">
-            </div>
-             <div class="form-row">
-                <label>头像URL</label>
-                <input type="text" v-model="settingsForm.avatar" placeholder="或者输入图片链接">
-            </div>
-            <div class="form-row">
-                <label>个人简介</label>
-                <input type="text" v-model="settingsForm.bio" placeholder="虚拟网友眼中的我">
-            </div>
-            <div class="form-row">
-                <label>地区</label>
-                <input type="text" v-model="settingsForm.region" placeholder="虚拟网友眼中我的所在地">
-            </div>
+          <div class="avatar-edit" @click="triggerAvatarUpload">
+            <img :src="settingsForm.avatar" class="edit-avatar">
+            <div class="edit-overlay"><i class="fa-solid fa-camera"></i></div>
+            <input type="file" ref="fileInput" @change="handleAvatarFile" style="display:none" accept="image/*">
+          </div>
+
+          <div class="form-row">
+            <label>微博名</label>
+            <input type="text" v-model="settingsForm.name" placeholder="设置你的微博名">
+          </div>
+          <div class="form-row">
+            <label>头像URL</label>
+            <input type="text" v-model="settingsForm.avatar" placeholder="或者输入图片链接">
+          </div>
+          <div class="form-row">
+            <label>个人简介</label>
+            <input type="text" v-model="settingsForm.bio" placeholder="虚拟网友眼中的我">
+          </div>
+          <div class="form-row">
+            <label>地区</label>
+            <input type="text" v-model="settingsForm.region" placeholder="虚拟网友眼中我的所在地">
+          </div>
         </div>
 
         <div class="settings-group">
-            <div class="form-row split">
-                <div class="split-item">
-                    <label>初始关注</label>
-                    <input type="number" v-model="settingsForm.following">
-                </div>
-                <div class="split-item">
-                    <label>初始粉丝</label>
-                    <input type="number" v-model="settingsForm.fans">
-                </div>
+          <div class="form-row split">
+            <div class="split-item">
+              <label>初始关注</label>
+              <input type="number" v-model="settingsForm.following">
             </div>
+            <div class="split-item">
+              <label>初始粉丝</label>
+              <input type="number" v-model="settingsForm.fans">
+            </div>
+          </div>
         </div>
 
         <div class="settings-group">
           <div class="form-row switch-row">
-             <label>认证身份 (公众人物)</label>
-             <label class="switch">
-                <input type="checkbox" v-model="settingsForm.verified">
-                <span class="slider round"></span>
-             </label>
+            <label>认证身份 (公众人物)</label>
+            <label class="switch">
+              <input type="checkbox" v-model="settingsForm.verified">
+              <span class="slider round"></span>
+            </label>
           </div>
           <div class="cert-options" v-if="settingsForm.verified">
-             <div class="cert-chip" :class="{ active: settingsForm.verifyType === '微博个人认证' }" @click="settingsForm.verifyType = '微博个人认证'">个人认证</div>
-             <div class="cert-chip" :class="{ active: settingsForm.verifyType === '微博官方认证' }" @click="settingsForm.verifyType = '微博官方认证'">官方认证</div>
-             <div class="cert-chip" :class="{ active: settingsForm.verifyType === '微博机构认证' }" @click="settingsForm.verifyType = '微博机构认证'">机构认证</div>
+            <div class="cert-chip" :class="{ active: settingsForm.verifyType === '微博个人认证' }"
+              @click="settingsForm.verifyType = '微博个人认证'">个人认证</div>
+            <div class="cert-chip" :class="{ active: settingsForm.verifyType === '微博官方认证' }"
+              @click="settingsForm.verifyType = '微博官方认证'">官方认证</div>
+            <div class="cert-chip" :class="{ active: settingsForm.verifyType === '微博机构认证' }"
+              @click="settingsForm.verifyType = '微博机构认证'">机构认证</div>
           </div>
         </div>
 
         <!-- VIP Level -->
         <div class="settings-group">
           <div class="form-row">
-             <label>VIP等级</label>
-             <div class="vip-selector">
-                <span 
-                   v-for="level in 7" 
-                   :key="level" 
-                   class="vip-level-btn"
-                   :class="{ active: settingsForm.vipLevel >= level }"
-                   @click="settingsForm.vipLevel = level">
-                   {{ level }}
-                </span>
-                <span 
-                   class="vip-level-btn none"
-                   :class="{ active: settingsForm.vipLevel === 0 }"
-                   @click="settingsForm.vipLevel = 0">
-                   无
-                </span>
-             </div>
+            <label>VIP等级</label>
+            <div class="vip-selector">
+              <span v-for="level in 7" :key="level" class="vip-level-btn"
+                :class="{ active: settingsForm.vipLevel >= level }" @click="settingsForm.vipLevel = level">
+                {{ level }}
+              </span>
+              <span class="vip-level-btn none" :class="{ active: settingsForm.vipLevel === 0 }"
+                @click="settingsForm.vipLevel = 0">
+                无
+              </span>
+            </div>
           </div>
           <div class="vip-preview" v-if="settingsForm.vipLevel > 0">
-             <span class="vip-crown" :class="'level-' + settingsForm.vipLevel">
-                <i class="fa-solid fa-crown"></i>
-             </span>
-             <span style="color: #ff8200; font-weight: bold;">{{ settingsForm.name || '用户名' }}</span>
-             <span style="color: #999; font-size: 12px; margin-left: 8px;">VIP{{ settingsForm.vipLevel }} 预览</span>
+            <span class="vip-crown" :class="'level-' + settingsForm.vipLevel">
+              <i class="fa-solid fa-crown"></i>
+            </span>
+            <span style="color: #ff8200; font-weight: bold;">{{ settingsForm.name || '用户名' }}</span>
+            <span style="color: #999; font-size: 12px; margin-left: 8px;">VIP{{ settingsForm.vipLevel }} 预览</span>
           </div>
         </div>
       </div>
 
+      <!-- Share to Chat Modal -->
+      <div class="share-modal-overlay" v-if="showShareModal" @click.self="showShareModal = false">
+        <div class="share-sheet">
+          <div class="share-header">分享给好友</div>
+          <div class="share-targets">
+            <!-- Reuse chatStore contacts -->
+            <div class="share-target-item" v-for="contact in chatStore.contactList" :key="contact.id"
+              @click="sharePostTo(contact.id)">
+              <img :src="contact.avatar" class="share-avatar">
+              <span class="share-name">{{ contact.name }}</span>
+            </div>
+          </div>
+          <div class="share-cancel" @click="showShareModal = false">取消</div>
+        </div>
+      </div>
+
       <div class="settings-content" v-if="settingsTab === 'binding'">
-          <!-- World Book Binding -->
-          <div class="settings-group">
-              <div class="group-title"><i class="fa-solid fa-book"></i> 世界书绑定 (文风/设定)</div>
-              <div class="binding-list">
-                 <div class="binding-item" 
-                      v-for="book in worldBookStore.books" 
-                      :key="book.id"
-                      :class="{ active: isBookBound(book.id) }"
-                      @click="toggleBookBind(book.id)">
-                      <i class="fa-solid fa-book-journal-whills"></i>
-                      <span>{{ book.name }}</span>
-                      <i class="fa-solid fa-check checkmark" v-if="isBookBound(book.id)"></i>
-                 </div>
-                 <div v-if="worldBookStore.books.length === 0" style="color: #999; font-size: 13px; padding: 10px;">
-                    暂无世界书，请去世界书APP创建
-                 </div>
-              </div>
+        <!-- World Book Binding -->
+        <div class="settings-group">
+          <div class="group-title"><i class="fa-solid fa-book"></i> 世界书绑定 (文风/设定)</div>
+          <div class="binding-list">
+            <div class="binding-item" v-for="book in worldBookStore.books" :key="book.id"
+              :class="{ active: isBookBound(book.id) }" @click="toggleBookBind(book.id)">
+              <i class="fa-solid fa-book-journal-whills"></i>
+              <span>{{ book.name }}</span>
+              <i class="fa-solid fa-check checkmark" v-if="isBookBound(book.id)"></i>
+            </div>
+            <div v-if="worldBookStore.books.length === 0" style="color: #999; font-size: 13px; padding: 10px;">
+              暂无世界书，请去世界书APP创建
+            </div>
+          </div>
+        </div>
+
+        <!-- Character Binding -->
+        <div class="settings-group">
+          <div class="group-title"><i class="fa-solid fa-users"></i> 角色绑定 (允许发博)</div>
+          <div class="char-grid">
+            <div class="char-select-item" v-for="char in chatStore.contactList" :key="char.id"
+              :class="{ active: isCharBound(char.id) }" @click="toggleCharBind(char.id)">
+              <img :src="char.avatar" class="char-avatar-mini">
+              <span class="char-name-mini">{{ char.name }}</span>
+              <div class="select-tick" v-if="isCharBound(char.id)"><i class="fa-solid fa-check"></i></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Automation -->
+        <div class="settings-group">
+          <div class="form-row switch-row">
+            <label><i class="fa-solid fa-clock"></i> 定时发微博</label>
+            <label class="switch">
+              <input type="checkbox" v-model="settingsForm.timerEnabled">
+              <span class="slider round"></span>
+            </label>
+          </div>
+          <div class="info-tip" v-if="settingsForm.timerEnabled">
+            <div style="margin-bottom:8px;">系统将自动让已绑定的角色发布生活动态</div>
+            <div class="form-row" style="background:none; padding:10px 0 0; border:none; justify-content: flex-start;">
+              <label style="width:auto; font-size:12px; color:#888; font-weight:normal;">频率(分钟):</label>
+              <input type="number" v-model="settingsForm.timerFrequency" class="freq-input" placeholder="30">
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Management -->
+        <div class="settings-group warning">
+          <div class="group-title" style="color: #e6162d;"><i class="fa-solid fa-triangle-exclamation"></i> 数据管理</div>
+
+          <div class="form-row">
+            <label>清空特定角色微博</label>
+            <select v-model="settingsForm.selectedCharToClear"
+              style="flex: 1; padding: 5px; margin-left: 10px; border-radius: 5px; border: 1px solid #ddd;">
+              <option value="" disabled>选择角色</option>
+              <option v-for="char in chatStore.contactList" :key="char.id" :value="char.id">{{ char.name }}</option>
+              <option value="me">我自己 (乔乔酱)</option>
+            </select>
+            <button @click="clearCharPosts" class="btn-mini-danger">清空</button>
           </div>
 
-          <!-- Character Binding -->
-          <div class="settings-group">
-              <div class="group-title"><i class="fa-solid fa-users"></i> 角色绑定 (允许发博)</div>
-              <div class="char-grid">
-                  <div class="char-select-item" 
-                       v-for="char in chatStore.contactList" 
-                       :key="char.id"
-                       :class="{ active: isCharBound(char.id) }"
-                       @click="toggleCharBind(char.id)">
-                       <img :src="char.avatar" class="char-avatar-mini">
-                       <span class="char-name-mini">{{ char.name }}</span>
-                       <div class="select-tick" v-if="isCharBound(char.id)"><i class="fa-solid fa-check"></i></div>
-                  </div>
-              </div>
-          </div>
-
-          <!-- Automation -->
-          <div class="settings-group">
-              <div class="form-row switch-row">
-                 <label><i class="fa-solid fa-clock"></i> 定时发微博</label>
-                 <label class="switch">
-                    <input type="checkbox" v-model="settingsForm.timerEnabled">
-                    <span class="slider round"></span>
-                 </label>
-              </div>
-              <div class="info-tip" v-if="settingsForm.timerEnabled">
-                 <div style="margin-bottom:8px;">系统将自动让已绑定的角色发布生活动态</div>
-                 <div class="form-row" style="background:none; padding:10px 0 0; border:none; justify-content: flex-start;">
-                     <label style="width:auto; font-size:12px; color:#888; font-weight:normal;">频率(分钟):</label>
-                     <input type="number" v-model="settingsForm.timerFrequency" class="freq-input" placeholder="30">
-                 </div>
-              </div>
-          </div>
-
-          <!-- Data Management -->
-          <div class="settings-group warning">
-              <div class="group-title" style="color: #e6162d;"><i class="fa-solid fa-triangle-exclamation"></i> 数据管理</div>
-              
-              <div class="form-row">
-                 <label>清空特定角色微博</label>
-                 <select v-model="settingsForm.selectedCharToClear" style="flex: 1; padding: 5px; margin-left: 10px; border-radius: 5px; border: 1px solid #ddd;">
-                    <option value="" disabled>选择角色</option>
-                    <option v-for="char in chatStore.contactList" :key="char.id" :value="char.id">{{ char.name }}</option>
-                    <option value="me">我自己 (乔乔酱)</option>
-                 </select>
-                 <button @click="clearCharPosts" class="btn-mini-danger">清空</button>
-              </div>
-
-              <button class="btn-block-danger" @click="clearAll">
-                  <i class="fa-solid fa-trash-can"></i> 清空所有微博内容
-              </button>
-          </div>
+          <button class="btn-block-danger" @click="clearAll">
+            <i class="fa-solid fa-trash-can"></i> 清空所有微博内容
+          </button>
+        </div>
       </div>
 
       <div class="settings-footer">
-          <button class="btn-cancel" @click="closeSettings">取消</button>
-          <button class="btn-save" @click="saveSettings">保存设置</button>
+        <button class="btn-cancel" @click="closeSettings">取消</button>
+        <button class="btn-save" @click="saveSettings">保存设置</button>
       </div>
     </div>
 
@@ -846,7 +1079,7 @@ function likePost(postId) {
   --wb-link: #4d73a1;
   --wb-divider: #efefef;
   --glass: rgba(255, 255, 255, 0.9);
-  
+
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--wb-bg);
   color: var(--wb-text-main);
@@ -922,8 +1155,15 @@ header {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .post-card {
@@ -1020,9 +1260,17 @@ header {
 }
 
 @keyframes heartPop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.4); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.4);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Hot List */
@@ -1162,7 +1410,10 @@ nav.bottom-nav {
 /* Modals */
 .post-modal {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: white;
   z-index: 1000;
   display: none;
@@ -1175,8 +1426,13 @@ nav.bottom-nav {
 }
 
 @keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
 }
 
 .modal-header {
@@ -1252,10 +1508,17 @@ nav.bottom-nav {
   opacity: 0.5;
 }
 
-.send-btn.ready { opacity: 1; }
+.send-btn.ready {
+  opacity: 1;
+}
 
-.search-sub-view { display: none; }
-.search-sub-view.active { display: block; }
+.search-sub-view {
+  display: none;
+}
+
+.search-sub-view.active {
+  display: block;
+}
 
 .topic-item {
   display: flex;
@@ -1265,6 +1528,7 @@ nav.bottom-nav {
   border-bottom: 1px solid var(--wb-divider);
   cursor: pointer;
 }
+
 .topic-avatar {
   width: 50px;
   height: 50px;
@@ -1312,14 +1576,20 @@ nav.bottom-nav {
 /* Settings Modal */
 .settings-modal {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: #f2f2f2;
   z-index: 1100;
   display: none;
   flex-direction: column;
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.settings-modal.active { display: flex; }
+
+.settings-modal.active {
+  display: flex;
+}
 
 .settings-header {
   background: white;
@@ -1351,12 +1621,17 @@ nav.bottom-nav {
   border-bottom: 1px solid #f9f9f9;
 }
 
-.form-label { width: 90px; font-size: 15px; color: #333; }
-.form-input { 
-  flex: 1; 
-  border: none; 
-  outline: none; 
-  font-size: 15px; 
+.form-label {
+  width: 90px;
+  font-size: 15px;
+  color: #333;
+}
+
+.form-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 15px;
   text-align: right;
   color: #666;
 }
@@ -1417,11 +1692,21 @@ nav.bottom-nav {
   border: none;
 }
 
-.btn-cancel { background: #e0e0e0; color: #666; }
-.btn-save { background: var(--wb-orange); color: white; }
+.btn-cancel {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.btn-save {
+  background: var(--wb-orange);
+  color: white;
+}
 
 /* Following List */
-.following-list { background: white; }
+.following-list {
+  background: white;
+}
+
 .follow-item {
   display: flex;
   align-items: center;
@@ -1430,10 +1715,28 @@ nav.bottom-nav {
   border-bottom: 1px solid var(--wb-divider);
   cursor: pointer;
 }
-.follow-item img { width: 50px; height: 50px; border-radius: 50%; }
-.follow-info { flex: 1; }
-.follow-info h4 { font-size: 15px; font-weight: bold; }
-.follow-info p { font-size: 12px; color: var(--wb-text-sub); margin-top: 2px; }
+
+.follow-item img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+}
+
+.follow-info {
+  flex: 1;
+}
+
+.follow-info h4 {
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.follow-info p {
+  font-size: 12px;
+  color: var(--wb-text-sub);
+  margin-top: 2px;
+}
+
 .follow-status-btn {
   border: 1px solid #ddd;
   padding: 4px 12px;
@@ -1450,6 +1753,7 @@ nav.bottom-nav {
   width: 100%;
   padding: 0 40px;
 }
+
 .user-profile-actions button {
   flex: 1;
   padding: 8px;
@@ -1458,8 +1762,16 @@ nav.bottom-nav {
   font-weight: bold;
   border: 1px solid var(--wb-orange);
 }
-.btn-follow { background: var(--wb-orange); color: white; }
-.btn-chat { background: white; color: var(--wb-orange); }
+
+.btn-follow {
+  background: var(--wb-orange);
+  color: white;
+}
+
+.btn-chat {
+  background: white;
+  color: var(--wb-orange);
+}
 
 .profile-header {
   background: white;
@@ -1470,7 +1782,9 @@ nav.bottom-nav {
 
 .profile-bg {
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 140px;
   background: linear-gradient(to bottom, #ff8200, #ffb200);
   z-index: 0;
@@ -1478,12 +1792,13 @@ nav.bottom-nav {
 
 .profile-top-bar {
   position: absolute;
-  top: 15px; right: 20px;
+  top: 15px;
+  right: 20px;
   z-index: 10;
   color: white;
   font-size: 20px;
   cursor: pointer;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .profile-main {
@@ -1497,16 +1812,25 @@ nav.bottom-nav {
 }
 
 .profile-avatar {
-  width: 90px; height: 90px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   border: 4px solid white;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
 .profile-name {
-  font-size: 22px; margin-top: 12px; font-weight: bold; color: var(--wb-text-main);
+  font-size: 22px;
+  margin-top: 12px;
+  font-weight: bold;
+  color: var(--wb-text-main);
 }
-.profile-id { font-size: 13px; color: var(--wb-text-sub); margin-bottom: 5px; }
+
+.profile-id {
+  font-size: 13px;
+  color: var(--wb-text-sub);
+  margin-bottom: 5px;
+}
 
 .profile-stats {
   display: flex;
@@ -1515,9 +1839,23 @@ nav.bottom-nav {
   margin: 20px 0 10px;
   width: 100%;
 }
-.stat-item { text-align: center; cursor: pointer; }
-.stat-num { font-weight: bold; font-size: 18px; display: block; color: var(--wb-text-main); }
-.stat-label { font-size: 12px; color: var(--wb-text-sub); }
+
+.stat-item {
+  text-align: center;
+  cursor: pointer;
+}
+
+.stat-num {
+  font-weight: bold;
+  font-size: 18px;
+  display: block;
+  color: var(--wb-text-main);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--wb-text-sub);
+}
 
 /* Chat Window */
 .chat-window {
@@ -1526,6 +1864,7 @@ nav.bottom-nav {
   height: 100vh;
   background: #f2f2f2;
 }
+
 .chat-header {
   background: white;
   padding: 12px 15px;
@@ -1534,6 +1873,7 @@ nav.bottom-nav {
   gap: 15px;
   border-bottom: 1px solid var(--wb-divider);
 }
+
 .chat-messages {
   flex: 1;
   padding: 15px;
@@ -1542,6 +1882,7 @@ nav.bottom-nav {
   flex-direction: column;
   gap: 15px;
 }
+
 .bubble {
   max-width: 75%;
   padding: 10px 14px;
@@ -1550,18 +1891,21 @@ nav.bottom-nav {
   line-height: 1.4;
   position: relative;
 }
+
 .bubble.received {
   align-self: flex-start;
   background: white;
   color: #333;
   border-bottom-left-radius: 4px;
 }
+
 .bubble.sent {
   align-self: flex-end;
   background: var(--wb-orange);
   color: white;
   border-bottom-right-radius: 4px;
 }
+
 .chat-footer {
   background: white;
   padding: 10px 15px;
@@ -1571,6 +1915,7 @@ nav.bottom-nav {
   gap: 10px;
   border-top: 1px solid var(--wb-divider);
 }
+
 .chat-input {
   flex: 1;
   background: #f5f5f5;
@@ -1582,7 +1927,10 @@ nav.bottom-nav {
 }
 
 /* Messages List */
-.msg-list { background: white; }
+.msg-list {
+  background: white;
+}
+
 .msg-item {
   display: flex;
   padding: 15px;
@@ -1590,14 +1938,27 @@ nav.bottom-nav {
   border-bottom: 1px solid var(--wb-divider);
   cursor: pointer;
 }
-.msg-content { flex: 1; }
+
+.msg-content {
+  flex: 1;
+}
+
 .msg-top {
   display: flex;
   justify-content: space-between;
   margin-bottom: 4px;
 }
-.msg-user { font-weight: bold; font-size: 15px; }
-.msg-time { font-size: 11px; color: var(--wb-text-sub); }
+
+.msg-user {
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.msg-time {
+  font-size: 11px;
+  color: var(--wb-text-sub);
+}
+
 .msg-text {
   font-size: 13px;
   color: var(--wb-text-sub);
@@ -1611,13 +1972,14 @@ nav.bottom-nav {
 /* Modern Settings Design */
 .settings-modal {
   /* ... existing placement styles assumed preserved in parent ... */
-  background: #f5f5f7; /* iOS System Gray */
+  background: #f5f5f7;
+  /* iOS System Gray */
 }
 
 .settings-header {
-  background: rgba(255,255,255,0.9);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(10px);
-  border-bottom: 0.5px solid rgba(0,0,0,0.1);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
   padding: 15px 20px;
 }
 
@@ -1626,8 +1988,9 @@ nav.bottom-nav {
   padding: 5px 15px 0;
   display: flex;
   gap: 20px;
-  border-bottom: 0.5px solid rgba(0,0,0,0.05);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
 }
+
 .tab-item {
   padding: 12px 10px;
   font-size: 15px;
@@ -1636,10 +1999,12 @@ nav.bottom-nav {
   position: relative;
   transition: all 0.3s;
 }
+
 .tab-item.active {
   color: #333;
   font-weight: bold;
 }
+
 .tab-item.active::after {
   content: '';
   position: absolute;
@@ -1669,7 +2034,7 @@ nav.bottom-nav {
 }
 
 .settings-group.warning {
-  border: 1px solid rgba(230,22,45,0.15);
+  border: 1px solid rgba(230, 22, 45, 0.15);
   background: #fffafa;
 }
 
@@ -1683,6 +2048,7 @@ nav.bottom-nav {
   align-items: center;
   gap: 6px;
 }
+
 .group-title i {
   color: #ff8200;
   font-size: 13px;
@@ -1697,16 +2063,20 @@ nav.bottom-nav {
   position: relative;
   transition: transform 0.2s;
 }
-.avatar-edit:active { transform: scale(0.95); }
+
+.avatar-edit:active {
+  transform: scale(0.95);
+}
 
 .edit-avatar {
   width: 100%;
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(0,0,0,0.1);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
+
 .edit-overlay {
   position: absolute;
   bottom: 2px;
@@ -1729,17 +2099,21 @@ nav.bottom-nav {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 0.5px solid rgba(0,0,0,0.05);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.05);
   background: white;
 }
-.form-row:last-child { border-bottom: none; }
+
+.form-row:last-child {
+  border-bottom: none;
+}
 
 .form-row label {
   font-size: 15px;
   color: #333;
   font-weight: 500;
 }
-.form-row input[type="text"], 
+
+.form-row input[type="text"],
 .form-row input[type="number"] {
   text-align: right;
   font-size: 15px;
@@ -1747,13 +2121,17 @@ nav.bottom-nav {
   background: transparent;
   width: 60%;
 }
-.form-row input::placeholder { color: #c0c4cc; }
+
+.form-row input::placeholder {
+  color: #c0c4cc;
+}
 
 /* Stats Split */
 .form-row.split {
   padding: 20px;
   gap: 20px;
 }
+
 .split-item {
   flex: 1;
   display: flex;
@@ -1762,25 +2140,28 @@ nav.bottom-nav {
   background: #f9fbfd;
   border-radius: 12px;
   padding: 15px;
-  border: 1px solid rgba(0,0,0,0.03);
+  border: 1px solid rgba(0, 0, 0, 0.03);
 }
-.split-item label { 
-  font-size: 12px; 
-  color: #8daabf; 
+
+.split-item label {
+  font-size: 12px;
+  color: #8daabf;
   margin-bottom: 4px;
 }
-.split-item input { 
-  text-align: center; 
-  font-size: 20px; 
-  font-weight: bold; 
-  color: #333; 
+
+.split-item input {
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: #333;
   width: 100%;
 }
 
 /* Switches */
-.switch-row { 
+.switch-row {
   padding-right: 20px;
 }
+
 .switch {
   position: relative;
   display: inline-block;
@@ -1788,26 +2169,51 @@ nav.bottom-nav {
   height: 30px;
   flex-shrink: 0;
 }
-.switch input { opacity: 0; width: 0; height: 0; }
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
 .slider {
-  position: absolute; cursor: pointer;
-  top: 0; left: 0; right: 0; bottom: 0;
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background-color: #e9e9ea;
   transition: .4s;
   border-radius: 34px;
 }
+
 .slider:before {
-  position: absolute; content: "";
-  height: 26px; width: 26px;
-  left: 2px; bottom: 2px;
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 2px;
+  bottom: 2px;
   background-color: white;
   transition: .4s;
   border-radius: 50%;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
-input:checked + .slider { background-color: #34c759; /* iOS Green for switches usually, or keep orange */ }
-input:checked + .slider { background-color: var(--wb-orange); } /* Keeping Orange per brand */
-input:checked + .slider:before { transform: translateX(20px); }
+
+input:checked+.slider {
+  background-color: #34c759;
+  /* iOS Green for switches usually, or keep orange */
+}
+
+input:checked+.slider {
+  background-color: var(--wb-orange);
+}
+
+/* Keeping Orange per brand */
+input:checked+.slider:before {
+  transform: translateX(20px);
+}
 
 /* Chips */
 .cert-options {
@@ -1816,6 +2222,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   flex-wrap: wrap;
   gap: 10px;
 }
+
 .cert-chip {
   font-size: 13px;
   padding: 6px 14px;
@@ -1825,6 +2232,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   transition: all 0.2s;
   border: 1px solid transparent;
 }
+
 .cert-chip.active {
   background: #fff0d6;
   color: var(--wb-orange);
@@ -1836,6 +2244,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 .binding-list {
   padding: 0 15px 15px;
 }
+
 .binding-item {
   display: flex;
   align-items: center;
@@ -1848,23 +2257,28 @@ input:checked + .slider:before { transform: translateX(20px); }
   transition: all 0.3s ease;
   cursor: pointer;
 }
+
 .binding-item:hover {
   background: #f5f7fa;
 }
+
 .binding-item.active {
   background: #fff8f0;
   border-color: #ff8200;
   box-shadow: 0 2px 8px rgba(255, 130, 0, 0.12);
 }
-.binding-item i:first-child { 
-  color: #a0aec0; 
+
+.binding-item i:first-child {
+  color: #a0aec0;
   transition: color 0.3s;
 }
-.binding-item.active i:first-child { 
-  color: #ff8200; 
+
+.binding-item.active i:first-child {
+  color: #ff8200;
 }
-.checkmark { 
-  margin-left: auto; 
+
+.checkmark {
+  margin-left: auto;
   color: #ff8200;
   font-size: 14px;
 }
@@ -1876,6 +2290,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   gap: 15px;
   padding: 15px 20px 25px;
 }
+
 .char-select-item {
   display: flex;
   flex-direction: column;
@@ -1884,44 +2299,49 @@ input:checked + .slider:before { transform: translateX(20px); }
   transition: all 0.3s ease;
   cursor: pointer;
 }
+
 .char-select-item img {
-  width: 52px; 
+  width: 52px;
   height: 52px;
   border-radius: 50%;
   border: 2.5px solid transparent;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
+
 .char-select-item.active img {
   border-color: #ff8200;
   box-shadow: 0 3px 10px rgba(255, 130, 0, 0.25);
   transform: scale(1.05);
 }
+
 .char-select-item span {
   margin-top: 8px;
   font-size: 11px;
   color: #888;
   transition: all 0.2s;
 }
+
 .char-select-item.active span {
   color: #333;
   font-weight: 600;
 }
+
 .select-tick {
   position: absolute;
-  top: -2px; 
+  top: -2px;
   right: 2px;
   background: linear-gradient(135deg, #ff8200 0%, #ff5b29 100%);
   color: white;
-  width: 18px; 
+  width: 18px;
   height: 18px;
   border-radius: 50%;
   font-size: 10px;
-  display: flex; 
-  align-items: center; 
+  display: flex;
+  align-items: center;
   justify-content: center;
   border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 /* Freq Input */
@@ -1939,26 +2359,35 @@ input:checked + .slider:before { transform: translateX(20px); }
 /* Footer */
 .settings-footer {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   background: white;
-  padding: 15px 20px 25px; /* Extra bottom padding for home bar */
+  padding: 15px 20px 25px;
+  /* Extra bottom padding for home bar */
   display: flex;
   gap: 15px;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
   z-index: 200;
 }
-.btn-cancel, .btn-save {
+
+.btn-cancel,
+.btn-save {
   flex: 1;
   height: 44px;
   border-radius: 22px;
   font-size: 16px;
   font-weight: 600;
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
 .btn-cancel {
   background: #f0f0f5;
   color: #666;
 }
+
 .btn-save {
   background: linear-gradient(90deg, #ff8200 0%, #ff5b29 100%);
   color: white;
@@ -1987,13 +2416,15 @@ input:checked + .slider:before { transform: translateX(20px); }
   border: 1px solid rgba(230, 22, 45, 0.1);
   transition: all 0.2s;
 }
+
 .btn-mini-danger:hover {
   background: #ffe5e5;
 }
+
 .btn-block-danger {
-  display: flex; 
-  align-items: center; 
-  justify-content: center; 
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   color: #e6162d;
   background: white;
@@ -2003,13 +2434,14 @@ input:checked + .slider:before { transform: translateX(20px); }
   font-size: 15px;
   margin-top: 10px;
   border-radius: 12px;
-  border: 1.5px solid rgba(230,22,45,0.15);
-  box-shadow: 0 1px 3px rgba(230,22,45,0.08);
+  border: 1.5px solid rgba(230, 22, 45, 0.15);
+  box-shadow: 0 1px 3px rgba(230, 22, 45, 0.08);
   transition: all 0.2s;
 }
+
 .btn-block-danger:hover {
   background: #fffafa;
-  border-color: rgba(230,22,45,0.25);
+  border-color: rgba(230, 22, 45, 0.25);
 }
 
 
@@ -2029,7 +2461,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   font-weight: bold;
   font-size: 10px;
   color: white;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .verify-badge.personal {
@@ -2061,7 +2493,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   font-size: 12px;
   color: white;
   border: 2px solid white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .verify-badge-avatar.personal {
@@ -2083,12 +2515,14 @@ input:checked + .slider:before { transform: translateX(20px); }
   align-items: center;
   justify-content: center;
   margin-left: 4px;
-  position: relative; /* For absolute positioning of number */
+  position: relative;
+  /* For absolute positioning of number */
   vertical-align: text-bottom;
 }
 
 .vip-crown i {
-  font-size: 14px; /* Base size */
+  font-size: 14px;
+  /* Base size */
 }
 
 /* VIP Level Colors - Low levels (1-3): Brown/Bronze */
@@ -2143,6 +2577,110 @@ input:checked + .slider:before { transform: translateX(20px); }
   box-shadow: 0 2px 6px rgba(255, 140, 0, 0.3);
 }
 
+/* Comment Section Styles */
+.comment-section {
+  background-color: #f8f8f8;
+  border-top: 1px solid #f0f0f0;
+  padding: 0 12px 12px 12px;
+  margin-top: -5px;
+  /* Pull closer to actions */
+  animation: fade-in 0.3s ease;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.comment-item {
+  display: flex;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef0f2;
+}
+
+.comment-item:last-child {
+  border-bottom: none;
+}
+
+.comment-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.comment-body {
+  flex: 1;
+  font-size: 13px;
+}
+
+.comment-user {
+  color: #eb7350;
+  /* Weibo Orange */
+  margin-bottom: 4px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.comment-user.vip-name {
+  color: #ff8200;
+}
+
+.comment-text {
+  color: #333;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.comment-footer {
+  display: flex;
+  justify-content: space-between;
+  color: #939393;
+  font-size: 11px;
+}
+
+.comment-actions {
+  display: flex;
+  gap: 15px;
+}
+
+.delete-btn {
+  cursor: pointer;
+  color: #5d7da0;
+  /* Link Blue */
+}
+
+.delete-btn:hover {
+  text-decoration: underline;
+}
+
+.comment-actions span {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.comment-actions span.liked {
+  color: #ff8200;
+}
+
+.empty-comments {
+  padding: 30px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+}
+
+.active-action {
+  color: var(--wb-orange) !important;
+}
+
+
 .vip-level-btn.none {
   width: auto;
   padding: 0 10px;
@@ -2173,7 +2711,8 @@ input:checked + .slider:before { transform: translateX(20px); }
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2px solid white; /* Optional: adds a whitespace separating it from avatar */
+  border: 2px solid white;
+  /* Optional: adds a whitespace separating it from avatar */
   z-index: 5;
 }
 
@@ -2193,19 +2732,18 @@ input:checked + .slider:before { transform: translateX(20px); }
   position: absolute;
   bottom: -1px;
   right: -1px;
-  font-size: 8px; 
+  font-size: 8px;
   font-family: 'Arial', sans-serif;
   font-style: italic;
   font-weight: 900;
   color: white;
   line-height: 1;
-  text-shadow: 
-      1px 0 0 #ff8200, 
-      -1px 0 0 #ff8200, 
-      0 1px 0 #ff8200, 
-      0 -1px 0 #ff8200;
+  text-shadow:
+    1px 0 0 #ff8200,
+    -1px 0 0 #ff8200,
+    0 1px 0 #ff8200,
+    0 -1px 0 #ff8200;
   transform: scale(1);
   z-index: 2;
 }
-
 </style>
