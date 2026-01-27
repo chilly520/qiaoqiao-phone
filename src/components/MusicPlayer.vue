@@ -323,30 +323,31 @@ const handleImageError = (e) => {
             :style="{ left: floatingPos.x + 'px', top: floatingPos.y + 'px' }" @mousedown="startDrag"
             @touchstart="startDrag">
 
-            <div class="floating-header" @click="musicStore.toggleMinimize">
-                <div class="floating-avatars">
-                    <img :src="chatData.userAvatar" class="mini-avatar">
-                    <i class="fa-solid fa-heart text-pink-500 text-[8px] animate-pulse"></i>
-                    <img :src="musicStore.togetherPartner?.avatar || chatData.charAvatar" class="mini-avatar">
+            <div class="floating-content" @click="musicStore.toggleMinimize">
+                <!-- Mini Avatars (Left) -->
+                <div class="floating-avatars-mini">
+                    <img :src="chatData.userAvatar" class="mini-avatar-v2">
+                    <img :src="musicStore.togetherPartner?.avatar || chatData.charAvatar" class="mini-avatar-v2">
                 </div>
-                <div class="floating-controls" @click.stop>
-                    <button class="float-btn" :class="{ 'active': isLocked }" @click="isLocked = !isLocked"
-                        :title="isLocked ? '解锁' : '锁定'">
+
+                <!-- Lyrics (Center) -->
+                <div class="floating-lyrics-v2">
+                    {{ musicStore.activeLyricText }}
+                </div>
+
+                <!-- Controls (Right) -->
+                <div class="floating-actions-mini" @click.stop>
+                    <button class="float-mini-btn" :class="{ 'active': isLocked }" @click="isLocked = !isLocked">
                         <i class="fa-solid" :class="isLocked ? 'fa-lock' : 'fa-lock-open'"></i>
                     </button>
-                    <button class="float-btn close" @click="musicStore.toggleFloatingLyrics()" title="关闭歌词窗口">
+                    <button class="float-mini-btn close" @click="musicStore.toggleFloatingLyrics()">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
             </div>
-
-            <div class="floating-body" @click="musicStore.toggleMinimize">
-                <div class="floating-lyrics">
-                    {{ musicStore.activeLyricText }}
-                </div>
-                <div class="floating-progress-bar">
-                    <div class="f-progress-fill" :style="{ width: progressPercent + '%' }"></div>
-                </div>
+            <!-- Slim Progress Line at bottom -->
+            <div class="floating-progress-slim">
+                <div class="f-progress-fill-slim" :style="{ width: progressPercent + '%' }"></div>
             </div>
         </div>
 
@@ -1550,112 +1551,118 @@ const handleImageError = (e) => {
 .together-floating-player {
     position: fixed;
     z-index: 20002;
-    width: 160px;
-    background: rgba(20, 20, 20, 0.85);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    width: auto;
+    min-width: 200px;
+    max-width: 80vw;
+    height: 34px;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 17px;
+    padding: 0 4px 0 6px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     cursor: grab;
     user-select: none;
-    transition: box-shadow 0.2s, background 0.2s, transform 0.2s;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .together-floating-player:active {
     cursor: grabbing;
 }
 
-.together-floating-player.is-dragging {
-    opacity: 0.9;
-    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
-    transform: scale(1.02);
-}
-
 .together-floating-player.is-locked {
     cursor: default;
-    border-color: rgba(204, 170, 102, 0.3);
+    border-color: rgba(0, 0, 0, 0.1);
 }
 
-.floating-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.floating-avatars {
+.floating-content {
+    flex: 1;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 10px;
+    width: 100%;
 }
 
-.mini-avatar {
+.floating-avatars-mini {
+    display: flex;
+    align-items: center;
+    position: relative;
+    width: 32px;
+}
+
+.mini-avatar-v2 {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1.5px solid white;
+    object-fit: cover;
 }
 
-.floating-controls {
+.mini-avatar-v2:last-child {
+    position: absolute;
+    left: 12px;
+    z-index: 1;
+}
+
+.floating-lyrics-v2 {
+    flex: 1;
+    font-size: 13px;
+    color: #333;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 4px;
+}
+
+.floating-actions-mini {
     display: flex;
-    gap: 6px;
+    align-items: center;
+    gap: 2px;
 }
 
-.float-btn {
+.float-mini-btn {
     background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 10px;
-    padding: 4px;
+    color: rgba(0, 0, 0, 0.3);
+    font-size: 11px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 50%;
     transition: all 0.2s;
 }
 
-.float-btn:hover {
-    color: white;
-    background: rgba(255, 255, 255, 0.1);
+.float-mini-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: rgba(0, 0, 0, 0.6);
 }
 
-.float-btn.active {
-    color: #ccaa66;
+.float-mini-btn.active {
+    color: #07c160;
 }
 
-.float-btn.close:hover {
+.float-mini-btn.close:hover {
     color: #ff4d4d;
 }
 
-.floating-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.floating-lyrics {
-    font-size: 11px;
-    color: #ccaa66;
-    text-align: center;
-    font-weight: 500;
-    min-height: 2.4em;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.2;
-}
-
-.floating-progress-bar {
+.floating-progress-slim {
     height: 2px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 1px;
-    overflow: hidden;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.03);
+    position: absolute;
+    bottom: 0;
+    left: 0;
 }
 
-.f-progress-fill {
+.f-progress-fill-slim {
     height: 100%;
-    background: #ccaa66;
+    background: #07c160;
     transition: width 0.3s linear;
 }
 </style>
