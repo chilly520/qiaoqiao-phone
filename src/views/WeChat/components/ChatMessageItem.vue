@@ -132,7 +132,7 @@
                                         <div class="family-card-content">
                                             <div class="family-card-text">{{ familyCardData.text ||
                                                 '送我一张亲属卡好不好？以后你来管家~'
-                                            }}
+                                                }}
                                             </div>
                                             <div class="family-card-footer">
                                                 <div class="family-card-no">**** **** **** {{ isFamilyCardApply ? '8888'
@@ -285,7 +285,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                        }}
+                                    }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -743,6 +743,15 @@ function getCleanContent(contentRaw, isCard = false) {
         for (let i = 0; i < 3; i++) {
             clean = clean.replace(/\n\s*\}\s*$/g, '').trim();
         }
+
+        // 3.3 SPECIFIC FALLBACK for LEAKED JSON FRAGMENTS (spirit, mood, location, etc.)
+        // This catches cases where the outer brace removal failed due to nesting, leaving internal keys exposed.
+        clean = clean.replace(/(?:^|[\s,])"?(?:spirit|mood|emotion|stats)"?\s*:\s*\{[^\}]+\},?/gi, '');
+        clean = clean.replace(/(?:^|[\s,])"?(?:location|distance|date|time|status|scene|outfit|mind|behavior|thoughts)"?\s*:\s*"[^"]*",?/gi, '');
+        clean = clean.replace(/^\s*\},?\s*$/gm, ''); // Remove standalone closing braces lines
+        clean = clean.replace(/^\s*,\s*$/gm, '');   // Remove standalone comma lines
+
+        // 4. Remove standalone CSS properties if they leak outside blocks
 
         // 4. Remove standalone CSS properties if they leak outside blocks
         clean = clean.replace(/transform:\s*scale\([^\)]+\)/gi, '');
