@@ -198,6 +198,24 @@
                             </div>
                         </div>
 
+                        <!-- Music (Replicated from old version) -->
+                        <div v-else-if="msg.type === 'music'" class="flex flex-col w-full"
+                            :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                            <div class="voice-container">
+                                <div class="voice-bubble music-bubble"
+                                    style="width: 140px; flex: none; background-color: #fce7f3; border-color: #fbcfe8; color: #be185d;"
+                                    @click="handlePlayMusic">
+                                    <div class="voice-icon">
+                                        <i class="fa-solid fa-music"
+                                            :class="{ 'animate-pulse': musicBoxStore.isPlaying }"></i>
+                                    </div>
+                                    <span class="voice-duration" style="font-size:12px; margin-left:6px;">
+                                        {{ musicInfo }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Voice (Moved up) -->
                         <div v-else-if="msg.type === 'voice'" class="flex flex-col w-full"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -296,10 +314,10 @@
                             </div>
 
                             <!-- 4. Empty/Protocol Placeholder (Clickable Fallback) -->
-                            <div v-if="!cleanedContent && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && msg.type !== 'voice'"
-                                @contextmenu.prevent="emitContextMenu"
-                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
+                            <div v-if="!cleanedContent && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && msg.type !== 'voice' && msg.type !== 'music'"
+                                @contextmenu.prevent="emitContextMenu" @touchstart="startLongPress"
+                                @touchend="cancelLongPress" @touchmove="cancelLongPress" @mousedown="startLongPress"
+                                @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-1.5 text-[11px] text-gray-400 italic bg-gray-100/30 border border-dashed border-gray-200 rounded-lg opacity-60 hover:opacity-100 transition-opacity">
                                 [协议/空内容消息 - 右键编辑/删除]
                             </div>
@@ -332,6 +350,7 @@ import { useStickerStore } from '../../../stores/stickerStore'
 import { useChatStore } from '../../../stores/chatStore'
 import { useWalletStore } from '../../../stores/walletStore'
 import { useSettingsStore } from '../../../stores/settingsStore'
+import { useMusicBoxStore } from '../../../stores/musicBoxStore'
 import { parseWeChatEmojis } from '../../../utils/emojiParser'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
@@ -359,6 +378,7 @@ const stickerStore = useStickerStore()
 const chatStore = useChatStore()
 const walletStore = useWalletStore()
 const settingsStore = useSettingsStore()
+const musicBoxStore = useMusicBoxStore()
 const router = useRouter()
 const localShowDetail = ref(false)
 const localShowTranscript = ref(false)
@@ -607,6 +627,25 @@ const favoriteCardData = computed(() => {
     }
 })
 
+const musicInfo = computed(() => {
+    if (props.msg.type !== 'music') return ''
+    const content = ensureString(props.msg.content)
+    let info = '点击重听'
+    if (content.includes(':')) {
+        const inst = content.split(/[:：]/)[0].trim().toLowerCase()
+        const instMap = {
+            'piano': '🎹 钢琴',
+            'guitar': '🎸 吉他',
+            'violin': '🎻 小提琴',
+            'flute': '🪈 长笛',
+            'game': '👾 8-bit',
+            'drum': '🥁 鼓点'
+        }
+        info = (instMap[inst] || inst) + '演奏'
+    }
+    return info
+})
+
 const familyCardData = computed(() => {
     const content = ensureString(props.msg.content)
 
@@ -767,7 +806,7 @@ function getPureHtml(content) {
     try {
         let jsonStr = trimmed;
         if (trimmed.startsWith('[CARD]')) jsonStr = trimmed.replace('[CARD]', '').trim();
-        
+
         // Remove markdown backticks if present
         jsonStr = jsonStr.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();
 
@@ -800,7 +839,7 @@ function getPureHtml(content) {
     // 3. Raw Fallback: If it's pure HTML or contains markers
     const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
     const startIdx = decoded.toLowerCase().indexOf('<div') !== -1 ? decoded.toLowerCase().indexOf('<div') : decoded.toLowerCase().indexOf('<style');
-    
+
     if (startIdx !== -1) {
         const endIdx = decoded.lastIndexOf('>');
         if (endIdx > startIdx) {
@@ -908,7 +947,7 @@ function isImageMsg(msg) {
     if (match) {
         const c = match[1].trim()
         if (c.startsWith('http') || c.startsWith('blob:') || c.startsWith('data:')) return true
-        
+
         // Return TRUE only if we have a standalone tag AND it's a known sticker
         // This ensures broken stickers fall back to text bubble
         const found = findSticker(c);
@@ -992,7 +1031,7 @@ function getImageSrc(msg) {
         const seed = normalizeStickerName(c) || c;
         return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
     }
-    
+
     // Final check for the whole string being a valid URL/data URL
     if (clean.startsWith('http') || clean.startsWith('blob:') || clean.startsWith('data:image/')) {
         return clean;
@@ -1180,6 +1219,10 @@ function handleToggleVoice() {
     if (props.msg.isPlaying === undefined) {
         props.msg.isPlaying = false
     }
+}
+
+function handlePlayMusic() {
+    musicBoxStore.playScore(ensureString(props.msg.content))
 }
 
 function emitContextMenu(event) {

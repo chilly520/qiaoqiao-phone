@@ -268,7 +268,7 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
@@ -292,6 +292,10 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.type = 'image'
                 } else if (tagType === '语音') {
                     newMsg.type = 'voice'
+                } else if (tagType === '演奏' || tagType === 'MUSIC') {
+                    newMsg.type = 'music'
+                    // If val2 exists, it's [演奏: instrument: score]. Otherwise val1 is the part after [演奏: ...]
+                    newMsg.content = val2 ? `${val1}: ${val2}` : val1
                 } else if (tagType === '表情包') {
                     newMsg.type = 'sticker'
                 } else if (tagType === 'VIDEO') {
