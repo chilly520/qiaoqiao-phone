@@ -15,6 +15,7 @@ export const useMusicStore = defineStore('music', () => {
   const repeatMode = ref('off') // 'off', 'one', 'all'
   const playerVisible = ref(false)
   const isMinimized = ref(false)
+  const showFloatingLyrics = ref(true)
 
   // Audio Element (managed globally or within store context to persist across routes if needed)
   // Ideally, use a dedicated Audio object
@@ -467,6 +468,8 @@ export const useMusicStore = defineStore('music', () => {
 
     togglePlayer,
     toggleMinimize: () => { isMinimized.value = !isMinimized.value },
+    showFloatingLyrics,
+    toggleFloatingLyrics: () => { showFloatingLyrics.value = !showFloatingLyrics.value },
     play,
     pause,
     togglePlay,

@@ -282,6 +282,10 @@ const handleImageError = (e) => {
                         class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="toolbar-btn" @click="showPlaylistModal = true" title="列表"><i
                         class="fa-solid fa-list-ul"></i></button>
+                <button class="toolbar-btn" :class="{ active: musicStore.showFloatingLyrics }"
+                    @click="musicStore.toggleFloatingLyrics()" title="显示/隐藏悬浮歌词">
+                    <span class="text-[10px] font-bold">词</span>
+                </button>
                 <button class="toolbar-btn" :class="{ active: musicStore.isShuffling }"
                     @click="musicStore.switchMode('shuffle')" title="随机播放">
                     <i class="fa-solid fa-shuffle"></i>
@@ -314,7 +318,7 @@ const handleImageError = (e) => {
         </div>
 
         <!-- Together Mode Floating Draggable Player -->
-        <div v-if="playerVisible && musicStore.isMinimized && musicStore.isListeningTogether"
+        <div v-if="playerVisible && musicStore.isMinimized && musicStore.isListeningTogether && musicStore.showFloatingLyrics"
             class="together-floating-player" :class="{ 'is-dragging': isDragging, 'is-locked': isLocked }"
             :style="{ left: floatingPos.x + 'px', top: floatingPos.y + 'px' }" @mousedown="startDrag"
             @touchstart="startDrag">
@@ -330,7 +334,7 @@ const handleImageError = (e) => {
                         :title="isLocked ? '解锁' : '锁定'">
                         <i class="fa-solid" :class="isLocked ? 'fa-lock' : 'fa-lock-open'"></i>
                     </button>
-                    <button class="float-btn close" @click="musicStore.stopTogether()" title="关闭一起听歌">
+                    <button class="float-btn close" @click="musicStore.toggleFloatingLyrics()" title="关闭歌词窗口">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
