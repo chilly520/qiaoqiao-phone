@@ -1148,7 +1148,7 @@ const speakOne = (text, onEnd, interrupt = false) => {
     const utterance = new SpeechSynthesisUtterance(text);
 
     utterance.lang = 'zh-CN';
-    
+
     // Choose Chinese voice if available
     const voices = window.speechSynthesis.getVoices();
     const zhVoice = voices.find(v => v.lang.includes('zh-CN') || v.lang.includes('zh-SG'));
@@ -1158,9 +1158,9 @@ const speakOne = (text, onEnd, interrupt = false) => {
     const charSpeed = chatStore.currentChat?.voiceSpeed
     let rate = parseFloat(charSpeed);
     if (isNaN(rate) || !rate) rate = 1.0;
-    
+
     // Clamp to reasonable browser limits (0.1 to 10)
-    utterance.rate = Math.min(Math.max(rate, 0.1), 3.0); 
+    utterance.rate = Math.min(Math.max(rate, 0.1), 3.0);
 
     console.log('[TTS] speakOne rate:', utterance.rate, 'Origin:', charSpeed, 'ChatID:', chatStore.currentChat?.id);
     utterance.pitch = 1.0;
@@ -1800,7 +1800,7 @@ const handlePayClick = (msg) => {
 const isMsgVisible = (msg) => {
     if (msg.hidden) return false
     if (msg.role === 'user' || msg.role === 'ai') return true
-    
+
     // For System messages, check content
     const content = ensureString(msg.content)
     if (msg.type === 'redpacket' || msg.type === 'transfer' || content.includes('[红包]') || content.includes('[转账]')) return true
@@ -1989,15 +1989,15 @@ const playMessageTTS = (text) => {
 
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(cleanText)
-    
+
     // Antigravity Fix: Apply character speed (Robust)
     const charSpeed = chatStore.currentChat?.voiceSpeed
     let rate = parseFloat(charSpeed);
     if (isNaN(rate) || !rate) rate = 1.0;
     utterance.rate = Math.min(Math.max(rate, 0.1), 3.0);
-    
+
     console.log('[TTS] playMessageTTS rate:', utterance.rate, 'Origin:', charSpeed);
-    
+
     utterance.lang = 'zh-CN'
     window.speechSynthesis.speak(utterance)
 }
@@ -2355,16 +2355,10 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
                         <!-- Other Statuses (Only show if no active call) -->
                         <template v-if="callStore.status === 'none'">
-                            <template v-if="musicStore.isListeningTogether">
-                                <i class="fa-solid fa-music text-[10px] text-green-500 animate-pulse"></i>
-                                <span class="text-[10px] text-green-600 font-bold">正在和你一起听歌</span>
-                            </template>
-                            <template v-else>
-                                <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
-                                    :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'"></div>
-                                <span class="text-[10px] text-gray-500 truncate max-w-[150px] font-medium">{{
-                                    chatData?.statusText || '在线' }}</span>
-                            </template>
+                            <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
+                                :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'"></div>
+                            <span class="text-[10px] text-gray-500 truncate max-w-[150px] font-medium">{{
+                                chatData?.statusText || '在线' }}</span>
                         </template>
                     </div>
                 </div>
@@ -2469,11 +2463,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <ChatInputBar v-if="!isMultiSelectMode && callStore.status !== 'active'" ref="chatInputBarRef"
                 :currentQuote="currentQuote" :chatData="chatData" :isTyping="chatStore.isTyping"
                 :musicVisible="musicStore.playerVisible" :searchEnabled="chatData?.searchEnabled"
-                @send="handleSendMessage" @generate="generateAIResponse"
-                @stop-generate="chatStore.stopGeneration" @toggle-panel="toggleActionPanel"
-                @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
-                @toggle-search="() => chatStore.toggleSearch(chatData?.id)"
-                @regenerate="regenerateLastMessage"
+                @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
+                @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
+                @toggle-search="() => chatStore.toggleSearch(chatData?.id)" @regenerate="regenerateLastMessage"
                 @cancel-quote="cancelQuote" />
 
             <!-- Multi-select Action Bar (Bottom Overlay) -->
@@ -2698,7 +2690,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->
@@ -3881,6 +3873,6 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
     transform: translate(-50%, 0);
 }
 </style>
-  
+ 
  
  

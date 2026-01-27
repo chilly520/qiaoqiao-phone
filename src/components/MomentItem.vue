@@ -370,7 +370,7 @@ const handleShare = () => {
 
 const confirmShare = (contact) => {
     if (!contact || !contact.id) return
-    
+
     chatStore.addMessage(contact.id, {
         role: 'user',
         type: 'moment_card',
@@ -381,7 +381,7 @@ const confirmShare = (contact) => {
             image: (props.moment.images || [])[0] || null
         })
     })
-    
+
     showShareModal.value = false
     chatStore.triggerToast('已分享', 'success')
 }
@@ -420,22 +420,22 @@ const formatTime = (ts) => {
     if (!ts) return ''
     const date = new Date(ts)
     const now = new Date()
-    
+
     // Helper for zero padding
     const pad = (n) => n.toString().padStart(2, '0')
-    
+
     const timeStr = `${pad(date.getHours())}:${pad(date.getMinutes())}`
-    
+
     // If today
     if (date.toDateString() === now.toDateString()) {
         return timeStr
     }
-    
+
     // If this year
     if (date.getFullYear() === now.getFullYear()) {
         return `${pad(date.getMonth() + 1)}月${pad(date.getDate())}日 ${timeStr}`
     }
-    
+
     return `${date.getFullYear()}年${pad(date.getMonth() + 1)}月${pad(date.getDate())}日 ${timeStr}`
 }
 
@@ -483,7 +483,7 @@ const navigateToAuthor = () => {
                 class="flex items-center gap-1 text-[#576b95] text-[13px] mb-3 opacity-90">
                 <i class="fa-solid fa-location-dot scale-90"></i>
                 <span class="font-medium underline decoration-[#576b95]/30 underline-offset-2">{{ props.moment.location
-                    }}</span>
+                }}</span>
             </div>
 
             <!-- Images Grid -->
@@ -535,7 +535,7 @@ const navigateToAuthor = () => {
                     <i class="fa-solid text-sm"
                         :class="momentsStore.summoningIds.has(props.moment.id) ? 'fa-spinner fa-spin' : 'fa-wand-sparkles'"></i>
                     <span class="text-xs font-medium">{{ momentsStore.summoningIds.has(props.moment.id) ? '召唤中' : '召唤'
-                    }}</span>
+                        }}</span>
                 </button>
             </div>
 
@@ -605,17 +605,20 @@ const navigateToAuthor = () => {
 
                 <!-- Comments -->
                 <div v-if="(props.moment?.comments || []).length > 0" class="px-3 py-1.5 space-y-1">
-                    <div v-for="comment in (isDetail ? (props.moment?.comments || []) : (props.moment?.comments || []).slice(0, 4))" :key="comment.id"
+                    <div v-for="comment in (isDetail ? (props.moment?.comments || []) : (props.moment?.comments || []).slice(0, 4))"
+                        :key="comment.id"
                         class="text-sm cursor-pointer px-2 py-1 rounded transition-colors flex justify-between items-start group"
                         :class="activeComment && activeComment.id === comment.id && showCommentMenu ? 'bg-gray-200' : 'hover:bg-gray-100'"
                         @touchstart="handleCommentTouchStart($event, comment)" @touchmove="handleCommentTouchMove"
                         @touchend="handleCommentTouchEnd" @click.stop="handleCommentClick(comment)"
                         @contextmenu="handleCommentContextMenu($event, comment)" title="长按操作">
-                        
+
                         <div class="flex-1">
-                            <span class="text-[#576b95] font-bold">{{ comment.authorName || getAuthorName(comment.authorId) }}</span>
+                            <span class="text-[#576b95] font-bold">{{ comment.authorName ||
+                                getAuthorName(comment.authorId) }}</span>
                             <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
-                            <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{ getDisplayReplyName(comment.replyTo) }}</span>
+                            <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{
+                                getDisplayReplyName(comment.replyTo) }}</span>
                             <span class="text-gray-900">: </span>
                             <span class="text-gray-900" v-html="renderCommentContent(comment)"></span>
                         </div>
@@ -627,8 +630,10 @@ const navigateToAuthor = () => {
                     </div>
 
                     <!-- View More Hint -->
-                    <div v-if="!isDetail && (props.moment?.comments || []).length > 4" class="px-2 py-1 text-xs text-blue-500 font-medium cursor-pointer" @click.stop="emit('show-detail')">
-                         共 {{ (props.moment?.comments || []).length }} 条评论...
+                    <div v-if="!isDetail && (props.moment?.comments || []).length > 4"
+                        class="px-2 py-1 text-xs text-blue-500 font-medium cursor-pointer"
+                        @click.stop="emit('show-detail')">
+                        共 {{ (props.moment?.comments || []).length }} 条评论...
                     </div>
                 </div>
             </div>
@@ -637,7 +642,8 @@ const navigateToAuthor = () => {
             <div v-if="showCommentInput"
                 class="mt-2 bg-gray-50 p-2 rounded flex flex-col gap-2 animate-fade-in border border-gray-100">
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
-                    <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName) }}</span></span>
+                    <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
+                            }}</span></span>
                     <i class="fa-solid fa-xmark cursor-pointer" @click="replyToComment = null"></i>
                 </div>
                 <div class="flex gap-2">
@@ -736,7 +742,7 @@ const navigateToAuthor = () => {
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-800 text-sm">{{ chat.name }}</span>
                             <span class="text-xs text-gray-400 truncate max-w-[150px]">{{ chat.signature || '暂无签名'
-                                }}</span>
+                            }}</span>
                         </div>
                     </div>
                 </div>
@@ -760,5 +766,69 @@ const navigateToAuthor = () => {
 
 .animate-fade-in {
     animation: fadeIn 0.15s ease-out;
+}
+
+/* --- Dark Mode Adaptation --- */
+:deep([data-theme='dark']) .moment-item {
+    background-color: #191919;
+    border-bottom-color: #252525;
+}
+
+:deep([data-theme='dark']) .text-gray-900 {
+    color: #e5e5e5;
+}
+
+:deep([data-theme='dark']) .text-gray-600 {
+    color: #a3a3a3;
+}
+
+:deep([data-theme='dark']) .text-gray-500 {
+    color: #888;
+}
+
+:deep([data-theme='dark']) .text-gray-400 {
+    color: #777;
+}
+
+:deep([data-theme='dark']) .bg-white {
+    background-color: #191919;
+}
+
+:deep([data-theme='dark']) .bg-gray-50 {
+    background-color: #222;
+}
+
+:deep([data-theme='dark']) .bg-gray-100 {
+    background-color: #2a2a2a;
+}
+
+:deep([data-theme='dark']) .border-gray-50,
+:deep([data-theme='dark']) .border-gray-100,
+:deep([data-theme='dark']) .border-gray-200 {
+    border-color: #2a2a2a;
+}
+
+:deep([data-theme='dark']) .bg-\[\#f7f7f7\] {
+    background-color: #252525;
+}
+
+:deep([data-theme='dark']) .border-b-\[\#f7f7f7\] {
+    border-bottom-color: #252525;
+}
+
+:deep([data-theme='dark']) .text-\[\#576b95\] {
+    color: #7d90a9;
+}
+
+:deep([data-theme='dark']) .hover\:bg-gray-100:hover {
+    background-color: #2a2a2a;
+}
+
+:deep([data-theme='dark']) .bg-blue-50 {
+    background-color: #1d3557;
+}
+
+:deep([data-theme='dark']) .text-blue-500 {
+    color: #4a90e2;
 }
 </style>

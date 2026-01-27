@@ -170,14 +170,14 @@ const allWorldBookEntries = computed(() => {
 // Filtered moments based on authorId
 const filteredMoments = computed(() => {
     if (!momentsStore || !momentsStore.moments) return []
-    
+
     // 1. Get all moments
     let all = [...momentsStore.moments]
-    
+
     // 2. Filter by author if viewing a profile
     if (filterAuthorId.value) {
         all = all.filter(m => m.authorId === filterAuthorId.value)
-        
+
         // 3. Profile View: Sort by Pinned First, then by Timestamp
         return all.sort((a, b) => {
             const aPinned = momentsStore.topMoments.includes(a.id)
@@ -196,13 +196,13 @@ const filteredMoments = computed(() => {
 
 const pinnedMomentsForProfile = computed(() => {
     if (!filterAuthorId.value || filterAuthorId.value === 'user') return []
-    
+
     // Get pinned IDs
     const pinnedIds = momentsStore.topMoments || []
     if (pinnedIds.length === 0) return []
 
     // Find actual moments that match these IDs AND belong to current author
-    return momentsStore.moments.filter(m => 
+    return momentsStore.moments.filter(m =>
         pinnedIds.includes(m.id) && m.authorId === filterAuthorId.value
     )
 })
@@ -224,23 +224,23 @@ const getConsistentBackground = (id) => {
 const viewingProfile = computed(() => {
     // 1. Viewing Friend
     if (filterAuthorId.value && filterAuthorId.value !== 'user') {
-         const char = chatStore.chats[filterAuthorId.value]
-         if (char) {
-             return {
-                 isMe: false,
-                 name: char.name,
-                 avatar: char.avatar,
-                 signature: char.statusText || '对方很懒，什么都没有留下',
-                 background: char.momentsBackground || getConsistentBackground(char.id) // Fallback to random default
-             }
-         }
-         return {
-             isMe: false,
-             name: '神秘人',
-             avatar: '',
-             signature: '...',
-             background: ''
-         }
+        const char = chatStore.chats[filterAuthorId.value]
+        if (char) {
+            return {
+                isMe: false,
+                name: char.name,
+                avatar: char.avatar,
+                signature: char.statusText || '对方很懒，什么都没有留下',
+                background: char.momentsBackground || getConsistentBackground(char.id) // Fallback to random default
+            }
+        }
+        return {
+            isMe: false,
+            name: '神秘人',
+            avatar: '',
+            signature: '...',
+            background: ''
+        }
     }
     // ... existing viewing me logic ...
     // 2. Viewing Me (or feed root which uses my info header)
@@ -289,8 +289,8 @@ const handleProfileBack = () => {
     if (filterAuthorId.value) {
         filterAuthorId.value = null
         if (profileContextId.value) {
-             showingProfileCharId.value = profileContextId.value
-             profileContextId.value = null
+            showingProfileCharId.value = profileContextId.value
+            profileContextId.value = null
         }
     } else if (showingProfileCharId.value) {
         showingProfileCharId.value = null
@@ -559,7 +559,7 @@ const openBackgroundModal = () => {
 const setBackgroundFromUrl = () => {
     if (backgroundInput.value.trim()) {
         const newUrl = backgroundInput.value.trim()
-        
+
         if (viewingProfile.value.isMe) {
             backgroundUrl.value = newUrl
             localStorage.setItem('moments_background', newUrl)
@@ -570,7 +570,7 @@ const setBackgroundFromUrl = () => {
                 chatStore.saveToStorage() // Ensure persistence
             }
         }
-        
+
         showBackgroundModal.value = false
         chatStore.triggerToast('背景图已更新', 'success')
     }
@@ -588,12 +588,12 @@ const handleBackgroundFileUpload = (event) => {
     const reader = new FileReader()
     reader.onload = (e) => {
         const newUrl = e.target.result
-        
+
         if (viewingProfile.value.isMe) {
             backgroundUrl.value = newUrl
             localStorage.setItem('moments_background', newUrl)
         } else if (filterAuthorId.value) {
-             // Update character background
+            // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
                 chatStore.chats[filterAuthorId.value].momentsBackground = newUrl
                 chatStore.saveToStorage()
@@ -701,31 +701,33 @@ onMounted(() => {
         <div v-if="selectedMoment" class="absolute inset-0 z-[60] bg-[#ededed] flex flex-col animate-slide-up">
             <!-- Header -->
             <div class="h-[72px] pt-7 shrink-0 flex items-center px-4 bg-[#ededed] border-b border-gray-200 z-20">
-                <i class="fa-solid fa-chevron-left text-xl cursor-pointer text-black" @click="selectedMoment = null"></i>
+                <i class="fa-solid fa-chevron-left text-xl cursor-pointer text-black"
+                    @click="selectedMoment = null"></i>
                 <span class="flex-1 text-center font-bold text-lg text-black">动态详情</span>
                 <div class="w-5"></div>
             </div>
-            
+
             <div class="flex-1 overflow-y-auto no-scrollbar pt-4">
-                <MomentItem :moment="selectedMoment" :isDetail="true" 
-                    @back="selectedMoment = null" @edit="handleEditMoment"
-                    @show-profile="id => { selectedMoment = null; id === 'user' ? handleUserAvatarClick() : (showingProfileCharId = id) }" /> 
+                <MomentItem :moment="selectedMoment" :isDetail="true" @back="selectedMoment = null"
+                    @edit="handleEditMoment"
+                    @show-profile="id => { selectedMoment = null; id === 'user' ? handleUserAvatarClick() : (showingProfileCharId = id) }" />
             </div>
         </div>
 
         <!-- Header -->
-        <div class="h-[72px] pt-7 shrink-0 flex items-center justify-between px-4 bg-transparent absolute top-0 left-0 right-0 z-20 text-white transition-colors duration-300 overflow-hidden">
-            <i class="fa-solid fa-chevron-left text-xl cursor-pointer drop-shadow-md"
-                @click="handleProfileBack"></i>
-            <div v-if="filterAuthorId" class="flex-1 text-center font-bold text-lg truncate px-8 shadow-black drop-shadow-md">{{
-                filterAuthorId === 'user' ? '我的相册' : (chatStore.chats[filterAuthorId]?.name + '的相册') }}</div>
+        <div
+            class="h-[72px] pt-7 shrink-0 flex items-center justify-between px-4 bg-transparent absolute top-0 left-0 right-0 z-20 text-white transition-colors duration-300 overflow-hidden">
+            <i class="fa-solid fa-chevron-left text-xl cursor-pointer drop-shadow-md" @click="handleProfileBack"></i>
+            <div v-if="filterAuthorId"
+                class="flex-1 text-center font-bold text-lg truncate px-8 shadow-black drop-shadow-md">{{
+                    filterAuthorId === 'user' ? '我的相册' : (chatStore.chats[filterAuthorId]?.name + '的相册') }}</div>
             <div v-else-if="showingProfileCharId" class="flex-1 text-center font-bold text-lg truncate px-8">详细资料</div>
             <div class="flex gap-5 items-center">
                 <!-- VIEWING FRIEND: Generate Button -->
                 <div v-if="filterAuthorId && filterAuthorId !== 'user'" class="relative group">
                     <i class="fa-solid fa-wand-magic-sparkles text-xl cursor-pointer drop-shadow-md transition-all active:scale-90"
-                       :class="isGenerating ? 'text-yellow-300 animate-spin' : 'text-white'"
-                       @click="handleGenerateProfile(filterAuthorId)"></i>
+                        :class="isGenerating ? 'text-yellow-300 animate-spin' : 'text-white'"
+                        @click="handleGenerateProfile(filterAuthorId)"></i>
                 </div>
 
                 <!-- NOT VIEWING SPECIFIC AUTHOR (Feed): Standard Buttons -->
@@ -746,8 +748,7 @@ onMounted(() => {
                             @click="triggerBatchGenerate"></i>
                     </div>
 
-                    <i class="fa-solid fa-gear text-xl cursor-pointer drop-shadow-md"
-                        @click="openSettings"></i>
+                    <i class="fa-solid fa-gear text-xl cursor-pointer drop-shadow-md" @click="openSettings"></i>
                     <i class="fa-solid fa-camera text-xl cursor-pointer drop-shadow-md"
                         @click="showPostModal = true"></i>
                 </template>
@@ -758,56 +759,64 @@ onMounted(() => {
         <div ref="scrollContainer" class="flex-1 overflow-y-auto no-scrollbar scroll-smooth">
             <!-- Profile Header Switch -->
             <div v-if="!viewingProfile.isMe && filterAuthorId" class="bg-white pb-4 mb-2">
-                 <!-- FRIEND PROFILE LAYOUT (Screenshot Style) -->
-                 <!-- Cover -->
-                 <div class="relative w-full h-[240px] bg-gray-300 cursor-pointer group" @click="openBackgroundModal">
-                      <img :src="viewingProfile.background" class="w-full h-full object-cover transition-filter duration-300 group-hover:brightness-90">
-                      <div class="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <i class="fa-solid fa-camera text-white/80 text-3xl drop-shadow-md"></i>
-                      </div>
-                 </div>
-                 
-                 <!-- Info Area -->
-                 <div class="relative px-5 -mt-[40px] mb-2 flex items-end">
-                      <div class="flex flex-col w-full">
-                           <!-- Avatar (Left) -->
-                           <div class="w-[84px] h-[84px] rounded-xl overflow-hidden border-[3px] border-white shadow-sm bg-white mb-3 relative z-10">
-                                <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
-                           </div>
-                           
-                           <!-- Name & Region -->
-                           <div class="flex flex-col mb-1.5">
-                               <div class="font-bold text-xl text-gray-900 tracking-tight leading-tight mb-1">{{ viewingProfile.name }}</div>
-                               <div v-if="chatStore.chats[filterAuthorId]?.tags?.[0]" class="text-[11px] text-gray-400">{{ chatStore.chats[filterAuthorId].tags[0] }}</div>
-                           </div>
+                <!-- FRIEND PROFILE LAYOUT (Screenshot Style) -->
+                <!-- Cover -->
+                <div class="relative w-full h-[240px] bg-gray-300 cursor-pointer group" @click="openBackgroundModal">
+                    <img :src="viewingProfile.background"
+                        class="w-full h-full object-cover transition-filter duration-300 group-hover:brightness-90">
+                    <div
+                        class="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <i class="fa-solid fa-camera text-white/80 text-3xl drop-shadow-md"></i>
+                    </div>
+                </div>
 
-                           <!-- Signature -->
-                           <div class="text-xs text-gray-500 max-w-[90%] leading-relaxed tracking-wide">
-                               {{ viewingProfile.signature }}
-                           </div>
-                      </div>
-                 </div>
+                <!-- Info Area -->
+                <div class="relative px-5 -mt-[40px] mb-2 flex items-end">
+                    <div class="flex flex-col w-full">
+                        <!-- Avatar (Left) -->
+                        <div
+                            class="w-[84px] h-[84px] rounded-xl overflow-hidden border-[3px] border-white shadow-sm bg-white mb-3 relative z-10">
+                            <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
+                        </div>
 
-                 <!-- Pinned Section -->
-                 <div v-if="pinnedMomentsForProfile.length > 0" class="px-5 mt-6 mb-1">
-                     <div class="text-sm font-bold text-gray-800 mb-2.5">置顶</div>
-                     <div class="flex gap-2.5 overflow-x-auto no-scrollbar pb-1">
-                         <div v-for="pm in pinnedMomentsForProfile" :key="pm.id" 
-                              class="w-[100px] h-[100px] flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden cursor-pointer relative shadow-sm border border-gray-100 active:scale-95 transition-transform"
-                              @click="handleShowDetail(pm)">
-                              <img v-if="pm.images && pm.images.length > 0" :src="pm.images[0]" class="w-full h-full object-cover">
-                              <div v-else class="w-full h-full flex flex-col items-center justify-center p-2 bg-gray-50 text-center">
-                                  <i class="fa-solid fa-quote-left text-gray-300 mb-2"></i>
-                                  <span class="text-[10px] text-gray-400 leading-tight line-clamp-3">{{ pm.content }}</span>
-                              </div>
-                         </div>
-                     </div>
-                 </div>
+                        <!-- Name & Region -->
+                        <div class="flex flex-col mb-1.5">
+                            <div class="font-bold text-xl text-gray-900 tracking-tight leading-tight mb-1">{{
+                                viewingProfile.name }}</div>
+                            <div v-if="chatStore.chats[filterAuthorId]?.tags?.[0]" class="text-[11px] text-gray-400">{{
+                                chatStore.chats[filterAuthorId].tags[0] }}</div>
+                        </div>
 
-                 <!-- Moments Feed Header -->
-                 <div class="px-5 mt-2">
-                     <div class="text-sm font-bold text-gray-800 mb-2">朋友圈</div>
-                 </div>
+                        <!-- Signature -->
+                        <div class="text-xs text-gray-500 max-w-[90%] leading-relaxed tracking-wide">
+                            {{ viewingProfile.signature }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pinned Section -->
+                <div v-if="pinnedMomentsForProfile.length > 0" class="px-5 mt-6 mb-1">
+                    <div class="text-sm font-bold text-gray-800 mb-2.5">置顶</div>
+                    <div class="flex gap-2.5 overflow-x-auto no-scrollbar pb-1">
+                        <div v-for="pm in pinnedMomentsForProfile" :key="pm.id"
+                            class="w-[100px] h-[100px] flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden cursor-pointer relative shadow-sm border border-gray-100 active:scale-95 transition-transform"
+                            @click="handleShowDetail(pm)">
+                            <img v-if="pm.images && pm.images.length > 0" :src="pm.images[0]"
+                                class="w-full h-full object-cover">
+                            <div v-else
+                                class="w-full h-full flex flex-col items-center justify-center p-2 bg-gray-50 text-center">
+                                <i class="fa-solid fa-quote-left text-gray-300 mb-2"></i>
+                                <span class="text-[10px] text-gray-400 leading-tight line-clamp-3">{{ pm.content
+                                    }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Moments Feed Header -->
+                <div class="px-5 mt-2">
+                    <div class="text-sm font-bold text-gray-800 mb-2">朋友圈</div>
+                </div>
             </div>
 
             <!-- MY PROFILE / STANDARD LAYOUT (Existing) -->
@@ -830,7 +839,8 @@ onMounted(() => {
                     <!-- Signature (Right) -->
                     <div class="mr-1 max-w-[220px] bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-xl cursor-pointer hover:bg-black/40 transition-all border border-white/10 active:scale-95 shadow-lg group-hover:border-white/20"
                         @click.stop="editUserSignature">
-                        <span class="text-white/90 text-[12px] font-medium leading-normal text-right block line-clamp-2">
+                        <span
+                            class="text-white/90 text-[12px] font-medium leading-normal text-right block line-clamp-2">
                             {{ viewingProfile.signature || '添加个性签名...' }}
                         </span>
                     </div>
@@ -886,9 +896,11 @@ onMounted(() => {
                     class="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 mb-4"
                     placeholder="粘贴图片链接 (http://...)" v-focus @keyup.enter="confirmImageUrl">
                 <div class="flex gap-3">
-                    <button class="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold active:bg-gray-200"
+                    <button
+                        class="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold active:bg-gray-200"
                         @click="showImageUrlInput = false">取消</button>
-                    <button class="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold active:scale-95 transition-transform"
+                    <button
+                        class="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold active:scale-95 transition-transform"
                         @click="confirmImageUrl">确定</button>
                 </div>
             </div>
@@ -1029,7 +1041,7 @@ onMounted(() => {
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-blue-500 truncate max-w-[120px]">{{ postForm.location || '选择位置'
-                            }}</span>
+                                }}</span>
                             <i class="fa-solid fa-chevron-right text-gray-300 text-[10px]"></i>
                         </div>
                     </div>
@@ -1608,5 +1620,80 @@ onMounted(() => {
     100% {
         background-color: transparent;
     }
+}
+
+/* --- Dark Mode Adaptation for MomentsView --- */
+[data-theme='dark'] .bg-f3f3f3,
+[data-theme='dark'] .bg-\[\#f3f3f3\],
+[data-theme='dark'] .bg-white {
+    background-color: #111111;
+}
+
+[data-theme='dark'] .text-gray-900 {
+    color: #eeeeee;
+}
+
+[data-theme='dark'] .text-gray-800 {
+    color: #e0e0e0;
+}
+
+[data-theme='dark'] .text-gray-700 {
+    color: #d0d0d0;
+}
+
+[data-theme='dark'] .text-gray-600 {
+    color: #b0b0b0;
+}
+
+[data-theme='dark'] .text-gray-400 {
+    color: #888888;
+}
+
+[data-theme='dark'] .bg-white\/80,
+[data-theme='dark'] .bg-white\\\/80 {
+    background-color: rgba(30, 30, 30, 0.8);
+}
+
+[data-theme='dark'] .bg-white\/60,
+[data-theme='dark'] .bg-white\\\/60 {
+    background-color: rgba(35, 35, 35, 0.6);
+}
+
+[data-theme='dark'] .border-white {
+    border-color: #333333;
+}
+
+[data-theme='dark'] .border-gray-50,
+[data-theme='dark'] .border-gray-100 {
+    border-color: #222222;
+}
+
+[data-theme='dark'] .bg-gray-50 {
+    background-color: #1a1a1a;
+}
+
+[data-theme='dark'] .bg-gray-100 {
+    background-color: #222222;
+}
+
+[data-theme='dark'] .modal-content,
+[data-theme='dark'] .bg-white.rounded-3xl,
+[data-theme='dark'] .bg-white.rounded-2xl {
+    background-color: #1c1c1c;
+}
+
+[data-theme='dark'] .bg-blue-50\/50,
+[data-theme='dark'] .bg-blue-50\\\/50 {
+    background-color: rgba(30, 41, 59, 0.5);
+}
+
+[data-theme='dark'] .bg-green-50\/40,
+[data-theme='dark'] .bg-green-50\\\/40 {
+    background-color: rgba(20, 83, 45, 0.2);
+}
+
+[data-theme='dark'] .border-blue-100\/50,
+[data-theme='dark'] .border-blue-100\\\/50 {
+    border-color: rgba(30, 58, 138, 0.5);
 }
 </style>

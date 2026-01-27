@@ -1535,6 +1535,10 @@ export async function generateBatchMomentsWithInteractions(options) {
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})\n   人设：${c.persona.substring(0, 1000)}${bioText}${chatText}`
     }).join('\n\n')
 
+    const now = new Date()
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+    const currentVirtualTime = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 星期${weekDays[now.getDay()]}`
+
     // Include user's bio and pinned moments if available
     let userContextText = userProfile?.name ? `\n\n【当前用户 (${userProfile.name}) 资料】` : ""
     if (userProfile?.signature) userContextText += `\n个性签名：${userProfile.signature}`
@@ -1543,12 +1547,12 @@ export async function generateBatchMomentsWithInteractions(options) {
     }
     if (userProfile?.persona) userContextText += `\n背景设定：${userProfile.persona}`
 
-    const systemPrompt = `你是一个社交网络模拟器。以下是可供选择的发帖角色及互动好友列表：
+    const systemPrompt = `你是一个社交网络模拟器。当前系统时间是：${currentVirtualTime}。以下是可供选择的发帖角色及互动好友列表：
 ${charList}
 ${userContextText}
     
 【任务】
-请从上述列表中挑选角色，生成 ${count} 条朋友圈动态。每条动态需要包含：
+请从上述列表中挑选角色，根据当前时间（${currentVirtualTime}），模拟他们在朋友圈的动态。生成 ${count} 条朋友圈动态。每条动态需要包含：
 1. 发布者（必须从上述 ID 列表中选择正确的 authorId）
 2. 朋友圈内容
 3. 配图（可选）
@@ -2208,14 +2212,19 @@ export async function generateCompleteProfile(character, userProfile = {}) {
  * 2. Signature (Status Text)
  * 3. 3 "Pinned" Moments representing their core personality or backstory
  */
-export async function generateCharacterProfile(char, userProfile) {
+export async function generateCharacterProfile(char, userProfile, options = {}) {
+    const { customPrompt = '', worldContext = '' } = options
     const settingsStore = useSettingsStore()
     const { apiKey, baseUrl, model } = settingsStore.currentConfig
+
+    const now = new Date()
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+    const currentVirtualTime = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 星期${weekDays[now.getDay()]}`
 
     if (!apiKey) throw new Error('请先配置 API Key')
 
     // 1. Generate Content (Signature + 3 Moments + Background Description)
-    const systemPrompt = `You are an expert character profiler.
+    const systemPrompt = `You are an expert character profiler. Current system time: ${currentVirtualTime}.
 You need to generate a "WeChat Moments Profile" for a specific character based on their persona.
 The profile consists of:
 1. A short, poetic, or character-typical "Signature" (个性签名).
@@ -2227,6 +2236,9 @@ Character Persona: ${char.prompt || 'Unknown'}
 Character Tags/World: ${(char.tags || []).join(', ')}
 
 User (Viewer) Name: ${userProfile.name}
+
+${customPrompt ? `【Custom Generation Rule】: ${customPrompt}` : ''}
+${worldContext ? `【World Context Reference】: ${worldContext}` : ''}
 
 Output format must be JSON:
 {

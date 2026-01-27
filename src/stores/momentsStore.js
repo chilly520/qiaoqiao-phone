@@ -616,6 +616,7 @@ export const useMomentsStore = defineStore('moments', () => {
     async function generateAndApplyCharacterProfile(charId) {
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
+        const worldBookStore = useWorldBookStore()
         const char = chatStore.chats[charId]
         if (!char) return
 
@@ -624,8 +625,20 @@ export const useMomentsStore = defineStore('moments', () => {
         }
 
         try {
+            // Get custom prompt from config
+            const customPrompt = config.value.customPrompt
+
+            // Get active world book content
+            let worldContext = ''
+            if (config.value.enabledWorldBookEntries.length > 0) {
+                const books = worldBookStore.books || []
+                const allEntries = books.flatMap(b => b.entries || [])
+                const activeEntries = allEntries.filter(e => config.value.enabledWorldBookEntries.includes(e.id))
+                worldContext = activeEntries.map(e => `[${e.name}]: ${e.content}`).join('\n')
+            }
+
             const ai = await import('../utils/aiService')
-            const profileData = await ai.generateCharacterProfile(char, userProfile)
+            const profileData = await ai.generateCharacterProfile(char, userProfile, { customPrompt, worldContext })
 
             // 1. Update Character Info (Signature & Background)
             // Assuming chatStore has reactivity on chats
