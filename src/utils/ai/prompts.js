@@ -125,9 +125,9 @@ ${finalWorldInfo}
       " stats": {
         "date": "2026年01月27日 (示例)",
         "time": "20:09 (示例)",
-        "emotion": 85,
-        "spirit": 90,
-        "mood": 70,
+        "emotion": { "label": "兴奋", "value": 85 },
+        "spirit": { "label": "充沛", "value": 90 },
+        "mood": { "label": "愉悦", "value": 70 },
         "location": "广东省 > 深圳市 > 蛇口街道 (示例)",
         "distance": "12.5km (根据双方位置自主推算)"
       }

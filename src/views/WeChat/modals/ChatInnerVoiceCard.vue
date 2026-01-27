@@ -80,32 +80,32 @@
                     <div class="stats-bars-group">
                         <div class="bar-entry">
                             <div class="bar-label-row">
-                                <span>EMOTION 情绪</span>
-                                <span>{{ currentVoiceContent.stats?.emotion || 0 }}%</span>
+                                <span>EMOTION {{ getStatLabel('emotion', currentVoiceContent.stats?.emotion) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.emotion) }}%</span>
                             </div>
                             <div class="bar-track">
                                 <div class="bar-fill emotion"
-                                    :style="{ width: (currentVoiceContent.stats?.emotion || 0) + '%' }"></div>
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.emotion) + '%' }"></div>
                             </div>
                         </div>
                         <div class="bar-entry">
                             <div class="bar-label-row">
-                                <span>SPIRIT 精神</span>
-                                <span>{{ currentVoiceContent.stats?.spirit || 0 }}%</span>
+                                <span>SPIRIT {{ getStatLabel('spirit', currentVoiceContent.stats?.spirit) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.spirit) }}%</span>
                             </div>
                             <div class="bar-track">
                                 <div class="bar-fill spirit"
-                                    :style="{ width: (currentVoiceContent.stats?.spirit || 0) + '%' }"></div>
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.spirit) + '%' }"></div>
                             </div>
                         </div>
                         <div class="bar-entry">
                             <div class="bar-label-row">
-                                <span>MOOD 心情</span>
-                                <span>{{ currentVoiceContent.stats?.mood || 0 }}%</span>
+                                <span>MOOD {{ getStatLabel('mood', currentVoiceContent.stats?.mood) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.mood) }}%</span>
                             </div>
                             <div class="bar-track">
                                 <div class="bar-fill mood"
-                                    :style="{ width: (currentVoiceContent.stats?.mood || 0) + '%' }"></div>
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.mood) + '%' }"></div>
                             </div>
                         </div>
                     </div>
@@ -310,6 +310,18 @@ const sortedHistory = computed(() => {
 })
 
 const formatTime = (ts) => ts ? new Date(ts).toLocaleString() : '---'
+
+// --- Stats Helpers ---
+const getStatValue = (val) => {
+    if (typeof val === 'object' && val !== null) return val.value || 0
+    return val || 0
+}
+
+const getStatLabel = (key, val) => {
+    if (typeof val === 'object' && val !== null && val.label) return val.label
+    const defaults = { emotion: '情绪', spirit: '精神', mood: '心情' }
+    return defaults[key] || key.toUpperCase()
+}
 
 // --- Actions ---
 const toggleHistory = () => { showHistory.value = !showHistory.value }
