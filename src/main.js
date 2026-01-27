@@ -14,7 +14,7 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 
-const logger = useLoggerStore()
+const logger = useLoggerStore(pinia)
 
 window.onerror = (message, source, lineno, colno, error) => {
     const msg = String(message)

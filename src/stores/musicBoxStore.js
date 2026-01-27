@@ -6,7 +6,6 @@ import { useChatStore } from './chatStore'
 export const useMusicBoxStore = defineStore('musicBox', () => {
     const synth = ref(null)
     const isPlaying = ref(false)
-    const chatStore = useChatStore()
 
     const presets = {
         'piano': { oscillator: { type: "triangle" }, envelope: { attack: 0.02, decay: 0.1, sustain: 0.3, release: 1 } },
@@ -51,6 +50,7 @@ export const useMusicBoxStore = defineStore('musicBox', () => {
         synth.value.set(presets[instrument])
         const notes = scoreStr.split(/[,，\s\n]+/).map(n => n.trim()).filter(n => n)
 
+        const chatStore = useChatStore()
         chatStore.triggerToast(`🎵 ${instrument}演奏中...`, 'info')
 
         const now = Tone.now()
