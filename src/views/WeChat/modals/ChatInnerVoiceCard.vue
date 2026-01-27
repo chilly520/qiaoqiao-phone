@@ -922,6 +922,10 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     background: rgba(0, 0, 0, 0.3);
     cursor: pointer;
     transition: 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
 .effect-badge:hover {
