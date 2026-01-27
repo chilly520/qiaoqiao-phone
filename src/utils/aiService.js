@@ -637,46 +637,51 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     // --- Visual Context Injection (Avatars) ---
+    // Goal: Only upload the actual image Base64 ONCE to get a text description.
+    // Once we have a description, we just put it in the System Prompt and stop sending the image metadata.
     const visualContextMessages = []
     const userAvatar = realUserProfile?.avatar
     const charAvatar = char.avatar
     const isImage = (s) => typeof s === 'string' && (s.trim().length > 0)
 
-    if ((isImage(userAvatar) || isImage(charAvatar)) && !options.skipVisualContext) {
+    let userAvatarDesc = null
+    let charAvatarDesc = null
+
+    if (isImage(userAvatar) || isImage(charAvatar)) {
         const [userB64, charB64] = await Promise.all([
             resolveToBase64(userAvatar),
             resolveToBase64(charAvatar)
         ])
 
-        // Use cached descriptions if available to save log space and token count
-        const [userDesc, charDesc] = await Promise.all([
+        // 1. Get descriptions (cached or fresh)
+        const results = await Promise.all([
             getOrFetchAvatarDesc(userAvatar, userB64, userProfile.name, provider, apiKey, apiUrl, model),
             getOrFetchAvatarDesc(charAvatar, charB64, char.name, provider, apiKey, apiUrl, model)
         ])
+        userAvatarDesc = results[0]
+        charAvatarDesc = results[1]
 
-        const contentParts = [{ type: 'text', text: '【视觉情报：人物外貌】以下是当前对话参与者的外貌特征参考：' }]
+        // 2. Fallback: If AI hasn't described them yet, send the image ONE TIME as a message
+        if (!options.skipVisualContext) {
+            const contentParts = []
+            if (!userAvatarDesc && userB64) {
+                contentParts.push({ type: 'text', text: `这是用户 (${userProfile.name}) 的当前头像：` })
+                contentParts.push({ type: 'image_url', image_url: { url: userB64 } })
+            }
+            if (!charAvatarDesc && charB64) {
+                contentParts.push({ type: 'text', text: `这是我 (${char.name}) 的当前头像：` })
+                contentParts.push({ type: 'image_url', image_url: { url: charB64 } })
+            }
 
-        if (userDesc) {
-            contentParts.push({ type: 'text', text: `用户 (${userProfile.name}) 的头像描述：${userDesc}` })
-        } else if (userB64) {
-            contentParts.push({ type: 'text', text: `这是用户 (${userProfile.name}) 的当前头像：` })
-            contentParts.push({ type: 'image_url', image_url: { url: userB64 } })
-        }
-
-        if (charDesc) {
-            contentParts.push({ type: 'text', text: `我 (${char.name}) 的当前头像描述：${charDesc}` })
-        } else if (charB64) {
-            contentParts.push({ type: 'text', text: `这是我 (${char.name}) 的当前头像：` })
-            contentParts.push({ type: 'image_url', image_url: { url: charB64 } })
-        }
-
-        if (contentParts.length > 1) {
-            visualContextMessages.push({
-                role: 'user',
-                content: contentParts
-            })
+            if (contentParts.length > 0) {
+                visualContextMessages.push({ role: 'user', content: contentParts })
+            }
         }
     }
+
+    // Attach descriptions to objects so SYSTEM_PROMPT_TEMPLATE can pick them up
+    if (userAvatarDesc) userProfile.avatarDescription = userAvatarDesc
+    if (charAvatarDesc) char.avatarDescription = charAvatarDesc
 
     // 构建完整消息链
     const fullMessages = [systemMsg, ...visualContextMessages, ...formattedMessages].filter(Boolean).filter(msg => {

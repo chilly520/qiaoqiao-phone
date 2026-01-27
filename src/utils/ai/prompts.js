@@ -39,12 +39,14 @@ export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = ''
 - **你是**：【${charName}】
   - 性别：${charGender}
   - 设定：${charDesc}
+  ${char.avatarDescription ? `- 当前外貌：${char.avatarDescription}` : ''}
 - **当前时空**：${vTime}
 ${locInfo}
 - **对话对象**：${userName} (禁止直接称呼"用户")
   - 性别：${userGender}
   ${userPersona ? `- 人设：${userPersona}` : ''}
   ${userSignature ? `- 签名：${userSignature}` : ''}
+  ${user.avatarDescription ? `- 当前外貌：${user.avatarDescription}` : ''}
 
 ### 2. 记忆与世界观 (Memory & World)
 【长期记忆】

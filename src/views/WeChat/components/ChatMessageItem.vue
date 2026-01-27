@@ -132,7 +132,7 @@
                                         <div class="family-card-content">
                                             <div class="family-card-text">{{ familyCardData.text ||
                                                 '送我一张亲属卡好不好？以后你来管家~'
-                                                }}
+                                            }}
                                             </div>
                                             <div class="family-card-footer">
                                                 <div class="family-card-no">**** **** **** {{ isFamilyCardApply ? '8888'
@@ -285,7 +285,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                    }}
+                                        }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -730,12 +730,19 @@ function getCleanContent(contentRaw, isCard = false) {
         clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform)"[\s\S]*?\}/gi, '');
 
         // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
-        // This targets the specific "#bin-toggle:checked ~ .b { ... }" and "to { transform: rotate(360deg) }" leaks
-        // Aggressive: Matches from potential selectors until the closing brace
-        clean = clean.replace(/(?:^|\s)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');
+        // Improved: Handle nested braces by matching from @keyframes/to/from/selector until the matching closing brace is found
+        // or using a more robust heuristic to avoid leaving trailing braces.
+        clean = clean.replace(/(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[^{}]*\{[^{}]*\}[^{}]*\}|(?:\s|^)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');
 
         // 3.1 Remove CSS Keyframe Percentages (e.g. "50% { ... }")
-        clean = clean.replace(/(?:^|\s)\d+%\s*\{[\s\S]*?\}/gi, '');
+        clean = clean.replace(/(?:\s|^)\d+%\s*\{[\s\S]*?\}/gi, '');
+
+        // 3.2 Cleanup leaked trailing braces from failed nested matches
+        clean = clean.replace(/^\s*\}\s*|\s*\}\s*$/g, '');
+        // Multiple passes to catch deep nesting if necessary
+        for (let i = 0; i < 3; i++) {
+            clean = clean.replace(/\n\s*\}\s*$/g, '').trim();
+        }
 
         // 4. Remove standalone CSS properties if they leak outside blocks
         clean = clean.replace(/transform:\s*scale\([^\)]+\)/gi, '');
