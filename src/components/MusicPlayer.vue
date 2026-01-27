@@ -733,16 +733,29 @@ const handleImageError = (e) => {
 
 .connection-line {
     position: absolute;
-    left: 40px;
-    right: 40px;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    left: 20px; /* 从第一个头像圆心开始 */
+    right: 20px; /* 到第二个头像圆心结束 */
+    height: 1.5px;
+    background: rgba(255, 255, 255, 0.1);
+    z-index: 1;
 }
 
 .heart-indicator {
-    top: -12px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     font-size: 14px;
-    text-shadow: 0 0 12px rgba(255, 77, 79, 0.6);
+    text-shadow: 0 0 12px rgba(255, 77, 79, 0.8);
+    z-index: 3;
+    color: #ff4d4f;
+    animation: pulseHeart 1.5s infinite;
+}
+
+@keyframes pulseHeart {
+    0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.8; }
+    50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; text-shadow: 0 0 20px rgba(255, 77, 79, 1); }
+    100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.8; }
 }
 
 .together-mode .disc-section {
