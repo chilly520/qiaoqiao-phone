@@ -715,6 +715,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     font-size: 16px;
     font-weight: 500;
     letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
 .stats-bars-group {
@@ -1209,6 +1210,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     margin-bottom: 6px;
     letter-spacing: 2px;
     font-family: 'Cormorant Garamond', serif;
+    white-space: nowrap;
 }
 
 .voice-text-content {
@@ -1235,6 +1237,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     color: #555;
     letter-spacing: 2px;
     font-family: 'Cormorant Garamond', serif;
+    white-space: nowrap;
 }
 
 .effect-badge {

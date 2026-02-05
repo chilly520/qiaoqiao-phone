@@ -500,7 +500,11 @@ export const useMomentsStore = defineStore('moments', () => {
                     })
                 }
             }
-            chatStore.triggerToast('召唤成功！', 'success')
+            if (interactions && interactions.length > 0) {
+                chatStore.triggerToast(`召功成功！收到 ${interactions.length} 条互动`, 'success')
+            } else {
+                chatStore.triggerToast('大家都还在忙，暂时没人回复...', 'warning')
+            }
         } catch (e) {
             console.error('[MomentsStore] Summon failed', e)
         } finally {
