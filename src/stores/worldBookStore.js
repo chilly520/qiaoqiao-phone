@@ -108,6 +108,23 @@ export const useWorldBookStore = defineStore('worldBook', {
                     this.saveEntries()
                 }
             }
+        },
+
+        async importBook(data) {
+            if (!data || !data.name) {
+                throw new Error('无效的世界书格式：缺少名称')
+            }
+
+            // Generate new ID to avoid conflict
+            const newBook = {
+                ...data,
+                id: 'book_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                entries: Array.isArray(data.entries) ? data.entries : []
+            }
+
+            this.books.push(newBook)
+            await this.saveEntries()
+            return newBook
         }
     }
 })
