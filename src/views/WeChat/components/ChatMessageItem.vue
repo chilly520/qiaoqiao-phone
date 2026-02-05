@@ -795,6 +795,10 @@ function getCleanContent(contentRaw, isCard = false) {
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata)"[\s\S]*?\}/gi, '');
 
+    // AGGRESSIVE: Remove loose JSON properties (e.g. spirit: {...}, "mood": {...}) that might be missing enclosing braces
+    // This handles the specific leak seen in user screenshots
+    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
+
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {
         // 0. Remove [CARD]...[/CARD] blocks

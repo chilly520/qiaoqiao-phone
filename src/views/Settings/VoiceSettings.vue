@@ -136,15 +136,34 @@ const selectModel = (model) => {
 const testTTS = () => {
     const text = "你好，我是Chilly。"
     if (voice.value.engine === 'browser') {
+        // Stop previous
+        window.speechSynthesis.cancel()
+        
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = 'zh-CN'
         utterance.rate = voice.value.speed || 1.0
+        
+        // Try to find a Chinese voice
+        const voices = window.speechSynthesis.getVoices()
+        const zhVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('CN'))
+        if (zhVoice) utterance.voice = zhVoice
+        
         window.speechSynthesis.speak(utterance)
         showToastMsg(`正在播放本地语音 (倍速: ${utterance.rate})...`)
     } else {
         showToastMsg('MiniMax 语音测试暂未连接 API')
     }
 }
+
+onMounted(() => {
+    // Force load voices
+    window.speechSynthesis.getVoices()
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.getVoices()
+        }
+    }
+})
 
 </script>
 
