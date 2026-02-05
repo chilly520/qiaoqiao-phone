@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { storeToRefs } from 'pinia'
@@ -9,7 +9,11 @@ const store = useSettingsStore()
 const { voice } = storeToRefs(store)
 
 const goBack = () => {
-    router.back()
+    if (window.history.state && window.history.state.back) {
+        router.back()
+    } else {
+        router.push('/settings')
+    }
 }
 
 // Local form data to prevent immediate store updates for fields like API key

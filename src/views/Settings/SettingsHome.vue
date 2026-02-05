@@ -5,7 +5,7 @@ import versionInfo from '../../version.json'
 const router = useRouter()
 
 const goBack = () => {
-    router.back()
+    router.push('/')
 }
 
 const openSettingsPage = (page) => {

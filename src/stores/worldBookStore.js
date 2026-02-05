@@ -9,13 +9,34 @@ export const useWorldBookStore = defineStore('worldBook', {
 
     actions: {
         async loadEntries() {
-            const data = await localforage.getItem('wechat_worldbook_books')
-            if (data) {
-                this.books = data
-            } else {
-                // Init empty
+            try {
+                const data = await localforage.getItem('wechat_worldbook_books')
+                if (data && Array.isArray(data) && data.length > 0) {
+                    this.books = data
+                } else {
+                    // MIGRATION: Check raw localStorage for legacy data
+                    const legacy = localStorage.getItem('wechat_worldbook_books')
+                    if (legacy) {
+                        try {
+                            const parsed = JSON.parse(legacy)
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                console.log('[WorldBook] Migrating legacy localStorage data to localForage')
+                                this.books = parsed
+                                await this.saveEntries()
+                                return
+                            }
+                        } catch (e) {
+                            console.error('[WorldBook] Legacy migration failed', e)
+                        }
+                    }
+
+                    // Init empty if nothing found
+                    this.books = []
+                    this.saveEntries() // Initialize DB
+                }
+            } catch (e) {
+                console.error('[WorldBook] Load error', e)
                 this.books = []
-                this.saveEntries()
             }
         },
 
