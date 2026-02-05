@@ -1,18 +1,3 @@
-import { useRouter } from 'vue-router'
-import { useWalletStore } from '../../stores/walletStore'
-import { useChatStore } from '../../stores/chatStore'
-import { useSettingsStore } from '../../stores/settingsStore'
-
-const router = useRouter()
-const walletStore = useWalletStore()
-const chatStore = useChatStore()
-const settingsStore = useSettingsStore()
-
-const currentMonth = ref(new Date())
-// ... (rest of setup lines unchanged)
-// ...
-</script>
-
 <template>
     <div class="h-full flex flex-col transition-colors duration-300 font-sans"
         :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-[#ededed]'">
@@ -122,6 +107,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 const router = useRouter()
 const walletStore = useWalletStore()
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 const currentMonth = ref(new Date())
 // ... (rest is same until showStatistics)
