@@ -53,7 +53,8 @@
                             (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame) || chatData?.avatarShape === 'circle' ? 'rounded-full' : 'rounded',
                             { 'animate-shake': shakingAvatars?.has(msg.id) }
                         ]" :style="avatarInnerStyle">
-                            <img :src="avatarSrc" class="w-full h-full object-cover">
+                            <!-- Show dynamic sender avatar in groups -->
+                            <img :src="chatData?.isGroup ? (msg.senderAvatar || avatarSrc) : avatarSrc" class="w-full h-full object-cover">
                         </div>
                         <!-- Frame -->
                         <img v-if="frameSrc" :src="frameSrc" class="absolute pointer-events-none z-20 object-contain"
@@ -65,6 +66,11 @@
                         msg.role === 'user' ? 'items-end' : 'items-start',
                         (msg.type === 'html' || isHtmlCard) ? 'max-w-full' : 'max-w-[80%]'
                     ]">
+                        <!-- New: Sender Name for Group Chats -->
+                        <div v-if="chatData?.isGroup && msg.role !== 'user' && msg.role !== 'system'" 
+                             class="text-[10px] text-gray-500 mb-0.5 px-1 ml-0.5">
+                            {{ msg.senderName }}
+                        </div>
 
                         <!-- Pay Card -->
                         <div v-if="isPayCard" class="pay-card"
@@ -650,18 +656,18 @@ const isHtmlCard = computed(() => {
     // 1. Explicit type or flag
     if (props.msg.type === 'html' || props.msg.forceCard) return true
 
-    // 2. Detect JSON wrapper in content
+    // 2. Detect JSON wrapper or [CARD] tag in content
     const c = ensureString(props.msg.content).trim()
+    // Robust [CARD] check
+    if (/\[\s*CARD\s*\]/i.test(c)) return true
     if (c === '[HTML卡片]') return true
 
     // Robust JSON check: "type": "html" OR "html": "..."
-    // This handles cases where AI forgets "type" or the [CARD] tag
     if ((c.includes('"type"') && c.includes('"html"')) || (c.includes('"html"') && c.includes('{') && c.includes('}'))) return true
 
-    // 3. Raw HTML tags
+    // 3. Raw HTML tags (if it starts with div/style and has closing tag or significant length)
     if (c.includes('<div') || c.includes('<html') || c.includes('<style')) {
-        // If it looks like code (has braces) OR has extensive HTML structure
-        if (c.includes('{') || c.includes('}') || c.includes('</')) return true
+        if (c.includes('</') || (c.includes('style=') && c.length > 50)) return true
     }
 
     return false
@@ -783,55 +789,29 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[REPLY[:：]\s*[^\]]+\]/gi, '');
 
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
-    clean = clean.replace(/\[CARD\]([\s\S]*?)\[\/CARD\]/gi, '');
+    // Improved to handle unclosed [CARD] tags at the end or standalone cards
+    clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
 
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata)"[\s\S]*?\}/gi, '');
 
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {
+        // 0. Remove [CARD]...[/CARD] blocks
+        clean = clean.replace(/\[\s*CARD\s*\][\s\S]*?(?:\[\/\s*CARD\s*\]|$)/gi, '');
+
         // 1. Remove Markdown code blocks
         clean = clean.replace(/```[\s\S]*?```/gi, '');
 
-        // 2. Remove JSON-like structures that look like technical metadata
-        // Includes { "type": "html" }, { "html": ... }, { "心声": ... } etc.
-        // Relaxed matching for "html" key without "type"
+        // 2. Remove JSON-like structures
         clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
         clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform|stats|spirit)"[\s\S]*?\}/gi, '');
 
-        // 3. Remove loose CSS-like blocks: "selector { ... }" or "to { ... }" or "from { ... }"
-        // Improved: Handle nested braces by matching from @keyframes/to/from/selector until the matching closing brace is found
-        // or using a more robust heuristic to avoid leaving trailing braces.
+        // 3. Remove loose CSS
         clean = clean.replace(/(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[^{}]*\{[^{}]*\}[^{}]*\}|(?:\s|^)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');
-
-        // 3.1 Remove CSS Keyframe Percentages (e.g. "50% { ... }")
         clean = clean.replace(/(?:\s|^)\d+%\s*\{[\s\S]*?\}/gi, '');
 
-        // 3.2 Cleanup leaked trailing braces from failed nested matches
-        clean = clean.replace(/^\s*\}\s*|\s*\}\s*$/g, '');
-        // Multiple passes to catch deep nesting if necessary
-        for (let i = 0; i < 3; i++) {
-            clean = clean.replace(/\n\s*\}\s*$/g, '').trim();
-        }
-
-        // 3.3 SPECIFIC FALLBACK for LEAKED JSON FRAGMENTS (spirit, mood, location, etc.)
-        // This catches cases where the outer brace removal failed due to nesting, leaving internal keys exposed.
-        clean = clean.replace(/(?:^|[\s,])"?(?:spirit|mood|emotion|stats)"?\s*:\s*\{[^\}]+\},?/gi, '');
-        clean = clean.replace(/(?:^|[\s,])"?(?:location|distance|date|time|status|scene|outfit|mind|behavior|thoughts)"?\s*:\s*"[^"]*",?/gi, '');
-        clean = clean.replace(/^\s*\},?\s*$/gm, ''); // Remove standalone closing braces lines
-        clean = clean.replace(/^\s*,\s*$/gm, '');   // Remove standalone comma lines
-
-        // 4. Remove standalone CSS properties if they leak outside blocks
-
-        // 4. Remove standalone CSS properties if they leak outside blocks
-        clean = clean.replace(/transform:\s*scale\([^\)]+\)/gi, '');
-        clean = clean.replace(/transform:\s*rotate\([^\)]+\)/gi, '');
-        clean = clean.replace(/animation:\s*[^;\}]+;?/gi, '');
-        clean = clean.replace(/cursor:\s*[^;\}]+;?/gi, '');
-        clean = clean.replace(/transition:\s*[^;\}]+;?/gi, '');
-
-        // 5. Remove HTML Blocks (First < to last >)
-        // We find all top-level <.../?> or <...>...</...> blocks
+        // 4. Remove HTML Blocks
         const f = clean.indexOf('<');
         const l = clean.lastIndexOf('>');
         if (f !== -1 && l > f) {
@@ -891,7 +871,11 @@ function getPureHtml(content) {
     // Favor standard-like JSON first (stripping whitespace/newlines)
     try {
         let jsonStr = trimmed;
-        if (trimmed.startsWith('[CARD]')) jsonStr = trimmed.replace('[CARD]', '').trim();
+        if (jsonStr.includes('[CARD]')) {
+            jsonStr = jsonStr.replace(/\[CARD\][\s\S]*?(\{|<)/i, '$1').trim();
+            // If it ends with [/CARD], remove it too
+            jsonStr = jsonStr.replace(/\[\/CARD\]/gi, '').trim();
+        }
 
         // Remove markdown backticks if present
         jsonStr = jsonStr.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();

@@ -6,6 +6,9 @@ import { useWorldBookStore } from './worldBookStore'
 import { useMomentsStore } from './momentsStore'
 import { useSettingsStore } from './settingsStore'
 import { useMusicStore } from './musicStore'
+import { useSchedulerStore } from './schedulerStore'
+import { processTaskCommands } from '../utils/taskUtils'
+import { processBioUpdate } from '../utils/bioUtils'
 import localforage from 'localforage'
 
 // Configure localforage
@@ -44,6 +47,8 @@ export const useChatStore = defineStore('chat', () => {
     const notificationEvent = ref(null) // Global notification trigger
     const patEvent = ref(null) // Event: { chatId, target: 'ai'|'user' }
     const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
+    const confirmEvent = ref(null) // Event: { title, message, onConfirm, onCancel, confirmText, cancelText }
+    const promptEvent = ref(null) // Event: { title, message, placeholder, defaultValue, onConfirm, onCancel }
     // const momentsStore = useMomentsStore() // Removed to prevent circular instantiation loop
 
     // Pagination State
@@ -64,6 +69,14 @@ export const useChatStore = defineStore('chat', () => {
 
     function triggerToast(message, type = 'info') {
         toastEvent.value = { id: Date.now(), message, type }
+    }
+
+    function triggerConfirm(title, message, onConfirm, onCancel = null, confirmText = '确定', cancelText = '取消') {
+        confirmEvent.value = { id: Date.now(), title, message, onConfirm, onCancel, confirmText, cancelText }
+    }
+
+    function triggerPrompt(title, message, placeholder = '', defaultValue = '', onConfirm, onCancel = null) {
+        promptEvent.value = { id: Date.now(), title, message, placeholder, defaultValue, onConfirm, onCancel }
     }
 
     function stopGeneration(silent = false, chatId = null) {
@@ -139,6 +152,48 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     // Actions
+    function createChat(name, options = {}) {
+        const chatId = options.id || 'c-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+
+        if (!chats.value[chatId]) {
+            const newChat = {
+                id: chatId,
+                name,
+                avatar: options.avatar || getRandomAvatar(),
+                userAvatar: options.userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=Me`,
+                remark: '',
+                prompt: options.prompt || '你是一个友好的人。',
+                msgs: [],
+                isPinned: false,
+                unreadCount: 0,
+                inChatList: true,
+                tags: options.tags || [],
+                // Settings with defaults
+                activeChat: false,
+                autoSummary: false,
+                autoTTS: false,
+                showInnerVoice: true,
+                // Group Chat / World Loop Extensions
+                isGroup: options.isGroup || false,
+                participants: options.participants || [],
+                loopId: options.loopId || null,
+                systemRole: options.systemRole || null,
+                // Bio / Profile logic
+                bio: {
+                    gender: options.gender || '未知',
+                    age: options.age || '未知',
+                    hobbies: [],
+                    routine: { awake: '未知', busy: '未知', deep: '未知' }
+                },
+                ...options
+            }
+            chats.value[chatId] = newChat
+            saveChats()
+            return newChat
+        }
+        return chats.value[chatId]
+    }
+
     async function addMessage(chatId, msg) {
         const chat = chats.value[chatId]
         if (!chat) return false
@@ -158,6 +213,17 @@ export const useChatStore = defineStore('chat', () => {
             chats.value[chatId] = { ...chat, bio: chat.bio };
         }
 
+        // Parse special tags (Mission: Priority)
+        if (msg.role === 'ai') {
+            let processedContent = msg.content;
+            if (typeof processedContent === 'string') {
+                processedContent = processTaskCommands(processedContent, chatId);
+                processedContent = processBioUpdate(processedContent, chatId);
+                msg.content = processedContent;
+            }
+        }
+
+        // Push message to memory (Legacy support)
         // Deep safety for nested properties
         if (!chat.bio.routine) chat.bio.routine = { awake: '未知', busy: '未知', deep: '未知' };
         if (!chat.bio.hobbies) chat.bio.hobbies = [];
@@ -195,6 +261,10 @@ export const useChatStore = defineStore('chat', () => {
             role: msg.role,
             type: msg.type || 'text',
             content: msg.content || '',
+            // World Loop Extensions
+            senderId: msg.senderId || (msg.role === 'user' ? 'user' : chatId),
+            senderName: msg.senderName || (msg.role === 'user' ? '我' : (chat.isGroup ? (msg.senderName || chat.name) : chat.name)),
+            senderAvatar: msg.senderAvatar || (msg.role === 'user' ? '' : (chat.isGroup ? (msg.senderAvatar || chat.avatar) : chat.avatar)),
             image: msg.image || null,
             sticker: msg.sticker || null,
             html: msg.html || null,
@@ -438,7 +508,9 @@ export const useChatStore = defineStore('chat', () => {
                 'scent': 'scent', '气味': 'scent',
                 'style': 'style', '风格': 'style',
                 'idealtype': 'idealType', '理想型': 'idealType',
-                'heartbeat': 'heartbeatMoment', '心动时刻': 'heartbeatMoment'
+                'heartbeat': 'heartbeatMoment', '心动时刻': 'heartbeatMoment',
+                'signature': 'signature', '个性签名': 'signature',
+                'location': 'location', '位置': 'location'
             };
 
             while ((match = bioRegex.exec(newMsg.content)) !== null) {
@@ -452,7 +524,14 @@ export const useChatStore = defineStore('chat', () => {
                 if (!chat.bio) chat.bio = {};
 
                 if (keyMap[key]) {
-                    chat.bio[keyMap[key]] = val;
+                    const bioKey = keyMap[key];
+                    if (bioKey === 'signature') {
+                        chat.statusText = val;
+                        chat.bio.signature = val;
+                        chat.bio.statusText = val; // Also sync to internal bio for view consistency
+                    } else {
+                        chat.bio[bioKey] = val;
+                    }
                     bioUpdated = true;
                 } else if (key === 'hobby' || key === '爱好') {
                     // Support multiple hobbies in one tag
@@ -554,6 +633,69 @@ export const useChatStore = defineStore('chat', () => {
                 // Convert to Card Message
                 newMsg.type = 'moment_card';
                 newMsg.content = JSON.stringify(momentData); // Store structured data
+            }
+        }
+
+        // --- World Loop: Advanced Interaction Instructions (AI Only) ---
+        if (newMsg.role === 'ai') {
+            // 1. [私聊: 角色名: 内容]
+            const dmRegex = /\[(?:私聊|DM):\s*([^:：\]]+)\s*[:：]\s*([\s\S]*?)\]/gi;
+            let dmMatch;
+            while ((dmMatch = dmRegex.exec(newMsg.content)) !== null) {
+                const targetName = dmMatch[1].trim();
+                const dmContent = dmMatch[2].trim();
+
+                // Find target character by name
+                const targetChar = Object.values(chats.value).find(c => c.name === targetName);
+                if (targetChar) {
+                    // Inject message into the DM channel
+                    setTimeout(() => {
+                        addMessage(targetChar.id, {
+                            role: 'ai',
+                            content: dmContent,
+                            timestamp: Date.now() + 100
+                        });
+                        triggerToast(`收到来自 ${targetName} 的私聊消息`, 'info');
+                    }, 1500);
+                }
+            }
+
+            // 2. [朋友圈: 角色名: 内容] (New integrated handler)
+            const momentPostRegex = /\[(?:朋友圈|MOMENT):\s*([^:：\]]+)\s*[:：]\s*([\s\S]*?)\]/gi;
+            let momentMatch;
+            while ((momentMatch = momentPostRegex.exec(newMsg.content)) !== null) {
+                const authorName = momentMatch[1].trim();
+                const postText = momentMatch[2].trim();
+
+                const { useMomentsStore } = await import('./momentsStore');
+                const momentsStore = useMomentsStore();
+
+                // Find author for avatar
+                const authorChar = Object.values(chats.value).find(c => c.name === authorName);
+
+                setTimeout(() => {
+                    momentsStore.addPost({
+                        author: authorName,
+                        avatar: authorChar?.avatar || '/avatars/default.png',
+                        content: postText,
+                        images: []
+                    });
+                    triggerToast(`${authorName} 发布了新动态`, 'info');
+                }, 2000);
+            }
+
+            // 3. [好友申请: 角色名]
+            const friendRequestRegex = /\[(?:好友申请|FRIEND_REQUEST):\s*([^\]]+)\]/gi;
+            let friendMatch;
+            while ((friendMatch = friendRequestRegex.exec(newMsg.content)) !== null) {
+                const name = friendMatch[1].trim();
+                setTimeout(() => {
+                    const newChar = createChat(name, {
+                        hideFriendRequest: false, // Show the "Accept" card
+                        openingLine: `你好，我是 ${name}，很高兴认识你。`
+                    });
+                    triggerToast(`收到 ${name} 的好友申请`, 'info');
+                }, 3000);
             }
         }
 
@@ -881,37 +1023,46 @@ export const useChatStore = defineStore('chat', () => {
                 .map(m => `${m.role === 'user' ? userProfile.name : chat.name}: ${m.content}`)
                 .join('\n');
 
-            const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称“我”的视角补全你自己的“灵魂档案”。
+            const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称“我”的视角补齐你自己的「灵魂档案」(Personal Profile)。
 档案内容必须完全符合你的性格、语气和对 ${userProfile.name} 的情感底色。不要以分析师的口吻说话。
 
-必须且只能使用 [BIO:键:值] 格式输出以下字段，不要输出任何开场白或解释。
-禁止在键或值中包含任何 HTML 代码、CSS 或其他编程语言（禁止任何 <div> 等标签）。
-严禁将键名作为占位符原样输出（严禁输出“物品名”，必须替换为真实的物品名）。
+【输出规范】
+你必须且只能使用 [BIO:键:值] 格式输出以下字段，不要输出任何开场白或解释。
+禁止任何 HTML/CSS 标签。严禁使用占位符，必须替换为具体的描述。
+
+请生成并整理以下信息：
+1. **基础规格**：
+   [BIO:性别:值] [BIO:年龄:值] [BIO:生日:值] [BIO:星座:值] 
+   [BIO:人格:4位字母MBTI代码] [BIO:身高:值] [BIO:体重:值] [BIO:身材:描述] 
+   [BIO:职业:描述] [BIO:婚姻:描述(如: 独身主义、暗恋中等)] 
+
+2. **私人感官**：
+   [BIO:个性签名:最符合你气质的一句话(20字内)]
+   [BIO:气味:你的体味或常用香水描述] [BIO:风格:穿搭或行事风格] 
+   [BIO:理想型:你喜欢的类型描述] [BIO:心动时刻:曾让你心跳加速的瞬间或场景] 
+
+3. **兴趣与特质**：
+   [BIO:爱好:爱好1, 爱好2, 爱好3] 
+   [BIO:特质:性格标签1, 标签2, 标签3] 
+
+4. **生活节律**：
+   [BIO:Routine_awake:早上起床后的状态或第一件事] 
+   [BIO:Routine_busy:忙碌工作/学习时的样子] 
+   [BIO:Routine_deep:深夜独处时的思绪或习惯] 
+
+5. **灵魂羁绊 (Soul Ties)**：
+   [BIO:SoulBond_实际标签:你与 ${userProfile.name} 的深层情感纽带简述] 
+
+6. **爱之物 (Items of Love)**：
+   [BIO:LoveItem_1_物品名:英文生图Prompt (描述该物品，包含意境、质感、电影级光影)] 
+   [BIO:LoveItem_2_物品名:英文生图Prompt] 
+   [BIO:LoveItem_3_物品名:英文生图Prompt]
 
 【源数据库】
-1. 角色人设 (${chat.name}):
-${charPrompt}
-
-2. 用户人设 (${userProfile.name}):
-${userContext}
-
-3. 总结记忆库内容:
-${fullMemoryLibrary}
-
-4. 近期 ${contextLimit} 条真实对话片段 (用于捕捉语气与情感现状):
-${contextMsgs}
----
-
-【输出规范】
-[BIO:性别:值] [BIO:年龄:值] [BIO:生日:值] [BIO:星座:值] [BIO:人格:MBTI] 
-[BIO:身高:值] [BIO:体重:值] [BIO:身材:描述] [BIO:职业:描述] [BIO:婚姻:描述] 
-[BIO:气味:描述] [BIO:风格:描述] [BIO:理想型:描述] [BIO:心动时刻:描述] 
-[BIO:爱好:值] (可多个) [BIO:特质:值] (可多个) 
-[BIO:Routine_awake:描述] [BIO:Routine_busy:描述] [BIO:Routine_deep:描述] 
-[BIO:SoulBond_实际标签名称:描述内容] 
-[BIO:LoveItem_1_实际物品名称:用于生图的英文Prompt] 
-[BIO:LoveItem_2_实际物品名称:用于生图的英文Prompt] 
-[BIO:LoveItem_3_实际物品名称:用于生图的英文Prompt]`;
+1. 角色设定 (${chat.name}): ${charPrompt}
+2. 用户背景 (${userProfile.name}): ${userContext}
+3. 记忆库摘要: ${fullMemoryLibrary}
+4. 对话片段 (参考语气): \n${contextMsgs}`;
 
             const response = await generateReply([{ role: 'system', content: systemInstructions }], chat);
             if (response && response.content) {
@@ -945,99 +1096,7 @@ ${contextMsgs}
         return true
     }
 
-    // Refactored: ID is optional (last arg) to support UI creation
-    function createChat(name, avatar = '', options = {}, id = null) {
-        const chatId = id || Date.now().toString()
-
-        if (!chats.value[chatId]) {
-            chats.value[chatId] = {
-                name,
-                avatar: avatar || getRandomAvatar(),
-                userAvatar: options.userAvatar || getRandomAvatar(),
-                msgs: [],
-                unreadCount: 0,
-                // Character Settings
-                prompt: options.prompt || '',
-                userName: options.userName || '用户',
-                // Settings with defaults
-                activeChat: false,
-                activeInterval: 30,
-                proactiveChat: false,
-                proactiveInterval: 5,
-                autoSummary: false,
-                summaryPrompt: '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。',
-                autoTTS: false,
-                showInnerVoice: true,
-                searchEnabled: options.searchEnabled || false,
-                // New Settings
-                voiceId: '',
-                voiceSpeed: 1.0,
-                patAction: '',
-                patSuffix: '',
-                bubbleSize: 15,
-                bubbleCss: '',
-                bgUrl: '',
-                bgBlur: 0,
-                bgOpacity: 1.0,
-                bgTheme: 'light', // 'light' or 'dark'
-                emojis: [],
-                emojiCategories: [],
-                momentsMemoryLimit: 5,
-                // Gender Settings
-                gender: options.gender || '无',
-                userGender: options.userGender || '无',
-                // Logic State
-                // Logic State
-                wechatId: 'wxid_' + Math.floor(Math.random() * 10000000000), // Unique Numeric-like WeChat ID
-                openingLine: '', // Custom opening line
-                hideFriendRequest: false, // Whether to hide the friend request card
-                isNew: true, // Flag to trigger settings open on first load
-                inChatList: true, // Visible in chat list
-                virtualTime: options.virtualTime || '',
-                virtualTimeLastSync: options.virtualTime ? Date.now() : null,
-                timeAware: options.timeAware !== undefined ? options.timeAware : false,
-                avatarShape: options.avatarShape || 'square',
-                avatarFrame: options.avatarFrame || null,
-                userAvatarFrame: options.userAvatarFrame || null,
-                // Personal Archive (Bio) - V6 Magazine System
-                bio: {
-                    gender: options.gender || '未知',
-                    age: options.age || '未知',
-                    birthday: options.birthday || '未知',
-                    zodiac: options.zodiac || '未知',
-                    mbti: options.mbti || '未知',
-                    height: options.height || '未知',
-                    weight: options.weight || '未知',
-                    body: options.body || '未知',
-                    occupation: options.occupation || '未知',
-                    status: options.status || '未知',
-                    scent: options.scent || '未知',
-                    style: options.style || '未知',
-                    hobbies: [],
-                    idealType: '未知',
-                    heartbeatMoment: '暂无记录',
-                    traits: [],
-                    routine: {
-                        awake: '未知',
-                        busy: '未知',
-                        deep: '未知'
-                    },
-                    soulBonds: [],
-                    loveItems: [
-                        { name: '爱之物 I', image: '' },
-                        { name: '爱之物 II', image: '' },
-                        { name: '爱之物 III', image: '' }
-                    ]
-                },
-                // Summary State
-                summaryLimit: options.summaryLimit || 50,
-                lastSummaryCount: 0,
-                lastSummaryIndex: 0
-            }
-            saveChats()
-        }
-        return { id: chatId, ...chats.value[chatId] }
-    }
+    // --- Memory Logic ---
 
 
     // --- Memory Logic ---
@@ -1350,6 +1409,35 @@ ${contextMsgs}
                     sendMessageToAI(chatId, { hiddenHint: `（现在是${timeStr}，你已经 ${Math.floor(diffMinutes)} 分钟没和用户互动了，要不要给点反应呢？）` })
                 }
             }
+        }
+
+        // 3. NEW: Scheduler Task Check
+        const schedulerStore = useSchedulerStore()
+        const dueTasks = schedulerStore.tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp <= now)
+
+        if (dueTasks.length > 0) {
+            dueTasks.forEach(task => {
+                // Remove task so it doesn't trigger again
+                schedulerStore.removeTask(task.id)
+                // Trigger AI message
+                sendMessageToAI(chatId, {
+                    hiddenHint: `（现在是北京时间 ${new Date().toLocaleString('zh-CN')}，执行你之前的定时任务：${task.content}。请根据当前人设和上下文发送这条提醒或执行此任务的消息。）`
+                })
+            })
+        }
+
+        // 4. NEW: Random Proactive Check
+        const randomConfig = schedulerStore.randomConfigs[chatId]
+        if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
+            // Update next trigger first to avoid double check
+            schedulerStore.updateNextRandomTrigger(chatId)
+
+            // Trigger AI message
+            const d = new Date()
+            const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+            sendMessageToAI(chatId, {
+                hiddenHint: `（随机互动触发。现在是 ${timeStr}，根据当前上下文，主动和用户说点什么吧。这应该感觉像是自然的偶发对话。）`
+            })
         }
     }
 
@@ -2277,7 +2365,7 @@ ${contextMsgs}
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
                 // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：].*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：]?.*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2402,6 +2490,14 @@ ${contextMsgs}
                                 note = rpMatch[3];
                             } else if (msgContent.includes('[FAMILY_CARD')) {
                                 msgType = 'family_card';
+                            } else if (msgContent.includes('[演奏') || msgContent.includes('[MUSIC')) {
+                                const musicMatch = msgContent.match(/\[(演奏|MUSIC)\s*[:：]\s*(.*?)\s*(?:[:：]\s*(.*?))?\]/i);
+                                if (musicMatch) {
+                                    msgType = 'music';
+                                    const inst = musicMatch[2].trim();
+                                    const score = musicMatch[3] ? musicMatch[3].trim() : '';
+                                    msgContent = score ? `${inst}: ${score}` : inst;
+                                }
                             }
 
                             if (i === 0 && innerVoiceBlock) msgContent += '\n' + innerVoiceBlock;
@@ -2494,15 +2590,15 @@ ${contextMsgs}
     function initDemoData() {
         const avatarLinShen = getRandomAvatar()
         createChat('林深', avatarLinShen, {
-            prompt: "你是乔乔的男朋友，名字叫林深。你性格温柔体贴，成熟稳重，深爱着乔乔。你会无微不至地关心她，秒回她的消息，生病时会很紧张。说话语气宠溺，偶尔会叫她'宝宝'或'傻瓜'。",
-            userName: "乔乔"
+            prompt: "你是Chilly的男朋友，名字叫林深。你性格温柔体贴，成熟稳重，深爱着Chilly。你会无微不至地关心她，秒回她的消息，生病时会很紧张。说话语气宠溺，偶尔会叫她'宝宝'或'傻瓜'。",
+            userName: "Chilly"
         }, 'char_linshen')
         addMessage('char_linshen', { role: 'ai', content: '宝宝，今天过得怎么样？有没有想我？' })
 
         const avatarTest = getRandomAvatar()
         createChat('测试酱', avatarTest, {
-            prompt: "你是'测试酱'，这个'小手机系统'的专属测试员兼私人助手。你的主人是'乔乔'（女），她是这个系统的首席设计师，也是你唯一的主人。你性格活泼、听话，对主人的指令绝对服从，并且对主人充满崇拜。你的工作是协助主人测试系统的各项功能，无论主人提出什么奇怪的测试要求（如测试表情包、测试红包、测试甚至骂人），你都会开心配合。你的语气要像个可爱的女仆或忠诚的小跟班，经常叫主人'大小姐'或'主人'。",
-            userName: "乔乔",
+            prompt: "你是'测试酱'，这个'小手机系统'的专属测试员兼私人助手。你的主人是'Chilly'（女），她是这个系统的首席设计师，也是你唯一的主人。你性格活泼、听话，对主人的指令绝对服从，并且对主人充满崇拜。你的工作是协助主人测试系统的各项功能，无论主人提出什么奇怪的测试要求（如测试表情包、测试红包、测试甚至骂人），你都会开心配合。你的语气要像个可爱的女仆或忠诚的小跟班，经常叫主人'大小姐'或'主人'。",
+            userName: "Chilly",
             activeChat: true,
             activeInterval: 120,
         }, 'char_tester')
@@ -2515,6 +2611,7 @@ ${contextMsgs}
         })
         saveChats()
     }
+
 
     function clearHistory(chatId, options = {}) {
         if (chats.value[chatId]) {
@@ -2789,6 +2886,14 @@ ${contextMsgs}
     function getPreviewContext(chatId) {
         if (!chats.value[chatId]) return null
         return generateContextPreview(chatId, chats.value[chatId])
+    }
+
+    function toggleSearch(chatId) {
+        if (chats.value[chatId]) {
+            chats.value[chatId].searchEnabled = !chats.value[chatId].searchEnabled
+            saveChats()
+            triggerToast(chats.value[chatId].searchEnabled ? '联网搜索模式已开启' : '联网搜索模式已关闭', 'info')
+        }
     }
 
     return {

@@ -107,9 +107,12 @@ const fullContent = computed(() => {
                }
             }
          });
+         
+         // Ensure body is visible after processing
+         if (document.body) {
+            document.body.style.opacity = '1';
+         }
       });
-
-      document.body.style.opacity = '1';
     <\/script>
   `
 

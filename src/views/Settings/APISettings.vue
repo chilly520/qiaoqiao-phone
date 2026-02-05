@@ -90,9 +90,8 @@ const newConfig = () => {
     chatStore.triggerToast('新配置已创建', 'success')
 }
 
-// 删除配置
 const deleteConfig = () => {
-    if (confirm('确定要删除当前配置吗？')) {
+    chatStore.triggerConfirm('删除配置', '确定要删除当前配置吗？', () => {
         const result = settingsStore.deleteConfig(currentConfigIndex.value)
         if (result === true) {
             loadConfig()
@@ -100,7 +99,7 @@ const deleteConfig = () => {
         } else if (typeof result === 'string') {
             chatStore.triggerToast(result, 'warning')
         }
-    }
+    })
 }
 
 // 拉取模型列表

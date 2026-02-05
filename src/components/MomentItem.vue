@@ -101,6 +101,12 @@ const getDisplayReplyName = (name) => {
 
 const isLiked = computed(() => (props.moment?.likes || []).includes(settingsStore.personalization.userProfile.name))
 
+const totalLikes = computed(() => {
+    const listLen = (props.moment?.likes || []).length
+    const base = props.moment?.baseLikeCount || 0
+    return listLen + base
+})
+
 const likeNames = computed(() => {
     const list = [...(props.moment?.likes || [])]
     const userName = settingsStore.personalization.userProfile.name
@@ -112,8 +118,7 @@ const likeNames = computed(() => {
         list.unshift(userName)
     }
 
-    const base = props.moment?.baseLikeCount || 0
-    const total = list.length + base
+    const total = totalLikes.value
 
     const displayList = list.slice(0, 8)
 
@@ -122,7 +127,7 @@ const likeNames = computed(() => {
     // Show up to 8 names then "etc."
     let namesPart = displayList.join('、')
     if (total > displayList.length) {
-        namesPart += ` 等 ${total} 位好友`
+        namesPart += ` 等 ${total - displayList.length} 位好友`
     }
     return namesPart + '觉得很赞'
 })
@@ -458,7 +463,7 @@ const navigateToAuthor = () => {
         </div>
 
         <!-- Content -->
-        <div class="flex-1 min-w-0" @click="!isDetail && emit('show-detail')">
+        <div class="flex-1 min-w-0">
             <!-- Name -->
             <h3 class="text-[#576b95] font-bold text-base mb-1 cursor-pointer hover:underline inline-block"
                 @click="navigateToAuthor">{{ author?.name }}</h3>
@@ -469,14 +474,16 @@ const navigateToAuthor = () => {
                 置顶
             </div>
 
-            <!-- Text with Parsed Stickers -->
-            <div v-if="!props.moment?.html"
-                class="text-gray-900 text-base mb-3 whitespace-pre-wrap break-words leading-relaxed"
-                v-html="parsedContent"></div>
+            <!-- Text with Parsed Stickers (Clickable to detail) -->
+            <div @click="!isDetail && emit('show-detail')">
+                <div v-if="!props.moment?.html"
+                    class="text-gray-900 text-base mb-3 whitespace-pre-wrap break-words leading-relaxed"
+                    v-html="parsedContent"></div>
 
-            <!-- HTML Content -->
-            <div v-if="props.moment?.html" class="html-content mb-3 text-gray-900 text-base leading-relaxed"
-                v-html="props.moment?.html"></div>
+                <!-- HTML Content -->
+                <div v-if="props.moment?.html" class="html-content mb-3 text-gray-900 text-base leading-relaxed"
+                    v-html="props.moment?.html"></div>
+            </div>
 
             <!-- Location -->
             <div v-if="props.moment?.location"
@@ -510,11 +517,11 @@ const navigateToAuthor = () => {
 
             <!-- Interaction Bar -->
             <div v-if="props.moment?.visibility !== 'private'"
-                class="mt-4 pt-3 border-t border-gray-50 flex items-center gap-8 px-1">
+                class="mt-4 pt-3 border-t border-gray-50 flex items-center gap-8 px-1" @click.stop>
                 <button class="flex items-center gap-1.5 transition-colors active:scale-95"
                     :class="isLiked ? 'text-red-500' : 'text-gray-500'" @click="toggleLike">
                     <i :class="[isLiked ? 'fa-solid fa-heart' : 'fa-regular fa-heart']" class="text-sm"></i>
-                    <span class="text-xs font-medium">{{ (props.moment?.likes || []).length || '赞' }}</span>
+                    <span class="text-xs font-medium">{{ totalLikes || '赞' }}</span>
                 </button>
 
                 <button class="flex items-center gap-1.5 text-gray-500 transition-colors active:scale-95"
@@ -540,7 +547,7 @@ const navigateToAuthor = () => {
             </div>
 
             <!-- Footer: Time & Management Menu -->
-            <div class="flex items-center mt-4">
+            <div class="flex items-center mt-4" @click.stop>
                 <span class="text-xs text-gray-400 mr-2">{{ formatTime(props.moment?.timestamp) }}</span>
 
                 <!-- Visibility Icons (God mode View) -->
@@ -591,7 +598,7 @@ const navigateToAuthor = () => {
 
             <!-- Interactions Area -->
             <div v-if="(props.moment?.likes || []).length > 0 || (props.moment?.comments || []).length > 0"
-                class="mt-2 bg-[#f7f7f7] rounded relative">
+                class="mt-2 bg-[#f7f7f7] rounded relative interaction-area" @click.stop>
                 <div
                     class="absolute -top-1.5 left-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-[#f7f7f7]">
                 </div>
@@ -640,7 +647,7 @@ const navigateToAuthor = () => {
 
             <!-- Comment Input -->
             <div v-if="showCommentInput"
-                class="mt-2 bg-gray-50 p-2 rounded flex flex-col gap-2 animate-fade-in border border-gray-100">
+                class="mt-2 bg-gray-50 p-2 rounded flex flex-col gap-2 animate-fade-in border border-gray-100 comment-input-area" @click.stop>
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
                     <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
                             }}</span></span>
@@ -808,8 +815,20 @@ const navigateToAuthor = () => {
     border-color: #2a2a2a;
 }
 
-:deep([data-theme='dark']) .bg-\[\#f7f7f7\] {
-    background-color: #252525;
+:deep([data-theme='dark']) .bg-\[\#f7f7f7\],
+:deep([data-theme='dark']) .interaction-area {
+    background-color: #252525 !important;
+}
+
+:deep([data-theme='dark']) .comment-input-area {
+    background-color: #2a2a2a !important;
+    border-color: #333 !important;
+}
+
+:deep([data-theme='dark']) .comment-input-area input {
+    background-color: #191919 !important;
+    border-color: #444 !important;
+    color: #eee !important;
 }
 
 :deep([data-theme='dark']) .border-b-\[\#f7f7f7\] {

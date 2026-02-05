@@ -6,9 +6,16 @@ import { useChatStore } from '../stores/chatStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
 
 const router = useRouter()
+import { useWeiboStore } from '../stores/weiboStore'
+import { useChatStore } from '../stores/chatStore'
+import { useWorldBookStore } from '../stores/worldBookStore'
+import { useSettingsStore } from '../stores/settingsStore'
+
+const router = useRouter()
 const weiboStore = useWeiboStore()
 const chatStore = useChatStore()
 const worldBookStore = useWorldBookStore()
+const settingsStore = useSettingsStore()
 
 onMounted(async () => {
   await weiboStore.initStore()
@@ -19,12 +26,84 @@ onMounted(async () => {
   // Ensure initial posts exist if empty
   if (weiboStore.posts.length === 0) {
     weiboStore.addPost({
-      author: '乔乔',
-      avatar: '/avatars/乔乔.jpg',
+      author: 'Chilly',
+      avatar: '/avatars/小猫星星眼.jpg',
       content: '今天天气真好，想出去玩！☀️ #日常 #心情',
       images: [],
-      stats: { share: 12, comment: 34, like: 156 }
+      stats: { share: 12, comment: 3, like: 156 },
+      comments: [
+        {
+          author: '吃瓜少女',
+          avatar: '/avatars/小猫吃草莓.jpg',
+          content: '捉住Chilly！今天也太可爱了吧！🥰',
+          time: Date.now() - 3600000,
+          likes: 52,
+          isVip: true,
+          isLiked: false
+        },
+        {
+          author: '熬夜冠军',
+          avatar: '/avatars/小猫坏笑.jpg',
+          content: '带我一个！带我一个！🙋‍♂️',
+          time: Date.now() - 1800000,
+          likes: 28,
+          isVip: false,
+          isLiked: false
+        },
+        {
+          author: '热心市民',
+          avatar: '/avatars/小猫喝茶.jpg',
+          content: '这种天气就适合野餐呀 🍱',
+          time: Date.now() - 900000,
+          likes: 15,
+          isVip: false,
+          isLiked: true
+        }
+      ]
     })
+  }
+
+  // FORCE DEMO: Integrate comments into existing post 
+  // (We always overwrite for this session to show new features)
+  if (weiboStore.posts.length > 0) {
+    const firstPost = weiboStore.posts[0]
+
+    firstPost.comments = [
+      {
+        author: '吃瓜少女',
+        avatar: '/avatars/小猫吃草莓.jpg',
+        content: '捉住Chilly！今天也太可爱了吧！🥰',
+        time: Date.now() - 3600000,
+        likes: 52,
+        isVip: true,
+        isLiked: false,
+        replies: [
+          { author: 'Chilly', content: '嘿嘿，被发现了！🐱', isVip: true, isAuthor: true },
+          { author: '路人甲', content: '羡慕前排！', isVip: false }
+        ]
+      },
+      {
+        author: '表情包大户',
+        avatar: '/avatars/小猫坏笑.jpg',
+        content: '', // Sticker only
+        sticker: 'https://api.iconify.design/noto:cat-face-with-wry-smile.svg',
+        time: Date.now() - 1800000,
+        likes: 28,
+        isVip: false,
+        isLiked: false
+      },
+      {
+        author: '摄影师',
+        avatar: '/avatars/小猫开心.jpg',
+        content: '上次拍的照片还没发呢！',
+        image: 'https://picsum.photos/seed/pic_comment/300/200',
+        time: Date.now() - 900000,
+        likes: 45,
+        isVip: true,
+        isLiked: true
+      }
+    ]
+    if (firstPost.stats && firstPost.stats.comment < 3) firstPost.stats.comment = 3
   }
 })
 
@@ -39,7 +118,70 @@ const selectedPostToShare = ref(null)
 const activeCommentPostId = ref(null) // ID of the post with expanded comments
 
 const postText = ref('')
-const searchText = ref('乔乔')
+const searchText = ref('Chilly')
+const commentInputText = ref('')
+const activeReplyCommentId = ref(null) // ID of comment being replied to (if null, top level)
+const activeReplyUser = ref(null) // User object being replied to
+
+function setReplyTarget(post, comment, replyUser = null) {
+  activeReplyCommentId.value = comment ? comment : null // If null, commenting on post
+  activeReplyUser.value = replyUser || (comment ? { name: comment.author } : null)
+
+  // Focus input (simulate)
+  const input = document.querySelector(`.post-${post.id}-comment-input`)
+  if (input) input.focus()
+
+  // Update placeholder text handled in template
+}
+
+function sendComment(postId) {
+  if (!commentInputText.value.trim()) return
+
+  const post = weiboStore.posts.find(p => p.id === postId)
+  if (!post) return
+
+  // If replying to a comment (Threading)
+  if (activeReplyCommentId.value) {
+    // Find the parent comment
+    // Implementation detail: mock comments doesn't have IDs, using object ref or index might be tricky
+    // For this mock, let's just push to the LAST comment or matched comment
+    // We need to pass index or object reference. Let's assume activeReplyCommentId is the comment Object for simplicity in this mock
+    const parentComment = activeReplyCommentId.value
+    if (!parentComment.replies) parentComment.replies = []
+
+    let content = commentInputText.value
+    // If replying to a nested user, valid practice is to not prefix in the content, but UI shows "Reply X"
+    // But strictly mimic Weibo:
+    if (activeReplyUser.value && activeReplyUser.value.name !== parentComment.author) {
+      content = `回复@${activeReplyUser.value.name}:${content}`
+    }
+
+    parentComment.replies.push({
+      author: 'Chilly',
+      isAuthor: true,
+      isVip: true, // You are VIP
+      content: content
+    })
+  } else {
+    // Top level comment
+    post.comments.unshift({
+      author: 'Chilly',
+      avatar: '/avatars/小猫星星眼.jpg',
+      content: commentInputText.value,
+      time: Date.now(),
+      likes: 0,
+      isVip: true,
+      isLiked: false,
+      replies: []
+    })
+    if (post.stats) post.stats.comment++
+  }
+
+  commentInputText.value = ''
+  activeReplyCommentId.value = null
+  activeReplyUser.value = null
+  chatStore.triggerToast('评论成功', 'success')
+}
 
 const topicDetail = ref({ title: '', bannerTitle: '' })
 const dmChat = ref({ name: '' })
@@ -146,7 +288,7 @@ function sharePostTo(contactId) {
   })
 
   // Toast / Feeback
-  alert(`已分享给 ${chatName}`)
+  chatStore.triggerToast(`已分享给 ${chatName}`, 'success')
   showShareModal.value = false
   weiboStore.toggleLike(post.id) // Optional: Auto-like when sharing? Maybe not.
   // Increment share count locally for effect
@@ -227,13 +369,14 @@ function clearCharPosts() {
   const charId = settingsForm.value.selectedCharToClear
   if (charId) {
     weiboStore.clearPostsByChar(charId)
-    alert('已清空该角色的微博')
+    chatStore.triggerToast('已清空该角色的微博', 'success')
   }
 }
 function clearAll() {
-  if (confirm('确定要清空所有内容吗？不可恢复。')) {
+  chatStore.triggerConfirm('清空内容', '确定要清空所有内容吗？不可恢复。', () => {
     weiboStore.clearAllPosts()
-  }
+    chatStore.triggerToast('已清空所有内容', 'success')
+  })
 }
 
 // --- Following ---
@@ -264,6 +407,18 @@ function likePost(postId) {
   weiboStore.toggleLike(postId)
 }
 
+const activePostDetail = ref(null)
+
+function openPostDetail(post) {
+  activePostDetail.value = post
+  document.body.style.overflow = 'hidden'
+}
+
+function closePostDetail() {
+  activePostDetail.value = null
+  document.body.style.overflow = ''
+}
+
 function toggleComments(postId) {
   if (activeCommentPostId.value === postId) {
     activeCommentPostId.value = null
@@ -289,21 +444,26 @@ function likeComment(postId, commentIndex) {
 function deleteComment(postId, commentIndex) {
   const post = weiboStore.posts.find(p => p.id === postId)
   if (post && post.comments) {
-    if (confirm('确定删除这条评论吗？')) {
+    chatStore.triggerConfirm('删除评论', '确定删除这条评论吗？', () => {
       post.comments.splice(commentIndex, 1)
       if (post.stats) post.stats.comment--
-    }
+      chatStore.triggerToast('评论已删除', 'success')
+    })
   }
 }
 
 // --- AI Generator Logic ---
 import { generateReply } from '../utils/aiService'
 
-async function handleGenerateEffect() {
-  if (weiboStore.posts.length === 0) return alert('先发一条微博吧！')
+async function handleGenerateEffect(targetPostId = null) {
+  if (weiboStore.posts.length === 0) return chatStore.triggerToast('先发一条微博吧！', 'warning')
 
   // Pick a random post to comment on (prioritize recent ones)
-  const targetPost = weiboStore.posts[0]
+  let targetPost = weiboStore.posts[0]
+  if (targetPostId) {
+    const found = weiboStore.posts.find(p => p.id === targetPostId)
+    if (found) targetPost = found
+  }
 
   // Visual Feedback: Spin the icon
   const btnIcon = document.querySelector('.fa-wand-magic-sparkles')
@@ -343,11 +503,11 @@ async function handleGenerateEffect() {
     }
 
     // Toast
-    alert(`已生成 ${comments.length} 条新互动！`)
+    chatStore.triggerToast(`已生成 ${comments.length} 条新互动！`, 'success')
 
   } catch (e) {
     console.error(e)
-    alert('生成神评失败，请稍后再试')
+    chatStore.triggerToast('生成神评失败，请稍后再试', 'error')
   } finally {
     if (btnIcon) btnIcon.classList.remove('fa-spin')
   }
@@ -386,7 +546,7 @@ function getRandomNetizen() {
         </div>
         <div class="search-bar" @click="openSearchResults">
           <i class="fa-solid fa-search"></i>
-          <span>大家都在搜：乔乔的小手机上线了</span>
+          <span>大家都在搜：Chilly的手机上线了</span>
         </div>
         <div class="nav-tabs">
           <span>关注</span>
@@ -428,38 +588,63 @@ function getRandomNetizen() {
             </div>
             <div class="follow-btn" v-if="post.authorId !== 'me'">+ 关注</div>
           </div>
-          <div class="post-content">{{ post.content }}</div>
+          <!-- Post Content (Click to Detail) -->
+          <div class="post-content" @click="openPostDetail(post)">{{ post.content }}</div>
           <div class="post-images" :class="'grid-' + (post.images ? post.images.length : 0)"
-            v-if="post.images && post.images.length">
+            v-if="post.images && post.images.length" @click="openPostDetail(post)">
             <img v-for="(img, idx) in post.images" :key="idx" :src="img">
           </div>
+
           <div class="post-actions" v-if="post.stats">
-            <div class="action-item" @click="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{
+            <div class="action-item" @click.stop="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{
               weiboStore.formatNumber(post.stats.share) }}</div>
-            <div class="action-item" @click="toggleComments(post.id)"
+            <div class="action-item" @click.stop="toggleComments(post.id)"
               :class="{ 'active-action': activeCommentPostId === post.id }">
               <i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}
             </div>
-            <div class="action-item" :class="{ 'liked': post.isLiked }" @click="likePost(post.id)"><i
+            <div class="action-item" :class="{ 'liked': post.isLiked }" @click.stop="likePost(post.id)"><i
                 class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
           </div>
 
-          <!-- Comment Section -->
-          <div class="comment-section" v-if="activeCommentPostId === post.id">
+          <!-- Comment Section (Homepage Preview) -->
+          <div class="comment-section" v-if="activeCommentPostId === post.id" style="padding-bottom:10px;">
             <div class="comment-list" v-if="post.comments && post.comments.length > 0">
-              <div class="comment-item" v-for="(comment, cIdx) in post.comments" :key="cIdx">
+              <!-- Limit to 3 items -->
+              <div class="comment-item" v-for="(comment, cIdx) in post.comments.slice(0, 3)" :key="cIdx">
                 <img :src="comment.avatar" class="comment-avatar">
                 <div class="comment-body">
                   <div class="comment-user" :class="{ 'vip-name': comment.isVip }">
                     {{ comment.author }}
                     <span v-if="comment.isVip" class="vip-crown level-3"><i class="fa-solid fa-crown"></i></span>
                   </div>
-                  <div class="comment-text">{{ comment.content }}</div>
+                  <div class="comment-content-container">
+                    <div class="comment-text" v-if="comment.content">{{ comment.content }}</div>
+                    <img v-if="comment.sticker" :src="comment.sticker" class="sticker-img">
+                    <div v-if="comment.image" class="comment-img-wrapper">
+                      <img :src="comment.image" class="comment-block-img">
+                      <div class="img-tag">图片</div>
+                    </div>
+                  </div>
+
+                  <!-- Replies -->
+                  <div class="replies-container" v-if="comment.replies && comment.replies.length">
+                    <div class="reply-item" v-for="(reply, rIdx) in comment.replies" :key="rIdx"
+                      @click="openPostDetail(post)">
+                      <span class="reply-user" :class="{ 'vip-name': reply.isVip }">
+                        {{ reply.author }}
+                        <span v-if="reply.isAuthor" class="author-tag">作者</span>
+                      </span>
+                      <span class="reply-text">：{{ reply.content }}</span>
+                    </div>
+                  </div>
+
                   <div class="comment-footer">
                     <span class="comment-time">刚刚</span>
                     <div class="comment-actions">
-                      <span @click="deleteComment(post.id, cIdx)" class="delete-btn">删除</span>
-                      <span @click="likeComment(post.id, cIdx)" :class="{ 'liked': comment.isLiked }">
+                      <span @click.stop="openPostDetail(post)" class="reply-btn">
+                        <i class="fa-regular fa-comment-dots"></i>
+                      </span>
+                      <span @click.stop="likeComment(post.id, cIdx)" :class="{ 'liked': comment.isLiked }">
                         <i class="fa-regular fa-thumbs-up" v-if="!comment.isLiked"></i>
                         <i class="fa-solid fa-thumbs-up" v-else></i>
                         {{ comment.likes || 0 }}
@@ -468,13 +653,118 @@ function getRandomNetizen() {
                   </div>
                 </div>
               </div>
-            </div>
-            <div class="empty-comments" v-else>
-              暂无评论，点击顶部魔法棒生成神评！✨
+
+              <!-- View More Button -->
+              <div class="view-more-comments" v-if="post.comments.length > 3" @click="openPostDetail(post)">
+                查看全部 {{ post.comments.length }} 条评论 >
+              </div>
             </div>
           </div>
         </article>
       </main>
+    </div>
+
+    <!-- Post Detail Modal (Full Screen) -->
+    <div class="post-detail-overlay" v-if="activePostDetail">
+      <div class="detail-header">
+        <div class="back-btn" @click="closePostDetail"><i class="fa-solid fa-chevron-left"></i> 返回</div>
+        <div class="detail-title">微博正文</div>
+        <div class="detail-menu"><i class="fa-solid fa-ellipsis"></i></div>
+      </div>
+      <div class="detail-content">
+        <!-- Re-render Post Content -->
+        <div class="post-item detail-view-item">
+          <div class="post-header">
+            <div class="user-info">
+              <div class="avatar-wrapper">
+                <img :src="activePostDetail.avatar" class="user-avatar">
+                <span class="verified-badge orange-v" v-if="activePostDetail.isVip"><i class="fa-solid fa-v"></i></span>
+              </div>
+              <div>
+                <div class="user-name" :class="{ 'vip-name': activePostDetail.isVip }">
+                  {{ activePostDetail.author }}
+                  <span v-if="activePostDetail.isVip" class="vip-crown level-7">
+                    <i class="fa-solid fa-crown"></i><span class="vip-num">7</span>
+                  </span>
+                </div>
+                <div class="user-meta">{{ activePostDetail.time }} · iPhone 16 Pro Max</div>
+              </div>
+            </div>
+            <div class="follow-btn" v-if="activePostDetail.authorId !== 'me'">+ 关注</div>
+          </div>
+          <div class="post-content">{{ activePostDetail.content }}</div>
+          <div class="post-images" :class="'grid-' + (activePostDetail.images ? activePostDetail.images.length : 0)"
+            v-if="activePostDetail.images && activePostDetail.images.length">
+            <img v-for="(img, idx) in activePostDetail.images" :key="idx" :src="img">
+          </div>
+
+          <!-- Full Post Actions -->
+          <div class="post-actions" v-if="activePostDetail.stats"
+            style="margin-top:10px; border-bottom:1px solid #f0f0f0; padding-bottom:10px;">
+            <div class="action-item"><i class="fa-solid fa-share-nodes"></i> {{
+              weiboStore.formatNumber(activePostDetail.stats.share) }}</div>
+            <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{
+              weiboStore.formatNumber(activePostDetail.stats.comment) }}</div>
+            <div class="action-item" :class="{ 'liked': activePostDetail.isLiked }"
+              @click="likePost(activePostDetail.id)"><i class="fa-solid fa-heart"></i> {{
+                weiboStore.formatNumber(activePostDetail.stats.like) }}</div>
+          </div>
+
+          <!-- Mention Bar -->
+          <div class="mention-bar" @click="handleGenerateEffect(activePostDetail.id)">
+            <i class="fa-solid fa-wand-magic-sparkles mention-icon"></i> 召唤 · 生成热议
+          </div>
+
+          <!-- Full Comment List -->
+          <div class="comment-section show-all">
+            <div class="comment-header-row">评论 {{ activePostDetail.comments ? activePostDetail.comments.length : 0 }}
+            </div>
+            <div class="comment-list" v-if="activePostDetail.comments && activePostDetail.comments.length > 0">
+              <div class="comment-item" v-for="(comment, cIdx) in activePostDetail.comments" :key="cIdx">
+                <img :src="comment.avatar" class="comment-avatar">
+                <div class="comment-body">
+                  <div class="comment-user" :class="{ 'vip-name': comment.isVip }">
+                    {{ comment.author }}
+                    <span v-if="comment.isVip" class="vip-crown level-3"><i class="fa-solid fa-crown"></i></span>
+                  </div>
+                  <div class="comment-content-container">
+                    <div class="comment-text" v-if="comment.content">{{ comment.content }}</div>
+                    <img v-if="comment.sticker" :src="comment.sticker" class="sticker-img">
+                    <div v-if="comment.image" class="comment-img-wrapper">
+                      <img :src="comment.image" class="comment-block-img">
+                    </div>
+                  </div>
+                  <!-- Replies -->
+                  <div class="replies-container" v-if="comment.replies && comment.replies.length">
+                    <div class="reply-item" v-for="(reply, rIdx) in comment.replies" :key="rIdx"
+                      @click="setReplyTarget(activePostDetail, comment, reply)">
+                      <span class="reply-user" :class="{ 'vip-name': reply.isVip }">{{ reply.author }}</span>
+                      <span class="reply-text">：{{ reply.content }}</span>
+                    </div>
+                  </div>
+                  <div class="comment-footer">
+                    <span class="comment-time">刚刚</span>
+                    <div class="comment-actions">
+                      <span @click="setReplyTarget(activePostDetail, comment)" class="reply-btn"><i
+                          class="fa-regular fa-comment-dots"></i></span>
+                      <span @click="likeComment(activePostDetail.id, cIdx)"><i class="fa-regular fa-thumbs-up"></i> {{
+                        comment.likes }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Detail Input (Not Sticky) -->
+      <div class="comment-input-area detail-input">
+        <input type="text" v-model="commentInputText"
+          :placeholder="activeReplyUser ? `回复@${activeReplyUser.name}:` : '发布你的评论...'"
+          @keyup.enter="sendComment(activePostDetail.id)">
+        <div class="send-comment-btn" @click="sendComment(activePostDetail.id)"
+          :class="{ active: commentInputText.length > 0 }">发送</div>
+      </div>
     </div>
 
     <!-- View: Hot Search (Trending) -->
@@ -500,9 +790,9 @@ function getRandomNetizen() {
 
       <div v-show="activeSearchSub === 'hot'" class="search-sub-view active">
         <main class="hot-list">
-          <div class="hot-item" @click="onTopicClick('乔乔的小手机正式上线')">
+          <div class="hot-item" @click="onTopicClick('Chilly的手机正式上线')">
             <span class="hot-rank top">1</span>
-            <span class="hot-title">乔乔的小手机正式上线</span>
+            <span class="hot-title">Chilly的手机正式上线</span>
             <span class="hot-tag">爆</span>
             <span class="hot-meta">450万</span>
           </div>
@@ -512,9 +802,9 @@ function getRandomNetizen() {
             <span class="hot-tag">新</span>
             <span class="hot-meta">320万</span>
           </div>
-          <div class="hot-item" @click="onTopicClick('大熊猫成功接机乔乔')">
+          <div class="hot-item" @click="onTopicClick('大熊猫成功接机Chilly')">
             <span class="hot-rank top">3</span>
-            <span class="hot-title">大熊猫成功接机乔乔</span>
+            <span class="hot-title">大熊猫成功接机Chilly</span>
             <span class="hot-tag">热</span>
             <span class="hot-meta">280万</span>
           </div>
@@ -544,7 +834,7 @@ function getRandomNetizen() {
               </div>
             </div>
             <div class="post-content">
-              <a href="#" class="post-tag">#乔乔的小手机正式上线#</a> 终于等到了！这一代系统流畅度简直无敌，尤其是那个 AI
+              <a href="#" class="post-tag">#Chilly的手机正式上线#</a> 终于等到了！这一代系统流畅度简直无敌，尤其是那个 AI
               语音助手，聪明得不像话。测评视频已出，大家快来围观！
             </div>
             <div class="post-images grid-1">
@@ -565,10 +855,10 @@ function getRandomNetizen() {
 
       <div v-show="activeSearchSub === 'topic'" class="search-sub-view active">
         <main class="topic-list">
-          <div class="topic-item" @click="onTopicClick('乔乔的小手机')">
+          <div class="topic-item" @click="onTopicClick('Chilly的手机')">
             <img src="https://picsum.photos/seed/topic1/100/100" class="topic-avatar">
             <div class="topic-info">
-              <h4>#乔乔的小手机#</h4>
+              <h4>#Chilly的手机#</h4>
               <p>1.2亿阅读 · 50万讨论</p>
             </div>
           </div>
@@ -596,9 +886,9 @@ function getRandomNetizen() {
             <span class="hot-tag">新</span>
             <span class="hot-meta">180万</span>
           </div>
-          <div class="hot-item" @click="onTopicClick('综艺《乔乔的假期》路透')">
+          <div class="hot-item" @click="onTopicClick('综艺《Chilly的假期》路透')">
             <span class="hot-rank top">3</span>
-            <span class="hot-title">综艺《乔乔的假期》路透</span>
+            <span class="hot-title">综艺《Chilly的假期》路透</span>
             <span class="hot-tag">荐</span>
             <span class="hot-meta">150万</span>
           </div>
@@ -715,6 +1005,20 @@ function getRandomNetizen() {
         <i class="fa-solid fa-feather-pointed"
           style="font-size: 30px; margin-bottom: 10px; display: block; opacity: 0.3;"></i>
         <p>还没有发布过微博哦，去记录生活吧~</p>
+      </div>
+    </div>
+
+    <!-- Share Modal -->
+    <div class="share-modal-overlay" v-if="showShareModal" @click.self="showShareModal = false">
+      <div class="share-sheet">
+        <div class="share-header">分享给好友</div>
+        <div class="share-targets">
+          <div class="share-target-item" v-for="(chat, id) in chatStore.chats" :key="id" @click="sharePostTo(id)">
+            <img :src="chat.avatar" class="share-avatar">
+            <span class="share-name">{{ chat.name }}</span>
+          </div>
+        </div>
+        <div class="share-cancel" @click="showShareModal = false">取消</div>
       </div>
     </div>
 
@@ -1048,7 +1352,7 @@ function getRandomNetizen() {
               style="flex: 1; padding: 5px; margin-left: 10px; border-radius: 5px; border: 1px solid #ddd;">
               <option value="" disabled>选择角色</option>
               <option v-for="char in chatStore.contactList" :key="char.id" :value="char.id">{{ char.name }}</option>
-              <option value="me">我自己 (乔乔酱)</option>
+              <option value="me">我自己 (Chilly)</option>
             </select>
             <button @click="clearCharPosts" class="btn-mini-danger">清空</button>
           </div>
@@ -2745,5 +3049,474 @@ input:checked+.slider:before {
     0 -1px 0 #ff8200;
   transform: scale(1);
   z-index: 2;
+}
+
+/* Share Modal Styles */
+.share-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fade-in 0.2s;
+}
+
+.share-sheet {
+  background: #f8f8f8;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.share-header {
+  padding: 15px;
+  text-align: center;
+  font-size: 14px;
+  color: #999;
+  background: white;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.share-targets {
+  padding: 20px;
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  background: white;
+  margin-bottom: 8px;
+  /* Gap before cancel */
+}
+
+/* Hide scrollbar for cleaner look */
+.share-targets::-webkit-scrollbar {
+  display: none;
+}
+
+.share-target-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.share-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.share-name {
+  font-size: 12px;
+  color: #333;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.share-cancel {
+  background: white;
+  padding: 16px;
+  text-align: center;
+  font-size: 16px;
+  color: #333;
+  cursor: pointer;
+}
+
+.share-cancel:active {
+  background: #f0f0f0;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Comment Content Enhancements */
+.comment-content-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.sticker-img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  display: block;
+}
+
+.comment-img-wrapper {
+  position: relative;
+  display: inline-block;
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 60%;
+}
+
+.comment-block-img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+  background: #f0f0f0;
+}
+
+.img-tag {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+}
+
+/* Update Comment User Color from Orange to Blue/Black */
+.comment-user {
+  color: #333;
+  /* Dark Gray */
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Reply Thread Styles */
+.replies-container {
+  background: #f0f0f0;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.reply-item {
+  line-height: 1.6;
+  margin-bottom: 2px;
+}
+
+.reply-user {
+  color: #507daf;
+  /* Weibo Blue */
+}
+
+.reply-user.vip-name {
+  color: #ff8200;
+}
+
+.author-tag {
+  display: inline-block;
+  font-size: 9px;
+  transform: scale(0.9);
+  background: #ff8200;
+  color: white;
+  padding: 0 4px;
+  border-radius: 4px;
+  margin-left: 2px;
+  vertical-align: 1px;
+}
+
+.reply-text {
+  color: #333;
+}
+
+.reply-more {
+  color: #507daf;
+  font-size: 12px;
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+/* Comment Input Area */
+/* Comment Input Area */
+.comment-input-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  /* Add horizontal padding */
+  border-top: 1px solid #f0f0f0;
+  margin-top: 0;
+  /* Remove top margin to stick flush */
+  background: #f8f8f8;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  /* Ensure it stays on top */
+}
+
+/* Ensure content isn't hidden behind sticky input */
+.comment-list {
+  padding-bottom: 20px;
+}
+
+.comment-input-area input {
+  flex: 1;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 18px;
+  padding: 8px 12px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.comment-input-area input:focus {
+  border-color: #ff8200;
+  box-shadow: 0 0 0 2px rgba(255, 130, 0, 0.1);
+}
+
+.send-comment-btn {
+  font-size: 14px;
+  font-weight: 600;
+  color: #999;
+  cursor: not-allowed;
+  padding: 0 5px;
+  transition: color 0.2s;
+}
+
+.send-comment-btn.active {
+  color: #ff8200;
+  cursor: pointer;
+}
+
+.reply-btn {
+  margin-right: -5px;
+  /* Adjust spacing */
+}
+
+/* Post Detail Overlay */
+.post-detail-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: white;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  animation: slide-up 0.3s ease-out;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  padding-top: 40px;
+  /* Add space for Status Bar */
+  background: white;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.back-btn {
+  cursor: pointer;
+  font-weight: normal;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 20px;
+}
+
+.detail-view-item {
+  box-shadow: none !important;
+  /* Remove card shadow in detail view */
+  border-bottom: none;
+}
+
+.comment-section.show-all {
+  margin-top: 0;
+  padding-bottom: 60px;
+  /* Space for input */
+}
+
+.comment-header-row {
+  padding: 15px 0 10px;
+  font-weight: bold;
+  font-size: 15px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 10px;
+}
+
+/* View More Link */
+.view-more-comments {
+  color: #507daf;
+  font-size: 14px;
+  padding: 10px 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Detail Input - Make it sticky only in detail view */
+.comment-input-area.detail-input {
+  position: static;
+  background: white;
+  border-top: 1px solid #eee;
+  padding: 10px 15px;
+  z-index: 100;
+}
+
+.post-detail-overlay .comment-input-area.detail-input {
+  position: sticky;
+  bottom: 0;
+}
+
+/* Mention Bar Styles */
+.mention-bar {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  /* Use similar padding to list items */
+  border-bottom: 1px solid #f0f0f0;
+  /* Separator */
+  color: #507daf;
+  /* Weibo Blue */
+  font-size: 14px;
+  cursor: pointer;
+  background: white;
+}
+
+.mention-icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+/* Night Mode Overrides */
+.dark-mode {
+  background: #0f172a !important;
+  color: #f1f5f9;
+}
+
+.dark-mode .weibo-header,
+.dark-mode .nav-tabs,
+.dark-mode .profile-header,
+.dark-mode .topic-detail-header,
+.dark-mode .topic-info-banner,
+.dark-mode .settings-header,
+.dark-mode .settings-section,
+.dark-mode .action-grid,
+.dark-mode .post-detail-overlay,
+.dark-mode .detail-header,
+.dark-mode .comment-input-area.detail-input,
+.dark-mode .mention-bar,
+.dark-mode .chat-header,
+.dark-mode .chat-footer,
+.dark-mode .msg-list,
+.dark-mode .following-list {
+  background: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .post-card,
+.dark-mode .topic-item,
+.dark-mode .follow-item,
+.dark-mode .msg-item,
+.dark-mode .settings-group,
+.dark-mode .form-row,
+.dark-mode .bubble.received,
+.dark-mode .split-item,
+.dark-mode .cert-btn {
+  background: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .post-textarea,
+.dark-mode .form-input,
+.dark-mode .chat-input,
+.dark-mode .search-bar input {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .wb-text-sub,
+.dark-mode .post-time,
+.dark-mode .post-client,
+.dark-mode .comment-time,
+.dark-mode .msg-time,
+.dark-mode .msg-text,
+.dark-mode .form-label,
+.dark-mode .group-title,
+.dark-mode .stat-label,
+.dark-mode .profile-id {
+  color: #94a3b8 !important;
+}
+
+.dark-mode .divider,
+.dark-mode .modal-header,
+.dark-mode .post-toolbar,
+.dark-mode .comment-header-row {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark-mode .btn-cancel {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #94a3b8 !important;
+}
+
+.dark-mode .option-chip {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark-mode .bubble.received {
+  background: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .chat-window {
+  background: #0f172a !important;
+}
+
+.dark-mode .topic-info-stats {
+  color: #94a3b8 !important;
+}
+
+.dark-mode .slider {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark-mode .action-sub-btn {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark-mode ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-color: #0f172a;
 }
 </style>

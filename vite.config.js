@@ -13,9 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: '乔乔的小手机',
-        short_name: '小手机',
-        description: '乔乔的专属小手机 App',
+        name: "Chilly's Phone",
+        short_name: 'Chilly',
+        description: "Chilly's Exclusive Phone App",
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',

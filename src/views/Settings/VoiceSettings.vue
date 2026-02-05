@@ -134,12 +134,13 @@ const selectModel = (model) => {
 
 // Test TTS
 const testTTS = () => {
-    const text = "你好，我是乔乔。"
+    const text = "你好，我是Chilly。"
     if (voice.value.engine === 'browser') {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = 'zh-CN'
+        utterance.rate = voice.value.speed || 1.0
         window.speechSynthesis.speak(utterance)
-        showToastMsg('正在播放本地语音...')
+        showToastMsg(`正在播放本地语音 (倍速: ${utterance.rate})...`)
     } else {
         showToastMsg('MiniMax 语音测试暂未连接 API')
     }
@@ -193,6 +194,28 @@ const testTTS = () => {
             <button @click="testTTS" class="w-full mt-3 bg-gray-100 text-gray-700 py-2 rounded-xl text-sm hover:bg-gray-200 transition">
                 <i class="fa-solid fa-volume-high mr-1"></i> 测试发音
             </button>
+
+            <!-- TTS Speed Slider -->
+            <div class="mt-4 pt-3 border-t border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm font-medium text-gray-700">全局默认语速</label>
+                    <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{{ voice.speed }}x</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-[10px] text-gray-400">0.5</span>
+                    <input 
+                        type="range" 
+                        v-model.number="voice.speed" 
+                        min="0.5" 
+                        max="2.0" 
+                        step="0.1" 
+                        class="flex-1 accent-blue-500 h-1.5 bg-gray-200 rounded-lg cursor-pointer"
+                        @change="store.saveToStorage()"
+                    >
+                    <span class="text-[10px] text-gray-400">2.0</span>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-2">注：角色单独设置的语速将优先于全局设置。</p>
+            </div>
         </div>
 
         <!-- MiniMax Settings -->

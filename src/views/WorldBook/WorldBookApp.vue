@@ -2,34 +2,37 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorldBookStore } from '../../stores/worldBookStore'
+import { useChatStore } from '../../stores/chatStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 const router = useRouter()
 const store = useWorldBookStore()
+const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 // State
-const currentBook = ref(null) // If null, show Book List. If set, show Entries.
-const showEditModal = ref(false)
-const showBookModal = ref(false) // New modal for creating/editing books
-const isEditing = ref(false)
-const importInput = ref(null)
-
-// Data Models
-const currentEntry = ref({ name: '', keys: '', content: '' })
+const currentBook = ref(null)
 const currentBookData = ref({ name: '', description: '' })
-
-onMounted(() => {
-    store.loadEntries()
-})
+const currentEntry = ref({ name: '', keys: '', content: '' })
+const isEditing = ref(false)
+const showBookModal = ref(false)
+const showEditModal = ref(false)
+const importInput = ref(null)
 
 const goBack = () => {
     if (currentBook.value) {
-        currentBook.value = null // Go back to Book List
+        currentBook.value = null
+        currentBookData.value = { name: '', description: '' }
     } else {
-        router.back() // Go back to previous app or desktop
+        router.back()
     }
 }
 
-// --- Book Management ---
+const enterBook = (book) => {
+    currentBook.value = book
+    currentBookData.value = { ...book }
+}
+
 const openBookModal = (book = null) => {
     if (book) {
         isEditing.value = true
@@ -42,35 +45,35 @@ const openBookModal = (book = null) => {
 }
 
 const saveBook = () => {
-    if (!currentBookData.value.name) return alert('请输入书名')
-    
-    if (isEditing.value && currentBookData.value.id) {
-        store.updateBook(currentBookData.value.id, currentBookData.value)
+    if (!currentBookData.value.name) {
+        chatStore.triggerToast('世界书名称不能为空', 'error')
+        return
+    }
+
+    if (isEditing.value) {
+        store.updateBook(currentBookData.value)
     } else {
-        store.createBook(currentBookData.value.name, currentBookData.value.description)
+        store.addBook(currentBookData.value)
     }
     showBookModal.value = false
-}
-
-const enterBook = (book) => {
-    currentBook.value = book
+    currentBookData.value = { name: '', description: '' }
+    isEditing.value = false
 }
 
 const confirmDeleteBook = (id) => {
-    if (confirm('确定要删除整本设定书吗？里面的所有条目都会丢失。')) {
+    chatStore.triggerConfirm('删除确认', '确定要删除此世界书及其所有条目吗?', () => {
         store.deleteBook(id)
-    }
+        if (currentBook.value?.id === id) {
+            currentBook.value = null
+            currentBookData.value = { name: '', description: '' }
+        }
+    })
 }
 
-// --- Entry Management ---
 const openEntryModal = (entry = null) => {
     if (entry) {
         isEditing.value = true
-        // Copy data, join keys as string for input
-        currentEntry.value = { 
-            ...entry, 
-            keys: entry.keys ? entry.keys.join(' ') : '' 
-        }
+        currentEntry.value = { ...entry }
     } else {
         isEditing.value = false
         currentEntry.value = { name: '', keys: '', content: '' }
@@ -79,128 +82,72 @@ const openEntryModal = (entry = null) => {
 }
 
 const saveEntry = () => {
-    if (!currentEntry.value.name) return alert('请输入名称')
-    
-    // Process keys: split by space/comma
-    const keysArray = currentEntry.value.keys
-        .split(/[\s,，]+/)
-        .filter(k => k.trim())
-
-    const payload = {
-        name: currentEntry.value.name,
-        content: currentEntry.value.content,
-        keys: keysArray
+    if (!currentEntry.value.name) {
+        chatStore.triggerToast('条目名称不能为空', 'error')
+        return
     }
 
     if (isEditing.value) {
-        store.updateEntry(currentBook.value.id, currentEntry.value.id, payload)
+        store.updateEntry(currentBook.value.id, currentEntry.value)
     } else {
-        store.addEntry(currentBook.value.id, payload)
+        store.addEntry(currentBook.value.id, currentEntry.value)
     }
-
     showEditModal.value = false
+    currentEntry.value = { name: '', keys: '', content: '' }
+    isEditing.value = false
+    
+    // Refresh current book to show new entry
+    const updatedBook = store.books.find(b => b.id === currentBook.value.id)
+    if (updatedBook) currentBook.value = updatedBook
 }
 
-const confirmDeleteEntry = (entryId) => {
-    if (confirm('确定要删除这条设定吗？')) {
-        store.deleteEntry(currentBook.value.id, entryId)
-    }
+const confirmDeleteEntry = (id) => {
+    chatStore.triggerConfirm('删除确认', '确定要删除此条目吗?', () => {
+        store.deleteEntry(currentBook.value.id, id)
+        // Refresh current book
+        const updatedBook = store.books.find(b => b.id === currentBook.value.id)
+        if (updatedBook) currentBook.value = updatedBook
+    })
 }
 
-// --- Import Logic ---
-const triggerImport = () => importInput.value.click()
+const triggerImport = () => {
+    importInput.value.click()
+}
 
-const handleImportFile = (event) => {
+const handleImportFile = async (event) => {
     const file = event.target.files[0]
     if (!file) return
-    
-    // Use filename as Book Name (remove extension)
-    const bookName = file.name.replace(/\.[^/.]+$/, "")
-    
+
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
-            const json = JSON.parse(e.target.result)
-            
-            // Create Book first
-            const newBook = store.createBook(bookName, 'Imported from ' + file.name)
-            
-            // Parse Entries
-            // Format: { entries: { "0": {...}, "1": {...} } } or Array?
-            // The user provided file has "entries" object with keys "0", "1"...
-            
-            let entriesData = []
-            if (json.entries && !Array.isArray(json.entries)) {
-                entriesData = Object.values(json.entries)
-            } else if (Array.isArray(json)) {
-                entriesData = json
-            } else if (json.entries && Array.isArray(json.entries)) {
-                entriesData = json.entries
-            }
-            
-            let count = 0
-            entriesData.forEach(item => {
-                // Map fields
-                // item.comment -> name
-                // item.content -> content
-                // item.key -> keys (array)
-                
-                const name = item.comment || item.name || ('Entry ' + count)
-                const content = item.content || ''
-                const keys = item.key || item.keys || []
-                
-                if (content) { // Only add if content exists
-                     store.addEntry(newBook.id, {
-                        name,
-                        content,
-                        keys: Array.isArray(keys) ? keys : [keys]
-                     })
-                     count++
-                }
-            })
-            
-            alert(`成功导入书籍《${bookName}》，共包含 ${count} 个条目！`)
-            event.target.value = '' // Reset input
-            
-        } catch (err) {
-            console.error(err)
-            alert('导入失败: 格式错误')
+            const importedData = JSON.parse(e.target.result)
+            await store.importBook(importedData)
+            chatStore.triggerToast('世界书导入成功', 'success')
+        } catch (error) {
+            console.error('Error importing world book:', error)
+            chatStore.triggerToast('导入失败，请检查文件格式', 'error')
         }
     }
     reader.readAsText(file)
+    event.target.value = '' // Reset input
 }
 
-// --- Export Logic ---
 const exportCurrentBook = () => {
     if (!currentBook.value) return
-    
-    // Construct Standard JSON format (SillyTavern style)
+    const book = store.books.find(b => b.id === currentBook.value.id)
+    if (!book) return
+
     const exportData = {
-        entries: {}
+        ...book,
+        entries: book.entries || []
     }
-    
-    // Map entries
-    if (currentBook.value.entries) {
-        currentBook.value.entries.forEach((entry, index) => {
-            exportData.entries[index] = {
-                uid: index,
-                key: entry.keys || [],
-                comment: entry.name,
-                content: entry.content,
-                constant: (!entry.keys || entry.keys.length === 0),
-                disable: false
-            }
-        })
-    }
-    
-    // Create Blob and Download
-    const jsonStr = JSON.stringify(exportData, null, 2)
-    const blob = new Blob([jsonStr], { type: 'application/json' })
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
-    
     const a = document.createElement('a')
     a.href = url
-    a.download = `${currentBook.value.name}.json`
+    a.download = `${book.name}_worldbook.json`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -209,22 +156,25 @@ const exportCurrentBook = () => {
 </script>
 
 <template>
-  <div class="w-full h-full bg-[#f2f2f7] flex flex-col">
+  <div class="w-full h-full flex flex-col transition-colors duration-300"
+    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-[#f2f2f7]'">
     <!-- Header -->
-    <div class="h-[44px] bg-[#ededed] flex items-center justify-between px-3 border-b border-[#dcdcdc] shrink-0 sticky top-0 z-10">
+    <div class="h-[44px] flex items-center justify-between px-3 border-b shrink-0 sticky top-0 z-10 transition-colors"
+        :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-[#ededed] border-[#dcdcdc]'">
         <div class="flex items-center gap-1 cursor-pointer" @click="goBack">
-            <i class="fa-solid fa-chevron-left text-black text-lg"></i>
+            <i class="fa-solid fa-chevron-left text-lg" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-black'"></i>
         </div>
-        <div class="font-medium text-base text-black truncate max-w-[150px]">
+        <div class="font-medium text-base truncate max-w-[150px]"
+            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-black'">
             {{ currentBook ? currentBook.name : '世界书库' }}
         </div>
-        <div class="flex justify-end items-center gap-3 w-20">
+        <div class="flex justify-end items-center gap-3 w-20" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-black'">
             <!-- Import Button (Only on Book List view) -->
-            <i v-if="!currentBook" class="fa-solid fa-file-import text-black text-lg cursor-pointer" @click="triggerImport" title="导入世界书"></i>
+            <i v-if="!currentBook" class="fa-solid fa-file-import text-lg cursor-pointer hover:opacity-70 transition-opacity" @click="triggerImport" title="导入世界书"></i>
             <!-- Export Button (Only on Entry List view) -->
-            <i v-if="currentBook" class="fa-solid fa-file-export text-black text-lg cursor-pointer" @click="exportCurrentBook" title="导出世界书"></i>
+            <i v-if="currentBook" class="fa-solid fa-file-export text-lg cursor-pointer hover:opacity-70 transition-opacity" @click="exportCurrentBook" title="导出世界书"></i>
             <!-- Add Button -->
-            <i class="fa-solid fa-plus text-black text-lg cursor-pointer" @click="currentBook ? openEntryModal() : openBookModal()"></i>
+            <i class="fa-solid fa-plus text-lg cursor-pointer hover:opacity-70 transition-opacity" @click="currentBook ? openEntryModal() : openBookModal()"></i>
         </div>
     </div>
     
@@ -233,125 +183,169 @@ const exportCurrentBook = () => {
 
     <!-- VIEW 1: Book List -->
     <div v-if="!currentBook" class="flex-1 overflow-y-auto p-4 space-y-3">
-        <div v-if="store.books.length === 0" class="text-center text-gray-400 mt-20 text-sm flex flex-col items-center">
+        <div v-if="store.books.length === 0" class="text-center mt-20 text-sm flex flex-col items-center"
+            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
             <i class="fa-solid fa-book text-4xl mb-3 opacity-50"></i>
             <span>暂无世界书，点击右上角创建</span>
         </div>
 
         <div v-for="book in store.books" :key="book.id" 
-             class="bg-white rounded-lg p-4 shadow-sm active:bg-gray-50 transition-colors cursor-pointer relative group flex justify-between items-center"
+             class="rounded-lg p-4 shadow-sm transition-all cursor-pointer relative group flex justify-between items-center border"
+             :class="settingsStore.personalization.theme === 'dark' 
+                ? 'bg-[#1e293b] border-white/5 active:bg-[#334155]' 
+                : 'bg-white border-transparent active:bg-gray-50'"
              @click="enterBook(book)">
             
             <div class="flex items-center gap-3">
-                 <div class="w-10 h-10 bg-blue-100 rounded flex items-center justify-center text-blue-500">
+                 <div class="w-10 h-10 rounded flex items-center justify-center"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-500'">
                     <i class="fa-solid fa-book"></i>
                  </div>
                  <div>
-                     <div class="font-bold text-gray-900 text-base">{{ book.name }}</div>
-                     <div class="text-xs text-gray-500">{{ book.entries?.length || 0 }} 个条目</div>
+                     <div class="font-bold text-base"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ book.name }}</div>
+                     <div class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">{{ book.entries?.length || 0 }} 个条目</div>
                  </div>
             </div>
 
             <div class="flex items-center gap-3">
-                <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-500" @click.stop="openBookModal(book)">
+                <button class="w-8 h-8 flex items-center justify-center transition-colors" 
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500 hover:text-blue-400' : 'text-gray-400 hover:text-blue-500'"
+                    @click.stop="openBookModal(book)">
                     <i class="fa-solid fa-pen"></i>
                 </button>
-                <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500" @click.stop="confirmDeleteBook(book.id)">
+                <button class="w-8 h-8 flex items-center justify-center transition-colors"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'"
+                    @click.stop="confirmDeleteBook(book.id)">
                     <i class="fa-regular fa-trash-can"></i>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- VIEW 2: Entry List (Existing UI) -->
+    <!-- VIEW 2: Entry List -->
     <div v-else class="flex-1 overflow-y-auto p-4 space-y-3">
-        <div v-if="!currentBook.entries || currentBook.entries.length === 0" class="text-center text-gray-400 mt-20 text-sm">
+        <div v-if="!currentBook.entries || currentBook.entries.length === 0" class="text-center mt-20 text-sm"
+            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
             本页暂无条目，点击右上角添加
         </div>
 
         <div v-for="entry in currentBook.entries" :key="entry.id" 
-             class="bg-white rounded-lg p-4 shadow-sm active:bg-gray-50 transition-colors cursor-pointer relative group"
+             class="rounded-lg p-4 shadow-sm transition-all cursor-pointer relative group border"
+             :class="settingsStore.personalization.theme === 'dark' 
+                ? 'bg-[#1e293b] border-white/5 active:bg-[#334155]' 
+                : 'bg-white border-transparent active:bg-gray-50'"
              @click="openEntryModal(entry)">
             
             <div class="flex justify-between items-start mb-2">
-                <div class="font-bold text-gray-900 text-base">{{ entry.name }}</div>
-                <div class="text-xs text-blue-500 bg-blue-50 px-2 py-1 rounded" v-if="entry.keys && entry.keys.length">
-                    {{ entry.keys.length }} 关键词
+                <div class="font-bold text-base"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ entry.name }}</div>
+                <div class="text-xs px-2 py-1 rounded" 
+                    v-if="entry.keys && entry.keys.length"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-blue-400 bg-blue-500/10' : 'text-blue-500 bg-blue-50'">
+                    {{ Array.isArray(entry.keys) ? entry.keys.length : entry.keys.split(' ').filter(k=>k).length }} 关键词
                 </div>
-                <div class="text-xs text-orange-500 bg-orange-50 px-2 py-1 rounded" v-else>
+                <div class="text-xs px-2 py-1 rounded" v-else
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-orange-400 bg-orange-500/10' : 'text-orange-500 bg-orange-50'">
                     常驻生效
                 </div>
             </div>
 
-            <div class="text-gray-500 text-xs mb-2 truncate">
-                关键词: {{ entry.keys && entry.keys.length ? entry.keys.join(', ') : '无 (默认生效)' }}
+            <div class="text-xs mb-2 truncate"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-500'">
+                关键词: {{ entry.keys && (Array.isArray(entry.keys) ? entry.keys.length : entry.keys.length > 0) ? (Array.isArray(entry.keys) ? entry.keys.join(', ') : entry.keys) : '无 (默认生效)' }}
             </div>
 
-            <div class="text-gray-700 text-sm line-clamp-2 bg-gray-50 p-2 rounded border border-gray-100 font-mono">
+            <div class="text-sm line-clamp-2 p-2 rounded border font-mono transition-colors"
+                :class="settingsStore.personalization.theme === 'dark' 
+                    ? 'bg-black/20 border-white/5 text-gray-300' 
+                    : 'bg-gray-50 border-gray-100 text-gray-700'">
                 {{ entry.content || '(无内容)' }}
             </div>
 
-            <button class="absolute top-4 right-2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500" @click.stop="confirmDeleteEntry(entry.id)">
+            <button class="absolute top-4 right-2 w-8 h-8 flex items-center justify-center transition-colors"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-600 hover:text-red-400' : 'text-gray-400 hover:text-red-500'"
+                @click.stop="confirmDeleteEntry(entry.id)">
                 <i class="fa-regular fa-trash-can"></i>
             </button>
         </div>
     </div>
 
     <!-- MODAL 1: Create/Edit Book -->
-    <div v-if="showBookModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showBookModal=false">
-        <div class="bg-white rounded-xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl animate-scale-in">
-            <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                <span class="font-medium text-gray-900">{{ isEditing ? '编辑世界书' : '新建世界书' }}</span>
-                <button @click="showBookModal=false" class="text-gray-400 hover:text-gray-600">
+    <div v-if="showBookModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in" @click.self="showBookModal=false">
+        <div class="rounded-xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl animate-scale-up"
+            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'">
+            <div class="px-4 py-3 border-b flex justify-between items-center transition-colors"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#334155] border-white/10' : 'bg-gray-50 border-gray-100'">
+                <span class="font-medium" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ isEditing ? '编辑世界书' : '新建世界书' }}</span>
+                <button @click="showBookModal=false" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-600'">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
             <div class="p-4 space-y-4">
                 <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">书名</label>
-                    <input v-model="currentBookData.name" type="text" class="w-full bg-gray-50 border border-gray-200 rounded p-2 text-sm focus:outline-none focus:border-blue-500" placeholder="例如: 赛博朋克设定集">
+                    <label class="block text-xs font-medium mb-1" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">书名</label>
+                    <input v-model="currentBookData.name" type="text" 
+                        class="w-full border rounded p-2 text-sm focus:outline-none focus:border-blue-500 transition-all" 
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"
+                        placeholder="例如: 赛博朋克设定集">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">简介 (可选)</label>
-                    <textarea v-model="currentBookData.description" rows="3" class="w-full bg-gray-50 border border-gray-200 rounded p-2 text-sm focus:outline-none focus:border-blue-500 resize-none"></textarea>
+                    <label class="block text-xs font-medium mb-1" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">简介 (可选)</label>
+                    <textarea v-model="currentBookData.description" rows="3" 
+                        class="w-full border rounded p-2 text-sm focus:outline-none focus:border-blue-500 resize-none transition-all" 
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"></textarea>
                 </div>
             </div>
              <div class="p-4 pt-0">
-                <button @click="saveBook" class="w-full py-2.5 rounded-lg bg-[#07c160] text-white text-sm font-medium hover:bg-[#06ad56] transition-colors shadow-sm">保存</button>
+                <button @click="saveBook" class="w-full py-2.5 rounded-lg bg-[#07c160] text-white text-sm font-medium hover:bg-[#06ad56] transition-all shadow-lg active:scale-95">保存</button>
             </div>
         </div>
     </div>
 
     <!-- MODAL 2: Create/Edit Entry -->
-    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="showEditModal=false">
-        <div class="bg-white rounded-xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl animate-scale-in">
-            <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                <span class="font-medium text-gray-900">{{ isEditing ? '编辑条目' : '新建条目' }}</span>
-                <button @click="showEditModal=false" class="text-gray-400 hover:text-gray-600">
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in" @click.self="showEditModal=false">
+        <div class="rounded-xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl animate-scale-up"
+            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'">
+            <div class="px-4 py-3 border-b flex justify-between items-center transition-colors"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#334155] border-white/10' : 'bg-gray-50 border-gray-100'">
+                <span class="font-medium" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ isEditing ? '编辑条目' : '新建条目' }}</span>
+                <button @click="showEditModal=false" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-400 hover:text-gray-600'">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
             
             <div class="p-4 space-y-4">
                 <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">名称</label>
-                    <input v-model="currentEntry.name" type="text" class="w-full bg-gray-50 border border-gray-200 rounded p-2 text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="例如: 魔法系统">
+                    <label class="block text-xs font-medium mb-1" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">名称</label>
+                    <input v-model="currentEntry.name" type="text" 
+                        class="w-full border rounded p-2 text-sm focus:outline-none focus:border-blue-500 transition-all" 
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"
+                        placeholder="例如: 魔法系统">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">触发关键词 (空格分隔)</label>
-                    <input v-model="currentEntry.keys" type="text" class="w-full bg-gray-50 border border-gray-200 rounded p-2 text-sm focus:outline-none focus:border-blue-500 transition-colors" placeholder="留空则设为常驻生效">
+                    <label class="block text-xs font-medium mb-1" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">触发关键词 (空格分隔)</label>
+                    <input v-model="currentEntry.keys" type="text" 
+                        class="w-full border rounded p-2 text-sm focus:outline-none focus:border-blue-500 transition-all" 
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"
+                        placeholder="留空则设为常驻生效">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">设定内容</label>
-                    <textarea v-model="currentEntry.content" rows="6" class="w-full bg-gray-50 border border-gray-200 rounded p-2 text-sm focus:outline-none focus:border-blue-500 transition-colors resize-none" placeholder="输入具体的设定描述..."></textarea>
+                    <label class="block text-xs font-medium mb-1" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">设定内容</label>
+                    <textarea v-model="currentEntry.content" rows="6" 
+                        class="w-full border rounded p-2 text-sm focus:outline-none focus:border-blue-500 resize-none transition-all" 
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'"
+                        placeholder="输入具体的设定描述..."></textarea>
                 </div>
             </div>
 
             <div class="p-4 pt-0 flex gap-3">
-                <button v-if="isEditing" @click="confirmDeleteEntry(currentEntry.id)" class="flex-1 py-2.5 rounded-lg border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors">删除</button>
-                <button @click="saveEntry" class="flex-[2] py-2.5 rounded-lg bg-[#07c160] text-white text-sm font-medium hover:bg-[#06ad56] transition-colors shadow-sm">保存</button>
+                <button v-if="isEditing" @click="confirmDeleteEntry(currentEntry.id)" 
+                    class="flex-1 py-2.5 rounded-lg border text-sm font-medium transition-colors"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'border-red-900/50 text-red-400 hover:bg-red-900/20' : 'border-red-200 text-red-500 hover:bg-red-50'">删除</button>
+                <button @click="saveEntry" class="flex-[2] py-2.5 rounded-lg bg-[#07c160] text-white text-sm font-medium hover:bg-[#06ad56] transition-all shadow-lg active:scale-95">保存</button>
             </div>
         </div>
     </div>
@@ -359,11 +353,18 @@ const exportCurrentBook = () => {
 </template>
 
 <style scoped>
-.animate-scale-in {
-    animation: scaleIn 0.2s ease-out;
+.animate-scale-up {
+    animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-@keyframes scaleIn {
-    from { transform: scale(0.95); opacity: 0; }
+@keyframes scaleUp {
+    from { transform: scale(0.9); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
+}
+.animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 </style>

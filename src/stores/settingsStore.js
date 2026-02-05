@@ -46,7 +46,7 @@ export const useSettingsStore = defineStore('settings', () => {
         theme: 'default', // 新增：主题选择 (default | kawaii | business)
         wallpaperOverlayOpacity: 0.5, // 新增：夜间模式聊天壁纸遮罩透明度 (0-1)
         userProfile: {
-            name: '乔乔',
+            name: 'Chilly',
             avatar: '/avatars/小猫星星眼.jpg',
             wechatId: 'admin',
             signature: '对方很懒，什么都没有留下'
@@ -59,6 +59,7 @@ export const useSettingsStore = defineStore('settings', () => {
     // --- 3. Other States ---
     const voice = ref({
         engine: 'browser',
+        speed: 1.0, // Global default speed
         minimax: {
             groupId: '',
             apiKey: '',

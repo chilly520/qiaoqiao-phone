@@ -137,14 +137,8 @@ const defaultBackgrounds = [
     '/默认背景图/红玫瑰.png'
 ]
 
-// Background customization - use random default if not set
-const getInitialBackground = () => {
-    const saved = localStorage.getItem('moments_background')
-    if (saved) return saved
-    return defaultBackgrounds[Math.floor(Math.random() * defaultBackgrounds.length)]
-}
-
-const backgroundUrl = ref(getInitialBackground())
+// Background customization removed (now in store)
+const backgroundUrl = computed(() => momentsStore.backgroundUrl)
 const showBackgroundModal = ref(false)
 const backgroundInput = ref('')
 const backgroundFileInput = ref(null)
@@ -261,8 +255,12 @@ const handleGenerateProfile = async (charId) => {
     chatStore.triggerToast('正在为TA生成专属朋友圈主页...', 'info')
 
     try {
-        await momentsStore.generateAndApplyCharacterProfile(charId)
-        chatStore.triggerToast('主页生成完成！', 'success')
+        await momentsStore.generateAndApplyCharacterProfile(charId, { 
+            includeMoments: true, 
+            includeSocial: true, 
+            includeArchive: false // 关键：朋友圈主页重刷时不触动灵魂档案
+        })
+        chatStore.triggerToast('主页社交信息已更新！', 'success')
     } catch (e) {
         chatStore.triggerToast('生成失败: ' + e.message, 'error')
     } finally {
@@ -561,8 +559,7 @@ const setBackgroundFromUrl = () => {
         const newUrl = backgroundInput.value.trim()
 
         if (viewingProfile.value.isMe) {
-            backgroundUrl.value = newUrl
-            localStorage.setItem('moments_background', newUrl)
+            momentsStore.backgroundUrl = newUrl
         } else if (filterAuthorId.value) {
             // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
@@ -590,8 +587,7 @@ const handleBackgroundFileUpload = (event) => {
         const newUrl = e.target.result
 
         if (viewingProfile.value.isMe) {
-            backgroundUrl.value = newUrl
-            localStorage.setItem('moments_background', newUrl)
+            momentsStore.backgroundUrl = newUrl
         } else if (filterAuthorId.value) {
             // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
@@ -819,33 +815,33 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- MY PROFILE / STANDARD LAYOUT (Existing) -->
-            <div v-else class="relative w-full h-[280px] bg-gray-300 cursor-pointer mb-8" @click="openBackgroundModal">
-                <img :src="viewingProfile.background" class="w-full h-full object-cover">
-                <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+            <!-- MY PROFILE / STANDARD LAYOUT (Clean Overlap) -->
+            <div v-else class="relative w-full h-[300px]">
+                <div class="w-full h-full cursor-pointer bg-gray-200" @click="openBackgroundModal">
+                    <img :src="viewingProfile.background" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                </div>
 
-                <!-- User Profile Section (Right Aligned) -->
-                <div class="absolute -bottom-14 right-4 flex flex-col items-end z-30 group">
-                    <!-- Name & Avatar Row -->
-                    <div class="flex items-center gap-4 mb-2.5">
-                        <span class="text-white font-bold text-xl drop-shadow-md tracking-tight leading-none mb-1">{{
-                            viewingProfile.name }}</span>
-                        <div class="w-20 h-20 rounded-2xl overflow-hidden border-[4px] border-white shadow-2xl bg-white relative group active:scale-95 transition-all duration-200"
-                            @click.stop="viewingProfile.isMe ? handleUserAvatarClick() : null">
-                            <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
-                        </div>
-                    </div>
-
-                    <!-- Signature (Right) -->
-                    <div class="mr-1 max-w-[220px] bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-xl cursor-pointer hover:bg-black/40 transition-all border border-white/10 active:scale-95 shadow-lg group-hover:border-white/20"
-                        @click.stop="editUserSignature">
-                        <span
-                            class="text-white/90 text-[12px] font-medium leading-normal text-right block line-clamp-2">
-                            {{ viewingProfile.signature || '添加个性签名...' }}
-                        </span>
+                <!-- User Info Row (Overlapping bottom) -->
+                <div class="absolute bottom-0 right-4 flex items-end gap-4 transform translate-y-[24px] z-30">
+                    <span class="text-white font-bold text-xl drop-shadow-md mb-8 tracking-tight">{{ viewingProfile.name }}</span>
+                    <div class="w-20 h-20 rounded-2xl overflow-hidden border-[4px] border-white shadow-lg bg-white relative active:scale-95 transition-all"
+                        @click.stop="handleUserAvatarClick">
+                        <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
                     </div>
                 </div>
             </div>
+
+            <!-- SIGNATURE AND FEED CONTAINER -->
+            <div class="bg-white px-0 pb-10 transition-colors duration-300 feed-container"
+                :class="[filterAuthorId ? 'pt-0' : (momentsStore.unreadCount > 0 ? 'pt-24' : 'pt-10')]">
+                
+                <!-- Signature (Naturally integrated) -->
+                <div v-if="!filterAuthorId" class="px-5 pb-5 text-right cursor-pointer group active:opacity-60 transition-opacity" @click="editUserSignature">
+                    <span class="text-[12px] text-gray-400 font-medium italic">
+                        {{ viewingProfile.signature || '添加个性签名...' }}
+                    </span>
+                </div>
 
             <!-- Interaction Notification Bar (Premium Design) -->
             <div v-if="momentsStore.unreadCount > 0 && !filterAuthorId"
@@ -861,9 +857,7 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- Moments Feed -->
-            <div class="px-0 pb-10"
-                :class="[filterAuthorId ? 'pt-0' : (momentsStore.unreadCount > 0 ? 'pt-6' : 'pt-12')]">
+            <!-- Moments Feed List -->
                 <div v-if="filteredMoments.length === 0"
                     class="flex flex-col items-center justify-center py-20 opacity-30">
                     <i class="fa-solid fa-earth-asia text-5xl mb-4"></i>
@@ -1695,5 +1689,48 @@ onMounted(() => {
 [data-theme='dark'] .border-blue-100\/50,
 [data-theme='dark'] .border-blue-100\\\/50 {
     border-color: rgba(30, 58, 138, 0.5);
+}
+
+/* --- Added Dark Mode Fixes --- */
+[data-theme='dark'] .moments-view {
+    background-color: #111 !important;
+}
+
+[data-theme='dark'] .bg-[#ededed] {
+    background-color: #111 !important;
+}
+
+[data-theme='dark'] .bg-white {
+    background-color: #191919 !important;
+}
+
+[data-theme='dark'] .moments-view .bg-white.pb-4.mb-2 {
+    background-color: #191919 !important;
+    border-bottom: 1px solid #252525;
+}
+
+[data-theme='dark'] .bg-white,
+[data-theme='dark'] .feed-container {
+    background-color: #191919 !important;
+}
+
+[data-theme='dark'] .moment-item {
+    background-color: transparent !important;
+    border-bottom: 1px solid #252525 !important;
+}
+
+[data-theme='dark'] .interaction-area {
+    background-color: #222 !important;
+}
+
+[data-theme='dark'] .px-3.py-1\.5.border-b.border-gray-200,
+[data-theme='dark'] .px-3.py-1\.5.space-y-1 {
+    background-color: #252525 !important;
+    border-color: #333 !important;
+}
+
+[data-theme='dark'] .text-gray-900,
+[data-theme='dark'] .text-gray-700 {
+    color: #e0e0e0 !important;
 }
 </style>

@@ -137,7 +137,7 @@ const addSearchResult = async (song) => {
             musicStore.loadSong(musicStore.playlist.length - 1)
         }
     } else {
-        alert('无法获取播放链接 (可能需要VIP)')
+        chatStore.triggerToast('无法获取播放链接 (可能需要VIP)', 'warning')
     }
 }
 
@@ -153,7 +153,7 @@ const importUrlSong = () => {
     }
     musicStore.addSong(song)
     urlImportInput.value = ''
-    alert('已导入链接')
+    chatStore.triggerToast('已导入链接', 'success')
     if (musicStore.playlist.length === 1) musicStore.loadSong(0)
 }
 

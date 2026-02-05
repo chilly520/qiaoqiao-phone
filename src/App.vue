@@ -223,22 +223,53 @@ const handleBannerClick = () => {
 const locationInputValue = ref('')
 
 const handleLocationClick = () => {
-    locationInputValue.value = store.weather.userLocation?.name || ''
+    const chatId = chatStore.currentChatId
+    if (chatId) {
+        const chat = chatStore.chats[chatId]
+        locationInputValue.value = chat?.userLocation || chat?.bio?.location || store.weather.userLocation?.name || ''
+    } else {
+        locationInputValue.value = store.weather.userLocation?.name || ''
+    }
     store.showLocationInput = true
 }
 
 const confirmLocation = () => {
     if (locationInputValue.value.trim()) {
-        store.setUserLocation({ name: locationInputValue.value })
-        chatStore.triggerToast('📍 位置已更新', 'success')
+        const chatId = chatStore.currentChatId
+        if (chatId) {
+            // Save to the specific character profile
+            chatStore.updateCharacter(chatId, { userLocation: locationInputValue.value })
+            chatStore.triggerToast('📍 该聊天位置已更新', 'success')
+        } else {
+            // Global default
+            store.setUserLocation({ name: locationInputValue.value })
+            chatStore.triggerToast('📍 全局位置已更新', 'success')
+        }
     }
     store.showLocationInput = false
 }
 
+const currentLocationName = computed(() => {
+    const chatId = chatStore.currentChatId
+    if (chatId) {
+        const chat = chatStore.chats[chatId]
+        if (chat && (chat.userLocation || chat.bio?.location)) {
+            return chat.userLocation || chat.bio.location
+        }
+    }
+    return store.weather.userLocation?.name || ''
+})
+
 // Watch global state to sync internal value
 watch(() => store.showLocationInput, (val) => {
     if (val) {
-        locationInputValue.value = store.weather.userLocation?.name || ''
+        const chatId = chatStore.currentChatId
+        if (chatId) {
+            const chat = chatStore.chats[chatId]
+            locationInputValue.value = chat?.userLocation || chat?.bio?.location || store.weather.userLocation?.name || ''
+        } else {
+            locationInputValue.value = store.weather.userLocation?.name || ''
+        }
     }
 })
 
@@ -259,6 +290,48 @@ watch(() => chatStore.toastEvent, (evt) => {
         showToast.value = false
     }, 3000)
 })
+
+// --- Global Custom Confirmation Modal ---
+const showGlobalConfirm = ref(false)
+const globalConfirmData = ref(null)
+
+watch(() => chatStore.confirmEvent, (evt) => {
+    if (!evt) return
+    globalConfirmData.value = evt
+    showGlobalConfirm.value = true
+})
+
+const handleGlobalConfirm = () => {
+    if (globalConfirmData.value?.onConfirm) globalConfirmData.value.onConfirm()
+    showGlobalConfirm.value = false
+}
+
+const handleGlobalCancel = () => {
+    if (globalConfirmData.value?.onCancel) globalConfirmData.value.onCancel()
+    showGlobalConfirm.value = false
+}
+
+// --- Global Custom Prompt Modal ---
+const showGlobalPrompt = ref(false)
+const globalPromptData = ref(null)
+const globalPromptInput = ref('')
+
+watch(() => chatStore.promptEvent, (evt) => {
+    if (!evt) return
+    globalPromptData.value = evt
+    globalPromptInput.value = evt.defaultValue || ''
+    showGlobalPrompt.value = true
+})
+
+const handleGlobalPromptConfirm = () => {
+    if (globalPromptData.value?.onConfirm) globalPromptData.value.onConfirm(globalPromptInput.value)
+    showGlobalPrompt.value = false
+}
+
+const handleGlobalPromptCancel = () => {
+    if (globalPromptData.value?.onCancel) globalPromptData.value.onCancel()
+    showGlobalPrompt.value = false
+}
 </script>
 
 <template>
@@ -281,9 +354,9 @@ watch(() => chatStore.toastEvent, (evt) => {
                     @click="handleLocationClick" title="设置当前位置">
                     <i class="fa-solid fa-location-dot"
                         :class="statusBarStyle.color === '#ffffff' ? 'text-[10px]' : 'text-[10px] opacity-70'"></i>
-                    <span v-if="store.weather.userLocation?.name"
+                    <span v-if="currentLocationName"
                         class="text-[10px] max-w-[60px] truncate opacity-80">{{
-                            store.weather.userLocation.name.split('>').pop().trim() }}</span>
+                            currentLocationName.split('>').pop().trim() }}</span>
                 </div>
                 <i class="fa-solid fa-signal"
                     :class="statusBarStyle.color === '#ffffff' ? 'text-[11px]' : 'text-[11px] opacity-80'"></i>
@@ -362,28 +435,34 @@ watch(() => chatStore.toastEvent, (evt) => {
                 class="fixed inset-0 z-[10000] flex items-center justify-center p-6 backdrop-blur-md bg-black/20"
                 @click.self="store.showLocationInput = false">
                 <div
-                    class="w-full max-w-[320px] bg-white/90 backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] border border-white/40 p-6 animate-scale-in">
+                    class="w-full max-w-[320px] backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] border p-6 animate-scale-in"
+                    :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b]/95 border-[#334155]' : 'bg-white/95 border-white/40'">
                     <div class="flex flex-col gap-4">
                         <div class="flex items-center gap-3">
                             <div
-                                class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-600">
+                                class="w-10 h-10 rounded-full flex items-center justify-center"
+                                :class="store.personalization.theme === 'dark' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-500/10 text-blue-600'">
                                 <i class="fa-solid fa-location-dot text-xl"></i>
                             </div>
                             <div>
-                                <h3 class="text-[17px] font-bold text-gray-900 tracking-tight">设置位置</h3>
-                                <p class="text-[12px] text-gray-500 font-medium">输入当前地理信息</p>
+                                <h3 class="text-[17px] font-bold tracking-tight"
+                                    :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">设置位置</h3>
+                                <p class="text-[12px] font-medium"
+                                    :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">输入当前地理信息</p>
                             </div>
                         </div>
 
                         <div class="relative">
                             <input v-model="locationInputValue" type="text" placeholder="省 > 市 > 区/街道"
-                                class="w-full bg-black/5 border-none rounded-2xl px-4 py-3 text-[15px] focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+                                class="w-full border-none rounded-2xl px-4 py-3 text-[15px] focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+                                :class="store.personalization.theme === 'dark' ? 'bg-white/10 text-white placeholder-gray-500' : 'bg-black/5 text-gray-800 placeholder-gray-400'"
                                 @keyup.enter="confirmLocation" autofocus />
                         </div>
 
                         <div class="flex gap-3 mt-2">
                             <button @click="store.showLocationInput = false"
-                                class="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-600 text-[15px] font-bold active:scale-95 transition-all">
+                                class="flex-1 py-3 rounded-2xl text-[15px] font-bold active:scale-95 transition-all"
+                                :class="store.personalization.theme === 'dark' ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'">
                                 取消
                             </button>
                             <button @click="confirmLocation"
@@ -391,6 +470,64 @@ watch(() => chatStore.toastEvent, (evt) => {
                                 确定
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
+        <!-- Global Confirmation Modal -->
+        <Transition name="fade">
+            <div v-if="showGlobalConfirm && globalConfirmData"
+                class="fixed inset-0 z-[10001] flex items-center justify-center p-6 backdrop-blur-md bg-black/40"
+                @click.self="handleGlobalCancel">
+                <div class="w-full max-w-[320px] rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border p-6 animate-scale-in"
+                    :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b] border-[#334155]' : 'bg-white border-white/20'">
+                    <h3 class="text-[18px] font-bold mb-2"
+                        :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ globalConfirmData.title }}</h3>
+                    <p class="text-[14px] leading-relaxed mb-6"
+                        :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{ globalConfirmData.message }}</p>
+                    <div class="flex gap-3">
+                        <button @click="handleGlobalCancel"
+                            class="flex-1 py-3 rounded-2xl text-[15px] font-bold active:scale-95 transition-all"
+                            :class="store.personalization.theme === 'dark' ? 'bg-white/5 text-gray-300' : 'bg-gray-100 text-gray-600'">
+                            {{ globalConfirmData.cancelText || '取消' }}
+                        </button>
+                        <button @click="handleGlobalConfirm"
+                            class="flex-1 py-3 rounded-2xl bg-blue-500 text-white text-[15px] font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
+                            {{ globalConfirmData.confirmText || '确定' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
+        <!-- Global Prompt Modal -->
+        <Transition name="fade">
+            <div v-if="showGlobalPrompt && globalPromptData"
+                class="fixed inset-0 z-[10001] flex items-center justify-center p-6 backdrop-blur-md bg-black/40"
+                @click.self="handleGlobalPromptCancel">
+                <div class="w-full max-w-[320px] rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border p-6 animate-scale-in"
+                    :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b] border-[#334155]' : 'bg-white border-white/20'">
+                    <h3 class="text-[18px] font-bold mb-2"
+                        :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ globalPromptData.title }}</h3>
+                    <p class="text-[14px] leading-relaxed mb-4"
+                        :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{ globalPromptData.message }}</p>
+                    
+                    <input v-model="globalPromptInput" type="text" :placeholder="globalPromptData.placeholder"
+                        class="w-full border-none rounded-2xl px-4 py-3 text-[15px] mb-6 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+                        :class="store.personalization.theme === 'dark' ? 'bg-white/10 text-white placeholder-gray-500' : 'bg-black/5 text-gray-800 placeholder-gray-400'"
+                        @keyup.enter="handleGlobalPromptConfirm" autofocus />
+
+                    <div class="flex gap-3">
+                        <button @click="handleGlobalPromptCancel"
+                            class="flex-1 py-3 rounded-2xl text-[15px] font-bold active:scale-95 transition-all"
+                            :class="store.personalization.theme === 'dark' ? 'bg-white/5 text-gray-300' : 'bg-gray-100 text-gray-600'">
+                            取消
+                        </button>
+                        <button @click="handleGlobalPromptConfirm"
+                            class="flex-1 py-3 rounded-2xl bg-blue-500 text-white text-[15px] font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
+                            确定
+                        </button>
                     </div>
                 </div>
             </div>

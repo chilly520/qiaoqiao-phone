@@ -1,19 +1,39 @@
+import { useRouter } from 'vue-router'
+import { useWalletStore } from '../../stores/walletStore'
+import { useChatStore } from '../../stores/chatStore'
+import { useSettingsStore } from '../../stores/settingsStore'
+
+const router = useRouter()
+const walletStore = useWalletStore()
+const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
+
+const currentMonth = ref(new Date())
+// ... (rest of setup lines unchanged)
+// ...
+</script>
+
 <template>
-    <div class="h-full flex flex-col bg-[#ededed] font-sans">
+    <div class="h-full flex flex-col transition-colors duration-300 font-sans"
+        :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-[#ededed]'">
         <!-- Top Bar -->
-        <div class="h-[60px] bg-[#ededed] flex items-center px-4 relative shrink-0">
+        <div class="h-[60px] flex items-center px-4 relative shrink-0 transition-colors"
+            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-[#ededed]'">
             <div @click="$router.back()"
-                class="absolute left-4 w-10 h-10 flex items-center justify-center text-gray-800 -ml-2 cursor-pointer active:bg-black/5 rounded-full">
+                class="absolute left-4 w-10 h-10 flex items-center justify-center -ml-2 rounded-full cursor-pointer transition-colors"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-white hover:bg-white/5' : 'text-gray-800 hover:bg-black/5'">
                 <i class="fa-solid fa-chevron-left text-lg"></i>
             </div>
-            <div class="flex-1 text-center font-bold text-lg">账单</div>
-            <!-- Removed redundant stats button -->
+            <div class="flex-1 text-center font-bold text-lg"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">账单</div>
         </div>
 
         <!-- Month Filter -->
-        <div class="px-4 py-2 flex items-center justify-between bg-[#ededed] sticky top-0 z-10 shrink-0">
+        <div class="px-4 py-2 flex items-center justify-between sticky top-0 z-10 shrink-0 transition-colors"
+            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-[#ededed]'">
             <div
-                class="relative flex items-center gap-1 bg-white px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer hover:bg-gray-50 transition-colors shadow-sm overflow-hidden">
+                class="relative flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all shadow-sm overflow-hidden"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] text-gray-200 border border-white/5 hover:bg-[#334155]' : 'bg-white text-gray-700 hover:bg-gray-50'">
                 <span>{{ currentMonthStr }}</span>
                 <i class="fa-solid fa-caret-down text-xs text-gray-500"></i>
                 <!-- Hidden Month Input for interaction -->
@@ -21,7 +41,8 @@
                     class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-50" />
             </div>
             <div @click="showStatistics"
-                class="text-sm font-medium text-gray-600 bg-white px-3 py-1.5 rounded-full shadow-sm cursor-pointer hover:bg-gray-50 active:scale-95 transition-transform select-none">
+                class="text-sm font-medium px-3 py-1.5 rounded-full shadow-sm cursor-pointer active:scale-95 transition-all select-none"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] text-blue-400 border border-white/5 hover:bg-[#334155]' : 'bg-white text-gray-600 hover:bg-gray-50'">
                 统计 <i class="fa-solid fa-chart-pie text-xs ml-1"></i>
             </div>
         </div>
@@ -35,9 +56,10 @@
             </div>
 
             <div v-for="group in filteredGroups" :key="group.month" class="mb-2">
-                <div class="bg-white">
+                <div class="transition-colors" :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'">
                     <div v-for="tx in group.items" :key="tx.id"
-                        class="relative overflow-hidden border-b border-gray-100 last:border-none">
+                        class="relative overflow-hidden border-b last:border-none transition-colors"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'border-white/5' : 'border-gray-100'">
 
                         <!-- Delete Button Layer (Behind) -->
                         <div class="absolute inset-y-0 right-0 w-[70px] bg-red-500 flex items-center justify-center text-white font-medium text-sm cursor-pointer z-0"
@@ -46,32 +68,36 @@
                         </div>
 
                         <!-- Content Layer (Sliding) -->
-                        <div class="relative z-10 bg-white flex items-start justify-between px-4 py-4 cursor-pointer transition-transform duration-200 ease-out"
+                        <div class="relative z-10 flex items-start justify-between px-4 py-4 cursor-pointer transition-transform duration-200 ease-out"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'"
                             :style="{ transform: `translateX(${swipeState[tx.id] || 0}px)` }"
                             @touchstart="handleTouchStart($event, tx)" @touchmove="handleTouchMove($event, tx)"
                             @touchend="handleTouchEnd($event, tx)" @click="handleItemClick(tx)">
 
                             <div class="flex items-start gap-3 overflow-hidden flex-1">
-                                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm mt-1"
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 shadow-sm mt-1 transition-transform"
                                     :class="getIconBg(tx)">
                                     <i :class="getIconClass(tx)"></i>
                                 </div>
                                 <div class="flex-1 min-w-0 pr-2">
-                                    <div class="text-base font-medium text-gray-900 mb-0.5 line-clamp-1 break-all">
+                                    <div class="text-base font-medium mb-0.5 line-clamp-1 break-all"
+                                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-100' : 'text-gray-900'">
                                         {{ tx.title }}</div>
-                                    <div class="text-xs text-gray-400 mt-1 flex flex-wrap items-start">
+                                    <div class="text-xs mt-1 flex flex-wrap items-start"
+                                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
                                         <span class="shrink-0 mr-2 font-mono tracking-tight pt-0.5">{{
                                             formatTime(tx.time) }}</span>
                                         <span
-                                            class="border-l border-gray-300 pl-2 whitespace-pre-wrap break-words leading-relaxed">{{
+                                            class="border-l pl-2 whitespace-pre-wrap break-words leading-relaxed transition-colors"
+                                            :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-300'">{{
                                                 getTransactionDesc(tx) }}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="text-right shrink-0 ml-1 pt-1">
-                                <div class="font-bold text-base font-mono"
-                                    :class="tx.type === 'income' ? 'text-[#fa9d3b]' : 'text-black'">
+                                <div class="font-bold text-base font-mono transition-colors"
+                                    :class="tx.type === 'income' ? 'text-[#fa9d3b]' : (settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-black')">
                                     {{ tx.type === 'income' ? '+' : '-' }}{{ parseFloat(tx.amount).toFixed(2) }}
                                 </div>
                                 <div class="text-xs text-gray-400 font-medium mt-1">
@@ -91,6 +117,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWalletStore } from '../../stores/walletStore'
 import { useChatStore } from '../../stores/chatStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 const router = useRouter()
 const walletStore = useWalletStore()
@@ -265,7 +292,7 @@ const closeSwipe = () => {
 }
 
 const handleDelete = (tx) => {
-    if (confirm('确定删除这条记录吗？')) {
+    chatStore.triggerConfirm('删除记录', '确定删除这条记录吗？', () => {
         const idx = walletStore.transactions.findIndex(t => t.id === tx.id)
         if (idx !== -1) {
             walletStore.transactions.splice(idx, 1)
@@ -273,6 +300,6 @@ const handleDelete = (tx) => {
         // Cleanup swipe state
         delete swipeState.value[tx.id]
         activeSwipeId = null
-    }
+    })
 }
 </script>

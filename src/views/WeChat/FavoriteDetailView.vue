@@ -58,10 +58,10 @@ const item = computed(() => {
 })
 
 const forceDelete = () => {
-    if (confirm('是否强制删除该无效记录?')) {
+    chatStore.triggerConfirm('强制删除', '是否强制删除该无效记录?', () => {
         favoritesStore.removeFavorite(itemId.value)
         router.back()
-    }
+    })
 }
 
 // Combined Sticker Search Scope (Computed for efficiency)
@@ -172,10 +172,10 @@ const cleanImageUrl = (content) => {
 }
 
 const deleteCurrentItem = () => {
-    if (confirm('确认删除这条收藏吗?')) {
-        favoritesStore.removeFavorite(itemId)
+    chatStore.triggerConfirm('删除收藏', '确认删除这条收藏吗?', () => {
+        favoritesStore.removeFavorite(itemId.value)
         router.back()
-    }
+    })
 }
 
 const goBack = () => {
@@ -335,26 +335,13 @@ const renderMarkdown = (text) => {
     }
 }
 
-// --- Toast Logic ---
-const toastMsg = ref('')
-const toastType = ref('info') // info, success, warning
-let toastTimer = null
-
-const showToast = (msg, type = 'info') => {
-    toastMsg.value = msg
-    toastType.value = type
-    if (toastTimer) clearTimeout(toastTimer)
-    toastTimer = setTimeout(() => {
-        toastMsg.value = ''
-    }, 3000)
-}
 
 // --- Event Listener for HTML Card Alerts ---
 import { onMounted, onUnmounted } from 'vue'
 
 const handleMessage = (event) => {
     if (event.data && event.data.type === 'CHAT_ALERT') {
-        showToast(event.data.text, 'info')
+        chatStore.triggerToast(event.data.text, 'info')
     }
 }
 
@@ -364,7 +351,6 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('message', handleMessage)
-    if (toastTimer) clearTimeout(toastTimer)
 })
 </script>
 
@@ -559,13 +545,6 @@ onUnmounted(() => {
                     <div v-if="chatsList.length === 0" class="text-center py-6 text-gray-400 text-sm">暂无联系人</div>
                 </div>
             </div>
-        </div>
-        <!-- Custom Toast -->
-        <div v-if="toastMsg"
-            class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[2000] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 backdrop-blur-md border border-white/20"
-            :class="toastType === 'success' ? 'bg-green-500/90 text-white' : 'bg-gray-800/90 text-white'">
-            <i class="fa-solid" :class="toastType === 'success' ? 'fa-check-circle' : 'fa-circle-info'"></i>
-            <span class="font-medium text-sm">{{ toastMsg }}</span>
         </div>
     </div>
 </template>

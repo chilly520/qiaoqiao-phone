@@ -6,6 +6,12 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useMomentsStore } from '../../stores/momentsStore'
 import ChatWindow from './ChatWindow.vue'
 import MomentsView from './MomentsView.vue'
+import { useWorldLoopStore } from '../../stores/worldLoopStore'
+import WorldLoopCreateModal from './modals/WorldLoopCreateModal.vue'
+
+const worldLoopStore = useWorldLoopStore()
+const expandLoopContacts = ref(true)
+const expandGroupChats = ref(true)
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -57,6 +63,7 @@ const showAddMenu = ref(false)
 const expandFriends = ref(true)
 const expandNPC = ref(false)
 const showAddFriendModal = ref(false)
+const showCreateLoopModal = ref(false)
 const newFriendName = ref('')
 
 // Context Menu State
@@ -64,13 +71,6 @@ const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
 const contextMenuTarget = ref(null) // { type: 'chat'|'contact', id: '...' }
 const contextMenuOptions = ref([]) // [{ label: '...', action: '...' }]
-// Confirm Modal State
-const showConfirmModal = ref(false)
-const confirmCallback = ref(null)
-const confirmMessage = ref('')
-
-
-
 // Profile Edit Modal State
 const showProfileEdit = ref(false)
 const profileForm = ref({
@@ -108,8 +108,9 @@ const handleProfileAvatarChange = (e) => {
 
 // Long Press Helper
 const promptProfileAvatarUrl = () => {
-    const url = prompt('请输入头像URL')
-    if (url) profileForm.value.avatar = url
+    chatStore.triggerPrompt('输入头像URL', '请输入图片的超链接地址', (url) => {
+        if (url) profileForm.value.avatar = url
+    })
 }
 
 // Long Press Helper
@@ -184,28 +185,19 @@ const handleContextAction = (option) => {
     if (option.action === 'pin') {
         chatStore.pinChat(id)
     } else if (option.action === 'clear') {
-        confirmMessage.value = '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)'
-        showConfirmModal.value = true
-        confirmCallback.value = () => {
+        chatStore.triggerConfirm('移除聊天', '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)', () => {
             chatStore.clearHistory(id)
-            showConfirmModal.value = false
             chatStore.triggerToast('已移除', 'success')
-        }
+        })
     } else if (option.action === 'delete') {
-        confirmMessage.value = '确定要删除该好友吗？将同时删除所有记录。'
-        showConfirmModal.value = true
-        confirmCallback.value = () => {
+        chatStore.triggerConfirm('删除好友', '确定要删除该好友吗？将同时删除所有记录。', () => {
             chatStore.deleteChat(id)
-            showConfirmModal.value = false
             chatStore.triggerToast('已删除', 'success')
-        }
+        })
     }
     showContextMenu.value = false
 }
 
-const confirmAction = () => {
-    if (confirmCallback.value) confirmCallback.value()
-}
 
 const toggleAddMenu = () => {
     showAddMenu.value = !showAddMenu.value
@@ -214,7 +206,7 @@ const toggleAddMenu = () => {
 const handleAddAction = (action) => {
     showAddMenu.value = false
     if (action === 'group') {
-        alert('群聊功能开发中...')
+        showCreateLoopModal.value = true
     } else if (action === 'friend') {
         newFriendName.value = ''
         showAddFriendModal.value = true
@@ -229,6 +221,51 @@ const confirmAddFriend = () => {
     const newChat = chatStore.createChat(name)
     chatStore.currentChatId = newChat.id
     newChat.isNew = true
+}
+
+const handleCreateLoop = async (form) => {
+    showCreateLoopModal.value = false
+    try {
+        const loop = await worldLoopStore.createLoop(form.name, form.description, form.participants)
+        const chat = chatStore.createChat(form.name, {
+            isGroup: true,
+            loopId: loop.id,
+            participants: form.participants // Initialize chat with selected participants
+        })
+        chatStore.currentChatId = chat.id
+        chatStore.triggerToast('世界圈开启成功', 'success')
+        
+        // Push history state to show chat window
+        const currentState = history.state || {}
+        if (!currentState.chatOpen) {
+            history.pushState({ ...currentState, chatOpen: true }, '')
+        }
+    } catch (err) {
+        console.error('Create loop failed', err)
+        chatStore.triggerToast('开启失败', 'error')
+    }
+}
+
+const getPreviewText = (contentRaw) => {
+    if (!contentRaw) return '暂无消息'
+    const content = ensureString(contentRaw)
+    
+    // Identification patterns
+    if (content.includes('"postId"')) return '[朋友圈分享]'
+    if (content.includes('"type":"html"')) return '[卡片消息]'
+    if (content.includes('FAMILY_CARD')) {
+        if (content.includes('APPLY')) return '[亲属卡申请]'
+        return '[亲属卡]'
+    }
+    
+    // Clean Inner Voice
+    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '')
+    // Clean System tags
+    clean = clean.replace(/\[System:[\s\S]+?\]/gi, '')
+    // Clean DRAW tags
+    clean = clean.replace(/\[DRAW:[\s\S]*?\]/gi, '[生图指令]')
+    
+    return clean.trim() || '[特殊属性消息]'
 }
 
 const openChat = (chatId) => {
@@ -312,7 +349,8 @@ const navigateToSettings = () => {
 }
 
 // 初始化演示数据
-onMounted(() => {
+onMounted(async () => {
+    await worldLoopStore.initStore()
     window.addEventListener('popstate', handlePopState)
 })
 
@@ -432,6 +470,13 @@ const handleImport = async (e) => {
         <ChatWindow v-if="chatStore.currentChatId" v-show="!showMoments" class="absolute inset-0 z-50" @back="handleChatBack"
             @show-profile="openProfileFromChat" />
 
+        <WorldLoopCreateModal 
+            :visible="showCreateLoopModal" 
+            :contacts="chatStore.contactList.filter(c => !c.isGroup)"
+            @close="showCreateLoopModal = false"
+            @confirm="handleCreateLoop"
+        />
+
         <!-- Context Menu (Restored) -->
         <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false">
             <!-- Backdrop for click outside -->
@@ -447,24 +492,6 @@ const handleImport = async (e) => {
             </div>
         </div>
 
-        <!-- Confirm Modal -->
-        <div v-if="showConfirmModal"
-            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 animate-fade-in"
-            @click.self="showConfirmModal = false">
-            <div class="bg-white w-[80%] max-w-[300px] rounded-lg overflow-hidden shadow-xl animate-scale-up">
-                <div class="p-6 text-center">
-                    <div class="text-base text-gray-800 font-medium mb-6">{{ confirmMessage }}</div>
-                    <div class="flex gap-4 justify-center">
-                        <button
-                            class="px-6 py-2 rounded bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform"
-                            @click="showConfirmModal = false">取消</button>
-                        <button
-                            class="px-6 py-2 rounded bg-red-500 text-white font-bold active:scale-95 transition-transform"
-                            @click="confirmAction">删除</button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Profile Edit Modal -->
         <div v-if="showProfileEdit"
@@ -577,8 +604,8 @@ const handleImport = async (e) => {
                             @click.stop>
                             <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f]"
                                 @click="handleAddAction('group')">
-                                <i class="fa-solid fa-comment-dots text-white"></i>
-                                <span class="text-white text-sm">发起群聊</span>
+                                <i class="fa-solid fa-earth-asia text-purple-400"></i>
+                                <span class="text-white text-sm font-bold">开启世界圈</span>
                             </div>
                             <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer"
                                 @click="handleAddAction('friend')">
@@ -634,23 +661,85 @@ const handleImport = async (e) => {
                                     }) : '' }}</span>
                             </div>
                             <div class="text-xs text-gray-500 truncate">
-                                {{ chat.lastMsg ? ensureString(chat.lastMsg.content) : '暂无消息' }}
+                                {{ chat.lastMsg ? getPreviewText(chat.lastMsg.content) : '暂无消息' }}
                             </div>
                         </div>
                     </div>
                 </div>
                 <!-- ... keep other tabs same as original ... -->
                 <div v-if="currentTab === 'contacts'" class="bg-[#ededed] min-h-full">
+                    <!-- 1. Group Chats Section (World Loops) -->
                     <div class="bg-white mb-2">
-                        <div class="px-4 py-2 bg-gray-50 text-xs text-gray-500 font-bold flex justify-between items-center cursor-pointer"
+                        <div class="px-4 py-2 bg-gradient-to-r from-blue-50 to-white text-[10px] text-blue-600 font-bold flex justify-between items-center cursor-pointer border-b border-blue-100"
+                            @click="expandGroupChats = !expandGroupChats">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-users text-blue-500"></i>
+                                <span>我的群聊 (世界圈)</span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down transition-transform duration-200"
+                                :class="!expandGroupChats ? '-rotate-90' : ''"></i>
+                        </div>
+                        <div v-if="expandGroupChats">
+                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup)" :key="chat.id"
+                                class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer"
+                                @click="openChat(chat.id)">
+                                <div class="relative w-10 h-10 mr-3">
+                                    <img :src="chat.avatar || getRandomAvatar()" class="w-full h-full rounded-lg bg-gray-200 object-cover">
+                                    <div class="absolute -top-1 -right-1 bg-purple-500 text-white text-[8px] px-1 rounded-sm border border-white">世界</div>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
+                                    <div class="text-[10px] text-gray-400 truncate">
+                                        {{ chat.participants?.length || 0 }} 名成员参与中
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="chatStore.contactList.filter(c => c.isGroup).length === 0" class="py-4 text-center text-xs text-gray-400">
+                                暂无活跃的世界圈
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. World Loop Characters (NPCs) -->
+                    <div class="bg-white mb-2">
+                        <div class="px-4 py-2 bg-gradient-to-r from-purple-50 to-white text-[10px] text-purple-600 font-bold flex justify-between items-center cursor-pointer border-b border-purple-100"
+                            @click="expandLoopContacts = !expandLoopContacts">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-user-gear text-purple-500"></i>
+                                <span>剧本角色 (NPC)</span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down transition-transform duration-200"
+                                :class="!expandLoopContacts ? '-rotate-90' : ''"></i>
+                        </div>
+                        <div v-if="expandLoopContacts">
+                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop)" :key="chat.id"
+                                class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer"
+                                @click="openChat(chat.id)">
+                                <img :src="chat.avatar || getRandomAvatar()" class="w-10 h-10 rounded-lg bg-gray-200 mr-3">
+                                <div class="flex-1">
+                                    <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
+                                    <div class="text-[10px] text-blue-500 bg-blue-50 px-1 inline-block rounded">
+                                        归属: {{ worldLoopStore.loops[chat.belongToLoop]?.name || '未知世界' }}
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop).length === 0" class="py-4 text-center text-xs text-gray-400">
+                                暂无剧本角色
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Standard Friends Section -->
+                    <div class="bg-white mb-2">
+                        <div class="px-4 py-2 bg-gray-50 text-[10px] text-gray-400 font-bold flex justify-between items-center cursor-pointer"
                             @click="expandFriends = !expandFriends">
-                            <span>好友</span>
+                            <span>我的好友</span>
                             <i class="fa-solid fa-chevron-down transition-transform duration-200"
                                 :class="!expandFriends ? '-rotate-90' : ''"></i>
                         </div>
                         <div v-if="expandFriends">
-                            <div v-for="chat in chatStore.contactList" :key="chat.id"
-                                class="flex items-center px-4 py-2 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select"
+                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)" :key="chat.id"
+                                class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select"
                                 @click="openChat(chat.id)"
                                 @contextmenu.prevent="openContextMenu('contact', chat, $event)"
                                 @touchstart="startLongPress('contact', chat, $event)" @touchend="clearLongPress"

@@ -1,5 +1,5 @@
 <template>
-  <div class="h-[240px] bg-[#f7f7f7] border-t border-[#dcdcdc] p-4 animate-slide-up">
+  <div class="h-[240px] bg-[#f7f7f7] border-t border-[#dcdcdc] p-4 animate-slide-up overflow-y-auto">
     <div class="grid grid-cols-4 gap-4">
       <!-- Album (Image) -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'album')">
@@ -63,6 +63,14 @@
            <i class="fa-solid fa-phone text-2xl text-[#07c160]"></i>
         </div>
         <span class="text-xs text-[#888]">语音通话</span>
+      </div>
+
+      <!-- Timer Mission -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'timer')">
+        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+           <i class="fa-solid fa-clock text-2xl text-[#6366f1]"></i>
+        </div>
+        <span class="text-xs text-[#888]">定时任务</span>
       </div>
     </div>
   </div>

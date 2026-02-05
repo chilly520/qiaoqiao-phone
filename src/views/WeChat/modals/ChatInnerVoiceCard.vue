@@ -110,18 +110,89 @@
                         </div>
                     </div>
 
-                    <!-- Location -->
-                    <div class="location-card">
-                        <div class="stats-label mb-2">LOCATION 当前位置</div>
-                        <div class="location-text">{{ currentVoiceContent.stats?.location || '未知位置' }}</div>
+                    <!-- Realistic Connection-Style Location -->
+                    <div class="location-card premium-mode">
+                        <div class="stats-label mb-3">CONNECTION 实时测距</div>
+                        
+                        <div class="location-route-display">
+                            <div class="route-stop">
+                                <span class="stop-label">对方位置</span>
+                                <span class="stop-name">{{ currentVoiceContent.stats?.location?.replace(/乔乔/g, 'Chilly') || '未追踪' }}</span>
+                            </div>
+                            
+                            <div class="route-link">
+                                <div class="link-line"></div>
+                                <div class="link-info">
+                                    <i class="fa-solid fa-person-walking animate-walk"></i>
+                                    <span class="link-dist">{{ currentVoiceContent.stats?.distance || '...' }}</span>
+                                </div>
+                            </div>
 
-                        <!-- Mini Map Visualization -->
-                        <div class="mini-map-container mt-4">
-                            <div class="map-bg"></div>
-                            <div class="map-point user" title="用户位置"></div>
-                            <div class="map-point char" title="角色位置"></div>
-                            <div class="map-distance-line"></div>
-                            <div class="map-distance-label">{{ currentVoiceContent.stats?.distance || '距离未知' }}</div>
+                            <div class="route-stop text-right">
+                                <span class="stop-label">我的位置</span>
+                                <span class="stop-name">{{ settingsStore.weather.userLocation?.name || '未知' }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Realistic Simulated Map with Geographic Layers -->
+                        <div class="mini-map-container mt-4 animate-scale-up">
+                            <div class="map-tile-layer"></div>
+                            <div class="map-water-layer"></div>
+                            <div class="map-park-layer"></div>
+                            <div class="map-road-network"></div>
+                            <div class="map-building-blocks"></div>
+                            <div class="map-glare-overlay"></div>
+                            
+                            <!-- Distance Connector -->
+                            <svg class="map-svg-overlay" width="100%" height="100%">
+                                <defs>
+                                    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                        <stop offset="0%" style="stop-color:#d4af37;stop-opacity:0.2" />
+                                        <stop offset="50%" style="stop-color:#d4af37;stop-opacity:0.8" />
+                                        <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.2" />
+                                    </linearGradient>
+                                </defs>
+                                <line :x1="userCoord.x + '%'" :y1="userCoord.y + '%'" 
+                                      :x2="charCoord.x + '%'" :y2="charCoord.y + '%'" 
+                                      class="map-connection-line" />
+                            </svg>
+
+                            <!-- Map Markers with Avatars -->
+                            <div class="map-marker-premium user" :style="userPosStyle">
+                                <div class="marker-avatar-container">
+                                    <img :src="userProfile?.avatar || '/broken-image.png'" class="marker-avatar">
+                                    <div class="marker-ring"></div>
+                                </div>
+                                <div class="marker-info-tag">
+                                    <span class="marker-name">{{ userProfile?.name || '我' }}</span>
+                                    <span class="marker-label">我</span>
+                                </div>
+                            </div>
+                            
+                            <div class="map-marker-premium char" :style="charPosStyle">
+                                <div class="marker-avatar-container char">
+                                    <img :src="chatData?.avatar || '/broken-image.png'" class="marker-avatar">
+                                    <div class="marker-ring char pulse"></div>
+                                </div>
+                                <div class="marker-info-tag char">
+                                    <span class="marker-name">{{ chatData?.name || '对方' }}</span>
+                                    <span class="marker-label char">对方</span>
+                                </div>
+                            </div>
+
+                            <div class="map-nav-panel">
+                                <div class="nav-item">
+                                    <i class="fa-solid fa-diamond-turn-right text-blue-400"></i>
+                                    <span>{{ currentVoiceContent.stats?.distance || '计算中' }}</span>
+                                </div>
+                                <div class="nav-divider"></div>
+                                <div class="nav-item">
+                                    <i class="fa-solid fa-clock opacity-50"></i>
+                                    <span>约{{ calculateTravelTime(currentVoiceContent.stats?.distance) }}min</span>
+                                </div>
+                            </div>
+
+                            <div class="map-brand-watermark">AMAP High-Res</div>
                         </div>
                     </div>
                 </div>
@@ -173,6 +244,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useChatStore } from '../../../stores/chatStore'
+import { useSettingsStore } from '../../../stores/settingsStore'
 
 const props = defineProps({
     visible: Boolean,
@@ -183,6 +255,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
+const userProfile = computed(() => settingsStore.personalization.userProfile)
+
 const voiceCanvas = ref(null)
 const showHistory = ref(false)
 const showDeleteConfirm = ref(false)
@@ -312,6 +387,29 @@ const sortedHistory = computed(() => {
 const formatTime = (ts) => ts ? new Date(ts).toLocaleString() : '---'
 
 // --- Stats Helpers ---
+const userCoord = computed(() => ({ x: 35, y: 35 })) // Anchored slightly off center
+const charCoord = computed(() => {
+    // Deterministic but "random-looking" position based on distance string
+    const dist = currentVoiceContent.value.stats?.distance || '10km'
+    const num = parseInt(dist) || 5
+    const angle = (num * 137) % 360
+    const rad = Math.min(40, num * 2) 
+    return {
+        x: 50 + Math.cos(angle * Math.PI / 180) * rad,
+        y: 50 + Math.sin(angle * Math.PI / 180) * rad
+    }
+})
+
+const userPosStyle = computed(() => ({
+    left: `${userCoord.value.x}%`,
+    top: `${userCoord.value.y}%`
+}))
+
+const charPosStyle = computed(() => ({
+    left: `${charCoord.value.x}%`,
+    top: `${charCoord.value.y}%`
+}))
+
 const getStatValue = (val) => {
     if (typeof val === 'object' && val !== null) return val.value || 0
     return val || 0
@@ -321,6 +419,13 @@ const getStatLabel = (key, val) => {
     if (typeof val === 'object' && val !== null && val.label) return val.label
     const defaults = { emotion: '情绪', spirit: '精神', mood: '心情' }
     return defaults[key] || key.toUpperCase()
+}
+
+const calculateTravelTime = (distStr) => {
+    if (!distStr) return 5
+    const num = parseInt(distStr) || 0
+    if (num <= 0) return 0
+    return Math.ceil(num * 1.5)
 }
 
 // --- Actions ---
@@ -598,16 +703,18 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 
 .stats-label {
     font-size: 10px;
-    color: #8c7e63;
+    color: #6d5e4a;
     letter-spacing: 2px;
     margin-bottom: 4px;
     font-family: 'Cormorant Garamond', serif;
+    font-weight: bold;
 }
 
 .stats-value {
-    color: #dcdcdc;
-    font-size: 14px;
-    font-weight: 300;
+    color: #e6e6e6;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
 }
 
 .stats-bars-group {
@@ -652,89 +759,307 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     background: linear-gradient(to right, #615a4b, #8c7e63);
 }
 
-.location-card {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 16px;
-    padding: 16px;
-    position: relative;
-    overflow: hidden;
+.location-card.premium-mode {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 20px;
 }
 
-.location-text {
-    font-size: 13px;
-    color: #dcdcdc;
+.location-route-display {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.route-stop {
+    display: flex;
+    flex-direction: column;
+}
+
+.stop-label {
+    font-size: 8px;
+    color: #8c7e63;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+}
+
+.stop-name {
+    font-size: 12px;
+    color: #e6e6e6;
     font-weight: 300;
-    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.route-link {
+    position: relative;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.link-line {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    height: 1px;
+    background: linear-gradient(to right, #d4af37, #8c7e63);
+    opacity: 0.2;
+}
+
+.link-info {
+    background: #1a1a1c;
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    padding: 2px 12px;
+    border-radius: 20px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+
+.link-dist {
+    font-size: 9px;
+    color: #d4af37;
+    font-family: font-mono;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.animate-walk {
+    font-size: 10px;
+    color: #d4af37;
+    animation: walkMotion 1.5s infinite linear;
+}
+
+@keyframes walkMotion {
+    0% { transform: translateX(-5px); opacity: 0; }
+    50% { transform: translateX(0); opacity: 1; }
+    100% { transform: translateX(5px); opacity: 0; }
 }
 
 .mini-map-container {
-    height: 120px;
-    background: #0d0d0f;
+    height: 180px;
+    background: #e5e7eb;
     border-radius: 12px;
     position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
     overflow: hidden;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
 }
 
-.map-bg {
+.map-tile-layer {
     position: absolute;
     inset: 0;
-    background-image:
-        radial-gradient(rgba(212, 175, 55, 0.15) 1px, transparent 1px),
-        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-    background-size: 20px 20px, 40px 40px, 40px 40px;
+    background-color: #f0f2f5;
+    background-image: 
+        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.02) 1px, transparent 0);
+    background-size: 20px 20px;
+}
+
+.map-water-layer {
+    position: absolute;
+    inset: 0;
+    opacity: 0.6;
+    background: 
+        radial-gradient(ellipse at 80% 20%, #aad3df 0%, transparent 60%),
+        radial-gradient(ellipse at 10% 90%, #9bc7d3 0%, transparent 50%);
+}
+
+.map-park-layer {
+    position: absolute;
+    inset: 0;
     opacity: 0.5;
+    background: 
+        radial-gradient(circle at 40% 60%, #c8e6c9 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, #a5d6a7 0%, transparent 35%);
 }
 
-.map-point {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+.map-road-network {
     position: absolute;
-    box-shadow: 0 0 10px currentColor;
-    z-index: 2;
+    inset: 0;
+    opacity: 1;
+    background: 
+        linear-gradient(90deg, transparent 49%, #ffffff 50%, transparent 51%),
+        linear-gradient(0deg, transparent 49%, #ffffff 50%, transparent 51%);
+    background-size: 100px 100px;
 }
 
-.map-point.user {
-    color: #d4af37;
-    background: #d4af37;
-    top: 30%;
-    left: 40%;
+.map-building-blocks {
+    position: absolute;
+    inset: 0;
+    opacity: 0.2;
+    background-image: 
+        linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+    background-size: 25px 25px;
 }
 
-.map-point.char {
-    color: #fff;
+.map-glare-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.map-marker-premium {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.marker-avatar-container {
+    width: 36px;
+    height: 36px;
+    position: relative;
+    padding: 2.5px;
     background: #fff;
-    top: 60%;
-    left: 70%;
+    border-radius: 50%;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.05);
 }
 
-.map-distance-line {
-    position: absolute;
-    top: 30%;
-    left: 40%;
-    width: 38%;
-    height: 38%;
-    border-top: 1px dashed rgba(212, 175, 55, 0.4);
-    transform: rotate(45deg);
-    transform-origin: 0 0;
-    z-index: 1;
+.marker-avatar-container.char {
+    background: #4a90e2; /* Modern map blue for marker */
 }
 
-.map-distance-label {
+.marker-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.marker-ring {
     position: absolute;
-    bottom: 8px;
-    right: 12px;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    padding: 2px 8px;
-    border-radius: 8px;
+    inset: -3px;
+    border: 2px solid rgba(74, 144, 226, 0.4);
+    border-radius: 50%;
+}
+
+.marker-ring.char {
+    border-color: rgba(212, 175, 55, 0.6);
+}
+
+.pulse {
+    animation: markerPulse 2s infinite;
+}
+
+@keyframes markerPulse {
+    0% { transform: scale(1); opacity: 0.8; }
+    70% { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+.marker-info-tag {
+    margin-top: 8px;
+    background: #ffffff;
+    padding: 3px 10px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.marker-info-tag.char {
+    background: #2c2c2e;
+    border: 1px solid #4a90e2;
+}
+
+.marker-name {
     font-size: 10px;
-    color: #d4af37;
-    font-family: font-mono;
-    border: 1px solid rgba(212, 175, 55, 0.2);
+    color: #333;
+    font-weight: 600;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.marker-info-tag.char .marker-name {
+    color: #4a90e2;
+}
+
+.marker-label {
+    font-size: 7px;
+    color: #999;
+    font-weight: bold;
+}
+
+.marker-label.char {
+    color: rgba(74, 144, 226, 0.8);
+}
+
+.map-connection-line {
+    stroke: #4a90e2;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 6 8;
+    animation: lineDash 30s linear infinite;
+    opacity: 0.6;
+}
+
+@keyframes lineDash {
+    to { stroke-dashoffset: -200; }
+}
+
+.map-nav-panel {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+    padding: 8px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 30;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: #333;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.map-brand-watermark {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 9px;
+    color: rgba(0, 0, 0, 0.2);
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.animate-scale-up {
+    animation: scaleUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes scaleUp {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
 }
 
 .header-title {

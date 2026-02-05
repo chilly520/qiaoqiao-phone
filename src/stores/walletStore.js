@@ -39,10 +39,44 @@ export const useWalletStore = defineStore('wallet', () => {
                 if (data.paymentSettings) {
                     paymentSettings.value = { ...paymentSettings.value, ...data.paymentSettings }
                 }
+
+                // Check for monthly reset
+                checkMonthlyReset()
             } catch (e) {
                 console.error('Failed to load wallet data', e)
             }
         }
+    }
+
+    function checkMonthlyReset() {
+        const now = new Date()
+        const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`
+        let changed = false
+
+        familyCards.value.forEach(card => {
+            if (card.lastResetMonth !== currentMonth) {
+                // It's a new month!
+                card.usedAmount = 0
+                card.lastResetMonth = currentMonth
+                changed = true
+
+                // Send notification on the 1st of the month (or first time seeing the new month)
+                setTimeout(async () => {
+                    try {
+                        const { useChatStore } = await import('./chatStore')
+                        const chatStore = useChatStore()
+                        chatStore.addMessage(card.ownerId, {
+                            role: 'system',
+                            content: `「${card.remark || '亲属卡'}」本月额度已更新`
+                        })
+                    } catch (e) {
+                        console.error('[WalletStore] Monthly reset notification failed', e)
+                    }
+                }, 1000) // Small delay to ensure chatStore is ready
+            }
+        })
+
+        if (changed) save()
     }
 
     function save() {
@@ -148,6 +182,24 @@ export const useWalletStore = defineStore('wallet', () => {
                         source: 'family',
                         methodDetail: `${capableCard.remark || '亲属卡'}`
                     })
+
+                    // NEW: Notify the card owner
+                    setTimeout(async () => {
+                        try {
+                            const { useChatStore } = await import('./chatStore')
+                            const { useSettingsStore } = await import('./settingsStore')
+                            const chatStore = useChatStore()
+                            const settingsStore = useSettingsStore()
+                            const userName = settingsStore.personalization.userProfile.name || '你'
+                            chatStore.addMessage(capableCard.ownerId, {
+                                role: 'system',
+                                content: `${userName}使用「${capableCard.remark || '亲属卡'}」支付了${numAmount}元`
+                            })
+                        } catch (e) {
+                            console.error('[WalletStore] Failed to notify owner', e)
+                        }
+                    }, 0)
+
                     return true
                 }
             } else if (method === 'bank') {
@@ -219,7 +271,8 @@ export const useWalletStore = defineStore('wallet', () => {
             bindTime: card.bindTime || Date.now(),
             transactions: [],
             theme: card.theme || 'pink',
-            number: card.number || `66${Math.floor(Math.random() * 10000000000000)}` // Card number
+            number: card.number || `66${Math.floor(Math.random() * 10000000000000)}`, // Card number
+            lastResetMonth: `${new Date().getFullYear()}-${new Date().getMonth() + 1}`
         }
         familyCards.value.push(newCard)
         save()
@@ -251,6 +304,23 @@ export const useWalletStore = defineStore('wallet', () => {
                 source: 'family',
                 methodDetail: `${card.ownerName}的亲属卡`
             })
+
+            // NEW: Notify the card owner
+            setTimeout(async () => {
+                try {
+                    const { useChatStore } = await import('./chatStore')
+                    const { useSettingsStore } = await import('./settingsStore')
+                    const chatStore = useChatStore()
+                    const settingsStore = useSettingsStore()
+                    const userName = settingsStore.personalization.userProfile.name || '你'
+                    chatStore.addMessage(card.ownerId, {
+                        role: 'system',
+                        content: `${userName}使用「${card.remark || '亲属卡'}」支付了${numAmount}元`
+                    })
+                } catch (e) {
+                    console.error('[WalletStore] Failed to notify owner', e)
+                }
+            }, 0)
 
             save()
             return true

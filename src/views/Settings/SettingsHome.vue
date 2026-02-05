@@ -122,10 +122,10 @@ const settingsCards = [
         </div>
 
         <!-- Version Info at the bottom of settings list -->
-        <div class="py-8 flex flex-col items-center justify-center gap-1 opacity-20">
-            <div class="text-[10px] font-mono tracking-wider font-bold">QIAQIAO OS</div>
-            <div class="text-[9px] font-mono">
-                Version: {{ versionInfo.version }} ({{ versionInfo.buildTime }})
+        <div class="py-10 flex flex-col items-center justify-center gap-1.5 opacity-30 select-none">
+            <div class="text-[11px] font-bold tracking-[0.2em] text-gray-500">CHILLY OS</div>
+            <div class="text-[9px] font-mono text-gray-400">
+                v{{ versionInfo.version }} · {{ versionInfo.buildTime.split(' ')[0] }}
             </div>
         </div>
     </div>

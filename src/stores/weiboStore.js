@@ -4,8 +4,8 @@ import localforage from 'localforage'
 export const useWeiboStore = defineStore('weibo', {
     state: () => ({
         user: {
-            name: '乔乔酱',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=QiaoQiao',
+            name: 'Chilly',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Chilly',
             bio: 'ID: 88888888 | 狮子座 · 成都',
             region: '四川 成都',
             verified: true,
@@ -22,9 +22,9 @@ export const useWeiboStore = defineStore('weibo', {
         },
         posts: [], // { id, author, avatar, time, content, images, stats, isMe, authorId }
         hotSearch: [
-            { rank: 1, title: '乔乔的小手机正式上线', tag: '爆', meta: '450万', isTop: true },
+            { rank: 1, title: 'Chilly的手机正式上线', tag: '爆', meta: '450万', isTop: true },
             { rank: 2, title: '如何评价 Antigravity 的 UI 设计', tag: '新', meta: '320万', isTop: true },
-            { rank: 3, title: '大熊猫成功接机乔乔', tag: '热', meta: '280万', isTop: true },
+            { rank: 3, title: '大熊猫成功接机Chilly', tag: '热', meta: '280万', isTop: true },
             { rank: 4, title: '成都今日气温回升', tag: '新', meta: '150万', isTop: false }
         ]
     }),
@@ -42,9 +42,9 @@ export const useWeiboStore = defineStore('weibo', {
                 this.posts = [
                     {
                         id: 'p1',
-                        author: '乔乔酱',
+                        author: 'Chilly',
                         authorId: 'me',
-                        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=QiaoQiao',
+                        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Chilly',
                         isVip: true,
                         time: '15分钟前',
                         device: 'iPhone 16 Pro Max',

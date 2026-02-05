@@ -8,6 +8,7 @@ import { useStickerStore } from '../../stores/stickerStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useMusicStore } from '../../stores/musicStore'
 import { useCallStore } from '../../stores/callStore'
+import { useWorldLoopStore } from '../../stores/worldLoopStore'
 
 import ChatActionPanel from './ChatActionPanel.vue'
 import ChatDetailSettings from './ChatDetailSettings.vue'
@@ -22,6 +23,10 @@ import ChatInputBar from './components/ChatInputBar.vue'
 import ChatMessageItem from './components/ChatMessageItem.vue'
 import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
 import CallStatusBar from '../../components/CallStatusBar.vue'
+import WorldLoopGMPanel from './modals/WorldLoopGMPanel.vue'
+import WorldLoopSettings from './modals/WorldLoopSettings.vue'
+import WorldLoopOfflineOverlay from './modals/WorldLoopOfflineOverlay.vue'
+import MissionSchedulerModal from './modals/MissionSchedulerModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -64,6 +69,14 @@ const walletStore = useWalletStore()
 const favoritesStore = useFavoritesStore()
 const musicStore = useMusicStore()
 const callStore = useCallStore()
+const worldLoopStore = useWorldLoopStore()
+
+const showGMMenu = ref(false)
+const showMissionScheduler = ref(false)
+const loopData = computed(() => {
+    if (!chatData.value?.loopId) return null
+    return worldLoopStore.loops[chatData.value.loopId]
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -90,6 +103,8 @@ const batteryInitialized = ref(false)
 
 const showFriendRequest = computed(() => {
     if (!chatData.value || !chatData.value.msgs) return false
+    // World Loop never shows friend request
+    if (chatData.value.loopId) return false
     // Show if: No messages AND Not hidden AND No Opening Line was set
     return chatData.value.msgs.length === 0 && !chatData.value.hideFriendRequest && !chatData.value.openingLine
 })
@@ -139,18 +154,52 @@ const checkNewChat = () => {
         }
 
         if (chatData.value?.isNew) {
-            showSettings.value = true
+            // For World Loop, the Welcome Card is enough. Don't auto-open settings/GM Panel.
+            if (!chatData.value.loopId) {
+                showSettings.value = true
+            }
             // Clear isNew flag
             chatStore.updateCharacter(chatData.value.id, { isNew: false })
         }
 
+        // Check World Loop Welcome Logic:
+        if (chatData.value?.loopId && chatData.value.msgs?.length === 0) {
+            const loop = worldLoopStore.loops[chatData.value.loopId]
+            if (loop) {
+                chatStore.addMessage(chatData.value.id, {
+                    role: 'system',
+                    type: 'html',
+                    content: `[CARD]
+<div class="p-4 bg-gradient-to-br from-purple-900 to-indigo-950 text-white rounded-xl shadow-inner border border-purple-500/30">
+    <div class="flex items-center gap-3 mb-3">
+        <div class="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center border border-purple-400/30">
+            <i class="fa-solid fa-earth-asia text-purple-300"></i>
+        </div>
+        <div>
+            <div class="text-[10px] text-purple-300 font-bold uppercase tracking-widest">世界观加载完成</div>
+            <div class="text-sm font-bold">${loop.name}</div>
+        </div>
+    </div>
+    <div class="text-xs text-purple-100/80 leading-relaxed italic border-l-2 border-purple-500/50 pl-3">
+        ${loop.description || '开启一段未知的冒险...'}
+    </div>
+    <div class="mt-4 pt-3 border-t border-purple-500/20 flex justify-between items-center">
+        <div class="text-[9px] text-purple-400">上帝视角：已开启</div>
+        <div class="flex -space-x-2">
+            ${chatData.value.participants.slice(0, 3).map(pId => `<div class="w-5 h-5 rounded-full border border-purple-900 bg-gray-800"></div>`).join('')}
+        </div>
+    </div>
+</div>`
+                })
+            }
+        }
+
         // Check Opening Line Logic:
-        if (chatData.value?.openingLine && chatData.value.msgs?.length === 0) {
+        if (chatData.value?.openingLine && chatData.value.msgs?.length === 0 && !chatData.value.loopId) {
             chatStore.addMessage(chatData.value.id, {
                 role: 'ai',
                 content: chatData.value.openingLine
             })
-            // Once sent, openingLine remains in settings but messages are not empty.
         }
     } catch (error) {
         console.error('[ChatWindow] checkNewChat error:', error)
@@ -162,8 +211,25 @@ const checkNewChat = () => {
 const handleSettingsPopState = (event) => {
     const state = event.state || {}
     // If we're at a state that doesn't have settingsOpen, but it WAS open, close it
-    if (!state.settingsOpen && showSettings.value) {
-        showSettings.value = false
+    if (!state.settingsOpen) {
+        if (showSettings.value) showSettings.value = false
+        if (showGMMenu.value) showGMMenu.value = false
+    }
+}
+
+const openSettings = () => {
+    showSettings.value = true
+    const currentState = window.history.state || {}
+    if (!currentState.settingsOpen) {
+        window.history.pushState({ ...currentState, settingsOpen: true }, '')
+    }
+}
+
+const openGMMenu = () => {
+    showGMMenu.value = true
+    const currentState = window.history.state || {}
+    if (!currentState.settingsOpen) {
+        window.history.pushState({ ...currentState, settingsOpen: true }, '')
     }
 }
 
@@ -482,12 +548,24 @@ const handleIframeMessage = (event) => {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
+    // 1. Initialize world loops from storage
+    await worldLoopStore.initStore()
+    
+    // 2. Add event listeners
     window.addEventListener('message', handleIframeMessage)
+    window.addEventListener('popstate', handleSettingsPopState)
+    
+    // 3. Run new chat/loop logic
+    checkNewChat()
+    
+    // 4. UI Polish
+    scrollToBottom(true)
 })
 
 onUnmounted(() => {
     window.removeEventListener('message', handleIframeMessage)
+    window.removeEventListener('popstate', handleSettingsPopState)
 })
 
 watch(() => msgs.value.length, (newLen, oldLen) => {
@@ -589,6 +667,11 @@ watch(showSettings, (newVal) => {
 // Modal States
 const showEditModal = ref(false)
 const showHistoryModal = ref(false)
+
+const latestMessage = computed(() => {
+    if (msgs.value.length === 0) return null
+    return msgs.value[msgs.value.length - 1]
+})
 const editTargetId = ref(null)
 
 const toggleActionPanel = () => {
@@ -801,6 +884,9 @@ const handlePanelAction = (type) => {
             // Manually trigger the generation
             chatStore.sendMessageToAI(chatData.value.id)
         }
+    } else if (type === 'timer') {
+        showMissionScheduler.value = true
+        showActionPanel.value = false
     }
 }
 
@@ -1154,9 +1240,11 @@ const speakOne = (text, onEnd, interrupt = false) => {
     const zhVoice = voices.find(v => v.lang.includes('zh-CN') || v.lang.includes('zh-SG'));
     if (zhVoice) utterance.voice = zhVoice;
 
-    // Use character specific voice speed or default to 1.0 (Robust Parsing)
+    // Use character specific voice speed if modified, otherwise use global default (1.0)
     const charSpeed = chatStore.currentChat?.voiceSpeed
-    let rate = parseFloat(charSpeed);
+    const globalSpeed = settingsStore.voice?.speed || 1.0
+    let rate = (charSpeed && charSpeed !== 1.0) ? charSpeed : globalSpeed;
+    rate = parseFloat(rate);
     if (isNaN(rate) || !rate) rate = 1.0;
 
     // Clamp to reasonable browser limits (0.1 to 10)
@@ -1496,6 +1584,43 @@ function initVoiceCanvas() {
     if (!canvas) return;
     // Basic setup if needed in future
 }
+
+// NEW: Unified Draw Command Handler for Chat
+const handleDrawCommandInChat = async (msgId, prompt) => {
+    console.log('[ChatWindow] DRAW command triggered:', prompt);
+    const chatId = chatStore.currentChatId;
+    if (!chatId) return;
+
+    try {
+        // 1. Generate Image
+        const imageUrl = await generateImage(prompt);
+        if (!imageUrl) throw new Error('生图返回为空');
+
+        // 2. Update message content in Store (Standard UI Update)
+        chatStore.updateMessage(chatId, msgId, {
+            type: 'image',
+            image: imageUrl,
+            content: `[图片: ${prompt}]`
+        });
+
+        // 3. WORLD LOOP SYNC: If this chat belongs to a Loop, update the Loop background!
+        if (chatData.value?.loopId) {
+            console.log('[WorldLoop] Updating scene background for loop:', chatData.value.loopId);
+            worldLoopStore.updateLoop(chatData.value.loopId, {
+                currentScene: {
+                    image: imageUrl,
+                    description: prompt
+                }
+            });
+        }
+    } catch (err) {
+        console.error('[ChatWindow] DRAW failed:', err);
+        chatStore.updateMessage(chatId, msgId, {
+            type: 'text',
+            content: `(绘画失败: ${err.message})`
+        });
+    }
+};
 
 const handleSendMessage = (payload) => {
     const { type, content } = payload
@@ -1990,9 +2115,11 @@ const playMessageTTS = (text) => {
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(cleanText)
 
-    // Antigravity Fix: Apply character speed (Robust)
+    // Antigravity Fix: Apply character speed with global fallback
     const charSpeed = chatStore.currentChat?.voiceSpeed
-    let rate = parseFloat(charSpeed);
+    const globalSpeed = settingsStore.voice?.speed || 1.0
+    let rate = (charSpeed && charSpeed !== 1.0) ? charSpeed : globalSpeed;
+    rate = parseFloat(rate);
     if (isNaN(rate) || !rate) rate = 1.0;
     utterance.rate = Math.min(Math.max(rate, 0.1), 3.0);
 
@@ -2340,7 +2467,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
             <!-- Header -->
             <div
-                class="h-[50px] bg-[#ededed] flex items-center justify-between px-3 border-b border-[#dcdcdc] shadow-sm z-10 relative">
+                class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
+                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-[#ededed] border-[#dcdcdc]'">
                 <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
                     @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
                     <i class="fa-solid fa-chevron-left text-black text-lg"></i>
@@ -2378,10 +2506,16 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     </div>
 
 
+                    <!-- World Loop Entry (GM Mode) -->
+                    <div v-if="loopData" class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 group"
+                        @click="openGMMenu">
+                        <i class="fa-solid fa-wand-magic-sparkles text-purple-600 transition-transform group-hover:rotate-12"></i>
+                    </div>
+
                     <!-- Settings -->
                     <div class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
-                        @click="showSettings = true">
-                        <i class="fa-solid fa-gear text-gray-500"></i>
+                        @click="openSettings">
+                        <i class="fa-solid fa-gear" :class="loopData ? 'text-purple-400' : 'text-gray-500'"></i>
                     </div>
                 </div>
             </div>
@@ -2518,10 +2652,17 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <!-- Hidden Input -->
             <input type="file" ref="imgUploadInput" class="hidden" accept="image/*" @change="handleImgUpload">
 
+            <!-- Mission Scheduler Modal -->
+            <MissionSchedulerModal v-if="showMissionScheduler" @close="showMissionScheduler = false" />
+
         </div><!-- End of Main Chat Content -->
 
         <!-- Settings Overlay -->
-        <ChatDetailSettings v-if="showSettings" :chatData="chatData" @close="showSettings = false"
+        <ChatDetailSettings v-if="showSettings && !loopData" :chatData="chatData" @close="showSettings = false"
+            @show-profile="handleProfileNavigation" />
+
+        <!-- World Loop Settings (Themed Full Screen) -->
+        <WorldLoopSettings v-if="showSettings && loopData" :chatData="chatData" @close="showSettings = false"
             @show-profile="handleProfileNavigation" />
 
 
@@ -2646,8 +2787,23 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             </div>
         </div>
 
-        <!-- Family Card Claim Modal (Extracted) -->
-        <FamilyCardClaimModal ref="claimModalRef" @confirm="handleClaimConfirm" />
+        <!-- Family Card Claim Modal -->
+        <FamilyCardClaimModal ref="familyCardModal" @confirm="handleCardClaim" />
+
+        <!-- World Loop GM Panel -->
+        <WorldLoopGMPanel v-if="showGMMenu" 
+            :loopId="chatData?.loopId"
+            @close="showGMMenu = false" />
+
+        <!-- World Loop Offline Overlay (Visual Novel) -->
+        <WorldLoopOfflineOverlay 
+            :isVisible="loopData?.currentMode === 'offline'"
+            :loopData="loopData"
+            :latestMessage="latestMessage"
+            :isTyping="isTyping"
+            @close="worldLoopStore.toggleMode(chatData?.loopId)"
+            @open-gm="showGMMenu = true"
+            @toggle-mode="worldLoopStore.toggleMode(chatData?.loopId)" />
 
         <!-- Inner Voice Modal (Mindscape) -->
         <ChatInnerVoiceCard :visible="showInnerVoiceModal" :chatId="chatData?.id" :initialMsgId="currentInnerVoiceMsgId"

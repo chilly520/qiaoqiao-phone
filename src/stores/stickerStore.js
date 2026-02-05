@@ -80,7 +80,7 @@ export const useStickerStore = defineStore('sticker', () => {
                 return
             }
             if (file.size > 5 * 1024 * 1024) {
-                alert('原图太大 (建议<5MB)')
+                chatStore.triggerToast('原图太大 (建议<5MB)', 'warning')
                 reject('Too large')
                 return
             }

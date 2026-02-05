@@ -49,6 +49,8 @@ export const useMomentsStore = defineStore('moments', () => {
         customPrompt: ''
     })
 
+    const backgroundUrl = ref(localStorage.getItem('moments_background') || '/默认背景图/橙玫瑰.png')
+
     // Load static configs from localStorage (they are small)
     try {
         const savedConfig = JSON.parse(localStorage.getItem('wechat_moments_config') || '{}')
@@ -75,6 +77,10 @@ export const useMomentsStore = defineStore('moments', () => {
     watch(config, (val) => {
         localStorage.setItem('wechat_moments_config', JSON.stringify(val))
     }, { deep: true })
+
+    watch(backgroundUrl, (val) => {
+        localStorage.setItem('moments_background', val)
+    })
 
     // --- Getters ---
     const sortedMoments = computed(() => {
@@ -106,6 +112,27 @@ export const useMomentsStore = defineStore('moments', () => {
         }
 
         moments.value.push(moment)
+
+        // Notification Logic: Mentioned in post
+        if (data.authorId !== 'user') {
+            const chatStore = useChatStore()
+            const settingsStore = useSettingsStore()
+            const userName = settingsStore.personalization.userProfile.name
+            const isMentioned = (data.mentions || []).some(m => m.id === 'user' || m.name === userName)
+
+            if (isMentioned) {
+                const char = chatStore.chats[data.authorId]
+                addNotification({
+                    type: 'mention',
+                    actorName: char ? (char.remark || char.name) : '好友',
+                    actorAvatar: char ? char.avatar : '/avatars/default.png',
+                    content: '提到了你',
+                    momentId: moment.id,
+                    momentImage: moment.images[0] || null,
+                    timestamp: moment.timestamp
+                })
+            }
+        }
 
         // Handle pre-defined interactions (from AI)
         if (data.interactions && Array.isArray(data.interactions)) {
@@ -341,10 +368,23 @@ export const useMomentsStore = defineStore('moments', () => {
         if (comment.authorId !== 'user') {
             const isReplyToUser = comment.replyTo === 'user' || comment.replyTo === settingsStore.personalization.userProfile.name
             const isUserMoment = moment.authorId === 'user'
-            const userInteracted = moment.likes.includes(settingsStore.personalization.userProfile.name) ||
+            const userInteracted = (moment.likes || []).includes(settingsStore.personalization.userProfile.name) ||
                 moment.comments.some(c => c.authorId === 'user')
 
-            if (isReplyToUser || (isUserMoment && !comment.replyTo)) {
+            const isMentioned = finalMentions.some(m => m.id === 'user' || m.name === userName)
+
+            if (isMentioned && !isReplyToUser && !(isUserMoment && !comment.replyTo)) {
+                // Mentioned specifically (and not already notified by reply/moment logic)
+                addNotification({
+                    type: 'mention_comment',
+                    actorName: finalAuthorName,
+                    actorAvatar: finalAuthorAvatar,
+                    content: `在评论中提到了你: ${comment.content}`,
+                    momentId: moment.id,
+                    momentImage: moment.images[0] || null,
+                    timestamp: Date.now()
+                })
+            } else if (isReplyToUser || (isUserMoment && !comment.replyTo)) {
                 addNotification({
                     type: 'comment',
                     actorName: finalAuthorName,
@@ -523,12 +563,39 @@ export const useMomentsStore = defineStore('moments', () => {
         const candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id)) : [])
         if (candidates.length === 0) return
 
-        const chars = candidates.map(id => ({ id, name: chatStore.chats[id].name, persona: chatStore.chats[id].prompt, recentChats: '' }))
+        // 1. Gather Rich Character Context (Last 50 chats + personal moments history)
+        const chars = candidates.map(id => {
+            const chat = chatStore.chats[id]
+            const lastMsgs = (chat.msgs || []).slice(-50).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
+
+            // Get last 3 personal moments for this character
+            const personalHistory = moments.value
+                .filter(m => m.authorId === id)
+                .slice(-3)
+                .map(m => m.content)
+                .join(' || ')
+
+            return {
+                id,
+                name: chat.name,
+                persona: chat.prompt,
+                recentChats: lastMsgs,
+                personalHistory: personalHistory // NEW: specific history to avoid same person repeating topics
+            }
+        })
+
+        // 2. Gather Recent Moments Context (Last 10 moments) to avoid repetition
+        const recentMomentsContext = moments.value.slice(-10).map(m => ({
+            authorName: m.authorName,
+            content: m.content,
+            timestamp: m.timestamp
+        }))
+
         try {
-            // 1. Get custom prompt from config
+            // 3. Get custom prompt from config
             const customPrompt = config.value.customPrompt
 
-            // 2. Get active world book content
+            // 4. Get active world book content
             let worldContext = ''
             if (config.value.enabledWorldBookEntries.length > 0) {
                 const books = worldBookStore.books || []
@@ -542,7 +609,11 @@ export const useMomentsStore = defineStore('moments', () => {
                 characters: chars,
                 worldContext: worldContext,
                 customPrompt: customPrompt,
-                userProfile: { name: settingsStore.personalization.userProfile.name, signature: settingsStore.personalization.userProfile.signature },
+                userProfile: {
+                    name: settingsStore.personalization.userProfile.name,
+                    signature: settingsStore.personalization.userProfile.signature
+                },
+                historicalMoments: recentMomentsContext, // NEW: Pass history
                 count
             })
 
@@ -613,10 +684,11 @@ export const useMomentsStore = defineStore('moments', () => {
         notifications.value.forEach(n => n.isRead = true)
     }
 
-    async function generateAndApplyCharacterProfile(charId) {
+    async function generateAndApplyCharacterProfile(charId, options = { includeMoments: true, includeSocial: true, includeArchive: true }) {
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
         const worldBookStore = useWorldBookStore()
+
         const char = chatStore.chats[charId]
         if (!char) return
 
@@ -638,45 +710,62 @@ export const useMomentsStore = defineStore('moments', () => {
             }
 
             const ai = await import('../utils/aiService')
-            const profileData = await ai.generateCharacterProfile(char, userProfile, { customPrompt, worldContext })
+            const profileData = await ai.generateCharacterProfile(char, userProfile, { customPrompt, worldContext }, options)
 
-            // 1. Update Character Info (Signature & Background)
-            // Assuming chatStore has reactivity on chats
+            // 1. Update Character Info (Signature & Background & Bio Fields)
             if (chatStore.chats[charId]) {
-                chatStore.chats[charId].statusText = profileData.signature
-                chatStore.chats[charId].momentsBackground = profileData.backgroundUrl
-                // Persist changes if necessary (usually handled by chatStore watchers)
+                const updates = {}
+                if (options.includeSocial) {
+                    if (profileData.signature) updates.statusText = profileData.signature
+                    if (profileData.backgroundUrl) updates.momentsBackground = profileData.backgroundUrl
+                }
+
+                if (options.includeArchive && profileData.bioFields) {
+                    updates.bio = {
+                        ...(chatStore.chats[charId].bio || {}),
+                        ...profileData.bioFields
+                    }
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    chatStore.updateCharacter(charId, updates)
+                }
             }
 
             // 2. Add New Moments
-            const newMomentIds = []
-            for (const mData of profileData.moments) {
-                const moment = addMoment({
-                    authorId: charId,
-                    content: mData.content,
-                    images: mData.images,
-                    visibility: 'public'
-                }, { skipAutoInteraction: true })
-                newMomentIds.push(moment.id)
-            }
+            if (options.includeMoments && profileData.pinnedMoments) {
+                const newMomentIds = []
+                for (const mData of profileData.pinnedMoments) {
+                    const moment = addMoment({
+                        authorId: charId,
+                        content: mData.content,
+                        images: mData.images,
+                        visibility: 'public'
+                    }, { skipAutoInteraction: true })
 
-            // 3. Pin Logic (Replace pins for this character)
-            // First, remove existing pins that belong to this character
-            topMoments.value = topMoments.value.filter(pinnedId => {
-                const m = moments.value.find(xm => xm.id === pinnedId)
-                return m && m.authorId !== charId
-            })
+                    // Add AI interactions (likes/comments) if provided
+                    if (mData.interactions) {
+                        for (const inter of mData.interactions) {
+                            if (inter.type === 'like') addLike(moment.id, inter.authorName)
+                            else if (inter.type === 'comment') addComment(moment.id, {
+                                authorName: inter.authorName,
+                                content: inter.content,
+                                isVirtual: true
+                            })
+                        }
+                    }
+                    newMomentIds.push(moment.id)
+                }
 
-            // Then add new pins (limit global pins logic might apply, but here we force them)
-            // Note: Since topMoments is global, we might push out other people's pins if we are not careful.
-            // But based on user request "Change pins", implies these become the active pins.
-            // We just unshift them to top.
-            topMoments.value.unshift(...newMomentIds)
-
-            // Respect max limit (e.g., 3 or 9?). If limit is 3, others get removed.
-            // The user mentioned "3 pins".
-            if (topMoments.value.length > 3) {
-                topMoments.value = topMoments.value.slice(0, 3)
+                // 3. Pin Logic
+                topMoments.value = topMoments.value.filter(pinnedId => {
+                    const m = moments.value.find(xm => xm.id === pinnedId)
+                    return m && m.authorId !== charId
+                })
+                topMoments.value.unshift(...newMomentIds)
+                if (topMoments.value.length > 9) { // Max 9 global pins
+                    topMoments.value = topMoments.value.slice(0, 9)
+                }
             }
 
             return true
@@ -697,6 +786,7 @@ export const useMomentsStore = defineStore('moments', () => {
         addLike, removeLike, addComment, deleteComment,
         triggerAIInteractions, markNotificationsRead,
         clearMyMoments, startAutoGeneration, batchGenerateAIMoments,
-        generateAndApplyCharacterProfile
+        generateAndApplyCharacterProfile,
+        backgroundUrl
     }
 })

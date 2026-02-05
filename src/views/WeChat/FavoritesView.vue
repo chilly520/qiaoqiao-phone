@@ -33,8 +33,8 @@ const favorites = computed(() => {
             (item.author && item.author.toLowerCase().includes(q))
         )
     }
-    // Optional: Sort by newer first if not already
-    return list.slice().reverse()
+    // Sort by savedAt descending (Newest First)
+    return list.slice().sort((a, b) => b.savedAt - a.savedAt)
 })
 
 const formatDate = (ts) => {
@@ -74,14 +74,12 @@ const openDetail = (item) => {
 }
 
 const deleteItem = (id) => {
-    // Debug Alert to prove click
-    // alert(`Trying to delete ID: ${id}`)
-    const success = favoritesStore.removeFavorite(id)
-    if (success) {
-        // alert('Deleted successfully')
-    } else {
-        // alert('Delete failed - ID not found?')
-    }
+    chatStore.triggerConfirm('删除收藏', '确定要删除这条收藏记录吗？', () => {
+        const success = favoritesStore.removeFavorite(id)
+        if (success) {
+            chatStore.triggerToast('已删除', 'success')
+        }
+    })
 }
 </script>
 

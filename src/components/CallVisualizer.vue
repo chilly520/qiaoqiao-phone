@@ -1,10 +1,9 @@
 <script setup>
 import { useCallStore } from '../stores/callStore'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useChatStore } from '../stores/chatStore'
 
 const callStore = useCallStore()
-
-import { useChatStore } from '../stores/chatStore'
 const chatStore = useChatStore()
 const isExpanded = ref(true) // Always expanded now by default
 const userInput = ref('')
@@ -20,9 +19,6 @@ const sendText = async () => {
         type: 'text',
         hidden: true // Keep it out of background chat history
     })
-    
-    // REMOVED auto-trigger: User wants manual control
-    // chatStore.sendMessageToAI(partner.value.id) 
     
     userInput.value = ''
 }
@@ -150,7 +146,7 @@ const initRecognition = () => {
         recognition.onerror = (event) => {
             console.error('Speech recognition error', event.error)
             if (event.error === 'not-allowed') {
-                 alert('麦克风权限被拒绝，请在浏览器设置中开启。')
+                 chatStore.triggerToast('麦克风权限被拒绝，请在浏览器设置中开启。', 'warning')
             } else if (event.error === 'no-speech') {
                  // Ignore "no speech" to keep listening
             } else {
@@ -158,7 +154,7 @@ const initRecognition = () => {
             }
         }
     } else {
-        alert('您的浏览器不支持语音识别功能，请尝试使用 Chrome。')
+        chatStore.triggerToast('您的浏览器不支持语音识别功能，请尝试使用 Chrome。', 'info')
     }
 }
 
@@ -186,10 +182,6 @@ const stopListening = () => {
 watch(() => callStore.isMuted, (newVal) => {
     if (newVal && isListening.value) {
         stopListening()
-    } else if (!newVal && !isListening.value) {
-        // Only auto-start if we want that behavior. 
-        // For now, let's keep mic toggle explicit or strictly coupled.
-        // User said "Click mute close mic", so yes.
     }
 })
 
@@ -213,11 +205,9 @@ const startCamera = async () => {
             videoElement.value.srcObject = stream
         }
         callStore.isCameraOff = false
-        // "Interface changes, character no longer shows avatar, but full screen display"
-        // Implicitly handled by template logic based on !isCameraOff
     } catch (err) {
         console.error('Camera access failed', err)
-        alert('无法访问摄像头')
+        chatStore.triggerToast('无法访问摄像头，请检查权限。', 'error')
         callStore.isCameraOff = true
     }
 }
@@ -336,7 +326,6 @@ watch(() => callStore.transcript.length, () => {
       </div>
 
       <!-- Dialogue / Transcript Box (Subtitles) -->
-      <!-- Dialogue / Transcript Box (Subtitles) - SCROLLABLE LIST -->
       <div class="transcript-box list-mode" ref="scrollContainer">
          <div v-for="(line, index) in transcriptList" :key="index" 
               class="transcript-line animate-fade-in" 
@@ -497,15 +486,6 @@ watch(() => callStore.transcript.length, () => {
   padding-top: 20px;
 }
 
-.partner-frame {
-  width: 100%;
-  height: 45%; /* Top half for avatar */
-  display: flex;
-  align-items: center; /* Center avatar in its designated top area */
-  justify-content: center;
-  position: relative;
-}
-
 .video-container-full {
     position: absolute;
     inset: 0;
@@ -550,94 +530,31 @@ watch(() => callStore.transcript.length, () => {
 .avatar-large {
   width: 140px;
   height: 140px;
-  border-radius: 50%; /* Always circle for voice mode */
+  border-radius: 50%;
   box-shadow: 0 0 40px rgba(7, 193, 96, 0.4);
   border: 4px solid rgba(255, 255, 255, 0.2);
   z-index: 10;
   position: relative;
 }
 
-.video-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  opacity: 0.5;
-}
-
-.video-placeholder i {
-    font-size: 40px;
-}
-
-.user-frame {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 100px;
-  height: 140px;
-  background: #1a1a1a;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-}
-
-.camera-preview {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: #2a2a2a;
-  gap: 8px;
-  font-size: 10px;
-  color: rgba(255,255,255,0.4);
-}
-
-.camera-preview i { font-size: 24px; }
-
-.avatar-mini {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .transcript-box {
-    /* Flow naturally in flex container, no absolute pos needed unless overlaying */
     position: relative;
-    top: auto;
-    left: auto;
-    right: auto;
-    transform: none;
-    
-    flex: 1; /* Take remaining space (Bottom half) */
-    height: auto;
+    flex: 1;
     margin: 0 20px;
     padding: 10px;
-    
     overflow-y: auto;
-    text-align: left;
     display: flex;
     flex-direction: column;
     gap: 12px;
     background: transparent;
     z-index: 10;
-    pointer-events: auto;
-    
-    /* Scrollbar Hidden */
     scrollbar-width: none; 
     -ms-overflow-style: none;
-    
-    /* Ensure text doesn't hit edges */
     -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
     mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
 }
-.transcript-box::-webkit-scrollbar { 
-    display: none; 
-}
+.transcript-box::-webkit-scrollbar { display: none; }
 
-/* List Mode Styles */
 .transcript-line {
     display: flex;
     flex-direction: column;
@@ -671,7 +588,7 @@ watch(() => callStore.transcript.length, () => {
 }
 
 .transcript-line.is-user .speech-bubble {
-    background: rgba(7, 193, 96, 0.6); /* Greenish tint for user */
+    background: rgba(7, 193, 96, 0.6);
     border-color: rgba(7, 193, 96, 0.3);
 }
 
@@ -686,22 +603,6 @@ watch(() => callStore.transcript.length, () => {
     color: #95EC69;
     margin-right: 6px;
     font-weight: bold;
-}
-
-.transcript-line {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.transcript-line.is-user .role {
-    color: #95EC69;
-}
-
-.transcript-line .role {
-    font-weight: bold;
-    color: #07c160;
-    margin-right: 4px;
 }
 
 .action-hint {
@@ -750,16 +651,13 @@ watch(() => callStore.transcript.length, () => {
   align-items: center;
   justify-content: center;
   font-size: 22px;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.1);
 }
 
 .control-btn.active i {
   background: #07c160;
-  color: white;
   box-shadow: 0 0 15px rgba(7, 193, 96, 0.5);
-  border-color: rgba(255,255,255,0.3);
 }
 
 .control-btn.active.is-listening i {
@@ -781,7 +679,6 @@ watch(() => callStore.transcript.length, () => {
 .hangup-row {
   display: flex;
   justify-content: center;
-  margin-top: 10px;
 }
 
 .hangup-btn {
@@ -797,157 +694,12 @@ watch(() => callStore.transcript.length, () => {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 8px 25px rgba(255, 77, 79, 0.4);
-  transition: all 0.2s;
-}
-
-.hangup-btn:hover {
-    transform: scale(1.05);
-    background: #ff7875;
-}
-
-.hangup-btn:active {
-  transform: scale(0.9);
-}
-
-.call-input-bar {
-    display: flex;
-    gap: 8px;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 25px;
-    backdrop-filter: blur(15px);
-    margin: 0 10px;
-    border: 1px solid rgba(255,255,255,0.1);
-}
-
-.call-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    padding: 8px 12px;
-    color: white;
-    outline: none;
-    font-size: 14px;
-}
-
-.voice-layout-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 30px;
-    z-index: 5;
-}
-
-.avatar-wrapper {
-    position: relative;
-    width: 160px;
-    height: 160px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.avatar-large {
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  border: 4px solid rgba(255, 255, 255, 0.2);
-  z-index: 2;
-  position: relative;
-}
-
-.voice-label {
-    opacity: 0.6;
-    font-size: 14px;
-    letter-spacing: 1px;
-}
-
-.voice-aura {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1;
-}
-
-.wave {
-    position: absolute;
-    width: 160px;
-    height: 160px;
-    border-radius: 50%;
-    background: rgba(7, 193, 96, 0.2);
-    animation: wave-ping 3s infinite ease-out;
-}
-
-.video-off-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.half-label {
-    position: absolute;
-    bottom: 15px;
-    left: 15px;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(4px);
-    padding: 4px 10px;
-    border-radius: 8px;
-    font-size: 11px;
-    color: white;
-    z-index: 5;
-}
-
-.avatar-large.speaking {
-    animation: avatar-wiggle 1s infinite alternate ease-in-out;
-}
-
-@keyframes avatar-wiggle {
-    from { transform: scale(1); }
-    to { transform: scale(1.08); box-shadow: 0 0 50px rgba(7, 193, 96, 0.6); }
-}
-
-.wave2 { animation-delay: 1s; }
-.wave3 { animation-delay: 2s; }
-
-@keyframes wave-ping {
-    0% { transform: scale(1); opacity: 0.8; }
-    100% { transform: scale(2.5); opacity: 0; }
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.animate-fade-in {
-    animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(5px); }
-    to { opacity: 1; transform: translateY(0); }
 }
 
 .call-input-bar {
     display: flex;
     gap: 10px;
     padding: 0 20px;
-    margin-bottom: 20px;
 }
 
 .call-input {
@@ -961,11 +713,7 @@ watch(() => callStore.transcript.length, () => {
     backdrop-filter: blur(5px);
 }
 
-.call-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-}
-
-.send-btn {
+.send-btn, .generate-btn {
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -978,33 +726,49 @@ watch(() => callStore.transcript.length, () => {
     cursor: pointer;
 }
 
-.generate-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: #10b981; /* Green color like screenshot */
-    border: none;
-    color: white;
+.generate-btn { background: #10b981; }
+
+.voice-layout-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+}
+
+.avatar-wrapper {
+    position: relative;
+    width: 160px;
+    height: 160px;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-    animation: pulse-btn 2s infinite;
 }
 
-@keyframes pulse-btn {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-    70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+.wave {
+    position: absolute;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: rgba(7, 193, 96, 0.2);
+    animation: wave-ping 3s infinite ease-out;
 }
 
-.send-btn:disabled {
-    background: #ccc;
-    cursor: not-allowed;
+.wave2 { animation-delay: 1s; }
+.wave3 { animation-delay: 2s; }
+
+@keyframes wave-ping {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(2.5); opacity: 0; }
 }
 
-.header-spacer { width: 40px; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 </style>
-

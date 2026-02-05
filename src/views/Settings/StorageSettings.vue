@@ -89,42 +89,42 @@ const updateCompressQuality = () => {
 
 // Image Compression Logic
 const compressImages = async () => {
-    if (!confirm('这将重新压缩所有现有的聊天图片，可能会略微降低清晰度以节省空间。\n确定要继续吗？')) return
-    
-    chatStore.triggerToast('正在压缩图片，请稍候...', 'info')
-    let count = 0
-    let savedSize = 0
-    
-    // Process
-    const chats = chatStore.chats
-    for (const chatId in chats) {
-        const msgs = chats[chatId].msgs || []
-        for (const msg of msgs) {
-            // Check for image content
-            const imgMatch = msg.content && typeof msg.content === 'string' && msg.content.match(/^\[图片:(data:image\/[^;]+;base64,[^\]]+)\]$/)
-            
-            if (imgMatch) {
-                try {
-                   const originalBase64 = imgMatch[1]
-                   // Re-compress using a helper (we'll inline a simple one or use utils if available)
-                   // Using simple canvas re-draw here for "retroactive" compression
-                    const newBase64 = await reCompressBase64(originalBase64, compressQuality.value)
-                    
-                    if (newBase64.length < originalBase64.length) {
-                        savedSize += (originalBase64.length - newBase64.length)
-                        msg.content = `[图片:${newBase64}]`
-                        count++
+    chatStore.triggerConfirm('图片压缩', '这将重新压缩所有现有的聊天图片，可能会略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
+        chatStore.triggerToast('正在压缩图片，请稍候...', 'info')
+        let count = 0
+        let savedSize = 0
+        
+        // Process
+        const chats = chatStore.chats
+        for (const chatId in chats) {
+            const msgs = chats[chatId].msgs || []
+            for (const msg of msgs) {
+                // Check for image content
+                const imgMatch = msg.content && typeof msg.content === 'string' && msg.content.match(/^\[图片:(data:image\/[^;]+;base64,[^\]]+)\]$/)
+                
+                if (imgMatch) {
+                    try {
+                        const originalBase64 = imgMatch[1]
+                        // Re-compress using a helper (we'll inline a simple one or use utils if available)
+                        // Using simple canvas re-draw here for "retroactive" compression
+                        const newBase64 = await reCompressBase64(originalBase64, compressQuality.value)
+                        
+                        if (newBase64.length < originalBase64.length) {
+                            savedSize += (originalBase64.length - newBase64.length)
+                            msg.content = `[图片:${newBase64}]`
+                            count++
+                        }
+                    } catch (e) {
+                        console.error('Compression failed for msg', msg.id, e)
                     }
-                } catch (e) {
-                    console.error('Compression failed for msg', msg.id, e)
                 }
             }
         }
-    }
-    
-    chatStore.saveChats()
-    calculateStorage()
-    chatStore.triggerToast(`压缩完成！处理了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+        
+        chatStore.saveChats()
+        calculateStorage()
+        chatStore.triggerToast(`压缩完成！处理了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+    })
 }
 
 // Helper to re-compress
@@ -162,30 +162,30 @@ const reCompressBase64 = (base64, quality) => {
 }
 
 const cleanAllImages = () => {
-    if (!confirm('确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为[已清理]。\n此操作不可撤销！')) return
-    
-    let count = 0
-    let savedSize = 0
-    
-    const chats = chatStore.chats
-    for (const chatId in chats) {
-        const msgs = chats[chatId].msgs || []
-        for (const msg of msgs) {
-             // Check for image content or raw Base64 blocks
-            if (msg.content && typeof msg.content === 'string') {
-                 if (msg.content.includes('[图片:data:image')) {
-                     const oldLen = msg.content.length
-                     msg.content = '[图片已清理]' // Replace with placeholder
-                     savedSize += oldLen
-                     count++
-                 }
+    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为[已清理]。\n此操作不可撤销！', () => {
+        let count = 0
+        let savedSize = 0
+        
+        const chats = chatStore.chats
+        for (const chatId in chats) {
+            const msgs = chats[chatId].msgs || []
+            for (const msg of msgs) {
+                 // Check for image content or raw Base64 blocks
+                if (msg.content && typeof msg.content === 'string') {
+                     if (msg.content.includes('[图片:data:image')) {
+                         const oldLen = msg.content.length
+                         msg.content = '[图片已清理]' // Replace with placeholder
+                         savedSize += oldLen
+                         count++
+                     }
+                }
             }
         }
-    }
-    
-    chatStore.saveChats()
-    calculateStorage()
-    chatStore.triggerToast(`清理完成！删除了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+        
+        chatStore.saveChats()
+        calculateStorage()
+        chatStore.triggerToast(`清理完成！删除了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+    })
 }
 
 const clearLogs = () => {
@@ -195,11 +195,11 @@ const clearLogs = () => {
 }
 
 const clearChats = () => {
-    if(confirm('确定要清空所有聊天记录吗？')) {
+    chatStore.triggerConfirm('清空记录', '确定要清空所有聊天记录吗？', () => {
         chatStore.clearAllChats()
         calculateStorage()
         chatStore.triggerToast('聊天记录已清空', 'success')
-    }
+    })
 }
 </script>
 
