@@ -475,6 +475,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         try {
             moment.baseLikeCount += Math.floor(Math.random() * 30) + 5
+            const { generateBatchInteractions } = await import('../utils/aiService')
             const interactions = await generateBatchInteractions(currentContext, charInfos, historicalMoments, userProfile)
 
             for (const interaction of interactions) {
@@ -507,6 +508,7 @@ export const useMomentsStore = defineStore('moments', () => {
             }
         } catch (e) {
             console.error('[MomentsStore] Summon failed', e)
+            chatStore.triggerToast(`召唤失败: ${e.message || '未知错误'}`, 'error')
         } finally {
             summoningIds.value.delete(momentId)
         }

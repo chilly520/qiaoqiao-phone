@@ -14,14 +14,34 @@ const apiQueue = new RequestQueue(3, 60000); // 3 requests per 60 seconds (1 min
 
 /* --- Avatar Description Cache Logic --- */
 const AVATAR_DESC_CACHE_KEY = 'qiaoqiao_avatar_descriptions';
+const simpleHash = (str) => {
+    let hash = 0;
+    if (!str || str.length === 0) return hash;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0;
+    }
+    return 'h' + hash;
+}
+
 const getAvatarDescCache = () => {
     try {
         const saved = localStorage.getItem(AVATAR_DESC_CACHE_KEY);
         return saved ? JSON.parse(saved) : {};
     } catch (e) { return {}; }
 };
+
 const saveAvatarDescCache = (cache) => {
-    localStorage.setItem(AVATAR_DESC_CACHE_KEY, JSON.stringify(cache));
+    try {
+        localStorage.setItem(AVATAR_DESC_CACHE_KEY, JSON.stringify(cache));
+    } catch (e) {
+        console.warn('[AI Vision] Cache full, clearing old cache to recover space.');
+        try {
+            localStorage.removeItem(AVATAR_DESC_CACHE_KEY);
+            // Try saving again with just the current item if possible, or just skip
+        } catch (err) { /* Ignore */ }
+    }
 };
 
 /**
@@ -29,17 +49,26 @@ const saveAvatarDescCache = (cache) => {
  */
 async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, model) {
     if (!url || !b64) return null;
-    const cache = getAvatarDescCache();
-    if (cache[url]) return cache[url];
 
-    console.log(`[AI Vision] Fetching new description for avatar: ${url.substring(0, 30)}...`);
+    // Hash key if it's too long (base64)
+    const cacheKey = url.length > 100 ? simpleHash(url) : url;
+
+    const cache = getAvatarDescCache();
+    if (cache[cacheKey]) return cache[cacheKey];
+
+    // Don't flood the console/API if we recently failed or if it's just big
+    console.log(`[AI Vision] Fetching description for ${name}...`);
 
     try {
         let body = {};
         let headers = { 'Content-Type': 'application/json' };
         let targetUrl = endpoint;
 
-        if (provider === 'gemini') {
+        // Check for Native Gemini Endpoint vs OpenAI-Compatible Proxy
+        // If the endpoint contains 'goog' it's likely native. If not (e.g. sukaka.top), it's likely an OpenAI adapter.
+        const isNativeGemini = provider === 'gemini' && (targetUrl.includes('goog') || targetUrl.includes('vertex'));
+
+        if (isNativeGemini) {
             const parts = b64.split(';base64,');
             const mime = parts[0].replace('data:', '');
             const data = parts[1].replace(/[^A-Za-z0-9+/=]/g, '');
@@ -58,6 +87,7 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
             targetUrl = `${targetUrl}${sep}key=${apiKey}`;
             if (!targetUrl.includes(':generateContent')) targetUrl = targetUrl.replace(/\/v1beta\/.*/, '') + `/v1beta/models/${model}:generateContent?key=${apiKey}`;
         } else {
+            // OpenAI Compatible Format (works for OpenAI, Claude, Grok, and Gemini-Proxies like OneAPI/NewAPI)
             headers['Authorization'] = `Bearer ${apiKey}`;
             body = {
                 model: model,
@@ -65,7 +95,7 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
                     role: 'user',
                     content: [
                         { type: 'text', text: `请为"${name}"的头像提供简短中文描述（15字内）。格式：[DESC: 内容]` },
-                        { type: 'image_url', image_url: { url: b64 } }
+                        { type: 'image_url', image_url: { url: b64 } } // Use b64 here as we need the image data
                     ]
                 }],
                 max_tokens: 100
@@ -73,6 +103,14 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
         }
 
         const resp = await fetch(targetUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+        if (!resp.ok) {
+            if (resp.status !== 405 && resp.status !== 404) {
+                console.warn(`[AI Vision] API Error: ${resp.status} ${resp.statusText}`);
+            }
+            // Don't cache transient errors, just return null. 405 means endpoint doesn't support this.
+            return null;
+        }
+
         const resData = await resp.json();
 
         let desc = '';
@@ -86,17 +124,17 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
         const finalDesc = match ? match[1].trim() : desc.trim().substring(0, 50);
 
         if (finalDesc && finalDesc.length > 2) {
-            cache[url] = finalDesc;
+            cache[cacheKey] = finalDesc;
             saveAvatarDescCache(cache);
             return finalDesc;
         } else {
-            // If we got a response but it's invalid, cache a fallback so we don't keep trying
-            cache[url] = "[无法描述]";
+            // Helper to prevent retry loop on un-describable images
+            cache[cacheKey] = "[外貌未描述]";
             saveAvatarDescCache(cache);
         }
     } catch (e) {
         console.error('[AI Vision] Avatar description fail:', e);
-        // On network error, we don't cache so we can retry later, but we should limit retries in the session
+        // On network error or quota error, we just return null and don't cache
     }
     return null;
 }
@@ -681,20 +719,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         charAvatarDesc = results[1]
 
         // 2. Fallback: If AI hasn't described them yet, send the image ONE TIME as a message
-        if (!options.skipVisualContext) {
-            const contentParts = []
-            if (!userAvatarDesc && userB64) {
-                contentParts.push({ type: 'text', text: `这是用户 (${userProfile.name}) 的当前头像：` })
-                contentParts.push({ type: 'image_url', image_url: { url: userB64 } })
-            }
-            if (!charAvatarDesc && charB64) {
-                contentParts.push({ type: 'text', text: `这是我 (${char.name}) 的当前头像：` })
-                contentParts.push({ type: 'image_url', image_url: { url: charB64 } })
-            }
-
-            if (contentParts.length > 0) {
-                visualContextMessages.push({ role: 'user', content: contentParts })
-            }
+        // 2. Fallback: Removed to prevent 405 errors and large payloads
+        // If "getOrFetchAvatarDesc" fails (returns null), we simply skip visual context this time.
+        // We do NOT want to send raw Base64 if the API already rejected the improved description request.
+        if (false && !options.skipVisualContext) {
+            // Logic disabled to fix "405 Method Not Allowed" and privacy concerns
         }
     }
 
@@ -1453,8 +1482,10 @@ export async function translateToEnglish(text) {
     if (!text || !/[^\x00-\xff]/.test(text)) return text // No chinese, return as is
 
     const systemPrompt = `You are a professional image generation prompt engineer. 
-Your task is to translate the user's Chinese description into a highly detailed, descriptive English prompt for drawing models like DALL-E 3 or Flux.
-Maintain the original meaning, but add relevant visual keywords (lighting, texture, style) to make it look artistic.
+Your task is to translate the user's Chinese description into a highly detailed, descriptive English prompt.
+IMPORTANT: Do NOT add any style-related keywords (e.g., 'photorealistic', 'realistic', '3D', 'oil painting', 'cinematic'). 
+Focus ONLY on describing the subject, action, clothing, pose, lighting, and composition. 
+Keep the style neutral so it can be defined by the model configuration.
 Strictly output ONLY the English prompt text without any explanations.`
 
     const messages = [
@@ -1465,7 +1496,11 @@ Strictly output ONLY the English prompt text without any explanations.`
     try {
         const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'Translator' }, null])
         if (result.error) return text
-        return result.content || text
+
+        let translated = result.content || text;
+        // Aggressively strip unwanted style keywords causing "oiliness"
+        translated = translated.replace(/\b(photorealistic|realistic|3d|cinematic|oil paiting|hyperrealistic|studio lighting|8k)\b/gi, "");
+        return translated;
     } catch (e) {
         console.error('Translation failed:', e)
         return text
@@ -1759,24 +1794,26 @@ export async function generateImage(prompt) {
     const hasAbs = /\b(abs|muscle|muscular|six pack)\b/.test(p)
 
     // Extreme negative boosters
-    const negativeBoost = "(muscular:1.7), (bulky:1.6), (abs:1.7), (defined muscle:1.6), (six-pack:1.7), (bodybuilder:1.6), (fitness:1.4), huge shoulders, thick arms, muscular chest, (eight-pack:1.4), thick neck, (extra hands:2.0), (merged characters:1.8), (clipping), (messy fingers:1.5), (over-muscular:1.5), brutal, front-facing kiss, (merged faces:1.8), masculine girl, (athletic build:1.2)"
+    const negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.2), (bulky:1.3), (thick neck), (ugly:1.3), (bad anatomy), (extra digits), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.4), (semirealism:1.4), (oil painting), (sketch)"
 
     let enhancedPrompt = ""
-    // Universal Anime Style Base
-    const animeStyleBase = "(anime style:1.5), (flat color:1.2), (cel shading:1.2), (2D:1.5), (clean lines), (illustration:1.2), (no 3D), (no photorealistic), (no realism)"
+    // Universal Anime Style Base - Strictly 2D but with Atmosphere
+    // Reduced "flat color" weight slightly to allow for the nice lighting seen in user feedback.
+    // Added "soft cinematic lighting" to maintain that warm/atmospheric look.
+    const animeStyleBase = "(anime style:1.5), (Japanese anime style:1.4), (flat color:1.1), (cel shading:1.3), (clean distinct lines:1.3), (2D:1.5), (illustration:1.3), (soft cinematic lighting), (beautiful composition), (no 3D), (no realism)"
 
     if (isCouple) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, (two distinct individuals), detailed profiles, sharp lineart`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, (two distinct individuals), romantic atmosphere, highly detailed`
     } else if (isMale) {
-        const muscleStyle = hasAbs
-            ? "(lean muscular build)"
-            : "(slender build)"
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen face: 1.2), ${muscleStyle}, ${prompt}, clean lineart`
+        // Enforce Bishounen / Otome Game Style (Pure 2D)
+        const bodyType = hasAbs ? "(lean athletic build, defined abs)" : "(slender elegant build)";
+        // 'otome game cg' usually implies high quality 2D handsome men
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen face: 1.5), (otome game style: 1.4), (delicate features), (clean shaven), (no beard), ${bodyType}, ${prompt}, sharp focus, detailed eyes, handsome`
     } else if (isFemale || isPerson) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime face: 1.2), (detailed eyes: 1.2), (petite: 1.1), ${prompt}, sharp focus, vibrant colors, clear lineart`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime girl: 1.2), (detailed huge eyes), (soft skin), ${prompt}, sharp focus, vibrant pastel colors, cute`
     } else {
         // Fallback also anime
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, highly detailed, sharp focus, vibrant colors`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, highly detailed, sharp focus, vibrant colors, clear background`
     }
 
     const seed = Math.floor(Math.random() * 1000000)
@@ -1978,7 +2015,10 @@ ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有�
 
     try {
         const result = await _generateReplyInternal([{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true })
-        if (result.error) return []
+        if (result.error) {
+            console.error('[AiService] Batch interaction failed:', result.error)
+            throw new Error(result.error)
+        }
 
         // Parse JSON
         const jsonMatch = result.content.match(/\[[\s\S]*\]/)

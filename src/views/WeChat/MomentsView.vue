@@ -833,27 +833,25 @@ onMounted(() => {
             </div>
 
             <!-- SIGNATURE AND FEED CONTAINER -->
-            <div class="bg-white px-0 pb-10 transition-colors duration-300 feed-container"
-                :class="[filterAuthorId ? 'pt-0' : (momentsStore.unreadCount > 0 ? 'pt-24' : 'pt-10')]">
+            <div class="bg-white px-0 pb-10 transition-colors duration-300 feed-container pt-8">
                 
-                <!-- Signature (Naturally integrated) -->
-                <div v-if="!filterAuthorId" class="px-5 pb-5 text-right cursor-pointer group active:opacity-60 transition-opacity" @click="editUserSignature">
+                <!-- Signature -->
+                <div v-if="!filterAuthorId" class="px-5 pb-6 text-right cursor-pointer group active:opacity-60 transition-opacity" @click="editUserSignature">
                     <span class="text-[12px] text-gray-400 font-medium italic">
                         {{ viewingProfile.signature || '添加个性签名...' }}
                     </span>
                 </div>
 
-            <!-- Interaction Notification Bar (Premium Design) -->
+            <!-- Interaction Notification Bar (Native WeChat Style) -->
             <div v-if="momentsStore.unreadCount > 0 && !filterAuthorId"
-                class="flex justify-center mt-24 mb-4 relative z-10 animate-notification-pop">
-                <div class="bg-[#3e3e3e]/95 backdrop-blur-md text-white px-3 py-1.5 rounded-lg flex items-center gap-3 shadow-[0_8px_30px_rgb(0,0,0,0.3)] cursor-pointer active:scale-95 transition-all border border-white/10 group"
+                class="flex justify-center mb-8 animate-notification-pop">
+                <div class="bg-[#404040] text-white py-2 pl-2 pr-4 rounded-[6px] flex items-center gap-3 cursor-pointer active:bg-[#505050] transition-colors"
                     @click="showNotifications = true">
-                    <div class="w-7 h-7 rounded-md overflow-hidden ring-1 ring-white/20">
+                    <div class="w-8 h-8 rounded-[4px] overflow-hidden bg-gray-600 shrink-0">
                         <img :src="momentsStore.notifications[0]?.actorAvatar" class="w-full h-full object-cover">
                     </div>
-                    <span class="text-[13px] font-bold tracking-wide">{{ momentsStore.unreadCount }} 条新消息</span>
-                    <i
-                        class="fa-solid fa-chevron-right text-[10px] opacity-40 group-hover:translate-x-0.5 transition-transform"></i>
+                    <span class="text-[14px] font-medium tracking-wide">{{ momentsStore.unreadCount }} 条新消息</span>
+                    <i class="fa-solid fa-chevron-right text-[10px] text-gray-400"></i>
                 </div>
             </div>
 
