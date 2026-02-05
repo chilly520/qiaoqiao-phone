@@ -6,12 +6,8 @@ import { useChatStore } from '../stores/chatStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
 
 const router = useRouter()
-import { useWeiboStore } from '../stores/weiboStore'
-import { useChatStore } from '../stores/chatStore'
-import { useWorldBookStore } from '../stores/worldBookStore'
 import { useSettingsStore } from '../stores/settingsStore'
 
-const router = useRouter()
 const weiboStore = useWeiboStore()
 const chatStore = useChatStore()
 const worldBookStore = useWorldBookStore()
