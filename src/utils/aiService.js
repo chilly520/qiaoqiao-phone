@@ -1793,24 +1793,23 @@ export async function generateImage(prompt) {
     const isPerson = isMale || isFemale || isCouple || /\b(person|human|people|face|selfie|character)\b/.test(p)
     const hasAbs = /\b(abs|muscle|muscular|six pack)\b/.test(p)
 
-    // Extreme negative boosters
-    const negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.2), (bulky:1.3), (thick neck), (ugly:1.3), (bad anatomy), (extra digits), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.4), (semirealism:1.4), (oil painting), (sketch)"
+    // Extreme negative boosters - EXPLICITLY ban muscles and exposed chest
+    const negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.8), (bulky:1.8), (thick neck:1.5), (abs:1.8), (exposed chest:1.8), (open shirt:1.5), (pecs:1.8), (bodybuilder:2.0), (buff:1.8), (ugly:1.3), (bad anatomy), (extra digits), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5)"
 
     let enhancedPrompt = ""
-    // Universal Anime Style Base - Strictly 2D but with Atmosphere
-    // Reduced "flat color" weight slightly to allow for the nice lighting seen in user feedback.
-    // Added "soft cinematic lighting" to maintain that warm/atmospheric look.
-    const animeStyleBase = "(anime style:1.5), (Japanese anime style:1.4), (flat color:1.1), (cel shading:1.3), (clean distinct lines:1.3), (2D:1.5), (illustration:1.3), (soft cinematic lighting), (beautiful composition), (no 3D), (no realism)"
+    // Universal Anime Style Base - Strictly 2D Japanese Anime, counter Kolors' thick-paint default
+    const animeStyleBase = "(anime style:1.6), (Japanese anime style:1.5), (light novel illustration:1.4), (clean lineart:1.4), (flat shading:1.3), (2D:1.6), (illustration:1.4), (cel shading:1.3), (pastel colors), (soft lighting), (no thick painting), (no korean manhwa), (no realistic), (no 3D)"
 
     if (isCouple) {
         enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, (two distinct individuals), romantic atmosphere, highly detailed`
     } else if (isMale) {
-        // Enforce Bishounen / Otome Game Style (Pure 2D)
-        const bodyType = hasAbs ? "(lean athletic build, defined abs)" : "(slender elegant build)";
-        // 'otome game cg' usually implies high quality 2D handsome men
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen face: 1.5), (otome game style: 1.4), (delicate features), (clean shaven), (no beard), ${bodyType}, ${prompt}, sharp focus, detailed eyes, handsome`
+        // STRICT Bishounen aesthetic: slender, elegant, NO muscles, CLOTHED
+        // Force clothing and ban exposed skin unless explicitly requested
+        const clothingEnforcement = hasAbs ? "" : "(fully clothed:1.4), (wearing shirt:1.3), (covered chest:1.3), "
+        const bodyType = hasAbs ? "(lean athletic build:1.2)" : "(slender elegant build:1.5), (thin:1.3), (no muscles:1.5), (delicate frame:1.3)"
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen:1.6), (pretty boy:1.4), (otome game cg:1.5), (delicate features:1.4), (clean shaven:1.3), (no facial hair:1.3), ${clothingEnforcement}${bodyType}, (soft expression), ${prompt}, sharp focus, detailed sparkling eyes, handsome, elegant`
     } else if (isFemale || isPerson) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime girl: 1.2), (detailed huge eyes), (soft skin), ${prompt}, sharp focus, vibrant pastel colors, cute`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime girl: 1.3), (detailed huge eyes), (soft skin), ${prompt}, sharp focus, vibrant pastel colors, cute`
     } else {
         // Fallback also anime
         enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, highly detailed, sharp focus, vibrant colors, clear background`
