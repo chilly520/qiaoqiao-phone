@@ -867,7 +867,8 @@ const handlePanelAction = (type) => {
             // Trigger AI to respond to call
             chatStore.addMessage(chatData.value.id, {
                 role: 'system',
-                content: `[System: ${chatStore.userName || '用户'} 正在给你打语音电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]`
+                content: `【收到来自 ${chatStore.userName || '用户'} 的语音通话邀请...】`,
+                hidden: true // Keep protocol hint out of chat UI
             })
             // Manually trigger the generation
             chatStore.sendMessageToAI(chatData.value.id)
@@ -879,7 +880,8 @@ const handlePanelAction = (type) => {
             // Trigger AI to respond to call
             chatStore.addMessage(chatData.value.id, {
                 role: 'system',
-                content: `[System: ${chatStore.userName || '用户'} 正在给你打视频电话... 请决定是否接听。接听回复[接听]，拒绝/忙线回复[拒绝]]`
+                content: `【收到来自 ${chatStore.userName || '用户'} 的视频通话邀请...】`,
+                hidden: true // Keep protocol hint out of chat UI
             })
             // Manually trigger the generation
             chatStore.sendMessageToAI(chatData.value.id)
@@ -1201,6 +1203,13 @@ const ttsQueue = ref([]);
 const isSpeaking = ref(false);
 const spokenMsgIds = new Set(); // 已朗读的消息ID，避免重复朗读
 
+// Sync with callStore for animations
+watch(isSpeaking, (val) => {
+    if (callStore.status !== 'none') {
+        callStore.isSpeaking = val
+    }
+})
+
 // Toast System
 const toastVisible = ref(false);
 const toastMessage = ref('');
@@ -1324,15 +1333,9 @@ const processQueue = () => {
 
 // ... (skipping context)
 
-// Monitor Call Transcript for TTS (Since intercepted messages don't hit msgs list)
-watch(() => callStore.transcript.length, (newLen, oldLen) => {
-    if (newLen > oldLen) {
-        const lastLine = callStore.transcript[newLen - 1];
-        if (lastLine && lastLine.role === 'ai' && lastLine.content) {
-            speakMessage(lastLine.content);
-        }
-    }
-});
+// MONITORING REMOVED: chatStore.js now handles call-specific TTS directly
+// to avoid double-reading and ensure correct JSON extraction.
+
 
 const getCleanContent = (contentRaw) => {
     if (!contentRaw) return '';
@@ -2481,8 +2484,21 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     <div class="flex items-center gap-1.5 mt-0.5">
 
 
-                        <!-- Other Statuses (Only show if no active call) -->
-                        <template v-if="callStore.status === 'none'">
+                        <!-- Call Status or Other Statuses -->
+                        <div v-if="callStore.status !== 'none'" class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full animate-pulse" 
+                                :class="callStore.status === 'ended' ? 'bg-gray-400' : 'bg-[#00df6c]'"></div>
+                            <span class="text-[10px] truncate max-w-[150px] font-medium"
+                                :class="callStore.status === 'ended' ? 'text-gray-400' : 'text-green-600'">
+                                {{ 
+                                    callStore.status === 'dialing' ? '正在呼叫...' : 
+                                    callStore.status === 'active' ? '正在通话...' : 
+                                    callStore.status === 'ended' ? '通话结束' : 
+                                    '正在通话'
+                                }}
+                            </span>
+                        </div>
+                        <template v-else>
                             <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
                                 :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'"></div>
                             <span class="text-[10px] text-gray-500 truncate max-w-[150px] font-medium">{{
@@ -2520,8 +2536,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 </div>
             </div>
 
-            <!-- Call Status (New Location: Top of Chat) -->
-            <CallStatusBar />
+
+            <!-- Messages Area -->
 
             <!-- Messages Area -->
             <div class="flex-1 overflow-y-auto px-4 pt-4 pb-10 flex flex-col gap-4 relative z-10" ref="msgContainer"
@@ -2594,7 +2610,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             </div>
 
             <!-- Input Area (Extracted) -->
-            <ChatInputBar v-if="!isMultiSelectMode && callStore.status !== 'active'" ref="chatInputBarRef"
+            <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef"
                 :currentQuote="currentQuote" :chatData="chatData" :isTyping="chatStore.isTyping"
                 :musicVisible="musicStore.playerVisible" :searchEnabled="chatData?.searchEnabled"
                 @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"

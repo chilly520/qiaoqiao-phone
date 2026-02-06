@@ -7,7 +7,7 @@ import { useWalletStore } from '../stores/walletStore'
 import { weatherService } from './weatherService'
 import { batteryMonitor } from './batteryMonitor'
 
-import { SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
+import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
 import { RequestQueue } from './ai/requestQueue'
 
 const apiQueue = new RequestQueue(3, 60000); // 3 requests per 60 seconds (1 minute)
@@ -139,17 +139,9 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
     return null;
 }
 
-export async function generateReply(messages, char, abortSignal) {
-    const loggerStore = useLoggerStore()
-    const config = useSettingsStore().apiConfig || {}
-    const stickerStore = useStickerStore()
-    const worldBookStore = useWorldBookStore()
-    const momentsStore = useMomentsStore()
-    const walletStore = useWalletStore()
-
+export async function generateReply(messages, char, abortSignal, options = {}) {
     // Wrapper to use Queue
-    // Pass abortSignal as 3rd arg to internal function
-    return apiQueue.enqueue(_generateReplyInternal, [messages, char, abortSignal], abortSignal);
+    return apiQueue.enqueue(_generateReplyInternal, [messages, char, abortSignal, options], abortSignal);
 }
 
 /**
@@ -435,6 +427,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
     }
 
+    // --- System Prompt Construction ---
+
+
     // 构建 System Message
     // Memory Logic
     let memoryText = ''
@@ -451,6 +446,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     // 如果传入的消息中已经包含了 System Prompt (例如朋友圈生成)，则跳过默认模板
     let systemMsg = null
     const hasCustomSystem = messages && messages.length > 0 && messages[0].role === 'system'
+    const isProactiveCall = options.isProactiveCall
 
     if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
@@ -470,13 +466,25 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             : ''
 
         // Append all to environmental context
-        const finalEnvContext = locationContext + userLocText + batteryContext + (char.searchEnabled ? '\n【联网搜索】已开启。你可以访问当前实时信息和网络数据。' : '')
+        const finalEnvContext = locationContext + userLocText + batteryContext + (char.searchEnabled ? '\n【联网搜索】已开启。' : '')
+
+        // CRITICAL OPTIMIZATION: For proactive call initiation, prune the character description massively to save tokens and prevent model refusal.
+        const prunedChar = { ...char }
+        if (isProactiveCall) {
+            // Keep ONLY the core identity and the call instruction
+            prunedChar.description = `你是${char.name}。当前处于[主动拨号模式]。你决定立刻拨打语音或视频电话给用户。`
+        }
+
+        const promptContent = options.isCall
+            ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext)
+            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext)
 
         systemMsg = {
             role: 'system',
-            content: SYSTEM_PROMPT_TEMPLATE(char || {}, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext)
+            content: promptContent
         }
     }
+
 
     // --- Helper: Resolve Image URL to Base64 (Vision Proxy) ---
     const resolveToBase64 = async (url) => {
@@ -911,7 +919,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             messages: finalMessages,
             temperature: Number(temperature) || 0.7,
             max_tokens: safeMaxTokens,
-            stream: false,
+            stream: !!options.onChunk,
             // [ST Feature] Support SillyTavern-style advanced parameters
             // Only add if they are present in config AND deviate from defaults (to avoid 400 errors)
             // [FIX] Use Number(...) casting to ensure string values from localStorage don't fail the check
@@ -999,10 +1007,44 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         let data;
 
-        if (response.ok) {
-            data = await response.json().catch(() => null); // Clone stream safety not needed here as we await json
-            // Clone check: If we read json here, we can't read text in !ok block easily if we shared logic.
-            // But here structure is separated.
+        if (reqBody.stream && response.ok) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let fullContent = "";
+            let done = false;
+
+            while (!done) {
+                const { value, done: readerDone } = await reader.read();
+                done = readerDone;
+                if (value) {
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split("\n");
+                    for (const line of lines) {
+                        if (line.startsWith("data: ")) {
+                            const dataStr = line.replace(/^data: /, "").trim();
+                            if (dataStr === "[DONE]") break;
+                            try {
+                                const json = JSON.parse(dataStr);
+                                const delta = json.choices?.[0]?.delta?.content || "";
+                                if (delta) {
+                                    fullContent += delta;
+                                    if (options.onChunk) options.onChunk(delta, fullContent);
+                                }
+                            } catch (e) { /* ignore partial json */ }
+                        }
+                    }
+                }
+            }
+            // Create a mock data object for the rest of the parsing pipeline
+            data = {
+                choices: [{
+                    message: { content: fullContent },
+                    finish_reason: 'stop'
+                }],
+                usage: { total_tokens: 0 }
+            };
+        } else if (response.ok) {
+            data = await response.json().catch(() => null);
             console.log('[AI Response Raw]', data)
         }
 
@@ -1070,7 +1112,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 throw new Error(errorMsg)
             }
         }
-        // else data is already set above
+        if (!data) throw new Error('API 响应数据为空或解析失败')
 
         // Log Full Response (Success)
         useLoggerStore().addLog('AI', 'AI响应 (Response)', data)
@@ -1079,12 +1121,40 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         let rawContent = ''
 
         if (data.choices && data.choices.length > 0) {
-            rawContent = data.choices[0].message?.content || ''
+            const message = data.choices[0].message;
+            rawContent = message?.content || '';
+
+            // Fallback: If content is empty but tool_calls exist (likely thinking/search)
+            if (!rawContent && message?.tool_calls && message.tool_calls.length > 0) {
+                const thoughtCall = message.tool_calls.find(tc =>
+                    tc.function?.name === 'thought' ||
+                    tc.function?.name === 'search' ||
+                    tc.type === 'thought'
+                );
+                if (thoughtCall) {
+                    try {
+                        const args = JSON.parse(thoughtCall.function.arguments);
+                        rawContent = args.thought || args.query || args.thinking || '';
+                    } catch (e) {
+                        rawContent = thoughtCall.function?.arguments || '';
+                    }
+                }
+            }
         } else if (data.candidates && data.candidates.length > 0) {
             // Google/Gemini Format
-            const parts = data.candidates[0].content?.parts || []
-            if (parts.length > 0) {
-                rawContent = parts[0].text || ''
+            const contents = data.candidates[0].content || {};
+            const parts = contents.parts || [];
+
+            // Check for text parts
+            const textPart = parts.find(p => p.text);
+            if (textPart) {
+                rawContent = textPart.text;
+            } else {
+                // Check for reasoning/thought parts (Gemini 2.0 Thinking)
+                const thoughtPart = parts.find(p => p.thought || p.reasoning_content);
+                if (thoughtPart) {
+                    rawContent = thoughtPart.thought || thoughtPart.reasoning_content;
+                }
             }
         }
 
@@ -1104,6 +1174,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     }
                 }
             }
+            // If it's a tool call we couldn't parse, just say it's processing
+            if (data.choices?.[0]?.message?.tool_calls) {
+                return { content: '正在思考中...', innerVoice: null, raw: JSON.stringify(data.choices[0].message.tool_calls) }
+            }
             return {
                 error: 'AI返回了空内容，请检查日志 (Raw Data)',
                 request: {
@@ -1111,6 +1185,20 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     endpoint,
                     headers: reqHeaders,
                     body: reqBody
+                }
+            }
+        }
+
+        // --- Call Protocol Enforcement (Aggressive Extraction) ---
+        if (options.isCall && rawContent) {
+            // Find the deepest/last JSON block that contains 'speech'
+            const jsonBlocks = [...rawContent.matchAll(/\{[\s\S]*?\}/g)];
+            for (let i = jsonBlocks.length - 1; i >= 0; i--) {
+                const block = jsonBlocks[i][0];
+                if (block.includes('"speech"') || block.includes('"status"') || block.includes('"action"')) {
+                    rawContent = `[CALL_START]\n${block}\n[CALL_END]`;
+                    console.log('[AI Service] Call Protocol: Extracted and wrapped JSON block');
+                    break;
                 }
             }
         }
@@ -1131,7 +1219,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         let ivSegment = ivMatch ? ivMatch[1].trim() : null
 
         // FALLBACK: 如果没找到标签，但文本里有看起来像心声的 JSON 块
-        if (!ivSegment && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"'))) {
+        // [FIX] Prevent Call Protocol JSON from being re-detected as Inner Voice
+        const isCallProtocol = content.includes('[CALL_START]') && content.includes('[CALL_END]');
+
+        if (!ivSegment && !isCallProtocol && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"'))) {
             // 尝试寻找最后一个包含关键词的大括号块
             const blocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
             for (let i = blocks.length - 1; i >= 0; i--) {
@@ -1548,14 +1639,35 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name }, null])
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name }, null, { skipVisualContext: true }])
         if (result.error) throw new Error(result.error)
 
-        // Parse the JSON from AI response
-        const jsonMatch = result.content.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) throw new Error('AI Response is not a valid JSON')
+        // Parse the JSON from AI response with robust cleaning
+        let jsonStr = result.content.trim()
 
-        const data = JSON.parse(jsonMatch[0])
+        // Remove markdown code blocks if present
+        jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+
+        // Extract JSON object
+        const objectStartIndex = jsonStr.indexOf('{')
+        const objectEndIndex = jsonStr.lastIndexOf('}')
+
+        if (objectStartIndex === -1 || objectEndIndex === -1 || objectEndIndex <= objectStartIndex) {
+            console.error('[Moment] Cannot find JSON object in response:', jsonStr.substring(0, 500))
+            throw new Error('AI Response does not contain a valid JSON object')
+        }
+
+        jsonStr = jsonStr.substring(objectStartIndex, objectEndIndex + 1)
+
+        let data
+        try {
+            data = JSON.parse(jsonStr)
+        } catch (parseError) {
+            console.error('[Moment] JSON Parse Error:', parseError.message)
+            console.error('[Moment] Attempted to parse:', jsonStr.substring(0, 500))
+            throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`)
+        }
+
         const finalResult = {
             content: data.content,
             location: data.location || '',
@@ -1587,21 +1699,40 @@ export async function generateBatchMomentsWithInteractions(options) {
     const { characters, worldContext, customPrompt, userProfile, historicalMoments = [], count = 3 } = options
 
     // 1. Build character list with recent chat snippets for context
+    // 1. Build character list with recent chat snippets for context
     const charList = characters.map((c, idx) => {
         const bio = localStorage.getItem(`char_bio_${c.id}`) || ''
-        const bioText = bio ? `\n   个人简介：${bio}` : ''
-        const chatText = c.recentChats ? `\n   最近聊天碎片: ${c.recentChats.substring(0, 600)}` : ''
+        const bioText = bio ? `\n   个人简介/详细背景：${bio}` : ''
+
+        // 获取该角色对应的用户设定（如果有）
+        const userSpecificName = c.userName || userProfile?.name || '用户'
+        const userSpecificPersona = c.userPersona ? `\n   【用户（${userSpecificName}）在此角色剧本中的身份/设定】：${c.userPersona}` : ''
+
+        const chatText = c.recentChats ? `\n   最近 50 条聊天碎片: ${c.recentChats.substring(0, 3000)}` : ''
         const personalHistoryText = c.personalHistory ? `\n   TA最近发过：${c.personalHistory}` : ''
-        return `${idx + 1}. 【${c.name}】(ID: ${c.id})\n   核心人设：${c.persona.substring(0, 600)}${bioText}${chatText}${personalHistoryText}`
+
+        // 获取表情包信息
+        const emojiList = c.emojis && c.emojis.length > 0
+            ? `\n   可用表情包(在内容中使用 [表情包:名字] 插入): ${c.emojis.map(e => e.name).join(', ')}`
+            : ''
+
+        return `${idx + 1}. 【${c.name}】(ID: ${c.id})
+   核心人设：${c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}${emojiList}
+   --- 
+   当前与用户关系：${c.name} 称呼用户为“${userSpecificName}”${chatText}${personalHistoryText}`
     }).join('\n\n')
 
     const now = new Date()
     const weekDays = ['日', '一', '二', '三', '四', '五', '六']
     const currentVirtualTime = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 星期${weekDays[now.getDay()]}`
 
-    // 2. Build explicit recent history to avoid repetition
+    // 2. Build explicit recent history to allow "Ecosystem Interactions"
     const historyText = historicalMoments.length > 0
-        ? "\n【最近朋友圈已发布内容（请勿重复这些内容或风格）】\n" + historicalMoments.map(m => `- ${m.authorName}: ${m.content}`).join('\n')
+        ? "\n【最近 20 条朋友圈现状（请分析后决定是否进行互动，如回复评论、补赞、@-用户点赞等）】\n" + historicalMoments.map(m => {
+            const commentsStr = (m.comments || []).map(c => `   - [评论] ${c.authorName}: ${c.content}`).join('\n')
+            const likesStr = (m.likes || []).join(', ')
+            return `动态ID: ${m.id}\n作者: ${m.authorName}\n内容: ${m.content}\n点赞: [${likesStr}]\n评论区:\n${commentsStr || '   (暂无评论)'}`
+        }).join('\n\n')
         : ""
 
     // Include user's bio and pinned moments if available
@@ -1612,89 +1743,163 @@ export async function generateBatchMomentsWithInteractions(options) {
     }
     if (userProfile?.persona) userContextText += `\n背景设定：${userProfile.persona}`
 
+    // 3. World Context & Custom Prompt
+    const worldBookText = worldContext ? `\n\n【世界观设定 (参考以下信息生成符合设定的内容)】\n${worldContext}` : ""
+    const userCustomPrompt = customPrompt ? `\n\n【用户的特别生成要求 (必须严格执行)】\n${customPrompt}` : ""
+
     const systemPrompt = `你现在是“朋友圈拟真生态引擎”。当前虚拟时间：${currentVirtualTime}。
 
 【备选发帖角色】
-${charList}
+${charList}${worldBookText}${userCustomPrompt}
 
 ${historyText}
 ${userContextText}
-    
+
 【核心任务】
-请从列表中挑选角色，生成 ${count} 条全新的、富有生活感的朋友圈动态。
+1. **生成新动态**：从列表中挑选角色，生成 ${count} 条全新的、富有生活感的朋友圈动态。
+2. **生态互动**：观察【最近 20 条朋友圈现状】，让相关的角色对 these 旧动态进行互动。包括：
+   - **动态作者回复评论**：如果有人评论了作者的动态，作者应进行回复。
+   - **角色互评**：角色 B 刷到了角色 A 的旧动态，进行评论。
+   - **@-用户**：在旧动态评论区喊话用户（如：“@${userProfile?.name || '用户'} 来看看这个”）。
+   - **补赞**：对还没点赞的旧动态进行点赞。
 
-【生成准则：消除雷同，增加深度】
-1. **参考历史，拒绝重复**：仔细阅读“最近已发布内容”和各角色的“TA最近发过”。严禁内容相似。
-2. **个人话题多样性**：同一个角色严禁连续发相同主题的内容。如果TA最近发过“努力工作”，这次请发“生活碎片”、“深夜emo”、“运动健康”或“对某事的看法”。
-3. **结合聊天上下文**：如果角色有“最近聊天碎片”，动态内容应与聊天话题产生关联（如：刚聊完出差，朋友圈发个行李箱）。
-4. **角色差异化**：每个角色的风格必须严格区分。
-5. **社交互动**：每条动态生成 3-6 个自然的点赞/评论。点赞和评论者必须是列表角色或各种有趣的虚拟NPC。
-6. **绝对禁止**：严禁代表“User”或“${userProfile?.name || '我'}”生成任何评论。
-
-【输出格式】必须是一个 JSON 数组：
+【输出格式】必须是一个 JSON 对象：
 \`\`\`json
-[
-  {
-    "authorId": "角色ID",
-    "content": "内容...",
-    "mentions": [],
-    "location": "地点",
-    "imagePrompt": "英文生图提示词",
-    "imageDescription": "图片描述",
-    "interactions": [
-      { "type": "comment", "authorName": "名字", "content": "内容", "isVirtual": true/false }
-    ]
-  }
-]
+{
+  "newMoments": [
+    {
+      "authorId": "角色ID",
+      "content": "内容（可包含 [表情包:名字] 和 @提及）",
+      "mentions": [],
+      "location": "地点",
+      "imagePrompts": ["英文生图提示词1", "英文生图提示词2"],
+      "imageDescriptions": ["描述1", "描述2"],
+      "interactions": [
+        { "type": "comment", "authorName": "名字", "content": "内容", "isVirtual": true/false }
+      ]
+    }
+  ],
+  "ecosystemUpdates": [
+    {
+      "momentId": "旧动态的ID",
+      "newInteractions": [
+        { "type": "comment", "authorName": "名字", "content": "内容", "replyTo": "被回复者名字", "isVirtual": true/false },
+        { "type": "like", "authorName": "名字", "isVirtual": true/false }
+      ]
+    }
+  ]
+}
 \`\`\`
-直接输出协议 JSON 代码块，不要废话。`
+
+【生成细节指南】
+1. **多图配比**：根据动态内容决定图片数量（微信常见配图数为 0, 1, 2, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。如果不需要图片，则 \`imagePrompts\` 为空数组。
+2. **图文契合**：每一张图片的 \`imagePrompts\` 都要与 \`content\` 紧密相关且风格统一。
+3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包:名字]。评论中也可以使用。杜绝无意义的 emoji 堆砌。
+4. **@-提及**：在 content 或评论中合适的位置使用 @名字。
+`
 
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
         const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'MomentsGenerator' }, null, { skipVisualContext: true }])
-        if (result.error) throw new Error(result.error)
+        if (!result || result.error) throw new Error(result?.error || 'AI 返回内容为空')
 
-        // Parse JSON array from AI response
-        // Parse JSON array from AI response with cleaner cleaning
-        let jsonStr = result.content
-        const jsonMatch = jsonStr.match(/\[\s*\{[\s\S]*\}\s*\]/)
-        if (!jsonMatch) {
-            // Fallback for cases where it might just return the array not the codeblock
-            const arrayMatch = jsonStr.substring(jsonStr.indexOf('['), jsonStr.lastIndexOf(']') + 1)
-            if (!arrayMatch || arrayMatch.length < 2) throw new Error('AI Response is not a valid JSON array')
-            jsonStr = arrayMatch
-        } else {
-            jsonStr = jsonMatch[0]
+        // Robust content checking
+        const rawContent = result.content || ''
+        let jsonStr = rawContent.trim()
+        if (!jsonStr) throw new Error('AI 返回内容为空串')
+
+        // Remove markdown code blocks if present
+        jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+
+        // Try to extract the JSON object or array
+        const startBrace = jsonStr.indexOf('{')
+        const startBracket = jsonStr.indexOf('[')
+
+        // Find the earlier start marker
+        let startIndex = -1
+        let endIndex = -1
+
+        if (startBrace !== -1 && (startBracket === -1 || startBrace < startBracket)) {
+            startIndex = startBrace
+            endIndex = jsonStr.lastIndexOf('}')
+        } else if (startBracket !== -1) {
+            startIndex = startBracket
+            endIndex = jsonStr.lastIndexOf(']')
         }
 
-        const momentsData = JSON.parse(jsonStr)
+        if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+            console.error('[Batch Moments] Cannot find JSON container in response:', jsonStr.substring(0, 500))
+            throw new Error('AI Response does not contain a valid JSON container')
+        }
+
+        jsonStr = jsonStr.substring(startIndex, endIndex + 1)
+
+        let parsedData
+        try {
+            parsedData = JSON.parse(jsonStr)
+        } catch (parseError) {
+            console.error('[Batch Moments] JSON Parse Error:', parseError.message)
+            console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
+            throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`)
+        }
+
+        // Support both old array format and new object format
+        let momentsData = []
+        let ecosystemUpdates = []
+
+        if (Array.isArray(parsedData)) {
+            momentsData = parsedData
+        } else if (parsedData.newMoments) {
+            momentsData = parsedData.newMoments
+            ecosystemUpdates = parsedData.ecosystemUpdates || []
+        } else if (parsedData.moments) {
+            momentsData = parsedData.moments
+            ecosystemUpdates = parsedData.ecosystemUpdates || []
+        } else {
+            // Safe Fallback: Find the first array property in the object, 
+            // or assume it's just the moment data if AI completely ignored the requested structure
+            momentsData = Object.values(parsedData).find(v => Array.isArray(v)) || (Array.isArray(parsedData) ? parsedData : [])
+            ecosystemUpdates = []
+        }
 
         // Process each moment: generate images if needed
         const processedMoments = []
         for (const data of momentsData) {
+            let authorId = data.authorId
+            if (authorId && typeof authorId === 'string') {
+                authorId = authorId.replace(/^(char|user)_/i, '')
+            }
+
             const processed = {
-                authorId: data.authorId,
+                authorId: authorId,
                 content: data.content,
                 location: data.location || '',
                 images: [],
                 imageDescriptions: [],
                 html: data.html || null,
-                mentions: data.mentions || [], // Extract mentions
+                mentions: data.mentions || [],
                 interactions: data.interactions || []
             }
 
-            // Generate image only if imagePrompt is provided
-            if (data.imagePrompt && data.imagePrompt.trim()) {
-                try {
-                    const imageUrl = await generateImage(data.imagePrompt)
-                    processed.images.push(imageUrl)
-                    if (data.imageDescription) {
-                        processed.imageDescriptions.push(data.imageDescription)
+            // 1. Handle legacy single imagePrompt
+            const prompts = data.imagePrompts || (data.imagePrompt ? [data.imagePrompt] : [])
+            const descriptions = data.imageDescriptions || (data.imageDescription ? [data.imageDescription] : [])
+
+            if (prompts.length > 0) {
+                // Batch limit to 9 for safety
+                const limitedPrompts = prompts.slice(0, 9)
+                for (let i = 0; i < limitedPrompts.length; i++) {
+                    try {
+                        const imgUrl = await generateImage(limitedPrompts[i])
+                        processed.images.push(imgUrl)
+                        if (descriptions[i]) {
+                            processed.imageDescriptions.push(descriptions[i])
+                        }
+                    } catch (e) {
+                        console.warn(`[Batch Moments] Multi-image failed at index ${i}:`, e)
                     }
-                } catch (e) {
-                    console.warn('[Batch Moments] Image generation failed for:', data.imagePrompt, e)
                 }
             }
 
@@ -1708,14 +1913,17 @@ ${userContextText}
                         interaction.content = interaction.content.replace(/User/g, userName)
                     }
 
-                    // Fix: Sanitize numeric/ID-like authorNames from AI hallucination
+                    // Fix: Sanitize numeric/ID-like authorNames or IDs from AI hallucination
                     if (interaction.authorName) {
                         if (/^\d+$/.test(interaction.authorName)) {
                             interaction.authorName = '热心群友'
                         } else if (interaction.authorName.startsWith('char_') || interaction.authorName.startsWith('user_')) {
-                            // Attempt to strip prefix if AI leaks variables like char_linshen
                             interaction.authorName = interaction.authorName.replace(/^(char|user)_/i, '')
                         }
+                    }
+
+                    if (interaction.authorId && typeof interaction.authorId === 'string') {
+                        interaction.authorId = interaction.authorId.replace(/^(char|user)_/i, '')
                     }
 
                     // Fix: Sanitize numeric/ID-like replyTo
@@ -1740,7 +1948,41 @@ ${userContextText}
             processedMoments.push(processed)
         }
 
-        return processedMoments
+        // Sanitize ecosystemUpdates as well
+        if (Array.isArray(ecosystemUpdates)) {
+            ecosystemUpdates.forEach(update => {
+                if (update.newInteractions) {
+                    update.newInteractions.forEach(inter => {
+                        const userName = userProfile?.name || '用户'
+                        if (inter.replyTo === 'User' || inter.replyTo === '用户' || inter.replyTo === '我') {
+                            inter.replyTo = userName
+                        }
+                        if (inter.content && inter.content.includes('User')) {
+                            inter.content = inter.content.replace(/User/g, userName)
+                        }
+
+                        // Sanitize replyTo names from AI hallucination
+                        if (inter.replyTo) {
+                            if (/^\d+$/.test(inter.replyTo)) {
+                                inter.replyTo = '朋友'
+                            } else if (inter.replyTo.startsWith('char_') || inter.replyTo.startsWith('user_')) {
+                                inter.replyTo = inter.replyTo.replace(/^(char|user)_/i, '')
+                            }
+                        }
+
+                        // Patch virtual IDs if missing
+                        if (inter.isVirtual && !inter.authorId) {
+                            inter.authorId = `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                        }
+                    })
+                }
+            })
+        }
+
+        return {
+            newMoments: processedMoments,
+            ecosystemUpdates: ecosystemUpdates
+        }
 
     } catch (e) {
         console.error('[aiService] generateBatchMomentsWithInteractions failed', e)
@@ -1974,24 +2216,24 @@ export async function generateBatchInteractions(moment, charInfos, historicalMom
 
     // 简化现有角色信息，减少Token
     const friendsList = charInfos.map((c, index) => {
+        const uName = c.userName || userProfile?.name || '用户'
+        const uPersona = c.userPersona ? ` | 用户身份建议: ${c.userPersona}` : ''
         const chatSnippet = c.recentChats ? ` | 最近聊天: ${c.recentChats.substring(0, 300).replace(/\n/g, ' ')}` : ''
-        return `${index + 1}. ${c.name}, 人设: ${c.persona.substring(0, 100)}...${chatSnippet}`
+        const emojiHint = c.emojis && c.emojis.length > 0 ? ` | 可用表情包(插入格式 [表情包:名字]): ${c.emojis.map(e => e.name).join(', ')}` : ''
+        return `${index + 1}. ${c.name}, 人设: ${c.persona.substring(0, 100)}...${uPersona}${emojiHint}${chatSnippet}`
     }).join('\n')
 
     let userInformation = ""
     if (userProfile.name) {
-        userInformation = `\n【当前用户（你互动的对象）资料】\n名字: ${userProfile.name}\n`
+        userInformation = `\n【当前通用用户（你互动的对象）资料】\n名字: ${userProfile.name}\n`
         if (userProfile.signature) userInformation += `个性签名: ${userProfile.signature}\n`
-        if (userProfile.pinnedMoments?.length > 0) {
-            userInformation += `置顶动态: \n` + userProfile.pinnedMoments.map((m, i) => `- ${m.content}`).join('\n') + "\n"
-        }
         userInformation += `背景设定: ${userProfile.persona || '一位普通用户'}\n`
     }
 
     const systemPrompt = `你现在是“朋友圈拟真生态引擎”。
 你的任务是为以下动态模拟出真实的社交互动（包含点赞、评论和多级回复）。
 
-【现有角色】
+【现有角色及对应用户身份】
 ${friendsList}
 ${userInformation}
 
@@ -2006,12 +2248,13 @@ ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有�
 1. **互动组合**：
    - 生成 5-15 个 **like** (点赞)。
    - 生成 3-6 条 **comment** (直接评论) 或 **reply** (针对已有评论的回复)。
-2. **多样性要求**：
-   - 优先选择现有好友。
-   - 如果好友不足，**请必须**虚构 2-4 个各具特色的虚拟 NPC（如：隔壁同事、老同学、楼下保安等）。
-   - 禁止让同一个角色发表多条独立评论。
-3. **内容风格**：简短、真实、口语化。像真人微信对话，不要使用 AI 辅助感强烈的客套话。
-4. **绝对禁止**：严禁代表“用户”或“${userProfile.name}”生成任何内容。
+2. **严守人设背景**：
+   - **绝对禁止冲突**：如果角色人设提到“父母双亡/孤儿”，严禁虚构“爸爸/妈妈/亲戚”这类 NPC 进行评论。
+   - **身份一致性**：评论语气必须符合角色与用户之间的【用户身份设定】。
+3. **多样性要求**：
+   - 优先选择现有好友。虚构 NPC 应符合发帖人的社会圈层。
+4. **内容风格**：简短、真实、口语化。像真人微信对话。
+5. **绝对禁止**：严禁代表“用户”或“${userProfile.name}”生成任何内容。
 
 【输出格式】直接返回 JSON 数组：
 [
@@ -2065,22 +2308,22 @@ ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有�
  * @param {String} historicalContext 可选的历史背景字符串
  */
 export async function generateMomentComment(charInfo, moment, historicalContext = "") {
-    const { name, persona, worldContext } = charInfo
-    const { authorName, content, visualContext } = moment
+    const uName = charInfo.userName || '用户'
+    const uPersona = charInfo.userPersona ? `\n用户在此角色剧本中的设定：${charInfo.userPersona}` : ''
 
     const systemPrompt = `你现在是【${name}】。
-    你的设定：${persona}。
+    你的设定：${persona}。${uPersona}
 ${worldContext ? `当前世界背景：${worldContext}` : ''}
 ${historicalContext ? `\n${historicalContext}` : ''}
 
 【任务】
-    请对【${authorName}】发布的一条朋友圈进行评论。
+    请对【${authorName}】发布的一条朋友圈进行评论。注意：如果人设提及孤儿/父母双亡，严禁生成任何以家人身份自居的内容。
     朋友圈内容：${content}
     图片 / 视觉内容：${visualContext || '无图片'}
 
 【要求】
     1. 回复要简短、真实（类似微信评论），字数控制在30字以内。
-    2. 根据你和对方的关系决定语气（调侃、关心、撒娇等）。
+    2. 根据你和对方的关系（参考用户在此剧本中的设定）决定语气。
     3. 如果朋友圈内容或之前的历史动态很有意思，请结合背景进行吐槽、互动或接梗。
     4. 如果有图片描述，请尝试提及图片中的元素以增强“视觉感”。
     5. ** @功能支持 **：你可以通过 '@名字' 提醒特定的人阅读评论。
@@ -2109,11 +2352,11 @@ ${historicalContext ? `\n${historicalContext}` : ''}
  * @param {Object} targetComment { authorName, content }
  */
 export async function generateReplyToComment(charInfo, moment, targetComment) {
-    const { name, persona, worldContext } = charInfo
-    const { authorName, content, visualContext } = moment
+    const uName = charInfo.userName || '用户'
+    const uPersona = charInfo.userPersona ? `\n用户在此角色剧本中的身份设定：${charInfo.userPersona}` : ''
 
     const systemPrompt = `你现在是【${name}】。
-    你的设定：${persona}。
+    你的设定：${persona}。${uPersona}
 ${worldContext ? `当前世界背景：${worldContext}` : ''}
 
 【任务】
@@ -2123,14 +2366,15 @@ ${worldContext ? `当前世界背景：${worldContext}` : ''}
 
 【要求】
     1. 回复要简短、口语化（类似微信回复），字数控制在20字以内。
-    2. 即使是回复，也是公开展示在朋友圈下方的，请保持得体或有趣的互动风格。
-    3. ** @功能支持 **：你可以通过 '@名字' 提醒阅读。
-    4. 直接输出回复内容，不要包含任何标签。`
+    2. 身份契合：回复内容必须符合你与对方的关系（参考上面的设定）。
+    3. 逻辑一致：严禁出现违背人设背景（如孤儿设定下管别人叫妈）的回复。
+    4. ** @功能支持 **：你可以通过 '@名字' 提醒阅读。
+    5. 直接输出回复内容，不要包含任何标签。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name }, null)
+        const result = await _generateReplyInternal(messages, { name }, null, { skipVisualContext: true })
         if (result.error) return null
 
         // Cleanup
@@ -2150,6 +2394,7 @@ ${worldContext ? `当前世界背景：${worldContext}` : ''}
  */
 export async function generateCompleteProfile(character, userProfile = {}, options = { includeMoments: true, includeSocial: true, includeArchive: true }) {
     const userName = userProfile.name || '我'
+    const uPersona = character.userPersona ? `\n我在玩家剧本中的身份设定：${character.userPersona}` : ''
     const { includeMoments, includeSocial, includeArchive } = options;
 
     const tasks = [];
@@ -2161,7 +2406,7 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
 任务：为角色生成以下内容：${tasks.join('、')}。
 
 角色姓名：${character.name}
-基础人设：${character.prompt || '无'}
+基础人设：${character.prompt || '无'}${uPersona}
 当前用户：${userName}
 
 【输出格式】请严格返回以下结构的 JSON：
@@ -2178,17 +2423,18 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
   ${includeMoments ? `
   "pinnedMoments": [
     {
-      "comment": "必须展示角色生活/人设的三个完全不同的侧面（如：侧面1-专业领域、侧面2-私人爱好、侧面3-性格缺陷或反差萌）",
+      "comment": "必须展示角色生活/人设的三个完全不同的侧面，并根据角色与用户的特定关系决定是否要在动态中提到用户。",
       "content": "动态文字内容...",
       "mentions": [ { "id": "user", "name": "${userName}" } ],
       "imagePrompt": "英文图片提示词",
       "interactions": [
-         { "type": "like", "authorName": "角色名" },
-         { "type": "comment", "authorName": "角色名", "content": "..." }
+         { "type": "like", "authorName": "符合背景的虚拟路人名" },
+         { "type": "comment", "authorName": "符合背景的虚拟路人名", "content": "..." }
       ]
     }
   ]` : ''}
 }
+注意：如果人设注明“孤儿/单亲/父母不在”，动态评论区严禁虚构对应的亲属评论。
 禁止解释，直接输出 JSON。`
 
     try {

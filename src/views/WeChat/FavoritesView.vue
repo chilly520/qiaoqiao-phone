@@ -10,6 +10,9 @@ const favoritesStore = useFavoritesStore()
 const stickerStore = useStickerStore()
 const chatStore = useChatStore()
 
+// Tab state
+const activeTab = ref('all') // 'all', 'call', 'normal'
+
 // Combined Sticker Search Scope
 const allStickers = computed(() => {
     const global = stickerStore.stickers || []
@@ -26,41 +29,59 @@ const showSearch = ref(false)
 
 const favorites = computed(() => {
     let list = favoritesStore.favorites
+    
+    // 1. Tab Filtering
+    if (activeTab.value === 'call') {
+        list = list.filter(item => item.isCallRecord || item.source === '通话记录' || (item.content && item.content.includes('[通话记录]')))
+    } else if (activeTab.value === 'normal') {
+        list = list.filter(item => !item.isCallRecord && item.source !== '通话记录' && !(item.content && item.content.includes('[通话记录]')))
+    }
+
+    // 2. Search Filtering
     if (searchQuery.value) {
         const q = searchQuery.value.toLowerCase()
         list = list.filter(item =>
             (item.content && item.content.toLowerCase().includes(q)) ||
-            (item.author && item.author.toLowerCase().includes(q))
+            (item.title && item.title.toLowerCase().includes(q)) ||
+            (item.author && item.author.toLowerCase().includes(q)) ||
+            (item.source && item.source.toLowerCase().includes(q))
         )
     }
+
     // Sort by savedAt descending (Newest First)
     return list.slice().sort((a, b) => b.savedAt - a.savedAt)
 })
 
 const formatDate = (ts) => {
-    return new Date(ts).toLocaleString()
+    if (!ts) return ''
+    const date = new Date(ts)
+    const now = new Date()
+    const isToday = date.toDateString() === now.toDateString()
+    
+    if (isToday) {
+        return `今天 ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+    }
+    return date.toLocaleDateString()
 }
 
 const getPreviewContent = (item) => {
+    if (item.preview) return { type: 'text', content: item.preview }
+    
     // 1. Check for Sticker
-    if (item.type === 'text' || item.type === 'sticker') {
-        // Relaxed Regex: Handles Chinese colon, spaces, and no start/end anchors
-        const stickerMatch = item.content.match(/\[(表情包|Sticker)\s*[:：]\s*([^\]]+)\]/i)
+    if (item.role === 'user' || item.type === 'text' || item.type === 'sticker') {
+        const contentStr = String(item.content || '')
+        const stickerMatch = contentStr.match(/\[(表情包|Sticker|图片)\s*[:：]\s*([^\]]+)\]/i)
         if (stickerMatch) {
             const val = stickerMatch[2].trim()
             if (val.startsWith('http') || val.startsWith('data:')) return { type: 'sticker', url: val }
-
-            // Search Global + All Characters
             const found = allStickers.value.find(s => s.name === val)
-
             if (found) return { type: 'sticker', url: found.url }
-            // Fallback: Return placeholder instead of text
             return { type: 'sticker_placeholder', name: val }
         }
     }
 
     // 2. Other Types
-    if (item.type === 'image') return { type: 'preview', text: '[图片]' }
+    if (item.type === 'image' || item.image) return { type: 'preview', text: '[图片]' }
     if (item.type === 'redpacket') return { type: 'preview', text: '[红包]' }
     if (item.type === 'transfer') return { type: 'preview', text: '[转账]' }
     if (item.type === 'chat_record') return { type: 'preview', text: `[聊天记录] ${item.source || '...'} 的聊天记录` }
@@ -84,78 +105,139 @@ const deleteItem = (id) => {
 </script>
 
 <template>
-    <div class="h-full bg-gray-100 flex flex-col">
+    <div class="h-full bg-gray-50 flex flex-col font-sans">
         <!-- Header -->
-        <div class="h-[44px] bg-white flex items-center justify-between px-4 border-b border-gray-200 shrink-0">
+        <div class="h-[44px] bg-white flex items-center justify-between px-4 border-b border-gray-100 shrink-0 z-20">
             <div class="flex items-center gap-1 cursor-pointer w-20" @click="goBack">
-                <i class="fa-solid fa-chevron-left text-black"></i>
-                <span class="font-bold text-base text-black">返回</span>
+                <i class="fa-solid fa-chevron-left text-gray-800"></i>
+                <span class="font-medium text-base text-gray-800">返回</span>
             </div>
-            <div class="font-bold text-base">我的收藏</div>
+            <div class="font-bold text-gray-900 text-base">我的收藏</div>
             <div class="w-20 flex justify-end">
-                <i class="fa-solid fa-magnifying-glass text-black cursor-pointer p-2"
+                <i class="fa-solid fa-magnifying-glass text-gray-800 cursor-pointer p-2 opacity-80"
                     @click="showSearch = !showSearch"></i>
             </div>
         </div>
 
         <!-- Search Bar -->
-        <div v-if="showSearch" class="bg-white px-4 pb-2 -mt-1 border-b border-gray-100">
-            <div class="bg-gray-100 rounded-lg flex items-center px-3 py-1.5">
-                <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
-                <input v-model="searchQuery" type="text" placeholder="搜索收藏内容..."
-                    class="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400">
-                <i v-if="searchQuery" class="fa-solid fa-xmark text-gray-400 ml-2 cursor-pointer"
-                    @click="searchQuery = ''"></i>
+        <Transition name="slide-down">
+            <div v-if="showSearch" class="bg-white px-4 pb-3 pt-1 border-b border-gray-100">
+                <div class="bg-gray-100 rounded-full flex items-center px-4 py-2">
+                    <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
+                    <input v-model="searchQuery" type="text" placeholder="搜索内容、作者或来源..."
+                        class="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400">
+                    <i v-if="searchQuery" class="fa-solid fa-circle-xmark text-gray-300 ml-2 cursor-pointer hover:text-gray-400"
+                        @click="searchQuery = ''"></i>
+                </div>
+            </div>
+        </Transition>
+
+        <!-- Category Tabs -->
+        <div class="bg-white flex items-center px-2 py-1 border-b border-gray-100 shrink-0">
+            <div 
+                v-for="tab in [{id:'all', name:'全部'}, {id:'call', name:'通话记录'}, {id:'normal', name:'普通收藏'}]" 
+                :key="tab.id"
+                class="flex-1 py-1.5 text-center relative cursor-pointer"
+                @click="activeTab = tab.id"
+            >
+                <div :class="['text-[13px] py-1 rounded-md transition-all duration-300', activeTab === tab.id ? 'text-green-600 bg-green-50 font-bold' : 'text-gray-500']">
+                    {{ tab.name }}
+                </div>
             </div>
         </div>
 
         <!-- List -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-3">
-            <div v-if="favorites.length === 0" class="text-center text-gray-400 mt-20">
-                暂无收藏内容
+        <div class="flex-1 overflow-y-auto p-3 space-y-3 bg-[#f7f7f7]">
+            <div v-if="favorites.length === 0" class="flex flex-col items-center justify-center mt-32 text-gray-400 opacity-60">
+                <i class="fa-solid fa-box-open text-5xl mb-4"></i>
+                <p>暂无相关收藏内容</p>
             </div>
 
-            <div v-for="item in favorites" :key="item.id" class="bg-white p-2 rounded-lg shadow-sm mb-3 flex flex-col">
-                <!-- Clickable Main Content Area -->
-                <div class="active:bg-gray-50 transition-colors p-2 rounded cursor-pointer" @click="openDetail(item)">
-                    <div class="flex items-center gap-2 mb-2">
-                        <img v-if="item.avatar" :src="item.avatar" class="w-8 h-8 rounded-full object-cover">
-                        <div v-else
-                            class="bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center text-xs text-gray-500 font-bold">
-                            {{ item.author?.[0] || '?' }}
+            <div v-for="item in favorites" :key="item.id" 
+                class="group bg-white p-3 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] border border-white hover:border-green-100 hover:shadow-md transition-all duration-300 active:scale-[0.98]">
+                
+                <div class="flex flex-col gap-3 cursor-pointer" @click="openDetail(item)">
+                    <!-- Meta Header -->
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <img v-if="item.avatar" :src="item.avatar" class="w-8 h-8 rounded-lg object-cover shadow-sm">
+                            <div v-else class="bg-gradient-to-br from-gray-100 to-gray-200 w-8 h-8 rounded-lg flex items-center justify-center text-xs text-gray-500 font-bold border border-gray-100">
+                                {{ item.author?.[0] || '?' }}
+                            </div>
+                            <!-- Call Icon Badge -->
+                            <div v-if="item.isCallRecord || item.source === '通话记录'" class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-phone text-[8px] text-white"></i>
+                            </div>
                         </div>
-                        <span class="text-xs text-gray-500">{{ item.author || '未知' }}</span>
-                        <span class="text-xs text-gray-300 ml-auto">{{ formatDate(item.savedAt) }}</span>
+                        
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-bold text-gray-800 truncate">{{ item.author || '未知' }}</span>
+                            <span class="text-[10px] text-gray-400">{{ formatDate(item.savedAt) }}</span>
+                        </div>
+                        
+                        <div v-if="item.source" class="ml-auto px-1.5 py-0.5 bg-gray-50 rounded text-[10px] text-gray-400 border border-gray-100 flex items-center gap-1">
+                            <i v-if="item.isCallRecord || item.source === '通话记录'" class="fa-solid fa-headset text-green-500/50"></i>
+                            <span>{{ item.source }}</span>
+                        </div>
                     </div>
 
-                    <div class="text-sm text-gray-800 line-clamp-3">
+                    <!-- Content Preview -->
+                    <div class="text-[15px] leading-relaxed text-gray-700">
+                        <div v-if="item.title" class="font-bold text-gray-900 mb-1 line-clamp-1">{{ item.title }}</div>
+                        
                         <template v-if="getPreviewContent(item).type === 'sticker'">
-                            <img :src="getPreviewContent(item).url" class="h-16 rounded-lg object-contain">
+                            <img :src="getPreviewContent(item).url" class="h-20 w-20 rounded-lg object-contain bg-gray-50 p-1">
                         </template>
                         <template v-else-if="getPreviewContent(item).type === 'sticker_placeholder'">
-                            <div
-                                class="inline-flex items-center gap-1 bg-gray-100 px-2 py-1 rounded text-gray-500 text-xs text-ellipsis overflow-hidden whitespace-nowrap max-w-full">
+                            <div class="inline-flex items-center gap-1.5 bg-gray-50 px-2 py-1.5 rounded-lg text-gray-400 text-xs border border-gray-100">
                                 <i class="fa-regular fa-image shrink-0"></i>
                                 <span class="truncate">{{ getPreviewContent(item).name }}</span>
                             </div>
                         </template>
                         <template v-else-if="getPreviewContent(item).type === 'preview'">
-                            <span class="text-gray-500">{{ getPreviewContent(item).text }}</span>
+                            <span class="text-gray-400 italic bg-gray-50 px-2 py-1 rounded text-sm">{{ getPreviewContent(item).text }}</span>
                         </template>
                         <template v-else>
-                            {{ getPreviewContent(item).content || '...' }}
+                            <div class="line-clamp-3 whitespace-pre-wrap">{{ getPreviewContent(item).content || '...' }}</div>
                         </template>
                     </div>
                 </div>
 
-                <!-- Footer Actions (Separated from Click Area) -->
-                <div class="mt-1 flex justify-end px-2 pb-1 relative z-10 pointer-events-auto">
-                    <button class="px-4 py-2 bg-red-50 text-red-500 rounded active:bg-red-200 font-bold text-xs"
+                <!-- Footer Actions -->
+                <div class="mt-2 pt-2 border-t border-gray-50 flex justify-between items-center px-1">
+                    <span class="text-[10px] text-gray-300 italic">收藏于 {{ formatDate(item.savedAt) }}</span>
+                    <button class="text-[11px] font-bold text-red-300 hover:text-red-500 transition-colors py-1 px-3 rounded-lg hover:bg-red-50"
                         @click.stop="deleteItem(item.id)">
                         删除
                     </button>
                 </div>
             </div>
+            
+            <div class="h-10"></div> <!-- Bottom Spacer -->
         </div>
     </div>
 </template>
+
+<style scoped>
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.slide-down-enter-active, .slide-down-leave-active {
+    transition: all 0.3s ease;
+}
+.slide-down-enter-from, .slide-down-leave-to {
+    transform: translateY(-20px);
+    opacity: 0;
+}
+</style>

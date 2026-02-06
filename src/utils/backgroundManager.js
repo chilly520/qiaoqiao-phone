@@ -1,8 +1,4 @@
-/**
- * BackgroundManager.js
- * Handles background persistence and wake lock for mobile devices.
- * Uses a silent audio loop to prevent browser from suspending the JS thread.
- */
+import { useLoggerStore } from '../stores/loggerStore';
 
 class BackgroundManager {
     constructor() {
@@ -10,6 +6,7 @@ class BackgroundManager {
         this.isActive = false;
         this.wakeLock = null;
         this.initialized = false;
+        this.logger = null;
     }
 
     /**
@@ -17,9 +14,13 @@ class BackgroundManager {
      * Must be called after a user interaction (click/touch).
      */
     init() {
+        if (!this.logger) {
+            try { this.logger = useLoggerStore(); } catch (e) { /* Early init */ }
+        }
+
         if (this.initialized) return;
 
-        console.log('[BackgroundManager] Initializing keep-alive...');
+        this.log('Initializing background keep-alive system...', 'info');
         this.createAudioLoop();
         this.setupVisibilityHandler();
         this.requestWakeLock();
@@ -27,18 +28,26 @@ class BackgroundManager {
         this.initialized = true;
     }
 
+    log(message, level = 'sys') {
+        console.log(`[BackgroundManager] ${message}`);
+        if (this.logger) {
+            if (level === 'info' || level === 'sys') this.logger.sys(message);
+            else if (level === 'error') this.logger.error(message);
+        }
+    }
+
     /**
      * Creates a silent audio loop to trick mobile browsers into keeping the app alive.
      */
     createAudioLoop() {
-        // A very short silent WAV file (1 pixel worth of audio)
+        // A short silent WAV file
         const silentWav = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
 
         this.audio = new Audio(silentWav);
         this.audio.loop = true;
-        this.audio.volume = 0.01; // Nearly silent
+        this.audio.volume = 0.01;
 
-        // Start playing immediately
+        // Important for iOS: must be initiated by user gesture then re-played on visibility change
         this.playAudio();
     }
 
@@ -47,9 +56,9 @@ class BackgroundManager {
         try {
             await this.audio.play();
             this.isActive = true;
-            console.log('[BackgroundManager] Silent audio loop started.');
+            this.log('Silent audio loop is active (maintaining JS thread).', 'info');
         } catch (e) {
-            console.warn('[BackgroundManager] Audio play failed (policy?):', e);
+            this.log('Audio play failed (browser policy?): ' + e.message, 'error');
             this.isActive = false;
         }
     }
@@ -61,17 +70,17 @@ class BackgroundManager {
         if ('wakeLock' in navigator) {
             try {
                 this.wakeLock = await navigator.wakeLock.request('screen');
-                console.log('[BackgroundManager] Wake Lock active.');
+                this.log('Screen Wake Lock acquired.', 'info');
 
                 this.wakeLock.addEventListener('release', () => {
-                    console.log('[BackgroundManager] Wake Lock released.');
-                    // Try to re-request if released involuntarily (e.g. backgrounded then foregrounded)
+                    this.log('Wake Lock was released.', 'sys');
+                    // Try to re-request if released involuntarily
                     if (document.visibilityState === 'visible') {
                         this.requestWakeLock();
                     }
                 });
             } catch (err) {
-                console.warn('[BackgroundManager] Wake Lock failed:', err.name, err.message);
+                this.log(`Wake Lock failed: ${err.name} - ${err.message}`, 'error');
             }
         }
     }
@@ -82,11 +91,15 @@ class BackgroundManager {
     setupVisibilityHandler() {
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                console.log('[BackgroundManager] App returned to foreground.');
+                this.log('App returned to foreground. Re-syncing keepers...', 'sys');
                 this.playAudio();
                 this.requestWakeLock();
             } else {
-                console.log('[BackgroundManager] App entered background. Audio loop maintaining thread.');
+                this.log('App entered background. Audio loop maintaining execution.', 'sys');
+                // Ensure audio is playing before fully backgrounding
+                if (this.audio && this.audio.paused) {
+                    this.playAudio();
+                }
             }
         });
     }
@@ -96,9 +109,17 @@ class BackgroundManager {
      */
     enable() {
         this.init();
-        if (this.audio && this.audio.paused) {
+        if (this.audio && (this.audio.paused || this.audio.ended)) {
             this.playAudio();
         }
+    }
+
+    getStatus() {
+        return {
+            active: this.isActive,
+            initialized: this.initialized,
+            wakeLock: !!this.wakeLock
+        };
     }
 }
 

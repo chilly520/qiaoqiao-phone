@@ -82,15 +82,10 @@ app.mount('#app')
 // Initialize Notification Service
 const initNotificationService = async () => {
     try {
-        // Register/Unregister Service Worker
+        // Register Service Worker for PWA and background features
         if (notificationService.isServiceWorkerSupported()) {
-            navigator.serviceWorker.getRegistrations().then(registrations => {
-                for (let registration of registrations) {
-                    registration.unregister();
-                }
-            });
-            // await notificationService.registerServiceWorker()
-            // logger.sys('Service Worker 注册成功')
+            await notificationService.registerServiceWorker()
+            logger.sys('Service Worker 注册成功')
         }
 
         // Request notification permission

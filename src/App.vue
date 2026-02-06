@@ -9,6 +9,7 @@ import { notificationService } from './utils/notificationService'
 import { backgroundManager } from './utils/backgroundManager'
 import CallBanner from './components/CallBanner.vue'
 import CallVisualizer from './components/CallVisualizer.vue'
+import CallStatusBar from './components/CallStatusBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +26,30 @@ const updateTime = () => {
     const now = new Date()
     currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
+// --- Double Back to Exit Logic ---
+let lastBackTime = 0
+const BACK_EXIT_INTERVAL = 2000
+
+const handlePopState = (e) => {
+    if (route.path === '/') {
+        const now = Date.now()
+        if (now - lastBackTime < BACK_EXIT_INTERVAL) {
+            lastBackTime = 0
+            // User confirmed exit
+        } else {
+            lastBackTime = now
+            history.pushState('app-home', null, document.URL)
+            chatStore.triggerToast('再快速侧滑一次退出程序', 'info')
+        }
+    }
+}
+
+// Persistent trigger for keep-alive
+const unlockKeepAlive = () => {
+    notificationService.requestPermission()
+    backgroundManager.enable()
+}
+
 onMounted(() => {
     updateTime()
     timer = setInterval(updateTime, 1000)
@@ -43,29 +68,28 @@ onMounted(() => {
         }
     })
 
-    // Request Notification Permissions
-    const requestNotify = async () => {
-        const granted = await notificationService.requestPermission()
-        if (granted) console.log('[App] Notification permission granted')
-    }
-
     // Try immediately
-    requestNotify()
+    notificationService.requestPermission()
 
-    // Try on interaction (fallback)
-    const unlockKeepAlive = () => {
-        requestNotify()
-        backgroundManager.enable()
-        console.log('[App] Background keep-alive enabled via user gesture')
-        window.removeEventListener('click', unlockKeepAlive)
-        window.removeEventListener('touchstart', unlockKeepAlive)
-    }
-    window.addEventListener('click', unlockKeepAlive, { once: true })
-    window.addEventListener('touchstart', unlockKeepAlive, { once: true })
+    window.addEventListener('popstate', handlePopState)
+    window.addEventListener('click', unlockKeepAlive)
+    window.addEventListener('touchstart', unlockKeepAlive)
+
+    // Watch route to ensure history state is pushed when arriving at home
+    watch(() => route.path, (newPath) => {
+        if (newPath === '/' && window.history.state !== 'app-home') {
+            history.pushState('app-home', null, document.URL)
+        }
+    }, { immediate: true })
 })
+
+// Cleanup listeners
 onUnmounted(() => {
     if (timer) clearInterval(timer)
     batteryMonitor.destroy()
+    window.removeEventListener('popstate', handlePopState)
+    window.removeEventListener('click', unlockKeepAlive)
+    window.removeEventListener('touchstart', unlockKeepAlive)
 })
 
 // Battery Status
@@ -367,6 +391,8 @@ const handleGlobalPromptCancel = () => {
                     :class="[batteryIcon, batteryColor, statusBarStyle.color === '#ffffff' ? 'text-[14px]' : 'text-[14px] opacity-80']"></i>
             </div>
         </div>
+
+        <CallStatusBar />
 
         <div v-if="showBanner && bannerData" class="fixed top-2 left-0 right-0 z-[5000] px-3 animate-slide-down">
             <!-- Banner Container -->

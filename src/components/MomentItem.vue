@@ -15,7 +15,7 @@ const props = defineProps({
     }
 })
 
-const emit = defineEmits(['back', 'edit', 'showProfile', 'show-detail'])
+const emit = defineEmits(['back', 'edit', 'showProfile', 'show-detail', 'preview-images'])
 
 const momentsStore = useMomentsStore()
 const chatStore = useChatStore()
@@ -123,17 +123,18 @@ const likeNames = computed(() => {
     // Ensure current user is at the first position if they liked
     const userIdx = list.findIndex(name => name === 'user' || name === userName)
     if (userIdx > -1) {
-        list.splice(userIdx, 1)
-        list.unshift(userName)
+        const foundName = list.splice(userIdx, 1)[0]
+        list.unshift(foundName === 'user' ? userName : foundName)
     }
 
     const total = totalLikes.value
+    if (total === 0) return ''
 
+    // Show up to 8 names
     const displayList = list.slice(0, 8)
-
+    
     if (displayList.length === 0) return `${total} 位好友觉得很赞`
 
-    // Show up to 8 names then "etc."
     let namesPart = displayList.join('、')
     if (total > displayList.length) {
         namesPart += ` 等 ${total - displayList.length} 位好友`
@@ -185,29 +186,51 @@ const getAuthorAvatar = (id) => {
 }
 
 const renderCommentContent = (comment) => {
-    let content = comment.content || ''
+    if (!comment || !comment.content) return ''
+    let content = comment.content
+    
     // Escape HTML
     const div = document.createElement('div')
     div.textContent = content
     content = div.innerHTML
 
-    // Fix: Replace numeric ID mentions (like @1769381657233) with proper names
-    const numericMentionRegex = /@(\d{10,})/g
-    content = content.replace(numericMentionRegex, (match, numericId) => {
-        const resolvedName = getAuthorName(numericId)
-        return `<span class="text-blue-500 font-medium">@${resolvedName}</span>`
+    // 1. Handle Hashtags FIRST (#Topic ) - prevent collision with hex colors in span tags
+    content = content.replace(/#([^\s#]+)(\s|$)/g, (match, topic, spacer) => {
+        return `<span class="text-[#576b95] font-medium">#${topic}</span>${spacer}`
     })
 
-    // Handle Mentions
-    if (comment.mentions && comment.mentions.length > 0) {
-        comment.mentions.forEach(mention => {
-            const escapedName = mention.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
-            content = content.replace(mentionRegex, `<span class="text-blue-500 font-medium">@${mention.name}</span>`)
+    // 2. Regex for @Name mentions - make them blue
+    const mentionRegex = /@([^\s@:：,.!?;，。！？]+)/g
+    content = content.replace(mentionRegex, (match, name) => {
+        return `<span class="text-[#576b95] font-medium">${match}</span>`
+    })
+
+    // 3. Regex for [表情包:名称]
+    const stickerRegex = /\[表情包:([^\]]+)\]/g
+    const parseStickers = (txt) => {
+        return txt.replace(stickerRegex, (match, name) => {
+            // Priority: Author's specific emojis > Global sticks
+            let sticker = null
+            if (props.moment?.authorId) {
+                const char = chatStore.chats[props.moment.authorId]
+                if (char && char.emojis) {
+                    sticker = char.emojis.find(s => s.name === name)
+                }
+            }
+            if (!sticker) {
+                sticker = stickerStore?.stickers?.find(s => s.name === name)
+            }
+            
+            if (sticker) {
+                return `<img src="${sticker.url}" class="inline-block w-6 h-6 mx-0.5 align-bottom" title="${name}" />`
+            }
+            return match
         })
     }
 
-    // Handle WeChat Emojis
+    content = parseStickers(content)
+    
+    // 4. Handle WeChat Emojis
     content = parseWeChatEmojis(content)
 
     return content
@@ -215,55 +238,65 @@ const renderCommentContent = (comment) => {
 
 // --- Content Parsing (Stickers) ---
 const parsedContent = computed(() => {
-    let content = props.moment?.content || ''
+    const rawContent = props.moment?.content
+    if (!rawContent) return ''
+    
+    let content = rawContent
     // Escape HTML first
     const div = document.createElement('div')
     div.textContent = content
     content = div.innerHTML
 
-    // 1. Handle Mentions (@name)
-    if (props.moment?.mentions && props.moment.mentions.length > 0) {
-        props.moment.mentions.forEach(mention => {
-            const escapedName = mention.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            // Improved Regex: Removed \b to support Chinese names
-            const mentionRegex = new RegExp(`@${escapedName}(?!\\u200d)`, 'g')
-            content = content.replace(mentionRegex, `<span class="inline-block px-1.5 py-0.5 mx-0.5 bg-blue-50 text-blue-500 rounded text-[14px] font-medium leading-tight">@${mention.name}</span>`)
-        })
-    }
-
-    // Fix: Handle raw template literals that weren't parsed (e.g. ${user.name})
+    // 1. Handle raw template literals that AI often leaks (e.g. ${user.name})
     if (content.includes('${user.name}')) {
         const uName = settingsStore.personalization.userProfile.name
         content = content.replace(/\$\{user\.name\}/g, uName)
     }
 
-    // 2. Handle Hashtags (#Topic )
-    // Requirement: # + content + space
+    // 2. Handle Hashtags FIRST (#Topic )
     content = content.replace(/#([^\s#]+)(\s|$)/g, (match, topic, spacer) => {
-        return `<span class="text-blue-500 font-medium">#${topic}</span>${spacer}`
+        return `<span class="text-[#576b95] font-medium">#${topic}</span>${spacer}`
     })
 
-    // 3. Regex for [表情包:名称]
+    // 3. Regex for @Name mentions (Generic match to be safe if AI fails to return mentions array)
+    const mentionRegex = /@([^\s@:：,.!?;，。！？]+)/g
+    content = content.replace(mentionRegex, (match, name) => {
+        return `<span class="text-[#576b95] font-medium">${match}</span>`
+    })
+
+    // 4. Regex for [表情包:名称]
     const stickerRegex = /\[表情包:([^\]]+)\]/g
     content = content.replace(stickerRegex, (match, name) => {
-        let sticker = stickerStore.customStickers.find(s => s.name === name)
-        if (!sticker && !isUser.value && props.moment?.authorId) {
+        let sticker = null
+        if (props.moment?.authorId) {
             const char = chatStore.chats[props.moment.authorId]
             if (char && char.emojis) {
                 sticker = char.emojis.find(s => s.name === name)
             }
         }
+        if (!sticker) {
+            sticker = stickerStore?.stickers?.find(s => s.name === name)
+        }
+
         if (sticker) {
-            return `<img src="${sticker.url}" class="inline-block w-6 h-6 mx-0.5 align-bottom" title="${name}" />`
+            return `<img src="${sticker.url}" class="inline-block w-10 h-10 mx-0.5 align-top" title="${name}" />`
         }
         return match
     })
 
-    // 4. Handle WeChat Emojis [微笑] [心]
+    // 5. Handle WeChat Emojis [微笑] [心]
     content = parseWeChatEmojis(content)
 
     return content
 })
+
+const handleImagePreview = (index) => {
+    if (!props.moment?.images) return
+    emit('preview-images', { 
+        images: Array.from(props.moment.images), 
+        index: index 
+    })
+}
 
 // --- Actions ---
 const toggleLike = () => {
@@ -543,9 +576,10 @@ const navigateToAuthor = () => {
                             'grid-cols-3'
             ]">
                 <div v-for="(img, idx) in (props.moment?.images || [])" :key="idx"
-                    class="bg-gray-50 rounded-sm overflow-hidden flex items-center justify-center border border-gray-100"
-                    :class="(props.moment?.images || []).length === 1 ? '' : 'aspect-square'">
-                    <img :src="img" class="w-full h-full object-cover">
+                    class="bg-gray-50 rounded-sm overflow-hidden flex items-center justify-center border border-gray-100 cursor-zoom-in active:scale-[0.98] transition-all relative z-10"
+                    :class="(props.moment?.images || []).length === 1 ? '' : 'aspect-square'"
+                    @click.stop="handleImagePreview(idx)">
+                    <img :src="img" class="w-full h-full object-cover pointer-events-none">
                 </div>
             </div>
 
@@ -666,7 +700,7 @@ const navigateToAuthor = () => {
                             <span class="text-[#576b95] font-bold">{{ comment.authorName ||
                                 getAuthorName(comment.authorId) }}</span>
                             <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
-                            <span v-if="comment.replyTo" class="text-[#576b95] font-bold">{{
+                            <span v-if="comment.replyTo" class="text-[#576b95] font-bold hover:underline">{{
                                 getDisplayReplyName(comment.replyTo) }}</span>
                             <span class="text-gray-900">: </span>
                             <span class="text-gray-900" v-html="renderCommentContent(comment)"></span>

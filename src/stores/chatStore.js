@@ -7,6 +7,7 @@ import { useMomentsStore } from './momentsStore'
 import { useSettingsStore } from './settingsStore'
 import { useMusicStore } from './musicStore'
 import { useSchedulerStore } from './schedulerStore'
+import { useCallStore } from './callStore'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
 import localforage from 'localforage'
@@ -704,7 +705,9 @@ export const useChatStore = defineStore('chat', () => {
         const { useCallStore } = await import('./callStore')
         const callStore = useCallStore()
         let content = newMsg.content || '' // Local content var
-        const isCallActive = callStore.status === 'active';
+
+        // Robust Call State Check: include all states where the Call UI is visible
+        const isCallActive = callStore.status !== 'none';
 
         // 7.1 User Content Interception
         if (newMsg.role === 'user') {
@@ -813,74 +816,57 @@ export const useChatStore = defineStore('chat', () => {
                 console.log('[ChatStore] Call Protocol Detected (Enhanced)');
 
                 // Ensure we are in active state if we receive protocol data
-                // BUGFIX: Do NOT revive if status is 'ended' or 'none'. Only accept if dialing/incoming.
-                // This prevents "Zombie Calls" where user hangs up but AI sends one last packet.
+                // This allows auto-accepting when AI starts talking during dialing
                 if (callStore.status === 'incoming' || callStore.status === 'dialing') {
                     console.log('[ChatStore] Auto-accepting established call due to protocol data');
                     callStore.acceptCall();
                 }
 
-                // If user hung up (none) but AI is still sending frames, we should probably output text fallback
-                // but for now, let's just process it if active, otherwise ignore protocol logic to avoid hidden ghosts
-                if (callStore.status !== 'active') {
-                    // Fallback: If not active, do NOT hide. Let it fall through to normal text processing (if any)
-                    // or if it strictly matches protocol, we might want to just show the speech part as text.
-                    // IMPORTANT: Returning control here treats it as normal text below?
-                    // Verify flow. If we don't set newMsg.hidden=true, it shows as text.
-                } else {
-                    // Extraction Logic (Only if Active)
-                    let callData = null;
-                    let textOutsideJson = content;
+                // AI Extraction Logic
+                let callData = null;
+                let textOutsideJson = content;
+                try {
+                    const matches = content.match(/\{[\s\S]*?\}/g);
+                    if (matches) {
+                        const jsonCandidate = matches[matches.length - 1];
+                        callData = JSON.parse(jsonCandidate);
+                        textOutsideJson = content.replace(jsonCandidate, '').trim();
+                    }
+                } catch (e) { }
+
+                const protocolRegex = /\[CALL_START\]([\s\S]+?)\[CALL_END\]/i;
+                const tagMatch = content.match(protocolRegex);
+                if (tagMatch) {
                     try {
-                        const matches = content.match(/\{[\s\S]*?\}/g);
-                        if (matches) {
-                            const jsonCandidate = matches[matches.length - 1];
-                            callData = JSON.parse(jsonCandidate);
-                            textOutsideJson = content.replace(jsonCandidate, '').trim();
-                        }
-                    } catch (e) { console.warn('[ChatStore] Enhanced JSON parse failed fallback', e); }
-
-                    const protocolRegex = /\[CALL_START\]([\s\S]+?)\[CALL_END\]/i;
-                    const tagMatch = content.match(protocolRegex);
-                    if (tagMatch) {
-                        try {
-                            callData = JSON.parse(tagMatch[1]);
-                            textOutsideJson = content.replace(tagMatch[0], '').trim();
-                        } catch (e) { }
-                    }
-
-                    if (callData || textOutsideJson) {
-                        let speech = callData?.speech || callData?.["通话内容"] || callData?.text || textOutsideJson || '';
-                        const action = callData?.action || callData?.["行为"] || callData?.["动作"] || '';
-                        const statusVal = callData?.status || callData?.["状态"] || '';
-
-                        // CLEAN TTS: Remove parentheses from speech
-                        if (speech) {
-                            speech = speech.replace(/[\(（][^\)）]*[\)）]/g, '').trim();
-                        }
-
-                        if (speech || action) callStore.addTranscriptLine('ai', speech, action);
-                        if (statusVal) callStore.updateStatus(statusVal);
-                        if (callData?.hangup) callStore.endCall();
-                    }
-                    newMsg.hidden = true; // Stay in history for context, but out of chat bubbles
-                    return; // Stop processing this message as text
+                        callData = JSON.parse(tagMatch[1]);
+                        textOutsideJson = content.replace(tagMatch[0], '').trim();
+                    } catch (e) { }
                 }
+
+                if (callData || textOutsideJson) {
+                    // Protocol matched: Hide from chat history
+                    newMsg.hidden = true;
+
+                    if (callData?.status) callStore.updateStatus(callData.status);
+                    if (callData?.hangup) callStore.endCall();
+                } else if (callStore.status !== 'none') {
+                    // Even if no protocol match, if any call is active/dialing, hide AI chatter from history
+                    newMsg.hidden = true;
+                }
+
+                if (newMsg.hidden) return;
+
             }
 
             // Priority 3: Fallback for Normal Text during Active Call
             // FIX: Do NOT hide normal text messages even if call is active. Only hide Protocol.
             // This prevents "Missing Message" bugs if call state desyncs.
             if (isCallActive && content && !content.includes('[CALL_START]')) {
-                // REVERT: User explicitly requested TO KEEP parentheses if AI outputs them.
-                // let cleanText = content.replace(/\[.*?\]/g, '').trim();
-                // if (/^[\(（].*[\)）]$/.test(cleanText)) {
-                //    cleanText = cleanText.substring(1, cleanText.length - 1).trim();
-                // }
-
-                // If we have content, we should SHOW it, not hide it.
-                // callStore.addTranscriptLine('ai', cleanText); 
-                // newMsg.hidden = true; // DISABLED HIDING
+                // EXCLUSION: Don't add if it's strictly a protocol tag that got through display test
+                if (!isEmptyDisplay) {
+                    const cleanText = displayTest;
+                    callStore.addTranscriptLine('ai', cleanText);
+                }
             }
 
             // --- Final context & Hiding Check ---
@@ -1344,6 +1330,13 @@ export const useChatStore = defineStore('chat', () => {
 
         proactiveWorker.onmessage = (e) => {
             if (e.data === 'tick') {
+                const logger = useLoggerStore()
+                // Only log one tick every 30 mins to avoid noise in the log
+                const now = new Date()
+                if (now.getMinutes() % 30 === 0) {
+                    logger.sys('[Proactive] Worker heartbeat: scanning all chats...')
+                }
+
                 Object.keys(chats.value).forEach(chatId => {
                     checkProactive(chatId)
                 })
@@ -1357,12 +1350,13 @@ export const useChatStore = defineStore('chat', () => {
         if (typeof document !== 'undefined') {
             let lastForegroundTime = Date.now()
             document.addEventListener('visibilitychange', () => {
+                const logger = useLoggerStore()
                 if (document.visibilityState === 'visible') {
                     // Avoid double triggers within 2 seconds
                     if (Date.now() - lastForegroundTime < 2000) return
                     lastForegroundTime = Date.now()
 
-                    console.log('[Proactive] App in foreground, checking missed triggers...');
+                    logger.sys('[Proactive] App in foreground, checking missed triggers...')
                     Object.keys(chats.value).forEach(chatId => {
                         checkProactive(chatId)
                     })
@@ -1371,7 +1365,9 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
-    function checkProactive(chatId) {
+    async function checkProactive(chatId) {
+        const callStore = useCallStore()
+        const logger = useLoggerStore()
         const chat = chats.value[chatId]
         if (!chat) return
 
@@ -1380,68 +1376,64 @@ export const useChatStore = defineStore('chat', () => {
         const lastMsgTime = lastMsg ? lastMsg.timestamp : now
         const diffMinutes = (now - lastMsgTime) / 1000 / 60
 
-        // Skip if already typing or waiting for reply to avoid duplicate parallel requests
-        if (typingStatus.value[chatId]) return
+        if (typingStatus.value[chatId] || callStore.status !== 'none') return
 
-        // 1. Proactive Chat (界面内触发: 停留且可能没说话)
-        // Only if currently viewing this chat
+        // 1. Proactive Chat / Call (While user is in the current chat but idle)
         if (chat.proactiveChat && currentChatId.value === chatId) {
-            // If internal counter or time since last message matches
-            // To simplify, we use time since last message or last proactive check
-            if (diffMinutes >= chat.proactiveInterval) {
-                // Determine if this is a "Good time to proactive"
-                // Usually we want AI to initiate if they were the last one to speak OR if user was
-                // But user specifically said "Regardless of whether I speak or not"
-                // We inject a hidden hint for proactive
-                sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没和用户互动了，要不要主动说点什么？）` })
-            }
-        }
-
-        // 2. Active Chat (查岗: 离开界面后触发)
-        if (chat.activeChat && currentChatId.value !== chatId) {
-            if (diffMinutes >= chat.activeInterval) {
-                // Here we might need a "Last Active Triggered" flag to avoid spamming
-                // But for now, simple 1-time trigger logic
-                if (!chat._lastActiveTriggeredTime || (now - chat._lastActiveTriggeredTime > chat.activeInterval * 60000)) {
-                    chat._lastActiveTriggeredTime = now
-                    const d = new Date()
-                    const timeStr = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-                    sendMessageToAI(chatId, { hiddenHint: `（现在是${timeStr}，你已经 ${Math.floor(diffMinutes)} 分钟没和用户互动了，要不要给点反应呢？）` })
+            const pInterval = parseInt(chat.proactiveInterval) || 30
+            if (diffMinutes >= pInterval) {
+                const rand = Math.random()
+                logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
+                if (rand < 0.2) {
+                    const callType = Math.random() > 0.5 ? 'video' : 'voice'
+                    sendMessageToAI(chatId, {
+                        hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                        isProactiveCall: true
+                    })
+                } else {
+                    sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没说话了，给用户发条简短的消息。可以带上表情包。）` })
                 }
             }
         }
 
-        // 3. NEW: Scheduler Task Check
+        // 2. Active Chat (Check-in while user is elsewhere or app in background)
+        if (chat.activeChat && currentChatId.value !== chatId) {
+            const aInterval = parseInt(chat.activeInterval) || 120
+            if (diffMinutes >= aInterval) {
+                if (!chat._lastActiveTriggeredTime || (now - chat._lastActiveTriggeredTime > aInterval * 60000)) {
+                    chat._lastActiveTriggeredTime = now
+                    logger.sys(`[Proactive] Triggering check-in message for ${chat.name}`)
+                    const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
+                    const callChance = Math.random() < 0.15
+                    const hint = callChance
+                        ? `（现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
+                        : `（现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
+                    sendMessageToAI(chatId, { hiddenHint: hint })
+                }
+            }
+        }
+
+        // 3. Scheduler Task
         const schedulerStore = useSchedulerStore()
         const dueTasks = schedulerStore.tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp <= now)
-
         if (dueTasks.length > 0) {
             dueTasks.forEach(task => {
-                // Remove task so it doesn't trigger again
+                logger.sys(`[Proactive] Executing scheduler task: ${task.content}`)
                 schedulerStore.removeTask(task.id)
-                // Trigger AI message
-                sendMessageToAI(chatId, {
-                    hiddenHint: `（现在是北京时间 ${new Date().toLocaleString('zh-CN')}，执行你之前的定时任务：${task.content}。请根据当前人设和上下文发送这条提醒或执行此任务的消息。）`
-                })
+                sendMessageToAI(chatId, { hiddenHint: `（系统：执行定时任务：${task.content}。请根据当前人设发送消息通知用户。）` })
             })
         }
 
-        // 4. NEW: Random Proactive Check
+        // 4. Random Proactive
         const randomConfig = schedulerStore.randomConfigs[chatId]
         if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
-            // Update next trigger first to avoid double check
+            logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
             schedulerStore.updateNextRandomTrigger(chatId)
-
-            // Trigger AI message
-            const d = new Date()
-            const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-            sendMessageToAI(chatId, {
-                hiddenHint: `（随机互动触发。现在是 ${timeStr}，根据当前上下文，主动和用户说点什么吧。这应该感觉像是自然的偶发对话。）`
-            })
+            sendMessageToAI(chatId, { hiddenHint: `（随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。）` })
         }
     }
 
-    // Start loop on init
+    // Initialize proactive loop
     startProactiveLoop()
 
 
@@ -1526,6 +1518,7 @@ export const useChatStore = defineStore('chat', () => {
     // 调用 AI 逻辑
     async function sendMessageToAI(chatId, options = {}) {
         const momentsStore = useMomentsStore()
+        const callStore = useCallStore()
         const chat = chats.value[chatId]
         if (!chat) return
 
@@ -1573,108 +1566,132 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. 准备上下文：根据设置动态截取消息历史
         const contextLimit = chat.contextLimit || 20
-        const context = (chat.msgs || []).slice(-contextLimit).map(m => {
-            // Ensure content is a string for processing (handles multimodal messages)
+        const rawContext = (chat.msgs || []).slice(-contextLimit).map(m => {
             let content = ""
             if (typeof m.content === 'string') {
                 content = m.content
             } else if (Array.isArray(m.content)) {
-                // If multimodal, extract text parts for history cleaning logic
                 content = m.content.map(p => p.text || '').join('\n')
             } else {
                 content = String(m.content || '')
             }
 
-            // Format Special Cards for AI perception
+            // 处理特殊卡片的上下文表现
             if (m.type === 'moment_card') {
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
-                    content = `[用户分享了一条朋友圈动态] 作者: ${data.author || '未知'}, 文案: ${data.text || '（无文案）'}${data.image ? ' (包含一张图片)' : ''} ID: ${data.id || 'unknown'}`
-                    // If vision is enabled, extract the image URL so AI can "see" it
+                    content = `[用户分享了一条朋友圈动态] 作者: ${data.author || '未知'}, 文案: ${data.text || '（无文案）'}${data.image ? ' (包含一张图片)' : ''}`
                     if (data.image) m.image = data.image;
-                    // Track most recent shared moment for ID fallback
-                    m._momentReferenceId = data.id;
-                } catch (e) {
-                    content = '[朋友圈动态]'
-                }
-            } else if (m.type === 'favorite_card' || (typeof m.content === 'string' && m.content.includes('"source"'))) {
+                } catch (e) { content = '[朋友圈动态]' }
+            } else if (m.type === 'favorite_card') {
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
-                    content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: \n${data.fullContent || data.preview || '暂无内容'}`
-                    if (data.image) m.image = data.image; // Also extract image for favorites if exists
-                } catch (e) {
-                    content = '[收藏内容]'
-                }
+                    content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: ${data.fullContent || data.preview || '暂无内容'}`
+                    if (data.image) m.image = data.image;
+                } catch (e) { content = '[收藏内容]' }
             } else if (m.type === 'voice') {
-                content = `[语音:${content}]`
-            } else if (m.type === 'image' || m.type === 'sticker') {
-                content = content // Image is now passed via m.image multimodal object
+                content = `[语音消息:${content}]`
             }
 
             if (m.role === 'ai') {
-                // Clean up history to prevent "Double Voice" pollution (Global match)
-                // Relaxed to catch INNER_VOICE anywhere, not just at start
-                const ivMatch = content.match(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/i)
-                if (ivMatch) {
-                    const ivBlock = ivMatch[0]
-                    // Remove ALL Inner Voice blocks from content for history context
-                    content = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
-
-                    // Re-append the FIRST inner voice block at the end (standard format for LLM context)
-                    // This ensures LLM sees: "Text content... [INNER_VOICE]...[/INNER_VOICE]"
-                    // regardless of where it was originally.
-                    content = content + '\n' + ivBlock
+                // 清理心声，仅保留第一处心声以便 AI 参考
+                const ivRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi
+                const matches = [...content.matchAll(ivRegex)]
+                if (matches.length > 0) {
+                    const firstIv = matches[0][0]
+                    content = content.replace(ivRegex, '').trim() + '\n' + firstIv
                 }
             }
+
             if (m.quote) {
                 const quoteAuthor = m.quote.role === 'user' ? '我' : (chat.name || '对方')
-                const quoteContent = typeof m.quote.content === 'string'
-                    ? m.quote.content
-                    : (Array.isArray(m.quote.content) ? m.quote.content.map(p => p.text || '').join(' ') : String(m.quote.content || ''))
-                content = `（引用来自 ${quoteAuthor} 的消息: "${quoteContent}"）\n${content}`
+                content = `（引用来自 ${quoteAuthor} 的消息: "${m.quote.content}"）\n${content}`
             }
 
             return {
-                id: m.id,
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
-                type: m.type || 'text',
                 image: m.image
             }
         })
 
-        // 2. 注入提示 (Hidden Hint)
-        // 修正逻辑：必须确保 User/Assistant 角色交替，否则部分模型（如 Gemini）会返回空响应
-        if (options.hiddenHint) {
-            const lastMsg = context.length > 0 ? context[context.length - 1] : null
-            if (lastMsg && lastMsg.role === 'user') {
-                // 如果最后一条是用户发的，直接追加在末尾 (STRICT CHECK: Text Only)
-                if (lastMsg.type === 'text' && !lastMsg.content.includes('data:image/')) {
-                    lastMsg.content += ` ${options.hiddenHint}`
+        // --- 角色轮替保护：合并连续的 User/Assistant 消息 (Gemini 必须交替) ---
+        const mergedContext = [];
+        rawContext.forEach(m => {
+            const last = mergedContext[mergedContext.length - 1];
+            if (last && last.role === m.role) {
+                // 合并内容
+                if (typeof last.content === 'string' && typeof m.content === 'string') {
+                    last.content += `\n\n${m.content}`;
                 }
+                // 图视觉信息合并 (AI Vision 注入)
+                if (m.image) last.image = m.image;
             } else {
-                // 如果最后一条是 AI 发的，或者没消息，则注入一条 User 角色的隐形指令
-                context.push({
-                    role: 'user',
-                    content: options.hiddenHint
-                })
+                mergedContext.push(m);
             }
-        } else if (diffMinutes >= 1) {
-            // 手动回复时间差提示
-            const userMessages = context.filter(m => m.role === 'user')
-            if (userMessages.length > 0) {
-                const lastUserMsg = userMessages[userMessages.length - 1]
-                // STRICT CHECK: Only append to text messages
-                if (lastUserMsg.type === 'text' && !lastUserMsg.content.includes('data:image/')) {
-                    // 转换为小时和分钟格式
-                    const hours = Math.floor(diffMinutes / 60);
-                    const mins = diffMinutes % 60;
-                    const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
-                    // More explicit system tag to ensure AI doesn't miss it
-                    lastUserMsg.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应（如：打招呼方式、困倦、正忙等状态）。】`
-                }
+        });
+
+        // 2. 注入提示 (Hidden Hint / 时间感知 / 通话引导)
+        const callStatus = callStore.status
+        if (callStatus === 'dialing' || callStatus === 'incoming') {
+            const userName = chat.userName || '用户'
+            const callType = callStore.type === 'video' ? '视频' : '语音'
+            const callHint = callStatus === 'incoming'
+                ? `【系统提示：${userName}正在呼叫你（${callType}通话）。请立即做出选择：
+
+**选项1：接听**
+回复格式：
+[接听]
+[CALL_START]
+{
+  "speech": "接通后你说的第一句话（中文口语）",
+  "action": "你的神态/动作",
+  "status": "你的心情状态",
+  "hangup": false
+}
+[CALL_END]
+
+**选项2：拒绝**
+回复：[拒绝] 并说明理由
+
+注意：如果接听，必须严格按照上述 JSON 格式输出，不要使用 INNER_VOICE 或其他标签。】`
+                : `【系统提示：你正在呼叫${userName}（${callType}通话），等待对方响应...】`
+
+            console.log(`[ChatStore] Injecting call hint for status: ${callStatus}`);
+
+            const last = mergedContext[mergedContext.length - 1]
+            if (last && last.role === 'user') {
+                last.content += `\n\n${callHint}`
+            } else {
+                mergedContext.push({ role: 'user', content: callHint })
+            }
+        } else if (callStatus === 'active') {
+            const callActiveHint = `【系统：当前通话已接通。请继续与用户愉快地聊天，直接输出对话 JSON 即可，严禁再次回复“[接听]”或重复开场动作。】`
+            const last = mergedContext[mergedContext.length - 1]
+            if (last && last.role === 'user') {
+                last.content += `\n\n${callActiveHint}`
+            } else {
+                mergedContext.push({ role: 'user', content: callActiveHint })
+            }
+        } else if (options.hiddenHint) {
+            const last = mergedContext[mergedContext.length - 1];
+            if (last && last.role === 'user') {
+                last.content += `\n\n[系统要求] ${options.hiddenHint}`;
+            } else {
+                mergedContext.push({ role: 'user', content: `[系统要求] ${options.hiddenHint}` });
             }
         }
+        else if (diffMinutes >= 1) {
+            const last = mergedContext[mergedContext.length - 1];
+            if (last && last.role === 'user') {
+                const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
+                last.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。】`;
+            }
+        }
+
+
+        const context = mergedContext;
+
 
         // 3. 调用 AI
         try {
@@ -1736,21 +1753,171 @@ export const useChatStore = defineStore('chat', () => {
                 }
             })
 
-            const result = await generateReply(context, charInfo, signal)
+            // Use Call System Prompt ONLY when call is active (not during incoming/dialing)
+            // During incoming/dialing, use normal prompt so AI can choose [接听] or [拒绝]
+            const isCallActive = callStore.status === 'active'
+            const isCallContext = isCallActive // Only use call prompt when actually in call
+
+            // Track if we are in a call to handle message shadowing/hiding
+            const isCallMode = callStore.status !== 'none';
+
+            // Streaming handler for calls
+            let hasAddedCallLine = false;
+            const onChunk = isCallActive ? (delta, full) => {
+                // ... (existing chunk logic) ...
+            } : null;
+
+            // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
+            // as partial JSON is harder to parse reliably for voice.
+            const result = await generateReply(context, charInfo, signal, {
+                ...aiOptions,
+                isCall: isCallContext, // Only use call prompt when status is 'active'
+                stream: isCallContext ? false : undefined, // Force non-streaming for calls
+                onChunk: isCallActive ? onChunk : null
+            })
+
+
 
             // Clear controller on success
             delete abortControllers[chatId]
 
             if (result.error) {
+                // Ignore abort errors which happen on hangup
+                if (result.error.name === 'AbortError' || String(result.error).includes('aborted') || String(result.error).includes('canceled')) {
+                    console.log('[ChatStore] Generation aborted (likely due to hangup).');
+                    return;
+                }
                 addMessage(chatId, { role: 'system', content: `[系统错误] ${result.error}` })
                 return
             }
 
             // 3. 添加 AI 回复 (拆分消息 - Data Level Splitting)
             if (result.content) {
-                // Keep FULL content (with Inner Voice) for history context
-                // The UI (ChatWindow) handles hiding it via getCleanContent
                 let fullContent = result.content;
+
+                // --- Pre-process: Strip Character Name Prefixes (防止剧本格式) ---
+                // Regex matches names like "乔笙: ", "乔笙：", "乔笙 " at start of lines or message
+                if (chat.name) {
+                    const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
+                    fullContent = fullContent.replace(nameRegex, '').trim();
+                }
+
+                // --- Handle Call Signal Interception ([接听] / [拒绝]) ---
+                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
+                    if (fullContent.includes('[接听]')) {
+                        console.log('[ChatStore] AI accepted the call');
+                        callStore.acceptCall();
+
+                        // 直接解析通话 JSON，不再触发第二次 AI 调用
+                        const callMatch = fullContent.match(/\[CALL_START\]\s*(\{[\s\S]*?\})\s*\[CALL_END\]/i);
+                        if (callMatch) {
+                            try {
+                                const jsonStr = callMatch[1].trim();
+                                const callData = JSON.parse(jsonStr);
+
+                                // 添加到通话记录
+                                if (callData.speech) {
+                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
+
+                                    // 播放语音
+                                    if (window.speechSynthesis && callData.speech) {
+                                        const utterance = new SpeechSynthesisUtterance(callData.speech);
+                                        utterance.lang = 'zh-CN';
+                                        utterance.rate = 1.0;
+                                        window.speechSynthesis.speak(utterance);
+                                    }
+                                }
+
+                                return; // 不添加消息到聊天记录
+                            } catch (e) {
+                                console.error('[ChatStore] Failed to parse call JSON:', e);
+                            }
+                        }
+
+                        // 如果没有找到 JSON 或解析失败，不显示消息
+                        return;
+                    } else if (fullContent.includes('[拒绝]') || fullContent.includes('[拒接]')) {
+                        console.log('[ChatStore] AI rejected the call');
+                        callStore.rejectCall();
+                        // 拒绝消息正常显示
+                    }
+                }
+
+                // --- Handle Call Mode Post-Processing ---
+                // Strict Check: Call must currently be active to play audio/process JSON
+                const isActuallyActive = (callStore.status === 'active' || isCallActive) && callStore.status !== 'ended' && callStore.status !== 'none';
+                if (isActuallyActive) {
+                    callStore.isSpeaking = false;
+                    // Extract final speech/action from the JSON
+                    const finalMatch = fullContent.match(/\[CALL_START\]\s*(\{[\s\S]*?\}|[\s\S]*?)\s*\[CALL_END\]/i);
+                    if (finalMatch) {
+                        try {
+                            const jsonStr = finalMatch[1].trim();
+                            const callData = JSON.parse(jsonStr);
+                            if (callData.speech) {
+                                // MANDATORY: If we are in active call, the "speech" is what we want to record in chat.
+                                // We replace the fullContent so nothing else (narrations) is saved/displayed.
+                                fullContent = callData.speech;
+                                if (callData.action) fullContent += ` (${callData.action})`;
+
+                                if (!hasAddedCallLine) {
+                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
+                                } else {
+                                    callStore.updateLastTranscriptLine(callData.speech);
+                                    const lastLine = callStore.transcript[callStore.transcript.length - 1];
+                                    if (lastLine) lastLine.action = callData.action || '';
+                                }
+
+                                // TTS logic: Strip bracketed content for speech only
+                                if (callStore.isSpeakerOn && window.speechSynthesis) {
+                                    window.speechSynthesis.cancel(); // Prevent stacking
+                                    const ttsText = callData.speech.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').trim();
+                                    if (ttsText) {
+                                        const utterance = new SpeechSynthesisUtterance(ttsText);
+                                        utterance.lang = 'zh-CN';
+                                        window.speechSynthesis.speak(utterance);
+                                    }
+                                }
+                            }
+                            if (callData.hangup) {
+                                callStore.endCall();
+                            }
+                        } catch (e) {
+                            console.warn('[ChatStore] Failed to parse final call JSON', e);
+                        }
+                    } else {
+                        // FALLBACK: If tags [CALL_START] are missing, but it LOOKS like JSON, try to extract speech field
+                        let speechText = '';
+                        const speechMatch = fullContent.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                        if (speechMatch && speechMatch[1]) {
+                            // Correctly handle escaped characters in the regex match
+                            speechText = speechMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+                        } else {
+                            // Remove [INNER_VOICE] and other tags
+                            let clean = fullContent.replace(/\[INNER[-_ ]?VOICE\][\s\S]*?\[\/INNER[-_ ]?VOICE\]/gi, '');
+                            clean = clean.replace(/\[MOMENT\][\s\S]*?\[\/MOMENT\]/gi, '');
+                            clean = clean.replace(/\[[\s\S]*?\]/g, '');
+                            speechText = clean.trim();
+                        }
+
+                        if (speechText) {
+                            fullContent = speechText;
+                            callStore.addTranscriptLine('ai', speechText);
+                            if (callStore.isSpeakerOn && window.speechSynthesis) {
+                                window.speechSynthesis.cancel(); // Prevent stacking
+                                const ttsText = speechText.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').trim();
+                                if (ttsText) {
+                                    const utterance = new SpeechSynthesisUtterance(ttsText);
+                                    utterance.lang = 'zh-CN';
+                                    window.speechSynthesis.speak(utterance);
+                                }
+                            }
+                        }
+                    }
+                }
+
+
 
                 // --- Pre-process: Auto-Fix Missing [/INNER_VOICE] ---
                 // If we detect [INNER_VOICE] but no closing tag, we try to auto-close it at the end of the JSON block
@@ -2502,7 +2669,15 @@ export const useChatStore = defineStore('chat', () => {
 
                             if (i === 0 && innerVoiceBlock) msgContent += '\n' + innerVoiceBlock;
 
-                            msgAdded = addMessage(chatId, { role: 'ai', type: msgType, content: msgContent, amount, note, quote: i === 0 ? aiQuote : null });
+                            msgAdded = addMessage(chatId, {
+                                role: 'ai',
+                                type: msgType,
+                                content: msgContent,
+                                amount,
+                                note,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode
+                            });
                         }
 
                         pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt }));
@@ -2512,7 +2687,13 @@ export const useChatStore = defineStore('chat', () => {
                         // The store usually expects just the name or url depending on implementation. 
                         // Based on ChatMessageItem, type 'sticker' usually expects content to be the sticker name or url.
                         // We stripped the brackets in the segmenting phase above.
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'sticker', content, quote: i === 0 ? aiQuote : null });
+                        msgAdded = addMessage(chatId, {
+                            role: 'ai',
+                            type: 'sticker',
+                            content,
+                            quote: i === 0 ? aiQuote : null,
+                            hidden: isCallMode
+                        });
                     } else if (type === 'voice') {
                         msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1 });
                     } else if (type === 'draw') {
@@ -2582,6 +2763,7 @@ export const useChatStore = defineStore('chat', () => {
             }
         } finally {
             typingStatus.value[chatId] = false;
+            callStore.isSpeaking = false;
             delete abortControllers[chatId];
         }
     }
@@ -2904,6 +3086,6 @@ export const useChatStore = defineStore('chat', () => {
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch
+        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm
     }
 })

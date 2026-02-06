@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
-// aiService will be imported dynamically in actions to prevent circular dependencies
+import { useLoggerStore } from './loggerStore'
 import localforage from 'localforage'
 
 // Configure localforage for moments
@@ -474,14 +474,18 @@ export const useMomentsStore = defineStore('moments', () => {
 
         const charInfos = allCharIds.map(id => {
             const chat = chatStore.chats[id]
+            if (!chat) return null
             return {
                 id,
                 name: chat.name,
                 persona: chat.prompt,
                 recentChats: (chat.msgs || []).slice(-20).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join('\n'),
-                worldContext: (chat.tags || []).join(', ')
+                worldContext: (chat.tags || []).join(', '),
+                // 传递用户对该角色的设定
+                userName: chat.userName,
+                userPersona: chat.userPersona
             }
-        }).filter(char => canInteractWithMoment(moment, char.id))
+        }).filter(char => char && canInteractWithMoment(moment, char.id))
 
         const userProfile = {
             name: settingsStore.personalization.userProfile.name,
@@ -597,6 +601,8 @@ export const useMomentsStore = defineStore('moments', () => {
         // 1. Gather Rich Character Context (Last 50 chats + personal moments history)
         const chars = candidates.map(id => {
             const chat = chatStore.chats[id]
+            if (!chat) return null
+
             const lastMsgs = (chat.msgs || []).slice(-50).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
 
             // Get last 3 personal moments for this character
@@ -611,15 +617,24 @@ export const useMomentsStore = defineStore('moments', () => {
                 name: chat.name,
                 persona: chat.prompt,
                 recentChats: lastMsgs,
-                personalHistory: personalHistory // NEW: specific history to avoid same person repeating topics
+                personalHistory: personalHistory,
+                // 重要：传递特定的人设信息
+                userName: chat.userName,
+                userPersona: chat.userPersona
             }
-        })
+        }).filter(Boolean) // Remove null entries
 
-        // 2. Gather Recent Moments Context (Last 10 moments) to avoid repetition
-        const recentMomentsContext = moments.value.slice(-10).map(m => ({
+        // 2. Gather Recent Moments Context (Last 20 moments) with details for ecosystem interactions
+        const recentMomentsContext = moments.value.slice(-20).map(m => ({
+            id: m.id,
             authorName: m.authorName,
             content: m.content,
-            timestamp: m.timestamp
+            timestamp: m.timestamp,
+            likes: m.likes || [],
+            comments: (m.comments || []).map(c => ({
+                authorName: c.authorName,
+                content: c.content
+            }))
         }))
 
         try {
@@ -636,66 +651,110 @@ export const useMomentsStore = defineStore('moments', () => {
             }
 
             const ai = await import('../utils/aiService')
-            const momentsData = await ai.generateBatchMomentsWithInteractions({
+            const result = await ai.generateBatchMomentsWithInteractions({
                 characters: chars,
                 worldContext: worldContext,
                 customPrompt: customPrompt,
                 userProfile: {
                     name: settingsStore.personalization.userProfile.name,
-                    signature: settingsStore.personalization.userProfile.signature
+                    signature: settingsStore.personalization.userProfile.signature,
+                    persona: settingsStore.personalization.userProfile.persona
                 },
-                historicalMoments: recentMomentsContext, // NEW: Pass history
+                historicalMoments: recentMomentsContext,
                 count
             })
 
-            for (const data of momentsData) {
-                // Map AI authorId back to chatStore key if possible
-                let finalAuthorId = data.authorId
-                if (!chatStore.chats[finalAuthorId]) {
-                    const mappedChar = Object.values(chatStore.chats)
-                        .find(c => c.id === data.authorId || c.wechatId === data.authorId || c.name === data.authorId || c.remark === data.authorId)
-                    if (mappedChar) {
-                        // Find the key for this char in chatStore.chats
-                        const key = Object.keys(chatStore.chats).find(k => chatStore.chats[k] === mappedChar)
-                        if (key) finalAuthorId = key
+            const { newMoments = [], ecosystemUpdates = [] } = result || {}
+
+            // Process New Moments
+            if (Array.isArray(newMoments)) {
+                for (const data of newMoments) {
+                    if (!isInitialized.value) return
+
+                    let finalAuthorId = data.authorId
+                    if (!chatStore.chats[finalAuthorId]) {
+                        const mappedChar = Object.values(chatStore.chats)
+                            .find(c => c.id === data.authorId || c.wechatId === data.authorId || c.name === data.authorId || c.remark === data.authorId)
+                        if (mappedChar) {
+                            const key = Object.keys(chatStore.chats).find(k => chatStore.chats[k] === mappedChar)
+                            if (key) finalAuthorId = key
+                        }
                     }
-                }
 
-                const moment = addMoment({
-                    authorId: finalAuthorId,
-                    content: data.content,
-                    location: data.location,
-                    images: data.images,
-                    mentions: data.mentions || []
-                }, { skipAutoInteraction: true })
+                    const moment = addMoment({
+                        authorId: finalAuthorId,
+                        content: data.content,
+                        location: data.location,
+                        images: data.images,
+                        mentions: data.mentions || []
+                    }, { skipAutoInteraction: true })
 
-                if (data.interactions) {
-                    for (const inter of data.interactions) {
-                        if (inter.type === 'like') addLike(moment.id, inter.authorName)
-                        else if (inter.type === 'comment') addComment(moment.id, {
-                            authorId: inter.authorId,
-                            authorName: inter.authorName,
-                            content: inter.content,
-                            mentions: inter.mentions || [],
-                            replyTo: inter.replyTo || null,
-                            isVirtual: inter.isVirtual
-                        })
+                    if (data.interactions) {
+                        for (const inter of data.interactions) {
+                            if (inter.type === 'like') addLike(moment.id, inter.authorName)
+                            else if (inter.type === 'comment') addComment(moment.id, {
+                                authorId: inter.authorId,
+                                authorName: inter.authorName,
+                                content: inter.content,
+                                mentions: inter.mentions || [],
+                                replyTo: inter.replyTo || null,
+                                isVirtual: inter.isVirtual
+                            })
+                        }
                     }
                 }
             }
+
+            // Process Ecosystem Updates (Interactions for old moments)
+            if (Array.isArray(ecosystemUpdates)) {
+                for (const update of ecosystemUpdates) {
+                    if (!isInitialized.value) return
+                    const targetMoment = moments.value.find(m => m.id === update.momentId)
+                    if (!targetMoment) continue
+
+                    if (update.newInteractions) {
+                        for (const inter of update.newInteractions) {
+                            if (inter.type === 'like') {
+                                // Only add if not already liked
+                                if (!targetMoment.likes.includes(inter.authorName)) {
+                                    addLike(targetMoment.id, inter.authorName)
+                                }
+                            } else if (inter.type === 'comment' || inter.type === 'reply') {
+                                addComment(targetMoment.id, {
+                                    authorId: inter.authorId,
+                                    authorName: inter.authorName,
+                                    content: inter.content,
+                                    mentions: inter.mentions || [],
+                                    replyTo: inter.replyTo || null,
+                                    isVirtual: inter.isVirtual
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+
         } catch (e) {
-            console.error(e)
+            console.error('[MomentsStore] Batch generation failed:', e)
         } finally {
             // Update last generate time regardless of success to prevent spam loops on error
-            lastGenerateTime.value = Date.now()
-            localStorage.setItem('wechat_moments_last_gen', lastGenerateTime.value)
+            if (isInitialized.value) {
+                lastGenerateTime.value = Date.now()
+                localStorage.setItem('wechat_moments_last_gen', lastGenerateTime.value)
+            }
         }
     }
 
     // Auto Gen Loop
-    let autoGenTimer = null
+    // --- Background Loop (Web Worker based for resilience) ---
+    let autoGenWorker = null
+
     function startAutoGeneration() {
-        if (autoGenTimer) clearInterval(autoGenTimer)
+        if (autoGenWorker) {
+            autoGenWorker.terminate()
+            autoGenWorker = null
+        }
+
         const intervalMs = config.value.autoGenerateInterval * 60 * 1000
         if (intervalMs <= 0) return
 
@@ -703,20 +762,55 @@ export const useMomentsStore = defineStore('moments', () => {
         const now = Date.now()
         const elapsed = now - lastGenerateTime.value
         if (elapsed > intervalMs) {
-            console.log('[MomentsStore] Auto-gen overdue, triggering immediately...')
+            console.log('[MomentsStore] Auto-gen overdue, triggering catch-up...')
             batchGenerateAIMoments(1)
         }
 
-        // 2. Start Timer
-        autoGenTimer = setInterval(() => {
-            // Re-check time to be robust against background throttling (which might wake up late)
-            const currentElapsed = Date.now() - lastGenerateTime.value
-            if (currentElapsed >= intervalMs) {
-                if (Math.random() > 0.6) {
-                    batchGenerateAIMoments(1)
+        // 2. Start Worker for background timing
+        const workerScript = `
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    setInterval(() => {
+                        self.postMessage('tick');
+                    }, 60000); // Check every minute
+                }
+            };
+        `;
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        autoGenWorker = new Worker(URL.createObjectURL(blob));
+
+        autoGenWorker.onmessage = (e) => {
+            if (e.data === 'tick') {
+                const logger = useLoggerStore()
+                const now = new Date()
+                if (now.getMinutes() % 30 === 0) {
+                    logger.sys('[MomentsStore] Worker heartbeat: checking auto-generation status...')
+                }
+
+                const currentElapsed = Date.now() - lastGenerateTime.value
+                if (currentElapsed >= intervalMs) {
+                    if (Math.random() > 0.6) { // Random chance to generate to avoid spam
+                        logger.sys('[MomentsStore] Worker triggering batch AI generation')
+                        batchGenerateAIMoments(1)
+                    }
                 }
             }
-        }, 60000) // Check every minute instead of the full interval
+        }
+
+        autoGenWorker.postMessage('start');
+
+        // 3. Foreground Compensation
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    const catchupElapsed = Date.now() - lastGenerateTime.value
+                    if (catchupElapsed >= intervalMs) {
+                        console.log('[MomentsStore] Foreground return: triggering catch-up...')
+                        batchGenerateAIMoments(1)
+                    }
+                }
+            })
+        }
     }
 
     function addNotification(payload) {

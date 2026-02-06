@@ -172,14 +172,15 @@
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
                             @click="$router.push('/favorites/' + favoriteCardData.favoriteId)">
                             <div class="p-4 flex flex-col gap-2">
-                                <div class="flex items-center gap-2 text-[#fabb05] mb-1">
-                                    <i class="fa-solid fa-star"></i>
+                                <div class="flex items-center gap-2 mb-1" :class="favoriteCardData.source === '通话记录' ? 'text-[#07c160]' : 'text-[#fabb05]'">
+                                    <i :class="favoriteCardData.source === '通话记录' ? 'fa-solid fa-phone' : 'fa-solid fa-star'"></i>
                                     <span class="text-xs font-bold text-gray-400">
-                                        {{ favoriteCardData.type === 'chat_record' ? '收藏的消息记录' : '收藏的消息' }}
+                                        {{ favoriteCardData.source === '通话记录' ? '通话记录' : (favoriteCardData.type === 'chat_record' ? '收藏的消息记录' : '收藏的消息') }}
                                     </span>
                                 </div>
-                                <div class="text-[13px] text-gray-500 line-clamp-1 mb-2">来自与 {{
-                                    favoriteCardData.source }} 的聊天</div>
+                                <div class="text-[13px] text-gray-500 line-clamp-1 mb-2">
+                                    {{ favoriteCardData.source === '通话记录' ? favoriteCardData.title : `来自与 ${favoriteCardData.source} 的聊天` }}
+                                </div>
 
                                 <div class="bg-gray-50/50 p-3 rounded-lg border border-gray-50">
                                     <div class="text-sm text-gray-700 whitespace-pre-wrap line-clamp-3 leading-relaxed">
@@ -189,7 +190,10 @@
 
                                 <div
                                     class="mt-2 pt-2 border-t border-gray-50 flex justify-between items-center text-[10px] text-gray-300">
-                                    <template v-if="favoriteCardData.type === 'chat_record'">
+                                    <template v-if="favoriteCardData.source === '通话记录'">
+                                        <span>已保存至收藏夹</span>
+                                    </template>
+                                    <template v-else-if="favoriteCardData.type === 'chat_record'">
                                         <span>共 {{ favoriteCardData.count }} 条消息</span>
                                     </template>
                                     <template v-else>
@@ -793,7 +797,8 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
 
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
-    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata)"[\s\S]*?\}/gi, '');
+    // 4. Remove JSON blocks (including Call Protocol fragments)
+    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
 
     // AGGRESSIVE: Remove loose JSON properties (e.g. spirit: {...}, "mood": {...}) that might be missing enclosing braces
     // This handles the specific leak seen in user screenshots
@@ -809,7 +814,7 @@ function getCleanContent(contentRaw, isCard = false) {
 
         // 2. Remove JSON-like structures
         clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
-        clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform|stats|spirit)"[\s\S]*?\}/gi, '');
+        clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform|stats|spirit|speech|hangup)"[\s\S]*?\}/gi, '');
 
         // 3. Remove loose CSS
         clean = clean.replace(/(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[^{}]*\{[^{}]*\}[^{}]*\}|(?:\s|^)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');

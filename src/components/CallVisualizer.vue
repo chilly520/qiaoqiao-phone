@@ -99,6 +99,7 @@ const transcriptList = computed(() => {
 
 // STT Logic
 const isListening = ref(false)
+const interimTranscript = ref('')
 let recognition = null
 
 const initRecognition = () => {
@@ -113,24 +114,31 @@ const initRecognition = () => {
         }
 
         recognition.onresult = (event) => {
-             // If speaking, interrupt TTS immediately
+             // If speaking, interrupt TTS and AI generation immediately
              window.speechSynthesis.cancel() // Global cancel
+             if (partner.value) {
+                 chatStore.stopGeneration(true, partner.value.id)
+             }
              
-             let finalTranscript = ''
-             let interim = '' 
+             let finalStr = ''
+             let interimStr = '' 
 
              for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript
+                    finalStr += event.results[i][0].transcript
                 } else {
-                    interim += event.results[i][0].transcript
+                    interimStr += event.results[i][0].transcript
                 }
              }
+
+             // Show interim real-time
+             interimTranscript.value = interimStr
              
              // If we have final result, send it
-             if (finalTranscript) {
-                 userInput.value = finalTranscript
+             if (finalStr) {
+                 userInput.value = finalStr
                  sendText() 
+                 interimTranscript.value = ''
                  // Auto-triggering AI to respond to the spoken input
                  setTimeout(() => handleGenerate(), 300)
              }
@@ -145,36 +153,65 @@ const initRecognition = () => {
 
         recognition.onerror = (event) => {
             console.error('Speech recognition error', event.error)
-            if (event.error === 'not-allowed') {
-                 chatStore.triggerToast('麦克风权限被拒绝，请在浏览器设置中开启。', 'warning')
+            isListening.value = false
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                 chatStore.triggerToast('麦克风权限被拒绝或不可用，请在浏览器地址栏左侧开启权限。', 'warning')
             } else if (event.error === 'no-speech') {
-                 // Ignore "no speech" to keep listening
-            } else {
-                 isListening.value = false
+                 // Ignore "no speech" to keep listening if it was intended
             }
         }
+
     } else {
         chatStore.triggerToast('您的浏览器不支持语音识别功能，请尝试使用 Chrome。', 'info')
     }
 }
 
 const toggleMic = () => {
-    if (isListening.value) {
-        stopListening()
-    } else {
-        startListening()
+    try {
+        if (callStore.isMuted) {
+            // User wants to UNMUTE
+            startListening()
+        } else {
+            // User wants to MUTE
+            stopListening()
+        }
+    } catch (e) {
+        console.error('[CallVisualizer] toggleMic error:', e);
+        chatStore.triggerToast('麦克风操作失败，请重试', 'error');
     }
 }
 
 const startListening = () => {
-    if (!recognition) initRecognition()
-    recognition?.start()
-    callStore.isMuted = false // Unmute store state
+    // If permission was already denied, don't just spam recognition.start()
+    if (recognition) {
+        try {
+            recognition.start()
+            isListening.value = true
+            callStore.isMuted = false
+        } catch (e) {
+            // If already started, just sync state
+            if (e.message?.includes('already started')) {
+                isListening.value = true;
+                callStore.isMuted = false;
+            } else {
+                console.error('Recognition start failed', e)
+                chatStore.triggerToast('麦克风启动失败，请检查权限', 'warning')
+            }
+        }
+    } else {
+        initRecognition()
+        recognition?.start()
+        isListening.value = true
+        callStore.isMuted = false
+    }
 }
 
 const stopListening = () => {
-    recognition?.stop()
+    try {
+        recognition?.stop()
+    } catch(e) {}
     isListening.value = false
+    interimTranscript.value = ''
     callStore.isMuted = true // Mute store state
 }
 
@@ -269,7 +306,8 @@ watch(() => callStore.transcript.length, () => {
             {{ 
                 status === 'dialing' ? '正在呼叫...' : 
                 status === 'ended' ? '通话已结束' :
-                chatStore.isTyping ? '对方正在输入...' :
+                isListening ? '对方正在聆听...' :
+                callStore.isSpeaking ? '对方正在说话...' :
                 callStore.durationText 
             }}
           </div>
@@ -292,9 +330,19 @@ watch(() => callStore.transcript.length, () => {
                    </div>
                    <img :src="partner?.avatar" class="avatar-large" :class="{ 'speaking': callStore.isSpeaking }">
                </div>
-               <div class="voice-label animate-fade-in">正在语音通话...</div>
+               <div class="voice-status-labels">
+                   <div v-if="status === 'active'" class="active-status-label animate-fade-in">正在通话...</div>
+                   <div v-else-if="status === 'dialing'" class="dialing-status-label animate-fade-in">正在呼叫对方...</div>
+                   
+                   <!-- Real-time STT display bubble -->
+                   <div v-if="isListening && interimTranscript" class="stt-feedback-bubble animate-fade-in">
+                       <i class="fa-solid fa-microphone text-green-400 mr-2"></i>
+                       {{ interimTranscript }}
+                   </div>
+               </div>
             </div>
         </template>
+
 
         <!-- CASE 2: Video Call Layout -->
         <template v-else>
@@ -348,10 +396,17 @@ watch(() => callStore.transcript.length, () => {
             <div class="control-row main-controls">
                 
                 <!-- Mic / STT -->
-                <button class="control-btn" :class="{ active: isListening, 'is-listening': isListening }" @click="toggleMic">
-                    <i class="fa-solid" :class="isListening ? 'fa-microphone' : 'fa-microphone-slash'"></i>
-                    <span>{{ isListening ? '听得见' : '静音' }}</span>
+                <button class="control-btn" 
+                        :class="{ 
+                            active: isListening, 
+                            'is-listening': isListening,
+                            'is-muted-active': callStore.isMuted 
+                        }" 
+                        @click="toggleMic">
+                    <i class="fa-solid" :class="callStore.isMuted ? 'fa-microphone-slash' : 'fa-microphone'"></i>
+                    <span>{{ callStore.isMuted ? '已静音' : '听得见' }}</span>
                 </button>
+
 
                 <!-- Speaker (Visual Toggle) -->
                 <button class="control-btn" :class="{ active: callStore.isSpeakerOn }" @click="toggleSpeaker">
@@ -528,20 +583,61 @@ watch(() => callStore.transcript.length, () => {
 }
 
 .avatar-large {
-  width: 140px;
-  height: 140px;
+  width: 100px; /* Shrunk from 140px */
+  height: 100px;
   border-radius: 50%;
-  box-shadow: 0 0 40px rgba(7, 193, 96, 0.4);
-  border: 4px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 30px rgba(7, 193, 96, 0.4);
+  border: 3px solid rgba(255, 255, 255, 0.2);
   z-index: 10;
   position: relative;
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  object-fit: cover;
+}
+
+.avatar-large.speaking {
+    animation: avatar-pulse 2s infinite ease-in-out;
+    border-color: rgba(7, 193, 96, 0.6);
+    box-shadow: 0 0 50px rgba(7, 193, 96, 0.6);
+}
+
+@keyframes avatar-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.voice-status-labels {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+}
+
+.active-status-label {
+    font-size: 16px;
+    letter-spacing: 1px;
+    opacity: 0.8;
+}
+
+.stt-feedback-bubble {
+    background: rgba(7, 193, 96, 0.2);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(7, 193, 96, 0.4);
+    padding: 10px 20px;
+    border-radius: 20px;
+    color: #fff;
+    font-size: 15px;
+    max-width: 80%;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
 
 .transcript-box {
     position: relative;
     flex: 1;
-    margin: 0 20px;
-    padding: 10px;
+    margin: 10px 20px;
+    padding: 20px 10px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -550,8 +646,8 @@ watch(() => callStore.transcript.length, () => {
     z-index: 10;
     scrollbar-width: none; 
     -ms-overflow-style: none;
-    -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
-    mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
 }
 .transcript-box::-webkit-scrollbar { display: none; }
 
@@ -559,7 +655,7 @@ watch(() => callStore.transcript.length, () => {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    max-width: 80%;
+    max-width: 85%;
 }
 
 .transcript-line.is-user {
@@ -568,15 +664,15 @@ watch(() => callStore.transcript.length, () => {
 }
 
 .speech-bubble {
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    padding: 8px 12px;
-    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+    padding: 10px 14px;
+    border-radius: 14px;
     color: #fff;
-    font-size: 16px;
-    line-height: 1.5;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
-    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 15px;
+    line-height: 1.4;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.05);
 }
 
 .bracket-text {
@@ -682,18 +778,44 @@ watch(() => callStore.transcript.length, () => {
 }
 
 .hangup-btn {
-  width: 68px;
-  height: 68px;
+  width: 72px;
+  height: 72px;
   background: #ff4d4f;
   border: none;
   border-radius: 50%;
   color: white;
-  font-size: 30px;
+  font-size: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 8px 25px rgba(255, 77, 79, 0.4);
+  transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+  position: relative;
+}
+
+.hangup-btn:hover {
+    transform: scale(1.1) rotate(-10deg);
+    box-shadow: 0 12px 35px rgba(255, 77, 79, 0.5);
+    background: #ff7875;
+}
+
+.hangup-btn:active {
+    transform: scale(0.9);
+}
+
+.hangup-btn::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 77, 79, 0.3);
+    animation: hangup-ping 2s infinite;
+}
+
+@keyframes hangup-ping {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.4); opacity: 0; }
 }
 
 .call-input-bar {
@@ -729,18 +851,47 @@ watch(() => callStore.transcript.length, () => {
 .generate-btn { background: #10b981; }
 
 .voice-layout-container {
-    flex: 1;
+    flex: 0.6; /* Balanced ratio to give transcript box more room */
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 30px;
+    gap: 12px; /* Tighter gap */
+    margin-top: 10px;
 }
+
 
 .avatar-wrapper {
     position: relative;
-    width: 160px;
-    height: 160px;
+    width: 120px; 
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar-large {
+  width: 80px; 
+  height: 80px;
+  border-radius: 50%;
+  box-shadow: 0 0 30px rgba(7, 193, 96, 0.4);
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  z-index: 10;
+  position: relative;
+  transition: all 0.3s ease;
+  object-fit: cover;
+}
+
+.avatar-large.speaking {
+  box-shadow: 0 0 50px rgba(7, 193, 96, 0.8);
+  transform: scale(1.05);
+}
+
+.voice-aura {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -748,20 +899,49 @@ watch(() => callStore.transcript.length, () => {
 
 .wave {
     position: absolute;
-    width: 160px;
-    height: 160px;
+    width: 80px; 
+    height: 80px;
     border-radius: 50%;
     background: rgba(7, 193, 96, 0.2);
     animation: wave-ping 3s infinite ease-out;
 }
 
-.wave2 { animation-delay: 1s; }
-.wave3 { animation-delay: 2s; }
+/* Fix squashed buttons in input bar */
+.send-btn, .generate-btn {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: #07c160;
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.generate-btn { background: #10b981; }
+
+/* Control buttons fix */
+.control-btn {
+    flex-shrink: 0;
+    width: 70px;
+    /* ... existing ... */
+}
+
+/* User specifically requested MUTE turn GREEN to show it is 'closed'/active-state-of-muting */
+.control-btn.is-muted-active i {
+    background: #07c160;
+    color: white;
+    box-shadow: 0 0 15px rgba(7, 193, 96, 0.5);
+}
 
 @keyframes wave-ping {
     0% { transform: scale(1); opacity: 0.8; }
-    100% { transform: scale(2.5); opacity: 0; }
+    100% { transform: scale(2.2); opacity: 0; }
 }
+
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
