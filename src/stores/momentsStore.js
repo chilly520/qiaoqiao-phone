@@ -315,12 +315,21 @@ export const useMomentsStore = defineStore('moments', () => {
             finalAuthorName = userName
             finalAuthorAvatar = userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=Me`
         } else {
-            // Priority 1: Try to find real char by ID
+            // Priority 1: Try to find real char by chatStore key (direct lookup)
             if (comment.authorId && chatStore.chats[comment.authorId]) {
                 realChar = chatStore.chats[comment.authorId]
             }
-            // Priority 2: Try to find by Name
-            else if (comment.authorName) {
+            // Priority 2: Try to find by internal id property, wechatId, name, or remark
+            if (!realChar && comment.authorId) {
+                realChar = Object.values(chatStore.chats).find(c =>
+                    c.id === comment.authorId ||
+                    c.wechatId === comment.authorId ||
+                    c.name === comment.authorId ||
+                    c.remark === comment.authorId
+                )
+            }
+            // Priority 3: Try to find by Name
+            if (!realChar && comment.authorName) {
                 realChar = Object.values(chatStore.chats).find(c => c.name === comment.authorName || c.remark === comment.authorName)
             }
 

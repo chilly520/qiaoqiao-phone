@@ -134,27 +134,41 @@ const likeNames = computed(() => {
 
 const getAuthorName = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.name
-    // 首先尝试通过ID查找
+    // 首先尝试通过ID查找（chatStore 的 key）
     if (chatStore.chats[id]) {
         // Request 6: Use Remark/Alias if available
         return chatStore.chats[id].remark || chatStore.chats[id].name
     }
-    // 如果通过ID找不到，尝试通过名称查找
-    const char = Object.values(chatStore.chats).find(c => c.name === id)
+    // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
+    const char = Object.values(chatStore.chats).find(c => 
+        c.id === id || 
+        c.wechatId === id || 
+        c.name === id || 
+        c.remark === id
+    )
     if (char) {
         return char.remark || char.name
+    }
+    // 如果是纯数字长串ID，显示为神秘人，避免乱码
+    if (/^\d{10,}$/.test(id)) {
+        return '神秘人'
     }
     return id || '神秘人'
 }
 
 const getAuthorAvatar = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.avatar
-    // 首先尝试通过ID查找
+    // 首先尝试通过ID查找（chatStore 的 key）
     if (chatStore.chats[id]) {
         return chatStore.chats[id].avatar
     }
-    // 如果通过ID找不到，尝试通过名称查找
-    const char = Object.values(chatStore.chats).find(c => c.name === id)
+    // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
+    const char = Object.values(chatStore.chats).find(c => 
+        c.id === id || 
+        c.wechatId === id || 
+        c.name === id || 
+        c.remark === id
+    )
     if (char) {
         return char.avatar
     }
@@ -167,6 +181,13 @@ const renderCommentContent = (comment) => {
     const div = document.createElement('div')
     div.textContent = content
     content = div.innerHTML
+
+    // Fix: Replace numeric ID mentions (like @1769381657233) with proper names
+    const numericMentionRegex = /@(\d{10,})/g
+    content = content.replace(numericMentionRegex, (match, numericId) => {
+        const resolvedName = getAuthorName(numericId)
+        return `<span class="text-blue-500 font-medium">@${resolvedName}</span>`
+    })
 
     // Handle Mentions
     if (comment.mentions && comment.mentions.length > 0) {
