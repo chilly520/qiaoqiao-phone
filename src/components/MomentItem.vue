@@ -54,7 +54,7 @@ const author = computed(() => {
     if (!authorId) {
         return { name: '神秘人', avatar: '' }
     }
-    // 首先尝试通过ID查找
+    // 优先尝试通过 chatStore 的 key 查找
     if (chatStore.chats[authorId]) {
         const chat = chatStore.chats[authorId]
         return {
@@ -62,13 +62,22 @@ const author = computed(() => {
             name: chat.remark || chat.name // Use Remark Name
         }
     }
-    // 如果通过ID找不到，尝试通过名称查找
-    const char = Object.values(chatStore.chats).find(c => c.name === authorId)
+    // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
+    const char = Object.values(chatStore.chats).find(c => 
+        c.id === authorId || 
+        c.wechatId === authorId || 
+        c.name === authorId || 
+        c.remark === authorId
+    )
     if (char) {
         return {
             ...char,
             name: char.remark || char.name
         }
+    }
+    // 如果是纯数字长串ID，显示为神秘人，避免乱码
+    if (/^\d{10,}$/.test(authorId)) {
+        return { name: '神秘好友', avatar: '' }
     }
     // 如果都找不到，使用authorId作为名称，确保显示正确的作者名
     return { name: authorId, avatar: '' }
@@ -469,7 +478,19 @@ const navigateToAuthor = () => {
     if (isUser.value) {
         emit('showProfile', 'user')
     } else {
-        router.push(`/moments/profile/${props.moment.authorId}`)
+        // Robust navigation: if numeric ID, try to find the chat key first
+        const id = props.moment.authorId
+        let finalId = id
+        if (!chatStore.chats[id]) {
+            const char = Object.values(chatStore.chats).find(c => 
+                c.id === id || c.wechatId === id || c.name === id || c.remark === id
+            )
+            if (char) {
+                const key = Object.keys(chatStore.chats).find(k => chatStore.chats[k] === char)
+                if (key) finalId = key
+            }
+        }
+        emit('showProfile', finalId)
     }
 }
 </script>

@@ -111,20 +111,36 @@ export const useMomentsStore = defineStore('moments', () => {
             baseLikeCount: Math.floor(Math.random() * 5000) + 10 // Simulating popularity
         }
 
-        moments.value.push(moment)
+        moments.value = [...moments.value, moment]
 
         // Notification Logic: Mentioned in post
         if (data.authorId !== 'user') {
             const chatStore = useChatStore()
             const settingsStore = useSettingsStore()
             const userName = settingsStore.personalization.userProfile.name
-            const isMentioned = (data.mentions || []).some(m => m.id === 'user' || m.name === userName)
+            const userWechatId = settingsStore.personalization.userProfile.wechatId
+
+            // Improve Mention Detection: support string array and object array
+            const isMentioned = (data.mentions || []).some(m => {
+                if (typeof m === 'string') {
+                    return m === userName || (userWechatId && m === userWechatId) || m === 'user'
+                }
+                return m.id === 'user' || m.name === userName
+            })
 
             if (isMentioned) {
-                const char = chatStore.chats[data.authorId]
+                // Robust character lookup for notification source
+                const lookupId = data.authorId
+                let char = chatStore.chats[lookupId]
+                if (!char) {
+                    char = Object.values(chatStore.chats).find(c =>
+                        c.id === lookupId || c.wechatId === lookupId || c.name === lookupId || c.remark === lookupId
+                    )
+                }
+
                 addNotification({
                     type: 'mention',
-                    actorName: char ? (char.remark || char.name) : '好友',
+                    actorName: char ? (char.remark || char.name) : '神秘好友',
                     actorAvatar: char ? char.avatar : '/avatars/default.png',
                     content: '提到了你',
                     momentId: moment.id,
@@ -633,8 +649,20 @@ export const useMomentsStore = defineStore('moments', () => {
             })
 
             for (const data of momentsData) {
+                // Map AI authorId back to chatStore key if possible
+                let finalAuthorId = data.authorId
+                if (!chatStore.chats[finalAuthorId]) {
+                    const mappedChar = Object.values(chatStore.chats)
+                        .find(c => c.id === data.authorId || c.wechatId === data.authorId || c.name === data.authorId || c.remark === data.authorId)
+                    if (mappedChar) {
+                        // Find the key for this char in chatStore.chats
+                        const key = Object.keys(chatStore.chats).find(k => chatStore.chats[k] === mappedChar)
+                        if (key) finalAuthorId = key
+                    }
+                }
+
                 const moment = addMoment({
-                    authorId: data.authorId,
+                    authorId: finalAuthorId,
                     content: data.content,
                     location: data.location,
                     images: data.images,

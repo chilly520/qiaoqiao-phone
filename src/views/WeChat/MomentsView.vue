@@ -170,7 +170,14 @@ const filteredMoments = computed(() => {
 
     // 2. Filter by author if viewing a profile
     if (filterAuthorId.value) {
-        all = all.filter(m => m.authorId === filterAuthorId.value)
+        const targetId = filterAuthorId.value
+        all = all.filter(m => {
+            if (m.authorId === targetId) return true
+            // Check if m.authorId maps to the same character as targetId
+            const charM = chatStore.chats[m.authorId] || Object.values(chatStore.chats).find(c => c.id === m.authorId || c.wechatId === m.authorId)
+            const charT = chatStore.chats[targetId] || Object.values(chatStore.chats).find(c => c.id === targetId || c.wechatId === targetId)
+            return charM && charT && charM === charT
+        })
 
         // 3. Profile View: Sort by Pinned First, then by Timestamp
         return all.sort((a, b) => {
@@ -218,19 +225,32 @@ const getConsistentBackground = (id) => {
 const viewingProfile = computed(() => {
     // 1. Viewing Friend
     if (filterAuthorId.value && filterAuthorId.value !== 'user') {
-        const char = chatStore.chats[filterAuthorId.value]
+        const id = filterAuthorId.value
+        // Priority 1: Direct lookup by chat key
+        let char = chatStore.chats[id]
+        
+        // Priority 2: Robust lookup by internal attributes
+        if (!char) {
+            char = Object.values(chatStore.chats).find(c => 
+                c.id === id || 
+                c.wechatId === id || 
+                c.name === id || 
+                c.remark === id
+            )
+        }
+
         if (char) {
             return {
                 isMe: false,
-                name: char.name,
+                name: char.remark || char.name,
                 avatar: char.avatar,
                 signature: char.statusText || '对方很懒，什么都没有留下',
-                background: char.momentsBackground || getConsistentBackground(char.id) // Fallback to random default
+                background: char.momentsBackground || getConsistentBackground(char.id || id) // Fallback to random default
             }
         }
         return {
             isMe: false,
-            name: '神秘人',
+            name: (/^\d{10,}$/.test(id) ? '神秘好友' : id),
             avatar: '',
             signature: '...',
             background: ''
@@ -716,7 +736,7 @@ onMounted(() => {
             <i class="fa-solid fa-chevron-left text-xl cursor-pointer drop-shadow-md" @click="handleProfileBack"></i>
             <div v-if="filterAuthorId"
                 class="flex-1 text-center font-bold text-lg truncate px-8 shadow-black drop-shadow-md">{{
-                    filterAuthorId === 'user' ? '我的相册' : (chatStore.chats[filterAuthorId]?.name + '的相册') }}</div>
+                    filterAuthorId === 'user' ? '我的相册' : (viewingProfile.name + '的相册') }}</div>
             <div v-else-if="showingProfileCharId" class="flex-1 text-center font-bold text-lg truncate px-8">详细资料</div>
             <div class="flex gap-5 items-center">
                 <!-- VIEWING FRIEND: Generate Button -->

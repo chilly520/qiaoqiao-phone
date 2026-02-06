@@ -1657,10 +1657,19 @@ ${userContextText}
         if (result.error) throw new Error(result.error)
 
         // Parse JSON array from AI response
-        const jsonMatch = result.content.match(/\[[\s\S]*\]/)
-        if (!jsonMatch) throw new Error('AI Response is not a valid JSON array')
+        // Parse JSON array from AI response with cleaner cleaning
+        let jsonStr = result.content
+        const jsonMatch = jsonStr.match(/\[\s*\{[\s\S]*\}\s*\]/)
+        if (!jsonMatch) {
+            // Fallback for cases where it might just return the array not the codeblock
+            const arrayMatch = jsonStr.substring(jsonStr.indexOf('['), jsonStr.lastIndexOf(']') + 1)
+            if (!arrayMatch || arrayMatch.length < 2) throw new Error('AI Response is not a valid JSON array')
+            jsonStr = arrayMatch
+        } else {
+            jsonStr = jsonMatch[0]
+        }
 
-        const momentsData = JSON.parse(jsonMatch[0])
+        const momentsData = JSON.parse(jsonStr)
 
         // Process each moment: generate images if needed
         const processedMoments = []
