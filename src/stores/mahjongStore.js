@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useWalletStore } from './walletStore'
+import mahjongEngine from '../utils/mahjong/MahjongEngine.js'
+import mahjongAI from '../utils/mahjong/MahjongAI.js'
 
 export const useMahjongStore = defineStore('mahjong', () => {
     // ===== 状态 =====
@@ -332,6 +334,38 @@ export const useMahjongStore = defineStore('mahjong', () => {
     // 初始化时加载数据
     loadData()
 
+    // 游戏逻辑实例（延迟初始化）
+    let gameLogic = null
+    const getGameLogic = () => {
+        if (!gameLogic) {
+            const MahjongGameLogic = require('../utils/mahjong/MahjongGameLogic.js').default
+            gameLogic = new MahjongGameLogic({
+                currentRoom,
+                gameState,
+                sendMessage,
+                addBeans,
+                deductBeans,
+                updateScore,
+                startGame
+            })
+        }
+        return gameLogic
+    }
+
+    /**
+     * 玩家打牌
+     */
+    const playTile = (tileIndex) => {
+        getGameLogic().playTile(tileIndex)
+    }
+
+    /**
+     * 下一回合
+     */
+    const nextTurn = () => {
+        getGameLogic().nextTurn()
+    }
+
     return {
         // 状态
         beans,
@@ -359,6 +393,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
         startGame,
         sendMessage,
         toggleCheat,
-        loadData
+        loadData,
+        playTile,
+        nextTurn
     }
 })
