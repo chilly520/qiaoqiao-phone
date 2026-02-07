@@ -8,7 +8,7 @@
 
             <div class="flex items-center gap-4 text-white text-sm">
                 <span>局数: {{ mahjongStore.currentRoom?.currentRound }}/{{ mahjongStore.currentRoom?.totalRounds
-                }}</span>
+                    }}</span>
                 <span>底注: {{ mahjongStore.currentRoom?.baseStake }}</span>
                 <span>牌堆: {{ mahjongStore.gameState?.deck?.length || 0 }}</span>
             </div>
@@ -64,7 +64,7 @@
                 </div>
 
                 <!-- 牌池 -->
-                <div class="flex-1 flex items-center justify-center">
+                <div class="flex-1 flex flex-col items-center justify-center">
                     <div v-if="!mahjongStore.gameState" class="text-white text-center">
                         <div class="text-6xl mb-4">🀄</div>
                         <div class="text-xl font-bold">准备中...</div>
@@ -77,10 +77,21 @@
                         <div class="text-xl font-bold text-yellow-300 mt-2">+{{
                             mahjongStore.currentRoom.lastResult?.reward }}豆</div>
                     </div>
-                    <div v-else class="flex flex-wrap gap-0.5 max-w-[200px] justify-center">
-                        <div v-for="(tile, i) in mahjongStore.gameState?.pool?.slice(-20)" :key="i"
-                            class="mahjong-tile-pool">
-                            {{ getTileEmoji(tile) }}
+                    <div v-else class="flex flex-col items-center">
+                        <!-- 牌堆显示 -->
+                        <div class="mb-2 flex gap-1">
+                            <div v-for="i in Math.min(17, deckCount)" :key="i"
+                                class="w-3 h-5 bg-gradient-to-b from-green-400 to-green-600 border border-green-700 rounded-sm">
+                            </div>
+                        </div>
+                        <div class="text-white text-xs mb-2">剩余 {{ deckCount }} 张</div>
+
+                        <!-- 牌池（打出的牌） -->
+                        <div class="flex flex-wrap gap-0.5 max-w-[200px] justify-center">
+                            <div v-for="(tile, i) in mahjongStore.gameState?.pool?.slice(-20)" :key="i"
+                                class="mahjong-tile-pool">
+                                {{ getTileEmoji(tile) }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -147,8 +158,17 @@
                 <!-- 摇骰子阶段 -->
                 <div v-if="gameStartPhase === 'dice'" class="text-center">
                     <div class="text-white text-2xl font-bold mb-6">{{ dealerName }} 是庄家</div>
-                    <div class="text-8xl animate-bounce mb-4">🎲🎲</div>
-                    <div class="text-white text-xl">摇骰子中...</div>
+                    <div class="flex gap-4 justify-center mb-6">
+                        <div class="text-8xl animate-bounce" style="animation-delay: 0s">🎲</div>
+                        <div class="text-8xl animate-bounce" style="animation-delay: 0.1s">🎲</div>
+                    </div>
+                    <div v-if="diceResult > 0" class="text-white text-3xl font-bold mb-2">
+                        {{ diceResult }} 点
+                    </div>
+                    <div v-if="diceResult > 0" class="text-white text-xl">
+                        从 {{ dealPosition }} 开始发牌
+                    </div>
+                    <div v-else class="text-white text-xl">摇骰子中...</div>
                 </div>
 
                 <!-- 牌堆阶段 -->
@@ -230,6 +250,8 @@ const showGameStart = ref(false)
 const gameStartPhase = ref('dice') // 'dice' | 'deck' | 'deal'
 const dealerName = ref('')
 const dealingProgress = ref(0)
+const diceResult = ref(0)
+const dealPosition = ref('')
 
 let longPressTimer = null
 
@@ -247,6 +269,11 @@ const otherPlayers = computed(() => {
 const isMyTurn = computed(() => {
     const currentPlayer = mahjongStore.currentRoom?.players?.[mahjongStore.gameState?.currentPlayer]
     return currentPlayer?.id === 'user'
+})
+
+// 剩余牌堆数量
+const deckCount = computed(() => {
+    return mahjongStore.gameState?.deck?.length || 0
 })
 
 // 选择牌
@@ -324,21 +351,37 @@ watch(() => mahjongStore.gameState?.currentTile, (newTile) => {
 // 播放开局动画
 const playGameStartAnimation = async () => {
     showGameStart.value = true
+    diceResult.value = 0
 
     // 获取庄家信息
     const dealerIndex = mahjongStore.gameState?.dealer || 0
     const dealer = mahjongStore.currentRoom?.players?.[dealerIndex]
     dealerName.value = dealer?.name || '玩家'
 
-    // 阶段1: 摇骰子 (2秒)
+    // 阶段1: 摇骰子 (3秒)
     gameStartPhase.value = 'dice'
+
+    // 1秒后显示骰子结果
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // 摇骰子（两个骰子）
+    const dice1 = Math.floor(Math.random() * 6) + 1
+    const dice2 = Math.floor(Math.random() * 6) + 1
+    diceResult.value = dice1 + dice2
+
+    // 确定发牌位置
+    const positions = ['东', '南', '西', '北']
+    const positionIndex = (dealerIndex + (diceResult.value - 1) % 4) % 4
+    dealPosition.value = positions[positionIndex]
+
+    // 再等2秒显示结果
     await new Promise(resolve => setTimeout(resolve, 2000))
 
     // 阶段2: 显示牌堆 (1.5秒)
     gameStartPhase.value = 'deck'
     await new Promise(resolve => setTimeout(resolve, 1500))
 
-    // 阶段3: 发牌动画 (2.5秒)
+    // 阶段3: 发牌动画 (2.6秒)
     gameStartPhase.value = 'deal'
     dealingProgress.value = 0
 
