@@ -182,13 +182,29 @@
                         <div class="text-8xl animate-bounce" style="animation-delay: 0s">🎲</div>
                         <div class="text-8xl animate-bounce" style="animation-delay: 0.1s">🎲</div>
                     </div>
-                    <div v-if="diceResult > 0" class="text-white text-3xl font-bold mb-2">
-                        {{ diceResult }} 点
+
+                    <!-- 已摇出结果 -->
+                    <div v-if="diceResult > 0">
+                        <div class="text-white text-3xl font-bold mb-2">
+                            {{ diceResult }} 点
+                        </div>
+                        <div class="text-white text-xl">
+                            从 {{ dealPosition }} 开始发牌
+                        </div>
                     </div>
-                    <div v-if="diceResult > 0" class="text-white text-xl">
-                        从 {{ dealPosition }} 开始发牌
+
+                    <!-- 等待摇骰子 -->
+                    <div v-else>
+                        <!-- 用户是庄家，显示摇骰子按钮 -->
+                        <button v-if="isUserDealer" @click="rollDice"
+                            class="px-8 py-4 bg-gradient-to-r from-red-500 to-orange-500 text-white text-xl font-bold rounded-xl shadow-xl active:scale-95 transition-transform">
+                            点击摇骰子
+                        </button>
+                        <!-- AI是庄家，显示等待提示 -->
+                        <div v-else class="text-white text-xl">
+                            {{ dealerName }} 正在摇骰子...
+                        </div>
                     </div>
-                    <div v-else class="text-white text-xl">摇骰子中...</div>
                 </div>
 
                 <!-- 牌堆阶段 -->
@@ -272,6 +288,7 @@ const dealerName = ref('')
 const dealingProgress = ref(0)
 const diceResult = ref(0)
 const dealPosition = ref('')
+const isUserDealer = ref(false)
 
 let longPressTimer = null
 
@@ -383,25 +400,34 @@ const playGameStartAnimation = async () => {
     const dealerIndex = mahjongStore.gameState?.dealer || 0
     const dealer = mahjongStore.currentRoom?.players?.[dealerIndex]
     dealerName.value = dealer?.name || '玩家'
+    isUserDealer.value = dealer?.id === 'user'
 
-    // 阶段1: 摇骰子 (3秒)
+    // 阶段1: 摇骰子
     gameStartPhase.value = 'dice'
 
-    // 1秒后显示骰子结果
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    if (isUserDealer.value) {
+        // 用户是庄家，等待点击摇骰子
+        // 等待用户点击（通过rollDice函数触发）
+        await new Promise(resolve => {
+            window._diceResolve = resolve
+        })
+    } else {
+        // AI庄家自动摇骰子
+        await new Promise(resolve => setTimeout(resolve, 1500))
 
-    // 摇骰子（两个骰子）
-    const dice1 = Math.floor(Math.random() * 6) + 1
-    const dice2 = Math.floor(Math.random() * 6) + 1
-    diceResult.value = dice1 + dice2
+        // 摇骰子（两个骰子）
+        const dice1 = Math.floor(Math.random() * 6) + 1
+        const dice2 = Math.floor(Math.random() * 6) + 1
+        diceResult.value = dice1 + dice2
 
-    // 确定发牌位置
-    const positions = ['东', '南', '西', '北']
-    const positionIndex = (dealerIndex + (diceResult.value - 1) % 4) % 4
-    dealPosition.value = positions[positionIndex]
+        // 确定发牌位置
+        const positions = ['东', '南', '西', '北']
+        const positionIndex = (dealerIndex + (diceResult.value - 1) % 4) % 4
+        dealPosition.value = positions[positionIndex]
 
-    // 再等2秒显示结果
-    await new Promise(resolve => setTimeout(resolve, 2000))
+        // 显示结果2秒
+        await new Promise(resolve => setTimeout(resolve, 2000))
+    }
 
     // 阶段2: 显示牌堆 (1.5秒)
     gameStartPhase.value = 'deck'
@@ -423,6 +449,28 @@ const playGameStartAnimation = async () => {
 
     // 关闭动画
     showGameStart.value = false
+}
+
+// 手动摇骰子（用户点击）
+const rollDice = () => {
+    // 摇骰子（两个骰子）
+    const dice1 = Math.floor(Math.random() * 6) + 1
+    const dice2 = Math.floor(Math.random() * 6) + 1
+    diceResult.value = dice1 + dice2
+
+    // 确定发牌位置
+    const dealerIndex = mahjongStore.gameState?.dealer || 0
+    const positions = ['东', '南', '西', '北']
+    const positionIndex = (dealerIndex + (diceResult.value - 1) % 4) % 4
+    dealPosition.value = positions[positionIndex]
+
+    // 继续动画
+    setTimeout(() => {
+        if (window._diceResolve) {
+            window._diceResolve()
+            window._diceResolve = null
+        }
+    }, 2000)
 }
 
 // 自动开始第一局

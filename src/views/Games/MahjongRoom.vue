@@ -337,17 +337,8 @@ const startGame = () => {
         mahjongStore.gameState.currentPlayer = dealerIndex
     }
 
-    dealerName.value = players[dealerIndex].name
-
-    // 显示摇骰子动画
-    showDice.value = true
-
-    // 2秒后开始发牌
-    setTimeout(() => {
-        showDice.value = false
-        mahjongStore.startGame()
-        router.push('/games/mahjong')
-    }, 2000)
+    // 直接跳转到游戏界面，在那里显示摇骰子动画
+    router.push('/games/mahjong')
 }
 </script>
 
