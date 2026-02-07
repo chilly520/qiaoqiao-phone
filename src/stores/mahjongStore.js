@@ -334,36 +334,127 @@ export const useMahjongStore = defineStore('mahjong', () => {
     // 初始化时加载数据
     loadData()
 
-    // 游戏逻辑实例（延迟初始化）
-    let gameLogic = null
-    const getGameLogic = () => {
-        if (!gameLogic) {
-            const MahjongGameLogic = require('../utils/mahjong/MahjongGameLogic.js').default
-            gameLogic = new MahjongGameLogic({
-                currentRoom,
-                gameState,
-                sendMessage,
-                addBeans,
-                deductBeans,
-                updateScore,
-                startGame
-            })
-        }
-        return gameLogic
-    }
-
     /**
      * 玩家打牌
      */
     const playTile = (tileIndex) => {
-        getGameLogic().playTile(tileIndex)
+        const { currentRoom, gameState } = { currentRoom: currentRoom.value, gameState: gameState.value }
+        if (!currentRoom || !gameState) return
+
+        const currentPlayer = currentRoom.players[gameState.currentPlayer]
+
+        // 只有玩家自己才能打牌
+        if (currentPlayer.id !== 'user') return
+
+        // 移除手牌
+        const tile = currentPlayer.hand.splice(tileIndex, 1)[0]
+
+        // 添加到打出的牌
+        currentPlayer.discarded.push(tile)
+        gameState.pool.push(tile)
+        gameState.currentTile = tile
+
+        // 下一回合
+        setTimeout(() => {
+            nextTurn()
+        }, 1000)
     }
 
     /**
      * 下一回合
      */
     const nextTurn = () => {
-        getGameLogic().nextTurn()
+        const room = currentRoom.value
+        const state = gameState.value
+
+        if (!room || !state) return
+
+        // 清除当前牌
+        state.currentTile = null
+
+        // 下一个玩家
+        state.currentPlayer = (state.currentPlayer + 1) % 4
+        const currentPlayer = room.players[state.currentPlayer]
+
+        // 摸牌
+        if (state.deck.length > 0) {
+            const tile = state.deck.pop()
+            currentPlayer.hand.push(tile)
+
+            // AI自动打牌
+            if (currentPlayer.isAI) {
+                setTimeout(() => {
+                    aiPlayTile(currentPlayer)
+                }, 1000 + Math.random() * 1000)
+            }
+        } else {
+            // 流局
+            handleLiuJu()
+        }
+    }
+
+    /**
+     * AI打牌
+     */
+    const aiPlayTile = (player) => {
+        const state = gameState.value
+
+        // AI决定打哪张牌
+        const tile = mahjongAI.decideTile(player.hand, state.pool, state.deck)
+
+        // 移除手牌
+        const idx = player.hand.indexOf(tile)
+        player.hand.splice(idx, 1)
+
+        // 添加到打出的牌
+        player.discarded.push(tile)
+        state.pool.push(tile)
+        state.currentTile = tile
+
+        // AI可能发言
+        const chatMsg = mahjongAI.generateChat('discard')
+        if (chatMsg) {
+            sendMessage(player.id, chatMsg)
+        }
+
+        // 下一回合
+        setTimeout(() => {
+            nextTurn()
+        }, 1000)
+    }
+
+    /**
+     * 流局
+     */
+    const handleLiuJu = () => {
+        // 没有人胡牌，进入下一局
+        nextRound()
+    }
+
+    /**
+     * 下一局
+     */
+    const nextRound = () => {
+        const room = currentRoom.value
+
+        room.currentRound++
+
+        // 检查是否结束
+        if (room.currentRound > room.totalRounds) {
+            room.status = 'finished'
+            return
+        }
+
+        // 重置游戏状态
+        room.status = 'playing'
+        room.players.forEach(p => {
+            p.hand = []
+            p.discarded = []
+            p.exposed = []
+        })
+
+        // 重新发牌
+        startGame()
     }
 
     return {
