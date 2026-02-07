@@ -216,9 +216,16 @@ const availableNPCs = computed(() => {
 // 可用的通讯录好友
 const availableContacts = computed(() => {
     const currentPlayerIds = mahjongStore.currentRoom?.players?.map(p => p.id) || []
-    return chatStore.characters.filter(c =>
-        c.id !== 'user' && !currentPlayerIds.includes(c.id)
-    )
+    const chats = chatStore.chats || {}
+
+    return Object.keys(chats)
+        .filter(chatId => chatId !== 'user' && !currentPlayerIds.includes(chatId))
+        .map(chatId => ({
+            id: chatId,
+            name: chats[chatId].name || '未知',
+            avatar: chats[chatId].avatar || '👤',
+            signature: chats[chatId].signature || '在忙'
+        }))
 })
 
 const getPlayer = (position) => {
