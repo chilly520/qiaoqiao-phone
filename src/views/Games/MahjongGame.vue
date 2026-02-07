@@ -8,7 +8,7 @@
 
             <div class="flex items-center gap-4 text-white text-sm">
                 <span>局数: {{ mahjongStore.currentRoom?.currentRound }}/{{ mahjongStore.currentRoom?.totalRounds
-                    }}</span>
+                }}</span>
                 <span>底注: {{ mahjongStore.currentRoom?.baseStake }}</span>
                 <span>牌堆: {{ mahjongStore.gameState?.deck?.length || 0 }}</span>
             </div>
@@ -141,6 +141,42 @@
             </div>
         </div>
 
+        <!-- 开局动画 -->
+        <Transition name="fade">
+            <div v-if="showGameStart" class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center">
+                <!-- 摇骰子阶段 -->
+                <div v-if="gameStartPhase === 'dice'" class="text-center">
+                    <div class="text-white text-2xl font-bold mb-6">{{ dealerName }} 是庄家</div>
+                    <div class="text-8xl animate-bounce mb-4">🎲🎲</div>
+                    <div class="text-white text-xl">摇骰子中...</div>
+                </div>
+
+                <!-- 牌堆阶段 -->
+                <div v-else-if="gameStartPhase === 'deck'" class="text-center">
+                    <div class="text-white text-xl font-bold mb-6">牌堆准备中</div>
+                    <div class="grid grid-cols-17 gap-1 mb-4">
+                        <div v-for="i in 136" :key="i"
+                            class="w-4 h-6 bg-gradient-to-b from-green-400 to-green-600 border border-green-700 rounded-sm animate-fadeIn"
+                            :style="{ animationDelay: `${i * 5}ms` }">
+                        </div>
+                    </div>
+                    <div class="text-white text-lg">136张牌</div>
+                </div>
+
+                <!-- 发牌阶段 -->
+                <div v-else-if="gameStartPhase === 'deal'" class="text-center">
+                    <div class="text-white text-2xl font-bold mb-6">发牌中...</div>
+                    <div class="text-6xl mb-4">🀄</div>
+                    <div class="text-white text-xl">{{ dealingProgress }}/52</div>
+                    <div class="w-64 h-2 bg-gray-700 rounded-full mt-4 overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-300"
+                            :style="{ width: `${(dealingProgress / 52) * 100}%` }">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
         <!-- 作弊模式遮罩 -->
         <Transition name="fade">
             <div v-if="mahjongStore.cheatMode" class="fixed inset-0 bg-black/80 z-50 overflow-y-auto"
@@ -188,6 +224,12 @@ const canChi = ref(false)
 const canPeng = ref(false)
 const canGang = ref(false)
 const canHu = ref(false)
+
+// 开局动画状态
+const showGameStart = ref(false)
+const gameStartPhase = ref('dice') // 'dice' | 'deck' | 'deal'
+const dealerName = ref('')
+const dealingProgress = ref(0)
 
 let longPressTimer = null
 
@@ -279,12 +321,48 @@ watch(() => mahjongStore.gameState?.currentTile, (newTile) => {
     canChi.value = mahjongEngine.canChi(myHand, newTile, 'previous').length > 0
 })
 
+// 播放开局动画
+const playGameStartAnimation = async () => {
+    showGameStart.value = true
+
+    // 获取庄家信息
+    const dealerIndex = mahjongStore.gameState?.dealer || 0
+    const dealer = mahjongStore.currentRoom?.players?.[dealerIndex]
+    dealerName.value = dealer?.name || '玩家'
+
+    // 阶段1: 摇骰子 (2秒)
+    gameStartPhase.value = 'dice'
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // 阶段2: 显示牌堆 (1.5秒)
+    gameStartPhase.value = 'deck'
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    // 阶段3: 发牌动画 (2.5秒)
+    gameStartPhase.value = 'deal'
+    dealingProgress.value = 0
+
+    // 模拟发牌进度 (4个玩家 * 13张牌 = 52张)
+    const dealInterval = setInterval(() => {
+        dealingProgress.value++
+        if (dealingProgress.value >= 52) {
+            clearInterval(dealInterval)
+        }
+    }, 50) // 每50ms发一张牌
+
+    await new Promise(resolve => setTimeout(resolve, 2600))
+
+    // 关闭动画
+    showGameStart.value = false
+}
+
 // 自动开始第一局
 onMounted(() => {
     if (!mahjongStore.gameState) {
-        setTimeout(() => {
+        // 播放开局动画
+        playGameStartAnimation().then(() => {
             mahjongStore.nextTurn()
-        }, 1000)
+        })
     }
 })
 </script>
@@ -386,5 +464,21 @@ onMounted(() => {
 .fade-enter-from,
 .fade-leave-to {
     opacity: 0;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out forwards;
 }
 </style>
