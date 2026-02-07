@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useWalletStore } from './walletStore'
+import { useChatStore } from './chatStore'
 import mahjongEngine from '../utils/mahjong/MahjongEngine.js'
 import mahjongAI from '../utils/mahjong/MahjongAI.js'
 
@@ -111,7 +112,7 @@ export const useMahjongStore = defineStore('mahjong', () => {
         const roomId = `room_${Date.now()}`
 
         // 获取玩家信息
-        const chatStore = require('./chatStore').useChatStore()
+        const chatStore = useChatStore()
         const userChar = chatStore.characters.find(c => c.id === 'user')
         const userName = userChar?.name || '我'
         const userAvatar = userChar?.avatar || '👤'
