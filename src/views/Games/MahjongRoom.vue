@@ -35,7 +35,13 @@
                 <div class="seat-card" :class="{ 'ready': getPlayer('east')?.isReady }">
                     <div class="seat-label">东</div>
                     <div v-if="getPlayer('east')" class="player-info">
-                        <div class="text-4xl mb-2">{{ getPlayer('east').avatar }}</div>
+                        <!-- 头像显示 -->
+                        <div v-if="getPlayer('east').avatar && getPlayer('east').avatar.startsWith('/')"
+                            class="w-16 h-16 rounded-full overflow-hidden mb-2">
+                            <img :src="getPlayer('east').avatar" class="w-full h-full object-cover" />
+                        </div>
+                        <div v-else class="text-4xl mb-2">{{ getPlayer('east').avatar || '👤' }}</div>
+
                         <div class="font-bold">{{ getPlayer('east').name }}</div>
                         <div class="text-sm text-gray-500">{{ getPlayer('east').beans }}豆</div>
                         <div v-if="getPlayer('east').isReady" class="ready-badge">已准备</div>
@@ -50,7 +56,13 @@
                 <div class="seat-card ready">
                     <div class="seat-label">南</div>
                     <div class="player-info">
-                        <div class="text-4xl mb-2">{{ getPlayer('south')?.avatar }}</div>
+                        <!-- 头像显示 -->
+                        <div v-if="getPlayer('south')?.avatar && getPlayer('south').avatar.startsWith('/')"
+                            class="w-16 h-16 rounded-full overflow-hidden mb-2">
+                            <img :src="getPlayer('south').avatar" class="w-full h-full object-cover" />
+                        </div>
+                        <div v-else class="text-4xl mb-2">{{ getPlayer('south')?.avatar || '👤' }}</div>
+
                         <div class="font-bold">{{ getPlayer('south')?.name }}</div>
                         <div class="text-sm text-gray-500">{{ getPlayer('south')?.beans }}豆</div>
                         <div class="ready-badge">已准备</div>
@@ -61,7 +73,13 @@
                 <div class="seat-card" :class="{ 'ready': getPlayer('west')?.isReady }">
                     <div class="seat-label">西</div>
                     <div v-if="getPlayer('west')" class="player-info">
-                        <div class="text-4xl mb-2">{{ getPlayer('west').avatar }}</div>
+                        <!-- 头像显示 -->
+                        <div v-if="getPlayer('west').avatar && getPlayer('west').avatar.startsWith('/')"
+                            class="w-16 h-16 rounded-full overflow-hidden mb-2">
+                            <img :src="getPlayer('west').avatar" class="w-full h-full object-cover" />
+                        </div>
+                        <div v-else class="text-4xl mb-2">{{ getPlayer('west').avatar || '👤' }}</div>
+
                         <div class="font-bold">{{ getPlayer('west').name }}</div>
                         <div class="text-sm text-gray-500">{{ getPlayer('west').beans }}豆</div>
                         <div v-if="getPlayer('west').isReady" class="ready-badge">已准备</div>
@@ -76,7 +94,13 @@
                 <div class="seat-card" :class="{ 'ready': getPlayer('north')?.isReady }">
                     <div class="seat-label">北</div>
                     <div v-if="getPlayer('north')" class="player-info">
-                        <div class="text-4xl mb-2">{{ getPlayer('north').avatar }}</div>
+                        <!-- 头像显示 -->
+                        <div v-if="getPlayer('north').avatar && getPlayer('north').avatar.startsWith('/')"
+                            class="w-16 h-16 rounded-full overflow-hidden mb-2">
+                            <img :src="getPlayer('north').avatar" class="w-full h-full object-cover" />
+                        </div>
+                        <div v-else class="text-4xl mb-2">{{ getPlayer('north').avatar || '👤' }}</div>
+
                         <div class="font-bold">{{ getPlayer('north').name }}</div>
                         <div class="text-sm text-gray-500">{{ getPlayer('north').beans }}豆</div>
                         <div v-if="getPlayer('north').isReady" class="ready-badge">已准备</div>
@@ -137,7 +161,13 @@
                     <div v-if="inviteTab === 'contacts'" class="space-y-2">
                         <div v-for="contact in availableContacts" :key="contact.id" @click="addContact(contact)"
                             class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg active:bg-gray-100 cursor-pointer">
-                            <div class="text-3xl">{{ contact.avatar }}</div>
+                            <!-- 头像显示 -->
+                            <div v-if="contact.avatar && contact.avatar.startsWith('/')"
+                                class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
+                                <img :src="contact.avatar" class="w-full h-full object-cover" />
+                            </div>
+                            <div v-else class="text-3xl">{{ contact.avatar || '👤' }}</div>
+
                             <div class="flex-1">
                                 <div class="font-bold">{{ contact.name }}</div>
                                 <div class="text-sm text-gray-500">{{ contact.signature || '在忙' }}</div>
