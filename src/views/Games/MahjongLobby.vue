@@ -205,14 +205,8 @@ const quickStart = () => {
     // 创建房间
     mahjongStore.createRoom({ mode: 'quick', baseStake: 100, totalRounds: 8 })
 
-    // 添加AI玩家
-    mahjongStore.addAIPlayers()
-
-    // 开始游戏
-    mahjongStore.startGame()
-
-    // 跳转到游戏界面
-    router.push('/games/mahjong')
+    // 跳转到房间等待页面
+    router.push('/games/mahjong-room')
 }
 
 // 创建房间
@@ -232,14 +226,11 @@ const createRoom = () => {
         totalRounds: roomConfig.value.totalRounds
     })
 
-    // 添加AI玩家
-    mahjongStore.addAIPlayers()
+    // 关闭弹窗
+    showCreateRoom.value = false
 
-    // 开始游戏
-    mahjongStore.startGame()
-
-    // 跳转到游戏界面
-    router.push('/games/mahjong')
+    // 跳转到房间等待页面
+    router.push('/games/mahjong-room')
 }
 
 // 充值

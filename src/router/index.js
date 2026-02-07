@@ -86,6 +86,11 @@ const router = createRouter({
             component: () => import('../views/Games/MahjongLobby.vue')
         },
         {
+            path: '/games/mahjong-room',
+            name: 'mahjong-room',
+            component: () => import('../views/Games/MahjongRoom.vue')
+        },
+        {
             path: '/games/mahjong',
             name: 'mahjong-game',
             component: () => import('../views/Games/MahjongGame.vue')

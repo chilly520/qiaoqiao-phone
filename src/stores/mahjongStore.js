@@ -175,17 +175,28 @@ export const useMahjongStore = defineStore('mahjong', () => {
         if (!currentRoom.value) return
 
         currentRoom.value.status = 'playing'
-        currentRoom.value.currentRound = 1
-
-        // 初始化游戏状态
-        gameState.value = {
-            deck: [],
-            pool: [],
-            currentPlayer: 0,
-            currentTile: null,
-            dealer: 0,
-            wind: 'east'
+        if (!currentRoom.value.currentRound) {
+            currentRoom.value.currentRound = 1
         }
+
+        // 初始化游戏状态（保留已设置的庄家）
+        if (!gameState.value) {
+            gameState.value = {
+                deck: [],
+                pool: [],
+                currentPlayer: 0,
+                currentTile: null,
+                dealer: 0,
+                wind: 'east'
+            }
+        } else {
+            gameState.value.deck = []
+            gameState.value.pool = []
+            gameState.value.currentTile = null
+        }
+
+        // 当前玩家设置为庄家
+        gameState.value.currentPlayer = gameState.value.dealer
 
         // 发牌
         dealCards()
@@ -202,15 +213,19 @@ export const useMahjongStore = defineStore('mahjong', () => {
         // 每人发13张
         currentRoom.value.players.forEach(player => {
             player.hand = []
+            player.discarded = []
+            player.exposed = []
             for (let i = 0; i < 13; i++) {
                 player.hand.push(gameState.value.deck.pop())
             }
-            player.hand.sort()
+            // 排序手牌
+            player.hand = mahjongEngine.sortHand(player.hand)
         })
 
         // 庄家摸第14张
         const dealer = currentRoom.value.players[gameState.value.dealer]
         dealer.hand.push(gameState.value.deck.pop())
+        dealer.hand = mahjongEngine.sortHand(dealer.hand)
     }
 
     /**
