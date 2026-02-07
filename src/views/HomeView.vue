@@ -78,7 +78,7 @@ function openApp(appId) {
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
   } else if (appId === 'games') {
-    safeNavigate('/games/mahjong-lobby')
+    safeNavigate('/games')
   } else if (appId === 'reset') {
     // Store a flag to scroll to top after reload
     sessionStorage.setItem('justReloaded', 'true')

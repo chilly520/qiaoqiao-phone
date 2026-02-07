@@ -76,6 +76,11 @@ const router = createRouter({
             component: () => import('../views/WeiboApp.vue')
         },
         {
+            path: '/games',
+            name: 'games-center',
+            component: () => import('../views/Games/GamesCenter.vue')
+        },
+        {
             path: '/games/mahjong-lobby',
             name: 'mahjong-lobby',
             component: () => import('../views/Games/MahjongLobby.vue')
