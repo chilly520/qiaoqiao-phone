@@ -77,6 +77,8 @@ function openApp(appId) {
     safeNavigate('/worldbook')
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
+  } else if (appId === 'games') {
+    safeNavigate('/games/mahjong-lobby')
   } else if (appId === 'reset') {
     // Store a flag to scroll to top after reload
     sessionStorage.setItem('justReloaded', 'true')
@@ -428,7 +430,8 @@ onUnmounted(() => {
         </div>
 
         <!-- Games App -->
-        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group">
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('games')">
           <div id="icon-games" :style="getIconStyle('games')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
             <svg v-if="!hasCustomIcon('games')" width="30" height="30" viewBox="0 0 24 24" fill="#8b5cf6"

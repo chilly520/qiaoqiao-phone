@@ -76,6 +76,16 @@ const router = createRouter({
             component: () => import('../views/WeiboApp.vue')
         },
         {
+            path: '/games/mahjong-lobby',
+            name: 'mahjong-lobby',
+            component: () => import('../views/Games/MahjongLobby.vue')
+        },
+        {
+            path: '/games/mahjong',
+            name: 'mahjong-game',
+            component: () => import('../views/Games/MahjongGame.vue')
+        },
+        {
             path: '/wechat/profile/:charId',
             name: 'character-info',
             component: () => import('../views/WeChat/CharacterProfileView.vue')
