@@ -78,8 +78,12 @@ function openApp(appId) {
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
   } else if (appId === 'reset') {
-    // Just reload the app state/page, do NOT wipe personalization
-    location.reload()
+    // Confirm before reset
+    if (confirm('确定要重置应用吗？这将刷新页面。')) {
+      // Store a flag to scroll to top after reload
+      sessionStorage.setItem('justReloaded', 'true')
+      location.reload()
+    }
   }
 }
 
@@ -235,6 +239,16 @@ onMounted(() => {
   // Background refresh
   setInterval(fetchWeather, cacheDuration)
 
+  // Fix scroll position after reload
+  if (sessionStorage.getItem('justReloaded') === 'true') {
+    sessionStorage.removeItem('justReloaded')
+    // Scroll to top to ensure dock is visible
+    window.scrollTo({ top: 0, behavior: 'instant' })
+    // Also scroll the pages container to first page
+    if (pagesContainer.value) {
+      pagesContainer.value.scrollLeft = 0
+    }
+  }
 
 })
 
