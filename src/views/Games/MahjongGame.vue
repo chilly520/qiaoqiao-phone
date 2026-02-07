@@ -24,7 +24,12 @@
             <!-- 对家（上） -->
             <div class="flex flex-col items-center mb-2">
                 <div class="flex items-center gap-2 mb-1">
-                    <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-lg">
+                    <!-- 北位头像 -->
+                    <div v-if="isImageAvatar(getPlayer('north')?.avatar)"
+                        class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                        <img :src="getPlayer('north').avatar" class="w-full h-full object-cover" />
+                    </div>
+                    <div v-else class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-lg">
                         {{ getPlayer('north')?.avatar || '🎭' }}
                     </div>
                     <div class="text-white text-xs">
@@ -50,7 +55,12 @@
             <div class="flex-1 flex items-center gap-2">
                 <!-- 左家 -->
                 <div class="flex flex-col items-center w-16">
-                    <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-lg mb-1">
+                    <!-- 西位头像 -->
+                    <div v-if="isImageAvatar(getPlayer('west')?.avatar)"
+                        class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mb-1">
+                        <img :src="getPlayer('west').avatar" class="w-full h-full object-cover" />
+                    </div>
+                    <div v-else class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-lg mb-1">
                         {{ getPlayer('west')?.avatar || '🎭' }}
                     </div>
                     <div class="text-white text-[10px] text-center mb-1">
@@ -98,7 +108,12 @@
 
                 <!-- 右家 -->
                 <div class="flex flex-col items-center w-16">
-                    <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-lg mb-1">
+                    <!-- 东位头像 -->
+                    <div v-if="isImageAvatar(getPlayer('east')?.avatar)"
+                        class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 mb-1">
+                        <img :src="getPlayer('east').avatar" class="w-full h-full object-cover" />
+                    </div>
+                    <div v-else class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-lg mb-1">
                         {{ getPlayer('east')?.avatar || '🎭' }}
                     </div>
                     <div class="text-white text-[10px] text-center mb-1">
@@ -115,8 +130,13 @@
             <!-- 我（下） -->
             <div class="flex flex-col items-center mt-2">
                 <div class="flex items-center gap-2 mb-1">
-                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-lg">
-                        👤
+                    <!-- 南位头像（玩家） -->
+                    <div v-if="isImageAvatar(getPlayer('south')?.avatar)"
+                        class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                        <img :src="getPlayer('south').avatar" class="w-full h-full object-cover" />
+                    </div>
+                    <div v-else class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-lg">
+                        {{ getPlayer('south')?.avatar || '👤' }}
                     </div>
                     <div class="text-white text-xs">
                         <div class="font-bold">{{ getPlayer('south')?.name }}</div>
@@ -287,6 +307,12 @@ const playSelectedTile = () => {
     if (selectedTile.value === null) return
     mahjongStore.playTile(selectedTile.value)
     selectedTile.value = null
+}
+
+// 判断是否为图片头像
+const isImageAvatar = (avatar) => {
+    if (!avatar) return false
+    return avatar.startsWith('/') || avatar.startsWith('data:image') || avatar.startsWith('http')
 }
 
 // 执行操作

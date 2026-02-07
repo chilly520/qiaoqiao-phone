@@ -19,13 +19,12 @@
         <div class="m-4 bg-white rounded-2xl shadow-lg p-4">
             <div class="flex items-center gap-4">
                 <!-- 头像显示 -->
-                <div v-if="userAvatar && userAvatar.startsWith('/')"
-                    class="w-16 h-16 rounded-full overflow-hidden flex-shrink-0">
+                <div v-if="isImageAvatar(userAvatar)" class="w-16 h-16 rounded-full overflow-hidden flex-shrink-0">
                     <img :src="userAvatar" class="w-full h-full object-cover" />
                 </div>
                 <div v-else
                     class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-3xl">
-                    {{ userAvatar }}
+                    {{ userAvatar || '🎭' }}
                 </div>
 
                 <div class="flex-1">
@@ -187,6 +186,12 @@ const settingsStore = useSettingsStore()
 // 用户信息
 const userName = computed(() => settingsStore.personalization.userProfile.name || '我')
 const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '🎭')
+
+// 判断是否为图片头像
+const isImageAvatar = (avatar) => {
+    if (!avatar) return false
+    return avatar.startsWith('/') || avatar.startsWith('data:image') || avatar.startsWith('http')
+}
 
 const showRecharge = ref(false)
 const showCreateRoom = ref(false)
