@@ -78,12 +78,9 @@ function openApp(appId) {
   } else if (appId === 'weibo') {
     safeNavigate('/weibo')
   } else if (appId === 'reset') {
-    // Confirm before reset
-    if (confirm('确定要重置应用吗？这将刷新页面。')) {
-      // Store a flag to scroll to top after reload
-      sessionStorage.setItem('justReloaded', 'true')
-      location.reload()
-    }
+    // Store a flag to scroll to top after reload
+    sessionStorage.setItem('justReloaded', 'true')
+    location.reload()
   }
 }
 
