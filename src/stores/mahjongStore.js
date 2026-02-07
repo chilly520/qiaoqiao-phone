@@ -110,6 +110,12 @@ export const useMahjongStore = defineStore('mahjong', () => {
     const createRoom = (config) => {
         const roomId = `room_${Date.now()}`
 
+        // 获取玩家信息
+        const chatStore = require('./chatStore').useChatStore()
+        const userChar = chatStore.characters.find(c => c.id === 'user')
+        const userName = userChar?.name || '我'
+        const userAvatar = userChar?.avatar || '👤'
+
         currentRoom.value = {
             id: roomId,
             mode: config.mode || 'quick',
@@ -119,8 +125,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
             players: [
                 {
                     id: 'user',
-                    name: '我',
-                    avatar: '/avatars/user.png',
+                    name: userName,
+                    avatar: userAvatar,
                     position: 'south',
                     beans: beans.value,
                     score: score.value,
@@ -144,17 +150,30 @@ export const useMahjongStore = defineStore('mahjong', () => {
     const addAIPlayers = () => {
         if (!currentRoom.value) return
 
-        const aiNames = ['张三', '李四', '王五', '赵六', '钱七', '孙八']
+        const modernNames = [
+            '清风徐来', '星河滚烫', '温柔成风', '岁月静好', '浅笑嫣然',
+            '北城以北', '南风过境', '时光荏苒', '梦里花落', '云淡风轻',
+            '素年锦时', '陌上花开', '烟雨江南', '醉卧花间', '月下独酌',
+            '风过无痕', '雨落倾城', '雪舞轻扬', '霜降寒秋', '春暖花开'
+        ]
+
+        const avatars = [
+            '😊', '😎', '🤗', '😇', '🥰', '😏', '🤓', '😌',
+            '🌸', '🌟', '🎨', '🎭', '🎪', '🎯', '🎲', '🎰',
+            '🦄', '🐱', '🐶', '🐼', '🦊', '🐯', '🦁', '🐨'
+        ]
+
         const positions = ['east', 'north', 'west']
 
         for (let i = 0; i < 3; i++) {
-            const aiName = aiNames[Math.floor(Math.random() * aiNames.length)]
+            const aiName = modernNames[Math.floor(Math.random() * modernNames.length)]
+            const aiAvatar = avatars[Math.floor(Math.random() * avatars.length)]
             const aiBeans = Math.floor(Math.random() * 45000) + 5000 // 5000-50000
 
             currentRoom.value.players.push({
                 id: `ai_${i}`,
                 name: aiName,
-                avatar: `/avatars/ai_${i + 1}.png`,
+                avatar: aiAvatar,
                 position: positions[i],
                 beans: aiBeans,
                 score: 0,
