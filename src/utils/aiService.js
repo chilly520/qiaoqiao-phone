@@ -318,7 +318,7 @@ export function generateContextPreview(chatId, char) {
 
     // Update system prompt with fresh virtual time for accurate preview
     const charWithTime = { ...char, virtualTime: currentVirtualTime }
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, worldInfoText, memoryText, patSettings, finalEnvContext)
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio)
 
     return {
         system: systemPrompt,
@@ -428,6 +428,20 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     // --- System Prompt Construction ---
+    const momentsStore = useMomentsStore()
+    let momentsContext = ''
+    if (momentsStore && momentsStore.moments) {
+        const formatMoment = (m) => {
+            if (!m) return ''
+            const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { hour12: false }) : '未知时间'
+            let text = `[时间: ${timeStr}] ${m.authorId === char.id ? char.name : (m.authorName || '用户')}: ${m.content}`
+            if (m.imageDescriptions && m.imageDescriptions.length > 0) text += `\n(图片内容: ${m.imageDescriptions.join(', ')})`
+            return text
+        }
+        const charMoments = (momentsStore.moments || []).filter(m => m.authorId === char.id).slice(0, 2)
+        const userMoments = (momentsStore.moments || []).filter(m => !m.authorId || m.authorId === 'user').slice(0, 2)
+        momentsContext = [...charMoments, ...userMoments].map(formatMoment).join('\n---\n')
+    }
 
 
     // 构建 System Message
@@ -468,16 +482,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Append all to environmental context
         const finalEnvContext = locationContext + userLocText + batteryContext + (char.searchEnabled ? '\n【联网搜索】已开启。' : '')
 
-        // CRITICAL OPTIMIZATION: For proactive call initiation, prune the character description massively to save tokens and prevent model refusal.
+        // Remove pruning for proactive call to keep identity intact
         const prunedChar = { ...char }
-        if (isProactiveCall) {
-            // Keep ONLY the core identity and the call instruction
-            prunedChar.description = `你是${char.name}。当前处于[主动拨号模式]。你决定立刻拨打语音或视频电话给用户。`
-        }
 
         const promptContent = options.isCall
-            ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext)
-            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext)
+            ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
+            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio)
 
         systemMsg = {
             role: 'system',

@@ -551,14 +551,14 @@ const handleIframeMessage = (event) => {
 onMounted(async () => {
     // 1. Initialize world loops from storage
     await worldLoopStore.initStore()
-    
+
     // 2. Add event listeners
     window.addEventListener('message', handleIframeMessage)
     window.addEventListener('popstate', handleSettingsPopState)
-    
+
     // 3. Run new chat/loop logic
     checkNewChat()
-    
+
     // 4. UI Polish
     scrollToBottom(true)
 })
@@ -2469,8 +2469,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 :style="computedBgStyle"></div>
 
             <!-- Header -->
-            <div
-                class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
+            <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
                 :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-[#ededed] border-[#dcdcdc]'">
                 <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
                     @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
@@ -2486,15 +2485,15 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
                         <!-- Call Status or Other Statuses -->
                         <div v-if="callStore.status !== 'none'" class="flex items-center gap-1.5">
-                            <div class="w-1.5 h-1.5 rounded-full animate-pulse" 
+                            <div class="w-1.5 h-1.5 rounded-full animate-pulse"
                                 :class="callStore.status === 'ended' ? 'bg-gray-400' : 'bg-[#00df6c]'"></div>
                             <span class="text-[10px] truncate max-w-[150px] font-medium"
                                 :class="callStore.status === 'ended' ? 'text-gray-400' : 'text-green-600'">
-                                {{ 
-                                    callStore.status === 'dialing' ? '正在呼叫...' : 
-                                    callStore.status === 'active' ? '正在通话...' : 
-                                    callStore.status === 'ended' ? '通话结束' : 
-                                    '正在通话'
+                                {{
+                                    callStore.status === 'dialing' ? '正在呼叫...' :
+                                        callStore.status === 'active' ? '正在通话...' :
+                                            callStore.status === 'ended' ? '通话结束' :
+                                                '正在通话'
                                 }}
                             </span>
                         </div>
@@ -2523,9 +2522,11 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
 
                     <!-- World Loop Entry (GM Mode) -->
-                    <div v-if="loopData" class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 group"
+                    <div v-if="loopData"
+                        class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 group"
                         @click="openGMMenu">
-                        <i class="fa-solid fa-wand-magic-sparkles text-purple-600 transition-transform group-hover:rotate-12"></i>
+                        <i
+                            class="fa-solid fa-wand-magic-sparkles text-purple-600 transition-transform group-hover:rotate-12"></i>
                     </div>
 
                     <!-- Settings -->
@@ -2610,11 +2611,11 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             </div>
 
             <!-- Input Area (Extracted) -->
-            <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef"
-                :currentQuote="currentQuote" :chatData="chatData" :isTyping="chatStore.isTyping"
-                :musicVisible="musicStore.playerVisible" :searchEnabled="chatData?.searchEnabled"
-                @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
-                @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
+            <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef" :currentQuote="currentQuote"
+                :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
+                :searchEnabled="chatData?.searchEnabled" @send="handleSendMessage" @generate="generateAIResponse"
+                @stop-generate="chatStore.stopGeneration" @toggle-panel="toggleActionPanel"
+                @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
                 @toggle-search="() => chatStore.toggleSearch(chatData?.id)" @regenerate="regenerateLastMessage"
                 @cancel-quote="cancelQuote" />
 
@@ -2807,19 +2808,12 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         <FamilyCardClaimModal ref="familyCardModal" @confirm="handleCardClaim" />
 
         <!-- World Loop GM Panel -->
-        <WorldLoopGMPanel v-if="showGMMenu" 
-            :loopId="chatData?.loopId"
-            @close="showGMMenu = false" />
+        <WorldLoopGMPanel v-if="showGMMenu" :loopId="chatData?.loopId" @close="showGMMenu = false" />
 
         <!-- World Loop Offline Overlay (Visual Novel) -->
-        <WorldLoopOfflineOverlay 
-            :isVisible="loopData?.currentMode === 'offline'"
-            :loopData="loopData"
-            :latestMessage="latestMessage"
-            :isTyping="isTyping"
-            @close="worldLoopStore.toggleMode(chatData?.loopId)"
-            @open-gm="showGMMenu = true"
-            @toggle-mode="worldLoopStore.toggleMode(chatData?.loopId)" />
+        <WorldLoopOfflineOverlay :isVisible="loopData?.currentMode === 'offline'" :loopData="loopData"
+            :latestMessage="latestMessage" :isTyping="isTyping" @close="worldLoopStore.toggleMode(chatData?.loopId)"
+            @open-gm="showGMMenu = true" @toggle-mode="worldLoopStore.toggleMode(chatData?.loopId)" />
 
         <!-- Inner Voice Modal (Mindscape) -->
         <ChatInnerVoiceCard :visible="showInnerVoiceModal" :chatId="chatData?.id" :initialMsgId="currentInnerVoiceMsgId"

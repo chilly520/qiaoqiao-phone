@@ -26,23 +26,6 @@ const updateTime = () => {
     const now = new Date()
     currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
-// --- Double Back to Exit Logic ---
-let lastBackTime = 0
-const BACK_EXIT_INTERVAL = 2000
-
-const handlePopState = (e) => {
-    if (route.path === '/') {
-        const now = Date.now()
-        if (now - lastBackTime < BACK_EXIT_INTERVAL) {
-            lastBackTime = 0
-            // User confirmed exit
-        } else {
-            lastBackTime = now
-            history.pushState('app-home', null, document.URL)
-            chatStore.triggerToast('再快速侧滑一次退出程序', 'info')
-        }
-    }
-}
 
 // Persistent trigger for keep-alive
 const unlockKeepAlive = () => {
@@ -71,23 +54,15 @@ onMounted(() => {
     // Try immediately
     notificationService.requestPermission()
 
-    window.addEventListener('popstate', handlePopState)
     window.addEventListener('click', unlockKeepAlive)
     window.addEventListener('touchstart', unlockKeepAlive)
 
-    // Watch route to ensure history state is pushed when arriving at home
-    watch(() => route.path, (newPath) => {
-        if (newPath === '/' && window.history.state !== 'app-home') {
-            history.pushState('app-home', null, document.URL)
-        }
-    }, { immediate: true })
 })
 
 // Cleanup listeners
 onUnmounted(() => {
     if (timer) clearInterval(timer)
     batteryMonitor.destroy()
-    window.removeEventListener('popstate', handlePopState)
     window.removeEventListener('click', unlockKeepAlive)
     window.removeEventListener('touchstart', unlockKeepAlive)
 })
@@ -378,9 +353,8 @@ const handleGlobalPromptCancel = () => {
                     @click="handleLocationClick" title="设置当前位置">
                     <i class="fa-solid fa-location-dot"
                         :class="statusBarStyle.color === '#ffffff' ? 'text-[10px]' : 'text-[10px] opacity-70'"></i>
-                    <span v-if="currentLocationName"
-                        class="text-[10px] max-w-[60px] truncate opacity-80">{{
-                            currentLocationName.split('>').pop().trim() }}</span>
+                    <span v-if="currentLocationName" class="text-[10px] max-w-[60px] truncate opacity-80">{{
+                        currentLocationName.split('>').pop().trim() }}</span>
                 </div>
                 <i class="fa-solid fa-signal"
                     :class="statusBarStyle.color === '#ffffff' ? 'text-[11px]' : 'text-[11px] opacity-80'"></i>
@@ -421,7 +395,7 @@ const handleGlobalPromptCancel = () => {
                             class="text-[11px] text-[#1c1c1e]/40 font-semibold whitespace-nowrap tracking-tight uppercase">现在</span>
                     </div>
                     <div class="text-[14px] text-[#1c1c1e]/80 truncate leading-snug font-medium">{{ bannerData.content
-                    }}</div>
+                        }}</div>
                 </div>
             </div>
         </div>
@@ -460,21 +434,21 @@ const handleGlobalPromptCancel = () => {
             <div v-if="store.showLocationInput"
                 class="fixed inset-0 z-[10000] flex items-center justify-center p-6 backdrop-blur-md bg-black/20"
                 @click.self="store.showLocationInput = false">
-                <div
-                    class="w-full max-w-[320px] backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] border p-6 animate-scale-in"
+                <div class="w-full max-w-[320px] backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] border p-6 animate-scale-in"
                     :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b]/95 border-[#334155]' : 'bg-white/95 border-white/40'">
                     <div class="flex flex-col gap-4">
                         <div class="flex items-center gap-3">
-                            <div
-                                class="w-10 h-10 rounded-full flex items-center justify-center"
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center"
                                 :class="store.personalization.theme === 'dark' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-500/10 text-blue-600'">
                                 <i class="fa-solid fa-location-dot text-xl"></i>
                             </div>
                             <div>
                                 <h3 class="text-[17px] font-bold tracking-tight"
-                                    :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">设置位置</h3>
+                                    :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">
+                                    设置位置</h3>
                                 <p class="text-[12px] font-medium"
-                                    :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">输入当前地理信息</p>
+                                    :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
+                                    输入当前地理信息</p>
                             </div>
                         </div>
 
@@ -509,9 +483,11 @@ const handleGlobalPromptCancel = () => {
                 <div class="w-full max-w-[320px] rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border p-6 animate-scale-in"
                     :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b] border-[#334155]' : 'bg-white border-white/20'">
                     <h3 class="text-[18px] font-bold mb-2"
-                        :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ globalConfirmData.title }}</h3>
+                        :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{
+                        globalConfirmData.title }}</h3>
                     <p class="text-[14px] leading-relaxed mb-6"
-                        :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{ globalConfirmData.message }}</p>
+                        :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{
+                        globalConfirmData.message }}</p>
                     <div class="flex gap-3">
                         <button @click="handleGlobalCancel"
                             class="flex-1 py-3 rounded-2xl text-[15px] font-bold active:scale-95 transition-all"
@@ -535,10 +511,12 @@ const handleGlobalPromptCancel = () => {
                 <div class="w-full max-w-[320px] rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.3)] border p-6 animate-scale-in"
                     :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b] border-[#334155]' : 'bg-white border-white/20'">
                     <h3 class="text-[18px] font-bold mb-2"
-                        :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{ globalPromptData.title }}</h3>
+                        :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{
+                        globalPromptData.title }}</h3>
                     <p class="text-[14px] leading-relaxed mb-4"
-                        :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{ globalPromptData.message }}</p>
-                    
+                        :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{
+                        globalPromptData.message }}</p>
+
                     <input v-model="globalPromptInput" type="text" :placeholder="globalPromptData.placeholder"
                         class="w-full border-none rounded-2xl px-4 py-3 text-[15px] mb-6 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
                         :class="store.personalization.theme === 'dark' ? 'bg-white/10 text-white placeholder-gray-500' : 'bg-black/5 text-gray-800 placeholder-gray-400'"

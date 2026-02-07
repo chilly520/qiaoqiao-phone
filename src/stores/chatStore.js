@@ -146,9 +146,9 @@ export const useChatStore = defineStore('chat', () => {
         // Return a fresh object with the ID to ensure compatibility
         // Default voiceSpeed to 1.0 if missing (Legacy Data Support)
         return {
-            id: currentChatId.value,
             voiceSpeed: 1.0,
-            ...chat
+            ...chat,
+            id: currentChatId.value
         }
     })
 
@@ -1714,6 +1714,7 @@ export const useChatStore = defineStore('chat', () => {
                 userPersona: chat.userPersona || '',
                 userAvatarUrl: chat.userAvatar,
                 avatarUrl: chat.avatar,
+                bio: chat.bio,
                 worldBookLinks: chat.worldBookLinks,
                 emojis: chat.emojis,
                 virtualTime: currentVirtualTime,

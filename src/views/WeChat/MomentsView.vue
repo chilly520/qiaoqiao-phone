@@ -261,13 +261,13 @@ const viewingProfile = computed(() => {
         const id = filterAuthorId.value
         // Priority 1: Direct lookup by chat key
         let char = chatStore.chats[id]
-        
+
         // Priority 2: Robust lookup by internal attributes
         if (!char) {
-            char = Object.values(chatStore.chats).find(c => 
-                c.id === id || 
-                c.wechatId === id || 
-                c.name === id || 
+            char = Object.values(chatStore.chats).find(c =>
+                c.id === id ||
+                c.wechatId === id ||
+                c.name === id ||
                 c.remark === id
             )
         }
@@ -308,9 +308,9 @@ const handleGenerateProfile = async (charId) => {
     chatStore.triggerToast('正在为TA生成专属朋友圈主页...', 'info')
 
     try {
-        await momentsStore.generateAndApplyCharacterProfile(charId, { 
-            includeMoments: true, 
-            includeSocial: true, 
+        await momentsStore.generateAndApplyCharacterProfile(charId, {
+            includeMoments: true,
+            includeSocial: true,
             includeArchive: false // 关键：朋友圈主页重刷时不触动灵魂档案
         })
         chatStore.triggerToast('主页社交信息已更新！', 'success')
@@ -612,7 +612,7 @@ const setBackgroundFromUrl = () => {
         const newUrl = backgroundInput.value.trim()
 
         if (viewingProfile.value.isMe) {
-            momentsStore.backgroundUrl = newUrl
+            momentsStore.backgroundUrl.value = newUrl
         } else if (filterAuthorId.value) {
             // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
@@ -640,7 +640,7 @@ const handleBackgroundFileUpload = (event) => {
         const newUrl = e.target.result
 
         if (viewingProfile.value.isMe) {
-            momentsStore.backgroundUrl = newUrl
+            momentsStore.backgroundUrl.value = newUrl
         } else if (filterAuthorId.value) {
             // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
@@ -758,8 +758,7 @@ onMounted(() => {
 
             <div class="flex-1 overflow-y-auto no-scrollbar pt-4">
                 <MomentItem :moment="selectedMoment" :isDetail="true" @back="selectedMoment = null"
-                    @edit="handleEditMoment"
-                    @preview-images="handlePreviewImages"
+                    @edit="handleEditMoment" @preview-images="handlePreviewImages"
                     @show-profile="id => { selectedMoment = null; id === 'user' ? handleUserAvatarClick() : (showingProfileCharId = id) }" />
             </div>
         </div>
@@ -857,7 +856,7 @@ onMounted(() => {
                                 class="w-full h-full flex flex-col items-center justify-center p-2 bg-gray-50 text-center">
                                 <i class="fa-solid fa-quote-left text-gray-300 mb-2"></i>
                                 <span class="text-[10px] text-gray-400 leading-tight line-clamp-3">{{ pm.content
-                                    }}</span>
+                                }}</span>
                             </div>
                         </div>
                     </div>
@@ -878,7 +877,8 @@ onMounted(() => {
 
                 <!-- User Info Row (Overlapping bottom) -->
                 <div class="absolute bottom-0 right-4 flex items-end gap-4 transform translate-y-[24px] z-30">
-                    <span class="text-white font-bold text-xl drop-shadow-md mb-8 tracking-tight">{{ viewingProfile.name }}</span>
+                    <span class="text-white font-bold text-xl drop-shadow-md mb-8 tracking-tight">{{ viewingProfile.name
+                        }}</span>
                     <div class="w-20 h-20 rounded-2xl overflow-hidden border-[4px] border-white shadow-lg bg-white relative active:scale-95 transition-all"
                         @click.stop="handleUserAvatarClick">
                         <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
@@ -888,28 +888,30 @@ onMounted(() => {
 
             <!-- SIGNATURE AND FEED CONTAINER -->
             <div class="bg-white px-0 pb-10 transition-colors duration-300 feed-container pt-8">
-                
+
                 <!-- Signature -->
-                <div v-if="!filterAuthorId" class="px-5 pb-6 text-right cursor-pointer group active:opacity-60 transition-opacity" @click="editUserSignature">
+                <div v-if="!filterAuthorId"
+                    class="px-5 pb-6 text-right cursor-pointer group active:opacity-60 transition-opacity"
+                    @click="editUserSignature">
                     <span class="text-[12px] text-gray-400 font-medium italic">
                         {{ viewingProfile.signature || '添加个性签名...' }}
                     </span>
                 </div>
 
-            <!-- Interaction Notification Bar (Native WeChat Style) -->
-            <div v-if="momentsStore.unreadCount > 0 && !filterAuthorId"
-                class="flex justify-center mb-8 animate-notification-pop">
-                <div class="bg-[#404040] text-white py-2 pl-2 pr-4 rounded-[6px] flex items-center gap-3 cursor-pointer active:bg-[#505050] transition-colors"
-                    @click="showNotifications = true">
-                    <div class="w-8 h-8 rounded-[4px] overflow-hidden bg-gray-600 shrink-0">
-                        <img :src="momentsStore.notifications[0]?.actorAvatar" class="w-full h-full object-cover">
+                <!-- Interaction Notification Bar (Native WeChat Style) -->
+                <div v-if="momentsStore.unreadCount > 0 && !filterAuthorId"
+                    class="flex justify-center mb-8 animate-notification-pop">
+                    <div class="bg-[#404040] text-white py-2 pl-2 pr-4 rounded-[6px] flex items-center gap-3 cursor-pointer active:bg-[#505050] transition-colors"
+                        @click="showNotifications = true">
+                        <div class="w-8 h-8 rounded-[4px] overflow-hidden bg-gray-600 shrink-0">
+                            <img :src="momentsStore.notifications[0]?.actorAvatar" class="w-full h-full object-cover">
+                        </div>
+                        <span class="text-[14px] font-medium tracking-wide">{{ momentsStore.unreadCount }} 条新消息</span>
+                        <i class="fa-solid fa-chevron-right text-[10px] text-gray-400"></i>
                     </div>
-                    <span class="text-[14px] font-medium tracking-wide">{{ momentsStore.unreadCount }} 条新消息</span>
-                    <i class="fa-solid fa-chevron-right text-[10px] text-gray-400"></i>
                 </div>
-            </div>
 
-            <!-- Moments Feed List -->
+                <!-- Moments Feed List -->
                 <div v-if="filteredMoments.length === 0"
                     class="flex flex-col items-center justify-center py-20 opacity-30">
                     <i class="fa-solid fa-earth-asia text-5xl mb-4"></i>
@@ -922,8 +924,8 @@ onMounted(() => {
                     @show-profile="id => id === 'user' ? handleUserAvatarClick() : (showingProfileCharId = id)" />
             </div>
 
-            <!-- One-Click Generate Button (Floating or Bottom) -->
-            <div class="px-4 py-8 flex justify-center">
+            <!-- One-Click Generate Button (Floating or Bottom) - Only show in global feed -->
+            <div v-if="!filterAuthorId || filterAuthorId !== 'user'" class="px-4 py-8 flex justify-center">
                 <button
                     class="px-8 py-3 rounded-full bg-white/80 backdrop-blur-md text-blue-500 font-bold shadow-sm active:scale-95 transition-all flex items-center gap-2 border border-blue-100"
                     @click="triggerBatchGenerate" :disabled="isGenerating">
@@ -1088,7 +1090,7 @@ onMounted(() => {
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-blue-500 truncate max-w-[120px]">{{ postForm.location || '选择位置'
-                                }}</span>
+                            }}</span>
                             <i class="fa-solid fa-chevron-right text-gray-300 text-[10px]"></i>
                         </div>
                     </div>
@@ -1582,27 +1584,37 @@ onMounted(() => {
 
         <!-- Fullscreen Image Preview Overlay (Teleported to Body for absolute top-level display) -->
         <Teleport to="body">
-            <div v-if="showImagePreview" class="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center pt-10" @click="closePreview">
+            <div v-if="showImagePreview"
+                class="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center pt-10"
+                @click="closePreview">
                 <!-- Close btn -->
-                <div class="absolute top-10 right-6 text-white text-3xl z-[100000] p-4 cursor-pointer" @click.stop="closePreview">
+                <div class="absolute top-10 right-6 text-white text-3xl z-[100000] p-4 cursor-pointer"
+                    @click.stop="closePreview">
                     <i class="fa-solid fa-xmark drop-shadow-lg"></i>
                 </div>
-                
+
                 <!-- Main Image -->
                 <div class="flex-1 w-full flex items-center justify-center p-2 relative">
                     <!-- Nav buttons if multiple -->
-                    <div v-if="previewImages.length > 1" class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20" @click.stop="prevPreview">
+                    <div v-if="previewImages.length > 1"
+                        class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
+                        @click.stop="prevPreview">
                         <i class="fa-solid fa-chevron-left text-xl"></i>
                     </div>
-                    <div v-if="previewImages.length > 1" class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20" @click.stop="nextPreview">
+                    <div v-if="previewImages.length > 1"
+                        class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
+                        @click.stop="nextPreview">
                         <i class="fa-solid fa-chevron-right text-xl"></i>
                     </div>
 
-                    <img :src="previewImages[previewIndex]" class="max-w-full max-h-[90vh] object-contain shadow-2xl transition-all duration-300" @click.stop>
+                    <img :src="previewImages[previewIndex]"
+                        class="max-w-full max-h-[90vh] object-contain shadow-2xl transition-all duration-300"
+                        @click.stop>
                 </div>
 
                 <!-- Footer / Counter -->
-                <div v-if="previewImages.length > 1" class="h-20 flex flex-col items-center text-white/80 text-lg font-bold">
+                <div v-if="previewImages.length > 1"
+                    class="h-20 flex flex-col items-center text-white/80 text-lg font-bold">
                     <span>{{ previewIndex + 1 }} / {{ previewImages.length }}</span>
                 </div>
             </div>
@@ -1662,11 +1674,14 @@ onMounted(() => {
 }
 
 /* Fade Transition for Preview */
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.3s ease;
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s ease;
 }
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 </style>
 
@@ -1785,9 +1800,7 @@ onMounted(() => {
     background-color: #111 !important;
 }
 
-[data-theme='dark'] .bg-[#ededed] {
-    background-color: #111 !important;
-}
+
 
 [data-theme='dark'] .bg-white {
     background-color: #191919 !important;

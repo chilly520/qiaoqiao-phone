@@ -63,10 +63,10 @@ const author = computed(() => {
         }
     }
     // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
-    const char = Object.values(chatStore.chats).find(c => 
-        c.id === authorId || 
-        c.wechatId === authorId || 
-        c.name === authorId || 
+    const char = Object.values(chatStore.chats).find(c =>
+        c.id === authorId ||
+        c.wechatId === authorId ||
+        c.name === authorId ||
         c.remark === authorId
     )
     if (char) {
@@ -132,7 +132,7 @@ const likeNames = computed(() => {
 
     // Show up to 8 names
     const displayList = list.slice(0, 8)
-    
+
     if (displayList.length === 0) return `${total} 位好友觉得很赞`
 
     let namesPart = displayList.join('、')
@@ -150,10 +150,10 @@ const getAuthorName = (id) => {
         return chatStore.chats[id].remark || chatStore.chats[id].name
     }
     // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
-    const char = Object.values(chatStore.chats).find(c => 
-        c.id === id || 
-        c.wechatId === id || 
-        c.name === id || 
+    const char = Object.values(chatStore.chats).find(c =>
+        c.id === id ||
+        c.wechatId === id ||
+        c.name === id ||
         c.remark === id
     )
     if (char) {
@@ -173,10 +173,10 @@ const getAuthorAvatar = (id) => {
         return chatStore.chats[id].avatar
     }
     // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
-    const char = Object.values(chatStore.chats).find(c => 
-        c.id === id || 
-        c.wechatId === id || 
-        c.name === id || 
+    const char = Object.values(chatStore.chats).find(c =>
+        c.id === id ||
+        c.wechatId === id ||
+        c.name === id ||
         c.remark === id
     )
     if (char) {
@@ -188,7 +188,7 @@ const getAuthorAvatar = (id) => {
 const renderCommentContent = (comment) => {
     if (!comment || !comment.content) return ''
     let content = comment.content
-    
+
     // Escape HTML
     const div = document.createElement('div')
     div.textContent = content
@@ -199,10 +199,21 @@ const renderCommentContent = (comment) => {
         return `<span class="text-[#576b95] font-medium">#${topic}</span>${spacer}`
     })
 
-    // 2. Regex for @Name mentions - make them blue
+    // 2. Regex for @Name mentions - convert IDs to names and make them blue
     const mentionRegex = /@([^\s@:：,.!?;，。！？]+)/g
-    content = content.replace(mentionRegex, (match, name) => {
-        return `<span class="text-[#576b95] font-medium">${match}</span>`
+    content = content.replace(mentionRegex, (match, nameOrId) => {
+        // Try to resolve ID to actual name
+        let displayName = nameOrId
+
+        // If it's a numeric ID, try to find the character name
+        if (/^\d+$/.test(nameOrId)) {
+            const resolvedName = getAuthorName(nameOrId)
+            if (resolvedName && resolvedName !== '神秘人') {
+                displayName = resolvedName
+            }
+        }
+
+        return `<span class="text-[#576b95] font-medium">@${displayName}</span>`
     })
 
     // 3. Regex for [表情包:名称]
@@ -220,7 +231,7 @@ const renderCommentContent = (comment) => {
             if (!sticker) {
                 sticker = stickerStore?.stickers?.find(s => s.name === name)
             }
-            
+
             if (sticker) {
                 return `<img src="${sticker.url}" class="inline-block w-6 h-6 mx-0.5 align-bottom" title="${name}" />`
             }
@@ -229,7 +240,7 @@ const renderCommentContent = (comment) => {
     }
 
     content = parseStickers(content)
-    
+
     // 4. Handle WeChat Emojis
     content = parseWeChatEmojis(content)
 
@@ -240,7 +251,7 @@ const renderCommentContent = (comment) => {
 const parsedContent = computed(() => {
     const rawContent = props.moment?.content
     if (!rawContent) return ''
-    
+
     let content = rawContent
     // Escape HTML first
     const div = document.createElement('div')
@@ -258,10 +269,21 @@ const parsedContent = computed(() => {
         return `<span class="text-[#576b95] font-medium">#${topic}</span>${spacer}`
     })
 
-    // 3. Regex for @Name mentions (Generic match to be safe if AI fails to return mentions array)
+    // 3. Regex for @Name mentions - convert IDs to names and make them blue
     const mentionRegex = /@([^\s@:：,.!?;，。！？]+)/g
-    content = content.replace(mentionRegex, (match, name) => {
-        return `<span class="text-[#576b95] font-medium">${match}</span>`
+    content = content.replace(mentionRegex, (match, nameOrId) => {
+        // Try to resolve ID to actual name
+        let displayName = nameOrId
+
+        // If it's a numeric ID, try to find the character name
+        if (/^\d+$/.test(nameOrId)) {
+            const resolvedName = getAuthorName(nameOrId)
+            if (resolvedName && resolvedName !== '神秘人') {
+                displayName = resolvedName
+            }
+        }
+
+        return `<span class="text-[#576b95] font-medium">@${displayName}</span>`
     })
 
     // 4. Regex for [表情包:名称]
@@ -292,9 +314,9 @@ const parsedContent = computed(() => {
 
 const handleImagePreview = (index) => {
     if (!props.moment?.images) return
-    emit('preview-images', { 
-        images: Array.from(props.moment.images), 
-        index: index 
+    emit('preview-images', {
+        images: Array.from(props.moment.images),
+        index: index
     })
 }
 
@@ -515,7 +537,7 @@ const navigateToAuthor = () => {
         const id = props.moment.authorId
         let finalId = id
         if (!chatStore.chats[id]) {
-            const char = Object.values(chatStore.chats).find(c => 
+            const char = Object.values(chatStore.chats).find(c =>
                 c.id === id || c.wechatId === id || c.name === id || c.remark === id
             )
             if (char) {
@@ -723,7 +745,8 @@ const navigateToAuthor = () => {
 
             <!-- Comment Input -->
             <div v-if="showCommentInput"
-                class="mt-2 bg-gray-50 p-2 rounded flex flex-col gap-2 animate-fade-in border border-gray-100 comment-input-area" @click.stop>
+                class="mt-2 bg-gray-50 p-2 rounded flex flex-col gap-2 animate-fade-in border border-gray-100 comment-input-area"
+                @click.stop>
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
                     <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
                             }}</span></span>
