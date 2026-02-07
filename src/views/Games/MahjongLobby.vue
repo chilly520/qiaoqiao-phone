@@ -18,13 +18,19 @@
         <!-- 用户信息卡片 -->
         <div class="m-4 bg-white rounded-2xl shadow-lg p-4">
             <div class="flex items-center gap-4">
-                <div
-                    class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-3xl">
-                    🎭
+                <!-- 头像显示 -->
+                <div v-if="userAvatar && userAvatar.startsWith('/')"
+                    class="w-16 h-16 rounded-full overflow-hidden flex-shrink-0">
+                    <img :src="userAvatar" class="w-full h-full object-cover" />
                 </div>
+                <div v-else
+                    class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-3xl">
+                    {{ userAvatar }}
+                </div>
+
                 <div class="flex-1">
                     <div class="flex items-center gap-2">
-                        <span class="text-lg font-bold">我</span>
+                        <span class="text-lg font-bold">{{ userName }}</span>
                         <span class="px-2 py-0.5 rounded-full text-xs font-bold"
                             :style="{ backgroundColor: mahjongStore.rankInfo.color, color: '#fff' }">
                             {{ mahjongStore.rank }}
@@ -167,14 +173,20 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMahjongStore } from '../../stores/mahjongStore'
 import { useWalletStore } from '../../stores/walletStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 const router = useRouter()
 const mahjongStore = useMahjongStore()
 const walletStore = useWalletStore()
+const settingsStore = useSettingsStore()
+
+// 用户信息
+const userName = computed(() => settingsStore.personalization.userProfile.name || '我')
+const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '🎭')
 
 const showRecharge = ref(false)
 const showCreateRoom = ref(false)

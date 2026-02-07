@@ -36,7 +36,7 @@
                     <div class="seat-label">东</div>
                     <div v-if="getPlayer('east')" class="player-info">
                         <!-- 头像显示 -->
-                        <div v-if="getPlayer('east').avatar && getPlayer('east').avatar.startsWith('/')"
+                        <div v-if="isImageAvatar(getPlayer('east').avatar)"
                             class="w-16 h-16 rounded-full overflow-hidden mb-2">
                             <img :src="getPlayer('east').avatar" class="w-full h-full object-cover" />
                         </div>
@@ -57,7 +57,7 @@
                     <div class="seat-label">南</div>
                     <div class="player-info">
                         <!-- 头像显示 -->
-                        <div v-if="getPlayer('south')?.avatar && getPlayer('south').avatar.startsWith('/')"
+                        <div v-if="isImageAvatar(getPlayer('south')?.avatar)"
                             class="w-16 h-16 rounded-full overflow-hidden mb-2">
                             <img :src="getPlayer('south').avatar" class="w-full h-full object-cover" />
                         </div>
@@ -74,7 +74,7 @@
                     <div class="seat-label">西</div>
                     <div v-if="getPlayer('west')" class="player-info">
                         <!-- 头像显示 -->
-                        <div v-if="getPlayer('west').avatar && getPlayer('west').avatar.startsWith('/')"
+                        <div v-if="isImageAvatar(getPlayer('west').avatar)"
                             class="w-16 h-16 rounded-full overflow-hidden mb-2">
                             <img :src="getPlayer('west').avatar" class="w-full h-full object-cover" />
                         </div>
@@ -95,7 +95,7 @@
                     <div class="seat-label">北</div>
                     <div v-if="getPlayer('north')" class="player-info">
                         <!-- 头像显示 -->
-                        <div v-if="getPlayer('north').avatar && getPlayer('north').avatar.startsWith('/')"
+                        <div v-if="isImageAvatar(getPlayer('north').avatar)"
                             class="w-16 h-16 rounded-full overflow-hidden mb-2">
                             <img :src="getPlayer('north').avatar" class="w-full h-full object-cover" />
                         </div>
@@ -162,7 +162,7 @@
                         <div v-for="contact in availableContacts" :key="contact.id" @click="addContact(contact)"
                             class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg active:bg-gray-100 cursor-pointer">
                             <!-- 头像显示 -->
-                            <div v-if="contact.avatar && contact.avatar.startsWith('/')"
+                            <div v-if="isImageAvatar(contact.avatar)"
                                 class="w-12 h-12 rounded-full overflow-hidden flex-shrink-0">
                                 <img :src="contact.avatar" class="w-full h-full object-cover" />
                             </div>
@@ -257,6 +257,12 @@ const availableContacts = computed(() => {
             signature: chats[chatId].signature || '在忙'
         }))
 })
+
+// 判断是否为图片头像（路径、base64、data:image）
+const isImageAvatar = (avatar) => {
+    if (!avatar) return false
+    return avatar.startsWith('/') || avatar.startsWith('data:image') || avatar.startsWith('http')
+}
 
 const getPlayer = (position) => {
     return mahjongStore.currentRoom?.players?.find(p => p.position === position)
