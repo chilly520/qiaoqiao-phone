@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useWalletStore } from './walletStore'
-import { useChatStore } from './chatStore'
+import { useSettingsStore } from './settingsStore'
 import mahjongEngine from '../utils/mahjong/MahjongEngine.js'
 import mahjongAI from '../utils/mahjong/MahjongAI.js'
 
@@ -112,10 +112,9 @@ export const useMahjongStore = defineStore('mahjong', () => {
         const roomId = `room_${Date.now()}`
 
         // 获取玩家信息
-        const chatStore = useChatStore()
-        const userChar = chatStore.characters.find(c => c.id === 'user')
-        const userName = userChar?.name || '我'
-        const userAvatar = userChar?.avatar || '👤'
+        const settingsStore = useSettingsStore()
+        const userName = settingsStore.personalization.userProfile.name || '我'
+        const userAvatar = settingsStore.personalization.userProfile.avatar || '👤'
 
         currentRoom.value = {
             id: roomId,
