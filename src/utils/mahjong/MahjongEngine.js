@@ -53,6 +53,48 @@ export class MahjongEngine {
     }
 
     /**
+     * 获取胡牌牌型
+     */
+    getWinType(hand, exposed = [], newTile = null) {
+        const allTilesInHand = newTile ? [...hand, newTile] : [...hand]
+        const allTiles = [...allTilesInHand]
+        exposed.forEach(e => allTiles.push(...e.tiles))
+
+        const patterns = []
+        let fan = 1
+
+        // 1. 清一色 (所有牌花色相同且无字牌)
+        const suits = new Set()
+        let hasHonor = false
+        allTiles.forEach(t => {
+            if (this.isHonor(t)) hasHonor = true
+            else suits.add(t[0])
+        })
+        if (suits.size === 1 && !hasHonor) {
+            patterns.push('清一色')
+            fan += 3
+        }
+
+        // 2. 七对
+        if (this.isSevenPairs(allTilesInHand) && exposed.length === 0) {
+            patterns.push('七对')
+            fan += 2
+        }
+
+        // 3. 碰碰胡 (简易判断：如果全是刻子或杠)
+        // 暂时简略实现
+
+        if (patterns.length === 0) {
+            patterns.push('平胡')
+        }
+
+        return {
+            name: patterns.join(' · '),
+            fan: fan
+        }
+    }
+
+    /**
      * 判断是否可以碰牌
      * @param {Array} hand - 手牌
      * @param {String} tile - 要碰的牌
@@ -95,7 +137,8 @@ export class MahjongEngine {
     canHu(hand, newTile = null) {
         const tiles = newTile ? [...hand, newTile] : [...hand]
 
-        if (tiles.length !== 14) return false
+        // 只要总张数是 14, 11, 8, 5, 2 (考虑吃碰杠后的剩余手牌)
+        if (![2, 5, 8, 11, 14].includes(tiles.length)) return false
 
         // 检查七对
         if (this.isSevenPairs(tiles)) return true
@@ -108,6 +151,7 @@ export class MahjongEngine {
      * 检查是否是七对
      */
     isSevenPairs(tiles) {
+        // 七对只能在全手牌（14张）时成立
         if (tiles.length !== 14) return false
 
         const counts = {}
@@ -123,7 +167,8 @@ export class MahjongEngine {
      * 检查是否是标准胡牌型（3n+2）
      */
     isStandardWin(tiles) {
-        if (tiles.length !== 14) return false
+        // 标准胡牌手牌长度必须是 3n+2
+        if (![2, 5, 8, 11, 14].includes(tiles.length)) return false
 
         // 尝试每种牌作为将牌（对子）
         const uniqueTiles = [...new Set(tiles)]
@@ -295,7 +340,8 @@ export class MahjongEngine {
      * @returns {Array} - 听的牌
      */
     getTingPai(hand) {
-        if (hand.length !== 13) return []
+        // 13, 10, 7, 4, 1 张牌时都可能进入听牌状态
+        if (![1, 4, 7, 10, 13].includes(hand.length)) return []
 
         const allTiles = this.getAllTiles()
         const tingTiles = []
@@ -327,19 +373,69 @@ export class MahjongEngine {
     }
 
     /**
+     * 获取可选的NPC列表
+     */
+    getNPCs() {
+        const npcList = [
+            { name: '清弦', gender: '女', signature: '古风少女，说话文绉绉的，喜欢把打牌比作弹琴。' },
+            { name: '墨染', gender: '男', signature: '书生气质，打牌很儒雅，赢了会作诗，输了会叹气。' },
+            { name: '寒江雪', gender: '男', signature: '高冷隐士，独来独往，牌风诡异，不爱说话。' },
+            { name: '落花独立', gender: '女', signature: '多愁善感，容易悲春伤秋，打牌也像在这演戏。' },
+            { name: '微雨双飞', gender: '女', signature: '活泼可爱，喜欢凑热闹，打牌时话特别多。' },
+            { name: '南桥', gender: '男', signature: '豪爽侠客，出牌快，不喜欢磨磨蹭蹭。' },
+            { name: '北巷', gender: '男', signature: '市井小民，喜欢讲八卦，打牌时嘴碎。' },
+            { name: '独酌', gender: '男', signature: '借酒消愁，醉醺醺的，有时候会出昏招，但运气很好。' },
+            { name: '醉梦', gender: '女', signature: '迷迷糊糊，经常不知道轮到谁了，但是手气惊人。' },
+            { name: '浮生若梦', gender: '男', signature: '看破红尘，输赢对他来说都是浮云，心态极好。' },
+            { name: '千寻', gender: '女', signature: '寻找失散多年的...并不是，只是喜欢打牌的邻家姐姐。' },
+            { name: '半夏', gender: '女', signature: '温柔大方，不仅牌打得好，还会安慰输了的人。' },
+            { name: '白露', gender: '男', signature: '节气拟人...不对，是个很准时的上班族，打牌很守时。' },
+            { name: '青黛', gender: '女', signature: '古典美人，举手投足都很优雅，哪怕点炮也是美的。' },
+            { name: '朱砂', gender: '女', signature: '热烈奔放，喜欢做大牌，即使输得很惨也要做清一色。' }
+        ]
+
+        // 尝试获取用户设置中的名字，避免重名
+        let userName = '我'
+        try {
+            const saved = localStorage.getItem('personalization_settings')
+            if (saved) {
+                const settings = JSON.parse(saved)
+                userName = settings.userProfile?.name || '我'
+            }
+        } catch (e) { }
+
+        return npcList
+            .filter(npc => npc.name !== userName)
+            .map((npc, i) => ({
+                id: `npc_${i}`,
+                name: npc.name,
+                gender: npc.gender,
+                avatar: `https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=${encodeURIComponent(npc.name)}`,
+                beans: Math.floor(Math.random() * 45000) + 5000,
+                signature: npc.signature
+            }))
+    }
+
+    /**
      * 排序手牌
      */
     sortHand(hand) {
-        const order = {
-            'w': 1, 't': 2, 'b': 3,
-            'east': 40, 'south': 41, 'west': 42, 'north': 43,
-            'red': 44, 'green': 45, 'white': 46
+        if (!Array.isArray(hand)) return hand
+
+        const typeOrder = { 'w': 100, 't': 200, 'b': 300 }
+        const honorOrder = {
+            'east': 401, 'south': 402, 'west': 403, 'north': 404,
+            'red': 405, 'green': 406, 'white': 407
         }
 
         return [...hand].sort((a, b) => {
-            const aType = this.isHonor(a) ? order[a] : order[a[0]] * 10 + parseInt(a[1])
-            const bType = this.isHonor(b) ? order[b] : order[b[0]] * 10 + parseInt(b[1])
-            return aType - bType
+            const getVal = (tile) => {
+                if (this.isHonor(tile)) return honorOrder[tile] || 999
+                const type = tile[0]
+                const num = parseInt(tile[1])
+                return (typeOrder[type] || 0) + num
+            }
+            return getVal(a) - getVal(b)
         })
     }
 }

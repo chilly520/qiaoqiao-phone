@@ -1,9 +1,10 @@
 <template>
-    <div class="mahjong-room w-full h-full flex flex-col bg-gradient-to-br from-red-50 to-orange-50">
+    <div class="mahjong-room w-full h-full flex flex-col bg-emerald-50">
         <!-- 顶部导航 -->
         <div
-            class="h-[50px] bg-gradient-to-r from-red-600 to-orange-600 flex items-center justify-between px-4 shadow-lg">
-            <button @click="handleBack" class="w-10 h-10 flex items-center justify-center text-white">
+            class="h-[50px] bg-gradient-to-r from-emerald-600 to-green-600 flex items-center justify-between px-4 shadow-lg">
+            <button @click="router.push('/games/mahjong-lobby')"
+                class="w-10 h-10 flex items-center justify-center text-white">
                 <i class="fa-solid fa-chevron-left text-xl"></i>
             </button>
             <h1 class="text-lg font-bold text-white">房间等待</h1>
@@ -13,17 +14,17 @@
         <!-- 房间信息 -->
         <div class="m-4 bg-white rounded-2xl shadow-lg p-4">
             <div class="flex items-center justify-between mb-3">
-                <div>
-                    <div class="text-sm text-gray-500">房间号</div>
-                    <div class="text-lg font-bold">{{ roomId }}</div>
-                </div>
-                <div class="text-right">
-                    <div class="text-sm text-gray-500">底注</div>
-                    <div class="text-lg font-bold text-orange-600">{{ mahjongStore.currentRoom?.baseStake }}豆/局</div>
-                </div>
-                <div class="text-right">
-                    <div class="text-sm text-gray-500">局数</div>
-                    <div class="text-lg font-bold text-blue-600">{{ mahjongStore.currentRoom?.totalRounds }}局</div>
+                <div class="flex items-center gap-2">
+                    <span class="text-gray-600 px-3 py-1 bg-white/50 rounded-lg border border-emerald-100 font-bold">
+                        房间号: <span class="text-gray-900">{{ mahjongStore.currentRoom?.id?.slice(-6).toUpperCase()
+                            }}</span>
+                    </span>
+                    <span class="text-gray-600 px-3 py-1 bg-white/50 rounded-lg border border-emerald-100 font-bold">
+                        底注: <span class="text-emerald-700">{{ mahjongStore.currentRoom?.baseStake }}豆/局</span>
+                    </span>
+                    <span class="text-gray-600 px-3 py-1 bg-white/50 rounded-lg border border-emerald-100 font-bold">
+                        局数: <span class="text-blue-600">{{ mahjongStore.currentRoom?.totalRounds }}局</span>
+                    </span>
                 </div>
             </div>
         </div>
@@ -42,8 +43,11 @@
                         </div>
                         <div v-else class="text-4xl mb-2">{{ getPlayer('east').avatar || '👤' }}</div>
 
-                        <div class="font-bold">{{ getPlayer('east').name }}</div>
-                        <div class="text-sm text-gray-500">{{ getPlayer('east').beans }}豆</div>
+                        <div class="text-gray-800 text-[10px] text-center mb-1 flex flex-col items-center">
+                            <div class="font-bold w-[72px] whitespace-normal break-all leading-tight">{{
+                                getPlayer('east')?.name }}</div>
+                            <div class="opacity-80">{{ getPlayer('east')?.beans }}豆</div>
+                        </div>
                         <div v-if="getPlayer('east').isReady" class="ready-badge">已准备</div>
                     </div>
                     <div v-else class="empty-seat" @click="invitePlayer('east')">
@@ -80,8 +84,11 @@
                         </div>
                         <div v-else class="text-4xl mb-2">{{ getPlayer('west').avatar || '👤' }}</div>
 
-                        <div class="font-bold">{{ getPlayer('west').name }}</div>
-                        <div class="text-sm text-gray-500">{{ getPlayer('west').beans }}豆</div>
+                        <div class="text-gray-800 text-[10px] text-center mb-1 flex flex-col items-center">
+                            <div class="font-bold w-[72px] whitespace-normal break-all leading-tight">{{
+                                getPlayer('west')?.name }}</div>
+                            <div class="opacity-80">{{ getPlayer('west')?.beans }}豆</div>
+                        </div>
                         <div v-if="getPlayer('west').isReady" class="ready-badge">已准备</div>
                     </div>
                     <div v-else class="empty-seat" @click="invitePlayer('west')">
@@ -116,7 +123,7 @@
         <!-- 底部按钮 -->
         <div class="p-4">
             <button v-if="allReady" @click="startGame"
-                class="w-full py-4 bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-transform">
+                class="w-full py-4 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-transform">
                 <i class="fa-solid fa-play mr-2"></i>
                 开始游戏
             </button>
@@ -135,11 +142,11 @@
                     <!-- 标签页 -->
                     <div class="flex gap-2 mb-4">
                         <button @click="inviteTab = 'npc'" class="flex-1 py-2 rounded-lg font-bold transition-all"
-                            :class="inviteTab === 'npc' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'">
+                            :class="inviteTab === 'npc' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600'">
                             NPC
                         </button>
                         <button @click="inviteTab = 'contacts'" class="flex-1 py-2 rounded-lg font-bold transition-all"
-                            :class="inviteTab === 'contacts' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'">
+                            :class="inviteTab === 'contacts' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600'">
                             通讯录
                         </button>
                     </div>
@@ -148,12 +155,16 @@
                     <div v-if="inviteTab === 'npc'" class="space-y-2">
                         <div v-for="npc in availableNPCs" :key="npc.id" @click="addNPC(npc)"
                             class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg active:bg-gray-100 cursor-pointer">
-                            <div class="text-3xl">{{ npc.avatar }}</div>
+                            <div v-if="isImageAvatar(npc.avatar)"
+                                class="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                                <img :src="npc.avatar" class="w-full h-full object-cover" />
+                            </div>
+                            <div v-else class="text-3xl">{{ npc.avatar }}</div>
                             <div class="flex-1">
                                 <div class="font-bold">{{ npc.name }}</div>
                                 <div class="text-sm text-gray-500">{{ npc.beans }}豆</div>
                             </div>
-                            <i class="fa-solid fa-plus text-red-500"></i>
+                            <i class="fa-solid fa-plus text-emerald-500"></i>
                         </div>
                     </div>
 
@@ -172,7 +183,7 @@
                                 <div class="font-bold">{{ contact.name }}</div>
                                 <div class="text-sm text-gray-500">{{ contact.signature || '在忙' }}</div>
                             </div>
-                            <i class="fa-solid fa-plus text-red-500"></i>
+                            <i class="fa-solid fa-plus text-emerald-500"></i>
                         </div>
                     </div>
                 </div>
@@ -195,8 +206,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMahjongStore } from '../../stores/mahjongStore'
-import { useChatStore } from '../../stores/chatStore'
+import { useMahjongStore } from '../../stores/mahjongStore.js'
+import { useChatStore } from '../../stores/chatStore.js'
+import mahjongEngine from '../../utils/mahjong/MahjongEngine.js'
+
+
 
 const router = useRouter()
 const mahjongStore = useMahjongStore()
@@ -222,47 +236,33 @@ const allReady = computed(() => {
 
 // 可用的NPC列表
 const availableNPCs = computed(() => {
-    const modernNames = [
-        '清风徐来', '星河滚烫', '温柔成风', '岁月静好', '浅笑嫣然',
-        '北城以北', '南风过境', '时光荏苒', '梦里花落', '云淡风轻',
-        '素年锦时', '陌上花开', '烟雨江南', '醉卧花间', '月下独酌',
-        '风过无痕', '雨落倾城', '雪舞轻扬', '霜降寒秋', '春暖花开'
-    ]
-
-    const avatars = [
-        '😊', '😎', '🤗', '😇', '🥰', '😏', '🤓', '😌',
-        '🌸', '🌟', '🎨', '🎭', '🎪', '🎯', '🎲', '🎰',
-        '🦄', '🐱', '🐶', '🐼', '🦊', '🐯', '🦁', '🐨'
-    ]
-
-    return Array.from({ length: 10 }, (_, i) => ({
-        id: `npc_${i}`,
-        name: modernNames[i % modernNames.length],
-        avatar: avatars[i % avatars.length],
-        beans: Math.floor(Math.random() * 45000) + 5000
-    }))
+    const inRoomIds = mahjongStore.currentRoom?.players?.map(p => p.id) || []
+    return mahjongEngine.getNPCs().filter(npc => !inRoomIds.includes(npc.id))
 })
 
-// 可用的通讯录好友
+// 可选的联系人
 const availableContacts = computed(() => {
-    const currentPlayerIds = mahjongStore.currentRoom?.players?.map(p => p.id) || []
-    const chats = chatStore.chats || {}
+    const inRoomIds = mahjongStore.currentRoom?.players?.map(p => p.id) || []
+    const rawChats = chatStore.chats || {}
 
-    return Object.keys(chats)
-        .filter(chatId => chatId !== 'user' && !currentPlayerIds.includes(chatId))
-        .map(chatId => ({
-            id: chatId,
-            name: chats[chatId].name || '未知',
-            avatar: chats[chatId].avatar || '👤',
-            signature: chats[chatId].signature || '在忙'
+    // 如果是对象则转数组，如果是数组则直接用
+    const chatsArray = Array.isArray(rawChats) ? rawChats : Object.values(rawChats)
+
+    return chatsArray
+        .filter(chat => !chat.isGroup && !inRoomIds.includes(chat.id))
+        .map(chat => ({
+            id: chat.id,
+            name: chat.name,
+            avatar: chat.avatar
         }))
 })
 
-// 判断是否为图片头像（路径、base64、data:image）
+// 判断是否为图片头像
 const isImageAvatar = (avatar) => {
     if (!avatar) return false
     return avatar.startsWith('/') || avatar.startsWith('data:image') || avatar.startsWith('http')
 }
+
 
 const getPlayer = (position) => {
     return mahjongStore.currentRoom?.players?.find(p => p.position === position)
@@ -270,9 +270,11 @@ const getPlayer = (position) => {
 
 const handleBack = () => {
     if (confirm('确定要退出房间吗？')) {
-        router.back()
+        mahjongStore.currentRoom = null
+        router.push('/games/mahjong-lobby')
     }
 }
+
 
 const invitePlayer = (position) => {
     invitePosition.value = position
@@ -322,22 +324,17 @@ const startGame = () => {
     const players = mahjongStore.currentRoom.players
     const dealerIndex = Math.floor(Math.random() * 4)
 
-    // 初始化gameState
-    if (!mahjongStore.gameState) {
-        mahjongStore.gameState = {
-            dealer: dealerIndex,
-            currentPlayer: dealerIndex,
-            deck: [],
-            pool: [],
-            currentTile: null,
-            wind: 'east'
-        }
-    } else {
-        mahjongStore.gameState.dealer = dealerIndex
-        mahjongStore.gameState.currentPlayer = dealerIndex
+    // 初始化gameState（只设置庄家，不发牌，由MahjongGame动画触发发牌）
+    mahjongStore.gameState = {
+        dealer: dealerIndex,
+        currentPlayer: dealerIndex,
+        deck: [], // 保持为空，触发开局动画
+        pool: [],
+        currentTile: null,
+        wind: 'east'
     }
 
-    // 直接跳转到游戏界面，在那里显示摇骰子动画
+    // 直接跳转到游戏界面
     router.push('/games/mahjong')
 }
 </script>
@@ -366,7 +363,7 @@ const startGame = () => {
     position: absolute;
     top: 8px;
     left: 8px;
-    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    background: linear-gradient(135deg, #fbbf24, #10b981);
     color: white;
     width: 32px;
     height: 32px;

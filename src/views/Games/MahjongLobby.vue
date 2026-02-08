@@ -1,55 +1,50 @@
 <template>
-    <div class="mahjong-lobby w-full h-full flex flex-col bg-gradient-to-br from-red-50 to-orange-50">
+    <div class="mahjong-lobby w-full h-full flex flex-col bg-emerald-50">
         <!-- 顶部导航 -->
         <div
-            class="h-[50px] bg-gradient-to-r from-red-600 to-orange-600 flex items-center justify-between px-4 shadow-lg">
-            <button @click="$router.back()" class="w-10 h-10 flex items-center justify-center text-white">
+            class="h-[50px] bg-gradient-to-r from-emerald-600 to-green-600 flex items-center justify-between px-4 shadow-lg">
+            <button @click="router.push('/games')" class="w-10 h-10 flex items-center justify-center text-white">
                 <i class="fa-solid fa-chevron-left text-xl"></i>
             </button>
             <h1 class="text-xl font-bold text-white flex items-center gap-2">
                 <span>🀄</span>
                 <span>麻将大厅</span>
             </h1>
-            <button @click="showSettings = true" class="w-10 h-10 flex items-center justify-center text-white">
+            <button @click="showRank = true" class="w-10 h-10 flex items-center justify-center text-white">
                 <i class="fa-solid fa-gear text-xl"></i>
             </button>
         </div>
 
-        <!-- 用户信息卡片 -->
-        <div class="m-4 bg-white rounded-2xl shadow-lg p-4">
+        <!-- 个人信息卡片 -->
+        <div class="m-4 p-4 bg-white rounded-2xl shadow-md border border-emerald-100">
             <div class="flex items-center gap-4">
                 <!-- 头像显示 -->
-                <div v-if="isImageAvatar(userAvatar)" class="w-16 h-16 rounded-full overflow-hidden flex-shrink-0">
+                <div class="w-16 h-16 rounded-2xl overflow-hidden shadow-inner border-2 border-emerald-50">
                     <img :src="userAvatar" class="w-full h-full object-cover" />
-                </div>
-                <div v-else
-                    class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-3xl">
-                    {{ userAvatar || '🎭' }}
                 </div>
 
                 <div class="flex-1">
                     <div class="flex items-center gap-2">
-                        <span class="text-lg font-bold">{{ userName }}</span>
-                        <span class="px-2 py-0.5 rounded-full text-xs font-bold"
-                            :style="{ backgroundColor: mahjongStore.rankInfo.color, color: '#fff' }">
+                        <span class="text-lg font-black text-gray-800">{{ userName }}</span>
+                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-[10px] rounded-full font-bold">
                             {{ mahjongStore.rank }}
                         </span>
                     </div>
-                    <div class="flex items-center gap-4 mt-1 text-sm text-gray-600">
-                        <span>积分: {{ mahjongStore.score }}</span>
-                        <span>胜率: {{ mahjongStore.winRate }}%</span>
-                        <span>连胜: {{ mahjongStore.winStreak }}</span>
+                    <div class="text-xs text-gray-400 mt-1 flex gap-3">
+                        <span>积分:{{ mahjongStore.score }}</span>
+                        <span>胜率:{{ winRate }}%</span>
+                        <span>连胜:{{ mahjongStore.winStreak }}</span>
                     </div>
                 </div>
                 <div class="text-right">
-                    <div class="text-2xl font-bold text-orange-600">{{ mahjongStore.beans }}</div>
-                    <div class="text-xs text-gray-500">欢乐豆</div>
+                    <div class="text-2xl font-black text-orange-500">{{ formattedBeans }}</div>
+                    <div class="text-[10px] text-gray-400">欢乐豆</div>
                 </div>
             </div>
 
             <!-- 充值按钮 -->
             <button @click="showRecharge = true"
-                class="w-full mt-3 py-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-lg shadow-md active:scale-95 transition-transform">
+                class="w-full mt-3 py-2 bg-gradient-to-r from-amber-400 to-yellow-500 text-white font-bold rounded-lg shadow-md active:scale-95 transition-transform">
                 <i class="fa-solid fa-coins mr-2"></i>
                 充值欢乐豆
             </button>
@@ -58,7 +53,7 @@
         <!-- 快速开始 -->
         <div class="px-4 mb-4">
             <button @click="quickStart"
-                class="w-full py-4 bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3">
+                class="w-full py-4 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3">
                 <i class="fa-solid fa-bolt text-2xl"></i>
                 <span>快速开始</span>
             </button>
@@ -83,7 +78,7 @@
         <div class="px-4 mb-4">
             <div class="bg-white rounded-xl shadow-md p-4">
                 <h3 class="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                    <i class="fa-solid fa-book text-blue-500"></i>
+                    <i class="fa-solid fa-plus text-emerald-500"></i>
                     <span>游戏规则</span>
                 </h3>
                 <ul class="text-sm text-gray-600 space-y-1">
@@ -99,12 +94,20 @@
         <Transition name="fade">
             <div v-if="showRecharge" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                 @click="showRecharge = false">
-                <div class="bg-white rounded-2xl p-6 m-4 max-w-sm w-full" @click.stop>
+                <div class="bg-white rounded-2xl p-6 m-4 max-w-sm w-full relative" @click.stop>
                     <h2 class="text-xl font-bold mb-4 text-center">充值欢乐豆</h2>
 
+                    <!-- 成功提示 Toast -->
+                    <Transition name="fade">
+                        <div v-if="toastMsg"
+                            class="absolute top-20 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-full z-[60] whitespace-nowrap">
+                            {{ toastMsg }}
+                        </div>
+                    </Transition>
+
                     <div class="space-y-3 mb-6">
-                        <button v-for="pkg in rechargePackages" :key="pkg.amount" @click="recharge(pkg.amount)"
-                            class="w-full p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-orange-200 rounded-xl active:scale-95 transition-transform">
+                        <button v-for="pkg in rechargePackages" :key="pkg.amount" @click="recharge(pkg)"
+                            class="w-full p-4 bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-200 rounded-xl active:scale-95 transition-transform">
                             <div class="flex items-center justify-between">
                                 <div class="text-left">
                                     <div class="text-2xl font-bold text-orange-600">{{ pkg.amount }}</div>
@@ -174,9 +177,12 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMahjongStore } from '../../stores/mahjongStore'
-import { useWalletStore } from '../../stores/walletStore'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useMahjongStore } from '../../stores/mahjongStore.js'
+import { useWalletStore } from '../../stores/walletStore.js'
+import { useSettingsStore } from '../../stores/settingsStore.js'
+import mahjongEngine from '../../utils/mahjong/MahjongEngine.js'
+
+
 
 const router = useRouter()
 const mahjongStore = useMahjongStore()
@@ -197,6 +203,14 @@ const showRecharge = ref(false)
 const showCreateRoom = ref(false)
 const showRanking = ref(false)
 const showSettings = ref(false)
+const toastMsg = ref('')
+
+const showToast = (msg) => {
+    toastMsg.value = msg
+    setTimeout(() => {
+        toastMsg.value = ''
+    }, 2000)
+}
 
 const roomConfig = ref({
     baseStake: 100,
@@ -214,7 +228,7 @@ const rechargePackages = [
 const quickStart = () => {
     // 检查欢乐豆
     if (mahjongStore.beans < 100) {
-        alert('欢乐豆不足，请先充值！')
+        showToast('欢乐豆不足，请先充值！')
         showRecharge.value = true
         return
     }
@@ -230,7 +244,7 @@ const quickStart = () => {
 const createRoom = () => {
     // 检查欢乐豆
     if (mahjongStore.beans < roomConfig.value.baseStake) {
-        alert('欢乐豆不足，请先充值！')
+        showToast('欢乐豆不足，请先充值！')
         showCreateRoom.value = false
         showRecharge.value = true
         return
@@ -251,21 +265,27 @@ const createRoom = () => {
 }
 
 // 充值
-const recharge = (amount) => {
-    const cost = amount / 1000
+const recharge = (pkg) => {
+    const amount = pkg.amount
+    const price = pkg.price
 
-    if (walletStore.balance < cost) {
-        alert('钱包余额不足！')
+    // 调用钱包扣款 (decreaseBalance 会处理亲属卡/零钱/银行卡优先级)
+    const success = walletStore.decreaseBalance(price, `麻将欢乐豆充值(${amount}豆)`)
+
+    if (!success) {
+        showToast('支付失败，请检查余额')
         return
     }
 
-    const result = mahjongStore.rechargeBeans(amount)
+    const result = mahjongStore.rechargeBeans(amount + (pkg.bonus || 0))
 
     if (result.success) {
-        alert(result.message)
-        showRecharge.value = false
+        showToast('充值成功！')
+        setTimeout(() => {
+            showRecharge.value = false
+        }, 1000)
     } else {
-        alert(result.message)
+        showToast(result.message)
     }
 }
 </script>

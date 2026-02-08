@@ -195,25 +195,25 @@ export class MahjongAI {
             return 'pass'
         }
 
-        // 4. 杠牌（有一定概率）
+        // 4. 杠牌（80% 概率）
         if (actions.includes('gang')) {
-            return Math.random() > 0.6 ? 'gang' : 'pass'
+            return Math.random() > 0.2 ? 'gang' : 'pass'
         }
 
-        // 5. 碰牌（有一定概率）
+        // 5. 碰牌（90% 概率）
         if (actions.includes('peng')) {
             // 检查碰牌后是否更接近胡牌
             const testHand = [...hand, tile]
             const newTing = mahjongEngine.getTingPai(testHand)
 
             if (newTing.length > 0) {
-                return 'peng' // 碰牌后能听牌
+                return 'peng' // 碰牌后能听牌，100% 碰
             }
 
-            return Math.random() > 0.5 ? 'peng' : 'pass'
+            return Math.random() > 0.1 ? 'peng' : 'pass'
         }
 
-        // 6. 吃牌（最低优先级）
+        // 6. 吃牌（70% 概率）
         if (actions.includes('chi')) {
             // 检查吃牌后是否更接近胡牌
             const combinations = mahjongEngine.canChi(hand, tile, 'previous')
@@ -222,12 +222,13 @@ export class MahjongAI {
                 const newTing = mahjongEngine.getTingPai(testHand)
 
                 if (newTing.length > 0) {
-                    return 'chi' // 吃牌后能听牌
+                    return 'chi' // 吃牌后能听牌，100% 吃
                 }
             }
 
-            return Math.random() > 0.7 ? 'chi' : 'pass'
+            return Math.random() > 0.3 ? 'chi' : 'pass'
         }
+
 
         return 'pass'
     }
@@ -298,26 +299,46 @@ export class MahjongAI {
     /**
      * 生成随机AI玩家信息
      */
+    /**
+     * 生成随机AI玩家信息
+     */
     generateAIPlayer(index) {
-        const names = [
-            '张三', '李四', '王五', '赵六', '钱七', '孙八',
-            '周九', '吴十', '郑一', '王二', '冯三', '陈四',
-            '小明', '小红', '小刚', '小丽', '小华', '小芳'
+        const bots = [
+            { name: '绝代双椒', gender: '女', signature: '性格火爆，输了会骂人，赢了会嘲讽的辣妹子。' },
+            { name: '乔大狸子', gender: '男', signature: '深思熟虑，每一步都算计很久的老油条。' },
+            { name: '麻将桌上吴彦祖', gender: '男', signature: '自恋狂，觉得自己打牌最帅，输赢无所谓。' },
+            { name: '吃饱了再战', gender: '男', signature: '吃货，打牌时总是在聊吃的，性格随和。' },
+            { name: '胡牌救不了打工人', gender: '女', signature: '社畜，充满怨气，总是抱怨加班和生活。' },
+            { name: '杠精本精', gender: '男', signature: '特别喜欢杠，不管是牌还是说话，专门抬杠。' },
+            { name: '碰瓷专业户', gender: '女', signature: '激进派，也就是喜欢碰牌，不按套路出牌。' },
+            { name: '听牌也要优雅', gender: '女', signature: '贵妇人设，打牌很讲究，讨厌别人催促。' },
+            { name: '这把稳了', gender: '男', signature: '迷之自信，每次都说自己要胡了，结果经常点炮。' },
+            { name: '欢乐豆收割机', gender: '女', signature: '高冷高手，话少，专注于赢豆子。' },
+            { name: '资深潜水员', gender: '男', signature: '社恐，几乎不怎么说话，默默打牌。' },
+            { name: '不胡不睡', gender: '男', signature: '执着狂，输了不服气，非要赢一把才行。' },
+            { name: '摸鱼冠军', gender: '女', signature: '正在上班摸鱼，打牌心不在焉，偶尔会挂机。' },
+            { name: '退堂鼓选手', gender: '男', signature: '胆小慎重，稍微有点危险就弃牌防守。' },
+            { name: '全村的希望', gender: '男', signature: '朴实的老乡，说话带点土味，很看重输赢。' }
         ]
 
-        const avatars = [
-            '🎭', '🎪', '🎨', '🎬', '🎤', '🎧',
-            '🎮', '🎯', '🎲', '🎰', '🃏', '🎴'
-        ]
+        // Use index to pick a specific bot to avoid duplicates if called sequentially
+        // or random if index is large
+        const bot = bots[index % bots.length] || bots[Math.floor(Math.random() * bots.length)]
+
+        // Randomize avatar seed
+        const seed = bot.name + Math.random().toString(36).substring(7)
+        const avatar = `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(seed)}`
 
         const beans = Math.floor(Math.random() * 45000) + 5000 // 5000-50000
 
         return {
-            id: `ai_${index}`,
-            name: names[Math.floor(Math.random() * names.length)],
-            avatar: avatars[Math.floor(Math.random() * avatars.length)],
+            id: `ai_bot_${index}_${Date.now()}`,
+            name: bot.name,
+            gender: bot.gender,
+            signature: bot.signature,
+            avatar: avatar,
             beans,
-            personality: Math.random() > 0.5 ? 'aggressive' : 'conservative' // 激进/保守
+            personality: Math.random() > 0.5 ? 'aggressive' : 'conservative'
         }
     }
 }

@@ -3,7 +3,7 @@
         <!-- 顶部导航 -->
         <div
             class="h-[50px] bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-between px-4 shadow-lg">
-            <button @click="$router.back()" class="w-10 h-10 flex items-center justify-center text-white">
+            <button @click="router.push('/')" class="w-10 h-10 flex items-center justify-center text-white">
                 <i class="fa-solid fa-chevron-left text-xl"></i>
             </button>
             <h1 class="text-xl font-bold text-white flex items-center gap-2">
