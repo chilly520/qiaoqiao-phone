@@ -65,6 +65,10 @@ export const useSettingsStore = defineStore('settings', () => {
             apiKey: '',
             modelId: 'speech-01-turbo',
             voiceId: ''
+        },
+        doubao: {
+            cookie: '',
+            speaker: 'tts.other.BV008_streaming' // 霸道总裁 (Default)
         }
     })
     const weather = ref({
@@ -256,9 +260,11 @@ export const useSettingsStore = defineStore('settings', () => {
     // Voice & Weather Actions
     function setVoiceEngine(engine) { voice.value.engine = engine; saveToStorage(); }
     function updateMinimaxConfig(config) { voice.value.minimax = { ...voice.value.minimax, ...config }; saveToStorage(); }
+    function updateDoubaoConfig(config) { voice.value.doubao = { ...voice.value.doubao, ...config }; saveToStorage(); }
     function resetVoiceSettings() {
         voice.value.engine = 'browser'
         voice.value.minimax = { groupId: '', apiKey: '', modelId: 'speech-01-turbo', voiceId: '' }
+        voice.value.doubao = { cookie: '', speaker: 'tts.other.BV008_streaming' }
         saveToStorage()
     }
     function setUserLocation(location) {
@@ -543,6 +549,7 @@ export const useSettingsStore = defineStore('settings', () => {
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig, setUserLocation,
+        updateMinimaxConfig, updateDoubaoConfig,
         exportData, importData, resetAppData, resetGlobalData,
         exportFullData, importFullData
     }

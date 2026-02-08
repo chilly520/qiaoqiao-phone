@@ -1229,8 +1229,48 @@ const showToast = (msg, type = 'info') => {
 };
 
 // --- TTS Engine Core ---
-const speakOne = (text, onEnd, interrupt = false) => {
-    if (!text || !window.speechSynthesis) {
+const speakOne = async (text, onEnd, interrupt = false) => {
+    if (!text) {
+        if (onEnd) onEnd();
+        return;
+    }
+
+    const engine = settingsStore.voice?.engine || 'browser';
+
+    if (engine === 'doubao') {
+        const doubao = settingsStore.voice.doubao;
+        // 如果没有配置 cookie，则尝试使用，但其实 volc 通道在某些环境下可能不需要 cookie
+        // 这里我们优先尝试使用代理访问火山接口
+        try {
+            const speaker = doubao.speaker || 'tts.other.BV008_streaming';
+            const response = await fetch('/volc/crx/tts/v1/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, speaker })
+            });
+            const res = await response.json();
+            if (res.audio?.data) {
+                const audio = new Audio(`data:audio/mp3;base64,${res.audio.data}`);
+                audio.onended = () => {
+                    isSpeaking.value = false;
+                    if (onEnd) onEnd();
+                };
+                audio.onerror = () => {
+                    isSpeaking.value = false;
+                    if (onEnd) onEnd();
+                };
+                audio.play();
+                return;
+            } else {
+                console.warn('[TTS] Doubao/Volc returned no data, falling back to browser');
+            }
+        } catch (e) {
+            console.error('[TTS] Doubao/Volc failed:', e);
+        }
+    }
+
+    // --- Browser Fallback ---
+    if (!window.speechSynthesis) {
         if (onEnd) onEnd();
         return;
     }
@@ -1241,7 +1281,6 @@ const speakOne = (text, onEnd, interrupt = false) => {
     }
 
     const utterance = new SpeechSynthesisUtterance(text);
-
     utterance.lang = 'zh-CN';
 
     // Choose Chinese voice if available
@@ -1256,12 +1295,8 @@ const speakOne = (text, onEnd, interrupt = false) => {
     rate = parseFloat(rate);
     if (isNaN(rate) || !rate) rate = 1.0;
 
-    // Clamp to reasonable browser limits (0.1 to 10)
     utterance.rate = Math.min(Math.max(rate, 0.1), 3.0);
-
-    console.log('[TTS] speakOne rate:', utterance.rate, 'Origin:', charSpeed, 'ChatID:', chatStore.currentChat?.id);
     utterance.pitch = 1.0;
-
 
     utterance.onend = () => {
         isSpeaking.value = false;
@@ -1269,15 +1304,13 @@ const speakOne = (text, onEnd, interrupt = false) => {
     };
 
     utterance.onerror = (event) => {
-        // 'interrupted' is expected when we force cancel, ignore it.
         if (event.error !== 'interrupted') {
-            console.error('[TTS] Error:', event);
+            console.error('[TTS] Browser TTS Error:', event);
         }
         isSpeaking.value = false;
         if (onEnd) onEnd();
     };
 
-    // Chrome bug workaround: small delay ensures speak works after cancel
     setTimeout(() => {
         window.speechSynthesis.speak(utterance);
     }, interrupt ? 50 : 0);
@@ -2856,7 +2889,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                                }}</span></div>
+                        }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

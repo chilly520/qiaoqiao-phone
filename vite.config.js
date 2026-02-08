@@ -66,6 +66,11 @@ export default defineConfig({
         target: 'https://api.vkeys.cn',
         changeOrigin: true,
         secure: false
+      },
+      '/volc': {
+        target: 'https://translate.volcengine.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/volc/, '')
       }
     }
   },
