@@ -344,9 +344,13 @@ export const useMomentsStore = defineStore('moments', () => {
                     c.remark === comment.authorId
                 )
             }
-            // Priority 3: Try to find by Name
+            // Priority 3: Try to find by Name (Case-insensitive)
             if (!realChar && comment.authorName) {
-                realChar = Object.values(chatStore.chats).find(c => c.name === comment.authorName || c.remark === comment.authorName)
+                const searchName = String(comment.authorName).toLowerCase()
+                realChar = Object.values(chatStore.chats).find(c =>
+                    (c.name && c.name.toLowerCase() === searchName) ||
+                    (c.remark && c.remark.toLowerCase() === searchName)
+                )
             }
 
             if (realChar) {

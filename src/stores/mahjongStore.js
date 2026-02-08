@@ -36,17 +36,80 @@ export const useMahjongStore = defineStore('mahjong', () => {
     })
 
     const rankInfo = computed(() => {
-        if (score.value < 1000) return { name: '青铜', color: '#cd7f32' }
-        if (score.value < 5000) return { name: '白银', color: '#c0c0c0' }
-        if (score.value < 10000) return { name: '黄金', color: '#ffd700' }
-        if (score.value < 20000) return { name: '铂金', color: '#e5e4e2' }
-        return { name: '王者', color: '#ff4500' }
+        const s = score.value
+        if (s < 100) return { name: '青铜', color: '#cd7f32', icon: '🥉' }
+        if (s < 300) return { name: '白银', color: '#c0c0c0', icon: '🥈' }
+        if (s < 600) return { name: '黄金', color: '#ffd700', icon: '🥇' }
+        if (s < 1000) return { name: '铂金', color: '#e5e4e2', icon: '💎' }
+        return { name: '钻石', color: '#b9f2ff', icon: '👑' }
     })
+
+    // --- 新增：个性化与排行榜状态 ---
+    const playerStats = ref([]) // 所有打过牌的玩家数据 [{ name, avatar, score, rank, wins, losses }]
+    const tablecloth = ref('') // 自定义桌布 URL 或 Base64
+    const tileBacks = ref([
+        { id: 'default', type: 'color', value: '#10b981', active: true, name: '经典绿' }
+    ]) // 牌背预设列表
+    const customTileBackImage = ref('') // 自定义牌背图片
+
+    // 获取当前生效的牌背颜色/图片 (支持随机)
+    const currentTileBack = computed(() => {
+        const actives = tileBacks.value.filter(b => b.active)
+        if (actives.length === 0) return { type: 'color', value: '#10b981' } // 如果都不勾选，用默认绿
+        // 随机选一个
+        return actives[Math.floor(Math.random() * actives.length)]
+    })
+
+    // 更新排行榜数据
+    const recordPlayerStats = (player) => {
+        if (!player || player.id === 'user') return
+        const existing = playerStats.value.find(s => s.name === player.name)
+        if (existing) {
+            existing.score = (existing.score || 0) + (player.score || 0)
+            existing.wins = (existing.wins || 0) + (player.wins || 0)
+            existing.losses = (existing.losses || 0) + (player.losses || 0)
+            // 根据分数重新计算段位（简单逻辑）
+            existing.rank = calculateRankName(existing.score)
+        } else {
+            playerStats.value.push({
+                name: player.name,
+                avatar: player.avatar,
+                score: player.score || 0,
+                rank: calculateRankName(player.score || 0),
+                wins: player.wins || 0,
+                losses: player.losses || 0
+            })
+        }
+        saveData()
+    }
+
+    const calculateRankName = (s) => {
+        if (s < 100) return '青铜'
+        if (s < 300) return '白银'
+        if (s < 600) return '黄金'
+        if (s < 1000) return '铂金'
+        return '钻石'
+    }
+
+    // 排行榜：包含自己和遇到的所有 AI，按积分降序
+    const leaderboard = computed(() => {
+        const user = {
+            name: useSettingsStore().personalization?.userProfile?.name || '我',
+            avatar: useSettingsStore().personalization?.userProfile?.avatar || '👤',
+            score: score.value,
+            rank: rankInfo.value.name,
+            isUser: true
+        }
+        const list = [user, ...playerStats.value]
+        return list.sort((a, b) => b.score - a.score)
+    })
+
 
     // 核心逻辑
     const rechargeBeans = (amount) => {
         beans.value += amount
         saveData()
+        return { success: true, message: '充值成功' }
     }
 
     const deductBeans = (amount) => {
@@ -351,149 +414,361 @@ export const useMahjongStore = defineStore('mahjong', () => {
 
     const endRound = (winner) => {
         if (!gameState.value || !currentRoom.value) return
+
         const players = currentRoom.value.players
+
+        // 流局处理
         if (!winner) {
-            gameState.value.roundResult = { winner: { name: '无人' }, type: '流局', fan: 0, changes: players.map(p => ({ name: p.name, amount: 0 })) }
+            gameState.value.roundResult = {
+                winner: null,
+                type: '流局',
+                fan: 0,
+                isZiMo: false,
+                changes: players.map((p, i) => ({
+                    name: p.name,
+                    amount: 0,
+                    isWinner: false,
+                    isPao: false,
+                    idx: i
+                }))
+            }
             return
         }
+
         const winTile = gameState.value.currentTile || gameState.value.drawnTile
+        // 重新计算番数
         const winInfo = mahjongEngine.getWinType(winner.hand, winner.exposed, winTile)
         const fan = winInfo.fan
-        const winUnit = (currentRoom.value.baseStake || 100) * Math.pow(2, fan - 1)
-        const isZiMo = winTile === gameState.value.drawnTile
+
+        // 底分 calculation: baseStake * 2^(fan)
+        const baseScore = currentRoom.value.baseStake || 100
+        const totalScore = baseScore * Math.pow(2, fan)
+
+        const isZiMo = (typeof gameState.value.leftTileCount !== 'undefined') ? (gameState.value.currentPlayer === players.indexOf(winner)) : false
+        // 简单的自摸判断：如果当前操作玩家是赢家，且不是点炮胡（currentTile存在说明是点炮）
+        const realIsZiMo = !gameState.value.currentTile
+
         const winnerIdx = players.indexOf(winner)
-        const changes = players.map((p, i) => {
-            let amt = (i === winnerIdx) ? (isZiMo ? winUnit * 3 : winUnit) : ((isZiMo || i === gameState.value.lastPlayer) ? -winUnit : 0)
-            p.beans += amt
-            if (i === 0) { if (amt > 0) addBeans(amt); else { deductBeans(-amt) }; updateScore(amt > 0 ? fan * 10 : -10) }
-            return { name: p.name, amount: amt, isWinner: i === winnerIdx }
+        const loserIdx = gameState.value.lastPlayer // 点炮的人
+
+        const changes = []
+
+        // 计算分数变动
+        players.forEach((p, i) => {
+            let amount = 0
+            let isPao = false
+
+            if (i === winnerIdx) {
+                // 赢家
+                if (realIsZiMo) {
+                    // 自摸：三家通赔
+                    amount = totalScore * 3
+                } else {
+                    // 点炮：一家赔
+                    amount = totalScore
+                }
+            } else {
+                // 输家
+                if (realIsZiMo) {
+                    // 自摸：每人赔一份
+                    amount = -totalScore
+                } else {
+                    // 点炮：只有点炮者赔
+                    if (i === loserIdx) {
+                        amount = -totalScore
+                        isPao = true
+                    } else {
+                        amount = 0
+                    }
+                }
+            }
+
+            // 更新玩家豆子
+            p.beans += amount
+
+            // 如果是用户(索引0)，更新全局状态
+            if (i === 0) {
+                if (amount > 0) {
+                    addBeans(amount)
+                    updateScore(fan * 10) // 赢了加分
+                } else if (amount < 0) {
+                    deductBeans(Math.abs(amount))
+                    updateScore(-10) // 输了扣分
+                }
+            }
+
+            changes.push({
+                name: p.name,
+                amount: amount,
+                isWinner: i === winnerIdx,
+                isPao: isPao,
+                idx: i
+            })
         })
-        gameState.value.roundResult = { winner, winnerHand: [...winner.hand], winnerExposed: JSON.parse(JSON.stringify(winner.exposed)), winningTile: winTile, fan, isZiMo, type: winInfo.name, changes }
+
+        gameState.value.roundResult = {
+            winner: winner,
+            winnerHand: [...winner.hand],
+            winnerExposed: JSON.parse(JSON.stringify(winner.exposed)),
+            winningTile: winTile,
+            fan: fan,
+            isZiMo: realIsZiMo,
+            type: winInfo.name,
+            changes: changes
+        }
+
+        // --- 排行榜记录 ---
+        players.forEach((p, i) => {
+            if (p.isAI) {
+                const change = changes[i]
+                recordPlayerStats({
+                    name: p.name,
+                    avatar: p.avatar,
+                    score: change.amount / 10, // 将欢乐豆变动转化为积分 (100豆=10分)
+                    wins: p === winner ? 1 : 0,
+                    losses: p !== winner ? 1 : 0
+                })
+            }
+        })
+
+        // 下局庄家：胡牌者坐庄
         gameState.value.dealer = winnerIdx
     }
 
     const sendGameChat = async (text) => {
         if (!text.trim() || !currentRoom.value) return
 
-        // 1. Add User Message
-        gameChatMessages.value.push({ role: 'user', content: text, sender: 'me', time: Date.now() })
+        const settingsStore = useSettingsStore()
+        const userName = settingsStore.personalization?.userProfile?.name || '我'
 
-        // 2. Identify AI Players
-        const charAIs = currentRoom.value.players.filter(p => p.isAI && p.id && !p.id.startsWith('npc_'))
-        if (charAIs.length === 0) return
+        // 1. 发送用户消息
+        gameChatMessages.value.push({ role: 'user', content: text, sender: userName, time: Date.now() })
 
-        // 3. Prepare Stores
+        // 2. 识别所有在场 AI 玩家
+        const allAIs = currentRoom.value.players.filter(p => p.isAI)
+        if (allAIs.length === 0) return
+
+        // 3. 准备上下文
         const { useChatStore } = await import('./chatStore.js')
         const chatStore = useChatStore()
-        const settingsStore = useSettingsStore()
+        // settingsStore/userName moved to top
 
-        // User Info
-        const userName = settingsStore.personalization?.userProfile?.name || '我'
         const userPersona = settingsStore.personalization?.userProfile?.persona || '无特殊设定'
 
-        // 4. Generate Replies for each AI (Parallel or Sequential?)
-        // To avoid them talking all at once every time, maybe add a chance? 
-        // For now, let's let them all respond if it's a direct conversation, or filter?
-        // User requested "Distinguish between different AI characters", so we treat them individually.
+        // 聚合所有 AI 角色的人设和状态
+        const charContexts = allAIs.map(ai => {
+            const aiId = String(ai.id || '')
+            const chatChar = chatStore && chatStore.chats ? chatStore.chats[aiId] : null
+            const isNpc = aiId.startsWith('npc_') || aiId.startsWith('ai_bot_')
 
-        for (const ai of charAIs) {
-            const idx = currentRoom.value.players.indexOf(ai)
-            const chatChar = chatStore.chats[ai.id]
+            return {
+                name: ai.name,
+                position: ai.position,
+                hand: (ai.hand || []).join(', '),
+                isMainChar: !isNpc,
+                persona: chatChar ? chatChar.prompt : (ai.signature || '一个爱打麻将的路人'),
+                scoreStatus: `当前积分${ai.score}，排名${ai.rank}`
+            }
+        })
 
-            // Context Construction
-            const charName = ai.name
-            const charPersona = chatChar ? chatChar.prompt : (ai.signature || '一个爱打麻将的路人')
+        // 过滤并识别当前在场的主要 AI 角色
+        const relevantChars = charContexts.filter(c => c.isMainChar)
+        console.log("[Chat] 在场主要角色:", relevantChars.map(c => c.name))
+        console.log("[Chat] 在场全部 AI:", charContexts.map(c => c.name))
 
-            // Game State Context
-            const handStr = ai.hand.join(', ')
-            const poolStr = gameState.value.pool.slice(-15).join(', ')
-            const scoreStatus = `当前积分${ai.score}，排名${ai.rank}`
+        if (relevantChars.length === 0) {
+            console.warn("[Chat] 警告：当前房间没有主要 AI 角色，AI 回复可能会受限")
+        }
 
-            // Other Players Context
-            const otherPlayers = currentRoom.value.players.map(p =>
-                `${p.name}(${p.position === 'south' ? '自家/用户' : p.position})`
-            ).join('，')
+        const poolStr = gameState.value.pool.slice(-15).join(', ')
+        const otherPlayersText = currentRoom.value.players.map(p =>
+            `${p.name}(${p.position === 'south' ? '自家/用户' : p.position})`
+        ).join('，')
 
-            const prompt = `
-# 角色设定
-你是【${charName}】，正在和用户【${userName}】以及其他人打麻将。
-你的性格/人设：${charPersona}
-用户的人设：${userPersona}
+        const batchPrompt = `
+# 局内对话调度系统
+你现在正在同步协调麻将桌上的 AI 角色互动。请阅读下方的局势和角色设定，决定哪些角色会对用户【${userName}】的发言产生反应。
 
-# 当前局势
-- 你的位置：${ai.position}
-- 你的手牌：[${handStr}]
-- 桌面牌池(最近)：[${poolStr}]
-- 你的状态：${scoreStatus}
+## 当前发言
+- 发言人：${userName} (用户)
+- 内容：“${text}”
+
+## 角色设定与关系
+请根据以下每个角色的设定，以及**该角色与用户的具体关系**来决定回复内容和语气。
+用户人设：${userPersona}
+
+${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position})
+   - 类型：${c.isMainChar ? '主要角色' : '普通NPC'}
+   - **核心人设**：${c.persona}
+   - **手牌状态**：[${c.hand}]
+   - **当前局势**：${c.scoreStatus}
+   - **行动指南**：请结合你的核心人设，判断你与用户【${userName}】的关系（是亲密、敌对、还是陌生人？），并基于此关系和用户人设进行互动。`).join('\n\n')}
+
+## 牌局局势
+- 桌面牌池(最近打出的)：[${poolStr}]
 - 牌局进度：第${currentRoom.value.currentRound}局，牌堆剩余${gameState.value.deck.length}张
-- 在座玩家：${otherPlayers}
+- 座次：${otherPlayersText}
 
-# 交互指令
-用户刚才说：“${text}”
-请以【${charName}】的口吻回复一句话。
-要求：
-1. 必须符合你的人设（语气、口癖）。
-2. 结合麻将局势（比如抱怨手气、嘲讽对手、或是开心听牌）。
-3. 简短自然（30字以内）。
-4. 如果用户在“求牌”或“耍赖”，而你手里恰好有他想要的牌，且你性格愿意配合（或被讨好），你可以在回复末尾加上 [FAVOR: 牌的代码]（例如 [FAVOR: w5]）。如果不愿意或没有，不要加。
+## 输出要求 (必须严格遵守 JSON 格式)
+请返回一个 JSON 数组。你可以根据用户的话，让一个或多个主要角色回答。NPC 除非被点名，否则尽量不说话。
+返回格式示例：
+[
+  { "name": "角色名", "content": "回复内容(30字内)", "favor": "牌代码(可选)" }
+]
+
+## 注意事项：
+1. **关系深刻化**：必须体现角色与用户的关系。如果用户是你的恋人/亲人，语气要亲昵；如果是对手，可以挑衅。
+2. **人设还原**：回复必须完全符合该角色的性格、口癖和身份。
+3. **局势互动**：回复应该参考当前的麻将局势（比如听牌了没、运气好不好）。
+4. **耍赖/配合**：如果用户是在求牌或讨好，且该角色确实有该牌并愿意配合，请在 "favor" 字段填入牌代码（如 "w5"）。
+5. **不要返回多余文字**：仅返回 JSON 数组，不要加解释。
 `.trim()
 
-            // Construct Messages Array
-            // We include a simplified history to keep flow
-            const recentHistory = gameChatMessages.value.slice(-6).map(m => ({
+        const msgs = [
+            { role: 'system', content: batchPrompt },
+            ...gameChatMessages.value.slice(-6).map(m => ({
                 role: m.role,
                 content: m.role === 'user' ? `${userName}: ${m.content}` : `${m.sender}: ${m.content}`
             }))
+        ]
 
-            const msgs = [
-                { role: 'system', content: prompt },
-                ...recentHistory
-            ]
+        try {
+            const res = await generateReply(msgs, { name: 'MahjongManager' })
+            if (res && res.content) {
+                let jsonArr = []
+                // 强大的 JSON 提取逻辑
+                console.log("[Chat] 尝试提取 JSON, 原始回复长度:", res.content.length)
 
-            // Call AI Service
-            // We use 'generateReply' but we override system prompt directly via msgs[0]
-            const res = await generateReply(msgs, { name: ai.name })
+                // 1. 简单清理 Markdown
+                let cleanText = res.content.replace(/```json/gi, '').replace(/```/g, '').trim()
 
-            if (res && res.reply) {
-                let reply = res.reply
+                // 2. 定位最外层 []
+                const start = cleanText.indexOf('[')
+                const end = cleanText.lastIndexOf(']')
 
-                // Parse Favor Command
-                const m = reply.match(/\[FAVOR[:：]\s*([a-z0-9]+)\]/i)
-                if (m) {
-                    aiInfluences.value[idx] = { type: 'favor', targetTile: m[1].toLowerCase() }
-                    reply = reply.replace(/\[FAVOR.*?\]/gi, '').trim()
+                let jsonText = ""
+                if (start !== -1 && end !== -1 && end > start) {
+                    jsonText = cleanText.substring(start, end + 1)
                 }
 
-                // Remove any "Name:" prefix if AI added it
-                reply = reply.replace(new RegExp(`^${ai.name}[:：]`), '').trim()
+                if (jsonText) {
+                    try {
+                        // 预处理：修复一些常见的 AI 输出错误
+                        const sanitizedJson = jsonText
+                            .replace(/\\n/g, '\n') // 处理转义换行
+                            .trim()
 
-                // Display
-                gameChatMessages.value.push({ role: 'ai', content: reply, sender: ai.name, playerIdx: idx, time: Date.now() })
-                activeReplies.value[idx] = reply
+                        jsonArr = JSON.parse(sanitizedJson)
+                        console.log("[Chat] JSON 解析成功, 数组长度:", jsonArr.length)
+                    } catch (e) {
+                        console.error("[Chat] JSON 解析失败, 原始片段:", jsonText.substring(0, 100), "错误:", e)
+                        // 尝试宽松解析 (例如末尾逗号)
+                        try {
+                            // 极简修复: 移除 trailing comma
+                            const fixedJson = sanitizedJson.replace(/,(\s*\])/, '$1')
+                            jsonArr = JSON.parse(fixedJson)
+                        } catch (e2) {
+                            console.error("[Chat] 宽松解析也失败")
+                        }
+                    }
+                }
 
-                // Clear bubble after 6s
-                setTimeout(() => {
-                    if (activeReplies.value[idx] === reply) delete activeReplies.value[idx]
-                }, 6000)
+                // 如果解析失败但有内容，尝试简单的保底处理
+                if ((!jsonArr || jsonArr.length === 0) && res.content.length > 5) {
+                    console.log("[Chat] 进入保底处理模式, 寻找备选文字...")
+                    // 尝试匹配 "内容" 字段后的文字，或者直接取前 50 个字
+                    const backupContent = res.content.replace(/\[|\]|\{|\}|"name":|"content":/g, '').trim().split('\n')[0]
+                    const firstChar = relevantChars[0] || charContexts[0]
+                    if (firstChar) {
+                        jsonArr = [{ name: firstChar.name, content: backupContent.substring(0, 50) }]
+                    }
+                }
 
-                // TTS
-                if (ai.enableTTS || settingsStore.enableTTS) {
-                    const u = new SpeechSynthesisUtterance(reply)
-                    u.rate = 1.1
-                    // Try to match voice if possible (browser dependent)
-                    window.speechSynthesis.speak(u)
+                // 处理所有的回复
+                console.log("[Chat] 开始遍历处理回复, 数组内容:", JSON.stringify(jsonArr))
+                for (const item of jsonArr) {
+                    const cleanName = String(item.name || '').trim().replace(/^["']|["']$/g, '')
+                    console.log("[Chat] 正在处理回复项, 原名:", item.name, "处理后名称:", cleanName)
+
+                    const ai = currentRoom.value.players.find(p => {
+                        const pName = String(p.name || '').trim()
+                        return pName === cleanName || pName.includes(cleanName) || cleanName.includes(pName)
+                    })
+
+                    if (!ai) {
+                        console.warn(`[Chat] 找不到名为 ${cleanName} 的玩家, 放弃该回复. 房内玩家有:`, currentRoom.value.players.map(p => p.name))
+                        continue
+                    }
+
+                    const idx = currentRoom.value.players.indexOf(ai)
+                    let replyText = item.content || ""
+                    if (!replyText) continue
+
+                    // 处理 favor
+                    if (item.favor) {
+                        aiInfluences.value[idx] = { type: 'favor', targetTile: String(item.favor).toLowerCase() }
+                    }
+
+                    // 添加到聊天记录
+                    gameChatMessages.value.push({
+                        role: 'ai',
+                        content: replyText,
+                        sender: ai.name,
+                        playerIdx: idx,
+                        time: Date.now()
+                    })
+
+                    // 显示气泡
+                    activeReplies.value[idx] = replyText
+                    setTimeout(() => {
+                        if (activeReplies.value[idx] === replyText) delete activeReplies.value[idx]
+                    }, 6000)
+
+                    // 语音合成
+                    if (ai.enableTTS || settingsStore.enableTTS) {
+                        const u = new SpeechSynthesisUtterance(replyText)
+                        u.rate = 1.1
+                        window.speechSynthesis.speak(u)
+                    }
                 }
             }
+        } catch (err) {
+            console.error("麻将群聊 AI 调用异常:", err)
         }
     }
 
     const saveData = () => {
-        localStorage.setItem('mahjong_stats', JSON.stringify({ beans: beans.value, score: score.value, wins: wins.value, losses: losses.value, winStreak: winStreak.value, rank: rank.value }))
+        localStorage.setItem('mahjong_stats', JSON.stringify({
+            beans: beans.value,
+            score: score.value,
+            wins: wins.value,
+            losses: losses.value,
+            winStreak: winStreak.value,
+            rank: rank.value,
+            playerStats: playerStats.value,
+            tablecloth: tablecloth.value,
+            tileBacks: tileBacks.value
+        }))
     }
 
     const loadData = () => {
-        const s = localStorage.getItem('mahjong_stats'); if (!s) return
-        const d = JSON.parse(s); beans.value = d.beans; score.value = d.score; wins.value = d.wins; losses.value = d.losses; winStreak.value = d.winStreak; rank.value = d.rank
+        const s = localStorage.getItem('mahjong_stats')
+        if (!s) return
+
+        try {
+            const d = JSON.parse(s)
+            if (d.beans !== undefined) beans.value = d.beans
+            if (d.score !== undefined) score.value = d.score
+            if (d.wins !== undefined) wins.value = d.wins
+            if (d.losses !== undefined) losses.value = d.losses
+            if (d.winStreak !== undefined) winStreak.value = d.winStreak
+            if (d.rank !== undefined) rank.value = d.rank
+            if (d.playerStats !== undefined) playerStats.value = d.playerStats
+            if (d.tablecloth !== undefined) tablecloth.value = d.tablecloth
+            if (d.tileBacks !== undefined) tileBacks.value = d.tileBacks
+        } catch (e) {
+            console.error('Failed to load mahjong stats:', e)
+        }
     }
 
     const exitRoom = () => {
@@ -508,8 +783,9 @@ export const useMahjongStore = defineStore('mahjong', () => {
     return {
         beans, score, rank, wins, losses, winStreak, currentRoom, gameState, chatMessages, gameChatMessages, activeReplies,
         cheatMode, soundEnabled, bgmEnabled, sfxVolume, bgmVolume, lastAction, winRate, rankInfo, unreadChatCount,
+        playerStats, tablecloth, tileBacks, currentTileBack, leaderboard,
         rechargeBeans, deductBeans, addBeans, updateScore, createRoom, addAIPlayers, startGame, playTile, nextTurn, handleAction, aiPlayTile,
         exitRoom, endRound, startNextRound: () => { if (gameState.value) gameState.value.roundResult = null; if (currentRoom.value) currentRoom.value.currentRound++ },
-        sendGameChat
+        sendGameChat, recordPlayerStats, saveData
     }
 })

@@ -190,11 +190,38 @@ export const useWalletStore = defineStore('wallet', () => {
                             const { useSettingsStore } = await import('./settingsStore')
                             const chatStore = useChatStore()
                             const settingsStore = useSettingsStore()
-                            const userName = settingsStore.personalization.userProfile.name || '你'
-                            chatStore.addMessage(capableCard.ownerId, {
-                                role: 'system',
-                                content: `${userName}使用「${capableCard.remark || '亲属卡'}」支付了${numAmount}元`
+
+                            const waitForLoad = () => new Promise(resolve => {
+                                if (chatStore.isLoaded) return resolve()
+                                const timer = setInterval(() => {
+                                    if (chatStore.isLoaded) {
+                                        clearInterval(timer)
+                                        resolve()
+                                    }
+                                }, 100)
+                                setTimeout(() => { clearInterval(timer); resolve() }, 5000)
                             })
+                            await waitForLoad()
+
+                            const userName = settingsStore.personalization?.userProfile?.name || '你'
+                            const content = `${userName}使用「${capableCard.remark || '亲属卡'}」支付了${numAmount}元`
+
+                            // Try ID first
+                            const success = await chatStore.addMessage(capableCard.ownerId, {
+                                role: 'system',
+                                content
+                            })
+
+                            // Fallback to name search if ID failed
+                            if (success === false) {
+                                const targetChat = Object.values(chatStore.chats).find(c => c.name === capableCard.ownerId || c.name === capableCard.ownerName)
+                                if (targetChat) {
+                                    chatStore.addMessage(targetChat.id, {
+                                        role: 'system',
+                                        content
+                                    })
+                                }
+                            }
                         } catch (e) {
                             console.error('[WalletStore] Failed to notify owner', e)
                         }
@@ -312,11 +339,37 @@ export const useWalletStore = defineStore('wallet', () => {
                     const { useSettingsStore } = await import('./settingsStore')
                     const chatStore = useChatStore()
                     const settingsStore = useSettingsStore()
-                    const userName = settingsStore.personalization.userProfile.name || '你'
-                    chatStore.addMessage(card.ownerId, {
-                        role: 'system',
-                        content: `${userName}使用「${card.remark || '亲属卡'}」支付了${numAmount}元`
+
+                    const waitForLoad = () => new Promise(resolve => {
+                        if (chatStore.isLoaded) return resolve()
+                        const timer = setInterval(() => {
+                            if (chatStore.isLoaded) {
+                                clearInterval(timer)
+                                resolve()
+                            }
+                        }, 100)
+                        setTimeout(() => { clearInterval(timer); resolve() }, 5000)
                     })
+                    await waitForLoad()
+
+                    const userName = settingsStore.personalization?.userProfile?.name || '你'
+                    const content = `${userName}使用「${card.remark || '亲属卡'}」支付了${numAmount}元`
+
+                    const success = await chatStore.addMessage(card.ownerId, {
+                        role: 'system',
+                        content
+                    })
+
+                    // Fallback to name search if ID failed
+                    if (success === false) {
+                        const targetChat = Object.values(chatStore.chats).find(c => c.name === card.ownerId || c.name === card.ownerName)
+                        if (targetChat) {
+                            chatStore.addMessage(targetChat.id, {
+                                role: 'system',
+                                content
+                            })
+                        }
+                    }
                 } catch (e) {
                     console.error('[WalletStore] Failed to notify owner', e)
                 }

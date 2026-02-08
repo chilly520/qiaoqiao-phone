@@ -1,7 +1,8 @@
 <template>
   <div class="h-full flex flex-col bg-[#f8f8f8] serif-container overflow-hidden">
     <!-- Top Bar / Magazine Header -->
-    <div class="px-6 py-6 pt-10 flex items-end justify-between border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-[110]">
+    <div
+      class="px-6 py-6 pt-10 flex items-end justify-between border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-[110]">
       <div class="flex flex-col">
         <button @click="$router.back()" class="text-gray-400 mb-2 w-fit">
           <i class="fa-solid fa-chevron-left text-sm"></i>
@@ -11,11 +12,9 @@
           个人档案 <span class="chinese-tag text-lg">THE ARCHIVE.</span>
         </h1>
       </div>
-      <button 
-        @click="runAnalysis"
+      <button @click="runAnalysis"
         class="w-10 h-10 rounded-full border border-gray-100 flex items-center justify-center text-gray-800 shadow-sm active:scale-95 transition-all"
-        :class="{ 'animate-spin': isAnalysisTyping }"
-      >
+        :class="{ 'animate-spin': isAnalysisTyping }">
         <i class="fa-solid fa-wand-magic-sparkles text-sm" :class="{ 'text-purple-500': !isAnalysisTyping }"></i>
       </button>
     </div>
@@ -55,7 +54,8 @@
           <span class="stat-value">{{ bio.gender }}</span>
         </div>
         <div>
-          <span class="stat-label">人格 <span class="chinese-tag">MBTI</span><span class="mbti-badge">{{ bio.mbti }}</span></span>
+          <span class="stat-label">人格 <span class="chinese-tag">MBTI</span><span class="mbti-badge">{{ bio.mbti
+          }}</span></span>
           <span class="stat-value">{{ mbtiName(bio.mbti) }}</span>
         </div>
         <div>
@@ -143,19 +143,21 @@
       <div class="grid grid-cols-3 gap-3 px-1 mb-10">
         <div v-for="(item, idx) in loveItems" :key="idx" class="flex flex-col items-center">
           <div class="love-photo-frame" :class="itemRotations[idx]">
-             <div v-if="!item.image" class="w-full aspect-square bg-gray-50 flex items-center justify-center border border-dashed border-gray-200">
-                <i class="fa-regular fa-image text-gray-200 text-xl"></i>
-             </div>
-             <img v-else :src="item.image" :alt="item.name" class="w-full aspect-square object-cover animate-fade-in">
+            <div v-if="!item.image"
+              class="w-full aspect-square bg-gray-50 flex items-center justify-center border border-dashed border-gray-200">
+              <i class="fa-regular fa-image text-gray-200 text-xl"></i>
+            </div>
+            <img v-else :src="item.image" :alt="item.name" class="w-full aspect-square object-cover animate-fade-in">
           </div>
           <span class="text-[9px] mt-2 font-bold text-gray-400 uppercase tracking-tighter text-center line-clamp-1">
-            {{ item.name || 'ITEM ' + (idx+1) }}
+            {{ item.name || 'ITEM ' + (idx + 1) }}
           </span>
         </div>
       </div>
 
       <!-- Heartbeat Moment -->
-      <div v-if="bio.heartbeatMoment" class="mb-10 p-6 bg-pink-50/30 border-t-2 border-pink-200 italic font-light text-[13px] leading-relaxed relative">
+      <div v-if="bio.heartbeatMoment"
+        class="mb-10 p-6 bg-pink-50/30 border-t-2 border-pink-200 italic font-light text-[13px] leading-relaxed relative">
         <div class="absolute -top-3 left-4 bg-white px-2 text-pink-400 font-bold text-[10px]">THE MOMENT</div>
         “ {{ bio.heartbeatMoment }} ”
       </div>
@@ -168,7 +170,8 @@
 
     <!-- Loading Overlay -->
     <Transition name="fade">
-      <div v-if="isAnalysisTyping" class="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
+      <div v-if="isAnalysisTyping"
+        class="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
         <div class="relative">
           <div class="w-16 h-16 border-2 border-gray-100 border-t-purple-500 rounded-full animate-spin"></div>
           <div class="absolute inset-0 flex items-center justify-center">
@@ -181,19 +184,16 @@
     </Transition>
 
     <!-- Footer Actions -->
-    <div class="absolute bottom-0 left-0 right-0 p-8 pt-4 pb-10 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
+    <div
+      class="absolute bottom-0 left-0 right-0 p-8 pt-4 pb-10 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
       <div class="flex items-center justify-center gap-4">
-        <button
-          @click="$router.push({ path: '/wechat/moments', query: { author: charId } })"
-          class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight active:bg-gray-50"
-        >
+        <button @click="$router.push({ path: '/wechat/moments', query: { author: charId } })"
+          class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight active:bg-gray-50">
           <span>MOMENTS</span>
           <span class="text-[9px] font-normal tracking-tight opacity-50">朋友圈</span>
         </button>
-        <button
-          @click="goToChat"
-          class="flex-1 h-12 bg-black text-white font-bold text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg flex flex-col items-center justify-center leading-tight active:bg-gray-800"
-        >
+        <button @click="goToChat"
+          class="flex-1 h-12 bg-black text-white font-bold text-[10px] tracking-[0.2em] uppercase transition-all shadow-lg flex flex-col items-center justify-center leading-tight active:bg-gray-800">
           <span>MESSAGE</span>
           <span class="text-[9px] font-normal tracking-tight opacity-50">发消息</span>
         </button>
@@ -214,7 +214,7 @@ const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 
 const charId = route.params.charId
-const isAnalysisTyping = computed(() => !!chatStore.typingStatus[charId])
+const isAnalysisTyping = computed(() => !!chatStore.isProfileProcessing[charId])
 
 const character = computed(() => {
   if (charId === 'user') {
@@ -415,14 +415,22 @@ const goToChat = () => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .rotated {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
 }
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.4s ease;

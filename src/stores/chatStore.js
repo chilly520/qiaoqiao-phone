@@ -37,6 +37,7 @@ export const useChatStore = defineStore('chat', () => {
     const chats = ref({}) // { 'char_id': { name: '...', avatar: '...', msgs: [], unreadCount: 0 } }
     const currentChatId = ref(null)
     const typingStatus = ref({}) // { chatId: boolean }
+    const isProfileProcessing = ref({}) // track if a specific character's archive is being analyzed
     const isTyping = computed({
         get: () => !!typingStatus.value[currentChatId.value],
         set: (val) => {
@@ -990,6 +991,7 @@ export const useChatStore = defineStore('chat', () => {
 
         // No toast or system message here as requested by user - let the UI spinner handle it
         typingStatus.value[chatId] = true;
+        isProfileProcessing.value[chatId] = true;
 
         try {
             // Source Data Collection - As requested by user
@@ -1060,6 +1062,7 @@ export const useChatStore = defineStore('chat', () => {
             triggerToast('解析失败，请检查网络', 'error');
         } finally {
             typingStatus.value[chatId] = false;
+            isProfileProcessing.value[chatId] = false;
         }
     }
     function updateCharacter(chatId, updates) {
@@ -2575,6 +2578,10 @@ export const useChatStore = defineStore('chat', () => {
                     } else if (/^\[(?:表情包|表情-包)[:：].*?\]$/.test(content.trim())) {
                         // Keep full content (tag) so frontend can parse it with regex
                         finalSegments.push({ type: 'sticker', content: content.trim() });
+                    } else if (content.startsWith('[语音通话]') || content.startsWith('[通话]')) {
+                        finalSegments.push({ type: 'call', content: 'voice' });
+                    } else if (content.startsWith('[视频通话]')) {
+                        finalSegments.push({ type: 'call', content: 'video' });
                     } else if (content.startsWith('[语音')) {
                         // Support both [语音:text] and [语音消息] text
                         let voiceContent = content.replace(/^\[语音(消息)?[:：]?\s*/, '').replace(/\]$/, '');
@@ -2586,21 +2593,26 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'draw', content: content.trim() });
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
-                        const toxicKeywords = ['border-radius', 'box-shadow', 'background', 'background-image', 'linear-gradient', 'isplay: flex', 'display: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'];
+                        const toxicKeywords = ['border-radius', 'box-shadow', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'];
                         const cssLineRegex = /^\s*[a-z-]+\s*:\s*[^:]{1,100}(?:;|px|em|rem|%|vw|vh)\s*$/i;
 
                         let filtered = content;
-                        if (filtered.includes('{') && filtered.includes('}')) {
-                            filtered = filtered.replace(/\{[\s\S]*?(padding:|margin:|border:|display:)[\s\S]*?\}/gi, '');
+                        // Skip toxic filter for messages that contain [CARD] tags manually
+                        const isCardBlock = filtered.includes('[CARD]') || filtered.includes('{');
+
+                        if (!isCardBlock) {
+                            if (filtered.includes('{') && filtered.includes('}')) {
+                                filtered = filtered.replace(/\{[\s\S]*?(padding:|margin:|border:|display:)[\s\S]*?\}/gi, '');
+                            }
+                            filtered = filtered.split('\n').filter(line => {
+                                const lower = line.trim().toLowerCase();
+                                if (!lower) return false;
+                                if (toxicKeywords.some(k => lower.includes(k))) return false;
+                                if (cssLineRegex.test(line)) return false;
+                                if (line.trim().startsWith('">') || line.trim().startsWith('/>')) return false;
+                                return true;
+                            }).join('\n').trim();
                         }
-                        filtered = filtered.split('\n').filter(line => {
-                            const lower = line.trim().toLowerCase();
-                            if (!lower) return false;
-                            if (toxicKeywords.some(k => lower.includes(k))) return false;
-                            if (cssLineRegex.test(line)) return false;
-                            if (line.trim().startsWith('">') || line.trim().startsWith('/>')) return false;
-                            return true;
-                        }).join('\n').trim();
 
                         if (filtered) {
                             finalSegments.push({ type: 'text', content: filtered });
@@ -2738,6 +2750,10 @@ export const useChatStore = defineStore('chat', () => {
                                 })();
                             }
                         }
+                    } else if (type === 'call') {
+                        // AI主动发起通话
+                        const callType = content === 'video' ? 'video' : 'voice';
+                        callStore.receiveCall(chat, callType);
                     }
 
                     // Sequential Delay
@@ -2955,13 +2971,20 @@ export const useChatStore = defineStore('chat', () => {
                     if (c.msgs && Array.isArray(c.msgs)) {
                         c.msgs = c.msgs.filter(m => {
                             if (!m.content) return true;
-                            if (m.type === 'html') return true;
+                            if (m.type === 'html' || m.type === 'image' || m.type === 'sticker') return true;
                             const s = String(m.content).trim();
-                            // Filter toxic leftovers
+
+                            // Protection: Allow valid [CARD] blocks even if they contain common CSS properties (for sharing)
+                            if (s.includes('[CARD]') || s.includes('[/CARD]')) return true;
+
+                            // Filter toxic leftovers (AI hallucinated code fragments)
                             const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
                             if (headerPattern.test(s)) return false;
                             if (s === '"' || s === '"}' || s === '" }' || s === "'}'" || s === "' }") return false;
-                            if (s.includes('display:') && s.includes('flex')) return false;
+
+                            // Only reject display:flex if NOT in a card block (likely a hallucination fragment)
+                            if (s.includes('display:') && s.includes('flex') && !s.includes('<div')) return false;
+
                             return true;
                         });
                     }
@@ -3087,6 +3110,7 @@ export const useChatStore = defineStore('chat', () => {
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm
+        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
+        isProfileProcessing
     }
 })

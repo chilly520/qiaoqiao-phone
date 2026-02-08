@@ -63,7 +63,7 @@ export class MahjongEngine {
         const patterns = []
         let fan = 1
 
-        // 1. 清一色 (所有牌花色相同且无字牌)
+        // 1. 清一色
         const suits = new Set()
         let hasHonor = false
         allTiles.forEach(t => {
@@ -72,17 +72,23 @@ export class MahjongEngine {
         })
         if (suits.size === 1 && !hasHonor) {
             patterns.push('清一色')
-            fan += 3
-        }
-
-        // 2. 七对
-        if (this.isSevenPairs(allTilesInHand) && exposed.length === 0) {
-            patterns.push('七对')
+            fan += 4
+        } else if (suits.size === 1 && hasHonor) {
+            patterns.push('混一色')
             fan += 2
         }
 
-        // 3. 碰碰胡 (简易判断：如果全是刻子或杠)
-        // 暂时简略实现
+        // 2. 七对 (只能在全手牌且无吃碰杠时成立)
+        if (allTilesInHand.length === 14 && this.isSevenPairs(allTilesInHand) && exposed.length === 0) {
+            patterns.push('七对')
+            fan += 3
+        }
+
+        // 3. 碰碰胡
+        if (this.isPengPengHu(allTiles)) {
+            patterns.push('碰碰胡')
+            fan += 2
+        }
 
         if (patterns.length === 0) {
             patterns.push('平胡')
@@ -289,32 +295,46 @@ export class MahjongEngine {
     }
 
     /**
-     * 判断是否碰碰胡
+     * 判断是否碰碰胡 (包含手牌和副露)
      */
     isPengPengHu(tiles) {
-        // 移除将牌后，检查是否全是刻子
-        const uniqueTiles = [...new Set(tiles)]
+        // 先检查是否胡牌
+        if (!this.canHuSimple(tiles)) return false
 
-        for (const pairTile of uniqueTiles) {
-            const count = tiles.filter(t => t === pairTile).length
-            if (count >= 2) {
-                const remaining = [...tiles]
-                const idx1 = remaining.indexOf(pairTile)
-                remaining.splice(idx1, 1)
-                const idx2 = remaining.indexOf(pairTile)
-                remaining.splice(idx2, 1)
+        // 碰碰胡要求除了将牌外全是刻子
+        const counts = {}
+        tiles.forEach(t => counts[t] = (counts[t] || 0) + 1)
 
-                // 检查是否全是刻子
-                const counts = {}
-                remaining.forEach(tile => {
-                    counts[tile] = (counts[tile] || 0) + 1
-                })
-
-                const allPeng = Object.values(counts).every(c => c === 3)
-                if (allPeng) return true
+        let hasPair = false
+        for (const t in counts) {
+            const c = counts[t]
+            if (c === 2) {
+                if (hasPair) return false // 只能有一个将
+                hasPair = true
+            } else if (c !== 3 && c !== 4) {
+                // 如果不是将，又不是刻子/杠，那就是顺子的一部分，不满足碰碰胡
+                return false
             }
         }
+        return hasPair
+    }
 
+    /**
+     * 辅助判定胡牌（不考虑复杂规则）
+     */
+    canHuSimple(tiles) {
+        const counts = {}
+        tiles.forEach(t => counts[t] = (counts[t] || 0) + 1)
+        const unique = Object.keys(counts)
+
+        for (const pair of unique) {
+            if (counts[pair] >= 2) {
+                const remaining = [...tiles]
+                remaining.splice(remaining.indexOf(pair), 1)
+                remaining.splice(remaining.indexOf(pair), 1)
+                if (this.isAllMelds(remaining)) return true
+            }
+        }
         return false
     }
 

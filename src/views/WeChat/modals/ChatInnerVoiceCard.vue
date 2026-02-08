@@ -113,13 +113,14 @@
                     <!-- Realistic Connection-Style Location -->
                     <div class="location-card premium-mode">
                         <div class="stats-label mb-3">CONNECTION 实时测距</div>
-                        
+
                         <div class="location-route-display">
                             <div class="route-stop">
                                 <span class="stop-label">对方位置</span>
-                                <span class="stop-name">{{ currentVoiceContent.stats?.location?.replace(/乔乔/g, 'Chilly') || '未追踪' }}</span>
+                                <span class="stop-name">{{ currentVoiceContent.stats?.location?.replace(/乔乔/g, 'Chilly')
+                                    || '未追踪' }}</span>
                             </div>
-                            
+
                             <div class="route-link">
                                 <div class="link-line"></div>
                                 <div class="link-info">
@@ -130,7 +131,8 @@
 
                             <div class="route-stop text-right">
                                 <span class="stop-label">我的位置</span>
-                                <span class="stop-name">{{ settingsStore.weather.userLocation?.name || '未知' }}</span>
+                                <span class="stop-name">{{ settingsStore.weather.virtualLocation ||
+                                    settingsStore.weather.userLocation?.name || '未知' }}</span>
                             </div>
                         </div>
 
@@ -142,7 +144,7 @@
                             <div class="map-road-network"></div>
                             <div class="map-building-blocks"></div>
                             <div class="map-glare-overlay"></div>
-                            
+
                             <!-- Distance Connector -->
                             <svg class="map-svg-overlay" width="100%" height="100%">
                                 <defs>
@@ -152,9 +154,8 @@
                                         <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.2" />
                                     </linearGradient>
                                 </defs>
-                                <line :x1="userCoord.x + '%'" :y1="userCoord.y + '%'" 
-                                      :x2="charCoord.x + '%'" :y2="charCoord.y + '%'" 
-                                      class="map-connection-line" />
+                                <line :x1="userCoord.x + '%'" :y1="userCoord.y + '%'" :x2="charCoord.x + '%'"
+                                    :y2="charCoord.y + '%'" class="map-connection-line" />
                             </svg>
 
                             <!-- Map Markers with Avatars -->
@@ -168,7 +169,7 @@
                                     <span class="marker-label">我</span>
                                 </div>
                             </div>
-                            
+
                             <div class="map-marker-premium char" :style="charPosStyle">
                                 <div class="marker-avatar-container char">
                                     <img :src="chatData?.avatar || '/broken-image.png'" class="marker-avatar">
@@ -393,7 +394,7 @@ const charCoord = computed(() => {
     const dist = currentVoiceContent.value.stats?.distance || '10km'
     const num = parseInt(dist) || 5
     const angle = (num * 137) % 360
-    const rad = Math.min(40, num * 2) 
+    const rad = Math.min(40, num * 2)
     return {
         x: 50 + Math.cos(angle * Math.PI / 180) * rad,
         y: 50 + Math.sin(angle * Math.PI / 180) * rad
@@ -821,7 +822,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     display: flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
 
 .link-dist {
@@ -839,9 +840,20 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
 
 @keyframes walkMotion {
-    0% { transform: translateX(-5px); opacity: 0; }
-    50% { transform: translateX(0); opacity: 1; }
-    100% { transform: translateX(5px); opacity: 0; }
+    0% {
+        transform: translateX(-5px);
+        opacity: 0;
+    }
+
+    50% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(5px);
+        opacity: 0;
+    }
 }
 
 .mini-map-container {
@@ -851,15 +863,15 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     position: relative;
     border: 1px solid rgba(0, 0, 0, 0.1);
     overflow: hidden;
-    box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.1);
 }
 
 .map-tile-layer {
     position: absolute;
     inset: 0;
     background-color: #f0f2f5;
-    background-image: 
-        radial-gradient(circle at 2px 2px, rgba(0,0,0,0.02) 1px, transparent 0);
+    background-image:
+        radial-gradient(circle at 2px 2px, rgba(0, 0, 0, 0.02) 1px, transparent 0);
     background-size: 20px 20px;
 }
 
@@ -867,7 +879,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     position: absolute;
     inset: 0;
     opacity: 0.6;
-    background: 
+    background:
         radial-gradient(ellipse at 80% 20%, #aad3df 0%, transparent 60%),
         radial-gradient(ellipse at 10% 90%, #9bc7d3 0%, transparent 50%);
 }
@@ -876,7 +888,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     position: absolute;
     inset: 0;
     opacity: 0.5;
-    background: 
+    background:
         radial-gradient(circle at 40% 60%, #c8e6c9 0%, transparent 40%),
         radial-gradient(circle at 90% 80%, #a5d6a7 0%, transparent 35%);
 }
@@ -885,7 +897,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     position: absolute;
     inset: 0;
     opacity: 1;
-    background: 
+    background:
         linear-gradient(90deg, transparent 49%, #ffffff 50%, transparent 51%),
         linear-gradient(0deg, transparent 49%, #ffffff 50%, transparent 51%);
     background-size: 100px 100px;
@@ -895,16 +907,16 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     position: absolute;
     inset: 0;
     opacity: 0.2;
-    background-image: 
-        linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+    background-image:
+        linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
     background-size: 25px 25px;
 }
 
 .map-glare-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
     pointer-events: none;
     z-index: 5;
 }
@@ -926,11 +938,12 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     padding: 2.5px;
     background: #fff;
     border-radius: 50%;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
 .marker-avatar-container.char {
-    background: #4a90e2; /* Modern map blue for marker */
+    background: #4a90e2;
+    /* Modern map blue for marker */
 }
 
 .marker-avatar {
@@ -956,9 +969,20 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
 
 @keyframes markerPulse {
-    0% { transform: scale(1); opacity: 0.8; }
-    70% { transform: scale(1.8); opacity: 0; }
-    100% { transform: scale(1); opacity: 0; }
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    70% {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0;
+    }
 }
 
 .marker-info-tag {
@@ -969,8 +993,8 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     display: flex;
     flex-direction: column;
     align-items: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .marker-info-tag.char {
@@ -1012,7 +1036,9 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
 
 @keyframes lineDash {
-    to { stroke-dashoffset: -200; }
+    to {
+        stroke-dashoffset: -200;
+    }
 }
 
 .map-nav-panel {
@@ -1029,7 +1055,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     align-items: center;
     justify-content: space-between;
     z-index: 30;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
 .nav-item {
@@ -1059,8 +1085,15 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
 
 @keyframes scaleUp {
-    from { transform: scale(0.9); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 .header-title {

@@ -11,20 +11,23 @@
             <div class="w-10"></div>
         </div>
 
-        <!-- 房间信息 -->
         <div class="m-4 bg-white rounded-2xl shadow-lg p-4">
-            <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-2">
-                    <span class="text-gray-600 px-3 py-1 bg-white/50 rounded-lg border border-emerald-100 font-bold">
-                        房间号: <span class="text-gray-900">{{ mahjongStore.currentRoom?.id?.slice(-6).toUpperCase()
-                            }}</span>
-                    </span>
-                    <span class="text-gray-600 px-3 py-1 bg-white/50 rounded-lg border border-emerald-100 font-bold">
-                        底注: <span class="text-emerald-700">{{ mahjongStore.currentRoom?.baseStake }}豆/局</span>
-                    </span>
-                    <span class="text-gray-600 px-3 py-1 bg-white/50 rounded-lg border border-emerald-100 font-bold">
-                        局数: <span class="text-blue-600">{{ mahjongStore.currentRoom?.totalRounds }}局</span>
-                    </span>
+            <div class="flex items-center gap-2">
+                <div
+                    class="flex-1 flex flex-col items-center justify-center text-gray-600 px-2 py-2 bg-gray-50 rounded-xl border border-emerald-100 font-bold whitespace-nowrap">
+                    <span class="text-[10px] opacity-70">房间号</span>
+                    <span class="text-gray-900 text-sm">{{ mahjongStore.currentRoom?.id?.slice(-6).toUpperCase()
+                        }}</span>
+                </div>
+                <div
+                    class="flex-1 flex flex-col items-center justify-center text-gray-600 px-2 py-2 bg-gray-50 rounded-xl border border-emerald-100 font-bold whitespace-nowrap">
+                    <span class="text-[10px] opacity-70">底注</span>
+                    <span class="text-emerald-700 text-sm">{{ mahjongStore.currentRoom?.baseStake }}豆</span>
+                </div>
+                <div
+                    class="flex-1 flex flex-col items-center justify-center text-gray-600 px-2 py-2 bg-gray-50 rounded-xl border border-emerald-100 font-bold whitespace-nowrap">
+                    <span class="text-[10px] opacity-70">局数</span>
+                    <span class="text-blue-600 text-sm">{{ mahjongStore.currentRoom?.totalRounds }}局</span>
                 </div>
             </div>
         </div>
@@ -43,10 +46,10 @@
                         </div>
                         <div v-else class="text-4xl mb-2">{{ getPlayer('east').avatar || '👤' }}</div>
 
-                        <div class="text-gray-800 text-[10px] text-center mb-1 flex flex-col items-center">
+                        <div class="text-gray-800 text-[11px] text-center mb-1 flex flex-col items-center">
                             <div class="font-bold w-[72px] whitespace-normal break-all leading-tight">{{
                                 getPlayer('east')?.name }}</div>
-                            <div class="opacity-80">{{ getPlayer('east')?.beans }}豆</div>
+                            <div class="text-gray-500 font-medium text-[10px]">{{ getPlayer('east')?.beans }}豆</div>
                         </div>
                         <div v-if="getPlayer('east').isReady" class="ready-badge">已准备</div>
                     </div>
@@ -57,18 +60,21 @@
                 </div>
 
                 <!-- 南位（玩家） -->
-                <div class="seat-card ready">
+                <div class="seat-card ready shadow-emerald-100">
                     <div class="seat-label">南</div>
-                    <div class="player-info">
+                    <div class="player-info w-full flex flex-col items-center">
                         <!-- 头像显示 -->
                         <div v-if="isImageAvatar(getPlayer('south')?.avatar)"
-                            class="w-16 h-16 rounded-full overflow-hidden mb-2">
+                            class="w-16 h-16 rounded-full overflow-hidden mb-2 border-2 border-emerald-200">
                             <img :src="getPlayer('south').avatar" class="w-full h-full object-cover" />
                         </div>
                         <div v-else class="text-4xl mb-2">{{ getPlayer('south')?.avatar || '👤' }}</div>
 
-                        <div class="font-bold">{{ getPlayer('south')?.name }}</div>
-                        <div class="text-sm text-gray-500">{{ getPlayer('south')?.beans }}豆</div>
+                        <div class="text-gray-800 text-[11px] text-center mb-1 flex flex-col items-center">
+                            <div class="font-bold w-[72px] whitespace-normal break-all leading-tight">{{
+                                getPlayer('south')?.name }}</div>
+                            <div class="text-gray-500 font-medium text-[10px]">{{ getPlayer('south')?.beans }}豆</div>
+                        </div>
                         <div class="ready-badge">已准备</div>
                     </div>
                 </div>
@@ -84,10 +90,10 @@
                         </div>
                         <div v-else class="text-4xl mb-2">{{ getPlayer('west').avatar || '👤' }}</div>
 
-                        <div class="text-gray-800 text-[10px] text-center mb-1 flex flex-col items-center">
+                        <div class="text-gray-800 text-[11px] text-center mb-1 flex flex-col items-center">
                             <div class="font-bold w-[72px] whitespace-normal break-all leading-tight">{{
                                 getPlayer('west')?.name }}</div>
-                            <div class="opacity-80">{{ getPlayer('west')?.beans }}豆</div>
+                            <div class="text-gray-500 font-medium text-[10px]">{{ getPlayer('west')?.beans }}豆</div>
                         </div>
                         <div v-if="getPlayer('west').isReady" class="ready-badge">已准备</div>
                     </div>
@@ -100,16 +106,19 @@
                 <!-- 北位 -->
                 <div class="seat-card" :class="{ 'ready': getPlayer('north')?.isReady }">
                     <div class="seat-label">北</div>
-                    <div v-if="getPlayer('north')" class="player-info">
+                    <div v-if="getPlayer('north')" class="player-info w-full flex flex-col items-center">
                         <!-- 头像显示 -->
                         <div v-if="isImageAvatar(getPlayer('north').avatar)"
-                            class="w-16 h-16 rounded-full overflow-hidden mb-2">
+                            class="w-16 h-16 rounded-full overflow-hidden mb-2 border-2 border-emerald-200">
                             <img :src="getPlayer('north').avatar" class="w-full h-full object-cover" />
                         </div>
                         <div v-else class="text-4xl mb-2">{{ getPlayer('north').avatar || '👤' }}</div>
 
-                        <div class="font-bold">{{ getPlayer('north').name }}</div>
-                        <div class="text-sm text-gray-500">{{ getPlayer('north').beans }}豆</div>
+                        <div class="text-gray-800 text-[11px] text-center mb-1 flex flex-col items-center">
+                            <div class="font-bold w-[72px] whitespace-normal break-all leading-tight">{{
+                                getPlayer('north').name }}</div>
+                            <div class="text-gray-500 font-medium text-[10px]">{{ getPlayer('north').beans }}豆</div>
+                        </div>
                         <div v-if="getPlayer('north').isReady" class="ready-badge">已准备</div>
                     </div>
                     <div v-else class="empty-seat" @click="invitePlayer('north')">

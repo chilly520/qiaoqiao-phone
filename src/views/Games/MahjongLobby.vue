@@ -10,7 +10,7 @@
                 <span>🀄</span>
                 <span>麻将大厅</span>
             </h1>
-            <button @click="showRank = true" class="w-10 h-10 flex items-center justify-center text-white">
+            <button @click="showSettings = true" class="w-10 h-10 flex items-center justify-center text-white">
                 <i class="fa-solid fa-gear text-xl"></i>
             </button>
         </div>
@@ -52,6 +52,11 @@
 
         <!-- 快速开始 -->
         <div class="px-4 mb-4">
+            <button v-if="hasActiveGame" @click="returnToGame"
+                class="w-full py-4 mb-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 animate-pulse">
+                <i class="fa-solid fa-rotate-left text-2xl"></i>
+                <span>回到牌桌</span>
+            </button>
             <button @click="quickStart"
                 class="w-full py-4 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3">
                 <i class="fa-solid fa-bolt text-2xl"></i>
@@ -171,15 +176,267 @@
                 </div>
             </div>
         </Transition>
+
+        <!-- 排行榜弹窗 -->
+        <Transition name="fade">
+            <div v-if="showRanking"
+                class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100]"
+                @click="showRanking = false">
+                <div class="bg-white rounded-[32px] w-full max-w-[450px] m-4 flex flex-col max-h-[85vh] shadow-2xl overflow-hidden"
+                    @click.stop>
+                    <!-- 头部 -->
+                    <div class="p-6 bg-gradient-to-br from-yellow-400 to-orange-500 text-white relative">
+                        <div class="flex justify-between items-start mb-6">
+                            <div>
+                                <h2 class="text-3xl font-black italic tracking-wider">TOP榜单</h2>
+                                <p class="text-sm opacity-80 font-bold uppercase">Mahjong Legend</p>
+                            </div>
+                            <button @click="shareLeaderboard"
+                                class="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
+                                <i class="fa-solid fa-share-nodes text-xl"></i>
+                            </button>
+                        </div>
+
+                        <!-- 前三名特殊展示 -->
+                        <div class="flex justify-around items-end pt-4 pb-2">
+                            <!-- 第二名 -->
+                            <div v-if="mahjongStore.leaderboard[1]" class="flex flex-col items-center">
+                                <div class="relative mb-2">
+                                    <img :src="mahjongStore.leaderboard[1].avatar"
+                                        class="w-14 h-14 rounded-full border-4 border-gray-300 shadow-lg object-cover bg-gray-100" />
+                                    <div
+                                        class="absolute -bottom-1 -right-1 w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-xs font-black text-gray-700 shadow-sm">
+                                        2</div>
+                                </div>
+                                <span class="text-xs font-bold truncate w-20 text-center">{{
+                                    mahjongStore.leaderboard[1].name }}</span>
+                                <span class="text-[10px] font-black text-white/90">{{ mahjongStore.leaderboard[1].score
+                                    }}分</span>
+                            </div>
+                            <!-- 第一名 -->
+                            <div v-if="mahjongStore.leaderboard[0]"
+                                class="flex flex-col items-center transform scale-125 -translate-y-4">
+                                <div class="relative mb-2">
+                                    <div class="absolute -top-6 left-1/2 -translate-x-1/2 text-3xl animate-bounce">👑
+                                    </div>
+                                    <img :src="mahjongStore.leaderboard[0].avatar"
+                                        class="w-16 h-16 rounded-full border-4 border-yellow-200 shadow-2xl object-cover bg-gray-100" />
+                                    <div
+                                        class="absolute -bottom-1 -right-1 w-7 h-7 bg-yellow-400 rounded-full flex items-center justify-center text-sm font-black text-white shadow-md border-2 border-white">
+                                        1</div>
+                                </div>
+                                <span class="text-xs font-bold truncate w-24 text-center">{{
+                                    mahjongStore.leaderboard[0].name }}</span>
+                                <span class="text-[10px] font-black text-white">{{ mahjongStore.leaderboard[0].score
+                                    }}分</span>
+                            </div>
+                            <!-- 第三名 -->
+                            <div v-if="mahjongStore.leaderboard[2]" class="flex flex-col items-center">
+                                <div class="relative mb-2">
+                                    <img :src="mahjongStore.leaderboard[2].avatar"
+                                        class="w-12 h-12 rounded-full border-4 border-amber-600 shadow-lg object-cover bg-gray-100" />
+                                    <div
+                                        class="absolute -bottom-1 -right-1 w-5 h-5 bg-amber-600 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm">
+                                        3</div>
+                                </div>
+                                <span class="text-xs font-bold truncate w-16 text-center">{{
+                                    mahjongStore.leaderboard[2].name }}</span>
+                                <span class="text-[10px] font-black text-white/80">{{ mahjongStore.leaderboard[2].score
+                                    }}分</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 列表 -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                        <div v-for="(item, idx) in mahjongStore.leaderboard" :key="item.name"
+                            class="flex items-center gap-4 p-3 rounded-2xl border transition-all"
+                            :class="item.isUser ? 'bg-orange-50 border-orange-200' : 'bg-white border-transparent shadow-sm'">
+                            <div class="w-6 text-center font-black"
+                                :class="idx < 3 ? 'text-orange-500' : 'text-gray-400'">
+                                {{ idx + 1 }}</div>
+                            <img :src="item.avatar"
+                                class="w-10 h-10 rounded-xl object-cover border border-gray-100 shadow-inner" />
+                            <div class="flex-1">
+                                <div class="font-bold text-gray-800 flex items-center gap-1.5">
+                                    {{ item.name }}
+                                    <span v-if="item.isUser"
+                                        class="text-[8px] bg-orange-500 text-white px-1 rounded">ME</span>
+                                </div>
+                                <div class="text-[10px] text-gray-400 font-bold uppercase tracking-tight">{{ item.rank
+                                    ||
+                                    '青铜' }}段位</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-black text-gray-800 leading-none">{{ item.score }}</div>
+                                <div class="text-[9px] text-gray-400 font-bold">POINTS</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-white border-t border-gray-100 flex gap-2">
+                        <button @click="showRanking = false"
+                            class="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl active:scale-95 transition-all">收起列表</button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
+        <!-- 设置弹窗 -->
+        <Transition name="fade">
+            <div v-if="showSettings"
+                class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100]"
+                @click="showSettings = false">
+                <div class="bg-white rounded-[32px] w-full max-w-[450px] m-4 flex flex-col max-h-[85vh] shadow-2xl overflow-hidden"
+                    @click.stop>
+                    <div class="p-6 border-b border-gray-100 bg-emerald-50 relative">
+                        <h2 class="text-xl font-black text-emerald-800 flex items-center gap-2">
+                            <i class="fa-solid fa-palette"></i> 个性化配置
+                        </h2>
+                        <button @click="showSettings = false"
+                            class="absolute top-6 right-6 w-8 h-8 flex items-center justify-center text-emerald-800/50 hover:text-emerald-800"><i
+                                class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-6 space-y-8">
+                        <div>
+                            <div class="flex justify-between items-center mb-4">
+                                <label class="text-base font-black text-gray-700">自定义桌布</label>
+                                <span class="text-xs text-emerald-600 font-bold">可上传图片或输入 URL</span>
+                            </div>
+                            <div class="flex gap-3 items-center">
+                                <div @click="triggerUpload('tablecloth')"
+                                    class="w-16 h-16 bg-gray-100 rounded-2xl flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 relative group overflow-hidden">
+                                    <img v-if="mahjongStore.tablecloth" :src="mahjongStore.tablecloth"
+                                        class="w-full h-full object-cover" />
+                                    <template v-else>
+                                        <i class="fa-solid fa-image text-xl mb-1"></i>
+                                        <span class="text-[9px] font-bold">点击上传</span>
+                                    </template>
+                                </div>
+                                <div class="flex-1 flex flex-col gap-2">
+                                    <input v-model="mahjongStore.tablecloth" placeholder="在此输入图片 URL..."
+                                        class="w-full px-3 py-2 bg-gray-50 border-2 border-gray-100 rounded-xl text-sm outline-none"
+                                        @change="mahjongStore.saveData" />
+                                    <button @click="mahjongStore.tablecloth = ''; mahjongStore.saveData()"
+                                        class="text-[10px] text-left text-gray-400 font-bold">重置默认</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-4">
+                                <label class="text-base font-black text-gray-700">自定义牌背</label>
+                                <span class="text-xs text-blue-600 font-bold">勾选多个可实现随机切换</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-3">
+                                <div v-for="b in mahjongStore.tileBacks" :key="b.id"
+                                    class="relative group cursor-pointer" @click="toggleTileBackActive(b)">
+                                    <div class="w-full aspect-[3/4] rounded-lg border-2 shadow-sm transition-all overflow-hidden"
+                                        :class="b.active ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'"
+                                        :style="b.type === 'color' ? { background: b.value } : {}">
+                                        <img v-if="b.type === 'image'" :src="b.value"
+                                            class="w-full h-full object-cover" />
+                                    </div>
+                                    <i v-if="b.active"
+                                        class="fa-solid fa-circle-check absolute -top-1 -right-1 text-emerald-500 text-sm bg-white rounded-full"></i>
+                                    <button @click.stop="removeTileBack(b)" v-if="b.id !== 'default'"
+                                        class="absolute -top-1 -left-1 w-4 h-4 bg-red-400 text-white rounded-full text-[8px] flex items-center justify-center"><i
+                                            class="fa-solid fa-xmark"></i></button>
+                                </div>
+                                <div @click="showAddTileBackMenu = true"
+                                    class="w-full aspect-[3/4] bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300 hover:text-emerald-500 transition-all">
+                                    <i class="fa-solid fa-plus text-lg"></i>
+                                </div>
+                            </div>
+                            <div v-if="showAddTileBackMenu"
+                                class="mt-4 p-4 bg-gray-50 rounded-2xl border-2 border-gray-100 space-y-4">
+                                <div class="flex gap-2">
+                                    <button @click="newTileBackType = 'color'"
+                                        class="flex-1 py-1 px-3 rounded-lg text-xs font-bold transition-all"
+                                        :class="newTileBackType === 'color' ? 'bg-emerald-500 text-white' : 'bg-white text-gray-500'">颜色</button>
+                                    <button @click="newTileBackType = 'image'"
+                                        class="flex-1 py-1 px-3 rounded-lg text-xs font-bold transition-all"
+                                        :class="newTileBackType === 'image' ? 'bg-emerald-500 text-white' : 'bg-white text-gray-500'">图片</button>
+                                </div>
+                                <div v-if="newTileBackType === 'color'" class="flex items-center gap-3">
+                                    <input type="color" v-model="newTileBackColor"
+                                        class="w-12 h-10 border-0 p-0 bg-transparent cursor-pointer" />
+                                    <input v-model="newTileBackName" placeholder="预设名称..."
+                                        class="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm" />
+                                </div>
+                                <div v-else class="flex flex-col gap-3">
+                                    <div @click="triggerUpload('tileback')"
+                                        class="w-full h-24 bg-white rounded-xl border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-gray-400 overflow-hidden">
+                                        <img v-if="newTileBackImage" :src="newTileBackImage"
+                                            class="w-full h-full object-cover" />
+                                        <span v-else class="text-[10px] font-bold">上传牌背图片</span>
+                                    </div>
+                                    <input v-model="newTileBackName" placeholder="预设名称..."
+                                        class="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm" />
+                                </div>
+                                <div class="flex gap-2">
+                                    <button @click="showAddTileBackMenu = false"
+                                        class="flex-1 py-2 bg-gray-200 text-gray-500 text-xs font-bold rounded-xl">取消</button>
+                                    <button @click="saveNewTileBack"
+                                        class="flex-1 py-2 bg-emerald-500 text-white text-xs font-bold rounded-xl">确认添加</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-6 bg-gray-50 flex gap-2">
+                        <button @click="showSettings = false"
+                            class="w-full py-4 bg-emerald-600 text-white font-black rounded-2xl active:scale-95 transition-all">保存返回</button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+
+        <!-- 通用文件上传 -->
+        <input type="file" ref="fileInput" class="hidden" accept="image/*" @change="handleFileChange" />
+
+        <!-- 聊天选择器 (用于分享榜单) -->
+        <Transition name="fade">
+            <div v-if="showContactPicker"
+                class="fixed inset-0 z-[200] flex items-end justify-center bg-black/60 backdrop-blur-sm"
+                @click="showContactPicker = false">
+                <div class="w-full max-w-[500px] bg-gray-100 rounded-t-[32px] flex flex-col max-h-[70vh] animate-slide-up shadow-[0_-10px_40px_rgba(0,0,0,0.3)]"
+                    @click.stop>
+                    <div
+                        class="p-4 border-b border-gray-200 flex justify-between items-center bg-white rounded-t-[32px]">
+                        <h3 class="font-bold text-gray-800">发送榜单给...</h3>
+                        <button @click="showContactPicker = false" class="text-gray-400 p-2"><i
+                                class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50">
+                        <div v-for="contact in contactListForSharing" :key="contact.id"
+                            @click="handleShareLeaderboardToContact(contact.id)"
+                            class="flex items-center gap-4 bg-white p-3 rounded-2xl hover:bg-blue-50 active:scale-98 transition-all cursor-pointer border border-gray-100 shadow-sm">
+                            <img :src="contact.avatar"
+                                class="w-12 h-12 rounded-xl object-cover border border-gray-100 shadow-inner" />
+                            <div class="flex-1">
+                                <div class="font-bold text-gray-800">{{ contact.name }}</div>
+                            </div>
+                            <i class="fa-solid fa-paper-plane text-blue-400"></i>
+                        </div>
+                    </div>
+                    <div class="p-5 pb-safe-area bg-white border-t border-gray-100">
+                        <button @click="showContactPicker = false"
+                            class="w-full py-3 bg-gray-100 text-gray-600 rounded-xl font-bold">取消</button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
     </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMahjongStore } from '../../stores/mahjongStore.js'
 import { useWalletStore } from '../../stores/walletStore.js'
 import { useSettingsStore } from '../../stores/settingsStore.js'
+import { useChatStore } from '../../stores/chatStore.js'
 import mahjongEngine from '../../utils/mahjong/MahjongEngine.js'
 
 
@@ -198,12 +455,151 @@ const isImageAvatar = (avatar) => {
     if (!avatar) return false
     return avatar.startsWith('/') || avatar.startsWith('data:image') || avatar.startsWith('http')
 }
+const formattedBeans = computed(() => mahjongStore.beans.toLocaleString())
+const winRate = computed(() => mahjongStore.winRate)
+const hasActiveGame = computed(() => mahjongStore.currentRoom && mahjongStore.currentRoom.status === 'playing')
 
+onMounted(() => {
+    // Check for active game and redirect
+    if (mahjongStore.currentRoom && mahjongStore.currentRoom.status === 'playing') {
+        router.replace('/games/mahjong')
+    }
+})
+
+const getPlayer = (position) => {
+    return mahjongStore.currentRoom?.players?.find(p => p.position === position)
+}
+// 段位与设置
 const showRecharge = ref(false)
 const showCreateRoom = ref(false)
 const showRanking = ref(false)
 const showSettings = ref(false)
 const toastMsg = ref('')
+
+// 个性化临时状态
+const fileInput = ref(null)
+const uploadTarget = ref('')
+const showAddTileBackMenu = ref(false)
+const newTileBackType = ref('color')
+const newTileBackColor = ref('#10b981')
+const newTileBackImage = ref('')
+const newTileBackName = ref('')
+const showContactPicker = ref(false)
+
+const contactListForSharing = computed(() => {
+    const chatStore = useChatStore()
+    return chatStore.contactList || []
+})
+
+// 分享榜单逻辑
+const shareLeaderboard = () => {
+    showContactPicker.value = true
+}
+
+const handleShareLeaderboardToContact = async (chatId) => {
+    const chatStore = useChatStore()
+
+    const user = mahjongStore.leaderboard.find(i => i.isUser) || { score: 0, rank: '青铜' }
+    const survivors = mahjongStore.leaderboard.slice(0, 5)
+
+    const htmlContent = `
+<div style="background: linear-gradient(135deg, #f59e0b, #ea580c); border-radius: 20px; padding: 16px; color: white; font-family: system-ui; box-shadow: 0 10px 20px rgba(234, 88, 12, 0.3);">
+    <div style="font-weight: 900; font-size: 18px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px;">🀄️ 雀神榜单 · 傲视群雄</div>
+    <div style="background: rgba(255,255,255,0.15); border-radius: 12px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-size: 12px; opacity: 0.8;">我的战绩</div>
+        <div style="font-size: 24px; font-weight: 900; display: flex; align-items: center; gap: 8px;">
+            ${user.score} <span style="font-size: 14px; opacity: 0.9;">pts</span> 
+            <span style="font-size: 10px; padding: 2px 6px; background: white; color: #ea580c; border-radius: 4px; margin-left: 10px;">${user.rank}</span>
+        </div>
+    </div>
+    <div style="font-size: 11px; font-weight: bold; margin-bottom: 6px;">当前 Top 5:</div>
+    ${survivors.map((s, idx) => `
+        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 6px;">
+            <span>${idx + 1}. ${s.name}${s.isUser ? ' (我)' : ''}</span>
+            <span style="font-weight: 900;">${s.score}</span>
+        </div>
+    `).join('')}
+    <div style="margin-top: 10px; font-size: 9px; opacity: 0.6; text-align: center;">快来牌桌跟我一决高下吧！</div>
+</div>
+`.trim()
+
+    await chatStore.addMessage(chatId, {
+        role: 'user',
+        content: `[CARD]${htmlContent}[/CARD]`,
+        timestamp: Date.now()
+    })
+
+    showToast('榜单已成功分享')
+    showContactPicker.value = false
+    showRanking.value = false
+}
+
+// 文件上传
+const triggerUpload = (target) => {
+    uploadTarget.value = target
+    fileInput.value.click()
+}
+
+const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+        const base64 = event.target.result
+        if (uploadTarget.value === 'tablecloth') {
+            mahjongStore.tablecloth = base64
+            mahjongStore.saveData()
+        } else if (uploadTarget.value === 'tileback') {
+            newTileBackImage.value = base64
+        }
+    }
+    reader.readAsDataURL(file)
+}
+
+const testTableclothURL = () => {
+    if (!mahjongStore.tablecloth) return showToast('请输入 URL')
+    showToast('链接已保存')
+    mahjongStore.saveData()
+}
+
+// 牌背管理
+const toggleTileBackActive = (b) => {
+    b.active = !b.active
+    mahjongStore.saveData()
+}
+
+const removeTileBack = (b) => {
+    const idx = mahjongStore.tileBacks.findIndex(item => item.id === b.id)
+    if (idx !== -1) {
+        mahjongStore.tileBacks.splice(idx, 1)
+        mahjongStore.saveData()
+    }
+}
+
+const saveNewTileBack = () => {
+    if (!newTileBackName.value) return showToast('请输入预设名称')
+
+    const newPreset = {
+        id: 'cb_' + Date.now(),
+        type: newTileBackType.value,
+        value: newTileBackType.value === 'color' ? newTileBackColor.value : newTileBackImage.value,
+        name: newTileBackName.value,
+        active: true
+    }
+
+    if (newPreset.type === 'image' && !newPreset.value) return showToast('请先上传图片')
+
+    mahjongStore.tileBacks.push(newPreset)
+    mahjongStore.saveData()
+
+    // 重置
+    showAddTileBackMenu.value = false
+    newTileBackImage.value = ''
+    newTileBackName.value = ''
+    showToast('预设添加成功')
+}
+
 
 const showToast = (msg) => {
     toastMsg.value = msg
@@ -238,6 +634,10 @@ const quickStart = () => {
 
     // 跳转到房间等待页面
     router.push('/games/mahjong-room')
+}
+
+const returnToGame = () => {
+    router.push('/games/mahjong')
 }
 
 // 创建房间

@@ -105,7 +105,7 @@ const getDisplayReplyName = (name) => {
     if (name === 'user' || name === '用户' || name === '我') {
         return currentUserName.value
     }
-    return name
+    return getAuthorName(name)
 }
 
 const isLiked = computed(() => (props.moment?.likes || []).includes(settingsStore.personalization.userProfile.name))
@@ -143,46 +143,45 @@ const likeNames = computed(() => {
 })
 
 const getAuthorName = (id) => {
-    if (id === 'user') return settingsStore.personalization.userProfile.name
-    // 首先尝试通过ID查找（chatStore 的 key）
+    if (!id) return '神秘好友'
+    if (id === 'user' || id === settingsStore.personalization.userProfile.name) return settingsStore.personalization.userProfile.name
+
+    // 1. Direct key lookup
     if (chatStore.chats[id]) {
-        // Request 6: Use Remark/Alias if available
         return chatStore.chats[id].remark || chatStore.chats[id].name
     }
-    // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
+
+    // 2. Normalized search (Case-insensitive)
+    const nid = String(id).toLowerCase()
     const char = Object.values(chatStore.chats).find(c =>
-        c.id === id ||
-        c.wechatId === id ||
-        c.name === id ||
-        c.remark === id
+        (c.id && c.id.toLowerCase() === nid) ||
+        (c.wechatId && c.wechatId.toLowerCase() === nid) ||
+        (c.name && c.name.toLowerCase() === nid) ||
+        (c.remark && c.remark.toLowerCase() === nid)
     )
-    if (char) {
-        return char.remark || char.name
-    }
-    // 如果是纯数字长串ID，显示为神秘人，避免乱码
-    if (/^\d{10,}$/.test(id)) {
-        return '神秘人'
-    }
-    return id || '神秘人'
+    if (char) return char.remark || char.name
+
+    // 3. Fallback for pure numeric IDs
+    if (/^\d{10,}$/.test(id)) return '神秘好友'
+
+    return id
 }
 
 const getAuthorAvatar = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.avatar
-    // 首先尝试通过ID查找（chatStore 的 key）
-    if (chatStore.chats[id]) {
-        return chatStore.chats[id].avatar
-    }
-    // 尝试通过角色内部 id 属性、wechatId、名称、或备注查找
-    const char = Object.values(chatStore.chats).find(c =>
-        c.id === id ||
-        c.wechatId === id ||
-        c.name === id ||
-        c.remark === id
+
+    const nid = id ? String(id).toLowerCase() : ''
+    const char = chatStore.chats[id] || Object.values(chatStore.chats).find(c =>
+        (c.id && c.id.toLowerCase() === nid) ||
+        (c.wechatId && c.wechatId.toLowerCase() === nid) ||
+        (c.name && c.name.toLowerCase() === nid) ||
+        (c.remark && c.remark.toLowerCase() === nid)
     )
-    if (char) {
-        return char.avatar
-    }
-    return ''
+
+    if (char && char.avatar) return char.avatar
+
+    // Fallback based on name seed for visual consistency
+    return `https://api.dicebear.com/7.x/notionists/svg?seed=${id || 'Anon'}&backgroundColor=b6e3f4,c0aede,d1d4f9`
 }
 
 const renderCommentContent = (comment) => {
@@ -587,7 +586,7 @@ const navigateToAuthor = () => {
                 class="flex items-center gap-1 text-[#576b95] text-[13px] mb-3 opacity-90">
                 <i class="fa-solid fa-location-dot scale-90"></i>
                 <span class="font-medium underline decoration-[#576b95]/30 underline-offset-2">{{ props.moment.location
-                }}</span>
+                    }}</span>
             </div>
 
             <!-- Images Grid -->
@@ -640,7 +639,7 @@ const navigateToAuthor = () => {
                     <i class="fa-solid text-sm"
                         :class="momentsStore.summoningIds.has(props.moment.id) ? 'fa-spinner fa-spin' : 'fa-wand-sparkles'"></i>
                     <span class="text-xs font-medium">{{ momentsStore.summoningIds.has(props.moment.id) ? '召唤中' : '召唤'
-                        }}</span>
+                    }}</span>
                 </button>
             </div>
 
@@ -749,7 +748,7 @@ const navigateToAuthor = () => {
                 @click.stop>
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
                     <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
-                            }}</span></span>
+                    }}</span></span>
                     <i class="fa-solid fa-xmark cursor-pointer" @click="replyToComment = null"></i>
                 </div>
                 <div class="flex gap-2">
@@ -848,7 +847,7 @@ const navigateToAuthor = () => {
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-800 text-sm">{{ chat.name }}</span>
                             <span class="text-xs text-gray-400 truncate max-w-[150px]">{{ chat.signature || '暂无签名'
-                            }}</span>
+                                }}</span>
                         </div>
                     </div>
                 </div>
