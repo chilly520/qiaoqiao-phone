@@ -106,9 +106,29 @@ export const useMahjongStore = defineStore('mahjong', () => {
     const addAIPlayers = (count) => {
         const positions = ['east', 'north', 'west']
         const existingCount = currentRoom.value.players.length - 1
+        const takenNames = new Set(currentRoom.value.players.map(p => p.name))
+
+        let attempts = 0
         for (let i = 0; i < count; i++) {
             if (existingCount + i >= 3) break
-            const ai = mahjongAI.generateAIPlayer(existingCount + i + 1)
+
+            let ai = null
+            // Try to find a unique bot
+            let offset = 0
+            while (attempts < 50) {
+                const candidate = mahjongAI.generateAIPlayer(existingCount + i + 1 + offset + Math.floor(Math.random() * 10))
+                if (!takenNames.has(candidate.name)) {
+                    ai = candidate
+                    takenNames.add(ai.name)
+                    break
+                }
+                offset++
+                attempts++
+            }
+
+            // Fallback if we somehow fail (unlikely with small loops)
+            if (!ai) ai = mahjongAI.generateAIPlayer(existingCount + i + 1)
+
             currentRoom.value.players.push({
                 ...ai,
                 position: positions[existingCount + i],

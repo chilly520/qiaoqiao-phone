@@ -16,7 +16,7 @@
             </div>
 
             <div class="flex items-center gap-1">
-                <button @click="showChatPanel = !showChatPanel"
+                <button v-if="mahjongStore.currentRoom?.mode !== 'quick'" @click="showChatPanel = !showChatPanel"
                     class="h-8 px-3 rounded-full bg-blue-500/80 text-white text-xs flex items-center gap-1 hover:bg-blue-600 transition-colors mr-1 relative">
                     <i class="fa-solid fa-message"></i> 聊天
                     <div v-if="hasNewMsg"
@@ -383,8 +383,8 @@
             </div>
         </Transition>
 
-        <!-- 悬浮聊天按钮 (新) -->
-        <button @click="showChatPanel = !showChatPanel"
+        <!-- 悬浮聊天按钮 (新) - 快速开始不做聊天 -->
+        <button v-if="mahjongStore.currentRoom?.mode !== 'quick'" @click="showChatPanel = !showChatPanel"
             class="fixed right-4 bottom-36 w-12 h-12 rounded-full bg-blue-500/90 text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform z-30 border-2 border-white/20 hover:bg-blue-600 backdrop-blur-sm">
             <i class="fa-solid fa-message text-xl"></i>
             <div v-if="hasNewMsg"
