@@ -318,8 +318,9 @@ export function generateContextPreview(chatId, char) {
 
     // Update system prompt with fresh virtual time for accurate preview
     const charWithTime = { ...char, virtualTime: currentVirtualTime }
-    // Generate full system prompt for display in Token stats
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, '', '', patSettings, '', '', char.bio)
+    // Generate system prompt without persona details to avoid duplicate counting
+    // Pass empty bio to prevent duplicate persona info
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, '', '', patSettings, '', '', {})
 
     return {
         system: systemPrompt,
