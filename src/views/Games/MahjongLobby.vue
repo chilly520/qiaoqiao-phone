@@ -211,7 +211,7 @@
                                 <span class="text-xs font-bold truncate w-20 text-center">{{
                                     mahjongStore.leaderboard[1].name }}</span>
                                 <span class="text-[10px] font-black text-white/90">{{ mahjongStore.leaderboard[1].score
-                                    }}分</span>
+                                }}分</span>
                             </div>
                             <!-- 第一名 -->
                             <div v-if="mahjongStore.leaderboard[0]"
@@ -228,7 +228,7 @@
                                 <span class="text-xs font-bold truncate w-24 text-center">{{
                                     mahjongStore.leaderboard[0].name }}</span>
                                 <span class="text-[10px] font-black text-white">{{ mahjongStore.leaderboard[0].score
-                                    }}分</span>
+                                }}分</span>
                             </div>
                             <!-- 第三名 -->
                             <div v-if="mahjongStore.leaderboard[2]" class="flex flex-col items-center">
@@ -242,7 +242,7 @@
                                 <span class="text-xs font-bold truncate w-16 text-center">{{
                                     mahjongStore.leaderboard[2].name }}</span>
                                 <span class="text-[10px] font-black text-white/80">{{ mahjongStore.leaderboard[2].score
-                                    }}分</span>
+                                }}分</span>
                             </div>
                         </div>
                     </div>
@@ -621,7 +621,7 @@ const rechargePackages = [
 ]
 
 // 快速开始
-const quickStart = () => {
+const quickStart = async () => {
     // 检查欢乐豆
     if (mahjongStore.beans < 100) {
         showToast('欢乐豆不足，请先充值！')
@@ -630,7 +630,7 @@ const quickStart = () => {
     }
 
     // 创建房间
-    mahjongStore.createRoom({ mode: 'quick', baseStake: 100, totalRounds: 8 })
+    await mahjongStore.createRoom({ mode: 'quick', baseStake: 100, totalRounds: 8 })
 
     // 跳转到房间等待页面
     router.push('/games/mahjong-room')
@@ -641,7 +641,7 @@ const returnToGame = () => {
 }
 
 // 创建房间
-const createRoom = () => {
+const createRoom = async () => {
     // 检查欢乐豆
     if (mahjongStore.beans < roomConfig.value.baseStake) {
         showToast('欢乐豆不足，请先充值！')
@@ -651,7 +651,7 @@ const createRoom = () => {
     }
 
     // 创建房间
-    mahjongStore.createRoom({
+    await mahjongStore.createRoom({
         mode: 'custom',
         baseStake: roomConfig.value.baseStake,
         totalRounds: roomConfig.value.totalRounds

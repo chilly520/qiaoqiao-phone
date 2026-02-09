@@ -484,10 +484,10 @@ const handleGlobalPromptCancel = () => {
                     :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b] border-[#334155]' : 'bg-white border-white/20'">
                     <h3 class="text-[18px] font-bold mb-2"
                         :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{
-                        globalConfirmData.title }}</h3>
+                            globalConfirmData.title }}</h3>
                     <p class="text-[14px] leading-relaxed mb-6"
                         :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{
-                        globalConfirmData.message }}</p>
+                            globalConfirmData.message }}</p>
                     <div class="flex gap-3">
                         <button @click="handleGlobalCancel"
                             class="flex-1 py-3 rounded-2xl text-[15px] font-bold active:scale-95 transition-all"
@@ -512,10 +512,10 @@ const handleGlobalPromptCancel = () => {
                     :class="store.personalization.theme === 'dark' ? 'bg-[#1e293b] border-[#334155]' : 'bg-white border-white/20'">
                     <h3 class="text-[18px] font-bold mb-2"
                         :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{
-                        globalPromptData.title }}</h3>
+                            globalPromptData.title }}</h3>
                     <p class="text-[14px] leading-relaxed mb-4"
                         :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{
-                        globalPromptData.message }}</p>
+                            globalPromptData.message }}</p>
 
                     <input v-model="globalPromptInput" type="text" :placeholder="globalPromptData.placeholder"
                         class="w-full border-none rounded-2xl px-4 py-3 text-[15px] mb-6 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"

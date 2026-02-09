@@ -54,7 +54,8 @@
                             { 'animate-shake': shakingAvatars?.has(msg.id) }
                         ]" :style="avatarInnerStyle">
                             <!-- Show dynamic sender avatar in groups -->
-                            <img :src="chatData?.isGroup ? (msg.senderAvatar || avatarSrc) : avatarSrc" class="w-full h-full object-cover">
+                            <img :src="chatData?.isGroup ? (msg.senderAvatar || avatarSrc) : avatarSrc"
+                                class="w-full h-full object-cover">
                         </div>
                         <!-- Frame -->
                         <img v-if="frameSrc" :src="frameSrc" class="absolute pointer-events-none z-20 object-contain"
@@ -67,8 +68,8 @@
                         (msg.type === 'html' || isHtmlCard) ? 'max-w-full' : 'max-w-[80%]'
                     ]">
                         <!-- New: Sender Name for Group Chats -->
-                        <div v-if="chatData?.isGroup && msg.role !== 'user' && msg.role !== 'system'" 
-                             class="text-[10px] text-gray-500 mb-0.5 px-1 ml-0.5">
+                        <div v-if="chatData?.isGroup && msg.role !== 'user' && msg.role !== 'system'"
+                            class="text-[10px] text-gray-500 mb-0.5 px-1 ml-0.5">
                             {{ msg.senderName }}
                         </div>
 
@@ -106,8 +107,7 @@
                                 <!-- The Card -->
                                 <div class="cursor-pointer relative overflow-hidden transition-transform duration-200 active:scale-95 shadow-sm hover:shadow-md select-none rounded-xl bg-gradient-to-br from-[#2b2b2b] to-[#1a1a1a]"
                                     :class="[
-                                        isFamilyCardReject || msg.isClaimed ? 'opacity-80 grayscale cursor-default' : '',
-                                        chatData?.bgTheme === 'dark' ? 'border border-white/10' : ''
+                                        isFamilyCardReject || msg.isClaimed ? 'opacity-80 grayscale cursor-default' : ''
                                     ]" style="width: 260px; height: 145px;" @click="handleFamilyCardClick">
 
                                     <!-- Decorative Background Elements -->
@@ -138,7 +138,7 @@
                                         <div class="family-card-content">
                                             <div class="family-card-text">{{ familyCardData.text ||
                                                 '送我一张亲属卡好不好？以后你来管家~'
-                                                }}
+                                            }}
                                             </div>
                                             <div class="family-card-footer">
                                                 <div class="family-card-no">**** **** **** {{ isFamilyCardApply ? '8888'
@@ -172,14 +172,18 @@
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
                             @click="$router.push('/favorites/' + favoriteCardData.favoriteId)">
                             <div class="p-4 flex flex-col gap-2">
-                                <div class="flex items-center gap-2 mb-1" :class="favoriteCardData.source === '通话记录' ? 'text-[#07c160]' : 'text-[#fabb05]'">
-                                    <i :class="favoriteCardData.source === '通话记录' ? 'fa-solid fa-phone' : 'fa-solid fa-star'"></i>
+                                <div class="flex items-center gap-2 mb-1"
+                                    :class="favoriteCardData.source === '通话记录' ? 'text-[#07c160]' : 'text-[#fabb05]'">
+                                    <i
+                                        :class="favoriteCardData.source === '通话记录' ? 'fa-solid fa-phone' : 'fa-solid fa-star'"></i>
                                     <span class="text-xs font-bold text-gray-400">
-                                        {{ favoriteCardData.source === '通话记录' ? '通话记录' : (favoriteCardData.type === 'chat_record' ? '收藏的消息记录' : '收藏的消息') }}
+                                        {{ favoriteCardData.source === '通话记录' ? '通话记录' : (favoriteCardData.type ===
+                                            'chat_record' ? '收藏的消息记录' : '收藏的消息') }}
                                     </span>
                                 </div>
                                 <div class="text-[13px] text-gray-500 line-clamp-1 mb-2">
-                                    {{ favoriteCardData.source === '通话记录' ? favoriteCardData.title : `来自与 ${favoriteCardData.source} 的聊天` }}
+                                    {{ favoriteCardData.source === '通话记录' ? favoriteCardData.title : `来自与
+                                    ${favoriteCardData.source} 的聊天` }}
                                 </div>
 
                                 <div class="bg-gray-50/50 p-3 rounded-lg border border-gray-50">
@@ -323,14 +327,14 @@
                                 <!-- Arrow -->
                                 <div v-if="shouldShowArrow"
                                     class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#374151]' : 'left-[-6px] border-r-[6px] border-r-[#2a2520]'">
+                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#95EC69]' : 'left-[-6px] border-r-[6px] border-r-white'">
                                 </div>
 
                                 <!-- Quote -->
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                    }}
+                                        }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -1411,27 +1415,16 @@ function getHtmlContent(content) {
 <style scoped>
 /* Reuse styles from ChatWindow */
 .chat-bubble-right {
-    background: radial-gradient(circle at top right, #374151 0%, #1f2937 100%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-    color: #e5e7eb;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    font-family: 'Noto Serif SC', serif;
-    font-weight: 300;
-    letter-spacing: 0.5px;
+    background-color: #95EC69;
+    color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.05);
     border-radius: 12px 2px 12px 12px;
 }
 
 .chat-bubble-left {
-    background: radial-gradient(circle at top left, #2a2520 0%, #0e0e10 100%);
-    border: 1px solid rgba(212, 175, 55, 0.2);
-    border-top: 1px solid rgba(212, 175, 55, 0.4);
-    color: #e6dcc0;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
-    font-family: 'Noto Serif SC', serif;
-    font-weight: 300;
-    letter-spacing: 0.5px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    background-color: #ffffff;
+    color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.05);
     border-radius: 2px 12px 12px 12px;
 }
 

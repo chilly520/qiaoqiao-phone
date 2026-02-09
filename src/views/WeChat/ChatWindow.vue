@@ -2478,7 +2478,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         </div>
     </div>
 
-    <div v-else class="chat-window w-full h-full flex flex-col overflow-hidden relative">
+    <div v-else class="chat-window w-full h-full flex flex-col overflow-hidden relative"
+        :style="{ backgroundColor: chatData?.bgTheme === 'dark' ? '#000000' : 'transparent' }">
         <!-- Global Toast Notifier -->
         <Transition name="fade">
             <div v-if="toastVisible"
@@ -2889,7 +2890,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

@@ -9,7 +9,7 @@ export const useSettingsStore = defineStore('settings', () => {
             name: '默认配置',
             baseUrl: 'http://127.0.0.1:7861/v1',
             apiKey: 'pwd',
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-2.5-pro-nothinking',
             temperature: 0.7,
             maxTokens: 4096,
             provider: 'openai'
@@ -25,7 +25,17 @@ export const useSettingsStore = defineStore('settings', () => {
         icons: {
             app: 'wechat',
             url: '',
-            map: {}
+            map: {
+                wechat: '/icons/wechat.png',
+                search: '/icons/search.png',
+                weibo: '/icons/weibo.png',
+                couple: '/icons/couple.png',
+                games: '/icons/games.png',
+                settings: '/icons/settings.png',
+                worldbook: '/icons/worldbook.png',
+                reset: '/icons/reset.png',
+                syslog: '/icons/syslog.png'
+            }
         },
         widgets: {
             card1: '/widgets/bg_card1.jpg',
@@ -46,7 +56,7 @@ export const useSettingsStore = defineStore('settings', () => {
         theme: 'default', // 新增：主题选择 (default | kawaii | business)
         wallpaperOverlayOpacity: 0.5, // 新增：夜间模式聊天壁纸遮罩透明度 (0-1)
         userProfile: {
-            name: 'Chilly',
+            name: '乔乔',
             avatar: '/avatars/小猫星星眼.jpg',
             wechatId: 'admin',
             signature: '对方很懒，什么都没有留下'
@@ -54,12 +64,9 @@ export const useSettingsStore = defineStore('settings', () => {
         presets: []
     })
 
-    const showLocationInput = ref(false)
-
     // --- 3. Other States ---
     const voice = ref({
         engine: 'browser',
-        speed: 1.0, // Global default speed
         minimax: {
             groupId: '',
             apiKey: '',
@@ -68,16 +75,38 @@ export const useSettingsStore = defineStore('settings', () => {
         },
         doubao: {
             cookie: '',
-            speaker: 'tts.other.BV008_streaming' // 霸道总裁 (Default)
-        }
+            speaker: 'zh_female_sichuan'
+        },
+        doubaoVoices: [
+            { name: "霸道总裁 (男)", id: "tts.other.BV008_streaming" },
+            { name: "冷酷哥哥 (男)", id: "ICL_zh_male_lengkugege_v1_tob" },
+            { name: "Rap小哥 (男)", id: "zh_male_rap" },
+            { name: "温柔女声 (女)", id: "tts.other.BV405_streaming" },
+            { name: "温柔姐姐 (女)", id: "zh_female_zhubo" },
+            { name: "温柔小妹 (女)", id: "zh_female_qingxin" },
+            { name: "甜美女生 (女)", id: "zh_female_qingxin" },
+            { name: "故事姐姐 (女)", id: "zh_female_story" },
+            { name: "阳光青年 (男)", id: "zh_male_xiaoming" },
+            { name: "四川姐姐 (女)", id: "zh_female_sichuan" },
+            { name: "广西老表 (男)", id: "tts.other.BV029_streaming" },
+            { name: "温柔总裁 (男)", id: "tts.other.BV056_streaming" },
+            { name: "新闻主播 (男)", id: "zh_male_zhubo" },
+            { name: "英文解说 (男 Adam)", id: "en_male_adam" },
+            { name: "英文解说 (男 Bob)", id: "en_male_bob" },
+            { name: "英文甜美 (女 Sarah)", id: "en_female_sarah" },
+            { name: "日语男声 (Satoshi)", id: "jp_male_satoshi" },
+            { name: "日语女声 (Mai)", id: "jp_female_mai" },
+            { name: "韩语男声 (Gye)", id: "kr_male_gye" },
+            { name: "西班牙语 (男 George)", id: "es_male_george" },
+            { name: "葡萄牙语 (女 Alice)", id: "pt_female_alice" },
+            { name: "德语女声 (Sophie)", id: "de_female_sophie" },
+            { name: "法语男声 (Enzo)", id: "fr_male_enzo" },
+            { name: "印尼女声 (Noor)", id: "id_female_noor" }
+        ]
     })
     const weather = ref({
         virtualLocation: '',
         realLocation: '',
-        userLocation: {
-            name: '北京市 > 朝阳区 > 某某街道',
-            coords: { lat: 39.9042, lng: 116.4074 }
-        },
         // Live data synced from HomeView
         temp: '--°',
         desc: '获取中',
@@ -117,12 +146,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
         try {
             const data = JSON.parse(saved)
-            if (data) {
-                console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
-            } else {
-                console.warn('[SettingsStore] LocalStorage data is null/invalid.')
-                return
-            }
+            console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
 
             if (data.apiConfigs) apiConfigs.value = data.apiConfigs
             if (data.currentConfigIndex !== undefined) currentConfigIndex.value = data.currentConfigIndex
@@ -155,6 +179,22 @@ export const useSettingsStore = defineStore('settings', () => {
                 if (data.voice.minimax) {
                     voice.value.minimax = { ...voice.value.minimax, ...data.voice.minimax }
                 }
+                if (data.voice.doubao) {
+                    voice.value.doubao = { ...voice.value.doubao, ...data.voice.doubao }
+                }
+                if (data.voice.doubaoVoices) {
+                    // Force data migration: Ensure BV056 always displays the latest name
+                    voice.value.doubaoVoices = data.voice.doubaoVoices.map(v => {
+                        if (v.id === 'tts.other.BV056_streaming') {
+                            // Normalize all variations of the old name to the new one
+                            const oldNames = ['奶气萌娃', '奶气萌娃 (女)', '温柔总裁'];
+                            if (oldNames.some(old => v.name.includes(old)) || v.name === '温柔总裁') {
+                                return { ...v, name: '温柔总裁 (男)' };
+                            }
+                        }
+                        return v;
+                    });
+                }
             }
 
             if (data.weather) weather.value = { ...weather.value, ...data.weather }
@@ -173,6 +213,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Initialize on load
     loadFromStorage()
+
 
     // --- 5. Actions ---
 
@@ -261,14 +302,11 @@ export const useSettingsStore = defineStore('settings', () => {
     function setVoiceEngine(engine) { voice.value.engine = engine; saveToStorage(); }
     function updateMinimaxConfig(config) { voice.value.minimax = { ...voice.value.minimax, ...config }; saveToStorage(); }
     function updateDoubaoConfig(config) { voice.value.doubao = { ...voice.value.doubao, ...config }; saveToStorage(); }
+    function updateDoubaoVoices(voices) { voice.value.doubaoVoices = voices; saveToStorage(); }
     function resetVoiceSettings() {
         voice.value.engine = 'browser'
         voice.value.minimax = { groupId: '', apiKey: '', modelId: 'speech-01-turbo', voiceId: '' }
         voice.value.doubao = { cookie: '', speaker: 'tts.other.BV008_streaming' }
-        saveToStorage()
-    }
-    function setUserLocation(location) {
-        weather.value.userLocation = { ...weather.value.userLocation, ...location }
         saveToStorage()
     }
     function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
@@ -311,227 +349,69 @@ export const useSettingsStore = defineStore('settings', () => {
         console.log('[SettingsStore] Current drawing state after save:', JSON.stringify(drawing.value))
     }
 
-    // Data Management (LEGACY - Use BackupSettings.vue or localforage directly)
-    /**
-     * FULL SYSTEM EXPORT: Aggregates data from ALL stores (IndexedDB + LocalStorage)
-     * This is the "Engine" for migration packages and cloud sync.
-     */
-    async function exportFullData(selection = {}, injectedData = {}) {
-        const localforage = (await import('localforage')).default
-        const data = {
-            version: '2.1',
-            timestamp: Date.now(),
-            type: 'qiaoqiao_full_migration',
-            payload: {}
-        };
-
-        const s = {
-            chats: true, moments: true, settings: true,
-            worldbook: true, stickers: true, favorites: true,
-            wallet: true, weibo: true, music: true,
-            avatarFrames: true, calls: true, logs: true,
-            ...selection
-        };
-
-        // --- 1. IndexedDB Assets (Async) ---
+    // Data Management
+    function getChatListForExport() {
         try {
-            if (s.chats) {
-                if (injectedData.chats) {
-                    data.payload.chats = injectedData.chats;
-                    console.log('[Export] Using injected chats');
-                } else {
-                    data.payload.chats = await localforage.getItem('qiaoqiao_chats_v2');
-                }
-            }
-            if (s.moments) {
-                if (injectedData.moments) {
-                    data.payload.moments = injectedData.moments;
-                    data.payload.momentsTop = injectedData.momentsTop;
-                    data.payload.momentsNotifications = injectedData.momentsNotifications;
-                    console.log('[Export] Using injected moments');
-                } else {
-                    const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
-                    data.payload.moments = await momentsDB.getItem('all_moments');
-                    data.payload.momentsTop = localStorage.getItem('wechat_moments_top');
-                    data.payload.momentsNotifications = localStorage.getItem('wechat_moments_notifications');
-                }
-            }
-            if (s.worldbook) {
-                if (injectedData.worldbook) {
-                    data.payload.worldbook = injectedData.worldbook;
-                    console.log('[Export] Using injected worldbook');
-                } else {
-                    data.payload.worldbook = await localforage.getItem('wechat_worldbook_books');
-                }
-            }
-        } catch (e) { console.error('[Export] IndexedDB failed:', e); }
-
-        // --- 2. LocalStorage Assets ---
-        // Also check injected for some of these if available
-        const storageMap = {
-            settings: 'qiaoqiao_settings',
-            stickers: 'wechat_global_emojis',
-            favorites: 'wechat_favorites',
-            logs: 'system_logs',
-            wallet: 'qiaoqiao_wallet',
-            weibo: 'wechat_weibo_data',
-            music: 'musicPlaylist',
-            avatarFrames: 'avatar_frames',
-            calls: 'wechat_calls'
-        };
-
-        for (const [key, lsKey] of Object.entries(storageMap)) {
-            if (!s[key]) continue;
-
-            if (injectedData[key]) {
-                data.payload[key] = injectedData[key];
-                continue;
-            }
-
-            const val = localStorage.getItem(lsKey);
-            if (val) {
-                try { data.payload[key] = JSON.parse(val); }
-                catch (e) { data.payload[key] = val; }
-            }
-        }
-
-        return data;
+            const chatData = localStorage.getItem('qiaoqiao_chats')
+            return chatData ? JSON.parse(chatData) : []
+        } catch (e) { return [] }
     }
 
-    /**
-     * FULL SYSTEM IMPORT: Distributes data back to all stores and triggers persistence.
-     */
-    async function importFullData(jsonContent) {
-        try {
-            const localforage = (await import('localforage')).default
-            let raw = typeof jsonContent === 'string' ? JSON.parse(jsonContent) : jsonContent;
-
-            // Critical Fix: Strip Vue Proxies to prevent DataCloneError in IndexedDB
-            if (typeof raw === 'object' && raw !== null) {
-                try { raw = JSON.parse(JSON.stringify(raw)) } catch (e) {
-                    console.error('Failed to strip proxies:', e)
-                }
-            }
-
-            console.log('[Import] Raw keys:', Object.keys(raw));
-            const payload = raw.payload || raw.data || raw; // Handle various wrap formats
-            console.log('[Import] Payload keys:', Object.keys(payload));
-
-            let count = 0;
-
-            // --- Compatibility Helper: Find key case-insensitively or via aliases ---
-            const findKey = (obj, keys) => {
-                const lowerKeys = keys.map(k => k.toLowerCase());
-                for (const k of Object.keys(obj)) {
-                    if (lowerKeys.includes(k.toLowerCase())) return obj[k];
-                }
-                return undefined;
-            };
-
-            // --- 1. IndexedDB Restore ---
-            const chatsData = payload.chats || payload.qiaoqiao_chats || payload.wechat_chats || findKey(payload, ['chats', 'chat', 'history']);
-            if (chatsData) {
-                console.log('[Import] Restoring chats...');
-                await localforage.setItem('qiaoqiao_chats_v2', chatsData);
-                localStorage.setItem('qiaoqiao_migrated', 'true');
-                count++;
-            }
-
-            const momentsData = payload.moments || payload.wechat_moments || findKey(payload, ['moments', 'moment', 'feed']);
-            if (momentsData) {
-                console.log('[Import] Restoring moments...');
-                const momentsDB = localforage.createInstance({ name: 'qiaoqiao-phone', storeName: 'moments' });
-                await momentsDB.setItem('all_moments', momentsData);
-
-                const mTop = payload.momentsTop || payload.topMoments || payload.wechat_moments_top;
-                if (mTop) localStorage.setItem('wechat_moments_top', typeof mTop === 'string' ? mTop : JSON.stringify(mTop));
-
-                const mNotif = payload.momentsNotifications || payload.notifications || payload.wechat_moments_notifications;
-                if (mNotif) localStorage.setItem('wechat_moments_notifications', typeof mNotif === 'string' ? mNotif : JSON.stringify(mNotif));
-
-                count++;
-            }
-
-            const wbData = payload.worldbook || payload.wechat_worldbook_books || findKey(payload, ['worldbook', 'books']);
-            if (wbData) {
-                console.log('[Import] Restoring worldbook...');
-                await localforage.setItem('wechat_worldbook_books', wbData);
-                count++;
-            }
-
-            // --- 2. LocalStorage Restore ---
-            // Map: Internal Store Key -> [Possible Backup Keys]
-            const storageMapping = {
-                'qiaoqiao_settings': ['settings', 'config', 'qiaoqiao_settings', 'setup'],
-                'wechat_global_emojis': ['stickers', 'emojis', 'wechat_global_emojis'],
-                'wechat_favorites': ['favorites', 'favs', 'wechat_favorites'],
-                'system_logs': ['logs', 'system_logs', 'log'],
-                'qiaoqiao_wallet': ['wallet', 'money', 'qiaoqiao_wallet'],
-                'wechat_weibo_data': ['weibo', 'wechat_weibo_data', 'blogs'],
-                'musicPlaylist': ['music', 'playlist', 'musicPlaylist'],
-                'avatar_frames': ['avatarFrames', 'frames', 'avatar_frames'],
-                'wechat_calls': ['calls', 'callHistory', 'wechat_calls']
-            };
-
-            for (const [lsKey, aliases] of Object.entries(storageMapping)) {
-                // Direct match fallback
-                let val = payload[aliases[0]] // check primary first
-                if (val === undefined) val = findKey(payload, aliases)
-
-                // If the payload IS the localStorage dump (flat key match)
-                if (val === undefined && payload[lsKey]) val = payload[lsKey]
-
-                if (val !== undefined) {
-                    console.log(`[Import] Restoring ${lsKey} from alias match...`);
-                    const dataStr = typeof val === 'string' ? val : JSON.stringify(val);
-                    localStorage.setItem(lsKey, dataStr);
-                    count++;
-                }
-            }
-
-            console.log(`[Import] Total restored items: ${count}`);
-
-            // If count is 0, let's try a last-resort "Flat Import" 
-            // This handles files that might just be a direct dump of a single store.
-            if (count === 0) {
-                console.log('[Import] Trying flat import fallback...');
-                // Check if the payload ITSELF looks like a chats object or a settings object
-                if (payload.chats || (typeof payload === 'object' && Object.values(payload).some(v => v.msgs))) {
-                    console.log('[Import] Detected flat chats structure, applying...');
-                    await localforage.setItem('qiaoqiao_chats_v2', payload.chats || payload);
-                    count++;
-                }
-            }
-
-            if (count > 0) {
-                setTimeout(() => window.location.reload(), 1000);
-                return true;
-            }
-            console.warn('[Import] No matching keys found in payload!', payload);
-            return false;
-        } catch (e) {
-            console.error('[Import] Full import failed:', e);
-            return false;
+    function exportData(options = {}) {
+        const exportContent = { timestamp: Date.now(), version: '2.0', type: 'qiaoqiao_backup' }
+        if (options.settings) {
+            const settings = localStorage.getItem('qiaoqiao_settings')
+            if (settings) exportContent.settings = JSON.parse(settings)
         }
-    }
-
-    // LEGACY METHODS (Wrapped for compat)
-    function exportData(options) { return JSON.stringify(exportFullData(options)); }
-    async function importData(json) { return await importFullData(json); }
-
-    async function resetAppData(options = {}) {
         if (options.wechat) {
-            localStorage.removeItem('qiaoqiao_chats')
-            localStorage.removeItem('wechat_chats') // Legacy key
-            try {
-                const localforage = (await import('localforage')).default
-                await localforage.removeItem('qiaoqiao_chats_v2')
-            } catch (e) { }
+            const chatData = localStorage.getItem('qiaoqiao_chats')
+            if (chatData) {
+                let chats = JSON.parse(chatData)
+                if (options.selectedChats?.length > 0) chats = chats.filter(c => options.selectedChats.includes(c.id))
+                exportContent.chats = chats
+            }
         }
+        if (options.wallet) {
+            const wallet = localStorage.getItem('qiaoqiao_wallet')
+            if (wallet) exportContent.wallet = JSON.parse(wallet)
+        }
+        return JSON.stringify(exportContent, null, 2)
+    }
+
+    async function importData(jsonContent) {
+        try {
+            const data = JSON.parse(jsonContent)
+            let importCount = 0
+            if (data.settings) {
+                const currentSettings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
+                const mergedSettings = { ...currentSettings, ...data.settings }
+                localStorage.setItem('qiaoqiao_settings', JSON.stringify(mergedSettings))
+                loadFromStorage()
+                importCount++
+            }
+            if (data.chats) {
+                const currentChats = JSON.parse(localStorage.getItem('qiaoqiao_chats') || '[]')
+                const mergedChats = [...currentChats]
+                data.chats.forEach(importedChat => {
+                    const index = mergedChats.findIndex(c => c.id === importedChat.id)
+                    if (index !== -1) mergedChats[index] = importedChat
+                    else mergedChats.push(importedChat)
+                })
+                localStorage.setItem('qiaoqiao_chats', JSON.stringify(mergedChats))
+                importCount++
+            }
+            if (data.wallet) {
+                localStorage.setItem('qiaoqiao_wallet', JSON.stringify(data.wallet))
+                importCount++
+            }
+            return importCount > 0
+        } catch (e) { return false }
+    }
+
+    function resetAppData(options = {}) {
+        if (options.wechat) localStorage.removeItem('qiaoqiao_chats')
         if (options.wallet) localStorage.removeItem('qiaoqiao_wallet')
         if (options.settings) localStorage.removeItem('qiaoqiao_settings')
-        if (options.moments) localStorage.removeItem('wechat_moments')
-
         window.location.reload()
     }
 
@@ -544,13 +424,11 @@ export const useSettingsStore = defineStore('settings', () => {
         apiConfigs, currentConfigIndex, currentConfig, apiConfig,
         personalization, voice, weather, compressQuality, drawing,
         updateConfig, createConfig, deleteConfig,
-        saveToStorage, loadFromStorage, showLocationInput,
+        saveToStorage, loadFromStorage,
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
-        setVoiceEngine, updateMinimaxConfig, resetVoiceSettings,
-        setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig, setUserLocation,
-        updateMinimaxConfig, updateDoubaoConfig,
-        exportData, importData, resetAppData, resetGlobalData,
-        exportFullData, importFullData
+        setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, resetVoiceSettings,
+        setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig,
+        exportData, importData, resetAppData, resetGlobalData, getChatListForExport
     }
 })

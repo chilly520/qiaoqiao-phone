@@ -153,15 +153,19 @@ export const useMomentsStore = defineStore('moments', () => {
         // Handle pre-defined interactions (from AI)
         if (data.interactions && Array.isArray(data.interactions)) {
             data.interactions.forEach(inter => {
+                const authorId = inter.authorId || null
+                const authorName = inter.authorName || inter.author || inter.authorName // Unified
+                const text = inter.content || inter.text
+
                 if (inter.type === 'like') {
-                    addLike(id, inter.authorId || null, inter.author || '神秘人')
-                } else if ((inter.type === 'comment' || inter.type === 'reply') && inter.text) {
+                    addLike(id, authorId || authorName, authorName)
+                } else if ((inter.type === 'comment' || inter.type === 'reply') && text) {
                     addComment(id, {
-                        authorName: inter.author,
-                        authorId: inter.authorId || null,
-                        content: inter.text,
+                        authorName: authorName,
+                        authorId: authorId,
+                        content: text,
                         replyTo: inter.replyTo || null,
-                        isVirtual: !inter.authorId
+                        isVirtual: inter.isVirtual || !authorId
                     })
                 }
             })
@@ -249,29 +253,41 @@ export const useMomentsStore = defineStore('moments', () => {
 
         if (!canInteractWithMoment(moment, authorNameOrId)) return
 
-        let realChar = null
-        let displayName = fallbackName || authorNameOrId
-
         if (authorNameOrId === 'user') {
             displayName = settingsStore.personalization.userProfile.name
         } else {
-            // Try lookup
+            // Priority 1: Direct ID lookup
             if (chatStore.chats[authorNameOrId]) {
                 realChar = chatStore.chats[authorNameOrId]
-            } else {
-                realChar = Object.values(chatStore.chats).find(c => c.id === authorNameOrId || c.name === authorNameOrId || (c.remark && c.remark === authorNameOrId))
+            }
+            // Priority 2: Fuzzy lookup by other ID-like fields if not found
+            if (!realChar) {
+                realChar = Object.values(chatStore.chats).find(c =>
+                    c.id === authorNameOrId ||
+                    c.wechatId === authorNameOrId ||
+                    c.name === authorNameOrId ||
+                    (c.remark && c.remark === authorNameOrId)
+                )
             }
 
             if (!realChar && fallbackName) {
-                realChar = Object.values(chatStore.chats).find(c => c.name === fallbackName || c.remark === fallbackName)
+                // Priority 3: Lookup by name if authorId failed
+                realChar = Object.values(chatStore.chats).find(c =>
+                    c.name === fallbackName ||
+                    c.remark === fallbackName ||
+                    (c.wechatId && c.wechatId === fallbackName)
+                )
             }
 
             if (realChar) {
                 displayName = realChar.remark || realChar.name
             } else {
-                const isGarbage = (str) => str && (str.startsWith('virtual-') || /^[a-z0-9-]{20,}$/.test(str))
-                if (isGarbage(authorNameOrId)) {
-                    displayName = (fallbackName && !isGarbage(fallbackName)) ? fallbackName : '神秘好友'
+                // If still not found, check if it looks like an ID
+                const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^[a-z0-9-]{20,}$/.test(str))
+                if (isIdLike(authorNameOrId)) {
+                    displayName = (fallbackName && !isIdLike(fallbackName)) ? fallbackName : '神秘好友'
+                } else {
+                    displayName = authorNameOrId || fallbackName || '神秘好友'
                 }
             }
         }
@@ -360,7 +376,14 @@ export const useMomentsStore = defineStore('moments', () => {
         }
 
         // Fallback for Virtual characters (NPCs) or failed lookups
-        if (!finalAuthorName) finalAuthorName = comment.authorName || '神秘好友'
+        if (!finalAuthorName) {
+            const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^[a-z0-9-]{20,}$/.test(str) || /^\d{10,}$/.test(str))
+            if (isIdLike(comment.authorName)) {
+                finalAuthorName = '神秘好友'
+            } else {
+                finalAuthorName = comment.authorName || '神秘好友'
+            }
+        }
         if (!finalAuthorAvatar) finalAuthorAvatar = comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${finalAuthorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`
 
         // Auto-extract mentions if not provided

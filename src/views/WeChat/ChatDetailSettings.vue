@@ -4,15 +4,16 @@
         <div class="absolute inset-0 bg-cover bg-center -z-10" :style="globalBgStyle"></div>
 
         <!-- Header -->
-        <div
-            class="h-[50px] sticky top-0 flex items-center justify-between px-2 z-10"
+        <div class="h-[50px] sticky top-0 flex items-center justify-between px-2 z-10"
             :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]/95 border-b border-[#334155]' : 'bg-white/95 border-b border-gray-200'">
-            <button class="w-10 h-full flex items-center justify-center" 
+            <button class="w-10 h-full flex items-center justify-center"
                 :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'"
                 @click="$emit('close')">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>
-            <span class="font-bold" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">角色设置 - {{ localData.name }}</span>
+            <span class="font-bold"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">角色设置 - {{
+                    localData.name }}</span>
             <button @click="saveSettings"
                 class="ml-auto text-green-600 font-bold text-sm bg-green-100 px-3 py-1 rounded mr-2">保存</button>
         </div>
@@ -108,7 +109,9 @@
 
             <!-- Persona -->
             <div>
-                <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">我的人设 (User Persona)</h3>
+                <h3 class="section-title"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">我的人设
+                    (User Persona)</h3>
                 <div class="p-3 rounded-xl shadow-sm"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] text-white' : 'bg-white text-gray-800'">
                     <div class="flex items-center gap-3 mb-3">
@@ -130,7 +133,8 @@
                                             }">
                                             <img v-if="localData.userAvatar" :src="localData.userAvatar"
                                                 class="w-full h-full object-cover">
-                                            <span v-else class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">头像</span>
+                                            <span v-else class="text-xs"
+                                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">头像</span>
                                         </div>
                                     </div>
 
@@ -183,34 +187,39 @@
                         <input type="file" ref="userFileInput" class="hidden" accept="image/*"
                             @change="handleUserAvatarChange">
                     </div>
-                    <textarea v-model="localData.userPersona" class="setting-input h-20"
-                        placeholder="我的人设..."
+                    <textarea v-model="localData.userPersona" class="setting-input h-20" placeholder="我的人设..."
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"></textarea>
                 </div>
             </div>
 
             <!-- Character Definition -->
             <div>
-                <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">角色设定</h3>
+                <h3 class="section-title"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">角色设定
+                </h3>
                 <input v-model="localData.remark" type="text" class="setting-input mb-2" placeholder="备注名"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
-                <textarea v-model="localData.prompt" class="setting-input h-32 mt-2"
-                    placeholder="设定 Prompt..."
+                <textarea v-model="localData.prompt" class="setting-input h-32 mt-2" placeholder="设定 Prompt..."
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"></textarea>
             </div>
- 
+
             <!-- Opening Line -->
             <div>
-                <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">开场白设置</h3>
-                <textarea v-model="localData.openingLine" class="setting-input h-20"
-                    placeholder="自定义开场AI说的第一句话..."
+                <h3 class="section-title"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">开场白设置
+                </h3>
+                <textarea v-model="localData.openingLine" class="setting-input h-20" placeholder="自定义开场AI说的第一句话..."
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"></textarea>
-                <div class="text-xs mt-1" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-500'">留空则使用默认好友申请卡片</div>
+                <div class="text-xs mt-1"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-500'">
+                    留空则使用默认好友申请卡片</div>
             </div>
 
             <!-- Worldbook -->
             <div>
-                <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">关联世界书</h3>
+                <h3 class="section-title"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">关联世界书
+                </h3>
                 <div class="glass-panel p-2 rounded-lg border max-h-48 overflow-y-auto"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10' : 'bg-white/50 border-white/20'">
                     <div v-if="worldBookStore.books.length === 0" class="text-xs text-center py-2"
@@ -230,7 +239,8 @@
                                         :class="expandedBooks.includes(book.id) ? 'rotate-90' : ''"></i>
                                     <div class="flex flex-col">
                                         <span class="text-sm font-bold"
-                                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">{{ book.name }}</span>
+                                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">{{
+                                                book.name }}</span>
                                         <span class="text-[10px]"
                                             :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
                                             {{ book.entries?.length || 0 }} 条目
@@ -247,8 +257,7 @@
                             </div>
 
                             <!-- Entries List (Visible if Expanded) -->
-                            <div v-show="expandedBooks.includes(book.id)"
-                                class="p-2 space-y-1 border-t"
+                            <div v-show="expandedBooks.includes(book.id)" class="p-2 space-y-1 border-t"
                                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/10 border-white/5' : 'bg-white/30 border-white/10'">
                                 <div v-if="!book.entries || book.entries.length === 0"
                                     class="text-center text-[10px] text-gray-400 py-1">
@@ -287,10 +296,10 @@
             </div>
 
             <!-- Time Awareness -->
-            <div
-                class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+            <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                <span class="text-sm" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">时间感知</span>
+                <span class="text-sm"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">时间感知</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
                     :class="localData.timeAware ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
                     @click="localData.timeAware = !localData.timeAware">
@@ -303,11 +312,13 @@
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/20'">
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" v-model="localData.timeSyncMode" value="system" class="accent-green-500">
-                        <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">系统同步</span>
+                        <span class="text-xs"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">系统同步</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="radio" v-model="localData.timeSyncMode" value="manual" class="accent-green-500">
-                        <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">虚拟设定</span>
+                        <span class="text-xs"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">虚拟设定</span>
                     </label>
                 </div>
 
@@ -316,7 +327,8 @@
                         type="text" class="setting-input mb-1" placeholder="虚拟时间 (如: 乾隆三十年)"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
                     <div class="text-[10px] px-1 italic"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">基准时间设定后，系统将模拟其时间的流逝</div>
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">
+                        基准时间设定后，系统将模拟其时间的流逝</div>
                 </div>
                 <div v-else
                     class="text-xs text-green-600 bg-green-50/50 p-2 rounded border border-green-100/50 animate-fade-in">
@@ -325,12 +337,13 @@
             </div>
 
             <!-- Location Sync -->
-            <div
-                class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+            <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                <span class="text-sm" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">定位同步</span>
+                <span class="text-sm"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">定位同步</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
-                    :class="localData.locationSync ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')" @click="toggleLocationSync">
+                    :class="localData.locationSync ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
+                    @click="toggleLocationSync">
                     <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
                         :class="localData.locationSync ? 'left-[22px]' : 'left-[2px]'"></div>
                 </div>
@@ -361,10 +374,10 @@
             </div>
 
             <!-- Active Chat -->
-            <div
-                class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+            <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                <span class="text-sm font-bold" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">查岗（离开界面后触发）</span>
+                <span class="text-sm font-bold"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">查岗（离开界面后触发）</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
                     :class="localData.activeChat ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
                     @click="localData.activeChat = !localData.activeChat">
@@ -373,19 +386,21 @@
                 </div>
             </div>
             <div class="flex items-center gap-2 mb-4 px-2">
-                <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">离开</span>
+                <span class="text-xs"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">离开</span>
                 <input v-model="localData.activeInterval" type="number" class="short-input text-center"
                     style="width: 66px !important; min-width: 66px !important; max-width: 66px !important; flex: none !important;"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"
                     min="1">
-                <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟后触发</span>
+                <span class="text-xs"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟后触发</span>
             </div>
 
             <!-- Proactive Chat -->
-            <div
-                class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+            <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                <span class="text-sm font-bold" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">主动发消息（界面内触发）</span>
+                <span class="text-sm font-bold"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">主动发消息（界面内触发）</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
                     :class="localData.proactiveChat ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
                     @click="localData.proactiveChat = !localData.proactiveChat">
@@ -394,19 +409,21 @@
                 </div>
             </div>
             <div class="flex items-center gap-2 mb-4 px-2">
-                <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">每隔</span>
+                <span class="text-xs"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">每隔</span>
                 <input v-model="localData.proactiveInterval" type="number" class="short-input text-center"
                     style="width: 66px !important; min-width: 66px !important; max-width: 66px !important; flex: none !important; display: inline-block !important;"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"
                     min="1">
-                <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟后触发</span>
+                <span class="text-xs"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟后触发</span>
             </div>
 
             <!-- Random Proactive Chat -->
-            <div
-                class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+            <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                <span class="text-sm font-bold" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">随机主动发消息</span>
+                <span class="text-sm font-bold"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">随机主动发消息</span>
                 <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
                     :class="localData.randomProactive ? 'bg-indigo-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
                     @click="localData.randomProactive = !localData.randomProactive">
@@ -415,7 +432,8 @@
                 </div>
             </div>
             <div v-if="localData.randomProactive" class="flex items-center gap-2 mb-4 px-2">
-                <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">频率区间</span>
+                <span class="text-xs"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">频率区间</span>
                 <input v-model="localData.randomMin" type="number" class="short-input text-center"
                     style="width: 50px !important; min-width: 50px !important;"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"
@@ -425,48 +443,60 @@
                     style="width: 50px !important; min-width: 50px !important;"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"
                     min="1">
-                <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟</span>
+                <span class="text-xs"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟</span>
             </div>
 
             <!-- Memory -->
             <div>
-                <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">记忆与总结</h3>
+                <h3 class="section-title"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">记忆与总结
+                </h3>
                 <div class="grid grid-cols-3 gap-2 text-center mb-3">
                     <div class="glass-panel p-2 rounded-lg border"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                        <div class="text-[10px]" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">总聊天数</div>
+                        <div class="text-[10px]"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">
+                            总聊天数</div>
                         <div class="font-mono text-blue-600 text-base font-bold">{{ props.chatData.msgs?.length || 0 }}
                         </div>
                     </div>
                     <div class="glass-panel p-2 rounded-lg border"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                        <div class="text-[10px]" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">总Token</div>
+                        <div class="text-[10px]"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">
+                            总Token</div>
                         <div class="font-mono text-orange-600 text-base font-bold">{{ tokenStats?.total || 0 }}</div>
                     </div>
                     <div class="glass-panel p-2 rounded-lg border"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                        <div class="text-[10px]" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">上下文</div>
+                        <div class="text-[10px]"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">
+                            上下文</div>
                         <div class="font-mono text-purple-600 text-base font-bold cursor-pointer underline decoration-dotted"
                             @click="showTokenDetailModal">{{ tokenStats?.totalContext || 0 }}</div>
                     </div>
                 </div>
 
                 <div class="mb-2 flex items-center gap-2">
-                    <label class="text-xs w-24" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文记忆条数</label>
+                    <label class="text-xs w-24"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文记忆条数</label>
                     <input v-model="localData.contextLimit" type="number" class="setting-input mt-0 flex-1"
                         placeholder="默认 20 条"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
                 </div>
 
                 <div class="mb-2 flex items-center gap-2">
-                    <label class="text-xs w-24" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文显示条数</label>
+                    <label class="text-xs w-24"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文显示条数</label>
                     <input v-model="localData.displayLimit" type="number" class="setting-input mt-0 flex-1"
                         placeholder="防止卡顿 (默认 50)"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
                 </div>
 
                 <div class="mb-2 flex items-center gap-2">
-                    <label class="text-xs w-24" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">自动总结条数</label>
+                    <label class="text-xs w-24"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">自动总结条数</label>
                     <input v-model="localData.summaryLimit" type="number" class="setting-input mt-0 flex-1"
                         placeholder="每隔多少条触发 (默认 50)"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
@@ -482,7 +512,9 @@
                 <div class="glass-panel p-3 rounded-lg mb-2 space-y-3"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">自动总结 (Auto Summary)</span>
+                        <span class="text-sm"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">自动总结
+                            (Auto Summary)</span>
                         <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
                             :class="localData.autoSummary ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
                             @click="localData.autoSummary = !localData.autoSummary">
@@ -494,7 +526,8 @@
                     <div class="pt-2 border-t"
                         :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-100'">
                         <label class="text-[10px] mb-1 block"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">总结提示词 (Prompt)</label>
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">总结提示词
+                            (Prompt)</label>
                         <textarea v-model="localData.summaryPrompt" class="setting-input h-24 text-xs"
                             placeholder="自定义总结提示词..."
                             :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''"></textarea>
@@ -512,11 +545,14 @@
 
                 <!-- Voice (TTS) -->
                 <div>
-                    <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">语音 (TTS)</h3>
-                    <div
-                        class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+                    <h3 class="section-title"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">语音
+                        (TTS)</h3>
+                    <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                        <span class="text-sm" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">启用 TTS</span>
+                        <span class="text-sm"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">启用
+                            TTS</span>
                         <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
                             :class="localData.autoTTS ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
                             @click="localData.autoTTS = !localData.autoTTS">
@@ -524,21 +560,35 @@
                                 :class="localData.autoTTS ? 'left-[22px]' : 'left-[2px]'"></div>
                         </div>
                     </div>
-                    <input v-model="localData.voiceId" type="text" class="setting-input mb-2"
-                        placeholder="角色 Voice ID (MiniMax)"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
+                    <div v-if="settingsStore.voice.engine === 'minimax'" class="mb-2">
+                        <input v-model="localData.voiceId" type="text" class="setting-input"
+                            placeholder="角色 Voice ID (MiniMax)"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
+                    </div>
+                    <div v-if="settingsStore.voice.engine === 'doubao'" class="mb-2">
+                        <div @click="showVoicePicker = true"
+                            class="w-full border rounded-lg px-3 py-2 text-sm flex items-center justify-between cursor-pointer transition-colors"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-200'">
+                            <span class="truncate">{{ currentVoiceName }}</span>
+                            <i class="fa-solid fa-chevron-down text-gray-400 text-[10px]"></i>
+                        </div>
+                    </div>
                     <div class="flex items-center gap-2">
-                        <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">语速</span>
+                        <span class="text-xs"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">语速</span>
                         <input v-model.number="localData.voiceSpeed" type="range" min="0.5" max="2" step="0.1"
                             class="flex-1 h-1 bg-gray-300 rounded-lg accent-green-500">
-                        <span class="text-xs w-6 text-right" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-800'">{{ localData.voiceSpeed }}</span>
+                        <span class="text-xs w-6 text-right"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-800'">{{
+                                localData.voiceSpeed }}</span>
                     </div>
 
                     <!-- Call Virtual Avatar Settings -->
                     <div class="mt-4 border-t pt-3"
                         :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-100'">
                         <label class="text-xs block mb-2"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">通话虚拟形象 (视频通话)</label>
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">通话虚拟形象
+                            (视频通话)</label>
                         <div class="grid grid-cols-2 gap-4">
                             <!-- Character Call Avatar -->
                             <div class="flex flex-col items-center gap-2">
@@ -558,8 +608,7 @@
                                     </div>
                                 </div>
                                 <div class="flex gap-1">
-                                    <button
-                                        class="text-[10px] px-1.5 py-0.5 rounded hover:bg-gray-100"
+                                    <button class="text-[10px] px-1.5 py-0.5 rounded hover:bg-gray-100"
                                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-50 text-gray-500'"
                                         @click="promptCallAvatarUrl('char')">URL</button>
                                     <button
@@ -585,8 +634,7 @@
                                     </div>
                                 </div>
                                 <div class="flex gap-1">
-                                    <button
-                                        class="text-[10px] px-1.5 py-0.5 rounded hover:bg-gray-100"
+                                    <button class="text-[10px] px-1.5 py-0.5 rounded hover:bg-gray-100"
                                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-50 text-gray-500'"
                                         @click="promptCallAvatarUrl('user')">URL</button>
                                     <button
@@ -602,7 +650,9 @@
 
                 <!-- Pat Settings -->
                 <div>
-                    <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">拍一拍设置</h3>
+                    <h3 class="section-title"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
+                        拍一拍设置</h3>
                     <div class="space-y-2">
                         <input v-model="localData.patAction" type="text" class="setting-input"
                             placeholder="自定义动作，如：敲了敲、摸了摸"
@@ -615,7 +665,9 @@
 
                 <!-- Bubble & Background -->
                 <div>
-                    <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">气泡与背景</h3>
+                    <h3 class="section-title"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
+                        气泡与背景</h3>
                     <!-- Preview Box (Dynamic) -->
                     <div class="relative overflow-hidden rounded-xl h-40 mb-4 border transition-all duration-300"
                         :class="localData.bgTheme === 'dark' ? 'bg-black border-white/10' : 'bg-gray-100 border-gray-200'">
@@ -655,10 +707,13 @@
                     </div>
 
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="text-xs" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">字体大小</span>
+                        <span class="text-xs"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">字体大小</span>
                         <input v-model="localData.bubbleSize" type="range" min="12" max="30" step="1"
                             class="flex-1 h-1 bg-gray-300 rounded-lg accent-green-500">
-                        <span class="text-xs w-6 text-right" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-800'">{{ localData.bubbleSize }}</span>
+                        <span class="text-xs w-6 text-right"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-800'">{{
+                                localData.bubbleSize }}</span>
                     </div>
 
                     <!-- Presets -->
@@ -697,23 +752,26 @@
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <div class="flex justify-between text-xs mb-1"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'"><span>模糊度</span><span>{{
-                                    localData.bgBlur }}px</span></div>
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">
+                                    <span>模糊度</span><span>{{
+                                        localData.bgBlur }}px</span>
+                                </div>
                                 <input v-model="localData.bgBlur" type="range" min="0" max="20" step="1"
                                     class="w-full h-1 bg-gray-300 rounded-lg accent-blue-500">
                             </div>
                             <div>
                                 <div class="flex justify-between text-xs mb-1"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'"><span>透明度</span><span>{{
-                                    localData.bgOpacity }}</span></div>
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">
+                                    <span>透明度</span><span>{{
+                                        localData.bgOpacity }}</span>
+                                </div>
                                 <input v-model="localData.bgOpacity" type="range" min="0" max="1" step="0.1"
                                     class="w-full h-1 bg-gray-300 rounded-lg accent-blue-500">
                             </div>
                         </div>
 
                         <!-- NEW: Background Theme Toggle -->
-                        <div
-                            class="flex items-center justify-between p-2 rounded-lg border"
+                        <div class="flex items-center justify-between p-2 rounded-lg border"
                             :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/20'">
                             <span class="text-xs font-medium"
                                 :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">背景底色主题</span>
@@ -733,7 +791,9 @@
                 <!-- Delete -->
                 <!-- Data & Management -->
                 <div class="mt-6">
-                    <h3 class="section-title" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">数据与管理</h3>
+                    <h3 class="section-title"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
+                        数据与管理</h3>
 
                     <!-- Export Card -->
                     <button
@@ -769,58 +829,60 @@
                 </div>
             </div>
         </div>
-            <!-- Token Detail Modal -->
-            <div v-if="showTokenModal"
-                class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-                @click="showTokenModal = false">
-                <div class="w-[90%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl"
-                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'"
-                    @click.stop>
-                    <div class="p-3 flex justify-between items-center border-b"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#334155] border-[#475569]' : 'bg-gray-100 border-gray-200'">
-                        <span class="font-bold" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">Token 统计详情</span>
-                        <button @click="showTokenModal = false"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'"><i
-                                class="fa-solid fa-xmark"></i></button>
+        <!-- Token Detail Modal -->
+        <div v-if="showTokenModal"
+            class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+            @click="showTokenModal = false">
+            <div class="w-[90%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'" @click.stop>
+                <div class="p-3 flex justify-between items-center border-b"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#334155] border-[#475569]' : 'bg-gray-100 border-gray-200'">
+                    <span class="font-bold"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">Token
+                        统计详情</span>
+                    <button @click="showTokenModal = false"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'"><i
+                            class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-4 space-y-3 text-sm">
+                    <!-- Total -->
+                    <div class="flex justify-between items-center mb-2 pb-2 border-b"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'border-gray-700' : 'border-gray-100'">
+                        <span class="font-bold"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-700'">总计
+                            (Total Context)</span>
+                        <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
+                        }}</span>
                     </div>
-                    <div class="p-4 space-y-3 text-sm">
-                        <!-- Total -->
-                        <div class="flex justify-between items-center mb-2 pb-2 border-b"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'border-gray-700' : 'border-gray-100'">
-                            <span class="font-bold" :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-700'">总计 (Total Context)</span>
-                            <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
-                            }}</span>
-                        </div>
 
-                        <!-- Breakdown List -->
-                        <div class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                            <div v-for="(label, key) in contextLabels" :key="key">
-                                <div class="flex justify-between items-center text-gray-600 cursor-pointer p-2 rounded transition-colors"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300 hover:bg-white/10' : 'hover:bg-gray-50'"
-                                    @click="toggleContextExpand(key)">
-                                    <span
-                                        class="font-medium border-b border-dashed transition-colors"
-                                        :class="settingsStore.personalization.theme === 'dark' ? 'border-gray-600 hover:border-gray-400' : 'border-gray-300 hover:border-gray-500'">{{
-                                            label }}</span>
-                                    <span class="font-mono px-1.5 rounded text-xs"
-                                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 bg-gray-700' : 'text-gray-500 bg-gray-100'">{{
+                    <!-- Breakdown List -->
+                    <div class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                        <div v-for="(label, key) in contextLabels" :key="key">
+                            <div class="flex justify-between items-center text-gray-600 cursor-pointer p-2 rounded transition-colors"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300 hover:bg-white/10' : 'hover:bg-gray-50'"
+                                @click="toggleContextExpand(key)">
+                                <span class="font-medium border-b border-dashed transition-colors"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'border-gray-600 hover:border-gray-400' : 'border-gray-300 hover:border-gray-500'">{{
+                                        label }}</span>
+                                <span class="font-mono px-1.5 rounded text-xs"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 bg-gray-700' : 'text-gray-500 bg-gray-100'">{{
                                         contextTokenCounts[key] || 0 }}</span>
-                                </div>
+                            </div>
 
-                                <!-- Expanded Content -->
-                                <div v-if="expandedContextKey === key"
-                                    class="mt-1 p-2 rounded text-[10px] whitespace-pre-wrap font-mono break-all max-h-[200px] overflow-y-auto shadow-inner"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-800 text-gray-400 border border-gray-700' : 'bg-gray-50 text-gray-500 border border-gray-100'">
-                                    {{ contextPreviewData[key] || '（无内容）' }}
-                                </div>
+                            <!-- Expanded Content -->
+                            <div v-if="expandedContextKey === key"
+                                class="mt-1 p-2 rounded text-[10px] whitespace-pre-wrap font-mono break-all max-h-[200px] overflow-y-auto shadow-inner"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-800 text-gray-400 border border-gray-700' : 'bg-gray-50 text-gray-500 border border-gray-100'">
+                                {{ contextPreviewData[key] || '（无内容）' }}
                             </div>
                         </div>
+                    </div>
 
-                        <div class="mt-4 text-[10px] text-center border-t pt-2"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500 border-gray-700' : 'text-gray-400'">
-                            * 点击条目可查看实际发送给 AI 的文本内容<br>
-                            * 估算值：1 中文 ≈ 1 Token, 3 英文 ≈ 1 Token
-                        </div>
+                    <div class="mt-4 text-[10px] text-center border-t pt-2"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500 border-gray-700' : 'text-gray-400'">
+                        * 点击条目可查看实际发送给 AI 的文本内容<br>
+                        * 估算值：1 中文 ≈ 1 Token, 3 英文 ≈ 1 Token
+                    </div>
                 </div>
             </div>
         </div>
@@ -830,195 +892,252 @@
             class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
             @click="showMemoryModal = false">
             <div class="w-[90%] max-w-[360px] h-[85%] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
-                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-white'"
-                @click.stop>
-            <!-- Header with Theme Switcher -->
-            <div class="p-4 border-b"
-                :class="settingsStore.personalization.theme === 'dark' 
-                    ? 'border-[#334155] bg-gradient-to-r from-purple-900/50 to-pink-900/50' 
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-white'" @click.stop>
+                <!-- Header with Theme Switcher -->
+                <div class="p-4 border-b" :class="settingsStore.personalization.theme === 'dark'
+                    ? 'border-[#334155] bg-gradient-to-r from-purple-900/50 to-pink-900/50'
                     : 'border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50'">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="font-bold flex items-center gap-2 text-lg"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">
-                        <i class="fa-solid fa-brain text-purple-500"></i> 记忆管理库
-                    </span>
-                    <button @click="showMemoryModal = false"
-                        class="transition-colors"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'">
-                        <i class="fa-solid fa-xmark text-xl"></i>
-                    </button>
-                </div>
-
-                <!-- Theme Selector -->
-                <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <button v-for="theme in memoryThemes" :key="theme.id" @click="currentMemoryTheme = theme.id"
-                        class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0"
-                        :class="currentMemoryTheme === theme.id
-                            ? 'bg-gradient-to-r ' + theme.activeGradient + ' text-white shadow-md scale-105'
-                            : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 border border-white/10 hover:border-white/20' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300')">
-                        <i :class="theme.icon"></i> {{ theme.name }}
-                    </button>
-                </div>
-            </div>
-
-            <!-- Memory List with Dynamic Theme -->
-            <div class="flex-1 overflow-y-auto p-4 space-y-3" :class="getThemeBackground()">
-                <div v-if="memories.length === 0" class="text-center text-gray-400 py-12 text-sm">
-                    <i class="fa-solid fa-box-open text-4xl mb-3 opacity-30"></i>
-                    <div>暂无记忆</div>
-                </div>
-
-                <div v-for="(mem, index) in memories" :key="index" class="relative transition-all duration-300"
-                    :class="{ 'pl-8': isEditMode }">
-                    <!-- Checkbox (Only in Edit Mode) -->
-                    <div v-if="isEditMode" class="absolute left-0 top-3">
-                        <input type="checkbox"
-                            class="w-5 h-5 rounded border-2 border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer transition-transform hover:scale-110"
-                            :checked="selectedIndices.has(index)" @change="toggleSelection(index)">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="font-bold flex items-center gap-2 text-lg"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">
+                            <i class="fa-solid fa-brain text-purple-500"></i> 记忆管理库
+                        </span>
+                        <button @click="showMemoryModal = false" class="transition-colors"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'">
+                            <i class="fa-solid fa-xmark text-xl"></i>
+                        </button>
                     </div>
 
-                    <!-- Memory Card with Theme -->
-                    <div :class="getThemeCardClass()" class="transition-all duration-300 hover:shadow-lg">
-                        <!-- Editing Mode -->
-                        <div v-if="editingIndex === index">
-                            <textarea v-model="editingContent"
-                                class="w-full border-2 border-purple-300 rounded-lg p-3 text-sm h-32 mb-2 focus:ring-2 focus:ring-purple-400 outline-none font-serif"
-                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-white border-purple-600 focus:ring-purple-500' : ''"></textarea>
-                            <div class="flex justify-end gap-2">
-                                <button
-                                    class="text-xs px-4 py-1.5 rounded-lg transition-colors"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-                                    @click="cancelEdit">取消</button>
-                                <button
-                                    class="text-xs px-4 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors shadow-md"
-                                    @click="saveEdit(index)">保存</button>
-                            </div>
+                    <!-- Theme Selector -->
+                    <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        <button v-for="theme in memoryThemes" :key="theme.id" @click="currentMemoryTheme = theme.id"
+                            class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0"
+                            :class="currentMemoryTheme === theme.id
+                                ? 'bg-gradient-to-r ' + theme.activeGradient + ' text-white shadow-md scale-105'
+                                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 border border-white/10 hover:border-white/20' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300')">
+                            <i :class="theme.icon"></i> {{ theme.name }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Memory List with Dynamic Theme -->
+                <div class="flex-1 overflow-y-auto p-4 space-y-3" :class="getThemeBackground()">
+                    <div v-if="memories.length === 0" class="text-center text-gray-400 py-12 text-sm">
+                        <i class="fa-solid fa-box-open text-4xl mb-3 opacity-30"></i>
+                        <div>暂无记忆</div>
+                    </div>
+
+                    <div v-for="(mem, index) in memories" :key="index" class="relative transition-all duration-300"
+                        :class="{ 'pl-8': isEditMode }">
+                        <!-- Checkbox (Only in Edit Mode) -->
+                        <div v-if="isEditMode" class="absolute left-0 top-3">
+                            <input type="checkbox"
+                                class="w-5 h-5 rounded border-2 border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer transition-transform hover:scale-110"
+                                :checked="selectedIndices.has(index)" @change="toggleSelection(index)">
                         </div>
 
-                        <!-- Display Mode -->
-                        <div v-else>
-                            <div class="flex justify-between items-start mb-2">
-                                <div class="flex items-center gap-2">
-                                    <!-- Themed Number Badge -->
-                                    <span :class="getThemeNumberClass()">
-                                        {{ getThemeNumberPrefix(memories.length - index) }}
-                                    </span>
-                                    <span :class="getThemeBadgeClass()">{{ getThemeLabel() }}</span>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button class="text-blue-500 hover:text-blue-600 transition-colors p-1"
-                                        @click="startEdit(index, mem)" title="编辑">
-                                        <i class="fa-solid fa-pen text-sm"></i>
-                                    </button>
-                                    <button class="text-red-500 hover:text-red-600 transition-colors p-1"
-                                        @click="deleteMemory(index)" title="删除">
-                                        <i class="fa-solid fa-trash text-sm"></i>
-                                    </button>
+                        <!-- Memory Card with Theme -->
+                        <div :class="getThemeCardClass()" class="transition-all duration-300 hover:shadow-lg">
+                            <!-- Editing Mode -->
+                            <div v-if="editingIndex === index">
+                                <textarea v-model="editingContent"
+                                    class="w-full border-2 border-purple-300 rounded-lg p-3 text-sm h-32 mb-2 focus:ring-2 focus:ring-purple-400 outline-none font-serif"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-white border-purple-600 focus:ring-purple-500' : ''"></textarea>
+                                <div class="flex justify-end gap-2">
+                                    <button class="text-xs px-4 py-1.5 rounded-lg transition-colors"
+                                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                                        @click="cancelEdit">取消</button>
+                                    <button
+                                        class="text-xs px-4 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors shadow-md"
+                                        @click="saveEdit(index)">保存</button>
                                 </div>
                             </div>
-                            <div :class="getThemeContentClass()">
-                                {{ typeof mem === 'object' ? (mem.content || JSON.stringify(mem)) : mem }}
-                            </div>
-                            <div v-if="typeof mem === 'object' && mem.range" :class="getThemeMetaClass()">
-                                <i class="fa-solid fa-clock mr-1"></i>
-                                {{ mem.range }} · {{ new Date(mem.timestamp).toLocaleString('zh-CN', {
-                                    month: 'short',
-                                    day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                }) }}
+
+                            <!-- Display Mode -->
+                            <div v-else>
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <!-- Themed Number Badge -->
+                                        <span :class="getThemeNumberClass()">
+                                            {{ getThemeNumberPrefix(memories.length - index) }}
+                                        </span>
+                                        <span :class="getThemeBadgeClass()">{{ getThemeLabel() }}</span>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button class="text-blue-500 hover:text-blue-600 transition-colors p-1"
+                                            @click="startEdit(index, mem)" title="编辑">
+                                            <i class="fa-solid fa-pen text-sm"></i>
+                                        </button>
+                                        <button class="text-red-500 hover:text-red-600 transition-colors p-1"
+                                            @click="deleteMemory(index)" title="删除">
+                                            <i class="fa-solid fa-trash text-sm"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div :class="getThemeContentClass()">
+                                    {{ typeof mem === 'object' ? (mem.content || JSON.stringify(mem)) : mem }}
+                                </div>
+                                <div v-if="typeof mem === 'object' && mem.range" :class="getThemeMetaClass()">
+                                    <i class="fa-solid fa-clock mr-1"></i>
+                                    {{ mem.range }} · {{ new Date(mem.timestamp).toLocaleString('zh-CN', {
+                                        month: 'short',
+                                        day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                    }) }}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Footer with Edit Mode Toggle -->
-            <div class="p-3 border-t flex justify-between items-center gap-2"
-                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a] border-[#334155]' : 'bg-white border-gray-200'">
-                <!-- Edit Mode Toggle -->
-                <button @click="isEditMode = !isEditMode"
-                    class="px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2" :class="isEditMode
-                        ? 'bg-purple-500 text-white shadow-md'
-                        : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')">
-                    <i class="fa-solid" :class="isEditMode ? 'fa-check' : 'fa-edit'"></i>
-                    {{ isEditMode ? '完成' : '编辑' }}
-                </button>
- 
-                <!-- Batch Delete (Only in Edit Mode) -->
-                <div v-if="isEditMode" class="flex items-center gap-2">
-                    <label class="flex items-center gap-1.5 text-xs cursor-pointer select-none"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
-                        <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"
-                            class="rounded border-gray-300 text-purple-600 focus:ring-purple-500">
-                        全选
-                    </label>
-                    <button class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
-                        :class="selectedIndices.size > 0
-                            ? 'bg-red-500 text-white hover:bg-red-600 shadow-md'
-                            : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')" @click="batchDeleteMemory"
-                        :disabled="selectedIndices.size === 0">
-                        <i class="fa-solid fa-trash"></i>
-                        删除 ({{ selectedIndices.size }})
+                <!-- Footer with Edit Mode Toggle -->
+                <div class="p-3 border-t flex justify-between items-center gap-2"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a] border-[#334155]' : 'bg-white border-gray-200'">
+                    <!-- Edit Mode Toggle -->
+                    <button @click="isEditMode = !isEditMode"
+                        class="px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2"
+                        :class="isEditMode
+                            ? 'bg-purple-500 text-white shadow-md'
+                            : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')">
+                        <i class="fa-solid" :class="isEditMode ? 'fa-check' : 'fa-edit'"></i>
+                        {{ isEditMode ? '完成' : '编辑' }}
                     </button>
+
+                    <!-- Batch Delete (Only in Edit Mode) -->
+                    <div v-if="isEditMode" class="flex items-center gap-2">
+                        <label class="flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
+                            <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"
+                                class="rounded border-gray-300 text-purple-600 focus:ring-purple-500">
+                            全选
+                        </label>
+                        <button
+                            class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
+                            :class="selectedIndices.size > 0
+                                ? 'bg-red-500 text-white hover:bg-red-600 shadow-md'
+                                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')"
+                            @click="batchDeleteMemory" :disabled="selectedIndices.size === 0">
+                            <i class="fa-solid fa-trash"></i>
+                            删除 ({{ selectedIndices.size }})
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Avatar Frame Pickers -->
-    <AvatarFramePicker v-if="showFramePicker" v-model="localData.avatarFrame" @close="showFramePicker = false" />
-    <AvatarFramePicker v-if="showUserFramePicker" v-model="localData.userAvatarFrame"
-        @close="showUserFramePicker = false" />
+        <!-- Avatar Frame Pickers -->
+        <AvatarFramePicker v-if="showFramePicker" v-model="localData.avatarFrame" @close="showFramePicker = false" />
+        <AvatarFramePicker v-if="showUserFramePicker" v-model="localData.userAvatarFrame"
+            @close="showUserFramePicker = false" />
 
-    <!-- Export Card Modal -->
-    <div v-if="showExportModal"
-        class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-        @click="showExportModal = false">
-        <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up" @click.stop>
-            <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">导出角色卡</h3>
+        <!-- Export Card Modal -->
+        <div v-if="showExportModal"
+            class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+            @click="showExportModal = false">
+            <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up"
+                @click.stop>
+                <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">导出角色卡</h3>
 
-            <div class="space-y-3 mb-6">
-                <!-- Include Memory -->
-                <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
-                    @click="exportIncludeMemory = !exportIncludeMemory">
-                    <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
-                        :class="exportIncludeMemory ? 'bg-purple-500 border-purple-500' : 'bg-white border-gray-300'">
-                        <i v-if="exportIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
+                <div class="space-y-3 mb-6">
+                    <!-- Include Memory -->
+                    <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
+                        @click="exportIncludeMemory = !exportIncludeMemory">
+                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                            :class="exportIncludeMemory ? 'bg-purple-500 border-purple-500' : 'bg-white border-gray-300'">
+                            <i v-if="exportIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-sm font-bold text-gray-700">包含记忆库</div>
+                            <div class="text-[10px] text-gray-400">保留角色已有的长期记忆</div>
+                        </div>
                     </div>
-                    <div class="flex-1">
-                        <div class="text-sm font-bold text-gray-700">包含记忆库</div>
-                        <div class="text-[10px] text-gray-400">保留角色已有的长期记忆</div>
-                    </div>
-                </div>
 
-                <!-- Include History -->
-                <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
-                    @click="exportIncludeHistory = !exportIncludeHistory">
-                    <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
-                        :class="exportIncludeHistory ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'">
-                        <i v-if="exportIncludeHistory" class="fa-solid fa-check text-white text-xs"></i>
-                    </div>
-                    <div class="flex-1">
-                        <div class="text-sm font-bold text-gray-700">包含聊天记录</div>
-                        <div class="text-[10px] text-gray-400 text-orange-500">
-                            <i class="fa-solid fa-triangle-exclamation mr-1"></i>文件可能较大
+                    <!-- Include History -->
+                    <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
+                        @click="exportIncludeHistory = !exportIncludeHistory">
+                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                            :class="exportIncludeHistory ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'">
+                            <i v-if="exportIncludeHistory" class="fa-solid fa-check text-white text-xs"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-sm font-bold text-gray-700">包含聊天记录</div>
+                            <div class="text-[10px] text-gray-400 text-orange-500">
+                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>文件可能较大
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="flex gap-3">
-                <button class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform"
-                    @click="showExportModal = false">取消</button>
-                <button class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 active:scale-95 transition-transform"
-                    @click="handleExportCard">导出</button>
+                <div class="flex gap-3">
+                    <button
+                        class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform"
+                        @click="showExportModal = false">取消</button>
+                    <button
+                        class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 active:scale-95 transition-transform"
+                        @click="handleExportCard">导出</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Avatar Cropper Modal -->
-    <AvatarCropper v-if="showAvatarCropper || showUserAvatarCropper" :image-src="cropperImageSrc"
-        @crop="handleCropComplete" @cancel="handleCropCancel" />
+        <!-- Avatar Cropper Modal -->
+        <AvatarCropper v-if="showAvatarCropper || showUserAvatarCropper" :image-src="cropperImageSrc"
+            @crop="handleCropComplete" @cancel="handleCropCancel" />
 
+        <!-- Voice Picker Modal -->
+        <Transition name="fade">
+            <div v-if="showVoicePicker"
+                class="fixed inset-0 z-[10002] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+                @click="showVoicePicker = false">
+                <div class="w-full max-w-[500px] bg-[#f8f9fa] rounded-t-[32px] flex flex-col max-h-[85vh] animate-slide-up shadow-2xl"
+                    @click.stop
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a] text-white' : 'bg-[#f8f9fa] text-gray-800'">
+                    <!-- Header -->
+                    <div class="sticky top-0 p-6 flex flex-col gap-4 bg-inherit rounded-t-[32px] border-b"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-100'">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-black">选择音色 (Doubao)</h2>
+                            <button @click="showVoicePicker = false"
+                                class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <!-- Search Bar -->
+                        <div class="relative">
+                            <i
+                                class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                            <input v-model="voiceSearchQuery" type="text" placeholder="搜索发声人名称或 ID..."
+                                class="w-full pl-11 pr-4 py-3 rounded-2xl border-none outline-none text-sm transition-all shadow-sm"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 focus:bg-white/10 text-white' : 'bg-white focus:shadow-md'">
+                        </div>
+                    </div>
+
+                    <!-- List container with specific height/scroll -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-2 min-h-[300px]">
+                        <div v-for="v in filteredVoices" :key="v.id" @click="selectVoice(v.id)"
+                            class="flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all active:scale-[0.98]"
+                            :class="[
+                                localData.doubaoSpeaker === v.id
+                                    ? (settingsStore.personalization.theme === 'dark' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-50 text-emerald-600 border border-emerald-100')
+                                    : (settingsStore.personalization.theme === 'dark' ? 'hover:bg-white/5 border border-transparent' : 'hover:bg-white border border-transparent hover:border-gray-100')
+                            ]">
+                            <div class="flex flex-col">
+                                <span class="font-bold text-sm">{{ v.name }}</span>
+                                <span class="text-[10px] opacity-40 font-mono">{{ v.id }}</span>
+                            </div>
+                            <div v-if="localData.doubaoSpeaker === v.id"
+                                class="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center">
+                                <i class="fa-solid fa-check text-white text-[10px]"></i>
+                            </div>
+                        </div>
+                        <div v-if="filteredVoices.length === 0" class="py-12 text-center opacity-40 italic text-sm">
+                            未找到相关音色
+                        </div>
+                    </div>
+
+                    <!-- Footer Area Padding for Safe Space -->
+                    <div class="h-8 shrink-0"></div>
+                </div>
+            </div>
+        </Transition>
     </div> <!-- End Main Wrapper -->
 </template>
 
@@ -1404,6 +1523,25 @@ const getThemeMetaClass = () => {
     return themes[currentMemoryTheme.value] || themes.diary
 }
 
+// --- Voice Picker System ---
+const showVoicePicker = ref(false)
+const voiceSearchQuery = ref('')
+const filteredVoices = computed(() => {
+    const list = settingsStore.voice.doubaoVoices || []
+    if (!voiceSearchQuery.value) return list
+    const q = voiceSearchQuery.value.toLowerCase()
+    return list.filter(v => v.name.toLowerCase().includes(q) || v.id.toLowerCase().includes(q))
+})
+const selectVoice = (voiceId) => {
+    localData.value.doubaoSpeaker = voiceId
+    showVoicePicker.value = false
+    voiceSearchQuery.value = ''
+}
+const currentVoiceName = computed(() => {
+    const v = settingsStore.voice.doubaoVoices?.find(v => v.id === localData.value.doubaoSpeaker)
+    return v ? v.name : (localData.value.doubaoSpeaker || '未选择')
+})
+
 const getThemeNumberClass = () => {
     const themes = {
         diary: 'flex items-center gap-1 text-amber-700 font-serif italic text-base',
@@ -1456,6 +1594,7 @@ const localData = ref({
     autoTTS: false,
     showInnerVoice: true,
     voiceId: '',
+    doubaoSpeaker: 'zh_female_sichuan',
     voiceSpeed: 1.0,
     patAction: '',
     patSuffix: '',
@@ -1582,7 +1721,7 @@ const promptAvatarUrl = () => {
         if (url) localData.value.avatar = url
     })
 }
- 
+
 // User Avatar Handlers
 const triggerUserAvatarUpload = () => userFileInput.value.click()
 const handleUserAvatarChange = async (e) => {
@@ -1876,6 +2015,7 @@ const handleExportCard = () => {
 
                 // Voice (TTS)
                 voiceId: localData.value.voiceId,
+                doubaoSpeaker: localData.value.doubaoSpeaker,
                 voiceSpeed: localData.value.voiceSpeed,
                 autoTTS: localData.value.autoTTS,
 
@@ -2067,13 +2207,13 @@ const handleConfirmManualSummary = async () => {
             options.endIndex = parseInt(parts[1])
         }
     }
-    
+
     showManualSummaryModal.value = false
     try {
         // Must await to catch errors from store
         const result = await chatStore.summarizeHistory(props.chatData.id, options)
         if (!result.success && result.error) {
-             showToast('总结失败: ' + result.error)
+            showToast('总结失败: ' + result.error)
         }
     } catch (e) {
         console.error(e)

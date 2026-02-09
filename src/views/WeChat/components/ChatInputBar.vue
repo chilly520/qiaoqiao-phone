@@ -5,7 +5,7 @@
             class="absolute bottom-full left-0 right-0 mb-0 bg-white shadow-sm border-t border-gray-100 p-3 flex justify-between items-center z-30">
             <div class="text-sm text-gray-700 truncate max-w-[85%] border-l-4 border-gray-300 pl-2">
                 <span class="font-medium text-gray-900">{{ currentQuote.role === 'user' ? '我' : (chatData.name || '对方')
-                }}:</span>
+                    }}:</span>
                 {{ currentQuote.content }}
             </div>
             <button @click="$emit('cancel-quote')" class="text-gray-400 hover:text-gray-600">
@@ -50,7 +50,7 @@
                 class="mb-1 text-[#2e2e2e] text-[22px] hover:text-gray-600 transition-colors w-[28px] flex justify-center"
                 @click="toggleVoiceMode" :title="isVoiceMode ? '切换到文字模式' : '切换到语音模式'">
                 <i class="fa-solid transition-all"
-                    :class="isVoiceMode ? 'fa-keyboard text-blue-500' : 'fa-microphone'"></i>
+                    :class="isVoiceMode ? 'fa-keyboard text-cyan-400' : 'fa-microphone'"></i>
             </button>
 
             <!-- Input Wrapper -->

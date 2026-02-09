@@ -134,7 +134,7 @@ export const useMahjongStore = defineStore('mahjong', () => {
         saveData()
     }
 
-    const createRoom = (config) => {
+    const createRoom = async (config) => {
         const settingsStore = useSettingsStore()
         const roomId = Math.random().toString(36).substring(2, 8).toUpperCase()
 
@@ -162,11 +162,11 @@ export const useMahjongStore = defineStore('mahjong', () => {
             isAI: false
         })
 
-        if (config.mode === 'quick') addAIPlayers(3)
+        if (config.mode === 'quick') await addAIPlayers(3)
         return roomId
     }
 
-    const addAIPlayers = (count) => {
+    const addAIPlayers = async (count) => {
         const positions = ['east', 'north', 'west']
         const existingCount = currentRoom.value.players.length - 1
         const takenNames = new Set(currentRoom.value.players.map(p => p.name))
@@ -192,8 +192,27 @@ export const useMahjongStore = defineStore('mahjong', () => {
             // Fallback if we somehow fail (unlikely with small loops)
             if (!ai) ai = mahjongAI.generateAIPlayer(existingCount + i + 1)
 
+            // Load character specific voice settings if it's a real character
+            let chatChar = null
+            try {
+                // Bots usually don't have chat icons unless explicitly mapped
+                // We'll skip the chatStore check for pure bots to avoid overhead or errors
+                if (!ai.id.startsWith('ai_bot_')) {
+                    const { useChatStore } = await import('./chatStore.js')
+                    const chatStore = useChatStore()
+                    chatChar = chatStore.chats ? chatStore.chats[ai.id] : null
+                }
+            } catch (e) {
+                console.warn('[MahjongStore] Failed to load chatStore in addAIPlayers', e)
+            }
+
+            const doubaoSpeaker = chatChar?.doubaoSpeaker || ai.doubaoSpeaker
+            const voiceId = chatChar?.voiceId || ai.voiceId
+
             currentRoom.value.players.push({
                 ...ai,
+                doubaoSpeaker,
+                voiceId,
                 position: positions[existingCount + i],
                 score: 0,
                 hand: [],
