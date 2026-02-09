@@ -253,6 +253,9 @@ export const useMomentsStore = defineStore('moments', () => {
 
         if (!canInteractWithMoment(moment, authorNameOrId)) return
 
+        let displayName = ''
+        let realChar = null
+
         if (authorNameOrId === 'user') {
             displayName = settingsStore.personalization.userProfile.name
         } else {
@@ -317,6 +320,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
     function removeLike(momentId, authorId) {
         const moment = moments.value.find(m => m.id === momentId)
+        const settingsStore = useSettingsStore()
         const userName = settingsStore.personalization.userProfile.name
         const target = authorId === 'user' ? userName : authorId
         if (moment && moment.likes) {
