@@ -1248,21 +1248,28 @@ const speakOne = async (text, onEnd, interrupt = false) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text, speaker })
             });
-            const res = await response.json();
-            if (res.audio?.data) {
-                const audio = new Audio(`data:audio/mp3;base64,${res.audio.data}`);
-                audio.onended = () => {
-                    isSpeaking.value = false;
-                    if (onEnd) onEnd();
-                };
-                audio.onerror = () => {
-                    isSpeaking.value = false;
-                    if (onEnd) onEnd();
-                };
-                audio.play();
-                return;
-            } else {
-                console.warn('[TTS] Doubao/Volc returned no data, falling back to browser');
+            
+            // 尝试解析JSON响应
+            try {
+                const res = await response.json();
+                if (res.audio?.data) {
+                    const audio = new Audio(`data:audio/mp3;base64,${res.audio.data}`);
+                    audio.onended = () => {
+                        isSpeaking.value = false;
+                        if (onEnd) onEnd();
+                    };
+                    audio.onerror = () => {
+                        isSpeaking.value = false;
+                        if (onEnd) onEnd();
+                    };
+                    audio.play();
+                    return;
+                } else {
+                    console.warn('[TTS] Doubao/Volc returned no data, falling back to browser');
+                }
+            } catch (jsonError) {
+                // 如果返回的是HTML而不是JSON，说明需要登录豆包
+                console.warn('[TTS] Doubao/Volc returned non-JSON response, falling back to browser');
             }
         } catch (e) {
             console.error('[TTS] Doubao/Volc failed:', e);

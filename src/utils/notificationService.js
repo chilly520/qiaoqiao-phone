@@ -87,16 +87,11 @@ class NotificationService {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        // Check if sw.js exists before registering
-        const response = await fetch('/sw.js', { method: 'HEAD' })
-        if (response.ok) {
-          const registration = await navigator.serviceWorker.register('/sw.js')
-          console.log('ServiceWorker registration successful with scope:', registration.scope)
-          return registration
-        } else {
-          console.log('ServiceWorker file not found, skipping registration')
-          return null
-        }
+        // Skip HEAD request and directly try to register
+        // This avoids the potential ERR_ABORTED error
+        const registration = await navigator.serviceWorker.register('/sw.js')
+        console.log('ServiceWorker registration successful with scope:', registration.scope)
+        return registration
       } catch (error) {
         console.error('ServiceWorker registration failed:', error)
         return null

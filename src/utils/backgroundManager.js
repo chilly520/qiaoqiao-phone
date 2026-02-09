@@ -7,6 +7,8 @@ class BackgroundManager {
         this.wakeLock = null;
         this.initialized = false;
         this.logger = null;
+        this.checkInterval = null;
+        this.checkIntervalTime = 60000; // 1分钟检查一次
     }
 
     /**
@@ -24,6 +26,7 @@ class BackgroundManager {
         this.createAudioLoop();
         this.setupVisibilityHandler();
         this.requestWakeLock();
+        this.startCheckInterval();
 
         this.initialized = true;
     }
@@ -94,12 +97,16 @@ class BackgroundManager {
                 this.log('App returned to foreground. Re-syncing keepers...', 'sys');
                 this.playAudio();
                 this.requestWakeLock();
+                this.startCheckInterval(); // Restart check interval when app is visible
             } else {
                 this.log('App entered background. Audio loop maintaining execution.', 'sys');
                 // Ensure audio is playing before fully backgrounding
                 if (this.audio && this.audio.paused) {
                     this.playAudio();
                 }
+                // Keep check interval running in background
+                // Some browsers may throttle it, but we'll let it run
+                this.log('Background check interval continuing in background mode', 'info');
             }
         });
     }
@@ -114,11 +121,60 @@ class BackgroundManager {
         }
     }
 
+    /**
+     * Starts a periodic check interval to trigger proactive messages and other background tasks.
+     */
+    startCheckInterval() {
+        this.stopCheckInterval(); // Clear any existing interval
+
+        this.checkInterval = setInterval(async () => {
+            try {
+                // Only run checks if the app is active
+                if (!this.isActive) return;
+
+                this.log('Running background check for proactive messages...', 'info');
+                
+                // Try to import and use chatStore
+                try {
+                    // Use dynamic import for ES modules
+                    const { useChatStore } = await import('../stores/chatStore');
+                    const chatStore = useChatStore();
+                    
+                    // Check for all chats
+                    if (chatStore.chats && chatStore.chats.value) {
+                        Object.keys(chatStore.chats.value).forEach(chatId => {
+                            chatStore.checkProactive(chatId);
+                        });
+                    }
+                } catch (e) {
+                    // Chat store might not be available yet, or component not mounted
+                    this.log(`Chat store not available for background check: ${e.message}`, 'info');
+                }
+            } catch (error) {
+                this.log(`Error in background check: ${error.message}`, 'error');
+            }
+        }, this.checkIntervalTime);
+
+        this.log(`Background check interval started (${this.checkIntervalTime / 1000}s)`, 'info');
+    }
+
+    /**
+     * Stops the periodic check interval.
+     */
+    stopCheckInterval() {
+        if (this.checkInterval) {
+            clearInterval(this.checkInterval);
+            this.checkInterval = null;
+            this.log('Background check interval stopped', 'info');
+        }
+    }
+
     getStatus() {
         return {
             active: this.isActive,
             initialized: this.initialized,
-            wakeLock: !!this.wakeLock
+            wakeLock: !!this.wakeLock,
+            checkInterval: !!this.checkInterval
         };
     }
 }

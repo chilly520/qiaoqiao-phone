@@ -336,7 +336,8 @@ const handleGlobalPromptCancel = () => {
 <template>
     <div class="app-root w-full min-h-[100dvh] h-[100dvh] relative overflow-hidden flex flex-col text-gray-800"
         :style="[globalStyles, { paddingBottom: 'var(--safe-area-inset-bottom)' }]"
-        :data-theme="store.personalization.theme">
+        :data-theme="store.personalization.theme"
+        style="max-width: 1224px; max-height: 2624px; margin: 0 auto;">
         <!-- Dynamic Styles Block -->
         <component is="style" v-if="customCss">{{ customCss }}</component>
 
@@ -420,7 +421,7 @@ const handleGlobalPromptCancel = () => {
 
         <!-- Main Content Area -->
 
-        <div class="flex-1 w-full h-full overflow-hidden relative z-10 flex flex-col">
+        <div class="flex-1 w-full h-full overflow-hidden relative z-10 flex flex-col main-content">
             <!-- 使用key强制组件重新渲染 -->
             <RouterView :key="routeKey" />
         </div>
@@ -597,5 +598,24 @@ const handleGlobalPromptCancel = () => {
 
 .animate-toast-pop {
     animation: toastPop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* 适配1224*2624屏幕尺寸 */
+@media (max-width: 1224px) {
+    .app-root {
+        max-width: 100vw;
+    }
+}
+
+@media (max-height: 2624px) {
+    .app-root {
+        max-height: 100vh;
+    }
+}
+
+/* 确保主内容区域适配减去状态栏后的高度 */
+.main-content {
+    height: calc(100vh - 28px);
+    max-height: 2548px;
 }
 </style>

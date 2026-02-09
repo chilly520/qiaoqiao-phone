@@ -2,91 +2,91 @@
     <div class="mahjong-lobby w-full h-full flex flex-col bg-emerald-50">
         <!-- 顶部导航 -->
         <div
-            class="h-[50px] bg-gradient-to-r from-emerald-600 to-green-600 flex items-center justify-between px-4 shadow-lg">
-            <button @click="router.push('/games')" class="w-10 h-10 flex items-center justify-center text-white">
+            class="h-[56px] bg-gradient-to-r from-emerald-600 to-green-600 flex items-center justify-between px-4 shadow-lg">
+            <button @click="router.push('/games')" class="w-12 h-12 flex items-center justify-center text-white">
                 <i class="fa-solid fa-chevron-left text-xl"></i>
             </button>
             <h1 class="text-xl font-bold text-white flex items-center gap-2">
                 <span>🀄</span>
                 <span>麻将大厅</span>
             </h1>
-            <button @click="showSettings = true" class="w-10 h-10 flex items-center justify-center text-white">
+            <button @click="showSettings = true" class="w-12 h-12 flex items-center justify-center text-white">
                 <i class="fa-solid fa-gear text-xl"></i>
             </button>
         </div>
 
         <!-- 个人信息卡片 -->
-        <div class="m-4 p-4 bg-white rounded-2xl shadow-md border border-emerald-100">
-            <div class="flex items-center gap-4">
+        <div class="m-4 p-5 bg-white rounded-2xl shadow-md border border-emerald-100">
+            <div class="flex items-center gap-5">
                 <!-- 头像显示 -->
-                <div class="w-16 h-16 rounded-2xl overflow-hidden shadow-inner border-2 border-emerald-50">
+                <div class="w-20 h-20 rounded-2xl overflow-hidden shadow-inner border-2 border-emerald-50">
                     <img :src="userAvatar" class="w-full h-full object-cover" />
                 </div>
 
                 <div class="flex-1">
                     <div class="flex items-center gap-2">
-                        <span class="text-lg font-black text-gray-800">{{ userName }}</span>
-                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-[10px] rounded-full font-bold">
+                        <span class="text-base font-black text-gray-800">{{ userName }}</span>
+                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-xs rounded-full font-bold">
                             {{ mahjongStore.rank }}
                         </span>
                     </div>
-                    <div class="text-xs text-gray-400 mt-1 flex gap-3">
+                    <div class="text-xs text-gray-400 mt-2 flex flex-wrap gap-4">
                         <span>积分:{{ mahjongStore.score }}</span>
                         <span>胜率:{{ winRate }}%</span>
                         <span>连胜:{{ mahjongStore.winStreak }}</span>
                     </div>
                 </div>
                 <div class="text-right">
-                    <div class="text-2xl font-black text-orange-500">{{ formattedBeans }}</div>
-                    <div class="text-[10px] text-gray-400">欢乐豆</div>
+                    <div class="text-xl font-black text-orange-500">{{ formattedBeans }}</div>
+                    <div class="text-xs text-gray-400">欢乐豆</div>
                 </div>
             </div>
 
             <!-- 充值按钮 -->
             <button @click="showRecharge = true"
-                class="w-full mt-3 py-2 bg-gradient-to-r from-amber-400 to-yellow-500 text-white font-bold rounded-lg shadow-md active:scale-95 transition-transform">
+                class="w-full mt-4 py-3 bg-gradient-to-r from-amber-400 to-yellow-500 text-white font-bold rounded-lg shadow-md active:scale-95 transition-transform">
                 <i class="fa-solid fa-coins mr-2"></i>
                 充值欢乐豆
             </button>
         </div>
 
         <!-- 快速开始 -->
-        <div class="px-4 mb-4">
+        <div class="px-4 mb-6">
             <button v-if="hasActiveGame" @click="returnToGame"
-                class="w-full py-4 mb-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 animate-pulse">
-                <i class="fa-solid fa-rotate-left text-2xl"></i>
+                class="w-full py-5 mb-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-lg rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 animate-pulse">
+                <i class="fa-solid fa-rotate-left text-xl"></i>
                 <span>回到牌桌</span>
             </button>
             <button @click="quickStart"
-                class="w-full py-4 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold text-xl rounded-2xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3">
-                <i class="fa-solid fa-bolt text-2xl"></i>
+                class="w-full py-5 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold text-lg rounded-2xl shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-3">
+                <i class="fa-solid fa-bolt text-xl"></i>
                 <span>快速开始</span>
             </button>
         </div>
 
         <!-- 功能按钮 -->
-        <div class="px-4 grid grid-cols-2 gap-3 mb-4">
+        <div class="px-4 grid grid-cols-2 gap-4 mb-6">
             <button @click="showCreateRoom = true"
-                class="py-3 bg-white rounded-xl shadow-md active:scale-95 transition-transform flex flex-col items-center gap-2">
+                class="py-4 bg-white rounded-xl shadow-md active:scale-95 transition-transform flex flex-col items-center gap-3">
                 <i class="fa-solid fa-plus-circle text-3xl text-blue-500"></i>
                 <span class="text-sm font-bold text-gray-700">创建房间</span>
             </button>
 
             <button @click="showRanking = true"
-                class="py-3 bg-white rounded-xl shadow-md active:scale-95 transition-transform flex flex-col items-center gap-2">
+                class="py-4 bg-white rounded-xl shadow-md active:scale-95 transition-transform flex flex-col items-center gap-3">
                 <i class="fa-solid fa-trophy text-3xl text-yellow-500"></i>
                 <span class="text-sm font-bold text-gray-700">排行榜</span>
             </button>
         </div>
 
         <!-- 游戏规则说明 -->
-        <div class="px-4 mb-4">
-            <div class="bg-white rounded-xl shadow-md p-4">
-                <h3 class="font-bold text-gray-800 mb-2 flex items-center gap-2">
+        <div class="px-4 mb-6">
+            <div class="bg-white rounded-xl shadow-md p-5">
+                <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
                     <i class="fa-solid fa-plus text-emerald-500"></i>
                     <span>游戏规则</span>
                 </h3>
-                <ul class="text-sm text-gray-600 space-y-1">
+                <ul class="text-sm text-gray-600 space-y-2">
                     <li>• 大众麻将，支持吃、碰、杠、胡</li>
                     <li>• 每局底注100欢乐豆</li>
                     <li>• 胡牌根据番数获得奖励</li>
@@ -699,5 +699,121 @@ const recharge = (pkg) => {
 .fade-enter-from,
 .fade-leave-to {
     opacity: 0;
+}
+
+/* 响应式设计 - 适配1224*2548屏幕 */
+@media (max-width: 1224px) {
+    /* 顶部导航栏 */
+    .mahjong-lobby > div:first-child {
+        height: 48px;
+    }
+    
+    .mahjong-lobby > div:first-child h1 {
+        font-size: 18px;
+    }
+    
+    /* 个人信息卡片 */
+    .mahjong-lobby > div:nth-child(2) {
+        margin: 12px;
+        padding: 16px;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:first-child {
+        width: 72px;
+        height: 72px;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(2) > div:first-child > span:first-child {
+        font-size: 16px;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(2) > div:nth-child(2) {
+        font-size: 12px;
+        gap: 12px;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(3) > div:first-child {
+        font-size: 20px;
+    }
+    
+    /* 快速开始按钮 */
+    .mahjong-lobby > div:nth-child(3) {
+        margin-bottom: 16px;
+    }
+    
+    .mahjong-lobby > div:nth-child(3) button {
+        padding: 12px;
+        font-size: 16px;
+    }
+    
+    /* 功能按钮 */
+    .mahjong-lobby > div:nth-child(4) {
+        margin-bottom: 16px;
+        gap: 12px;
+    }
+    
+    .mahjong-lobby > div:nth-child(4) button {
+        padding: 12px;
+    }
+    
+    .mahjong-lobby > div:nth-child(4) button i {
+        font-size: 24px;
+    }
+    
+    .mahjong-lobby > div:nth-child(4) button span {
+        font-size: 12px;
+    }
+    
+    /* 游戏规则说明 */
+    .mahjong-lobby > div:nth-child(5) {
+        margin-bottom: 16px;
+    }
+    
+    .mahjong-lobby > div:nth-child(5) > div {
+        padding: 16px;
+    }
+    
+    .mahjong-lobby > div:nth-child(5) > div h3 {
+        font-size: 16px;
+    }
+    
+    .mahjong-lobby > div:nth-child(5) > div ul {
+        font-size: 12px;
+    }
+}
+
+/* 针对高度的适配 */
+@media (max-height: 2548px) {
+    .mahjong-lobby {
+        overflow-y: auto;
+    }
+    
+    /* 确保内容不会溢出 */
+    .mahjong-lobby > div {
+        max-width: 100%;
+    }
+}
+
+/* 小屏幕适配 */
+@media (max-width: 768px) {
+    /* 个人信息卡片布局调整 */
+    .mahjong-lobby > div:nth-child(2) > div {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:first-child {
+        margin: 0 auto;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(2) {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(3) {
+        width: 100%;
+        text-align: center;
+    }
 }
 </style>

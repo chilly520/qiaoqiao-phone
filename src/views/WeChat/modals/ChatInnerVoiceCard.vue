@@ -125,14 +125,14 @@
                                 <div class="link-line"></div>
                                 <div class="link-info">
                                     <i class="fa-solid fa-person-walking animate-walk"></i>
-                                    <span class="link-dist">{{ currentVoiceContent.stats?.distance || '...' }}</span>
+                                    <span class="link-dist">{{ formatDistance(currentVoiceContent.stats?.distance) || '...' }}</span>
                                 </div>
                             </div>
 
                             <div class="route-stop text-right">
                                 <span class="stop-label">我的位置</span>
-                                <span class="stop-name">{{ settingsStore.weather.virtualLocation ||
-                                    settingsStore.weather.userLocation?.name || '未知' }}</span>
+                                <span class="stop-name">{{ settingsStore.weather.userLocation?.name ||
+                                    settingsStore.weather.virtualLocation || '未知' }}</span>
                             </div>
                         </div>
 
@@ -184,7 +184,7 @@
                             <div class="map-nav-panel">
                                 <div class="nav-item">
                                     <i class="fa-solid fa-diamond-turn-right text-blue-400"></i>
-                                    <span>{{ currentVoiceContent.stats?.distance || '计算中' }}</span>
+                                    <span>{{ formatDistance(currentVoiceContent.stats?.distance) || '计算中' }}</span>
                                 </div>
                                 <div class="nav-divider"></div>
                                 <div class="nav-item">
@@ -424,9 +424,36 @@ const getStatLabel = (key, val) => {
 
 const calculateTravelTime = (distStr) => {
     if (!distStr) return 5
-    const num = parseInt(distStr) || 0
-    if (num <= 0) return 0
-    return Math.ceil(num * 1.5)
+    // 解析距离字符串，支持m和km单位
+    const numMatch = distStr.match(/\d+(\.\d+)?/)
+    const num = numMatch ? parseFloat(numMatch[0]) : 0
+    const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 1)
+    
+    // 将距离转换为km进行计算
+    const distanceInKm = isKm ? num : num / 1000
+    if (distanceInKm <= 0) return 0
+    return Math.ceil(distanceInKm * 1.5)
+}
+
+// 格式化距离显示，根据距离大小自动选择m或km单位
+const formatDistance = (distStr) => {
+    if (!distStr) return '...'
+    
+    // 解析距离字符串
+    const numMatch = distStr.match(/\d+(\.\d+)?/)
+    const num = numMatch ? parseFloat(numMatch[0]) : 0
+    
+    // 根据距离大小选择合适的单位
+    if (num < 1) {
+        // 小于1km，转换为米
+        return `${Math.round(num * 1000)}m`
+    } else if (num < 10) {
+        // 1-10km，保留一位小数
+        return `${num.toFixed(1)}km`
+    } else {
+        // 10km以上，取整数
+        return `${Math.round(num)}km`
+    }
 }
 
 // --- Actions ---

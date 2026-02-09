@@ -1428,11 +1428,15 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         // 4. Random Proactive
-        const randomConfig = schedulerStore.randomConfigs[chatId]
-        if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
-            logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
-            schedulerStore.updateNextRandomTrigger(chatId)
-            sendMessageToAI(chatId, { hiddenHint: `（随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。）` })
+        try {
+            const randomConfig = schedulerStore.randomConfigs?.value?.[chatId]
+            if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
+                logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
+                schedulerStore.updateNextRandomTrigger(chatId)
+                sendMessageToAI(chatId, { hiddenHint: `（随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。）` })
+            }
+        } catch (error) {
+            logger.error(`[Proactive] Error checking random proactive: ${error.message}`)
         }
     }
 

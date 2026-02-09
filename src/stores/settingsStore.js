@@ -66,7 +66,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // --- 3. Other States ---
     const voice = ref({
-        engine: 'browser',
+        engine: 'doubao',
         minimax: {
             groupId: '',
             apiKey: '',
@@ -75,7 +75,7 @@ export const useSettingsStore = defineStore('settings', () => {
         },
         doubao: {
             cookie: '',
-            speaker: 'zh_female_sichuan'
+            speaker: 'zh_male_rap'
         },
         doubaoVoices: [
             { name: "霸道总裁 (男)", id: "tts.other.BV008_streaming" },
@@ -318,6 +318,10 @@ export const useSettingsStore = defineStore('settings', () => {
         weather.value.lastUpdate = Date.now()
         saveToStorage()
     }
+    function setUserLocation(location) {
+        weather.value.userLocation = location
+        saveToStorage()
+    }
     function setCompressQuality(val) { compressQuality.value = typeof val === 'string' ? parseFloat(val) : val; saveToStorage(); }
 
     // Drawing Action
@@ -428,7 +432,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, resetVoiceSettings,
-        setWeatherConfig, updateLiveWeather, setCompressQuality, setDrawingConfig,
+        setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport
     }
 })

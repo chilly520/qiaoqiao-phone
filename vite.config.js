@@ -67,10 +67,24 @@ export default defineConfig({
         changeOrigin: true,
         secure: false
       },
+      '/doubao': {
+        target: 'https://www.doubao.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/doubao/, '')
+      },
       '/volc': {
         target: 'https://translate.volcengine.com',
         changeOrigin: true,
+        secure: false,
         rewrite: (path) => path.replace(/^\/volc/, '')
+      },
+      '/ws-doubao': {
+        target: 'wss://www.doubao.com',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/ws-doubao/, '')
       }
     }
   },
