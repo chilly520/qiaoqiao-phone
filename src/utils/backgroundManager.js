@@ -71,6 +71,12 @@ class BackgroundManager {
      */
     async requestWakeLock() {
         if ('wakeLock' in navigator) {
+            // 只有当页面可见时才尝试获取Wake Lock
+            if (document.visibilityState !== 'visible') {
+                this.log('Skipping Wake Lock request: page is not visible', 'info');
+                return;
+            }
+            
             try {
                 this.wakeLock = await navigator.wakeLock.request('screen');
                 this.log('Screen Wake Lock acquired.', 'info');
@@ -83,7 +89,7 @@ class BackgroundManager {
                     }
                 });
             } catch (err) {
-                this.log(`Wake Lock failed: ${err.name} - ${err.message}`, 'error');
+                this.log(`Wake Lock failed: ${err.name} - ${err.message}`, 'info');
             }
         }
     }
