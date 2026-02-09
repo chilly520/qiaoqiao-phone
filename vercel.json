@@ -5,6 +5,14 @@
       "destination": "https://api.vkeys.cn/v2/:path*"
     },
     {
+      "source": "/volc/:path*",
+      "destination": "https://translate.volcengine.com/:path*"
+    },
+    {
+      "source": "/doubao/:path*",
+      "destination": "https://www.doubao.com/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

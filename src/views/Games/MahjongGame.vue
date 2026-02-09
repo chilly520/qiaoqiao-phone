@@ -30,10 +30,10 @@
 
                 <div class="flex items-center gap-2 text-white text-xs font-bold whitespace-nowrap overflow-hidden">
                     <span class="opacity-80">局: <span class="text-white">{{ mahjongStore.currentRoom?.currentRound
-                    }}/{{
+                            }}/{{
                                 mahjongStore.currentRoom?.totalRounds }}</span></span>
                     <span class="opacity-80">底: <span class="text-white">{{ mahjongStore.currentRoom?.baseStake
-                    }}</span></span>
+                            }}</span></span>
                     <span class="opacity-80">堆: <span class="text-yellow-400">{{ mahjongStore.gameState?.deck?.length
                         || 0
                             }}</span></span>
@@ -201,7 +201,7 @@
                         <div v-else-if="mahjongStore.currentRoom?.status === 'settling'" class="text-white text-center">
                             <div class="text-5xl mb-3">🎉</div>
                             <div class="text-2xl font-bold mb-2">{{ mahjongStore.currentRoom.lastResult?.winnerName
-                            }}
+                                }}
                                 胡了！
                             </div>
                             <div class="text-lg">{{ mahjongStore.currentRoom.lastResult?.fan }}番</div>
@@ -597,7 +597,7 @@
                                             class="mahjong-tile-small !w-6 !h-8 !text-base bg-yellow-50 border border-yellow-400 ml-2 shadow-[0_0_10px_rgba(251,191,36,0.8)] flex items-center justify-center animate-pulse"
                                             :class="getTileColorClass(mahjongStore.gameState.roundResult.winningTile)">
                                             <span>{{ getTileEmoji(mahjongStore.gameState.roundResult.winningTile)
-                                                }}</span>
+                                            }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -636,7 +636,7 @@
                                                     v-if="change.isPao || (!mahjongStore.gameState.roundResult.isZiMo && change.amount < 0 && mahjongStore.gameState.roundResult.type !== '流局')">炮</span>
                                             </div>
                                             <span class="font-bold text-sm text-gray-800 truncate">{{ change.name
-                                            }}</span>
+                                                }}</span>
                                         </div>
                                         <span class="font-bold text-sm shrink-0"
                                             :class="change.amount > 0 ? 'text-green-600' : 'text-red-500'">
@@ -1638,7 +1638,22 @@ const speak = async (actionType, playerIndex) => {
                 audio.play().catch(err => console.warn('[Mahjong-TTS] Audio play blocked:', err));
             }
         } catch (e) {
-            console.error('[TTS] Doubao failed', e);
+            console.error('[TTS] Doubao failed, falling back to local', e);
+            try {
+                // Fallback to local TTS
+                window.speechSynthesis.cancel()
+                const u = new SpeechSynthesisUtterance(text);
+                u.rate = isMe ? (voiceConfig.speed || 1.1) : 1.3;
+                if (!isMe) {
+                    u.pitch = gender === '男' ? 0.8 : 1.2;
+                    const voices = window.speechSynthesis.getVoices();
+                    const preferred = voices.find(v => (gender === '男' ? (v.name.includes('Male') || v.name.includes('男')) : (v.name.includes('Female') || v.name.includes('女'))));
+                    if (preferred) u.voice = preferred;
+                }
+                window.speechSynthesis.speak(u);
+            } catch (err) {
+                console.error('[TTS] Local fallback also failed', err)
+            }
         }
     } else if (engine === 'minimax') {
         // Simple Minimax placeholder or direct logic if available in common utils
