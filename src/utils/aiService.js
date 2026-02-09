@@ -316,15 +316,10 @@ export function generateContextPreview(chatId, char) {
     // 5. Summary
     const summaryText = char.summary || '（暂无自动总结）'
 
-    // System Prompt - Only basic instructions, no content that will be counted separately
-    const systemPrompt = `### 系统提示
-你是一个友好的AI助手，根据上下文进行回复。
-
-### 核心规则
-1. 全程使用简体中文
-2. 保持自然的对话风格
-3. 不要添加任何前缀
-4. 回复要符合角色设定`
+    // Update system prompt with fresh virtual time for accurate preview
+    const charWithTime = { ...char, virtualTime: currentVirtualTime }
+    // Generate full system prompt for display in Token stats
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE(charWithTime, userForSystem, stickers, '', '', patSettings, '', '', char.bio)
 
     return {
         system: systemPrompt,
