@@ -151,8 +151,15 @@ export async function generateReply(messages, char, abortSignal, options = {}) {
  */
 export function generateContextPreview(chatId, char) {
     const stickerStore = useStickerStore()
-    const worldBookStore = useWorldBookStore()
-    const momentsStore = useMomentsStore()
+    let worldBookStore = null
+    let momentsStore = null
+    
+    try {
+        worldBookStore = useWorldBookStore()
+        momentsStore = useMomentsStore()
+    } catch (e) {
+        console.warn('[AI Service] Store initialization failed:', e)
+    }
 
     // 1. System Prompt (Base) - Reusing Template Logic with placeholders
     // We don't have the exact user object here usually, but we have char.userName/Persona
@@ -185,18 +192,57 @@ export function generateContextPreview(chatId, char) {
     // 2. Collect entries
     let activeEntries = []
     if (activeBookIds.length > 0 && worldBookStore && worldBookStore.books) {
-        activeBookIds.forEach(bookId => {
-            const book = worldBookStore.books.find(b => b.id === bookId)
-            if (book && book.entries) {
-                book.entries.forEach(entry => {
-                    // Include all entries from linked world books, not just keyword-triggered ones
-                    activeEntries.push(entry)
-                })
+        activeBookIds.forEach(entryId => {
+            // First, try to find the entry directly in all books
+            let foundEntry = null
+            
+            // Search all books for this entry ID
+            for (const book of worldBookStore.books) {
+                if (book.entries) {
+                    const entry = book.entries.find(e => e.id === entryId)
+                    if (entry) {
+                        foundEntry = entry
+                        break
+                    }
+                }
+            }
+            
+            if (foundEntry) {
+                activeEntries.push(foundEntry)
+            } else {
+                // Fallback: Try to find book by ID and include all its entries
+                const book = worldBookStore.books.find(b => b.id === entryId)
+                if (book && book.entries) {
+                    book.entries.forEach(entry => {
+                        activeEntries.push(entry)
+                    })
+                } else {
+                    // Fallback: Try to find book by name
+                    const bookByName = worldBookStore.books.find(b => b.name === entryId)
+                    if (bookByName && bookByName.entries) {
+                        bookByName.entries.forEach(entry => {
+                            activeEntries.push(entry)
+                        })
+                    }
+                }
             }
         })
     }
 
-    const worldInfoText = activeEntries.map(e => `[${e.keys[0] || e.name || '条目'}]: ${e.content}`).join('\n')
+    // If no entries found, check if we need to load world book data first
+    if (activeEntries.length === 0 && worldBookStore && typeof worldBookStore.loadEntries === 'function') {
+        // Try to load entries synchronously if possible
+        // Note: loadEntries is async, but we'll try to use the data that's already loaded
+        // The actual loading will happen in the background
+        worldBookStore.loadEntries().then(() => {
+            // This will run in the background, but won't affect the current preview
+            console.log('[AI Service] World book entries loaded in background')
+        })
+    }
+
+    const worldInfoText = activeEntries.length > 0 
+        ? activeEntries.map(e => `[${e.keys[0] || e.name || '条目'}]: ${e.content}`).join('\n')
+        : '（未触发关键词）'
 
     // Memory
     let memoryText = ''
