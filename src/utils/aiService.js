@@ -189,16 +189,14 @@ export function generateContextPreview(chatId, char) {
             const book = worldBookStore.books.find(b => b.id === bookId)
             if (book && book.entries) {
                 book.entries.forEach(entry => {
-                    if (entry.keys && entry.keys.length > 0) {
-                        const isHit = entry.keys.some(k => combinedText.includes(k))
-                        if (isHit) activeEntries.push(entry)
-                    }
+                    // Include all entries from linked world books, not just keyword-triggered ones
+                    activeEntries.push(entry)
                 })
             }
         })
     }
 
-    const worldInfoText = activeEntries.map(e => `[${e.keys[0]}]: ${e.content}`).join('\n')
+    const worldInfoText = activeEntries.map(e => `[${e.keys[0] || e.name || '条目'}]: ${e.content}`).join('\n')
 
     // Memory
     let memoryText = ''
