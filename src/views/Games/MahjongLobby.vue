@@ -141,25 +141,35 @@
                 <div class="bg-white rounded-2xl p-6 m-4 max-w-sm w-full" @click.stop>
                     <h2 class="text-xl font-bold mb-4 text-center">创建房间</h2>
 
-                    <div class="space-y-4 mb-6">
+                    <div class="space-y-6 mb-6">
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">底注</label>
-                            <select v-model="roomConfig.baseStake"
-                                class="w-full p-3 border-2 border-gray-200 rounded-lg">
-                                <option :value="100">100欢乐豆</option>
-                                <option :value="500">500欢乐豆</option>
-                                <option :value="1000">1000欢乐豆</option>
-                            </select>
+                            <label class="block text-sm font-bold text-gray-700 mb-3">底注</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button 
+                                    v-for="stake in [100, 500, 1000]" 
+                                    :key="stake"
+                                    @click="roomConfig.baseStake = stake"
+                                    class="py-3 rounded-lg border-2 transition-all"
+                                    :class="roomConfig.baseStake === stake ? 'border-red-500 bg-red-50 text-red-600 font-bold' : 'border-gray-200 bg-gray-50 text-gray-700'"
+                                >
+                                    {{ stake }}欢乐豆
+                                </button>
+                            </div>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">局数</label>
-                            <select v-model="roomConfig.totalRounds"
-                                class="w-full p-3 border-2 border-gray-200 rounded-lg">
-                                <option :value="4">4局</option>
-                                <option :value="8">8局</option>
-                                <option :value="16">16局</option>
-                            </select>
+                            <label class="block text-sm font-bold text-gray-700 mb-3">局数</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button 
+                                    v-for="round in [4, 8, 16]" 
+                                    :key="round"
+                                    @click="roomConfig.totalRounds = round"
+                                    class="py-3 rounded-lg border-2 transition-all"
+                                    :class="roomConfig.totalRounds === round ? 'border-blue-500 bg-blue-50 text-blue-600 font-bold' : 'border-gray-200 bg-gray-50 text-gray-700'"
+                                >
+                                    {{ round }}局
+                                </button>
+                            </div>
                         </div>
                     </div>
 

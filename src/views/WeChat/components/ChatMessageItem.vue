@@ -31,13 +31,13 @@
                             msg.isRecallTip ? 'cursor-pointer hover:bg-opacity-80 transition-colors' : '',
                             chatData?.bgTheme === 'dark' ? 'bg-white/10 text-white/40' : 'bg-gray-200/50 text-gray-400'
                         ]" @click="msg.isRecallTip && (localShowDetail = !localShowDetail)">
-                        {{ msg.content }}
+                        {{ getCleanContent(msg.content) }}
                     </span>
                     <!-- Foldable Content -->
                     <div v-if="localShowDetail && msg.realContent"
                         class="mt-1.5 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500 max-w-[80%] break-all shadow-sm animate-fade-in-down">
                         <div class="mb-0.5 text-gray-400 text-[10px]">原内容:</div>
-                        {{ msg.realContent }}
+                        {{ getCleanContent(msg.realContent) }}
                     </div>
                 </div>
 
@@ -795,6 +795,10 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[COMMENT[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[REPLY[:：]\s*[^\]]+\]/gi, '');
+    
+    // Remove TIMESTAMP tags (hidden from user, only for AI)
+    clean = clean.replace(/\s*\[TIMESTAMP:\d{2}\/\d{2} \d{2}:\d{2}\]/gi, '');
+    clean = clean.replace(/\s*\[TIMESTAMP:[^\]]+\]/gi, '');
 
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
     // Improved to handle unclosed [CARD] tags at the end or standalone cards
@@ -1006,6 +1010,13 @@ function formatTimelineTime(timestamp) {
 
 function isImageMsg(msg) {
     if (!msg) return false
+    
+    // 优先检查 msg.image 属性
+    if (msg.image && (msg.image.startsWith('http') || msg.image.startsWith('data:'))) return true;
+    
+    // 检查消息类型
+    if (msg.type === 'image') return true;
+    
     const content = ensureString(msg.content)
     if (!content.trim()) return false
 
@@ -1014,9 +1025,6 @@ function isImageMsg(msg) {
 
     // If it's currently DRAWING, we want to show it as text (loading card)
     if ((msg.type === 'image' || msg.type === 'sticker') && content.toUpperCase().includes('[DRAW:')) return false;
-
-    // Use msg.image property if available (Antigravity persistence fix)
-    if (msg.image && (msg.image.startsWith('http') || msg.image.startsWith('data:'))) return true;
 
     const clean = getCleanContent(content).trim()
 

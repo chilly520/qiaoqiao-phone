@@ -127,15 +127,21 @@ const likeNames = computed(() => {
         list.unshift(foundName === 'user' ? userName : foundName)
     }
 
+    // Filter out empty names (like virtual IDs)
+    const filteredList = list.filter(name => {
+        const authorName = getAuthorName(name)
+        return authorName && authorName !== '神秘好友'
+    })
+
     const total = totalLikes.value
     if (total === 0) return ''
 
     // Show up to 8 names
-    const displayList = list.slice(0, 8)
+    const displayList = filteredList.slice(0, 8)
 
     if (displayList.length === 0) return `${total} 位好友觉得很赞`
 
-    let namesPart = displayList.join('、')
+    let namesPart = displayList.map(getAuthorName).join('、')
     if (total > displayList.length) {
         namesPart += ` 等 ${total - displayList.length} 位好友`
     }
@@ -145,6 +151,11 @@ const likeNames = computed(() => {
 const getAuthorName = (id) => {
     if (!id) return '神秘好友'
     if (id === 'user' || id === settingsStore.personalization.userProfile.name) return settingsStore.personalization.userProfile.name
+
+    // 4. Filter out virtual IDs (like virtual-1770657213741-1gnbz)
+    if (typeof id === 'string' && id.startsWith('virtual-')) {
+        return '' // Return empty string to filter out virtual IDs
+    }
 
     // 1. Direct key lookup
     if (chatStore.chats[id]) {

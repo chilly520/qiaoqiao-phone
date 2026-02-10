@@ -19,8 +19,8 @@ const momentData = computed(() => {
   <div class="moment-share-card bg-white rounded-[4px] border border-gray-200 shadow-sm w-[240px] overflow-hidden select-none">
     
     <!-- Title Area (If text exists) -->
-    <div class="p-3 pb-2" v-if="momentData.text">
-       <p class="text-[14px] text-black leading-snug line-clamp-2 font-medium">{{ momentData.text }}</p>
+    <div class="p-3 pb-2" v-if="momentData.originalText || momentData.text">
+       <p class="text-[14px] text-black leading-snug line-clamp-2 font-medium">{{ momentData.originalText || momentData.text }}</p>
     </div>
 
     <!-- Content Area -->

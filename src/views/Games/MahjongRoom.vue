@@ -209,6 +209,22 @@
                 </div>
             </div>
         </Transition>
+
+        <!-- 自定义确认弹窗 -->
+        <div v-if="showConfirmModal" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div class="bg-white rounded-2xl p-6 max-w-[300px] w-full shadow-2xl">
+                <h3 class="text-lg font-bold text-center mb-4 text-gray-800">{{ confirmModal.title }}</h3>
+                <p class="text-center text-gray-600 mb-6">{{ confirmModal.message }}</p>
+                <div class="flex gap-3">
+                    <button @click="confirmModal.onCancel()" class="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm active:scale-95 transition-all">
+                        {{ confirmModal.cancelText || '取消' }}
+                    </button>
+                    <button @click="confirmModal.onConfirm()" class="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all">
+                        {{ confirmModal.confirmText || '确认' }}
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -229,6 +245,17 @@ const dealerName = ref('')
 const showInvite = ref(false)
 const inviteTab = ref('npc')
 const invitePosition = ref('')
+
+// 自定义确认弹窗
+const showConfirmModal = ref(false)
+const confirmModal = ref({
+    title: '',
+    message: '',
+    confirmText: '确认',
+    cancelText: '取消',
+    onConfirm: () => {},
+    onCancel: () => {}
+})
 
 const roomId = computed(() => {
     return mahjongStore.currentRoom?.id?.slice(-6).toUpperCase() || '------'
@@ -278,10 +305,21 @@ const getPlayer = (position) => {
 }
 
 const handleBack = () => {
-    if (confirm('确定要退出房间吗？')) {
-        mahjongStore.currentRoom = null
-        router.push('/games/mahjong-lobby')
+    confirmModal.value = {
+        title: '退出房间',
+        message: '确定要退出房间吗？',
+        confirmText: '确认',
+        cancelText: '取消',
+        onConfirm: () => {
+            mahjongStore.currentRoom = null
+            router.push('/games/mahjong-lobby')
+            showConfirmModal.value = false
+        },
+        onCancel: () => {
+            showConfirmModal.value = false
+        }
     }
+    showConfirmModal.value = true
 }
 
 
@@ -325,6 +363,22 @@ const addContact = (contact) => {
         isReady: true,
         isAI: true
     })
+    
+    // 发送系统提示：{角色设置里的用户名}正在与你一起打麻将
+    const currentUserName = mahjongStore.currentRoom?.players?.find(p => p.id === 'user')?.name || '玩家'
+    const timestamp = Date.now()
+    const formattedTime = new Date(timestamp).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    })
+    chatStore.addMessage(contact.id, {
+        role: 'system',
+        content: `${currentUserName}正在与你一起打麻将 [TIMESTAMP:${formattedTime}]`,
+        timestamp: timestamp
+    })
+    
     showInvite.value = false
 }
 

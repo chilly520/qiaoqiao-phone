@@ -596,12 +596,12 @@ export const useChatStore = defineStore('chat', () => {
 
 
         // 3.2 Moment Share Parsing (AI Only)
-        if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
-            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]*?)\]/i;
+        if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE') || newMsg.content.includes('[分享朋友圈'))) {
+            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈)(?::\s*([\s\S]*?))?\]/i;
             const match = newMsg.content.match(shareRegex);
 
             if (match) {
-                let shareContent = match[1].trim();
+                let shareContent = (match[1] || '').trim();
                 let momentData = null;
 
                 try {
@@ -621,7 +621,7 @@ export const useChatStore = defineStore('chat', () => {
                     // Improving UX: logic to fetch image if possible? 
                     momentData = {
                         id: crypto.randomUUID(), // Stub ID
-                        text: shareContent,
+                        text: shareContent || '分享了一条朋友圈',
                         author: chat.name,
                         image: chat.avatar // Fallback image
                     };
@@ -631,6 +631,12 @@ export const useChatStore = defineStore('chat', () => {
                 if (!momentData.id) momentData.id = crypto.randomUUID();
                 if (!momentData.author) momentData.author = chat.name;
                 if (!momentData.avatar) momentData.avatar = chat.avatar;
+
+                // Save original text content for display
+                const originalText = newMsg.content.replace(shareRegex, '').trim();
+                if (originalText) {
+                    momentData.originalText = originalText;
+                }
 
                 // Convert to Card Message
                 newMsg.type = 'moment_card';

@@ -406,12 +406,12 @@ export const useMahjongStore = defineStore('mahjong', () => {
                 const t = gangTiles[0]
                 if (t) {
                     player.hand = player.hand.filter(x => x !== t)
-                    player.exposed.push({ type: 'gang', tiles: [t, t, t, t] })
+                    player.exposed.push({ type: 'gang', tiles: [t, t, t, t], isAnGang: true })
                 }
             } else {
                 // 明杠
                 let c = 0; player.hand = player.hand.filter(t => (t === tile && c < 3) ? (c++, false) : true)
-                player.exposed.push({ type: 'gang', tiles: [tile, tile, tile, tile] })
+                player.exposed.push({ type: 'gang', tiles: [tile, tile, tile, tile], isAnGang: false })
             }
             gameState.value.currentTile = null
             drawTile(playerIndex)
@@ -455,8 +455,25 @@ export const useMahjongStore = defineStore('mahjong', () => {
         }
 
         const winTile = gameState.value.currentTile || gameState.value.drawnTile
+
+        // Context for detailed fan calculation
+        const calcIsZiMo = !gameState.value.currentTile
+        const seatMap = { 'east': 27, 'south': 28, 'west': 29, 'north': 30 } // Using engine int values directly: East=27
+        // Actually engine expects seat index 0-3 for isMenFengKe(c, seat) where seat is 0..3?
+        // Let's check MahjongEngine.js: isMenFengKe(c, seat) => const t = 27 + seat. So seat should be 0..3.
+        const windIntMap = { 'east': 0, 'south': 1, 'west': 2, 'north': 3 }
+
+        const context = {
+            isZiMo: calcIsZiMo,
+            seatWind: windIntMap[winner.position] || 0,
+            roundWind: 0, // Default East round
+            isLastTile: gameState.value.deck.length === 0,
+            gangType: gameState.value.gangType // If we tracked it
+            // We haven't implemented robust GangType tracking yet, can add later
+        }
+
         // 重新计算番数
-        const winInfo = mahjongEngine.getWinType(winner.hand, winner.exposed, winTile)
+        const winInfo = mahjongEngine.getWinType(winner.hand, winner.exposed, winTile, context)
         const fan = winInfo.fan
 
         // 底分 calculation: baseStake * 2^(fan)
@@ -577,15 +594,32 @@ export const useMahjongStore = defineStore('mahjong', () => {
         // 聚合所有 AI 角色的人设和状态
         const charContexts = allAIs.map(ai => {
             const aiId = String(ai.id || '')
-            const chatChar = chatStore && chatStore.chats ? chatStore.chats[aiId] : null
+            let chatChar = null
+
+            // 尝试通过ID查找角色
+            if (chatStore && chatStore.chats) {
+                // 先尝试直接通过ID查找
+                chatChar = chatStore.chats[aiId]
+
+                // 如果没找到，尝试通过名称查找
+                if (!chatChar) {
+                    const aiName = ai.name || ''
+                    if (aiName) {
+                        chatChar = Object.values(chatStore.chats).find(c =>
+                            c.name === aiName || c.remark === aiName
+                        )
+                    }
+                }
+            }
+
             const isNpc = aiId.startsWith('npc_') || aiId.startsWith('ai_bot_')
 
             return {
                 name: ai.name,
                 position: ai.position,
                 hand: (ai.hand || []).join(', '),
-                isMainChar: !isNpc,
-                persona: chatChar ? chatChar.prompt : (ai.signature || '一个爱打麻将的路人'),
+                isMainChar: !isNpc, // 所有非NPC都是主要角色
+                persona: chatChar ? chatChar.prompt : (ai.signature || '一个爱打麻将的好友'),
                 scoreStatus: `当前积分${ai.score}，排名${ai.rank}`
             }
         })

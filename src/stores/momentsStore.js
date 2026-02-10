@@ -820,10 +820,8 @@ export const useMomentsStore = defineStore('moments', () => {
 
                 const currentElapsed = Date.now() - lastGenerateTime.value
                 if (currentElapsed >= intervalMs) {
-                    if (Math.random() > 0.6) { // Random chance to generate to avoid spam
-                        logger.sys('[MomentsStore] Worker triggering batch AI generation')
-                        batchGenerateAIMoments(1)
-                    }
+                    logger.sys('[MomentsStore] Worker triggering batch AI generation')
+                    batchGenerateAIMoments(1)
                 }
             }
         }

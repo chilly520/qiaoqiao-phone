@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useMahjongStore } from './mahjongStore.js'
+import { useSettingsStore } from './settingsStore.js'
+import { useChatStore } from './chatStore.js'
 
 export const useWalletStore = defineStore('wallet', () => {
     // State
@@ -188,8 +191,10 @@ export const useWalletStore = defineStore('wallet', () => {
                         try {
                             const { useChatStore } = await import('./chatStore')
                             const { useSettingsStore } = await import('./settingsStore')
+                            const { useMahjongStore } = await import('./mahjongStore.js')
                             const chatStore = useChatStore()
                             const settingsStore = useSettingsStore()
+                            const mahjongStore = useMahjongStore()
 
                             const waitForLoad = () => new Promise(resolve => {
                                 if (chatStore.isLoaded) return resolve()
@@ -202,9 +207,15 @@ export const useWalletStore = defineStore('wallet', () => {
                                 setTimeout(() => { clearInterval(timer); resolve() }, 5000)
                             })
                             await waitForLoad()
-
-                            const userName = settingsStore.personalization?.userProfile?.name || '你'
-                            const content = `${userName}使用「${capableCard.remark || '亲属卡'}」支付了${numAmount}元`
+                            const userName = mahjongStore.currentRoom?.players?.find(p => p.id === 'user')?.name || settingsStore.personalization?.userProfile?.name || '你'
+                            const timestamp = Date.now()
+                            const formattedTime = new Date(timestamp).toLocaleString('zh-CN', {
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })
+                            const content = `${userName}使用「${capableCard.remark || '亲属卡'}」消费了${numAmount}元 [TIMESTAMP:${formattedTime}]`
 
                             // Try ID first
                             const success = await chatStore.addMessage(capableCard.ownerId, {
@@ -337,8 +348,10 @@ export const useWalletStore = defineStore('wallet', () => {
                 try {
                     const { useChatStore } = await import('./chatStore')
                     const { useSettingsStore } = await import('./settingsStore')
+                    const { useMahjongStore } = await import('./mahjongStore.js')
                     const chatStore = useChatStore()
                     const settingsStore = useSettingsStore()
+                    const mahjongStore = useMahjongStore()
 
                     const waitForLoad = () => new Promise(resolve => {
                         if (chatStore.isLoaded) return resolve()
@@ -351,9 +364,15 @@ export const useWalletStore = defineStore('wallet', () => {
                         setTimeout(() => { clearInterval(timer); resolve() }, 5000)
                     })
                     await waitForLoad()
-
-                    const userName = settingsStore.personalization?.userProfile?.name || '你'
-                    const content = `${userName}使用「${card.remark || '亲属卡'}」支付了${numAmount}元`
+                    const userName = mahjongStore.currentRoom?.players?.find(p => p.id === 'user')?.name || settingsStore.personalization?.userProfile?.name || '你'
+                    const timestamp = Date.now()
+                    const formattedTime = new Date(timestamp).toLocaleString('zh-CN', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })
+                    const content = `${userName}使用「${card.remark || '亲属卡'}」消费了${numAmount}元 [TIMESTAMP:${formattedTime}]`
 
                     const success = await chatStore.addMessage(card.ownerId, {
                         role: 'system',

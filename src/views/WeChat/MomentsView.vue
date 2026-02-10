@@ -612,7 +612,7 @@ const setBackgroundFromUrl = () => {
         const newUrl = backgroundInput.value.trim()
 
         if (viewingProfile.value.isMe) {
-            momentsStore.backgroundUrl.value = newUrl
+            momentsStore.backgroundUrl = newUrl
         } else if (filterAuthorId.value) {
             // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
@@ -640,7 +640,7 @@ const handleBackgroundFileUpload = (event) => {
         const newUrl = e.target.result
 
         if (viewingProfile.value.isMe) {
-            momentsStore.backgroundUrl.value = newUrl
+            momentsStore.backgroundUrl = newUrl
         } else if (filterAuthorId.value) {
             // Update character background
             if (chatStore.chats[filterAuthorId.value]) {

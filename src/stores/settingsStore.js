@@ -34,7 +34,15 @@ export const useSettingsStore = defineStore('settings', () => {
                 settings: '/icons/settings.png',
                 worldbook: '/icons/worldbook.png',
                 reset: '/icons/reset.png',
-                syslog: '/icons/syslog.png'
+                syslog: '/icons/syslog.png',
+                forum: '',
+                calendar: '',
+                shopping: '',
+                eleme: '',
+                live: '',
+                douyin: '',
+                browser: '',
+                pomodoro: ''
             }
         },
         widgets: {
@@ -61,7 +69,53 @@ export const useSettingsStore = defineStore('settings', () => {
             wechatId: 'admin',
             signature: '对方很懒，什么都没有留下'
         },
-        presets: []
+        presets: [
+            {
+                name: '乌金',
+                theme: 'dark',
+                wallpaper: '/wallpaper_floral.jpg',
+                icons: {
+                    app: 'wechat',
+                    url: '',
+                    map: {
+                        wechat: '/icons/wechat.png',
+                        search: '/icons/search.png',
+                        weibo: '/icons/weibo.png',
+                        couple: '/icons/couple.png',
+                        games: '/icons/games.png',
+                        settings: '/icons/settings.png',
+                        worldbook: '/icons/worldbook.png',
+                        reset: '/icons/reset.png',
+                        syslog: '/icons/syslog.png',
+                        forum: '',
+                        calendar: '',
+                        shopping: '',
+                        eleme: '',
+                        live: '',
+                        douyin: '',
+                        browser: '',
+                        pomodoro: ''
+                    }
+                },
+                widgets: {
+                    card1: '/widgets/bg_card1.jpg',
+                    card2: '/widgets/bg_card2.jpg'
+                },
+                cardBgs: {
+                    time: '/widgets/bg_time.png',
+                    location: '/widgets/bg_location.png',
+                    weather: '/widgets/bg_weather.jpg'
+                },
+                globalFont: {
+                    color: '#cbd5e1',
+                    shadow: '0 1px 2px rgba(0,0,0,0.5)',
+                    url: ''
+                },
+                globalBg: '',
+                customCss: '',
+                wallpaperOverlayOpacity: 0.5
+            }
+        ]
     })
 
     // --- 3. Other States ---
@@ -102,6 +156,79 @@ export const useSettingsStore = defineStore('settings', () => {
             { name: "德语女声 (Sophie)", id: "de_female_sophie" },
             { name: "法语男声 (Enzo)", id: "fr_male_enzo" },
             { name: "印尼女声 (Noor)", id: "id_female_noor" }
+        ],
+        bdetts: {
+            speaker: 'zh_female_cancan_mars_bigtts'
+        },
+        bdettsVoices: [
+            // --- 官方标准女声 ---
+            { name: "通用女声 (灿灿)", id: "zh_female_cancan_mars_bigtts" }, // 最稳的标准女声
+            { name: "清新女声 (小清新)", id: "zh_female_qingxin" },
+            { name: "知性女声 (林说)", id: "zh_female_zhixing" },
+            { name: "俏皮女声 (小俏皮)", id: "zh_female_qiaopi" },
+            { name: "甜美女声 (小甜美)", id: "zh_female_tianmei" },
+            { name: "邻家女孩 (小倩)", id: "zh_female_xiaoqian" },
+            { name: "故事女声 (姐姐)", id: "zh_female_story" },
+            { name: "温柔女声 (悦悦)", id: "zh_female_xiaoyue" },
+            { name: "婆婆 (长生婆婆)", id: "zh_female_changshengpopo" },
+            { name: "武则天 (霸气女皇)", id: "zh_female_wuzetian" },
+            { name: "呆萌女声 (萌丫头)", id: "zh_female_mengyatou" },
+            { name: "天津小可 (天津话)", id: "zh_female_xiaoke" },
+            { name: "东北理性姐", id: "zh_female_dblizhi" },
+            { name: "东北强势妹", id: "zh_female_dbqiangshi" },
+            { name: "台湾女声 (林志玲风)", id: "zh_female_taiwan" },
+            { name: "四川女声 (方言)", id: "zh_female_sichuan" },
+            { name: "陕西女声 (方言)", id: "zh_female_shanxi" },
+
+            // --- 官方标准男声 ---
+            { name: "阳光男声 (小明)", id: "zh_male_xiaoming" }, // 最稳的标准男声
+            { name: "亲切男声 (小亲切)", id: "zh_male_qinqie" },
+            { name: "醇厚男声 (男播音)", id: "zh_male_chunhou" },
+            { name: "开朗男声 (小建)", id: "zh_male_xiaojian" },
+            { name: "活力男声 (小活力)", id: "zh_male_huoli" },
+            { name: "悬疑解说 (冷酷/霸道)", id: "zh_male_changtianyi_xuanyi" }, // 完美替代冷酷哥哥
+            { name: "古风男主 (小说旁白)", id: "zh_male_novel_narration" },
+            { name: "译制片男声 (旁白/大佐)", id: "zh_male_narration" }, // 也可用 zh_male_ad_narration
+            { name: "四郎 (甄嬛传)", id: "zh_male_silang" },
+            { name: "京味男声 (侃爷)", id: "zh_male_beijing" },
+            { name: "东北男声 (方言)", id: "zh_male_dongbei" },
+            { name: "港普男声 (辉哥)", id: "zh_male_liangjiahui" },
+            { name: "说唱男声 (Rap)", id: "zh_male_rap" },
+
+            // --- 童声 & 特色 ---
+            { name: "奶气萌娃 (正太)", id: "zh_male_yuanqizhengtai" },
+            { name: "童年伙伴 (小男孩)", id: "zh_male_xiaohai" },
+            { name: "可发女孩 (小朋友)", id: "zh_female_xiaopengyou" },
+            { name: "孙悟空 (猴哥)", id: "zh_male_sunwukong_clone2" },
+            { name: "熊二 (动画)", id: "zh_male_xionger" },
+            { name: "佩奇猪 (动画)", id: "zh_female_peiqi" },
+            { name: "樱桃丸子 (动画)", id: "zh_female_xiaowanzi" }
+        ],
+        volcPaid: {
+            appId: '',
+            token: '', // AccessToken
+            speaker: 'BV004_streaming',
+            emotion: 'neutral',
+            speed: 1.0,
+            pitch: 1.0
+        },
+        volcPaidVoices: [
+            { name: "冷酷哥哥 (多情感)", id: "BV008_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "暖心姐姐", id: "BV004_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "开朗姐姐", id: "BV005_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "温柔桃子", id: "BV104_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "阳光甜妹", id: "BV021_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "撒娇学妹", id: "BV023_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "妩媚御姐", id: "BV024_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "和蔼奶奶", id: "BV006_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "邻居阿姨", id: "BV020_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "港片女主", id: "BV014_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "温暖阿虎", id: "BV011_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "霸道总裁 (冷酷)", id: "BV008_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "优柔帮主", id: "BV052_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "总裁大叔", id: "BV053_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "深夜播客", id: "BV013_streaming", emotions: ['neutral', 'happy', 'sad', 'angry', 'fear', 'disgust', 'surprise'] },
+            { name: "阳光青年", id: "zh_male_xiaoming", emotions: ['neutral'] }
         ]
     })
     const weather = ref({
@@ -171,6 +298,49 @@ export const useSettingsStore = defineStore('settings', () => {
                 personalization.value.widgets = {
                     card1: savedWidgets.card1 || defaultWidgets.card1,
                     card2: savedWidgets.card2 || defaultWidgets.card2
+                }
+
+                // Inject Default Preset '乌金' if missing
+                if (!personalization.value.presets) personalization.value.presets = [];
+                const hasWuJin = personalization.value.presets.some(p => p.name === '乌金');
+                if (!hasWuJin) {
+                    personalization.value.presets.unshift({
+                        name: '乌金',
+                        theme: 'dark',
+                        wallpaper: '/wallpaper_floral.jpg',
+                        icons: {
+                            app: 'wechat',
+                            url: '',
+                            map: {
+                                wechat: '/icons/wechat.png',
+                                search: '/icons/search.png',
+                                weibo: '/icons/weibo.png',
+                                couple: '/icons/couple.png',
+                                games: '/icons/games.png',
+                                settings: '/icons/settings.png',
+                                worldbook: '/icons/worldbook.png',
+                                reset: '/icons/reset.png',
+                                syslog: '/icons/syslog.png'
+                            }
+                        },
+                        widgets: {
+                            card1: '/widgets/bg_card1.jpg',
+                            card2: '/widgets/bg_card2.jpg'
+                        },
+                        cardBgs: {
+                            time: '/widgets/bg_time.png',
+                            location: '/widgets/bg_location.png',
+                            weather: '/widgets/bg_weather.jpg'
+                        },
+                        globalFont: {
+                            color: '#cbd5e1',
+                            shadow: '0 1px 2px rgba(0,0,0,0.5)',
+                            url: ''
+                        },
+                        globalBg: '',
+                        customCss: '',
+                        wallpaperOverlayOpacity: 0.5
+                    });
                 }
             }
 
@@ -302,11 +472,15 @@ export const useSettingsStore = defineStore('settings', () => {
     function setVoiceEngine(engine) { voice.value.engine = engine; saveToStorage(); }
     function updateMinimaxConfig(config) { voice.value.minimax = { ...voice.value.minimax, ...config }; saveToStorage(); }
     function updateDoubaoConfig(config) { voice.value.doubao = { ...voice.value.doubao, ...config }; saveToStorage(); }
+    function updateBDeTTSConfig(config) { voice.value.bdetts = { ...voice.value.bdetts, ...config }; saveToStorage(); }
+    function updateVolcPaidConfig(config) { voice.value.volcPaid = { ...voice.value.volcPaid, ...config }; saveToStorage(); }
     function updateDoubaoVoices(voices) { voice.value.doubaoVoices = voices; saveToStorage(); }
     function resetVoiceSettings() {
         voice.value.engine = 'browser'
         voice.value.minimax = { groupId: '', apiKey: '', modelId: 'speech-01-turbo', voiceId: '' }
         voice.value.doubao = { cookie: '', speaker: 'tts.other.BV008_streaming' }
+        voice.value.bdetts = { speaker: 'zh_female_cancan_mars_bigtts' }
+        voice.value.volcPaid = { appId: '', token: '', speaker: 'BV004_streaming', emotion: 'neutral', speed: 1.0 }
         saveToStorage()
     }
     function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
@@ -431,7 +605,7 @@ export const useSettingsStore = defineStore('settings', () => {
         saveToStorage, loadFromStorage,
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
-        setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, resetVoiceSettings,
+        setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport
     }

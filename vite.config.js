@@ -79,6 +79,12 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/volc/, '')
       },
+      '/volc-paid': {
+        target: 'https://api.volcengineapi.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/volc-paid/, '')
+      },
       '/ws-doubao': {
         target: 'wss://www.doubao.com',
         changeOrigin: true,

@@ -415,7 +415,7 @@ export function generateContextPreview(chatId, char) {
 
 ### 3. 指令与特殊功能
 - **发送表情包**: \`[表情包:名称]\` (当前你拥有的表情包: ${stickers.map(s => s.name).join(', ') || '(暂无)'})。请在对话中自然地插入表情包来增强情绪。
-- **发送绘图/照片**: 当用户要求看你的照片、自拍或当前场景时，使用 \`[DRAW:详细的画面描述]\` 指令。
+- **发送绘图/照片**: 当需要发送图片作为剧情配图时，直接使用 \`[DRAW:详细的画面描述]\` 指令，不要说"等等"等等待类词汇。
 - **朋友圈分享**: 回复 \`[MOMENT_SHARE]\` 可分享当下的感悟到朋友圈。
 - **拍一拍互动**: 回复 \`[NUDGE]\` 表示对用户的亲昵动作。
 
@@ -830,7 +830,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
 
             if (contentParts.length > 0) {
-                formattedMessages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: contentParts })
+                formattedMessages.push({ role: msg.role, content: contentParts })
             } else {
                 formattedMessages.push(msg)
             }
@@ -999,8 +999,16 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // We MUST merge the system prompt into the first User message for these models.
         let finalMessages = [...fullMessages];
         const isGeminiModel = model.toLowerCase().includes('gemini') || model.toLowerCase().includes('goog');
+        
+        // Handle all system messages for any model
+        finalMessages = finalMessages.map(msg => {
+            if (msg.role === 'system') {
+                return { ...msg, role: 'user', content: `[System Instructions]\n${msg.content}` };
+            }
+            return msg;
+        });
 
-        if (isGeminiModel && finalMessages.length > 0 && finalMessages[0].role === 'system') {
+        if (isGeminiModel) {
             const systemContent = finalMessages[0].content;
 
             // STRATEGY: Ensure System Prompt is ALWAYS at the very top (Index 0).
@@ -1052,6 +1060,15 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         if (safeMaxTokens > 65536) safeMaxTokens = 65536 // Keep global 64k safety, but revert 8k limit
 
 
+        // Ensure all messages have valid roles before sending to API
+        finalMessages = finalMessages.map(msg => {
+            // Only use roles that the API accepts
+            if (msg.role !== 'user' && msg.role !== 'assistant') {
+                return { ...msg, role: 'user' };
+            }
+            return msg;
+        });
+        
         reqBody = {
             model: model,
             messages: finalMessages,

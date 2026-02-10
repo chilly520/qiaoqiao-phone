@@ -83,6 +83,9 @@ function openApp(appId) {
     // Store a flag to scroll to top after reload
     sessionStorage.setItem('justReloaded', 'true')
     location.reload()
+  } else if (['forum', 'calendar', 'shopping', 'eleme', 'live', 'douyin', 'browser', 'pomodoro'].includes(appId)) {
+    // Placeholder navigation for new apps
+    safeNavigate('/' + appId)
   }
 }
 
@@ -381,7 +384,7 @@ onUnmounted(() => {
           @click="openApp('wechat')">
           <div id="icon-wechat" :style="getIconStyle('wechat')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-            <i v-if="!hasCustomIcon('wechat')" class="fa-brands fa-weixin text-[34px] icon-gradient"></i>
+            <i v-if="!hasCustomIcon('wechat')" class="fa-brands fa-weixin text-[34px] icon-relief"></i>
           </div>
           <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">微信</span>
         </div>
@@ -391,8 +394,8 @@ onUnmounted(() => {
           @click="openApp('search')">
           <div id="icon-search" :style="getIconStyle('search')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-            <svg v-if="!hasCustomIcon('search')" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ec4899"
-              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+            <svg v-if="!hasCustomIcon('search')" width="30" height="30" viewBox="0 0 24 24" fill="none"
+              class="stroke-relief" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
               style="filter: drop-shadow(0 2px 4px rgba(236, 72, 153, 0.3));">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -406,9 +409,59 @@ onUnmounted(() => {
           @click="openApp('weibo')">
           <div id="icon-weibo" :style="getIconStyle('weibo')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-            <i v-if="!hasCustomIcon('weibo')" class="fa-brands fa-weibo text-[36px] icon-gradient"></i>
+            <i v-if="!hasCustomIcon('weibo')" class="fa-brands fa-weibo text-[36px] icon-relief"></i>
           </div>
           <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">微博</span>
+        </div>
+
+        <!-- Forum -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('forum')">
+          <div id="icon-forum" :style="getIconStyle('forum')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('forum')" class="fa-solid fa-users text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">论坛</span>
+        </div>
+
+        <!-- Calendar -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('calendar')">
+          <div id="icon-calendar" :style="getIconStyle('calendar')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('calendar')" class="fa-solid fa-calendar-days text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">日历</span>
+        </div>
+
+        <!-- Shopping -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('shopping')">
+          <div id="icon-shopping" :style="getIconStyle('shopping')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('shopping')" class="fa-solid fa-cart-shopping text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">购物</span>
+        </div>
+
+        <!-- Ele.me -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('eleme')">
+          <div id="icon-eleme" :style="getIconStyle('eleme')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('eleme')" class="fa-solid fa-utensils text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">饿了么</span>
+        </div>
+
+        <!-- Live Streaming -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('live')">
+          <div id="icon-live" :style="getIconStyle('live')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('live')" class="fa-solid fa-video text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">直播</span>
         </div>
       </div>
 
@@ -420,7 +473,7 @@ onUnmounted(() => {
         <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group">
           <div id="icon-couple" :style="getIconStyle('couple')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-            <svg v-if="!hasCustomIcon('couple')" width="30" height="30" viewBox="0 0 24 24" fill="#ec4899"
+            <svg v-if="!hasCustomIcon('couple')" width="30" height="30" viewBox="0 0 24 24" class="fill-relief"
               style="filter: drop-shadow(0 2px 4px rgba(236, 72, 153, 0.3));">
               <path
                 d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
@@ -434,13 +487,33 @@ onUnmounted(() => {
           @click="openApp('games')">
           <div id="icon-games" :style="getIconStyle('games')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-            <svg v-if="!hasCustomIcon('games')" width="30" height="30" viewBox="0 0 24 24" fill="#8b5cf6"
+            <svg v-if="!hasCustomIcon('games')" width="30" height="30" viewBox="0 0 24 24" class="fill-relief"
               style="filter: drop-shadow(0 2px 4px rgba(139, 92, 246, 0.3));">
               <path
                 d="M21 9h-2V7c0-1.66-1.34-3-3-3s-3 1.34-3 3v2H9V7c0-1.66-1.34-3-3-3S3 5.34 3 7v2H1c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h22c.55 0 1-.45 1-1V10c0-.55-.45-1-1-1zM11 15H9v2c0 .55-.45 1-1 1s-1-.45-1-1v-2H5c-.55 0-1-.45-1-1s.45-1 1-1h2v-2c0-.55.45-1 1-1s1 .45 1 1v2h2c.55 0 1 .45 1 1s-.45 1-1 1zm8-1c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" />
             </svg>
           </div>
           <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">小游戏</span>
+        </div>
+
+        <!-- Douyin -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('douyin')">
+          <div id="icon-douyin" :style="getIconStyle('douyin')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('douyin')" class="fa-brands fa-tiktok text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">抖音</span>
+        </div>
+
+        <!-- Browser -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('browser')">
+          <div id="icon-browser" :style="getIconStyle('browser')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('browser')" class="fa-solid fa-compass text-[34px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">浏览器</span>
         </div>
 
         <!-- Custom Widget Card 1 - Square -->
@@ -468,6 +541,16 @@ onUnmounted(() => {
             class="absolute inset-0 w-full h-full pointer-events-none opacity-80">
           </div>
         </div>
+
+        <!-- Pomodoro -->
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('pomodoro')">
+          <div id="icon-pomodoro" :style="getIconStyle('pomodoro')"
+            class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
+            <i v-if="!hasCustomIcon('pomodoro')" class="fa-solid fa-clock text-[32px] icon-relief"></i>
+          </div>
+          <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">番茄钟</span>
+        </div>
       </div>
     </div>
 
@@ -486,8 +569,8 @@ onUnmounted(() => {
       <div class="flex flex-col items-center gap-1 cursor-pointer group" @click="openApp('settings')">
         <div id="icon-settings" :style="getIconStyle('settings')"
           class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-          <svg v-if="!hasCustomIcon('settings')" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ec4899"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          <svg v-if="!hasCustomIcon('settings')" width="28" height="28" viewBox="0 0 24 24" fill="none"
+            class="stroke-relief" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             style="filter: drop-shadow(0 2px 4px rgba(236, 72, 153, 0.3));">
             <circle cx="12" cy="12" r="3"></circle>
             <path
@@ -502,7 +585,7 @@ onUnmounted(() => {
         <div id="icon-worldbook" :style="getIconStyle('worldbook')"
           class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
           <svg v-if="!hasCustomIcon('worldbook')" width="28" height="28" viewBox="0 0 24 24" fill="none"
-            stroke="#ec4899" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="stroke-relief" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             style="filter: drop-shadow(0 2px 4px rgba(236, 72, 153, 0.3));">
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
@@ -514,8 +597,8 @@ onUnmounted(() => {
       <div class="flex flex-col items-center gap-1 cursor-pointer group" @click="openApp('reset')">
         <div id="icon-reset" :style="getIconStyle('reset')"
           class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-          <svg v-if="!hasCustomIcon('reset')" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ec4899"
-            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+          <svg v-if="!hasCustomIcon('reset')" width="26" height="26" viewBox="0 0 24 24" fill="none"
+            class="stroke-relief" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
             style="filter: drop-shadow(0 2px 4px rgba(236, 72, 153, 0.3));">
             <path d="M23 4v6h-6"></path>
             <path d="M1 20v-6h6"></path>
@@ -528,8 +611,8 @@ onUnmounted(() => {
       <div class="flex flex-col items-center gap-1 cursor-pointer group" @click="openApp('syslog')">
         <div id="icon-syslog" :style="getIconStyle('syslog')"
           class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
-          <svg v-if="!hasCustomIcon('syslog')" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ec4899"
-            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          <svg v-if="!hasCustomIcon('syslog')" width="28" height="28" viewBox="0 0 24 24" fill="none"
+            class="stroke-relief" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
             style="filter: drop-shadow(0 2px 4px rgba(236, 72, 153, 0.3));">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
@@ -545,6 +628,17 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.app-page {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
+  align-content: start;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+
 /* Weather Animations */
 
 /* Shine sweep animation */
@@ -798,6 +892,42 @@ onUnmounted(() => {
     transform: translateY(100px);
     opacity: 0;
   }
+}
+
+/* Relief Icon Style */
+.glass-icon {
+  background: linear-gradient(135deg, rgba(235, 245, 255, 0.85), rgba(210, 230, 255, 0.9));
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-icon:active {
+  transform: scale(0.95);
+}
+
+.icon-relief {
+  color: #f1f5f9;
+  text-shadow:
+    2px 2px 3px rgba(0, 0, 0, 0.3),
+    -1px -1px 2px rgba(255, 255, 255, 0.8);
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+.stroke-relief {
+  stroke: #f1f5f9;
+  filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, 0.3)) drop-shadow(-1px -1px 1px rgba(255, 255, 255, 0.6));
+}
+
+.fill-relief {
+  fill: #f1f5f9;
+  filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, 0.3)) drop-shadow(-1px -1px 1px rgba(255, 255, 255, 0.6));
 }
 
 .animate-rain-drop {

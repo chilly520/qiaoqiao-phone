@@ -347,6 +347,30 @@ export class MahjongAI {
         ]
         const doubaoSpeaker = doubaoVoices[Math.floor(Math.random() * doubaoVoices.length)]
 
+        // BDeTTS Voices
+        // BDeTTS Voices
+        const bdettsFemale = [
+            'tts.other.BV001_streaming', // 灿灿 (稳)
+            'tts.other.BV123_streaming', // 小艺 (稳)
+            'tts.other.BV119_streaming', // 林说 (稳)
+            'tts.other.BV007_streaming', // 燃燃
+            'tts.other.BV104_streaming', // 温柔桃子
+            'tts.other.BV021_streaming', // 阳光甜妹
+            'tts.other.BV023_streaming', // 撒娇学妹
+            'tts.other.BV020_streaming'  // 邻居阿姨
+        ]
+        const bdettsMale = [
+            'tts.other.BV008_streaming', // 宇轩/霸道
+            'tts.other.BV056_streaming', // 擎擎/亲切
+            'tts.other.BV053_streaming', // 深沉大叔
+            'zh_male_xiaoming',          // 阳光青年
+            'zh_male_dongbei',           // 东北男声
+            'zh_male_beijing',           // 京味男声
+            'tts.other.BV012_streaming'  // 译制片
+        ]
+        const bdettsList = bot.gender === '女' ? bdettsFemale : bdettsMale
+        const bdettsSpeaker = bdettsList[Math.floor(Math.random() * bdettsList.length)]
+
         return {
             id: `ai_bot_${index}_${Date.now()}`,
             name: bot.name,
@@ -355,6 +379,7 @@ export class MahjongAI {
             avatar: avatar,
             beans,
             doubaoSpeaker: doubaoSpeaker,
+            bdettsSpeaker: bdettsSpeaker,
             personality: Math.random() > 0.5 ? 'aggressive' : 'conservative'
         }
     }

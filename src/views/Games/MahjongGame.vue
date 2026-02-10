@@ -140,7 +140,7 @@
                 <div class="flex-1 flex justify-between items-center w-full px-1 min-h-[350px]">
                     <!-- 左家 -->
                     <div class="player-west flex flex-col items-center gap-2 min-w-[60px] text-xs flex-shrink-0 z-10">
-                        <!-- 头像区域 (顶部) -->
+                        <!-- Left Player Avatar & Info (Unchanged from original structure, just copying to context) -->
                         <div class="flex flex-col items-center w-16 relative">
                             <div class="relative mb-1 transition-all duration-300"
                                 :class="{ 'active-breathing': mahjongStore.gameState?.currentPlayer === 3 }">
@@ -161,13 +161,10 @@
                                 </div>
                                 <div class="opacity-80">{{ getPlayer('west')?.beans }}豆</div>
                             </div>
-
-
                         </div>
 
-                        <!-- 牌区域 (下方: 手牌在左/外侧，明牌在右/内侧) -->
+                        <!-- Left Player Tiles -->
                         <div class="flex flex-row items-end gap-1">
-                            <!-- 手牌 -->
                             <div class="flex flex-col items-center"
                                 :class="mahjongStore.gameState?.roundResult ? 'mr-3 my-auto' : 'gap-1'">
                                 <div v-for="tile in getPlayer('west')?.hand" :key="'west-hand-' + tile"
@@ -176,8 +173,6 @@
                                         getTileEmoji(tile) }}</span>
                                 </div>
                             </div>
-
-                            <!-- 已吃碰杠 -->
                             <div v-if="getPlayer('west')?.exposed?.length" class="flex flex-col gap-0.5">
                                 <div v-for="(group, idx) in getPlayer('west')?.exposed" :key="idx"
                                     class="flex flex-col gap-0.5 bg-black/40 p-0.5 rounded shadow-inner border border-white/10 scale-90">
@@ -192,7 +187,7 @@
                     </div>
 
 
-                    <!-- 牌池 -->
+                    <!-- 牌池 (Widened + Bigger Active Tile) -->
                     <div class="flex-1 flex flex-col items-center justify-center min-w-0 mx-2">
                         <div v-if="!mahjongStore.gameState" class="text-white text-center">
                             <div class="text-6xl mb-4">🀄</div>
@@ -201,7 +196,7 @@
                         <div v-else-if="mahjongStore.currentRoom?.status === 'settling'" class="text-white text-center">
                             <div class="text-5xl mb-3">🎉</div>
                             <div class="text-2xl font-bold mb-2">{{ mahjongStore.currentRoom.lastResult?.winnerName
-                                }}
+                            }}
                                 胡了！
                             </div>
                             <div class="text-lg">{{ mahjongStore.currentRoom.lastResult?.fan }}番</div>
@@ -211,15 +206,15 @@
                         <div v-else class="flex flex-col items-center w-full scale-90 md:scale-100">
                             <div class="text-white text-[10px] mb-1 opacity-40">剩余 {{ deckCount }} 张</div>
 
-                            <!-- 牌池（打出的牌） - 缩小 Tray 背景 -->
+                            <!-- 牌池（打出的牌） - 扩大最大宽度 -->
                             <div
-                                class="bg-black/30 p-2 rounded-xl border border-white/10 shadow-inner w-full max-w-[300px] min-h-[80px] flex flex-wrap gap-1 justify-center relative overflow-visible">
-                                <!-- 缩小刚打出的牌提示 -->
+                                class="bg-black/30 p-2 rounded-xl border border-white/10 shadow-inner w-full max-w-[500px] min-h-[100px] flex flex-wrap gap-1 justify-center relative overflow-visible">
+                                <!-- 扩大刚打出的牌提示 -->
                                 <Transition name="zoom">
                                     <div v-if="activeTile"
-                                        class="absolute z-40 bg-white border-2 border-orange-500 rounded-lg shadow-2xl flex items-center justify-center text-4xl w-14 h-20 -top-12 active-tile-zoom"
+                                        class="absolute z-40 bg-white border-4 border-orange-500 rounded-xl shadow-[0_0_20px_rgba(255,165,0,0.6)] flex items-center justify-center text-5xl w-20 h-28 -top-20 active-tile-zoom"
                                         :class="getTileColorClass(activeTile)">
-                                        <span>{{ getTileEmoji(activeTile) }}</span>
+                                        <span class="scale-150">{{ getTileEmoji(activeTile) }}</span>
                                     </div>
                                 </Transition>
 
@@ -233,7 +228,6 @@
 
                     <!-- 右家 -->
                     <div class="player-east flex flex-col items-center gap-2 min-w-[60px] text-xs flex-shrink-0 z-10">
-                        <!-- 头像区域 (顶部) -->
                         <div class="flex flex-col items-center w-16 relative">
                             <div class="relative mb-1 transition-all duration-300"
                                 :class="{ 'active-breathing': mahjongStore.gameState?.currentPlayer === 1 }">
@@ -254,13 +248,9 @@
                                 </div>
                                 <div class="opacity-80">{{ getPlayer('east')?.beans }}豆</div>
                             </div>
-
-
                         </div>
 
-                        <!-- 牌区域 (下方: 手牌在右/外侧，明牌在左/内侧) -->
                         <div class="flex flex-row-reverse items-end gap-1">
-                            <!-- 手牌 -->
                             <div class="flex flex-col items-center"
                                 :class="mahjongStore.gameState?.roundResult ? 'ml-3 my-auto' : 'gap-1'">
                                 <div v-for="tile in getPlayer('east')?.hand" :key="'east-hand-' + tile"
@@ -269,8 +259,6 @@
                                         getTileEmoji(tile) }}</span>
                                 </div>
                             </div>
-
-                            <!-- 已吃碰杠 -->
                             <div v-if="getPlayer('east')?.exposed?.length" class="flex flex-col gap-0.5">
                                 <div v-for="(group, idx) in getPlayer('east')?.exposed" :key="idx"
                                     class="flex flex-col gap-0.5 bg-black/40 p-0.5 rounded shadow-inner border border-white/10 scale-90">
@@ -286,92 +274,77 @@
                 </div>
 
                 <!-- 我（下） -->
-                <div class="player-south flex flex-col items-center mt-auto shrink-0 transition-all duration-500"
-                    :class="mahjongStore.gameState?.roundResult ? 'mb-2' : 'mb-4'">
-                    <!-- 玩家信息栏 -->
-                    <div class="flex items-center gap-2 transition-all duration-300"
-                        :class="mahjongStore.gameState?.roundResult ? 'mb-0.5' : 'mb-2'">
-                        <div class="relative transition-all duration-300"
-                            :class="{ 'active-breathing': mahjongStore.gameState?.currentPlayer === 0 }">
-                            <div v-if="isImageAvatar(getPlayer('south')?.avatar)"
-                                class="w-14 h-14 rounded-full overflow-hidden shadow-lg border-2 border-white/20">
-                                <img :src="getPlayer('south')?.avatar" class="w-full h-full object-cover" />
-                            </div>
-                            <div v-else
-                                class="w-14 h-14 rounded-full bg-gray-300 flex items-center justify-center text-2xl shadow-lg border-2 border-white/20">
-                                {{ getPlayer('south')?.avatar || 'ME' }}
-                            </div>
-                            <div v-if="mahjongStore.gameState?.dealer === 0" class="dealer-icon"
-                                style="width: 24px; height: 24px; font-size: 12px; top: -5px; right: -5px;">庄</div>
-                        </div>
-                        <div class="text-white text-xs">
-
-                            <div class="font-bold">{{ getPlayer('south')?.name }}</div>
-                            <div class="opacity-80">{{ getPlayer('south')?.beans }}豆 | 积分: {{ mahjongStore.score }}
-                            </div>
-                        </div>
-
-                    </div>
-
-
-                    <div class="flex items-center gap-3 z-20 transition-all duration-300"
-                        :class="mahjongStore.gameState?.roundResult ? 'mb-1 min-h-[0px] h-0' : 'mb-3 min-h-[50px]'">
+                <div class="player-south flex flex-col items-center mt-auto shrink-0 transition-all duration-500 relative pb-4"
+                    :class="mahjongStore.gameState?.roundResult ? 'mb-4' : 'mb-3'">
+                    <!-- 动作按钮区域 (Positioned above tiles) -->
+                    <div
+                        class="absolute top-[-60px] left-1/2 -translate-x-1/2 flex items-center justify-center gap-3 z-50 transition-all duration-300 w-full pointer-events-none">
                         <div v-if="canAction"
-                            class="bg-black/50 backdrop-blur-lg px-4 py-2 rounded-full flex gap-3 border border-white/20 shadow-2xl">
-                            <div v-if="canChi" @click="handleChiClick" class="action-circle chi">吃</div>
-                            <div v-if="canPeng" @click="performAction('peng')" class="action-circle peng">碰</div>
-                            <div v-if="canGang" @click="performAction('gang')" class="action-circle gang">杠</div>
-                            <div v-if="canHu" @click="performAction('hu')" class="action-circle hu animate-hu-glow">
-                                胡
-                            </div>
-                            <div v-if="!isMyTurn && (canChi || canPeng || canGang || canHu)"
-                                @click="performAction('pass')" class="action-circle pass">过</div>
+                            class="flex gap-2 items-center justify-center animate-bounce-in pointer-events-auto">
+                            <img v-if="canChi" src="/images/mahjong/麻将_吃-按钮.png" @click="handleChiClick"
+                                class="w-12 h-12 cursor-pointer hover:scale-110 active:scale-95 transition-transform drop-shadow-lg"
+                                alt="吃" />
+                            <img v-if="canPeng" src="/images/mahjong/麻将_碰-按钮.png" @click="performAction('peng')"
+                                class="w-12 h-12 cursor-pointer hover:scale-110 active:scale-95 transition-transform drop-shadow-lg"
+                                alt="碰" />
+                            <img v-if="canGang" src="/images/mahjong/麻将_杠-按钮.png" @click="performAction('gang')"
+                                class="w-12 h-12 cursor-pointer hover:scale-110 active:scale-95 transition-transform drop-shadow-lg"
+                                alt="杠" />
+                            <img v-if="canHu" src="/images/mahjong/麻将_胡-按钮.png" @click="performAction('hu')"
+                                class="w-12 h-12 cursor-pointer hover:scale-110 active:scale-95 transition-transform drop-shadow-xl animate-pulse"
+                                alt="胡" />
+                            <img v-if="!isMyTurn && (canChi || canPeng || canGang || canHu)"
+                                src="/images/mahjong/麻将_过-按钮.png" @click="performAction('pass')"
+                                class="w-10 h-10 cursor-pointer hover:scale-110 active:scale-95 transition-transform opacity-80 hover:opacity-100"
+                                alt="过" />
                         </div>
 
-                        <!-- 听牌灯泡按钮 (放在右侧) -->
+                        <!-- 听牌灯泡按钮 -->
                         <div v-if="tingTiles.length > 0"
-                            class="fixed right-4 bottom-[30%] flex flex-col items-center gap-1 group z-[60]"
+                            class="absolute right-2 top-0 pointer-events-auto flex flex-col items-center gap-1 group z-[60]"
                             @click="showTingPreview = !showTingPreview">
                             <div :class="showTingPreview ? 'bg-yellow-400 text-white shadow-[0_0_15px_rgba(250,204,21,0.6)]' : 'bg-black/40 text-yellow-400 border border-yellow-400/50 backdrop-blur-md'"
-                                class="w-11 h-11 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg animate-pulse">
-                                <i class="fa-solid fa-lightbulb text-xl"></i>
+                                class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg animate-pulse">
+                                <i class="fa-solid fa-lightbulb text-lg"></i>
                             </div>
-                            <span class="text-[10px] text-yellow-400 font-bold shadow-black drop-shadow-md">听牌</span>
+                            <span class="text-[9px] text-yellow-400 font-black shadow-black drop-shadow-md">听牌</span>
                         </div>
 
                         <!-- 吃牌选择器 -->
                         <Transition name="fade">
-
                             <div v-if="showChiOptions"
-                                class="absolute -top-20 left-1/2 -translate-x-1/2 bg-gray-900/95 backdrop-blur-xl p-3 rounded-2xl border-2 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.4)] flex gap-4 z-[70] items-center">
+                                class="absolute -top-24 left-1/2 -translate-x-1/2 bg-gray-900/95 backdrop-blur-xl p-3 rounded-2xl border-2 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.4)] flex flex-col gap-2 z-[70] items-center pointer-events-auto min-w-[200px]">
                                 <div
-                                    class="text-[10px] text-blue-400 font-black flex flex-col items-center px-1 opacity-80">
-                                    <span>请</span><span>选</span><span>择</span>
+                                    class="text-xs text-blue-400 font-black flex items-center gap-1 opacity-90 border-b border-white/10 pb-1 w-full justify-center">
+                                    <span>请选择吃牌组合</span>
                                 </div>
-                                <div v-for="(comb, idx) in chiOptions" :key="idx" @click="confirmChi(comb)"
-                                    class="flex bg-white/5 p-1.5 rounded-xl hover:bg-white/10 active:scale-95 transition-all cursor-pointer border border-white/10 group gap-0.5">
-                                    <div v-for="t in comb" :key="t"
-                                        class="mahjong-tile-small !w-[22px] !h-[32px] !text-[14px] group-hover:border-blue-400/50 transition-colors">
-                                        <span>{{ getTileEmoji(t) }}</span>
+                                <div class="flex flex-wrap justify-center gap-2">
+                                    <div v-for="(comb, idx) in chiOptions" :key="idx" @click="confirmChi(comb)"
+                                        class="flex bg-white/10 p-2 rounded-xl hover:bg-white/20 active:bg-blue-500/30 active:scale-95 transition-all cursor-pointer border border-white/10 hover:border-blue-400 group gap-1 shadow-lg">
+                                        <div v-for="t in comb" :key="t"
+                                            class="mahjong-tile-small !w-[24px] !h-[34px] !text-[16px] shadow-sm transform group-hover:scale-105 transition-transform">
+                                            <span>{{ getTileEmoji(t) }}</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div @click="showChiOptions = false"
-                                    class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/50 cursor-pointer hover:bg-red-500 hover:text-white transition-all ml-1">
-                                    <i class="fa-solid fa-xmark"></i>
+                                    class="absolute -right-2 -top-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform">
+                                    <i class="fa-solid fa-xmark text-xs"></i>
                                 </div>
                             </div>
                         </Transition>
 
-                        <!-- 出牌按钮 - 使用 Tailwind 确保样式始终可见 -->
-                        <div v-if="selectedTile !== null && isMyTurn" class="z-50 pointer-events-auto">
-                            <button @click="playSelectedTile"
-                                class="bg-orange-500 bg-gradient-to-b from-orange-400 to-orange-600 active:from-orange-600 active:to-orange-700 text-white font-black px-6 py-2 rounded-full text-base shadow-[0_4px_12px_rgba(249,115,22,0.4)] border border-orange-200/50 flex items-center gap-2 active:scale-95 transition-all">
-                                出牌 <i class="fa-solid fa-arrow-up"></i>
-                            </button>
+                        <!-- 出牌按钮 - 图片替换 -->
+                        <div v-if="selectedTile !== null && isMyTurn"
+                            class="z-50 pointer-events-auto absolute top-0 left-1/2 -translate-x-1/2">
+                            <img src="/images/mahjong/麻将_出牌-按钮.png" @click="playSelectedTile"
+                                class="w-20 h-auto cursor-pointer hover:scale-105 active:scale-95 transition-transform drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]"
+                                alt="出牌" />
                         </div>
 
                         <!-- 当前回合提示 -->
-                        <div v-if="isMyTurn && selectedTile === null" class="animate-bounce">
+                        <div v-if="isMyTurn && selectedTile === null"
+                            class="animate-bounce absolute top-0 left-0 right-0 flex items-center justify-center pointer-events-none">
                             <div
                                 class="bg-yellow-400 text-black px-3 py-1.5 rounded-full text-[11px] font-black shadow-lg border-2 border-white">
                                 轮到你了！
@@ -379,24 +352,24 @@
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-1 mb-1 px-1 min-h-[40px] transition-all"
-                        v-if="getPlayer('south')?.exposed?.length">
-                        <div v-for="(group, idx) in getPlayer('south').exposed" :key="idx"
-                            class="flex bg-black/30 p-0.5 rounded shadow-inner scale-85 origin-left border border-white/10">
-                            <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
-                                class="mahjong-tile-small !w-6 !h-9 !text-[16px]" :class="getTileColorClass(tile)">
-                                <span>{{ getTileEmoji(tile) }}</span>
+                    <!-- 副牌和手牌展示区域 (合并为一个整体，使用固定间距) -->
+                    <div class="flex flex-col items-center relative transition-all duration-300 mt-4">
+                        <!-- 副牌展示区域 -->
+                        <div class="flex items-center gap-1 px-1 min-h-[40px] transition-all mb-1"
+                            v-if="getPlayer('south')?.exposed?.length">
+                            <div v-for="(group, idx) in getPlayer('south').exposed" :key="idx"
+                                class="flex bg-black/30 p-0.5 rounded shadow-inner scale-85 origin-left border border-white/10">
+                                <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
+                                    class="mahjong-tile-small !w-6 !h-9 !text-[16px]" :class="getTileColorClass(tile)">
+                                    <span>{{ getTileEmoji(tile) }}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- 手牌展示区域 (底部留间距) -->
-                    <div class="flex items-end gap-2 px-2 relative transition-all duration-300"
-                        :class="mahjongStore.gameState?.roundResult ? 'mb-10' : 'mb-4'">
                         <!-- 改进后的听牌预览 (点击听按钮后显示) -->
                         <Transition name="fade">
                             <div v-if="showTingPreview && tingTiles.length > 0"
-                                class="fixed bottom-40 right-4 bg-gray-900/90 backdrop-blur-xl p-3 px-4 rounded-2xl border-2 border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.4)] z-[100] flex flex-col gap-2 min-w-[120px]">
+                                class="fixed bottom-32 right-4 bg-gray-900/90 backdrop-blur-xl p-3 px-4 rounded-2xl border-2 border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.4)] z-[100] flex flex-col gap-2 min-w-[120px]">
                                 <div class="text-[10px] text-yellow-400 font-black flex items-center justify-between">
                                     <div class="flex items-center gap-1">
                                         <i class="fa-solid fa-eye"></i> 听张 ({{ tingTiles.length }})
@@ -421,32 +394,58 @@
                             </div>
                         </Transition>
 
-                        <!-- 手牌（立着显示或结算摊开） -->
-                        <div class="flex items-end gap-0.5 relative w-full"
-                            :class="{ 'justify-center': mahjongStore.gameState?.roundResult }"
-                            :style="{ height: mahjongStore.gameState?.roundResult ? '40px' : '64px' }">
-                            <!-- 排序好的主手牌 -->
-                            <div v-for="item in displayedHand.main" :key="'main-' + item.i"
-                                @click="!mahjongStore.gameState?.roundResult && selectTile(item.i)" :class="[
-                                    mahjongStore.gameState?.roundResult ? 'mahjong-tile-up' : 'mahjong-tile',
-                                    { 'selected': selectedTile === item.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
-                                    getTileColorClass(item.t),
-                                    'transition-all duration-200'
-                                ]">
-                                <span>{{ getTileEmoji(item.t) }}</span>
-                            </div>
+                        <!-- 手牌展示区域 -->
+                        <div class="flex items-end w-full">
+                            <!-- 手牌（立着显示或结算摊开） -->
+                            <div class="flex items-end gap-0.5 relative w-full"
+                                :class="{ 'justify-center': mahjongStore.gameState?.roundResult }"
+                                :style="{ height: mahjongStore.gameState?.roundResult ? '40px' : '64px' }">
+                                <!-- 排序好的主手牌 -->
+                                <div v-for="item in displayedHand.main" :key="'main-' + item.i"
+                                    @click="!mahjongStore.gameState?.roundResult && selectTile(item.i)" :class="[
+                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-up' : 'mahjong-tile',
+                                        { 'selected': selectedTile === item.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
+                                        getTileColorClass(item.t),
+                                        'transition-all duration-200'
+                                    ]">
+                                    <span>{{ getTileEmoji(item.t) }}</span>
+                                </div>
 
-                            <!-- 摸到的新牌 (单独靠右) -->
-                            <div v-if="displayedHand.drawn"
-                                @click="!mahjongStore.gameState?.roundResult && selectTile(displayedHand.drawn.i)"
-                                :class="[
-                                    mahjongStore.gameState?.roundResult ? 'mahjong-tile-up' : 'mahjong-tile',
-                                    { 'selected': selectedTile === displayedHand.drawn.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
-                                    getTileColorClass(displayedHand.drawn.t),
-                                    'ml-3 transition-all duration-200 animate-slide-in'
-                                ]">
-                                <span>{{ getTileEmoji(displayedHand.drawn.t) }}</span>
+                                <!-- 摸到的新牌 (单独靠右) -->
+                                <div v-if="displayedHand.drawn"
+                                    @click="!mahjongStore.gameState?.roundResult && selectTile(displayedHand.drawn.i)"
+                                    :class="[
+                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-up' : 'mahjong-tile',
+                                        { 'selected': selectedTile === displayedHand.drawn.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
+                                        getTileColorClass(displayedHand.drawn.t),
+                                        'ml-3 transition-all duration-200 animate-slide-in'
+                                    ]">
+                                    <span>{{ getTileEmoji(displayedHand.drawn.t) }}</span>
+                                </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 玩家信息栏 (上移一点，避免挡着桌子边) -->
+                    <div class="flex items-center gap-2 transition-all duration-300 z-10 mt-3 px-4">
+                        <div class="relative transition-all duration-300"
+                            :class="{ 'active-breathing': mahjongStore.gameState?.currentPlayer === 0 }">
+                            <div v-if="isImageAvatar(getPlayer('south')?.avatar)"
+                                class="w-12 h-12 rounded-full overflow-hidden shadow-lg border-2 border-white/20">
+                                <img :src="getPlayer('south')?.avatar" class="w-full h-full object-cover" />
+                            </div>
+                            <div v-else
+                                class="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center text-xl shadow-lg border-2 border-white/20">
+                                {{ getPlayer('south')?.avatar || 'ME' }}
+                            </div>
+                            <div v-if="mahjongStore.gameState?.dealer === 0" class="dealer-icon"
+                                style="width: 20px; height: 20px; font-size: 10px; top: -5px; right: -5px;">庄</div>
+                        </div>
+                        <div class="text-white text-xs">
+                            <div class="font-bold">{{ getPlayer('south')?.name }}</div>
+                            <div class="opacity-80">{{ getPlayer('south')?.beans }}豆 | 积分: {{ mahjongStore.score }}
+                            </div>
+                            <div class="opacity-80 text-blue-400">时长: {{ formatGameDuration(gameDuration) }}</div>
                         </div>
                     </div>
                 </div>
@@ -611,6 +610,12 @@
                                             mahjongStore.gameState.roundResult.type }}</span>
                                     </div>
                                     <div class="h-6 w-[1px] bg-amber-200/50 mx-2"></div>
+                                    <div class="flex flex-col items-center">
+                                        <span class="text-[10px] text-gray-400">时长</span>
+                                        <span class="text-lg font-black text-blue-500 font-serif leading-tight">{{
+                                            formatGameDuration(gameDuration) }}</span>
+                                    </div>
+                                    <div class="h-6 w-[1px] bg-amber-200/50 mx-2"></div>
                                     <div class="flex flex-col items-end">
                                         <span class="text-[10px] text-gray-400">番数</span>
                                         <span class="text-lg font-black text-orange-500 font-serif leading-tight">{{
@@ -697,20 +702,21 @@
             <!-- 动作特效文字 -->
             <Transition name="action-pop">
                 <div v-if="actionText"
-                    class="fixed inset-0 z-[150] flex flex-col items-center justify-center pointer-events-none">
-                    <!-- 背景光效 -->
-                    <div class="absolute inset-0 bg-white/10 backdrop-blur-[2px] opacity-0 animate-fadeInOut"></div>
-                    <div class="action-glow absolute w-96 h-96 rounded-full blur-[80px]" :class="'bg-' + actionType">
-                    </div>
+                    class="fixed inset-0 z-[150] flex flex-col items-center justify-center pointer-events-none bg-black/20 backdrop-blur-[1px]">
+                    <!-- 全屏特效贴图 -->
+                    <div class="relative w-full h-full flex items-center justify-center animate-scale-up-bounce">
+                        <img v-if="actionType === 'hu'" src="/images/mahjong/胡-全屏.png"
+                            class="w-[90vw] max-w-[600px] object-contain drop-shadow-[0_0_50px_rgba(255,0,0,0.8)] animate-pulse-fast" />
+                        <img v-else-if="actionType === 'gang'" src="/images/mahjong/杠-全屏.png"
+                            class="w-[80vw] max-w-[500px] object-contain drop-shadow-[0_0_30px_rgba(255,255,0,0.6)]" />
+                        <img v-else-if="actionType === 'peng'" src="/images/mahjong/碰-全屏.png"
+                            class="w-[80vw] max-w-[500px] object-contain drop-shadow-[0_0_30px_rgba(0,0,255,0.6)]" />
+                        <img v-else-if="actionType === 'chi'" src="/images/mahjong/吃-全屏.png"
+                            class="w-[80vw] max-w-[500px] object-contain drop-shadow-[0_0_30px_rgba(0,255,0,0.6)]" />
 
-                    <div class="relative flex flex-col items-center">
-                        <div class="text-5xl mb-2 transform -rotate-12 translate-y-8 animate-actionIcon"
-                            v-if="actionType === 'hu'">🏆</div>
-                        <div class="text-5xl mb-2 animate-actionIcon" v-else-if="actionType === 'gang'">⚡</div>
-                        <div class="text-5xl mb-2 animate-actionIcon" v-else-if="actionType === 'peng'">💥</div>
-                        <div class="text-5xl mb-2 animate-actionIcon" v-else-if="actionType === 'chi'">🥢</div>
-
-                        <div class="action-text-main" :class="'action-' + actionType">
+                        <!-- 兜底文字显示 (以防图片加载失败或未知类型) -->
+                        <div v-if="!['hu', 'gang', 'peng', 'chi'].includes(actionType)"
+                            class="text-6xl font-black text-white drop-shadow-[0_0_10px_rgba(0,0,0,1)] stroke-2 stroke-black">
                             {{ actionText }}
                         </div>
                     </div>
@@ -912,13 +918,32 @@
             <!-- 背景音乐 (换成本地拟真 BGM) -->
             <audio v-if="mahjongStore.bgmEnabled" id="bgm-audio" autoplay loop hidden
                 src="/sounds/mahjong/打麻将全局背景音乐.MP3" :volume="mahjongStore.bgmVolume"></audio>
+
+            <!-- 自定义确认弹窗 -->
+            <div v-if="showConfirmModal"
+                class="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div class="bg-white rounded-2xl p-6 max-w-[300px] w-full shadow-2xl">
+                    <h3 class="text-lg font-bold text-center mb-4 text-gray-800">{{ confirmModal.title }}</h3>
+                    <p class="text-center text-gray-600 mb-6">{{ confirmModal.message }}</p>
+                    <div class="flex gap-3">
+                        <button @click="confirmModal.onCancel()"
+                            class="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm active:scale-95 transition-all">
+                            {{ confirmModal.cancelText || '取消' }}
+                        </button>
+                        <button @click="confirmModal.onConfirm()"
+                            class="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all">
+                            {{ confirmModal.confirmText || '确认' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
 
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMahjongStore } from '../../stores/mahjongStore.js'
 import { useChatStore } from '../../stores/chatStore.js'
@@ -1026,10 +1051,23 @@ const unlockAudio = () => {
 
 
 const handleExit = () => {
-    if (confirm('确定要结束对局吗？进度将不会保存。')) {
-        mahjongStore.exitRoom()
-        router.push('/games/mahjong-lobby')
+    confirmModal.value = {
+        title: '结束对局',
+        message: '确定要结束对局吗？进度将不会保存。',
+        confirmText: '确认',
+        cancelText: '取消',
+        onConfirm: () => {
+            // 发送游戏结束通知
+            sendGameEndNotification()
+            mahjongStore.exitRoom()
+            router.push('/games/mahjong-lobby')
+            showConfirmModal.value = false
+        },
+        onCancel: () => {
+            showConfirmModal.value = false
+        }
     }
+    showConfirmModal.value = true
 }
 
 const onNavbarBack = () => {
@@ -1074,6 +1112,22 @@ const hasNewMsg = ref(false)
 const showSettings = ref(false)
 const showContactPicker = ref(false) // 分享选择器开关
 
+// 本局时长计时器
+const gameStartTime = ref(mahjongStore.gameState?.gameStartTime || null)
+const gameDuration = ref(mahjongStore.gameState?.gameDuration || 0) // 单位：秒
+const gameTimer = ref(null)
+
+// 自定义确认弹窗
+const showConfirmModal = ref(false)
+const confirmModal = ref({
+    title: '',
+    message: '',
+    confirmText: '确认',
+    cancelText: '取消',
+    onConfirm: () => { },
+    onCancel: () => { }
+})
+
 // 分享到通讯录
 const handleShareResult = async (chatId) => {
     const chatStore = useChatStore()
@@ -1084,25 +1138,34 @@ const handleShareResult = async (chatId) => {
     const isWin = result.winner.id === 'user'
     const title = isWin ? '🀄️ 清账啦！大获全胜！' : '🀄️ 输麻了... 技不如人'
     const color = isWin ? '#ef4444' : '#6b7280'
+    const bgColor = isWin ? '#fff3f4' : '#f9fafb'
     const emoji = isWin ? '🔥' : '☁️'
 
     const htmlContent = `
-<div style="background: linear-gradient(135deg, ${color}22, ${color}11); border-radius: 16px; border: 2px solid ${color}55; padding: 12px; font-family: system-ui; overflow: hidden;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+<div style="background: ${bgColor}; border-radius: 16px; border: 2px solid ${color}55; padding: 16px; font-family: system-ui; overflow: visible; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-height: 200px; height: auto; word-break: break-word; overflow-wrap: break-word;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <span style="font-weight: 800; color: ${color}; font-size: 14px;">${title}</span>
         <span style="font-size: 10px; color: ${color}aa;">${new Date().toLocaleTimeString()}</span>
     </div>
-    <div style="background: white; border-radius: 12px; padding: 10px; margin-bottom: 10px; border: 1px solid ${color}22;">
+    <div style="background: white; border-radius: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid ${color}22; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <div style="font-size: 12px; color: #666; margin-bottom: 4px;">本局结算：${result.type} (${result.fan}番)</div>
-        <div style="font-size: 20px; font-weight: 900; color: ${isWin ? '#e11d48' : '#333'};">
-            ${isWin ? '+' : ''}${result.changes.find(c => c.isWinner)?.amount || 0} 豆
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+            <div style="font-size: 20px; font-weight: 900; color: ${isWin ? '#e11d48' : '#333'};">
+                ${isWin ? '+' : ''}${result.changes.find(c => c.isWinner)?.amount || 0} 豆
+            </div>
+            <div style="font-size: 12px; font-weight: 600; color: #3b82f6;">
+                时长：${formatGameDuration(gameDuration.value)}
+            </div>
         </div>
     </div>
-    <div style="display: flex; gap: 4px; font-size: 18px; opacity: 0.9;">
+    <div style="display: flex; gap: 4px; font-size: 16px; opacity: 0.9; flex-wrap: wrap; margin-bottom: 12px;">
         ${result.winnerHand.map(t => getTileEmoji(t)).join('')}
         <span style="color: ${color}; font-weight: bold; margin-left: 4px;">${getTileEmoji(result.winningTile)}</span>
     </div>
-    <div style="margin-top: 8px; font-size: 10px; color: ${color}99; text-align: right;">— 雀神争霸赛 —</div>
+    <div style="margin-top: 8px; font-size: 10px; color: ${color}99; text-align: right; margin-bottom: 8px;">— 雀神争霸赛 —</div>
+    <div style="margin-top: 8px; font-size: 10px; color: #9ca3af; text-align: left; line-height: 1.5; padding: 8px; background: rgba(255,255,255,0.8); border-radius: 8px;">
+        ${result.changes.map(change => `${change.name}: ${change.amount > 0 ? '+' : ''}${change.amount}豆`).join('<br>')}
+    </div>
 </div>
 `.trim()
 
@@ -1165,6 +1228,11 @@ const playSfx = (name) => {
         'play': '/sounds/mahjong/出牌.MP3',
         'select': '/sounds/mahjong/点击选择牌未出牌.MP3',
         'draw': '/sounds/mahjong/我方起牌.MP3',
+        'chi': '/sounds/mahjong/我方吃牌语音great.MP3',
+        'peng': '/sounds/mahjong/我方碰牌语音good.MP3',
+        'gang': '/sounds/mahjong/我方杠牌语音unbelievable.MP3',
+        'hu': '/sounds/mahjong/我方胡牌庆祝bgm.MP3',
+        'lose': '/sounds/mahjong/非己方胡牌失败音效.MP3',
         'action_bg': '/sounds/mahjong/所有吃、碰、杠背景音效.MP3'
     }
 
@@ -1317,9 +1385,20 @@ const triggerActionEffect = (text, type) => {
 // 监听胡牌状态，延迟开启结算
 watch(() => mahjongStore.gameState?.roundResult, (newVal) => {
     if (newVal) {
+        // 游戏结束，停止计时器
+        stopGameTimer()
+
         // 只有当有胜利者时才播放胡牌特效
         if (newVal.winner && newVal.type !== '流局') {
             const winnerIdx = mahjongStore.currentRoom?.players?.findIndex(p => p.name === newVal.winner.name)
+
+            // 播放胜负音效
+            if (winnerIdx === 0) {
+                playSfx('hu') // 我方胡牌 BGM
+            } else {
+                playSfx('lose') // 别人胡牌失败音效
+            }
+
             // 确保播放胡牌语音 (防止 lastAction 监听未触发)
             speak('hu', winnerIdx)
         }
@@ -1466,14 +1545,20 @@ watch(() => mahjongStore.lastAction, (action) => {
         if (textMap[action.type]) {
             triggerActionEffect(textMap[action.type], action.type)
 
-            // 播放动作音效 (不仅要有语音，还要有背景音效)
-            if (['chi', 'peng', 'gang'].includes(action.type)) {
+            const playerIdx = action.playerIndex !== undefined ? action.playerIndex : mahjongStore.gameState?.lastPlayer
+
+            // 播报语音 (TTS: "吃", "碰", "杠") - 所有人都要播报
+            speak(action.type, playerIdx)
+
+            // 音效逻辑区分：
+            // 如果是我方操作 (playerIdx === 0)，额外播放专用语音文件('great', 'good', 'hu' 等)
+            if (playerIdx === 0 && ['chi', 'peng', 'gang', 'hu'].includes(action.type)) {
+                playSfx(action.type)
+            }
+            // 如果是对方操作，播放通用背景音效
+            else if (['chi', 'peng', 'gang'].includes(action.type)) {
                 playSfx('action_bg')
             }
-
-            // 播报动作者的声音 (修正：使用正确的 action 触发者索引)
-            const playerIdx = action.playerIndex !== undefined ? action.playerIndex : mahjongStore.gameState?.lastPlayer
-            speak(action.type, playerIdx)
         }
     }
 })
@@ -1543,12 +1628,18 @@ const speak = async (actionType, playerIndex) => {
     let cookie = voiceConfig.doubao?.cookie || '';
 
     if (isMe) {
-        // 用户：默认使用四川姐姐，除非后续增加了麻将特定的个人语音设置
-        speakerId = 'zh_female_sichuan';
+        if (engine === 'bdetts') {
+            speakerId = voiceConfig.bdetts?.speaker || 'wen-yi-nv-sheng';
+        } else {
+            // 用户：默认使用四川姐姐，除非后续增加了麻将特定的个人语音设置
+            speakerId = 'zh_female_sichuan';
+        }
     } else {
         // AI 玩家：使用角色特定设置或随机分配的豆包语音
         if (engine === 'doubao') {
             speakerId = player?.doubaoSpeaker || 'zh_female_sichuan';
+        } else if (engine === 'bdetts') {
+            speakerId = player?.bdettsSpeaker || 'nuan-xin-jie-jie';
         } else if (engine === 'minimax') {
             speakerId = player?.voiceId || '';
             if (!speakerId) {
@@ -1579,10 +1670,14 @@ const speak = async (actionType, playerIndex) => {
             if (preferred) u.voice = preferred;
         }
         window.speechSynthesis.speak(u);
-    } else if (engine === 'doubao') {
+    } else if (engine === 'doubao' || engine === 'bdetts') {
         try {
-            const useWS = !isVolcVoice(speakerId);
             let audioData;
+
+            // Determine if we should use HTTP (Volc API) or WebSocket (Doubao App API)
+            // BDeTTS always uses HTTP with new IDs
+            const useHttp = engine === 'bdetts' || isVolcVoice(speakerId);
+            const useWS = !useHttp;
 
             if (useWS) {
                 if (!cookie) {
@@ -1591,19 +1686,31 @@ const speak = async (actionType, playerIndex) => {
                 }
             }
 
-            if (isVolcVoice(speakerId)) {
+            if (useHttp) {
                 const response = await fetch('/volc/crx/tts/v1/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    // Support both Doubao/BDeTTS params
                     body: JSON.stringify({ text, speaker: speakerId })
-                });
+                })
+
                 if (!response.ok) {
                     const errMsg = await response.text();
                     throw new Error(`Volc API Error ${response.status}: ${errMsg}`);
                 }
+
                 const res = await response.json();
-                if (res.audio?.data) audioData = res.audio.data;
+                if (res.audio) {
+                    // Check if it's base64 data (standard response)
+                    audioData = res.audio;
+                    // API returns base64 string directly in res.audio or res.data? 
+                    // Common Volc response: { audio: "base64..." } or { data: "base64..." }
+                    // Based on previous code: if (res.audio?.data) audioData = res.audio.data;
+                    if (res.audio?.data) audioData = res.audio.data;
+                    else if (typeof res.audio === 'string') audioData = res.audio;
+                }
             } else {
+                // WebSocket Logic for Doubao App API
                 audioData = await new Promise((resolve, reject) => {
                     const currentId = generateId()
                     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1628,17 +1735,23 @@ const speak = async (actionType, playerIndex) => {
             }
 
             if (audioData) {
-                const url = audioData instanceof Blob ? URL.createObjectURL(audioData) : `data:audio/mp3;base64,${audioData}`;
+                let url;
+                if (audioData instanceof Blob) {
+                    url = URL.createObjectURL(audioData);
+                } else {
+                    // Base64 string
+                    url = `data:audio/mp3;base64,${audioData}`;
+                }
+
                 // 存入缓存
                 ttsCache.set(cacheKey, url);
 
                 const audio = new Audio(url);
-                // 统一通过播放机加速，更稳且不依赖 API 参数支持
                 audio.playbackRate = 1.3;
                 audio.play().catch(err => console.warn('[Mahjong-TTS] Audio play blocked:', err));
             }
         } catch (e) {
-            console.error('[TTS] Doubao failed, falling back to local', e);
+            console.error('[TTS] Engine failed, falling back to local', e);
             try {
                 // Fallback to local TTS
                 window.speechSynthesis.cancel()
@@ -1827,6 +1940,9 @@ const runGameFlow = async () => {
     // 动画完成后正式开始
     mahjongStore.startGame()
 
+    // 启动本局时长计时器
+    startGameTimer()
+
     // 庄家是第一个出牌的
     if (mahjongStore.gameState.currentPlayer !== mahjongStore.gameState.dealer) {
         mahjongStore.gameState.currentPlayer = mahjongStore.gameState.dealer
@@ -1876,14 +1992,86 @@ const rollDice = () => {
     }, 1500)
 }
 
+// 计时器控制方法
+const startGameTimer = () => {
+    if (!gameStartTime.value) {
+        gameStartTime.value = Date.now()
+        // 保存到store中，确保状态持久化
+        if (mahjongStore.gameState) {
+            mahjongStore.gameState.gameStartTime = gameStartTime.value
+            mahjongStore.gameState.gameDuration = 0
+        }
+        gameTimer.value = setInterval(() => {
+            gameDuration.value = Math.floor((Date.now() - gameStartTime.value) / 1000)
+            // 更新到store中
+            if (mahjongStore.gameState) {
+                mahjongStore.gameState.gameDuration = gameDuration.value
+            }
+        }, 1000)
+    }
+}
+
+const stopGameTimer = () => {
+    if (gameTimer.value) {
+        clearInterval(gameTimer.value)
+        gameTimer.value = null
+        // 更新到store中
+        if (mahjongStore.gameState) {
+            mahjongStore.gameState.gameDuration = gameDuration.value
+        }
+    }
+}
+
+const resetGameTimer = () => {
+    stopGameTimer()
+    gameStartTime.value = null
+    gameDuration.value = 0
+    // 更新到store中
+    if (mahjongStore.gameState) {
+        mahjongStore.gameState.gameStartTime = null
+        mahjongStore.gameState.gameDuration = 0
+    }
+}
+
+// 格式化时长为 MM:SS 格式
+const formatGameDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
 // 结算结束，进入下一局前的处理
 const handleRoundEnd = async () => {
     showScoreCard.value = false // 关闭结算界面
     randomTileBackColor() // 每一局换个颜色
     tingTiles.value = [] // 清除听牌状态
     showTingPreview.value = false
+    resetGameTimer() // 重置本局时长计时器
     mahjongStore.startNextRound()
     await runGameFlow()
+}
+
+// 游戏结束时发送系统提示
+const sendGameEndNotification = () => {
+    const chatStore = useChatStore()
+    // 向所有房间内的玩家发送游戏结束通知
+    const players = mahjongStore.currentRoom?.players || []
+    const timestamp = Date.now()
+    const formattedTime = new Date(timestamp).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    })
+    players.forEach(player => {
+        if (player.id !== 'user') {
+            chatStore.addMessage(player.id, {
+                role: 'system',
+                content: `麻将对局结束 [TIMESTAMP:${formattedTime}]`,
+                timestamp: timestamp
+            })
+        }
+    })
 }
 
 // 自动开始第一局
@@ -1896,10 +2084,41 @@ onMounted(() => {
         return
     }
 
+    // 恢复计时器状态
+    if (mahjongStore.gameState && mahjongStore.gameState.gameStartTime) {
+        gameStartTime.value = mahjongStore.gameState.gameStartTime
+        gameDuration.value = mahjongStore.gameState.gameDuration || 0
+        // 重新启动计时器
+        if (!gameTimer.value) {
+            gameTimer.value = setInterval(() => {
+                gameDuration.value = Math.floor((Date.now() - gameStartTime.value) / 1000)
+                // 更新到store中
+                if (mahjongStore.gameState) {
+                    mahjongStore.gameState.gameDuration = gameDuration.value
+                }
+            }, 1000)
+        }
+    }
+
     // 如果还没有发牌（deck为空），或者没有gameState，播放开局动画
     if (!mahjongStore.gameState || mahjongStore.gameState.deck.length === 0) {
         runGameFlow()
     }
+
+    // 监听页面关闭或刷新事件，发送游戏结束通知
+    const handleBeforeUnload = () => {
+        // 只有在有游戏状态时才发送通知
+        if (mahjongStore.currentRoom && mahjongStore.gameState) {
+            sendGameEndNotification()
+        }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    // 组件卸载时移除事件监听
+    onUnmounted(() => {
+        window.removeEventListener('beforeunload', handleBeforeUnload)
+    })
 })
 
 // 处理局内聊天发送
