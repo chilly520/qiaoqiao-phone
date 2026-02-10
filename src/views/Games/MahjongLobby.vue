@@ -145,13 +145,10 @@
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-3">底注</label>
                             <div class="grid grid-cols-3 gap-2">
-                                <button 
-                                    v-for="stake in [100, 500, 1000]" 
-                                    :key="stake"
+                                <button v-for="stake in [100, 500, 1000]" :key="stake"
                                     @click="roomConfig.baseStake = stake"
                                     class="py-3 rounded-lg border-2 transition-all"
-                                    :class="roomConfig.baseStake === stake ? 'border-red-500 bg-red-50 text-red-600 font-bold' : 'border-gray-200 bg-gray-50 text-gray-700'"
-                                >
+                                    :class="roomConfig.baseStake === stake ? 'border-red-500 bg-red-50 text-red-600 font-bold' : 'border-gray-200 bg-gray-50 text-gray-700'">
                                     {{ stake }}欢乐豆
                                 </button>
                             </div>
@@ -160,13 +157,9 @@
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-3">局数</label>
                             <div class="grid grid-cols-3 gap-2">
-                                <button 
-                                    v-for="round in [4, 8, 16]" 
-                                    :key="round"
-                                    @click="roomConfig.totalRounds = round"
+                                <button v-for="round in [4, 8, 16]" :key="round" @click="roomConfig.totalRounds = round"
                                     class="py-3 rounded-lg border-2 transition-all"
-                                    :class="roomConfig.totalRounds === round ? 'border-blue-500 bg-blue-50 text-blue-600 font-bold' : 'border-gray-200 bg-gray-50 text-gray-700'"
-                                >
+                                    :class="roomConfig.totalRounds === round ? 'border-blue-500 bg-blue-50 text-blue-600 font-bold' : 'border-gray-200 bg-gray-50 text-gray-700'">
                                     {{ round }}局
                                 </button>
                             </div>
@@ -400,24 +393,30 @@
                                 <span class="text-xs text-blue-600 font-bold">点击选择桌布样式</span>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
-                                <div @click="mahjongStore.tablecloth = '/tablecloths/桌布1.png'; mahjongStore.saveData()"
+                                <div @click="mahjongStore.tablecloth = ''; mahjongStore.saveData()"
                                     class="relative group cursor-pointer">
                                     <div class="w-full aspect-[4/3] rounded-lg border-2 shadow-sm transition-all overflow-hidden"
-                                        :class="mahjongStore.tablecloth === '/tablecloths/桌布1.png' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
-                                        <img src="/tablecloths/桌布1.png"
-                                            class="w-full h-full object-cover" />
+                                        :class="!mahjongStore.tablecloth ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
+                                        <div class="w-full h-full bg-[#064e3b] flex items-center justify-center">
+                                            <div class="w-full h-full opacity-50"
+                                                style="background-image: radial-gradient(circle at center, #065f46 0%, #064e3b 100%);">
+                                            </div>
+                                            <span class="absolute text-white font-bold text-[10px] drop-shadow-md">经典绿
+                                                (CSS)</span>
+                                        </div>
                                     </div>
-                                    <i v-if="mahjongStore.tablecloth === '/tablecloths/桌布1.png'"
+                                    <i v-if="!mahjongStore.tablecloth"
                                         class="fa-solid fa-circle-check absolute -top-1 -right-1 text-emerald-500 text-sm bg-white rounded-full"></i>
                                 </div>
-                                <div @click="mahjongStore.tablecloth = '/tablecloths/桌布2.jpg'; mahjongStore.saveData()"
+
+                                <div @click="mahjongStore.tablecloth = 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b323fe1435.webp'; mahjongStore.saveData()"
                                     class="relative group cursor-pointer">
                                     <div class="w-full aspect-[4/3] rounded-lg border-2 shadow-sm transition-all overflow-hidden"
-                                        :class="mahjongStore.tablecloth === '/tablecloths/桌布2.jpg' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
-                                        <img src="/tablecloths/桌布2.jpg"
+                                        :class="mahjongStore.tablecloth === 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b323fe1435.webp' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
+                                        <img src="https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b323fe1435.webp"
                                             class="w-full h-full object-cover" />
                                     </div>
-                                    <i v-if="mahjongStore.tablecloth === '/tablecloths/桌布2.jpg'"
+                                    <i v-if="mahjongStore.tablecloth === 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b323fe1435.webp'"
                                         class="fa-solid fa-circle-check absolute -top-1 -right-1 text-emerald-500 text-sm bg-white rounded-full"></i>
                                 </div>
                             </div>
@@ -583,6 +582,11 @@ const handleFileChange = (e) => {
     const file = e.target.files[0]
     if (!file) return
 
+    // 性能优化：检查文件大小
+    if (file.size > 500 * 1024) {
+        showToast('图片超过 500KB，Base64 编码会导致游戏卡顿，建议手动压缩图片或使用 URL 引用')
+    }
+
     const reader = new FileReader()
     reader.onload = (event) => {
         const base64 = event.target.result
@@ -742,81 +746,82 @@ const recharge = (pkg) => {
 
 /* 响应式设计 - 适配1224*2548屏幕 */
 @media (max-width: 1224px) {
+
     /* 顶部导航栏 */
-    .mahjong-lobby > div:first-child {
+    .mahjong-lobby>div:first-child {
         height: 48px;
     }
-    
-    .mahjong-lobby > div:first-child h1 {
+
+    .mahjong-lobby>div:first-child h1 {
         font-size: 18px;
     }
-    
+
     /* 个人信息卡片 */
-    .mahjong-lobby > div:nth-child(2) {
+    .mahjong-lobby>div:nth-child(2) {
         margin: 12px;
         padding: 16px;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:first-child {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:first-child {
         width: 72px;
         height: 72px;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(2) > div:first-child > span:first-child {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:nth-child(2)>div:first-child>span:first-child {
         font-size: 16px;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(2) > div:nth-child(2) {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:nth-child(2)>div:nth-child(2) {
         font-size: 12px;
         gap: 12px;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(3) > div:first-child {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:nth-child(3)>div:first-child {
         font-size: 20px;
     }
-    
+
     /* 快速开始按钮 */
-    .mahjong-lobby > div:nth-child(3) {
+    .mahjong-lobby>div:nth-child(3) {
         margin-bottom: 16px;
     }
-    
-    .mahjong-lobby > div:nth-child(3) button {
+
+    .mahjong-lobby>div:nth-child(3) button {
         padding: 12px;
         font-size: 16px;
     }
-    
+
     /* 功能按钮 */
-    .mahjong-lobby > div:nth-child(4) {
+    .mahjong-lobby>div:nth-child(4) {
         margin-bottom: 16px;
         gap: 12px;
     }
-    
-    .mahjong-lobby > div:nth-child(4) button {
+
+    .mahjong-lobby>div:nth-child(4) button {
         padding: 12px;
     }
-    
-    .mahjong-lobby > div:nth-child(4) button i {
+
+    .mahjong-lobby>div:nth-child(4) button i {
         font-size: 24px;
     }
-    
-    .mahjong-lobby > div:nth-child(4) button span {
+
+    .mahjong-lobby>div:nth-child(4) button span {
         font-size: 12px;
     }
-    
+
     /* 游戏规则说明 */
-    .mahjong-lobby > div:nth-child(5) {
+    .mahjong-lobby>div:nth-child(5) {
         margin-bottom: 16px;
     }
-    
-    .mahjong-lobby > div:nth-child(5) > div {
+
+    .mahjong-lobby>div:nth-child(5)>div {
         padding: 16px;
     }
-    
-    .mahjong-lobby > div:nth-child(5) > div h3 {
+
+    .mahjong-lobby>div:nth-child(5)>div h3 {
         font-size: 16px;
     }
-    
-    .mahjong-lobby > div:nth-child(5) > div ul {
+
+    .mahjong-lobby>div:nth-child(5)>div ul {
         font-size: 12px;
     }
 }
@@ -826,31 +831,32 @@ const recharge = (pkg) => {
     .mahjong-lobby {
         overflow-y: auto;
     }
-    
+
     /* 确保内容不会溢出 */
-    .mahjong-lobby > div {
+    .mahjong-lobby>div {
         max-width: 100%;
     }
 }
 
 /* 小屏幕适配 */
 @media (max-width: 768px) {
+
     /* 个人信息卡片布局调整 */
-    .mahjong-lobby > div:nth-child(2) > div {
+    .mahjong-lobby>div:nth-child(2)>div {
         flex-wrap: wrap;
         gap: 12px;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:first-child {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:first-child {
         margin: 0 auto;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(2) {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:nth-child(2) {
         width: 100%;
         text-align: center;
     }
-    
-    .mahjong-lobby > div:nth-child(2) > div > div:nth-child(3) {
+
+    .mahjong-lobby>div:nth-child(2)>div>div:nth-child(3) {
         width: 100%;
         text-align: center;
     }

@@ -166,7 +166,7 @@
                                 </div>
                                 <div class="marker-info-tag">
                                     <span class="marker-name">{{ chatData?.userName || userProfile?.name || '我'
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </div>
 
@@ -472,10 +472,10 @@ const charPosStyle = computed(() => ({
 
 
 const mapImages = [
-    '/maps/城市地图中.png',
-    '/maps/城市地图大1.png',
-    '/maps/城市地图大2.png',
-    '/maps/城市地图小.png'
+    'https://files.catbox.moe/god58o.png', // 城市地图中
+    'https://files.catbox.moe/37c32e.png', // 城市地图大1
+    'https://files.catbox.moe/b9bh8e.png', // 城市地图大2
+    'https://files.catbox.moe/m3jl54.png'  // 城市地图小
 ]
 
 

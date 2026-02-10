@@ -1,9 +1,9 @@
 <template>
     <div @click="unlockAudio"
-        class="mahjong-game fixed inset-0 w-full h-full flex flex-col overflow-hidden select-none touch-none items-center justify-center p-safe"
-        :class="!mahjongStore.tablecloth ? 'bg-table-felt' : ''" :style="mainGameStyles">
+        class="mahjong-game fixed inset-0 w-full h-full flex flex-col overflow-hidden select-none touch-none items-center justify-center bg-black/40">
         <!-- 适配长屏的容器 -->
-        <div class="w-full h-full max-w-[600px] max-h-[1200px] relative flex flex-col shadow-2xl overflow-hidden">
+        <div class="w-full h-full max-w-[600px] max-h-[1200px] relative flex flex-col shadow-2xl overflow-hidden bg-[#064e3b]"
+            :class="!mahjongStore.tablecloth ? 'bg-table-felt' : ''" :style="mainGameStyles">
             <div class="table-border absolute inset-0 pointer-events-none"></div>
 
             <!-- 水印 (Fixed: 修复显示层级和文案) -->
@@ -14,49 +14,50 @@
                     {{ mahjongStore.currentRoom?.mode === 'quick' ? '快速模式' : '房间模式' }}
                 </div>
             </div>
-            <!-- 顶部信息栏 -->
+            <!-- 顶部信息栏 (微调高度，平衡防撞与空间) -->
             <div
-                class="game-top-bar h-[44px] shrink-0 bg-blue-400/80 backdrop-blur-md flex items-center justify-between px-2 z-[9999] relative border-b border-blue-300/30 fixed top-0 left-0 right-0 max-w-[600px]">
+                class="game-top-bar shrink-0 bg-blue-400/30 backdrop-blur-md flex items-center justify-between px-3 pt-[32px] pb-1 min-h-[68px] z-[100] relative border-b border-blue-300/30">
                 <div class="flex items-center gap-2">
                     <button @click="handleExit" title="结束对局"
-                        class="w-6 h-6 flex items-center justify-center text-white/90 hover:text-red-300 active:scale-90 transition-all bg-blue-500/20 rounded-full shadow-md">
+                        class="w-8 h-8 flex items-center justify-center text-white/90 hover:text-red-300 active:scale-90 transition-all bg-white/10 rounded-full shadow-md">
                         <i class="fa-solid fa-xmark text-sm"></i>
                     </button>
                     <button @click="handleMinimize" title="最小化挂机"
-                        class="w-6 h-6 flex items-center justify-center text-white/90 hover:text-blue-300 active:scale-90 transition-all bg-blue-500/20 rounded-full shadow-md">
+                        class="w-8 h-8 flex items-center justify-center text-white/90 hover:text-blue-300 active:scale-90 transition-all bg-white/10 rounded-full shadow-md">
                         <i class="fa-solid fa-minus text-sm"></i>
                     </button>
                 </div>
 
-                <div class="flex items-center gap-2 text-white text-xs font-bold whitespace-nowrap overflow-hidden">
+                <div
+                    class="flex items-center gap-2 text-white text-xs font-black whitespace-nowrap overflow-hidden drop-shadow-sm">
                     <span class="opacity-80">局: <span class="text-white">{{ mahjongStore.currentRoom?.currentRound
-                            }}/{{
-                                mahjongStore.currentRoom?.totalRounds }}</span></span>
+                            }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
                     <span class="opacity-80">底: <span class="text-white">{{ mahjongStore.currentRoom?.baseStake
                             }}</span></span>
-                    <span class="opacity-80">堆: <span class="text-yellow-400">{{ mahjongStore.gameState?.deck?.length
+                    <span class="opacity-80">堆: <span class="text-yellow-400 font-black">{{
+                        mahjongStore.gameState?.deck?.length
                         || 0
                             }}</span></span>
                 </div>
 
-                <div class="flex items-center gap-1">
+                <div class="flex items-center gap-1.5">
                     <button v-if="mahjongStore.currentRoom?.mode !== 'quick'"
                         @click="isChatPanelVisible = !isChatPanelVisible"
-                        class="w-8 h-8 rounded-full bg-blue-500/80 text-white flex items-center justify-center active:scale-95 transition-transform mr-1 relative">
-                        <i class="fa-solid fa-message text-sm"></i>
+                        class="w-8 h-8 rounded-full bg-blue-500/80 text-white flex items-center justify-center active:scale-95 transition-transform relative border border-white/20">
+                        <i class="fa-solid fa-message text-[10px]"></i>
                     </button>
                     <button @click="showCardCounter = !showCardCounter"
-                        class="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-95 transition-transform mr-1">
-                        <i class="fa-solid fa-calculator text-sm"></i>
+                        class="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center active:scale-95 transition-transform border border-white/10">
+                        <i class="fa-solid fa-calculator text-[10px]"></i>
                     </button>
                     <button @click="mahjongStore.cheatMode = !mahjongStore.cheatMode"
-                        class="w-7 h-7 flex items-center justify-center text-white opacity-60 hover:opacity-100">
-                        <i class="fa-solid fa-eye-slash text-sm"
+                        class="w-8 h-8 flex items-center justify-center text-white opacity-70 hover:opacity-100">
+                        <i class="fa-solid fa-eye-slash text-[10px]"
                             :class="{ 'fa-eye text-yellow-400 opacity-100': mahjongStore.cheatMode }"></i>
                     </button>
                     <button @click="showSettings = true"
-                        class="w-7 h-7 flex items-center justify-center text-white opacity-60 hover:opacity-100">
-                        <i class="fa-solid fa-gear text-sm"></i>
+                        class="w-8 h-8 flex items-center justify-center text-white opacity-70 hover:opacity-100">
+                        <i class="fa-solid fa-gear text-[10px]"></i>
                     </button>
                 </div>
             </div>
@@ -90,7 +91,7 @@
             </div>
 
             <!-- 游戏区域 (添加 min-h-0 防止撑开父容器，实现自适应缩小) -->
-            <div class="flex-1 flex flex-col p-2 px-4 md:px-6 min-h-0 overflow-y-auto overflow-x-hidden relative z-10 pt-[44px]">
+            <div class="flex-1 flex flex-col p-2 px-4 md:px-6 min-h-0 overflow-y-auto overflow-x-hidden relative z-10">
 
                 <!-- 对家（上） -->
                 <div class="player-north flex flex-col items-center mb-4 shrink-0">
@@ -564,7 +565,8 @@
 
                             <div class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-1">
                                 <!-- 胡牌牌面显示 - 紧凑 -->
-                                <div class="bg-blue-50/80 backdrop-blur-sm rounded-lg p-2 shadow-inner border border-blue-200/30">
+                                <div
+                                    class="bg-blue-50/80 backdrop-blur-sm rounded-lg p-2 shadow-inner border border-blue-200/30">
                                     <div class="text-[10px] text-blue-700 mb-1 flex items-center justify-between">
                                         <div class="flex items-center gap-1">
                                             <span class="w-0.5 h-2.5 bg-blue-500 rounded-full"></span> 赢家牌面
@@ -692,7 +694,8 @@
                                 退出大厅
                             </button>
                         </div>
-                        <div class="mt-6 text-white bg-blue-400/30 px-4 py-1 rounded-full text-sm font-bold animate-pulse">
+                        <div
+                            class="mt-6 text-white bg-blue-400/30 px-4 py-1 rounded-full text-sm font-bold animate-pulse">
                             点击上方横条返回结算单</div>
                     </div>
                 </div>
@@ -984,9 +987,9 @@ const tileBackStyles = computed(() => {
         }
     } else {
         return {
-            '--tile-back-primary': '#ffffff',
-            '--tile-back-secondary': '#eeeeee',
-            '--tile-back-shadow': '#00000044',
+            '--tile-back-primary': 'transparent',
+            '--tile-back-secondary': 'transparent',
+            '--tile-back-shadow': 'rgba(0,0,0,0.3)',
             '--tile-back-image': `url(${back.value})`
         }
     }
@@ -1400,12 +1403,25 @@ watch(() => mahjongStore.gameState?.roundResult, (newVal) => {
 
             // 确保播放胡牌语音 (防止 lastAction 监听未触发)
             speak('hu', winnerIdx)
-        }
 
-        // 延长等待时间到 3.5 秒，让摊牌和“胡”字特效展示完整
-        setTimeout(() => {
-            showScoreCard.value = true
-        }, 3500)
+            // 延长等待时间到 3.5 秒，让摊牌和“胡”字特效展示完整
+            setTimeout(() => {
+                showScoreCard.value = true
+            }, 3500)
+        } else if (newVal.type === '流局') {
+            // 流局特殊处理
+            triggerActionEffect('流局', 'liuju')
+            playSfx('lose') // 或者专门的流局音效
+            // 说话
+            const u = new SpeechSynthesisUtterance('流局了')
+            u.rate = 1.3
+            window.speechSynthesis.speak(u)
+
+            // 流局稍微快一点出结果
+            setTimeout(() => {
+                showScoreCard.value = true
+            }, 2000)
+        }
     }
 })
 
@@ -1658,8 +1674,7 @@ const speak = async (actionType, playerIndex) => {
         return;
     }
 
-    // 简化TTS逻辑，只使用本地TTS，避免网络调用导致卡顿
-    try {
+    if (engine === 'browser' || !speakerId) {
         window.speechSynthesis.cancel()
         const u = new SpeechSynthesisUtterance(text);
         u.rate = isMe ? (voiceConfig.speed || 1.1) : 1.3;
@@ -1670,8 +1685,107 @@ const speak = async (actionType, playerIndex) => {
             if (preferred) u.voice = preferred;
         }
         window.speechSynthesis.speak(u);
-    } catch (err) {
-        console.error('[TTS] Local TTS failed:', err)
+    } else if (engine === 'doubao' || engine === 'bdetts') {
+        try {
+            let audioData;
+
+            // Determine if we should use HTTP (Volc API) or WebSocket (Doubao App API)
+            // BDeTTS always uses HTTP with new IDs
+            const useHttp = engine === 'bdetts' || isVolcVoice(speakerId);
+            const useWS = !useHttp;
+
+            if (useWS) {
+                if (!cookie) {
+                    console.warn('[TTS] Custom voice needs cookie, falling back to default.');
+                    speakerId = 'zh_female_sichuan';
+                }
+            }
+
+            if (useHttp) {
+                const response = await fetch('/volc/crx/tts/v1/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // Support both Doubao/BDeTTS params
+                    body: JSON.stringify({ text, speaker: speakerId })
+                })
+
+                if (!response.ok) {
+                    const errMsg = await response.text();
+                    throw new Error(`Volc API Error ${response.status}: ${errMsg}`);
+                }
+
+                const res = await response.json();
+                if (res.audio) {
+                    // Check if it's base64 data (standard response)
+                    audioData = res.audio;
+                    // API returns base64 string directly in res.audio or res.data? 
+                    // Common Volc response: { audio: "base64..." } or { data: "base64..." }
+                    // Based on previous code: if (res.audio?.data) audioData = res.audio.data;
+                    if (res.audio?.data) audioData = res.audio.data;
+                    else if (typeof res.audio === 'string') audioData = res.audio;
+                }
+            } else {
+                // WebSocket Logic for Doubao App API
+                audioData = await new Promise((resolve, reject) => {
+                    const currentId = generateId()
+                    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsBase = `${wsProtocol}//${window.location.host}/ws-doubao/samantha/audio/tts`;
+                    const params = new URLSearchParams({
+                        format: 'aac', speaker: speakerId, speech_rate: '200', pitch: '0',
+                        mode: '0', language: 'zh', device_platform: 'web', aid: '586861',
+                        device_id: currentId, tea_uuid: currentId, web_id: currentId,
+                        doubao_cookie: cookie
+                    })
+                    const ws = new WebSocket(`${wsBase}?${params.toString()}`);
+                    const audioChunks = [];
+                    ws.onopen = () => {
+                        ws.send(JSON.stringify({ event: 'text', text }));
+                        ws.send(JSON.stringify({ event: 'finish' }));
+                    };
+                    ws.onmessage = (e) => { if (e.data instanceof Blob) audioChunks.push(e.data); };
+                    ws.onclose = () => { resolve(audioChunks.length > 0 ? new Blob(audioChunks, { type: 'audio/aac' }) : null); };
+                    ws.onerror = (e) => reject(e);
+                    setTimeout(() => ws.close(), 5000);
+                });
+            }
+
+            if (audioData) {
+                let url;
+                if (audioData instanceof Blob) {
+                    url = URL.createObjectURL(audioData);
+                } else {
+                    // Base64 string
+                    url = `data:audio/mp3;base64,${audioData}`;
+                }
+
+                // 存入缓存
+                ttsCache.set(cacheKey, url);
+
+                const audio = new Audio(url);
+                audio.playbackRate = 1.3;
+                audio.play().catch(err => console.warn('[Mahjong-TTS] Audio play blocked:', err));
+            }
+        } catch (e) {
+            console.error('[TTS] Engine failed, falling back to local', e);
+            try {
+                // Fallback to local TTS
+                window.speechSynthesis.cancel()
+                const u = new SpeechSynthesisUtterance(text);
+                u.rate = isMe ? (voiceConfig.speed || 1.1) : 1.3;
+                if (!isMe) {
+                    u.pitch = gender === '男' ? 0.8 : 1.2;
+                    const voices = window.speechSynthesis.getVoices();
+                    const preferred = voices.find(v => (gender === '男' ? (v.name.includes('Male') || v.name.includes('男')) : (v.name.includes('Female') || v.name.includes('女'))));
+                    if (preferred) u.voice = preferred;
+                }
+                window.speechSynthesis.speak(u);
+            } catch (err) {
+                console.error('[TTS] Local fallback also failed', err)
+            }
+        }
+    } else if (engine === 'minimax') {
+        // Simple Minimax placeholder or direct logic if available in common utils
+        console.log('[TTS] Minimax voice requested but not fully implemented in separate helper');
     }
 }
 
@@ -2173,17 +2287,15 @@ watch(isChatPanelVisible, (val) => {
 .mahjong-tile-back {
     width: 24px;
     height: 34px;
-    background: var(--tile-back-image), linear-gradient(135deg, var(--tile-back-primary), var(--tile-back-secondary));
+    background-color: var(--tile-back-primary);
+    background-image: var(--tile-back-image);
     background-size: cover;
     background-position: center;
     border-radius: 3px;
     position: relative;
-    box-shadow:
-        0 1px 0 var(--tile-back-shadow),
-        0 2px 0 var(--tile-back-shadow),
-        0 3px 0 var(--tile-back-shadow),
-        0 4px 4px rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--tile-back-primary);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    will-change: transform;
 }
 
 .mahjong-tile-back::after {
@@ -2263,16 +2375,15 @@ watch(isChatPanelVisible, (val) => {
 .mahjong-tile-vertical {
     width: 24px;
     height: 16px;
-    background: var(--tile-back-image), linear-gradient(to bottom, var(--tile-back-primary), var(--tile-back-secondary));
+    background-color: var(--tile-back-primary);
+    background-image: var(--tile-back-image);
     background-size: cover;
     background-position: center;
     border-radius: 2px;
     position: relative;
-    box-shadow:
-        0 1px 0 var(--tile-back-shadow),
-        0 2px 0 var(--tile-back-shadow),
-        0 3px 4px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
     margin: 0;
+    will-change: transform;
 }
 
 .mahjong-tile-vertical::after {
@@ -2290,11 +2401,13 @@ watch(isChatPanelVisible, (val) => {
 .deck-tile {
     width: 14px;
     height: 20px;
-    background: var(--tile-back-image), linear-gradient(135deg, var(--tile-back-primary), var(--tile-back-secondary));
+    background-color: var(--tile-back-primary);
+    background-image: var(--tile-back-image);
     background-size: cover;
     background-position: center;
     border-radius: 2px;
     box-shadow: 0 2px 0 var(--tile-back-shadow);
+    will-change: transform;
 }
 
 .action-btn {
@@ -2350,21 +2463,13 @@ watch(isChatPanelVisible, (val) => {
     transition: opacity 0.3s;
 }
 
-/* 高级感桌布 */
+/* 高级感桌布 - 移除卡顿源，改用纯净高性能方案 */
 .bg-table-felt {
     background-color: #064e3b;
-    background-image: radial-gradient(circle at center, #065f46 0%, #064e3b 100%);
-    position: relative;
+    background-image:
+        radial-gradient(circle at 50% 50%, #065f46 0%, #064e3b 100%);
 }
 
-.bg-table-felt::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3%3Cfilter id='noiseFilter'%3%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3%3C/filter%3%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3%3C/svg%3");
-    opacity: 0.08;
-    pointer-events: none;
-}
 
 .table-border {
     border: 12px solid #3f2b1c;
