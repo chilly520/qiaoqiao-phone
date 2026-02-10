@@ -31,9 +31,9 @@
                 <div
                     class="flex items-center gap-2 text-white text-xs font-black whitespace-nowrap overflow-hidden drop-shadow-sm">
                     <span class="opacity-80">局: <span class="text-white">{{ mahjongStore.currentRoom?.currentRound
-                            }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
+                    }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
                     <span class="opacity-80">底: <span class="text-white">{{ mahjongStore.currentRoom?.baseStake
-                            }}</span></span>
+                    }}</span></span>
                     <span class="opacity-80">堆: <span class="text-yellow-400 font-black">{{
                         mahjongStore.gameState?.deck?.length
                         || 0
@@ -122,7 +122,7 @@
                     <div class="flex gap-0.5 mt-2">
                         <div v-for="(tile, i) in getPlayer('north')?.hand" :key="i"
                             :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-up', getTileColorClass(tile)] : 'mahjong-tile-back'">
-                            <span v-if="mahjongStore.gameState?.roundResult">{{ getTileEmoji(tile) }}</span>
+                            <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                         </div>
                     </div>
 
@@ -131,7 +131,7 @@
                             class="flex bg-black/40 p-0.5 rounded shadow-inner border border-white/10 scale-90">
                             <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
                                 class="mahjong-tile-small !w-5 !h-7 !text-[12px]" :class="getTileColorClass(tile)">
-                                <span>{{ getTileEmoji(tile) }}</span>
+                                <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                             </div>
                         </div>
                     </div>
@@ -170,8 +170,8 @@
                                 :class="mahjongStore.gameState?.roundResult ? 'mr-3 my-auto' : 'gap-1'">
                                 <div v-for="tile in getPlayer('west')?.hand" :key="'west-hand-' + tile"
                                     :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-small', '!w-[26px] !h-[36px] rotate-90 my-[-5px]', getTileColorClass(tile)] : 'mahjong-tile-vertical'">
-                                    <span v-if="mahjongStore.gameState?.roundResult" class="-rotate-90">{{
-                                        getTileEmoji(tile) }}</span>
+                                    <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content -rotate-90"
+                                        v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
                             <div v-if="getPlayer('west')?.exposed?.length" class="flex flex-col gap-0.5">
@@ -180,7 +180,7 @@
                                     <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
                                         class="mahjong-tile-small !w-5 !h-7 !text-[12px] rotate-90 my-[-2px] mx-auto"
                                         :class="getTileColorClass(tile)">
-                                        <span>{{ getTileEmoji(tile) }}</span>
+                                        <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                     </div>
                                 </div>
                             </div>
@@ -197,7 +197,7 @@
                         <div v-else-if="mahjongStore.currentRoom?.status === 'settling'" class="text-white text-center">
                             <div class="text-5xl mb-3">🎉</div>
                             <div class="text-2xl font-bold mb-2">{{ mahjongStore.currentRoom.lastResult?.winnerName
-                            }}
+                                }}
                                 胡了！
                             </div>
                             <div class="text-lg">{{ mahjongStore.currentRoom.lastResult?.fan }}番</div>
@@ -215,13 +215,14 @@
                                     <div v-if="activeTile"
                                         class="absolute z-40 bg-white border-4 border-orange-500 rounded-xl shadow-[0_0_20px_rgba(255,165,0,0.6)] flex items-center justify-center text-5xl w-20 h-28 -top-20 active-tile-zoom"
                                         :class="getTileColorClass(activeTile)">
-                                        <span class="scale-150">{{ getTileEmoji(activeTile) }}</span>
+                                        <div class="tile-face-content scale-150" v-html="getTileFaceHTML(activeTile)">
+                                        </div>
                                     </div>
                                 </Transition>
 
                                 <div v-for="(tile, i) in mahjongStore.gameState?.pool" :key="i"
                                     class="mahjong-tile-pool !w-5 !h-7 !text-[12px]" :class="getTileColorClass(tile)">
-                                    <span class="flex items-center justify-center">{{ getTileEmoji(tile) }}</span>
+                                    <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
                         </div>
@@ -256,8 +257,8 @@
                                 :class="mahjongStore.gameState?.roundResult ? 'ml-3 my-auto' : 'gap-1'">
                                 <div v-for="tile in getPlayer('east')?.hand" :key="'east-hand-' + tile"
                                     :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-small', '!w-[26px] !h-[36px] -rotate-90 my-[-5px]', getTileColorClass(tile)] : 'mahjong-tile-vertical'">
-                                    <span v-if="mahjongStore.gameState?.roundResult" class="rotate-90">{{
-                                        getTileEmoji(tile) }}</span>
+                                    <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content rotate-90"
+                                        v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
                             <div v-if="getPlayer('east')?.exposed?.length" class="flex flex-col gap-0.5">
@@ -266,7 +267,7 @@
                                     <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
                                         class="mahjong-tile-small !w-5 !h-7 !text-[12px] -rotate-90 my-[-2px] mx-auto"
                                         :class="getTileColorClass(tile)">
-                                        <span>{{ getTileEmoji(tile) }}</span>
+                                        <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                     </div>
                                 </div>
                             </div>
@@ -323,7 +324,7 @@
                                         class="flex bg-white/10 p-2 rounded-xl hover:bg-white/20 active:bg-blue-500/30 active:scale-95 transition-all cursor-pointer border border-white/10 hover:border-blue-400 group gap-1 shadow-lg">
                                         <div v-for="t in comb" :key="t"
                                             class="mahjong-tile-small !w-[24px] !h-[34px] !text-[16px] shadow-sm transform group-hover:scale-105 transition-transform">
-                                            <span>{{ getTileEmoji(t) }}</span>
+                                            <div class="tile-face-content" v-html="getTileFaceHTML(t)"></div>
                                         </div>
                                     </div>
                                 </div>
@@ -361,7 +362,7 @@
                                 class="flex bg-black/30 p-0.5 rounded shadow-inner scale-85 origin-left border border-white/10">
                                 <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
                                     class="mahjong-tile-small !w-6 !h-9 !text-[16px]" :class="getTileColorClass(tile)">
-                                    <span>{{ getTileEmoji(tile) }}</span>
+                                    <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
                         </div>
@@ -383,7 +384,7 @@
                                     <div v-for="tile in tingTiles" :key="tile" class="flex flex-col items-center gap-1">
                                         <div class="mahjong-tile-small !w-7 !h-10 !text-[20px] bg-white shadow-md border border-gray-300"
                                             :class="getTileColorClass(tile)">
-                                            <span>{{ getTileEmoji(tile) }}</span>
+                                            <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                         </div>
                                         <span
                                             class="text-[9px] text-white/50 font-black px-1.5 py-0.5 bg-white/5 rounded-md">
@@ -408,7 +409,7 @@
                                         getTileColorClass(item.t),
                                         'transition-all duration-200'
                                     ]">
-                                    <span>{{ getTileEmoji(item.t) }}</span>
+                                    <div class="tile-face-content" v-html="getTileFaceHTML(item.t)"></div>
                                 </div>
 
                                 <!-- 摸到的新牌 (单独靠右) -->
@@ -420,7 +421,8 @@
                                         getTileColorClass(displayedHand.drawn.t),
                                         'ml-3 transition-all duration-200 animate-slide-in'
                                     ]">
-                                    <span>{{ getTileEmoji(displayedHand.drawn.t) }}</span>
+                                    <div class="tile-face-content" v-html="getTileFaceHTML(displayedHand.drawn.t)">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -525,7 +527,7 @@
                     <div v-for="tile in ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'east', 'south', 'west', 'north', 'red', 'green', 'white']"
                         :key="tile" class="counter-item">
                         <span class="counter-tile" :class="getTileColorClass(tile)">
-                            <span>{{ getTileEmoji(tile) }}</span>
+                            <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                         </span>
                         <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
                     </div>
@@ -580,7 +582,7 @@
                                             <div v-for="(t, ti) in group.tiles" :key="'ti-' + ti"
                                                 class="mahjong-tile-small !w-5 !h-7 !text-xs !bg-white"
                                                 :class="getTileColorClass(t)">
-                                                <span>{{ getTileEmoji(t) }}</span>
+                                                <div class="tile-face-content" v-html="getTileFaceHTML(t)"></div>
                                             </div>
                                         </div>
                                         <!-- 剩余手牌 -->
@@ -589,15 +591,16 @@
                                                 :key="'hand-' + i"
                                                 class="mahjong-tile-small !w-5 !h-7 !text-xs !bg-white"
                                                 :class="getTileColorClass(t)">
-                                                <span>{{ getTileEmoji(t) }}</span>
+                                                <div class="tile-face-content" v-html="getTileFaceHTML(t)"></div>
                                             </div>
                                         </div>
                                         <!-- 胡的那张牌 -->
                                         <div v-if="mahjongStore.gameState.roundResult.winningTile"
                                             class="mahjong-tile-small !w-6 !h-8 !text-base bg-yellow-50 border border-yellow-400 ml-2 shadow-[0_0_10px_rgba(251,191,36,0.8)] flex items-center justify-center animate-pulse"
                                             :class="getTileColorClass(mahjongStore.gameState.roundResult.winningTile)">
-                                            <span>{{ getTileEmoji(mahjongStore.gameState.roundResult.winningTile)
-                                            }}</span>
+                                            <div class="tile-face-content"
+                                                v-html="getTileFaceHTML(mahjongStore.gameState.roundResult.winningTile)">
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -642,7 +645,7 @@
                                                     v-if="change.isPao || (!mahjongStore.gameState.roundResult.isZiMo && change.amount < 0 && mahjongStore.gameState.roundResult.type !== '流局')">炮</span>
                                             </div>
                                             <span class="font-bold text-sm text-gray-800 truncate">{{ change.name
-                                                }}</span>
+                                            }}</span>
                                         </div>
                                         <span class="font-bold text-sm shrink-0"
                                             :class="change.amount > 0 ? 'text-green-600' : 'text-red-500'">
@@ -1517,19 +1520,89 @@ const cancelLongPress = () => {
     }
 }
 
-// 获取牌的emoji
+// 获取牌的图形数据 (取代 Emoji 系列)
+const getTileGraphics = (tile) => {
+    if (!tile) return null;
+    const type = tile[0];
+    const num = parseInt(tile[1]);
+    const colors = { red: '#e11d48', green: '#16a34a', blue: '#2563eb', black: '#1f2937', gold: '#d97706' };
+
+    const winds = { 'east': '東', 'south': '南', 'west': '西', 'north': '北' };
+    if (winds[tile]) return { type: 'char', text: winds[tile], color: colors.black };
+    if (tile === 'red') return { type: 'char', text: '中', color: colors.red };
+    if (tile === 'green') return { type: 'char', text: '發', color: colors.green };
+    if (tile === 'white') return { type: 'char', text: '', color: colors.blue, border: true };
+
+    const nums = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+    if (type === 'w') return { type: 'wan', top: nums[num], bottom: '萬', color: colors.red };
+
+    const dotPos = {
+        1: [[5, 5]], 2: [[5, 2], [5, 8]], 3: [[2, 2], [5, 5], [8, 8]],
+        4: [[2, 2], [8, 2], [2, 8], [8, 8]], 5: [[2, 2], [8, 2], [5, 5], [2, 8], [8, 8]],
+        6: [[3, 2], [7, 2], [3, 5], [7, 5], [3, 8], [7, 8]],
+        7: [[2, 2], [5, 2], [8, 2], [5, 5], [2, 8], [5, 8], [8, 8]],
+        8: [[3, 1.5], [7, 1.5], [3, 3.8], [7, 3.8], [3, 6.2], [7, 6.2], [3, 8.5], [7, 8.5]],
+        9: [[2.5, 2.5], [5, 2.5], [7.5, 2.5], [2.5, 5], [5, 5], [7.5, 5], [2.5, 7.5], [5, 7.5], [7.5, 7.5]]
+    };
+    if (type === 'b') {
+        const dots = (dotPos[num] || []).map((p, i) => ({
+            x: p[0] * 10, y: p[1] * 10,
+            color: num === 1 ? colors.red : (i % 3 === 0 ? colors.red : (i % 2 === 0 ? colors.blue : colors.green))
+        }));
+        return { type: 'dots', items: dots, special: num === 1 };
+    }
+
+    if (type === 't') {
+        if (num === 1) return { type: 'bird', color: colors.green };
+        const bamPos = {
+            2: [[5, 3], [5, 7]], 3: [[5, 2.5], [3, 7.5], [7, 7.5]],
+            4: [[3, 3], [7, 3], [3, 7], [7, 7]], 5: [[5, 5], [2.5, 2.5], [7.5, 2.5], [2.5, 7.5], [7.5, 7.5]],
+            6: [[3, 3], [7, 3], [3, 5.5], [7, 5.5], [3, 8], [7, 8]],
+            7: [[5, 2], [3, 5], [7, 5], [3, 8], [7, 8], [5, 8], [5, 5]],
+            8: [[3, 2], [7, 2], [3, 4], [7, 4], [3, 6], [7, 6], [3, 8], [7, 8]],
+            9: [[2.5, 2.5], [5, 2.5], [7.5, 2.5], [2.5, 5], [5, 5], [7.5, 5], [2.5, 7.5], [5, 7.5], [7.5, 7.5]]
+        };
+        const bams = (bamPos[num] || []).map((p, i) => ({
+            x: p[0] * 10, y: p[1] * 10,
+            color: i % 2 === 0 ? colors.green : colors.red
+        }));
+        return { type: 'bams', items: bams };
+    }
+    return null;
+}
+
+const getTileFaceHTML = (tile) => {
+    const g = getTileGraphics(tile);
+    if (!g) return '';
+    if (g.type === 'char') {
+        if (g.border) return `<div class="face-white-border" style="margin:auto"></div>`;
+        return `<div class="face-char" style="color:${g.color}">${g.text}</div>`;
+    }
+    if (g.type === 'wan') {
+        return `<div class="face-wan"><div class="wan-top" style="color:${g.color}">${g.top}</div><div class="wan-bottom" style="color:${g.color}">${g.bottom}</div></div>`;
+    }
+    if (g.type === 'dots') {
+        if (g.special) return `<div class="dot-special visual-item" style="left:50%; top:50%; position:absolute; transform:translate(-50%,-50%)"></div>`;
+        return g.items.map(d => `<div class="dot-item visual-item" style="left:${d.x}%; top:${d.y}%; background-color:${d.color}"></div>`).join('');
+    }
+    if (g.type === 'bams') {
+        return g.items.map(b => `<div class="bam-item visual-item" style="left:${b.x}%; top:${b.y}%; background-color:${b.color}"></div>`).join('');
+    }
+    if (g.type === 'bird') {
+        return `<div class="bird-visual" style="font-size: 0.7em">🦚</div>`;
+    }
+    return '';
+}
+
+// 获取牌的emoji (保留用于分享)
 const getTileEmoji = (tile) => {
     const emojiMap = {
-        // 万子
         'w1': '🀇', 'w2': '🀈', 'w3': '🀉', 'w4': '🀊', 'w5': '🀋',
         'w6': '🀌', 'w7': '🀍', 'w8': '🀎', 'w9': '🀏',
-        // 条子
         't1': '🀐', 't2': '🀑', 't3': '🀒', 't4': '🀓', 't5': '🀔',
         't6': '🀕', 't7': '🀖', 't8': '🀗', 't9': '🀘',
-        // 筒子
         'b1': '🀙', 'b2': '🀚', 'b3': '🀛', 'b4': '🀜', 'b5': '🀝',
         'b6': '🀞', 'b7': '🀟', 'b8': '🀠', 'b9': '🀡',
-        // 字牌
         'east': '🀀', 'south': '🀁', 'west': '🀂', 'north': '🀃',
         'red': '🀄', 'green': '🀅', 'white': '🀆'
     }
@@ -2244,13 +2317,101 @@ watch(isChatPanelVisible, (val) => {
 }
 
 .mahjong-tile span {
+    display: none;
+}
+
+/* 矢量牌面渲染器 */
+.tile-face-content {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10% 8%;
+}
+
+.face-char {
+    font-size: 0.9em;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.face-wan {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.wan-top {
+    font-size: 0.55em;
+    font-weight: 900;
+    margin-bottom: -0.1em;
+}
+
+.wan-bottom {
+    font-size: 0.45em;
+    font-weight: 900;
+    opacity: 0.9;
+}
+
+.face-grid {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.visual-item {
+    position: absolute;
+    transform: translate(-50%, -50%);
+}
+
+.dot-item {
+    width: 22%;
+    height: 16%;
+    border-radius: 50%;
+    box-shadow: inset -1px -1px 2px rgba(0, 0, 0, 0.3), 1px 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+.dot-special {
+    width: 70%;
+    height: 50%;
+    border-radius: 50%;
+    border: 2px solid #e11d48;
+    background: radial-gradient(circle at 30% 30%, #fca5a5, #e11d48);
+}
+
+.bam-item {
+    width: 12%;
+    height: 25%;
+    border-radius: 4px;
+    box-shadow: inset -1px -1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.bird-visual {
+    width: 80%;
+    height: 80%;
     display: flex;
     align-items: center;
     justify-content: center;
-    transform: scale(1.6);
+    font-size: 0.8em;
+    color: #16a34a;
+    filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
 }
 
-/* 彩色花色样式 */
+.face-white-border {
+    width: 70%;
+    height: 80%;
+    border: 2px solid #2563eb;
+    border-radius: 3px;
+    box-shadow: inset 0 0 4px rgba(37, 99, 235, 0.2);
+}
+
+/* 彩色花色样式 (仅基础) */
 .tile-red {
     color: #e11d48 !important;
 }
