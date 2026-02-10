@@ -41,6 +41,11 @@
             <!-- Current Location (Manual) -->
             <i class="fa-solid fa-location-dot cursor-pointer hover:text-green-600 transition-colors"
                 @click="settingsStore.showLocationInput = true" title="当前位置"></i>
+
+            <!-- Scroll to Bottom -->
+            <i v-if="showScrollToBottom"
+                class="fa-solid fa-angles-down cursor-pointer text-blue-500 hover:text-blue-600 transition-all animate-bounce-subtle"
+                @click="$emit('scroll-to-bottom')" title="回到最新"></i>
         </div>
 
         <!-- Row 2: Input Box + Actions -->
@@ -98,13 +103,14 @@ const props = defineProps({
     chatData: Object,
     isTyping: Boolean,
     musicVisible: Boolean,
-    searchEnabled: Boolean
+    searchEnabled: Boolean,
+    showScrollToBottom: Boolean
 })
 
 const emit = defineEmits([
     'send', 'generate', 'stop-generate',
     'toggle-panel', 'toggle-emoji', 'toggle-music', 'toggle-search', 'regenerate',
-    'cancel-quote'
+    'cancel-quote', 'scroll-to-bottom'
 ])
 
 const inputVal = ref('')

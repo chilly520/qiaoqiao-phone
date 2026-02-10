@@ -234,7 +234,7 @@ const handleCreateLoop = async (form) => {
         })
         chatStore.currentChatId = chat.id
         chatStore.triggerToast('世界圈开启成功', 'success')
-        
+
         // Push history state to show chat window
         const currentState = history.state || {}
         if (!currentState.chatOpen) {
@@ -249,7 +249,7 @@ const handleCreateLoop = async (form) => {
 const getPreviewText = (contentRaw) => {
     if (!contentRaw) return '暂无消息'
     const content = ensureString(contentRaw)
-    
+
     // Identification patterns
     if (content.includes('"postId"')) return '[朋友圈分享]'
     if (content.includes('"type":"html"')) return '[卡片消息]'
@@ -257,16 +257,18 @@ const getPreviewText = (contentRaw) => {
         if (content.includes('APPLY')) return '[亲属卡申请]'
         return '[亲属卡]'
     }
-    
+
     // Clean Inner Voice
     let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '')
     // Clean System tags
     clean = clean.replace(/\[System:[\s\S]+?\]/gi, '')
     // Clean DRAW tags
     clean = clean.replace(/\[DRAW:[\s\S]*?\]/gi, '[生图指令]')
-    
+
     return clean.trim() || '[特殊属性消息]'
 }
+
+const initialUnreadCount = ref(0)
 
 const openChat = (chatId) => {
     // Prevent ghost click after long press
@@ -274,6 +276,10 @@ const openChat = (chatId) => {
         isLongPressTriggered = false
         return
     }
+
+    // Capture unread count before it gets cleared by the store watcher
+    const chat = chatStore.chats[chatId]
+    initialUnreadCount.value = chat ? (chat.unreadCount || 0) : 0
 
     chatStore.currentChatId = chatId
     // Ensure it shows in chat list when opened from contacts
@@ -467,15 +473,11 @@ const handleImport = async (e) => {
         <input type="file" ref="importFileInput" class="hidden" accept=".json" @change="handleImport">
 
         <!-- Chat Window Overlay -->
-        <ChatWindow v-if="chatStore.currentChatId" v-show="!showMoments" class="absolute inset-0 z-50" @back="handleChatBack"
-            @show-profile="openProfileFromChat" />
+        <ChatWindow v-if="chatStore.currentChatId" v-show="!showMoments" class="absolute inset-0 z-50"
+            @back="handleChatBack" :initial-unread-count="initialUnreadCount" @show-profile="openProfileFromChat" />
 
-        <WorldLoopCreateModal 
-            :visible="showCreateLoopModal" 
-            :contacts="chatStore.contactList.filter(c => !c.isGroup)"
-            @close="showCreateLoopModal = false"
-            @confirm="handleCreateLoop"
-        />
+        <WorldLoopCreateModal :visible="showCreateLoopModal" :contacts="chatStore.contactList.filter(c => !c.isGroup)"
+            @close="showCreateLoopModal = false" @confirm="handleCreateLoop" />
 
         <!-- Context Menu (Restored) -->
         <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false">
@@ -684,8 +686,11 @@ const handleImport = async (e) => {
                                 class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer"
                                 @click="openChat(chat.id)">
                                 <div class="relative w-10 h-10 mr-3">
-                                    <img :src="chat.avatar || getRandomAvatar()" class="w-full h-full rounded-lg bg-gray-200 object-cover">
-                                    <div class="absolute -top-1 -right-1 bg-purple-500 text-white text-[8px] px-1 rounded-sm border border-white">世界</div>
+                                    <img :src="chat.avatar || getRandomAvatar()"
+                                        class="w-full h-full rounded-lg bg-gray-200 object-cover">
+                                    <div
+                                        class="absolute -top-1 -right-1 bg-purple-500 text-white text-[8px] px-1 rounded-sm border border-white">
+                                        世界</div>
                                 </div>
                                 <div class="flex-1">
                                     <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
@@ -694,7 +699,8 @@ const handleImport = async (e) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="chatStore.contactList.filter(c => c.isGroup).length === 0" class="py-4 text-center text-xs text-gray-400">
+                            <div v-if="chatStore.contactList.filter(c => c.isGroup).length === 0"
+                                class="py-4 text-center text-xs text-gray-400">
                                 暂无活跃的世界圈
                             </div>
                         </div>
@@ -712,10 +718,12 @@ const handleImport = async (e) => {
                                 :class="!expandLoopContacts ? '-rotate-90' : ''"></i>
                         </div>
                         <div v-if="expandLoopContacts">
-                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop)" :key="chat.id"
+                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop)"
+                                :key="chat.id"
                                 class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer"
                                 @click="openChat(chat.id)">
-                                <img :src="chat.avatar || getRandomAvatar()" class="w-10 h-10 rounded-lg bg-gray-200 mr-3">
+                                <img :src="chat.avatar || getRandomAvatar()"
+                                    class="w-10 h-10 rounded-lg bg-gray-200 mr-3">
                                 <div class="flex-1">
                                     <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
                                     <div class="text-[10px] text-blue-500 bg-blue-50 px-1 inline-block rounded">
@@ -723,7 +731,8 @@ const handleImport = async (e) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop).length === 0" class="py-4 text-center text-xs text-gray-400">
+                            <div v-if="chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop).length === 0"
+                                class="py-4 text-center text-xs text-gray-400">
                                 暂无剧本角色
                             </div>
                         </div>
@@ -738,7 +747,8 @@ const handleImport = async (e) => {
                                 :class="!expandFriends ? '-rotate-90' : ''"></i>
                         </div>
                         <div v-if="expandFriends">
-                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)" :key="chat.id"
+                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)"
+                                :key="chat.id"
                                 class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select"
                                 @click="openChat(chat.id)"
                                 @contextmenu.prevent="openContextMenu('contact', chat, $event)"
@@ -823,7 +833,7 @@ const handleImport = async (e) => {
                     <i class="text-xl"
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
-                    }}</span>
+                        }}</span>
                 </div>
             </div>
         </template>

@@ -125,13 +125,15 @@
                                 <div class="link-line"></div>
                                 <div class="link-info">
                                     <i class="fa-solid fa-person-walking animate-walk"></i>
-                                    <span class="link-dist">{{ formatDistance(currentVoiceContent.stats?.distance) || '...' }}</span>
+                                    <span class="link-dist">{{ formatDistance(currentVoiceContent.stats?.distance) ||
+                                        '...' }}</span>
                                 </div>
                             </div>
 
                             <div class="route-stop text-right">
                                 <span class="stop-label">我的位置</span>
-                                <span class="stop-name">{{ settingsStore.weather.userLocation?.name ||
+                                <span class="stop-name">{{ chatData?.userLocation ||
+                                    settingsStore.weather.userLocation?.name ||
                                     settingsStore.weather.virtualLocation || '未知' }}</span>
                             </div>
                         </div>
@@ -161,11 +163,13 @@
                             <!-- Map Markers with Avatars -->
                             <div class="map-marker-premium user" :style="userPosStyle">
                                 <div class="marker-avatar-container">
-                                    <img :src="userProfile?.avatar || '/broken-image.png'" class="marker-avatar">
+                                    <img :src="chatData?.userAvatar || userProfile?.avatar || '/broken-image.png'"
+                                        class="marker-avatar">
                                     <div class="marker-ring"></div>
                                 </div>
                                 <div class="marker-info-tag">
-                                    <span class="marker-name">{{ userProfile?.name || '我' }}</span>
+                                    <span class="marker-name">{{ chatData?.userName || userProfile?.name || '我'
+                                        }}</span>
                                     <span class="marker-label">我</span>
                                 </div>
                             </div>
@@ -428,7 +432,7 @@ const calculateTravelTime = (distStr) => {
     const numMatch = distStr.match(/\d+(\.\d+)?/)
     const num = numMatch ? parseFloat(numMatch[0]) : 0
     const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 1)
-    
+
     // 将距离转换为km进行计算
     const distanceInKm = isKm ? num : num / 1000
     if (distanceInKm <= 0) return 0
@@ -438,11 +442,11 @@ const calculateTravelTime = (distStr) => {
 // 格式化距离显示，根据距离大小自动选择m或km单位
 const formatDistance = (distStr) => {
     if (!distStr) return '...'
-    
+
     // 解析距离字符串
     const numMatch = distStr.match(/\d+(\.\d+)?/)
     const num = numMatch ? parseFloat(numMatch[0]) : 0
-    
+
     // 根据距离大小选择合适的单位
     if (num < 1) {
         // 小于1km，转换为米

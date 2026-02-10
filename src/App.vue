@@ -336,8 +336,7 @@ const handleGlobalPromptCancel = () => {
 <template>
     <div class="app-root w-full min-h-[100dvh] h-[100dvh] relative overflow-hidden flex flex-col text-gray-800"
         :style="[globalStyles, { paddingBottom: 'var(--safe-area-inset-bottom)' }]"
-        :data-theme="store.personalization.theme"
-        style="max-width: 1224px; max-height: 2624px; margin: 0 auto;">
+        :data-theme="store.personalization.theme" style="max-width: 1224px; max-height: 2624px; margin: 0 auto;">
         <!-- Dynamic Styles Block -->
         <component is="style" v-if="customCss">{{ customCss }}</component>
 
@@ -349,8 +348,9 @@ const handleGlobalPromptCancel = () => {
             :style="statusBarStyle">
             <span class="font-bold text-[13px] tracking-wide">{{ currentTime }}</span>
             <div class="flex items-center gap-1.5">
-                <!-- User Location Setting -->
-                <div class="flex items-center gap-1 cursor-pointer hover:opacity-70 px-1 rounded transition-opacity"
+                <!-- User Location Setting (Only in Chat) -->
+                <div v-if="chatStore.currentChatId"
+                    class="flex items-center gap-1 cursor-pointer hover:opacity-70 px-1 rounded transition-opacity"
                     @click="handleLocationClick" title="设置当前位置">
                     <i class="fa-solid fa-location-dot"
                         :class="statusBarStyle.color === '#ffffff' ? 'text-[10px]' : 'text-[10px] opacity-70'"></i>
@@ -396,7 +396,7 @@ const handleGlobalPromptCancel = () => {
                             class="text-[11px] text-[#1c1c1e]/40 font-semibold whitespace-nowrap tracking-tight uppercase">现在</span>
                     </div>
                     <div class="text-[14px] text-[#1c1c1e]/80 truncate leading-snug font-medium">{{ bannerData.content
-                        }}</div>
+                    }}</div>
                 </div>
             </div>
         </div>

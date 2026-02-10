@@ -153,7 +153,7 @@ export function generateContextPreview(chatId, char) {
     const stickerStore = useStickerStore()
     let worldBookStore = null
     let momentsStore = null
-    
+
     try {
         worldBookStore = useWorldBookStore()
         momentsStore = useMomentsStore()
@@ -195,7 +195,7 @@ export function generateContextPreview(chatId, char) {
         activeBookIds.forEach(entryId => {
             // First, try to find the entry directly in all books
             let foundEntry = null
-            
+
             // Search all books for this entry ID
             for (const book of worldBookStore.books) {
                 if (book.entries) {
@@ -206,7 +206,7 @@ export function generateContextPreview(chatId, char) {
                     }
                 }
             }
-            
+
             if (foundEntry) {
                 activeEntries.push(foundEntry)
             } else {
@@ -240,7 +240,7 @@ export function generateContextPreview(chatId, char) {
         })
     }
 
-    const worldInfoText = activeEntries.length > 0 
+    const worldInfoText = activeEntries.length > 0
         ? activeEntries.map(e => `[${e.keys[0] || e.name || '条目'}]: ${e.content}`).join('\n')
         : '（未触发关键词）'
 
@@ -367,7 +367,7 @@ export function generateContextPreview(chatId, char) {
 
     // Update system prompt with fresh virtual time for accurate preview
     const charWithTime = { ...char, virtualTime: currentVirtualTime }
-    
+
     // Generate simplified system prompt without duplicate persona info
     // Only include basic rules, no identity/background that duplicates persona field
     const simplifiedSystemPrompt = `### 0. 角色沉浸准则 (Ultra-Priority)
@@ -999,7 +999,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // We MUST merge the system prompt into the first User message for these models.
         let finalMessages = [...fullMessages];
         const isGeminiModel = model.toLowerCase().includes('gemini') || model.toLowerCase().includes('goog');
-        
+
         // Handle all system messages for any model
         finalMessages = finalMessages.map(msg => {
             if (msg.role === 'system') {
@@ -1068,7 +1068,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
             return msg;
         });
-        
+
         reqBody = {
             model: model,
             messages: finalMessages,
@@ -1385,9 +1385,17 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"thought"')) {
                     ivSegment = block
                     console.log('[AI Service] Found untagged Inner Voice block via keyword scan')
-                    break
+                    break; // Found one, stop searching
                 }
             }
+        }
+
+        // [FIX] Removal Logic: Aggressively remove metadata blocks from visible content
+        // Whether found via Regex (ivMatch) or Fallback Scan (ivSegment), we REMOVE it from content.
+        if (ivMatch) {
+            content = content.replace(ivMatch[0], '').trim()
+        } else if (ivSegment) {
+            content = content.replace(ivSegment, '').trim()
         }
 
         if (ivSegment) {
@@ -1399,7 +1407,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 try {
                     innerVoice = JSON.parse(cleanSegment)
                 } catch (e) {
-                    // Fallback 1: Find the FIRST JSON-like object '{ ... }' in the segment (if it was a partial match)
+                    // Fallback 1: Find the FIRST JSON-like object '{ ... }' in the segment
                     const jsonObjectMatch = cleanSegment.match(/\{[\s\S]*\}/)
                     if (jsonObjectMatch) {
                         innerVoice = JSON.parse(jsonObjectMatch[0].trim())
@@ -1408,35 +1416,39 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     }
                 }
             } catch (e) {
-                // FALLBACK 2: Regex Violence (From old version logic)
-                // If JSON.parse totally fails, we extract fields one by one
-                console.warn('[AI Service] JSON parse failed, triggering Regex Violence fallback', e)
+                // FALLBACK 2: Regex Violence
+                if (!innerVoice) { // Only run if not already parsed
+                    console.warn('[AI Service] JSON parse failed, triggering Regex Violence fallback', e)
 
-                const extractField = (keys) => {
-                    for (let k of keys) {
-                        const reg = new RegExp(`(?:"|\\\\")?${k}(?:"|\\\\")?\\s*[:：]\\s*(?:"|\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:"|\\\\")?(?:,|}|$)`, 'i');
-                        const m = ivSegment.match(reg);
-                        if (m && m[1]) return m[1].replace(/\\"/g, '"').trim();
+                    const extractField = (keys) => {
+                        for (let k of keys) {
+                            const reg = new RegExp(`(?:"|\\\\")?${k}(?:"|\\\\")?\\s*[:：]\\s*(?:"|\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:"|\\\\")?(?:,|}|$)`, 'i');
+                            const m = ivSegment.match(reg);
+                            if (m && m[1]) return m[1].replace(/\\"/g, '"').trim();
+                        }
+                        return null;
+                    };
+
+                    const status = extractField(['status', '状态', '当前状态', '心情']);
+                    const outfit = extractField(['着装', 'outfit', 'clothes', 'clothing', '穿着']);
+                    const scene = extractField(['环境', 'scene', 'environment', '场景']);
+                    const mind = extractField(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', '情绪', '情感', '想法']);
+                    const action = extractField(['行为', 'action', 'behavior', 'plan', '动作']);
+
+                    if (status || outfit || scene || mind || action) {
+                        innerVoice = {
+                            status: status || "",
+                            着装: outfit || "",
+                            环境: scene || "",
+                            心声: mind || "",
+                            行为: action || ""
+                        }
+                    } else {
+                        // Only warn if we actually matched a standard tag, otherwise it might just be random text
+                        if (ivMatch) {
+                            useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivSegment.substring(0, 150) })
+                        }
                     }
-                    return null;
-                };
-
-                const status = extractField(['status', '状态', '当前状态', '心情']);
-                const outfit = extractField(['着装', 'outfit', 'clothes', 'clothing', '穿着']);
-                const scene = extractField(['环境', 'scene', 'environment', '场景']);
-                const mind = extractField(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', '情绪', '情感', '想法']);
-                const action = extractField(['行为', 'action', 'behavior', 'plan', '动作']);
-
-                if (status || outfit || scene || mind || action) {
-                    innerVoice = {
-                        status: status || "",
-                        着装: outfit || "",
-                        环境: scene || "",
-                        心声: mind || "",
-                        行为: action || ""
-                    }
-                } else {
-                    useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivSegment.substring(0, 150) })
                 }
             }
         }

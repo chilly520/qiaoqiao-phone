@@ -59,7 +59,12 @@ marked.setOptions({
     gfm: true     // GitHub Flavored Markdown
 })
 
-const props = defineProps({})
+const props = defineProps({
+    initialUnreadCount: {
+        type: Number,
+        default: 0
+    }
+})
 const emit = defineEmits(['back', 'show-profile'])
 
 const chatStore = useChatStore()
@@ -73,6 +78,30 @@ const worldLoopStore = useWorldLoopStore()
 
 const showGMMenu = ref(false)
 const showMissionScheduler = ref(false)
+const showScrollToBottom = ref(false)
+const msgContainer = ref(null)
+
+const handleScroll = () => {
+    if (!msgContainer.value) return
+    const { scrollTop, scrollHeight, clientHeight } = msgContainer.value
+    // Show button if we are more than 500px from the bottom AND have enough messages
+    // The user requested "more than 10 messages", checking length is a proxy.
+    const isFarFromBottom = (scrollHeight - scrollTop - clientHeight) > 500
+    showScrollToBottom.value = isFarFromBottom && displayedMsgs.value.length > 10
+}
+
+watch(msgContainer, (el) => {
+    if (el) {
+        el.addEventListener('scroll', handleScroll)
+    }
+}, { immediate: true })
+
+onUnmounted(() => {
+    if (msgContainer.value) {
+        msgContainer.value.removeEventListener('scroll', handleScroll)
+    }
+})
+
 const loopData = computed(() => {
     if (!chatData.value?.loopId) return null
     return worldLoopStore.loops[chatData.value.loopId]
@@ -352,11 +381,17 @@ const loadMoreMessages = () => {
 // 监听聊天切换，重置分页并瞬间滚动到底部
 watch(() => chatStore.currentChatId, (newId) => {
     if (newId) {
+        selectedMsgIds.value.clear()
+        isMultiSelectMode.value = false
+        showScrollToBottom.value = false // Reset button state
         chatStore.resetPagination(newId)
-        // Instant scroll to bottom on chat switch
-        scrollToBottom(true)
-        // Double check for layout shifts
-        setTimeout(() => scrollToBottom(true), 100)
+
+        // Wait for DOM update
+        setTimeout(() => {
+            if (!scrollToUnread()) {
+                scrollToBottom(true)
+            }
+        }, 100)
     }
 })
 
@@ -560,7 +595,12 @@ onMounted(async () => {
     checkNewChat()
 
     // 4. UI Polish
-    scrollToBottom(true)
+    // Try to scroll to first unread, otherwise bottom
+    setTimeout(() => {
+        if (!scrollToUnread()) {
+            scrollToBottom(true)
+        }
+    }, 100)
 })
 
 onUnmounted(() => {
@@ -623,7 +663,31 @@ const computedBgStyle = computed(() => {
     }
 })
 
-const msgContainer = ref(null)
+// msgContainer defined in setup top
+
+const scrollToUnread = () => {
+    if (props.initialUnreadCount > 0 && displayedMsgs.value.length > 0) {
+        // Calculate index of the first unread message
+        // If unread=5, length=50, index=45 (50-5)
+        const unreadStartIndex = Math.max(0, displayedMsgs.value.length - props.initialUnreadCount)
+        const targetMsg = displayedMsgs.value[unreadStartIndex]
+
+        if (targetMsg) {
+            nextTick(() => {
+                const el = document.getElementById(`msg-${targetMsg.id}`)
+                if (el) {
+                    el.scrollIntoView({ behavior: 'auto', block: 'center' })
+                    // Add a temporary highlight maybe?
+                    showToast(`${props.initialUnreadCount}条未读消息`, 'info')
+                } else {
+                    scrollToBottom(true)
+                }
+            })
+            return true
+        }
+    }
+    return false
+}
 
 // Robust Scroll to Bottom
 const scrollToBottom = (instant = false) => {
@@ -1248,7 +1312,7 @@ const speakOne = async (text, onEnd, interrupt = false) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text, speaker })
             });
-            
+
             // 尝试解析JSON响应
             try {
                 const res = await response.json();
@@ -2633,8 +2697,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 </div>
 
 
-                <ChatMessageItem v-for="(msg, index) in displayedMsgs" :key="msg.id" v-show="isMsgVisible(msg)"
-                    :msg="msg" :prevMsg="displayedMsgs[index - 1]" :chatData="chatData"
+                <ChatMessageItem v-for="(msg, index) in displayedMsgs" :key="msg.id" :id="'msg-' + msg.id"
+                    v-show="isMsgVisible(msg)" :msg="msg" :prevMsg="displayedMsgs[index - 1]" :chatData="chatData"
                     :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
                     :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
                     @context-menu="(e) => handleContextMenu(e.msg, e.event)" @toggle-select="toggleMessageSelection"
@@ -2651,14 +2715,16 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 </div>
             </div>
 
+
+
             <!-- Input Area (Extracted) -->
             <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef" :currentQuote="currentQuote"
                 :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
-                :searchEnabled="chatData?.searchEnabled" @send="handleSendMessage" @generate="generateAIResponse"
-                @stop-generate="chatStore.stopGeneration" @toggle-panel="toggleActionPanel"
-                @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
+                :searchEnabled="chatData?.searchEnabled" :show-scroll-to-bottom="showScrollToBottom"
+                @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
+                @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
                 @toggle-search="() => chatStore.toggleSearch(chatData?.id)" @regenerate="regenerateLastMessage"
-                @cancel-quote="cancelQuote" />
+                @cancel-quote="cancelQuote" @scroll-to-bottom="scrollToBottom(false)" />
 
             <!-- Multi-select Action Bar (Bottom Overlay) -->
             <div v-if="isMultiSelectMode"
@@ -2897,7 +2963,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                                }}</span></div>
+                        }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->
