@@ -16,7 +16,7 @@
             </div>
             <!-- 顶部信息栏 -->
             <div
-                class="game-top-bar h-[44px] shrink-0 bg-blue-400/30 backdrop-blur-md flex items-center justify-between px-2 z-[100] relative border-b border-blue-300/30">
+                class="game-top-bar h-[44px] shrink-0 bg-blue-400/80 backdrop-blur-md flex items-center justify-between px-2 z-[9999] relative border-b border-blue-300/30 fixed top-0 left-0 right-0 max-w-[600px]">
                 <div class="flex items-center gap-2">
                     <button @click="handleExit" title="结束对局"
                         class="w-6 h-6 flex items-center justify-center text-white/90 hover:text-red-300 active:scale-90 transition-all bg-blue-500/20 rounded-full shadow-md">
@@ -90,7 +90,7 @@
             </div>
 
             <!-- 游戏区域 (添加 min-h-0 防止撑开父容器，实现自适应缩小) -->
-            <div class="flex-1 flex flex-col p-2 px-4 md:px-6 min-h-0 overflow-y-auto overflow-x-hidden relative z-10">
+            <div class="flex-1 flex flex-col p-2 px-4 md:px-6 min-h-0 overflow-y-auto overflow-x-hidden relative z-10 pt-[44px]">
 
                 <!-- 对家（上） -->
                 <div class="player-north flex flex-col items-center mb-4 shrink-0">
@@ -1658,7 +1658,8 @@ const speak = async (actionType, playerIndex) => {
         return;
     }
 
-    if (engine === 'browser' || !speakerId) {
+    // 简化TTS逻辑，只使用本地TTS，避免网络调用导致卡顿
+    try {
         window.speechSynthesis.cancel()
         const u = new SpeechSynthesisUtterance(text);
         u.rate = isMe ? (voiceConfig.speed || 1.1) : 1.3;
@@ -1669,107 +1670,8 @@ const speak = async (actionType, playerIndex) => {
             if (preferred) u.voice = preferred;
         }
         window.speechSynthesis.speak(u);
-    } else if (engine === 'doubao' || engine === 'bdetts') {
-        try {
-            let audioData;
-
-            // Determine if we should use HTTP (Volc API) or WebSocket (Doubao App API)
-            // BDeTTS always uses HTTP with new IDs
-            const useHttp = engine === 'bdetts' || isVolcVoice(speakerId);
-            const useWS = !useHttp;
-
-            if (useWS) {
-                if (!cookie) {
-                    console.warn('[TTS] Custom voice needs cookie, falling back to default.');
-                    speakerId = 'zh_female_sichuan';
-                }
-            }
-
-            if (useHttp) {
-                const response = await fetch('/volc/crx/tts/v1/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    // Support both Doubao/BDeTTS params
-                    body: JSON.stringify({ text, speaker: speakerId })
-                })
-
-                if (!response.ok) {
-                    const errMsg = await response.text();
-                    throw new Error(`Volc API Error ${response.status}: ${errMsg}`);
-                }
-
-                const res = await response.json();
-                if (res.audio) {
-                    // Check if it's base64 data (standard response)
-                    audioData = res.audio;
-                    // API returns base64 string directly in res.audio or res.data? 
-                    // Common Volc response: { audio: "base64..." } or { data: "base64..." }
-                    // Based on previous code: if (res.audio?.data) audioData = res.audio.data;
-                    if (res.audio?.data) audioData = res.audio.data;
-                    else if (typeof res.audio === 'string') audioData = res.audio;
-                }
-            } else {
-                // WebSocket Logic for Doubao App API
-                audioData = await new Promise((resolve, reject) => {
-                    const currentId = generateId()
-                    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    const wsBase = `${wsProtocol}//${window.location.host}/ws-doubao/samantha/audio/tts`;
-                    const params = new URLSearchParams({
-                        format: 'aac', speaker: speakerId, speech_rate: '200', pitch: '0',
-                        mode: '0', language: 'zh', device_platform: 'web', aid: '586861',
-                        device_id: currentId, tea_uuid: currentId, web_id: currentId,
-                        doubao_cookie: cookie
-                    })
-                    const ws = new WebSocket(`${wsBase}?${params.toString()}`);
-                    const audioChunks = [];
-                    ws.onopen = () => {
-                        ws.send(JSON.stringify({ event: 'text', text }));
-                        ws.send(JSON.stringify({ event: 'finish' }));
-                    };
-                    ws.onmessage = (e) => { if (e.data instanceof Blob) audioChunks.push(e.data); };
-                    ws.onclose = () => { resolve(audioChunks.length > 0 ? new Blob(audioChunks, { type: 'audio/aac' }) : null); };
-                    ws.onerror = (e) => reject(e);
-                    setTimeout(() => ws.close(), 5000);
-                });
-            }
-
-            if (audioData) {
-                let url;
-                if (audioData instanceof Blob) {
-                    url = URL.createObjectURL(audioData);
-                } else {
-                    // Base64 string
-                    url = `data:audio/mp3;base64,${audioData}`;
-                }
-
-                // 存入缓存
-                ttsCache.set(cacheKey, url);
-
-                const audio = new Audio(url);
-                audio.playbackRate = 1.3;
-                audio.play().catch(err => console.warn('[Mahjong-TTS] Audio play blocked:', err));
-            }
-        } catch (e) {
-            console.error('[TTS] Engine failed, falling back to local', e);
-            try {
-                // Fallback to local TTS
-                window.speechSynthesis.cancel()
-                const u = new SpeechSynthesisUtterance(text);
-                u.rate = isMe ? (voiceConfig.speed || 1.1) : 1.3;
-                if (!isMe) {
-                    u.pitch = gender === '男' ? 0.8 : 1.2;
-                    const voices = window.speechSynthesis.getVoices();
-                    const preferred = voices.find(v => (gender === '男' ? (v.name.includes('Male') || v.name.includes('男')) : (v.name.includes('Female') || v.name.includes('女'))));
-                    if (preferred) u.voice = preferred;
-                }
-                window.speechSynthesis.speak(u);
-            } catch (err) {
-                console.error('[TTS] Local fallback also failed', err)
-            }
-        }
-    } else if (engine === 'minimax') {
-        // Simple Minimax placeholder or direct logic if available in common utils
-        console.log('[TTS] Minimax voice requested but not fully implemented in separate helper');
+    } catch (err) {
+        console.error('[TTS] Local TTS failed:', err)
     }
 }
 
