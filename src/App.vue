@@ -94,7 +94,11 @@ const wallpaperStyle = computed(() => {
         backgroundImage: `url('${url}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
+        backgroundRepeat: 'no-repeat',
+        position: 'absolute',
+        inset: 0,
+        zIndex: -10,
+        pointerEvents: 'none'
     }
 })
 
@@ -129,17 +133,33 @@ const customCss = computed(() => store.personalization.customCss)
 // Status Bar Style based on Route
 const statusBarStyle = computed(() => {
     const transparentRoutes = ['home']
+    const wechatRoutes = ['wechat', 'moments', 'character-info']
+    
     if (transparentRoutes.includes(route.name)) {
         return {
             color: '#ffffff',
             textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-            backgroundColor: 'transparent'
+            backgroundColor: 'transparent',
+            borderBottomColor: 'transparent'
         }
     }
+    
+    // WeChat pages use water-blue frosted glass (same as chat header)
+    if (wechatRoutes.includes(route.name)) {
+        return {
+            color: '#000000',
+            textShadow: 'none',
+            backgroundColor: 'rgba(147, 197, 253, 0.4)',
+            borderBottomColor: 'rgba(147, 197, 253, 0.2)'
+        }
+    }
+    
+    // Other pages: match page background (white for most, gray for settings)
     return {
         color: '#000000',
         textShadow: 'none',
-        backgroundColor: '#ededed'
+        backgroundColor: '#f2f2f2',
+        borderBottomColor: 'transparent'
     }
 })
 
@@ -300,13 +320,13 @@ watch(() => chatStore.confirmEvent, (evt) => {
     showGlobalConfirm.value = true
 })
 
-const handleGlobalConfirm = () => {
-    if (globalConfirmData.value?.onConfirm) globalConfirmData.value.onConfirm()
+const handleGlobalConfirm = async () => {
+    if (globalConfirmData.value?.onConfirm) await globalConfirmData.value.onConfirm()
     showGlobalConfirm.value = false
 }
 
-const handleGlobalCancel = () => {
-    if (globalConfirmData.value?.onCancel) globalConfirmData.value.onCancel()
+const handleGlobalCancel = async () => {
+    if (globalConfirmData.value?.onCancel) await globalConfirmData.value.onCancel()
     showGlobalConfirm.value = false
 }
 
@@ -421,7 +441,8 @@ const handleGlobalPromptCancel = () => {
 
         <!-- Main Content Area -->
 
-        <div class="flex-1 w-full h-full overflow-hidden relative z-10 flex flex-col main-content">
+        <div class="flex-1 w-full overflow-hidden relative z-10 flex flex-col main-content"
+            style="margin-top: 0; flex-basis: calc(100% - 28px);">
             <!-- 使用key强制组件重新渲染 -->
             <RouterView :key="routeKey" />
         </div>

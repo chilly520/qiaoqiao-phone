@@ -64,13 +64,44 @@ const expandFriends = ref(true)
 const expandNPC = ref(false)
 const showAddFriendModal = ref(false)
 const showCreateLoopModal = ref(false)
+const showBackgroundSettings = ref(false)
 const newFriendName = ref('')
+
+// Background Settings
+const backgroundSettings = ref({
+    chat: {
+        url: '',
+        localUrl: ''
+    },
+    contacts: {
+        url: '',
+        localUrl: ''
+    },
+    discover: {
+        url: '',
+        localUrl: ''
+    },
+    me: {
+        url: '',
+        localUrl: ''
+    }
+})
 
 // Context Menu State
 const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
 const contextMenuTarget = ref(null) // { type: 'chat'|'contact', id: '...' }
 const contextMenuOptions = ref([]) // [{ label: '...', action: '...' }]
+
+// Local Confirm Dialog State (for delete operations)
+const showConfirmDialog = ref(false)
+const confirmDialogData = ref({
+    title: '',
+    message: '',
+    action: null, // Function to execute
+    isLoading: false
+})
+
 // Profile Edit Modal State
 const showProfileEdit = ref(false)
 const profileForm = ref({
@@ -106,9 +137,49 @@ const handleProfileAvatarChange = (e) => {
     }
 }
 
+// Background Settings Methods
+const saveBackgroundSettings = () => {
+    localStorage.setItem('qiaqiao_background_settings', JSON.stringify(backgroundSettings.value))
+}
+
+const loadBackgroundSettings = () => {
+    const savedSettings = localStorage.getItem('qiaqiao_background_settings')
+    if (savedSettings) {
+        try {
+            backgroundSettings.value = JSON.parse(savedSettings)
+        } catch (error) {
+            console.error('Failed to load background settings:', error)
+        }
+    }
+}
+
+const handleBackgroundUpload = (tab, e) => {
+    const file = e.target.files[0]
+    if (file) {
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+            backgroundSettings.value[tab].localUrl = ev.target.result
+            saveBackgroundSettings()
+        }
+        reader.readAsDataURL(file)
+    }
+}
+
+const handleBackgroundUrlApply = (tab) => {
+    saveBackgroundSettings()
+    chatStore.triggerToast('背景设置已应用', 'success')
+}
+
+const clearBackground = (tab) => {
+    backgroundSettings.value[tab].url = ''
+    backgroundSettings.value[tab].localUrl = ''
+    saveBackgroundSettings()
+    chatStore.triggerToast('背景已清除', 'success')
+}
+
 // Long Press Helper
 const promptProfileAvatarUrl = () => {
-    chatStore.triggerPrompt('输入头像URL', '请输入图片的超链接地址', (url) => {
+    chatStore.triggerPrompt('输入头像URL', '请输入图片的超链接地址', '', '', (url) => {
         if (url) profileForm.value.avatar = url
     })
 }
@@ -185,15 +256,55 @@ const handleContextAction = (option) => {
     if (option.action === 'pin') {
         chatStore.pinChat(id)
     } else if (option.action === 'clear') {
-        chatStore.triggerConfirm('移除聊天', '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)', () => {
-            chatStore.clearHistory(id)
-            chatStore.triggerToast('已移除', 'success')
-        })
+        // Show local confirm dialog
+        confirmDialogData.value = {
+            title: '移除聊天',
+            message: '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)',
+            action: async () => {
+                try {
+                    confirmDialogData.value.isLoading = true
+                    // 从聊天列表中移除（设置 inChatList: false）
+                    await chatStore.updateCharacter(id, { inChatList: false })
+                    // 清空聊天记录
+                    await chatStore.clearHistory(id)
+                    // 如果当前正在聊这个角色，则关闭聊天窗口
+                    if (chatStore.currentChatId === id) {
+                        chatStore.currentChatId = null
+                    }
+                    chatStore.triggerToast('已移除', 'success')
+                    showConfirmDialog.value = false
+                } catch (err) {
+                    console.error('删除聊天记录失败:', err)
+                    chatStore.triggerToast('删除失败', 'error')
+                    showConfirmDialog.value = false
+                } finally {
+                    confirmDialogData.value.isLoading = false
+                }
+            },
+            isLoading: false
+        }
+        showConfirmDialog.value = true
     } else if (option.action === 'delete') {
-        chatStore.triggerConfirm('删除好友', '确定要删除该好友吗？将同时删除所有记录。', () => {
-            chatStore.deleteChat(id)
-            chatStore.triggerToast('已删除', 'success')
-        })
+        confirmDialogData.value = {
+            title: '删除好友',
+            message: '确定要删除该好友吗？将同时删除所有记录。',
+            action: async () => {
+                try {
+                    confirmDialogData.value.isLoading = true
+                    chatStore.deleteChat(id)
+                    chatStore.triggerToast('已删除', 'success')
+                    showConfirmDialog.value = false
+                } catch (err) {
+                    console.error('删除好友失败:', err)
+                    chatStore.triggerToast('删除失败', 'error')
+                    showConfirmDialog.value = false
+                } finally {
+                    confirmDialogData.value.isLoading = false
+                }
+            },
+            isLoading: false
+        }
+        showConfirmDialog.value = true
     }
     showContextMenu.value = false
 }
@@ -365,6 +476,7 @@ const handleOpenMoments = () => {
 // 初始化演示数据
 onMounted(async () => {
     await worldLoopStore.initStore()
+    loadBackgroundSettings()
     window.addEventListener('popstate', handlePopState)
 })
 
@@ -584,9 +696,168 @@ const handleImport = async (e) => {
                 </div>
             </div>
 
+            <!-- Background Settings Modal -->
+            <div v-if="showBackgroundSettings"
+                class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in"
+                @click.self="showBackgroundSettings = false">
+                <div class="bg-white w-[90%] max-w-[360px] max-h-[80vh] rounded-lg overflow-hidden shadow-xl flex flex-col">
+                    <div class="p-4 border-b border-gray-200">
+                        <div class="text-lg font-bold text-gray-900">背景设置</div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                        <!-- Chat Background -->
+                        <div>
+                            <div class="text-sm font-bold text-gray-700 mb-2">微信页面</div>
+                            <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
+                                <img v-if="backgroundSettings.chat.localUrl || backgroundSettings.chat.url" 
+                                     :src="backgroundSettings.chat.localUrl || backgroundSettings.chat.url" 
+                                     class="w-full h-full object-cover">
+                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                    预览图
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex gap-2">
+                                    <input type="text" v-model="backgroundSettings.chat.url" placeholder="输入背景 URL..."
+                                        class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-blue-500 transition-all font-mono bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400">
+                                    <button @click="handleBackgroundUrlApply('chat')"
+                                        class="bg-blue-500 text-white px-3 rounded-xl active:scale-95 transition-transform">
+                                        <i class="fa-solid fa-check text-xs"></i>
+                                    </button>
+                                </div>
+                                <div class="relative w-full">
+                                    <button
+                                        class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
+                                        <i class="fa-solid fa-upload mr-2"></i>上传本地背景
+                                    </button>
+                                    <input type="file" @change="(e) => handleBackgroundUpload('chat', e)" accept="image/*"
+                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                </div>
+                                <button @click="clearBackground('chat')"
+                                    class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
+                                    清除
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Contacts Background -->
+                        <div>
+                            <div class="text-sm font-bold text-gray-700 mb-2">通讯录页面</div>
+                            <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
+                                <img v-if="backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url" 
+                                     :src="backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url" 
+                                     class="w-full h-full object-cover">
+                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                    预览图
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex gap-2">
+                                    <input type="text" v-model="backgroundSettings.contacts.url" placeholder="输入背景 URL..."
+                                        class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-blue-500 transition-all font-mono bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400">
+                                    <button @click="handleBackgroundUrlApply('contacts')"
+                                        class="bg-blue-500 text-white px-3 rounded-xl active:scale-95 transition-transform">
+                                        <i class="fa-solid fa-check text-xs"></i>
+                                    </button>
+                                </div>
+                                <div class="relative w-full">
+                                    <button
+                                        class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
+                                        <i class="fa-solid fa-upload mr-2"></i>上传本地背景
+                                    </button>
+                                    <input type="file" @change="(e) => handleBackgroundUpload('contacts', e)" accept="image/*"
+                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                </div>
+                                <button @click="clearBackground('contacts')"
+                                    class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
+                                    清除
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Discover Background -->
+                        <div>
+                            <div class="text-sm font-bold text-gray-700 mb-2">发现页面</div>
+                            <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
+                                <img v-if="backgroundSettings.discover.localUrl || backgroundSettings.discover.url" 
+                                     :src="backgroundSettings.discover.localUrl || backgroundSettings.discover.url" 
+                                     class="w-full h-full object-cover">
+                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                    预览图
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex gap-2">
+                                    <input type="text" v-model="backgroundSettings.discover.url" placeholder="输入背景 URL..."
+                                        class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-blue-500 transition-all font-mono bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400">
+                                    <button @click="handleBackgroundUrlApply('discover')"
+                                        class="bg-blue-500 text-white px-3 rounded-xl active:scale-95 transition-transform">
+                                        <i class="fa-solid fa-check text-xs"></i>
+                                    </button>
+                                </div>
+                                <div class="relative w-full">
+                                    <button
+                                        class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
+                                        <i class="fa-solid fa-upload mr-2"></i>上传本地背景
+                                    </button>
+                                    <input type="file" @change="(e) => handleBackgroundUpload('discover', e)" accept="image/*"
+                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                </div>
+                                <button @click="clearBackground('discover')"
+                                    class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
+                                    清除
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Me Background -->
+                        <div>
+                            <div class="text-sm font-bold text-gray-700 mb-2">我页面</div>
+                            <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
+                                <img v-if="backgroundSettings.me.localUrl || backgroundSettings.me.url" 
+                                     :src="backgroundSettings.me.localUrl || backgroundSettings.me.url" 
+                                     class="w-full h-full object-cover">
+                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                    预览图
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex gap-2">
+                                    <input type="text" v-model="backgroundSettings.me.url" placeholder="输入背景 URL..."
+                                        class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-blue-500 transition-all font-mono bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400">
+                                    <button @click="handleBackgroundUrlApply('me')"
+                                        class="bg-blue-500 text-white px-3 rounded-xl active:scale-95 transition-transform">
+                                        <i class="fa-solid fa-check text-xs"></i>
+                                    </button>
+                                </div>
+                                <div class="relative w-full">
+                                    <button
+                                        class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
+                                        <i class="fa-solid fa-upload mr-2"></i>上传本地背景
+                                    </button>
+                                    <input type="file" @change="(e) => handleBackgroundUpload('me', e)" accept="image/*"
+                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                </div>
+                                <button @click="clearBackground('me')"
+                                    class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
+                                    清除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-gray-200 flex justify-end gap-4">
+                        <button class="text-gray-500 font-medium text-sm"
+                            @click="showBackgroundSettings = false">取消</button>
+                        <button
+                            class="bg-[#07c160] text-white px-6 py-2 rounded font-medium text-sm active:bg-[#06ad56]"
+                            @click="showBackgroundSettings = false">确定</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Header -->
             <div
-                class="h-[44px] bg-gray-100 flex items-center justify-between px-4 border-b border-gray-300 z-10 shrink-0 select-none">
+                class="h-[44px] bg-white/30 backdrop-blur-md flex items-center justify-between px-4 border-b border-gray-300 z-10 shrink-0 select-none">
                 <div class="flex items-center gap-1 cursor-pointer w-20" @click="goBack" v-if="currentTab === 'chat'">
                     <i class="fa-solid fa-chevron-left text-black"></i>
                     <span class="font-bold text-base text-black">微信</span>
@@ -600,12 +871,14 @@ const handleImport = async (e) => {
                         : '')) }}
                 </div>
 
-                <div class="flex gap-2 text-base items-center w-24 justify-end"
+                <div class="flex gap-2 text-base items-center w-32 justify-end"
                     v-if="currentTab === 'chat' || currentTab === 'contacts'">
                     <i class="fa-solid fa-file-import text-black cursor-pointer p-2" title="导入角色卡"
                         @click="triggerImport"></i>
                     <i class="fa-solid fa-magnifying-glass text-black cursor-pointer p-2"
                         @click="showSearch = !showSearch"></i>
+                    <i class="fa-solid fa-gear text-black cursor-pointer p-2" title="设置背景"
+                        @click="showBackgroundSettings = true"></i>
                     <div class="relative flex items-center">
                         <i class="fa-solid fa-plus cursor-pointer text-black text-lg" @click.stop="toggleAddMenu"></i>
                         <!-- Add Menu Dropdown -->
@@ -632,12 +905,20 @@ const handleImport = async (e) => {
             </div>
 
             <!-- MAIN CONTENT AREA -->
-            <div class="flex-1 overflow-y-auto bg-white relative">
+            <div class="flex-1 overflow-y-auto relative" :style="{
+                backgroundImage: currentTab === 'chat' && (backgroundSettings.chat.localUrl || backgroundSettings.chat.url) ? `url(${backgroundSettings.chat.localUrl || backgroundSettings.chat.url})` : 
+                                currentTab === 'contacts' && (backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) ? `url(${backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url})` : 
+                                currentTab === 'discover' && (backgroundSettings.discover.localUrl || backgroundSettings.discover.url) ? `url(${backgroundSettings.discover.localUrl || backgroundSettings.discover.url})` : 
+                                currentTab === 'me' && (backgroundSettings.me.localUrl || backgroundSettings.me.url) ? `url(${backgroundSettings.me.localUrl || backgroundSettings.me.url})` : 'none',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat'
+            }">
                 <!-- Tabs (chatList, contacts, discover, me) ... keep original logic -->
                 <div v-if="currentTab === 'chat'" class="h-full">
                     <!-- Search Bar -->
-                    <div v-if="showSearch" class="bg-gray-100 px-2 pb-2 -mt-1 border-b border-gray-200">
-                        <div class="bg-white rounded-lg flex items-center px-3 py-1.5">
+                    <div v-if="showSearch" class="bg-white/30 backdrop-blur-md px-2 pb-2 -mt-1 border-b border-gray-200">
+                        <div class="bg-white/30 backdrop-blur-md rounded-lg flex items-center px-3 py-1.5">
                             <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
                             <input v-model="searchQuery" type="text" placeholder="搜索"
                                 class="bg-transparent border-none outline-none text-sm w-full text-gray-700 placeholder-gray-400">
@@ -647,11 +928,11 @@ const handleImport = async (e) => {
                     </div>
 
                     <div v-for="chat in filteredChatList" :key="chat.id"
-                        class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
-                        :class="chat.isPinned ? 'bg-gray-50' : ''" @click="openChat(chat.id)"
-                        @contextmenu.prevent="openContextMenu('chat', chat, $event)"
-                        @touchstart="startLongPress('chat', chat, $event)" @touchend="clearLongPress"
-                        @touchmove="handleTouchMove">
+                            class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
+                            :class="chat.isPinned ? 'bg-white/30 backdrop-blur-md' : ''" @click="openChat(chat.id)"
+                            @contextmenu.prevent="openContextMenu('chat', chat, $event)"
+                            @touchstart="startLongPress('chat', chat, $event)" @touchend="clearLongPress"
+                            @touchmove="handleTouchMove">
                         <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
                         <div class="relative w-12 h-12 mr-3">
                             <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
@@ -677,10 +958,10 @@ const handleImport = async (e) => {
                     </div>
                 </div>
                 <!-- ... keep other tabs same as original ... -->
-                <div v-if="currentTab === 'contacts'" class="bg-[#ededed] min-h-full">
+                <div v-if="currentTab === 'contacts'" :class="{'bg-[#ededed]': !(backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url)}" class="min-h-full">
                     <!-- 1. Group Chats Section (World Loops) -->
-                    <div class="bg-white mb-2">
-                        <div class="px-4 py-2 bg-gradient-to-r from-blue-50 to-white text-[10px] text-blue-600 font-bold flex justify-between items-center cursor-pointer border-b border-blue-100"
+                    <div class="bg-white/30 backdrop-blur-md mb-2">
+                        <div class="px-4 py-2 bg-gradient-to-r from-blue-50/30 to-white/30 text-[10px] text-blue-600 font-bold flex justify-between items-center cursor-pointer border-b border-blue-100/30"
                             @click="expandGroupChats = !expandGroupChats">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-users text-blue-500"></i>
@@ -691,7 +972,7 @@ const handleImport = async (e) => {
                         </div>
                         <div v-if="expandGroupChats">
                             <div v-for="chat in chatStore.contactList.filter(c => c.isGroup)" :key="chat.id"
-                                class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer"
+                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
                                 @click="openChat(chat.id)">
                                 <div class="relative w-10 h-10 mr-3">
                                     <img :src="chat.avatar || getRandomAvatar()"
@@ -715,8 +996,8 @@ const handleImport = async (e) => {
                     </div>
 
                     <!-- 2. World Loop Characters (NPCs) -->
-                    <div class="bg-white mb-2">
-                        <div class="px-4 py-2 bg-gradient-to-r from-purple-50 to-white text-[10px] text-purple-600 font-bold flex justify-between items-center cursor-pointer border-b border-purple-100"
+                    <div class="bg-white/30 backdrop-blur-md mb-2">
+                        <div class="px-4 py-2 bg-gradient-to-r from-purple-50/30 to-white/30 text-[10px] text-purple-600 font-bold flex justify-between items-center cursor-pointer border-b border-purple-100/30"
                             @click="expandLoopContacts = !expandLoopContacts">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-user-gear text-purple-500"></i>
@@ -728,13 +1009,13 @@ const handleImport = async (e) => {
                         <div v-if="expandLoopContacts">
                             <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop)"
                                 :key="chat.id"
-                                class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer"
+                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
                                 @click="openChat(chat.id)">
                                 <img :src="chat.avatar || getRandomAvatar()"
                                     class="w-10 h-10 rounded-lg bg-gray-200 mr-3">
                                 <div class="flex-1">
                                     <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
-                                    <div class="text-[10px] text-blue-500 bg-blue-50 px-1 inline-block rounded">
+                                    <div class="text-[10px] text-blue-500 bg-blue-50/30 px-1 inline-block rounded">
                                         归属: {{ worldLoopStore.loops[chat.belongToLoop]?.name || '未知世界' }}
                                     </div>
                                 </div>
@@ -747,8 +1028,8 @@ const handleImport = async (e) => {
                     </div>
 
                     <!-- 3. Standard Friends Section -->
-                    <div class="bg-white mb-2">
-                        <div class="px-4 py-2 bg-gray-50 text-[10px] text-gray-400 font-bold flex justify-between items-center cursor-pointer"
+                    <div class="bg-white/30 backdrop-blur-md mb-2">
+                        <div class="px-4 py-2 bg-gray-50/30 text-[10px] text-gray-400 font-bold flex justify-between items-center cursor-pointer"
                             @click="expandFriends = !expandFriends">
                             <span>我的好友</span>
                             <i class="fa-solid fa-chevron-down transition-transform duration-200"
@@ -757,7 +1038,7 @@ const handleImport = async (e) => {
                         <div v-if="expandFriends">
                             <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)"
                                 :key="chat.id"
-                                class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-50 cursor-pointer prevent-select"
+                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer prevent-select"
                                 @click="openChat(chat.id)"
                                 @contextmenu.prevent="openContextMenu('contact', chat, $event)"
                                 @touchstart="startLongPress('contact', chat, $event)" @touchend="clearLongPress"
@@ -770,36 +1051,36 @@ const handleImport = async (e) => {
                     </div>
                 </div>
                 <!-- Simplified discover/me for brevity, assuming you have original source -->
-                <div v-if="currentTab === 'discover'" class="bg-[#ededed] min-h-full pt-2">
+                <div v-if="currentTab === 'discover'" :class="{'bg-[#ededed]': !(backgroundSettings.discover.localUrl || backgroundSettings.discover.url)}" class="min-h-full pt-2">
                     <!-- Moments Entry -->
-                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                    <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50/30"
                         @click="handleOpenMoments">
                         <i class="fa-solid fa-camera-retro text-orange-400 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">朋友圈</span>
                         <div v-if="momentsStore.unreadCount > 0" class="w-2 h-2 bg-red-500 rounded-full mr-1"></div>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
-                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                    <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50/30"
                         @click="router.push('/favorites')">
                         <i class="fa-solid fa-star text-yellow-400 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">收藏</span>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
-                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                    <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50/30"
                         @click="router.push('/worldbook')">
                         <i class="fa-solid fa-book-journal-whills text-purple-500 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">世界书</span>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
-                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                    <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50/30"
                         @click="router.push('/gallery')">
                         <i class="fa-solid fa-images text-blue-500 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">图库</span>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
                 </div>
-                <div v-if="currentTab === 'me'" class="bg-[#ededed] min-h-full">
-                    <div class="bg-white pt-12 pb-8 px-6 flex items-center gap-4 mb-2 active:bg-gray-50 transition-colors cursor-pointer"
+                <div v-if="currentTab === 'me'" :class="{'bg-[#ededed]': !(backgroundSettings.me.localUrl || backgroundSettings.me.url)}" class="min-h-full">
+                    <div class="bg-white/30 backdrop-blur-md pt-12 pb-8 px-6 flex items-center gap-4 mb-2 active:bg-gray-50/30 transition-colors cursor-pointer"
                         @click="openProfileEdit">
                         <div class="w-16 h-16 rounded overflow-hidden bg-gray-200 shadow-sm border border-gray-100">
                             <img :src="userProfile.avatar" class="w-full h-full object-cover">
@@ -813,13 +1094,13 @@ const handleImport = async (e) => {
                     </div>
 
                     <!-- Wallet Entry -->
-                    <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
+                    <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50/30"
                         @click="router.push('/wallet')">
                         <i class="fa-solid fa-wallet text-[#07c160] text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">钱包</span>
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
-                    <div class="bg-white px-4 py-3 flex items-center gap-3 mt-2 cursor-pointer active:bg-gray-50"
+                    <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mt-2 cursor-pointer active:bg-gray-50/30"
                         @click="navigateToSettings">
                         <i class="fa-solid fa-gear text-blue-500 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">设置</span>
@@ -830,7 +1111,7 @@ const handleImport = async (e) => {
 
             <!-- Bottom Tab Bar -->
             <div
-                class="h-[50px] bg-[#f7f7f7] border-t border-gray-200 flex items-center justify-around text-[10px] pb-1 shrink-0 z-10">
+                class="h-[50px] bg-white/30 backdrop-blur-md border-t border-gray-200 flex items-center justify-around text-[10px] pb-1 shrink-0 z-10">
                 <div v-for="tab in ['chat', 'contacts', 'discover', 'me']" :key="tab"
                     class="flex flex-col items-center gap-1 cursor-pointer w-full h-full justify-center"
                     :class="currentTab === tab ? 'text-[#07c160]' : 'text-gray-500'" @click="currentTab = tab">
@@ -838,6 +1119,28 @@ const handleImport = async (e) => {
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
                         }}</span>
+                </div>
+            </div>
+
+            <!-- Local Confirm Dialog (for delete/clear operations) -->
+            <div v-if="showConfirmDialog"
+                class="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+                <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
+                    <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">{{ confirmDialogData.title }}</h3>
+                    <p class="text-gray-600 text-center mb-6 whitespace-pre-wrap">{{ confirmDialogData.message }}</p>
+                    <div class="flex gap-3">
+                        <button @click="showConfirmDialog = false"
+                            class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold active:bg-gray-200 transition-colors"
+                            :disabled="confirmDialogData.isLoading">
+                            取消
+                        </button>
+                        <button @click="confirmDialogData.action"
+                            class="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold active:bg-red-600 transition-colors shadow-md"
+                            :disabled="confirmDialogData.isLoading"
+                            :class="{ 'opacity-50 cursor-not-allowed': confirmDialogData.isLoading }">
+                            {{ confirmDialogData.isLoading ? '处理中...' : '确定' }}
+                        </button>
+                    </div>
                 </div>
             </div>
         </template>

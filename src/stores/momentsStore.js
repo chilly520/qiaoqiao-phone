@@ -685,8 +685,13 @@ export const useMomentsStore = defineStore('moments', () => {
         const worldBookStore = useWorldBookStore()
         const stickerStore = useStickerStore()
 
-        const candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id)) : [])
+        let candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id)) : [])
         if (candidates.length === 0) return
+
+        // 核心优化：如果启用了太多角色，只随机抽取 8 个参与本次“朋友圈生态”生成，节省 Token 且避免 AI 混乱
+        if (candidates.length > 8) {
+            candidates = candidates.sort(() => 0.5 - Math.random()).slice(0, 8)
+        }
 
         // 1. Gather Rich Character Context (Last 50 chats + personal moments history)
         const chars = candidates.map(id => {

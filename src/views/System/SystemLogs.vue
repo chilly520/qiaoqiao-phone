@@ -4,7 +4,7 @@
         <div
             class="flex-shrink-0 h-10 bg-[#252526] border-b border-[#3e3e42] flex items-center justify-between px-3 select-none">
             <div class="flex items-center gap-3">
-                <button @click="router.back()"
+                <button @click="goBack"
                     class="w-7 h-7 flex items-center justify-center rounded-full bg-gray-700 text-white hover:bg-gray-600 transition-colors">
                     <i class="fa-solid fa-chevron-left text-xs"></i>
                 </button>
@@ -156,6 +156,16 @@ const expandedLogs = ref(new Set())
 const clearLogs = () => loggerStore.clearLogs()
 const exportLogs = () => loggerStore.exportLogs()
 const forceReview = () => { /* Triggered automatically by Vue reactivity */ }
+
+const goBack = () => {
+    // First try to go back in history
+    if (window.history.length > 1) {
+        router.back()
+    } else {
+        // If no history, navigate to home
+        router.push('/')
+    }
+}
 
 const toggleAutoScroll = () => {
     loggerStore.autoScroll = !loggerStore.autoScroll

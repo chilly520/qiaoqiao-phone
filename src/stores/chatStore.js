@@ -258,7 +258,7 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. Initialize message object
         const newMsg = {
-            id: msg.id || ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)),
+            id: msg.id || crypto.randomUUID(),
             timestamp: msg.timestamp || Date.now(),
             role: msg.role,
             type: msg.type || 'text',
@@ -824,7 +824,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Ensure we are in active state if we receive protocol data
                 // This allows auto-accepting when AI starts talking during dialing
-                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
+                if (callStore.status === 'dialing') {
                     console.log('[ChatStore] Auto-accepting established call due to protocol data');
                     callStore.acceptCall();
                 }
@@ -869,15 +869,49 @@ export const useChatStore = defineStore('chat', () => {
             // FIX: Do NOT hide normal text messages even if call is active. Only hide Protocol.
             // This prevents "Missing Message" bugs if call state desyncs.
             if (isCallActive && content && !content.includes('[CALL_START]')) {
+                // Tag stripping patterns for checking if bubble will be empty
+                const protocolTags = [
+                    /\{[\s\S]*?("speech"|"status"|"action"|"转发"|"心声"|"行为")[\s\S]*?\}/gi,
+                    /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
+                    /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
+                    /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
+                    /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
+                    /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
+                    /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
+                    /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
+                    /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
+                ];
+
+                let displayTest = content;
+                let isEmptyDisplay = false;
+                try {
+                    protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
+                    isEmptyDisplay = displayTest.trim().length === 0;
+                } catch (e) {
+                    console.error('[ChatStore] Error processing display test:', e);
+                    isEmptyDisplay = true;
+                }
+
                 // EXCLUSION: Don't add if it's strictly a protocol tag that got through display test
                 if (!isEmptyDisplay) {
                     const cleanText = displayTest;
-                    callStore.addTranscriptLine('ai', cleanText);
+                    // For calls, ensure we don't have redundant name prefixes inside the bubble content 
+                    // if it was already split or hallucinated by AI
+                    const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'i');
+                    const finalCleanText = cleanText.replace(nameRegex, '').trim();
+
+                    if (finalCleanText) {
+                        // DISABLED: No longer adding split segments to call transcript to support 'Large Bubble' mode
+                        // callStore.addTranscriptLine('ai', finalCleanText);
+                    }
                 }
             }
 
             // --- Final context & Hiding Check ---
             // Tag stripping patterns for checking if bubble will be empty
+            let displayTest = content;
+            let isEmptyDisplay = false;
             const protocolTags = [
                 /\{[\s\S]*?("speech"|"status"|"action"|"转发"|"心声"|"行为")[\s\S]*?\}/gi,
                 /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
@@ -889,10 +923,13 @@ export const useChatStore = defineStore('chat', () => {
                 /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
                 /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
             ];
-
-            let displayTest = content;
-            protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
-            const isEmptyDisplay = displayTest.trim().length === 0;
+            try {
+                protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
+                isEmptyDisplay = displayTest.trim().length === 0;
+            } catch (e) {
+                console.error('[ChatStore] Error processing final display test:', e);
+                isEmptyDisplay = true;
+            }
 
             if (isEmptyDisplay && content.trim().length > 0) {
                 // If it's ONLY tags, hide it from the UI but PRESERVE the content for AI context
@@ -1071,7 +1108,7 @@ export const useChatStore = defineStore('chat', () => {
             isProfileProcessing.value[chatId] = false;
         }
     }
-    function updateCharacter(chatId, updates) {
+    async function updateCharacter(chatId, updates) {
         const chat = chats.value[chatId]
         if (!chat) return false
 
@@ -1087,7 +1124,7 @@ export const useChatStore = defineStore('chat', () => {
             checkAutoSummary(chatId)
         }
 
-        saveChats()
+        await saveChats()
         return true
     }
 
@@ -1579,7 +1616,15 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. 准备上下文：根据设置动态截取消息历史
         const contextLimit = chat.contextLimit || 20
-        const rawContext = (chat.msgs || []).slice(-contextLimit).map(m => {
+        const isCallMode = callStore.status !== 'none' && callStore.status !== 'ended'
+        const isCallActive = callStore.status === 'active'
+        const rawContext = (chat.msgs || []).slice(-contextLimit).filter(m => {
+            // 过滤掉通话相关的系统消息和收藏卡片，避免上下文混乱
+            if (m.type === 'system' && (m.content.includes('通话') || m.content.includes('占线') || m.content.includes('拒绝') || m.content.includes('取消'))) return false
+            if (m.type === 'favorite_card' && m.content.includes('通话记录')) return false
+            if (m.hidden && !isCallMode) return false // 通话模式下保留hidden消息
+            return true
+        }).map(m => {
             let content = ""
             if (typeof m.content === 'string') {
                 content = m.content
@@ -1622,6 +1667,7 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             return {
+                id: m.id,
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
                 image: m.image
@@ -1637,8 +1683,11 @@ export const useChatStore = defineStore('chat', () => {
                 if (typeof last.content === 'string' && typeof m.content === 'string') {
                     last.content += `\n\n${m.content}`;
                 }
-                // 图视觉信息合并 (AI Vision 注入)
-                if (m.image) last.image = m.image;
+                // 图视觉信息合并 (AI Vision 注入)，保留最后一条消息的id
+                if (m.image) {
+                    last.image = m.image;
+                    last.id = m.id;  // 保留最新的消息ID，以便图片引用
+                }
             } else {
                 mergedContext.push(m);
             }
@@ -1649,11 +1698,8 @@ export const useChatStore = defineStore('chat', () => {
         if (callStatus === 'dialing' || callStatus === 'incoming') {
             const userName = chat.userName || '用户'
             const callType = callStore.type === 'video' ? '视频' : '语音'
-            const callHint = callStatus === 'incoming'
-                ? `【系统提示：${userName}正在呼叫你（${callType}通话）。请立即做出选择：
+            const callHint = `【${userName}对你发起${callType}通话，接听请输入语音通话格式，拒绝请输入[挂断通话]，按照正常正文格式回复。】
 
-**选项1：接听**
-回复格式：
 [接听]
 [CALL_START]
 {
@@ -1662,13 +1708,7 @@ export const useChatStore = defineStore('chat', () => {
   "status": "你的心情状态",
   "hangup": false
 }
-[CALL_END]
-
-**选项2：拒绝**
-回复：[拒绝] 并说明理由
-
-注意：如果接听，必须严格按照上述 JSON 格式输出，不要使用 INNER_VOICE 或其他标签。】`
-                : `【系统提示：你正在呼叫${userName}（${callType}通话），等待对方响应...】`
+[CALL_END]`
 
             console.log(`[ChatStore] Injecting call hint for status: ${callStatus}`);
 
@@ -1752,6 +1792,32 @@ export const useChatStore = defineStore('chat', () => {
                 charInfo.description += musicHint
             }
 
+            // Visual Perception Awareness for Calls
+            if (isCallMode && callStore.type === 'video') {
+                let visualHint = '\n\n【视觉感知状态】\n';
+
+                // Rule 1: Camera Awareness
+                if (!callStore.isCameraOff) {
+                    visualHint += `用户已开启摄像头。你现在可以“看”到用户。请通过视觉交流（如评论用户的表情、背景、穿着或动作）来增强真实感。你可以直接描述你看到的画面（例如：看到用户在笑，或者看到用户在卧室里）。\n`;
+                } else {
+                    visualHint += `用户的摄像头目前已关闭。你无法看到用户，请依赖用户在括号 () 或 [] 中描述的动作来了解其状态。\n`;
+                }
+
+                // Rule 2: Virtual Avatar / Drawing Mode
+                if (callStore.virtualAvatarMode === 0) {
+                    // "None" mode -> DRAW mode
+                    visualHint += `目前你处于“实景视频”模式，但由于带宽限制，你的视频流是静态的。为了制造动态感，请在每轮回复的末尾使用 [DRAW: 英文提示词] 指令生成一张你在当前视频通话场景下的神态或环境图（例如你在卧室靠墙通话、你在街边举着手机等）。每轮必发一张图。\n`;
+                } else if (callStore.virtualAvatarMode === 1) {
+                    // "Both" virtual mode
+                    visualHint += `目前你正以虚拟形象（Avatar）与用户交流，用户也在使用虚拟形象。如果你观察到用户开启了摄像头，请特别关注用户的视觉反馈，因为用户的动作会通过视觉模型影响其虚拟形象。\n`;
+                } else if (callStore.virtualAvatarMode === 2) {
+                    // "AI Only" virtual mode
+                    visualHint += `目前你正以虚拟形象（Avatar）与用户交流。如果你观察到用户开启了摄像头，请特别关注用户的视觉反馈。\n`;
+                }
+
+                charInfo.description += visualHint;
+            }
+
             // Log the context being sent to AI for debugging
             useLoggerStore().addLog('AI', '网络请求 (即时上下文)', {
                 contextMessages: context.length,
@@ -1769,27 +1835,23 @@ export const useChatStore = defineStore('chat', () => {
 
             // Use Call System Prompt ONLY when call is active (not during incoming/dialing)
             // During incoming/dialing, use normal prompt so AI can choose [接听] or [拒绝]
-            const isCallActive = callStore.status === 'active'
-            const isCallContext = isCallActive // Only use call prompt when actually in call
-
             // Track if we are in a call to handle message shadowing/hiding
-            const isCallMode = callStore.status !== 'none';
 
             // Streaming handler for calls
             let hasAddedCallLine = false;
-            const onChunk = isCallActive ? (delta, full) => {
-                // ... (existing chunk logic) ...
+            const onChunk = isCallMode ? (delta, full) => {
+                // For calls, we might want to update the last transcript line if streaming
+                // But for now we forced stream: false below for stability
             } : null;
 
             // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
             // as partial JSON is harder to parse reliably for voice.
             const result = await generateReply(context, charInfo, signal, {
                 ...aiOptions,
-                isCall: isCallContext, // Only use call prompt when status is 'active'
-                stream: isCallContext ? false : undefined, // Force non-streaming for calls
-                onChunk: isCallActive ? onChunk : null
+                isCall: isCallMode, // Use call prompt for any active call state (dialing, incoming, active)
+                stream: isCallMode ? false : undefined, // Force non-streaming for calls
+                onChunk: isCallMode ? onChunk : null
             })
-
 
 
             // Clear controller on success
@@ -1806,128 +1868,102 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // 3. 添加 AI 回复 (拆分消息 - Data Level Splitting)
-            if (result.content) {
+            if (result.content || (result.choices && result.choices[0]?.message?.content)) {
+                // 处理完整的OpenAI响应格式
                 let fullContent = result.content;
+                if (!fullContent && result.choices && result.choices[0]?.message?.content) {
+                    fullContent = result.choices[0].message.content;
+                }
 
                 // --- Pre-process: Strip Character Name Prefixes (防止剧本格式) ---
-                // Regex matches names like "乔笙: ", "乔笙：", "乔笙 " at start of lines or message
                 if (chat.name) {
                     const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
                     fullContent = fullContent.replace(nameRegex, '').trim();
                 }
 
-                // --- Handle Call Signal Interception ([接听] / [拒绝]) ---
-                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
-                    if (fullContent.includes('[接听]')) {
-                        console.log('[ChatStore] AI accepted the call');
-                        callStore.acceptCall();
+                // Flag to prevent duplicate TTS playback
+                let hasPlayedTTS = false;
 
-                        // 直接解析通话 JSON，不再触发第二次 AI 调用
-                        const callMatch = fullContent.match(/\[CALL_START\]\s*(\{[\s\S]*?\})\s*\[CALL_END\]/i);
-                        if (callMatch) {
-                            try {
-                                const jsonStr = callMatch[1].trim();
-                                const callData = JSON.parse(jsonStr);
+                // --- Handle Call Mode Post-Processing (Includes Dialing/Incoming/Active) ---
+                if (isCallMode) {
+                    // Protocol Detection
+                    const callMatch = fullContent.match(/\[CALL_START\][\s\S]*?(\{[\s\S]*?\})[\s\S]*?\[CALL_END\]/i);
+                    const hasJsonLike = fullContent.includes('{') && (fullContent.includes('"speech"') || fullContent.includes('"status"'));
 
-                                // 添加到通话记录
-                                if (callData.speech) {
-                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
+                    if (callMatch || hasJsonLike) {
+                        try {
+                            let callData = null;
+                            if (callMatch) {
+                                callData = JSON.parse(callMatch[1].trim());
+                            } else {
+                                // Fallback: find the JSON block directly
+                                const jsonMatches = fullContent.match(/\{[\s\S]*?\}/g);
+                                if (jsonMatches) {
+                                    callData = JSON.parse(jsonMatches[jsonMatches.length - 1]);
+                                }
+                            }
 
-                                    // 播放语音
-                                    if (window.speechSynthesis && callData.speech) {
-                                        const utterance = new SpeechSynthesisUtterance(callData.speech);
-                                        utterance.lang = 'zh-CN';
-                                        utterance.rate = 1.0;
-                                        window.speechSynthesis.speak(utterance);
+                            if (callData) {
+                                // Auto-accept if we were dialing/incoming and received a protocol response
+                                if (callStore.status === 'dialing' || callStore.status === 'incoming') {
+                                    if (fullContent.includes('[接听]') || callData.speech) {
+                                        console.log('[ChatStore] Auto-accepting call due to protocol response');
+                                        callStore.acceptCall();
                                     }
                                 }
 
-                                return; // 不添加消息到聊天记录
-                            } catch (e) {
-                                console.error('[ChatStore] Failed to parse call JSON:', e);
-                            }
-                        }
+                                if (callData.speech) {
+                                    // RESTORED: One large bubble for the call transcript
+                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
+                                    hasAddedCallLine = true;
 
-                        // 如果没有找到 JSON 或解析失败，不显示消息
-                        return;
+                                    // TTS logic
+                                    if (callStore.isSpeakerOn && window.speechSynthesis && !hasPlayedTTS) {
+                                        window.speechSynthesis.cancel();
+                                        const ttsText = callData.speech.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').replace(/\[[\s\S]*?\]/g, '').trim();
+                                        if (ttsText) {
+                                            const utterance = new SpeechSynthesisUtterance(ttsText);
+                                            utterance.lang = 'zh-CN';
+                                            window.speechSynthesis.speak(utterance);
+                                            hasPlayedTTS = true;
+                                        }
+                                    }
+
+                                    // Replace the protocol block with speech for the background, 
+                                    // so other tags (like DRAW) outside the block are preserved.
+                                    if (callMatch) {
+                                        let replacement = callData.speech;
+                                        if (callData.action) replacement += ` (${callData.action})`;
+                                        fullContent = fullContent.replace(callMatch[0], replacement).trim();
+                                    } else {
+                                        // Fallback if we found JSON but not the whole tag block
+                                        fullContent = callData.speech;
+                                        if (callData.action) fullContent += ` (${callData.action})`;
+                                    }
+                                }
+
+                                if (callData.hangup) {
+                                    callStore.endCall();
+                                }
+
+                                if (callData.status) {
+                                    callStore.updateStatus(callData.status);
+                                }
+
+                                // If it was a protocol message, we don't necessarily want it to go through the normal splitting logic
+                                // if it's meant ONLY for the call visualizer.
+                                // However, we let the existing hidden logic handle it.
+                            }
+                        } catch (e) {
+                            console.error('[ChatStore] Failed to parse call JSON:', e);
+                        }
+                    } else if (fullContent.includes('[接听]') || fullContent.includes('[接受通话]')) {
+                        console.log('[ChatStore] AI accepted the call (simple tag)');
+                        callStore.acceptCall();
                     } else if (fullContent.includes('[拒绝]') || fullContent.includes('[拒接]')) {
                         console.log('[ChatStore] AI rejected the call');
                         callStore.rejectCall();
-                        // 拒绝消息正常显示
-                    }
-                }
-
-                // --- Handle Call Mode Post-Processing ---
-                // Strict Check: Call must currently be active to play audio/process JSON
-                const isActuallyActive = (callStore.status === 'active' || isCallActive) && callStore.status !== 'ended' && callStore.status !== 'none';
-                if (isActuallyActive) {
-                    callStore.isSpeaking = false;
-                    // Extract final speech/action from the JSON
-                    const finalMatch = fullContent.match(/\[CALL_START\]\s*(\{[\s\S]*?\}|[\s\S]*?)\s*\[CALL_END\]/i);
-                    if (finalMatch) {
-                        try {
-                            const jsonStr = finalMatch[1].trim();
-                            const callData = JSON.parse(jsonStr);
-                            if (callData.speech) {
-                                // MANDATORY: If we are in active call, the "speech" is what we want to record in chat.
-                                // We replace the fullContent so nothing else (narrations) is saved/displayed.
-                                fullContent = callData.speech;
-                                if (callData.action) fullContent += ` (${callData.action})`;
-
-                                if (!hasAddedCallLine) {
-                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
-                                } else {
-                                    callStore.updateLastTranscriptLine(callData.speech);
-                                    const lastLine = callStore.transcript[callStore.transcript.length - 1];
-                                    if (lastLine) lastLine.action = callData.action || '';
-                                }
-
-                                // TTS logic: Strip bracketed content for speech only
-                                if (callStore.isSpeakerOn && window.speechSynthesis) {
-                                    window.speechSynthesis.cancel(); // Prevent stacking
-                                    const ttsText = callData.speech.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').trim();
-                                    if (ttsText) {
-                                        const utterance = new SpeechSynthesisUtterance(ttsText);
-                                        utterance.lang = 'zh-CN';
-                                        window.speechSynthesis.speak(utterance);
-                                    }
-                                }
-                            }
-                            if (callData.hangup) {
-                                callStore.endCall();
-                            }
-                        } catch (e) {
-                            console.warn('[ChatStore] Failed to parse final call JSON', e);
-                        }
-                    } else {
-                        // FALLBACK: If tags [CALL_START] are missing, but it LOOKS like JSON, try to extract speech field
-                        let speechText = '';
-                        const speechMatch = fullContent.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                        if (speechMatch && speechMatch[1]) {
-                            // Correctly handle escaped characters in the regex match
-                            speechText = speechMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
-                        } else {
-                            // Remove [INNER_VOICE] and other tags
-                            let clean = fullContent.replace(/\[INNER[-_ ]?VOICE\][\s\S]*?\[\/INNER[-_ ]?VOICE\]/gi, '');
-                            clean = clean.replace(/\[MOMENT\][\s\S]*?\[\/MOMENT\]/gi, '');
-                            clean = clean.replace(/\[[\s\S]*?\]/g, '');
-                            speechText = clean.trim();
-                        }
-
-                        if (speechText) {
-                            fullContent = speechText;
-                            callStore.addTranscriptLine('ai', speechText);
-                            if (callStore.isSpeakerOn && window.speechSynthesis) {
-                                window.speechSynthesis.cancel(); // Prevent stacking
-                                const ttsText = speechText.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').trim();
-                                if (ttsText) {
-                                    const utterance = new SpeechSynthesisUtterance(ttsText);
-                                    utterance.lang = 'zh-CN';
-                                    window.speechSynthesis.speak(utterance);
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -2333,10 +2369,9 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle [SET_AVATAR] Command ---
-                const setAvatarRegex = /\[SET_AVATAR[:：]\s*(.+?)\s*\]/gi  // Use GLOBAL flag to handle multiple occurrences
+                // Support both [SET_AVATAR:...] and [更换头像:...] formats
+                const setAvatarRegex = /\[(?:SET_AVATAR|更换头像)[:：]\s*(.+?)\s*\]/gi
                 let avatarMatch;
-                // Loop to find the last valid avatar command (or first? let's stick to first for now but consume all)
-                // Actually, let's just use the first valid one we find
                 const firstAvatarMatch = setAvatarRegex.exec(properlyOrderedContent);
 
                 if (firstAvatarMatch) {
@@ -2349,12 +2384,15 @@ export const useChatStore = defineStore('chat', () => {
                             const reversed = [...chat.msgs].reverse();
                             const imgMsg = reversed.find(m => {
                                 // Check message type image OR text with [图片:...]
+                                if (m.type === 'image' && m.image && (m.image.startsWith('http') || m.image.startsWith('data:image'))) return true;
                                 if (m.type === 'image' && m.content && (m.content.startsWith('http') || m.content.startsWith('data:image'))) return true;
                                 if (typeof m.content === 'string' && /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i.test(m.content)) return true;
                                 return false;
                             });
                             if (imgMsg) {
-                                if (imgMsg.type === 'image') return imgMsg.content;
+                                // Priority: image property for type='image' messages
+                                if (imgMsg.type === 'image' && imgMsg.image) return imgMsg.image;
+                                if (imgMsg.type === 'image' && imgMsg.content) return imgMsg.content;
                                 const match = imgMsg.content.match(/\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i);
                                 return match ? match[1] : null;
                             }
@@ -2386,14 +2424,22 @@ export const useChatStore = defineStore('chat', () => {
                                 newAvatarUrl = findLastImage();
                             } else {
                                 const targetMsg = chat.msgs.find(m => m.id === possibleId || (m.id && possibleId.includes(m.id)));
+                                console.log(`[ChatStore] Looking for image ID: "${possibleId}"`);
+                                console.log(`[ChatStore] Available message IDs:`, chat.msgs.map(m => ({ id: m.id, type: m.type, hasImage: !!m.image })));
                                 if (targetMsg) {
-                                    if (targetMsg.type === 'image' && targetMsg.content && (targetMsg.content.startsWith('http') || targetMsg.content.startsWith('data:image'))) {
+                                    console.log(`[ChatStore] Found target message:`, { type: targetMsg.type, image: targetMsg.image ? `${targetMsg.image.substring(0, 50)}...` : 'none' });
+                                    // For image type messages, use the 'image' property which contains base64
+                                    if (targetMsg.type === 'image' && targetMsg.image && (targetMsg.image.startsWith('http') || targetMsg.image.startsWith('data:image'))) {
+                                        newAvatarUrl = targetMsg.image;
+                                    } else if (targetMsg.type === 'image' && targetMsg.content && (targetMsg.content.startsWith('http') || targetMsg.content.startsWith('data:image'))) {
+                                        // Fallback for legacy format where image was in content
                                         newAvatarUrl = targetMsg.content;
                                     } else {
                                         const embeddedMatch = targetMsg.content?.match(/\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i);
                                         if (embeddedMatch) newAvatarUrl = embeddedMatch[1];
                                     }
                                 } else {
+                                    console.warn(`[ChatStore] Target message not found for ID: "${possibleId}"`);
                                     // ID not found, fallback to most recent image if input is short/ambiguous
                                     if (rawContent.length < 50) newAvatarUrl = findLastImage();
                                 }
@@ -2449,10 +2495,18 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(/\[Image Reference ID:.*?\]/gi, '')
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
-                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
+                    .replace(/\[(?:SET_AVATAR|更换头像)[:：]\s*(.+?)\s*\]/gi, '')
+                    .replace(/\[\/?(MOMENT|REPLY|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
                     // Strip system context hints parrotted by AI
                     .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE)消息[\]\)]?/gi, '')
                     .replace(/\[(?:图片消息|语音消息)\]/gi, '')
+                    // Clean double brackets
+                    .replace(/\[\[/g, '[')
+                    .replace(/\]\]/g, ']')
+                    .replace(/\(\(/g, '(')
+                    .replace(/\)\)/g, ')')
+                    .replace(/（（/g, '（')
+                    .replace(/））/g, '）')
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
@@ -2823,17 +2877,27 @@ export const useChatStore = defineStore('chat', () => {
     }
 
 
-    function clearHistory(chatId, options = {}) {
+    async function clearHistory(chatId, options = {}) {
         if (chats.value[chatId]) {
-            chats.value[chatId].msgs = []
-            // Keep in chat list so user can continue chatting
-            // chats.value[chatId].inChatList = false 
+            // Merge into a new object to trigger reactivity
+            // Only clear messages and optionally memory, but keep the chat in the list
+            chats.value[chatId] = {
+                ...chats.value[chatId],
+                msgs: []
+            }
+
+            // Re-assign the whole chats object to ensure top-level reactivity
+            chats.value = { ...chats.value }
 
             if (options.includeMemory) {
-                chats.value[chatId].memory = []
-                chats.value[chatId].summary = ''
+                chats.value[chatId] = {
+                    ...chats.value[chatId],
+                    memory: [],
+                    summary: ''
+                }
+                chats.value = { ...chats.value }
             }
-            saveChats()
+            await saveChats()
         }
     }
 
@@ -3114,14 +3178,14 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     return {
-        notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
+        notificationEvent, patEvent, toastEvent, promptEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
         deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
+        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm, triggerPrompt,
         isProfileProcessing
     }
 })

@@ -282,6 +282,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
         if (playerIndex === 0) gameState.value.drawnTile = tile
         else player.hand = mahjongEngine.sortHand(player.hand)
 
+        console.log(`[Mahjong] ${player.name} drew a tile. Hand: ${player.hand.length}, Exposed: ${player.exposed.length}`);
+
         if (mahjongEngine.canHu(player.hand)) {
             if (player.isAI && Math.random() > 0.2) {
                 lastAction.value = { type: 'hu', playerIndex, time: Date.now() }
@@ -321,9 +323,22 @@ export const useMahjongStore = defineStore('mahjong', () => {
             } catch (e) { tile = player.hand[0] }
         }
 
+        if (player.hand.length === 0) {
+            console.error(`[Mahjong] AI ${player.name} tried to play from empty hand! Exposed:`, player.exposed.length);
+            // 自动流局或跳过 (避免死循环或 undefined)
+            setTimeout(nextTurn, 800);
+            return;
+        }
+
         const handIdx = player.hand.indexOf(tile)
-        if (handIdx !== -1) player.hand.splice(handIdx, 1)
-        else player.hand.shift()
+        if (handIdx !== -1) {
+            player.hand.splice(handIdx, 1)
+        } else {
+            // 兜底：如果 AI 算错牌了，强制选手中有的第一张
+            console.warn(`[AI] ${player.name} tried to play ${tile} which is not in hand. Falling back.`);
+            tile = player.hand[0]
+            player.hand.splice(0, 1)
+        }
 
         player.hand = mahjongEngine.sortHand(player.hand)
         executeDiscard(player, tile)
@@ -336,6 +351,9 @@ export const useMahjongStore = defineStore('mahjong', () => {
         gameState.value.lastPlayer = playerIdx
         gameState.value.pool.push(tile)
         player.discarded.push(tile)
+
+        // 记录动作 (触发语音和特效)
+        lastAction.value = { type: 'play', playerIndex: playerIdx, tile, time: Date.now() }
 
         const handled = checkOtherPlayers(tile)
         if (!handled) setTimeout(nextTurn, 800)
@@ -360,9 +378,14 @@ export const useMahjongStore = defineStore('mahjong', () => {
             const p = players[idx]
             if (mahjongEngine.canGang(p.hand, tile) || mahjongEngine.canPeng(p.hand, tile)) {
                 if (p.isAI) {
+                    // 核心规则：最多只能有 4 个鸣牌组合
+                    if (p.exposed.length >= 4) continue;
                     const decision = mahjongAI.decideAction(p.hand, tile, ['peng', 'gang'])
                     if (decision !== 'pass') { setTimeout(() => handleAction(decision, idx), 800); return true }
-                } else return true
+                } else {
+                    // 用户不受限，但逻辑上 4 组后通常也没法再碰了
+                    return true
+                }
             }
         }
         // 吃
@@ -370,6 +393,7 @@ export const useMahjongStore = defineStore('mahjong', () => {
         const nextP = players[nextIdx]
         if (mahjongEngine.canChi(nextP.hand, tile, 'previous').length > 0) {
             if (nextP.isAI) {
+                if (nextP.exposed.length >= 4) return false;
                 const decision = mahjongAI.decideAction(nextP.hand, tile, ['chi'])
                 if (decision === 'chi') { setTimeout(() => handleAction('chi', nextIdx), 800); return true }
             } else return true
@@ -395,12 +419,24 @@ export const useMahjongStore = defineStore('mahjong', () => {
 
         // 只要是鸣牌且非过，就得从牌池拿走（如果是明杠/碰/吃）
         if (tile && (action === 'peng' || action === 'gang' || action === 'chi')) {
-            gameState.value.pool.pop()
+            const poolIdx = gameState.value.pool.lastIndexOf(tile)
+            if (poolIdx !== -1) gameState.value.pool.splice(poolIdx, 1)
+
+            // 同时从上家（打牌的人）的个人打出列表中移除，防止重复计数或逻辑错误
+            if (gameState.value.lastPlayer !== -1) {
+                const lastP = currentRoom.value.players[gameState.value.lastPlayer]
+                if (lastP) {
+                    const discIdx = lastP.discarded.lastIndexOf(tile)
+                    if (discIdx !== -1) lastP.discarded.splice(discIdx, 1)
+                }
+            }
         }
 
         if (action === 'peng' || action === 'gang' || action === 'chi') gameState.value.currentPlayer = playerIndex
 
         if (action === 'peng') {
+            const hasEnough = player.hand.filter(t => t === tile).length >= 2
+            if (!hasEnough) { console.error(`[Mahjong] ${player.name} cannot PENG ${tile}: lack of cards`); nextTurn(); return }
             let c = 0; player.hand = player.hand.filter(t => (t === tile && c < 2) ? (c++, false) : true)
             player.exposed.push({ type: 'peng', tiles: [tile, tile, tile] })
         } else if (action === 'gang') {
@@ -414,14 +450,19 @@ export const useMahjongStore = defineStore('mahjong', () => {
                 }
             } else {
                 // 明杠
+                const hasEnough = player.hand.filter(t => t === tile).length >= 3
+                if (!hasEnough) { console.error(`[Mahjong] ${player.name} cannot GANG ${tile}: lack of cards`); nextTurn(); return }
                 let c = 0; player.hand = player.hand.filter(t => (t === tile && c < 3) ? (c++, false) : true)
                 player.exposed.push({ type: 'gang', tiles: [tile, tile, tile, tile], isAnGang: false })
             }
             gameState.value.currentTile = null
+            console.log(`[Mahjong] Gang action done for ${player.name}. Hand: ${player.hand.length}, Exposed: ${player.exposed.length}. Pre-draw.`);
             drawTile(playerIndex)
             return
         } else if (action === 'chi') {
-            const comb = chiCombo || mahjongEngine.canChi(player.hand, tile, 'previous')[0]
+            const combs = mahjongEngine.canChi(player.hand, tile, 'previous')
+            if (combs.length === 0 && !chiCombo) { console.error(`[Mahjong] ${player.name} cannot CHI ${tile}`); nextTurn(); return }
+            const comb = chiCombo || combs[0]
             comb.forEach(t => {
                 if (t !== tile) {
                     const idx = player.hand.indexOf(t)
@@ -431,6 +472,7 @@ export const useMahjongStore = defineStore('mahjong', () => {
             player.exposed.push({ type: 'chi', tiles: mahjongEngine.sortHand([...comb, tile]), from: gameState.value.lastPlayer })
         }
         player.hand = mahjongEngine.sortHand(player.hand)
+        console.log(`[Mahjong] Action ${action} done for ${player.name}. Hand: ${player.hand.length}, Exposed: ${player.exposed.length}`);
         gameState.value.currentTile = null
         if (player.isAI) setTimeout(() => aiPlayTile(player), 1000)
     }
@@ -781,11 +823,13 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
                         if (activeReplies.value[idx] === replyText) delete activeReplies.value[idx]
                     }, 6000)
 
-                    // 语音合成
-                    if (ai.enableTTS || settingsStore.enableTTS) {
-                        const u = new SpeechSynthesisUtterance(replyText)
-                        u.rate = 1.1
-                        window.speechSynthesis.speak(u)
+                    // 语音合成 (交给组件处理或调用公共方法)
+                    //这里我们依然保留逻辑，但确保它能触发组件里的 speak 或监听
+                    lastAction.value = {
+                        type: 'chat',
+                        playerIndex: idx,
+                        text: replyText,
+                        time: Date.now()
                     }
                 }
             }

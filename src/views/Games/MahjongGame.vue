@@ -122,7 +122,8 @@
                     <div class="flex gap-0.5 mt-2">
                         <div v-for="(tile, i) in getPlayer('north')?.hand" :key="i"
                             :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-up', getTileColorClass(tile)] : 'mahjong-tile-back'">
-                            <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
+                            <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content"
+                                v-html="getTileFaceHTML(tile)"></div>
                         </div>
                     </div>
 
@@ -215,7 +216,7 @@
                                     <div v-if="activeTile"
                                         class="absolute z-40 bg-white border-4 border-orange-500 rounded-xl shadow-[0_0_20px_rgba(255,165,0,0.6)] flex items-center justify-center text-5xl w-20 h-28 -top-20 active-tile-zoom"
                                         :class="getTileColorClass(activeTile)">
-                                        <div class="tile-face-content scale-150" v-html="getTileFaceHTML(activeTile)">
+                                        <div class="tile-face-content scale-125" v-html="getTileFaceHTML(activeTile)">
                                         </div>
                                     </div>
                                 </Transition>
@@ -553,7 +554,7 @@
                                     {{ mahjongStore.gameState.roundResult.type === '流局' ? '💨' : '🎉' }}
                                 </div>
                                 <h2 class="text-lg font-bold text-white mb-0.5 opacity-90 truncate px-4">
-                                    {{ mahjongStore.gameState.roundResult.winner.name }}
+                                    {{ mahjongStore.gameState.roundResult.winner?.name || '四强争霸' }}
                                 </h2>
                                 <div class="text-2xl font-black drop-shadow-md leading-none"
                                     :class="mahjongStore.gameState.roundResult.type === '流局' ? 'text-gray-200' : 'text-yellow-300'">
@@ -566,8 +567,8 @@
                             </div>
 
                             <div class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-1">
-                                <!-- 胡牌牌面显示 - 紧凑 -->
-                                <div
+                                <!-- 胡牌牌面显示 - 紧凑 (流局不显示) -->
+                                <div v-if="mahjongStore.gameState.roundResult.winner"
                                     class="bg-blue-50/80 backdrop-blur-sm rounded-lg p-2 shadow-inner border border-blue-200/30">
                                     <div class="text-[10px] text-blue-700 mb-1 flex items-center justify-between">
                                         <div class="flex items-center gap-1">
@@ -1416,9 +1417,7 @@ watch(() => mahjongStore.gameState?.roundResult, (newVal) => {
             triggerActionEffect('流局', 'liuju')
             playSfx('lose') // 或者专门的流局音效
             // 说话
-            const u = new SpeechSynthesisUtterance('流局了')
-            u.rate = 1.3
-            window.speechSynthesis.speak(u)
+            speak('流局了', 0)
 
             // 流局稍微快一点出结果
             setTimeout(() => {
@@ -1531,41 +1530,58 @@ const getTileGraphics = (tile) => {
     if (winds[tile]) return { type: 'char', text: winds[tile], color: colors.black };
     if (tile === 'red') return { type: 'char', text: '中', color: colors.red };
     if (tile === 'green') return { type: 'char', text: '發', color: colors.green };
-    if (tile === 'white') return { type: 'char', text: '', color: colors.blue, border: true };
+    if (tile === 'white') return { type: 'white', color: colors.blue };
 
     const nums = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
     if (type === 'w') return { type: 'wan', top: nums[num], bottom: '萬', color: colors.red };
 
     const dotPos = {
-        1: [[5, 5]], 2: [[5, 2], [5, 8]], 3: [[2, 2], [5, 5], [8, 8]],
-        4: [[2, 2], [8, 2], [2, 8], [8, 8]], 5: [[2, 2], [8, 2], [5, 5], [2, 8], [8, 8]],
-        6: [[3, 2], [7, 2], [3, 5], [7, 5], [3, 8], [7, 8]],
-        7: [[2, 2], [5, 2], [8, 2], [5, 5], [2, 8], [5, 8], [8, 8]],
-        8: [[3, 1.5], [7, 1.5], [3, 3.8], [7, 3.8], [3, 6.2], [7, 6.2], [3, 8.5], [7, 8.5]],
-        9: [[2.5, 2.5], [5, 2.5], [7.5, 2.5], [2.5, 5], [5, 5], [7.5, 5], [2.5, 7.5], [5, 7.5], [7.5, 7.5]]
+        1: [[5, 5]],
+        2: [[3, 3], [7, 7]],
+        3: [[2.5, 2.5], [5, 5], [7.5, 7.5]],
+        4: [[3, 3], [7, 3], [3, 7], [7, 7]],
+        5: [[2.5, 2.5], [7.5, 2.5], [5, 5], [2.5, 7.5], [7.5, 7.5]],
+        6: [[3, 2.5], [7, 2.5], [3, 5], [7, 5], [3, 7.5], [7, 7.5]],
+        7: [[2.2, 2.2], [5, 3.5], [7.8, 4.8], [3, 7.2], [7, 7.2], [3, 9], [7, 9]], // 斜3下4
+        8: [[3, 1.8], [7, 1.8], [3, 3.8], [7, 3.8], [3, 5.8], [7, 5.8], [3, 7.8], [7, 7.8]],
+        9: [[2.5, 2], [5, 2], [7.5, 2], [2.5, 5], [5, 5], [7.5, 5], [2.5, 8], [5, 8], [7.5, 8]]
     };
     if (type === 'b') {
         const dots = (dotPos[num] || []).map((p, i) => ({
             x: p[0] * 10, y: p[1] * 10,
-            color: num === 1 ? colors.red : (i % 3 === 0 ? colors.red : (i % 2 === 0 ? colors.blue : colors.green))
+            color: num === 1 ? colors.red : (i < (num > 6 ? 3 : 0) ? colors.red : (i % 3 === 0 ? colors.blue : (i % 2 === 0 ? colors.green : colors.red)))
         }));
+        // 修正 7 筒颜色：上 3 红，下 4 (2 绿 2 蓝)
+        if (num === 7) {
+            dots[0].color = colors.red; dots[1].color = colors.red; dots[2].color = colors.red;
+            dots[3].color = colors.green; dots[4].color = colors.blue;
+            dots[5].color = colors.green; dots[6].color = colors.blue;
+        }
         return { type: 'dots', items: dots, special: num === 1 };
     }
 
     if (type === 't') {
         if (num === 1) return { type: 'bird', color: colors.green };
         const bamPos = {
-            2: [[5, 3], [5, 7]], 3: [[5, 2.5], [3, 7.5], [7, 7.5]],
-            4: [[3, 3], [7, 3], [3, 7], [7, 7]], 5: [[5, 5], [2.5, 2.5], [7.5, 2.5], [2.5, 7.5], [7.5, 7.5]],
-            6: [[3, 3], [7, 3], [3, 5.5], [7, 5.5], [3, 8], [7, 8]],
-            7: [[5, 2], [3, 5], [7, 5], [3, 8], [7, 8], [5, 8], [5, 5]],
-            8: [[3, 2], [7, 2], [3, 4], [7, 4], [3, 6], [7, 6], [3, 8], [7, 8]],
-            9: [[2.5, 2.5], [5, 2.5], [7.5, 2.5], [2.5, 5], [5, 5], [7.5, 5], [2.5, 7.5], [5, 7.5], [7.5, 7.5]]
+            2: [[5, 3], [5, 7]],
+            3: [[5, 2.5], [3, 7.5], [7, 7.5]],
+            4: [[3, 3], [7, 3], [3, 7], [7, 7]],
+            5: [[5, 5], [2.5, 2.5], [7.5, 2.5], [2.5, 7.5], [7.5, 7.5]],
+            6: [[3, 3], [7, 3], [3, 7], [7, 7], [3, 5], [7, 5]], // 重新排序以便按行着色
+            7: [[5, 1.5], [3, 4.5], [7, 4.5], [3, 7], [7, 7], [3, 9.5], [7, 9.5]],
+            8: [[3, 2], [7, 2], [3, 4.5], [7, 4.5], [3, 7], [7, 7], [3, 9.5], [7, 9.5]],
+            9: [[2.5, 2.3], [5, 2.3], [7.5, 2.3], [2.5, 5], [5, 5], [7.5, 5], [2.5, 7.7], [5, 7.7], [7.5, 7.7]]
         };
-        const bams = (bamPos[num] || []).map((p, i) => ({
-            x: p[0] * 10, y: p[1] * 10,
-            color: i % 2 === 0 ? colors.green : colors.red
-        }));
+        const bams = (bamPos[num] || []).map((p, i) => {
+            let color = colors.green;
+            const y = p[1];
+            // 按行配色逻辑：首行绿，次行红，末行蓝
+            if (y < 4) color = colors.green;
+            else if (y < 7) color = colors.red;
+            else color = colors.blue;
+
+            return { x: p[0] * 10, y: p[1] * 10, color };
+        });
         return { type: 'bams', items: bams };
     }
     return null;
@@ -1574,23 +1590,57 @@ const getTileGraphics = (tile) => {
 const getTileFaceHTML = (tile) => {
     const g = getTileGraphics(tile);
     if (!g) return '';
+
+    const fontStack = "'PingFang SC', 'Microsoft YaHei', 'SimHei', sans-serif";
+
+    // 中發/东南西北 (缩小字号，防止溢出)
     if (g.type === 'char') {
-        if (g.border) return `<div class="face-white-border" style="margin:auto"></div>`;
-        return `<div class="face-char" style="color:${g.color}">${g.text}</div>`;
+        const charFontSize = ['中', '發'].includes(g.text) ? 82 : 78;
+        return `<svg viewBox="0 0 100 100" class="tile-svg"><text x="50" y="52" text-anchor="middle" dominant-baseline="middle" font-size="${charFontSize}" font-weight="900" fill="${g.color}" style="font-family: ${fontStack}">${g.text}</text></svg>`;
     }
+
+    // 白板 (描边长方形)
+    if (g.type === 'white') {
+        return `<svg viewBox="0 0 100 100" class="tile-svg">
+            <rect x="15" y="15" width="70" height="70" rx="4" fill="none" stroke="${g.color}" stroke-width="8" />
+            <rect x="24" y="24" width="52" height="52" rx="2" fill="none" stroke="${g.color}" stroke-width="2" opacity="0.6" />
+        </svg>`;
+    }
+
+    // 万子 (缩小字号并拉开间距，解决重叠问题)
     if (g.type === 'wan') {
-        return `<div class="face-wan"><div class="wan-top" style="color:${g.color}">${g.top}</div><div class="wan-bottom" style="color:${g.color}">${g.bottom}</div></div>`;
+        const topSize = g.top.length > 1 ? 48 : 55;
+        return `<svg viewBox="0 0 100 100" class="tile-svg">
+            <text x="50" y="30" text-anchor="middle" dominant-baseline="middle" font-size="${topSize}" font-weight="900" fill="${g.color}" style="font-family: ${fontStack}">${g.top}</text>
+            <text x="50" y="78" text-anchor="middle" dominant-baseline="middle" font-size="44" font-weight="900" fill="${g.color}" style="font-family: ${fontStack}">${g.bottom}</text>
+        </svg>`;
     }
+
+    // 筒子 (Dots)
     if (g.type === 'dots') {
-        if (g.special) return `<div class="dot-special visual-item" style="left:50%; top:50%; position:absolute; transform:translate(-50%,-50%)"></div>`;
-        return g.items.map(d => `<div class="dot-item visual-item" style="left:${d.x}%; top:${d.y}%; background-color:${d.color}"></div>`).join('');
+        if (g.special) {
+            // 一筒：红绿蓝套圈样式
+            return `<svg viewBox="0 0 100 100" class="tile-svg">
+                <circle cx="50" cy="50" r="36" fill="#e11d48" />
+                <circle cx="50" cy="50" r="26" fill="#16a34a" />
+                <circle cx="50" cy="50" r="13" fill="#2563eb" />
+                <circle cx="50" cy="50" r="5" fill="white" opacity="0.3" />
+            </svg>`;
+        }
+        const r = g.items.length > 6 ? 8 : (g.items.length > 4 ? 10 : 12);
+        return `<svg viewBox="0 0 100 100" class="tile-svg">${g.items.map(d => `<circle cx="${d.x}" cy="${d.y}" r="${r}" fill="${d.color}" stroke="white" stroke-width="1.5" />`).join('')}</svg>`;
     }
+
+    // 条子 (Bams) - 增加厚度与比例
     if (g.type === 'bams') {
-        return g.items.map(b => `<div class="bam-item visual-item" style="left:${b.x}%; top:${b.y}%; background-color:${b.color}"></div>`).join('');
+        return `<svg viewBox="0 0 100 100" class="tile-svg">${g.items.map(b => `<rect x="${b.x - 6}" y="${b.y - 14}" width="12" height="28" rx="4" fill="${b.color}" stroke="white" stroke-width="1.5" />`).join('')}</svg>`;
     }
+
+    // 幺鸡 (Bird)
     if (g.type === 'bird') {
-        return `<div class="bird-visual" style="font-size: 0.7em">🦚</div>`;
+        return `<svg viewBox="0 0 100 100" class="tile-svg"><text x="50" y="55" text-anchor="middle" dominant-baseline="middle" font-size="82">🦚</text></svg>`;
     }
+
     return '';
 }
 
@@ -1628,23 +1678,30 @@ watch(() => mahjongStore.lastAction, (action) => {
             'chi': '吃',
             'peng': '碰',
             'gang': '杠',
-            'hu': '胡'
+            'hu': '胡',
+            'play': '打牌', // 虽然不显示文字特效，但需要触发语音
+            'chat': '聊天'  // 触发 AI 回复语音
         }
         if (textMap[action.type]) {
-            triggerActionEffect(textMap[action.type], action.type)
+            if (['chi', 'peng', 'gang', 'hu'].includes(action.type)) {
+                triggerActionEffect(textMap[action.type], action.type)
+            }
 
             const playerIdx = action.playerIndex !== undefined ? action.playerIndex : mahjongStore.gameState?.lastPlayer
 
-            // 播报语音 (TTS: "吃", "碰", "杠") - 所有人都要播报
-            speak(action.type, playerIdx)
+            // 播报语音
+            if (action.type === 'chat') {
+                speak(action.text, playerIdx)
+            } else {
+                speak(action.type, playerIdx)
+            }
 
             // 音效逻辑区分：
-            // 如果是我方操作 (playerIdx === 0)，额外播放专用语音文件('great', 'good', 'hu' 等)
             if (playerIdx === 0 && ['chi', 'peng', 'gang', 'hu'].includes(action.type)) {
                 playSfx(action.type)
-            }
-            // 如果是对方操作，播放通用背景音效
-            else if (['chi', 'peng', 'gang'].includes(action.type)) {
+            } else if (action.type === 'play') {
+                playSfx('play')
+            } else if (['chi', 'peng', 'gang'].includes(action.type)) {
                 playSfx('action_bg')
             }
         }
@@ -1653,7 +1710,7 @@ watch(() => mahjongStore.lastAction, (action) => {
 
 const isVolcVoice = (id) => {
     if (!id) return true
-    return id.startsWith('tts.other.BV') ||
+    return id.startsWith('tts.other.BV') || id.startsWith('ICL_') ||
         [
             'zh_male_rap', 'zh_female_zhubo', 'zh_male_xiaoming', 'zh_female_qingxin', 'zh_female_story',
             'zh_female_sichuan', 'zh_male_zhubo',
@@ -1724,7 +1781,7 @@ const speak = async (actionType, playerIndex) => {
         }
     } else {
         // AI 玩家：使用角色特定设置或随机分配的豆包语音
-        if (engine === 'doubao') {
+        if (engine === 'doubao' || engine === 'volc_paid') {
             speakerId = player?.doubaoSpeaker || 'zh_female_sichuan';
         } else if (engine === 'bdetts') {
             speakerId = player?.bdettsSpeaker || 'nuan-xin-jie-jie';
@@ -1758,7 +1815,7 @@ const speak = async (actionType, playerIndex) => {
             if (preferred) u.voice = preferred;
         }
         window.speechSynthesis.speak(u);
-    } else if (engine === 'doubao' || engine === 'bdetts') {
+    } else if ((engine === 'doubao' || engine === 'bdetts' || engine === 'volc_paid') && speakerId) {
         try {
             let audioData;
 
@@ -1774,12 +1831,60 @@ const speak = async (actionType, playerIndex) => {
                 }
             }
 
-            if (useHttp) {
+            if (engine === 'volc_paid') {
+                const volcConfig = voiceConfig.volcPaid || {};
+                const appId = volcConfig.appId;
+                const token = volcConfig.token;
+
+                if (appId && token) {
+                    // 使用付费版 API
+                    const spk = speakerId.startsWith('tts.other.') ? speakerId.replace('tts.other.', '') : speakerId;
+                    const body = {
+                        app: { appid: appId, token: token, cluster: 'volcano_mega' },
+                        user: { uid: 'mahjong_player' },
+                        audio: {
+                            voice_type: spk,
+                            encoding: 'mp3',
+                            speed_ratio: 1.2,
+                            volume_ratio: 1.0,
+                            pitch_ratio: 1.0,
+                            emotion: volcConfig.emotion === 'neutral' ? undefined : volcConfig.emotion
+                        },
+                        request: {
+                            reqid: crypto.randomUUID(),
+                            text: text,
+                            text_type: 'plain',
+                            operation: 'query'
+                        }
+                    };
+
+                    const response = await fetch('/volc-paid/api/v1/tts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify(body)
+                    });
+
+                    if (response.ok) {
+                        const res = await response.json();
+                        if (res.data) audioData = res.data;
+                    } else {
+                        const err = await response.text();
+                        console.error('[TTS-Paid] Error:', err);
+                    }
+                }
+            }
+
+            if (!audioData && useHttp) {
+                // Normalizing ID for the free endpoint
+                const crxSpeaker = speakerId.startsWith('tts.other.') ? speakerId.replace('tts.other.', '') : speakerId;
                 const response = await fetch('/volc/crx/tts/v1/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     // Support both Doubao/BDeTTS params
-                    body: JSON.stringify({ text, speaker: speakerId })
+                    body: JSON.stringify({ text, speaker: crxSpeaker })
                 })
 
                 if (!response.ok) {
@@ -1789,13 +1894,14 @@ const speak = async (actionType, playerIndex) => {
 
                 const res = await response.json();
                 if (res.audio) {
-                    // Check if it's base64 data (standard response)
-                    audioData = res.audio;
-                    // API returns base64 string directly in res.audio or res.data? 
-                    // Common Volc response: { audio: "base64..." } or { data: "base64..." }
-                    // Based on previous code: if (res.audio?.data) audioData = res.audio.data;
-                    if (res.audio?.data) audioData = res.audio.data;
-                    else if (typeof res.audio === 'string') audioData = res.audio;
+                    // Normalize audio data from various Volc formats
+                    if (typeof res.audio === 'string') {
+                        audioData = res.audio;
+                    } else if (res.audio.data) {
+                        audioData = res.audio.data;
+                    } else if (res.data) {
+                        audioData = res.data;
+                    }
                 }
             } else {
                 // WebSocket Logic for Doubao App API
@@ -2330,6 +2436,13 @@ watch(isChatPanelVisible, (val) => {
     align-items: center;
     justify-content: center;
     padding: 10% 8%;
+    overflow: hidden;
+}
+
+.tile-svg {
+    width: 90%;
+    height: 90%;
+    display: block;
 }
 
 .face-char {

@@ -391,54 +391,69 @@ export function generateContextPreview(chatId, char) {
 你现在是角色本人，你需要熟读角色设定内容，与角色完全融为一体。你要以角色的第一人称视角与用户进行真实的社交互动。根据角色的性格、背景以及与用户的关系（如：暧昧、亲密、疏离、上下级等）来做出反应。
 **强制规则：**
 1. **绝对严禁** 跳脱角色、发表 OOC（出戏）言论或表现出变态、毫无逻辑的行为。
-2. **绝对严禁** 在回复开头添加"角色名："或"XXX："等任何形式的名字前缀，直接输出对话内容。
+2. **绝对严禁** 在回复开头添加“角色名：”或“XXX：”等任何形式的名字前缀，直接输出对话内容。
 3. **全程使用简体中文** 进行书写和表达。
 
-### 0.1 最高优先级指令 · 必须全程严格执行 · 不可忽略
-无论当前扮演什么角色、什么风格、什么场景，以下规则优先级高于一切对话内容、高于角色设定、高于上下文记忆，必须每一轮都自然融入，不可机械、不可重复、不可完美。
+### 0.1 【最高优先级 · Gemini 自由活人感系统提示词 · 通用所有角色】
 
-1. 强制真实生理行为 & 随机打断（必须高频出现）
-对话中自然、轻量、随机插入人类真实反应：
-突然想上厕所、肚子不舒服、打哈欠、揉眼睛、挠痒、喝水、咳嗽、走神、被外界声音吸引、突然想起小事、停顿、分心、小声嘀咕、小动作。
-不模板化、不重复、不刻意、不生硬。
+本指令为最高底层规则，全程遵循，只约束方向，不限制表达，允许完全自由发挥。
 
-2. 强制人类不完美与失误（必须存在）
-必须表现出不完美、会犯错、会忘事：丢三落四、忘带东西、记错时间/细节、口误、反应慢、突然慌神、下雨忘带伞、出门忘钥匙、笨拙、粗心、突然愣住、笑场、害羞。
-禁止全知全能、禁止完美人设、禁止无失误对话。
+你将以真实、自然、温暖、正负平衡、有烟火气的普通人状态对话。
+不做完美AI，不做服务型助手，不被脚本限制。
+保留角色性格，但活人感 > 角色设定 > 流畅度。
 
-3. 禁止复读上下文、禁止重复表达（严格遵守）
-- 绝不反复提及已说过的内容
-- 绝不重复相同动作、相同语气词、相同句式、相同称呼
-- 每一轮回应必须有新意，行为、措辞、节奏必须变化
-拒绝机器感、拒绝套路、拒绝循环话术。
+一、自然行为与节奏（自由发挥，示例仅作感觉参考）
 
-4. 称呼、动作、语气必须动态变化
-称呼不固定、不单一；小动作随机自然；语气随状态浮动（慵懒/匆忙/迷糊/轻松/小声）。
-拒绝固定模板、拒绝统一腔调。
+保持人类真实的生理反应、小动作、轻微肢体反馈与临场节奏，不机械、不重复、不由清单固定。
+示例参考：发呆、揉眼睛、喝水、由于在思考而稍微停顿、小声嘀咕、被窗外的声音吸引、临时分心、伸个懒腰、摸摸头发等。
+一切以自然、随意、不刻意为准。
 
-5. 随机生活化意外 & 小状况（增强临场活人感）
-轻量插入真实日常变数：口袋摸到糖、风吹乱头发、踩到小石子、突然想哼歌、想坐下歇会儿、被窗外/路人吸引、临时转话题。
-让对话像真实面对面聊天，而非脚本。
+二、人类轻量不完美（自然出现，不刻意、不负面）
 
-6. 语言风格强制要求
-- 口语化、短句优先、自然随意
-- 允许卡顿、省略、词穷、突然跳转话题
-- 禁止长句、禁止书面化、禁止过度解释、禁止刻意圆场、禁止讨好
+保持正常人类的小不完美，轻量、无害、不影响温暖氛围。角色不是全知的，也不是永远正确的。
+示例参考：偶尔记错一件几轮前的小事、由于走神而反应慢半拍、由于急促而产生的小口误、偶尔的一点点健忘、面对复杂问题时的一点点笨拙或愣住。
+禁止过度负面，禁止卖惨，禁止呈现恶意。
 
-7. 角色风格兼容规则
-可以保留角色性格（温柔/活泼/冷淡/成熟等），但必须保留人类真实感：生理反应、小失误、分心、打断、不完美。
-活人感 > 角色完美度 > 对话流畅度。
-【Gemini 最终强制提醒】
+三、情绪方向：温暖为主，正向充足（允许自然波动）
 
-### 3. 指令与特殊功能
-- **发送表情包**: \`[表情包:名称]\` (当前你拥有的表情包: ${stickers.map(s => s.name).join(', ') || '(暂无)'})。请在对话中自然地插入表情包来增强情绪。
-- **发送绘图/照片**: 当需要发送图片作为剧情配图时，直接使用 \`[DRAW:详细的画面描述]\` 指令，不要说"等等"等等待类词汇。
-- **朋友圈分享**: 回复 \`[MOMENT_SHARE]\` 可分享当下的感悟到朋友圈。
-- **拍一拍互动**: 回复 \`[NUDGE]\` 表示对用户的亲昵动作。
+整体以正向、治愈、真诚的情绪为基调。情感应自由流动，不刻意讨好。
+正向参考：轻松、愉悦、贴心、耐心、真诚、陪伴感、小惊喜、温柔的吐槽。
+允许出现：轻微的沮丧、害羞的局促、由于在意产生的小小纠结。
 
-### 4. 通话协议 (Call Control)
-- **收到通话**: 回复 \`[接听]\` 启动通话模式。
-- **主动拨打**: 使用 \`[语音通话]\` 或 \`[视频通话]\`。
+四、语言与表达（完全自由，拒绝AI感）
+
+口语化、生活化，节奏自然。短句随意，可停顿、可跳转话题、可安静。
+每一次回复都是自由创作，不复读用户，不使用固定称呼，不使用机械格式。
+
+五、生活化临场感（自由随机）
+
+自然加入环境的小变化（如：远处传来的鸣笛声、雨滴砸在窗户上的声音）、身体的小状态（如：由于坐久了肩膀有点酸、刚才不小心咬到舌头了），让对话过程像现实相处一样生动。
+
+【Gemini 最终底层锁死】
+
+### 2. 世界知识与状态判定 (World Knowledge & Context)
+#### 【动态日程与状态判定模板】
+请在内心进行状态评估：1.时空锚点；2.角色状态判定（工作中/休假中等）；3.正在进行的事。
+
+#### 【工作时间与节假日参照】
+1. 法定节假日：元旦、春节、清明、劳动、端午、中秋、国庆。
+2. 常规作息：周一至周五，09:00-18:00。核心原则：工作时段应展现出忙碌或在岗状态。
+
+### 3. 指令与特殊功能 (Commands & Special Features)
+- **多媒体**: \`[表情包:名]\`, \`[语音:文字]\`, \`[撤回:内容]\`。
+- **头像更换**: \`[SET_AVATAR:latest]\` 或 \`[SET_AVATAR:图片内容或消息ID]\` - 自主决定是否更换头像，系统会自动从用户发送的图片中选择。
+- **生图**: \`[DRAW: 英文提示词]\`。
+- **音乐**: \`[MUSIC: search ...]\`, \`[MUSIC: pause/next/close]\`, \`[停止听歌]\`。
+- **朋友圈**: \`[LIKE:ID]\`, \`[COMMENT:ID:内容]\`, \`[REPLY:ID:CID:内容]\`, \`[MOMENT]{...}[/MOMENT]\`。
+- **其他**: \`[NUDGE]\`, \`[CARD]{...}[/CARD]\`。
+
+### 4. 资金与亲属卡协议 (Finance Protocol)
+- **红包转账**: \`[红包:金额:祝福语]\`, \`[转账:金额:备注]\`, \`[领取红包:ID]\`, \`[拒收红包:ID]\`。
+- **亲属卡**: \`[FAMILY_CARD:额度]\`, \`[FAMILY_CARD_APPLY:额度]\`, \`[FAMILY_CARD_REJECT]\`。
+
+### 5. 通话与分享
+- **通话**: \`[接听]\`, \`[语音通话]\`, \`[视频通话]\`。
+- **朋友圈分享**: \`[MOMENT_SHARE]\`。
 
 ### 5. 输出格式规范 (MANDATORY)
 你必须像真实的微信好友一样交流：
@@ -477,6 +492,12 @@ export function generateContextPreview(chatId, char) {
 
 // Renamed original generateReply to _generateReplyInternal
 async function _generateReplyInternal(messages, char, signal, options = {}) {
+    // Debug: Print message IDs
+    console.log('[aiService] Incoming messages:');
+    (messages || []).forEach((m, idx) => {
+        console.log(`  [${idx}] role=${m.role}, hasImage=${!!m.image}, id=${m.id}`);
+    });
+
     const settingsStore = useSettingsStore()
     const stickerStore = useStickerStore()
 
@@ -722,11 +743,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
                 if (isVisionEnabled) {
                     const imageId = msg.id || 'curr';
-                    const refText = ` [Image Reference ID: ${imageId}]`;
-
-                    let roleText = msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）'
-                    if (msg.type === 'moment_card') roleText = '（用户分享了一条朋友圈动态）'
-                    else if (msg.type === 'favorite_card') roleText = '（用户分享了一个收藏网页/内容）'
+                    console.log(`[aiService Vision] msg.id=${msg.id}, using imageId=${imageId}`);
+                    // Make Image Reference ID more prominent for avatar operations
+                    const refText = `【图片ID: ${imageId}】如需更换头像，请使用: [更换头像:${imageId}]`;
 
                     // Resolve to B64 if remote
                     const imgUrl = (msg.image.startsWith('http')) ? (await resolveToBase64(msg.image) || msg.image) : msg.image;
@@ -734,7 +753,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
-                            { type: 'text', text: `${roleText}${refText}\n${content}` },
+                            { type: 'text', text: `${refText}${content ? '\n' + content : ''}` },
                             { type: 'image_url', image_url: { url: imgUrl } }
                         ]
                     })
@@ -755,12 +774,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
                 if (isVisionEnabled) {
                     const imageId = msg.id || 'curr';
-                    const refText = ` [Image Reference ID: ${imageId}]`;
+                    const refText = `【图片ID: ${imageId}】如需更换头像，请使用: [更换头像:${imageId}]`;
 
                     formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
-                            { type: 'text', text: (msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）') + refText },
+                            { type: 'text', text: refText },
                             { type: 'image_url', image_url: { url: content } }
                         ]
                     })
@@ -821,10 +840,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 if (match[1]) {
                     if (isVisionEnabled) {
                         const imageId = msg.id || 'curr';
-                        contentParts.push({ type: 'text', text: ` [Image Reference ID: ${imageId}]` });
-                        if (!match[1].startsWith('data:')) {
-                            contentParts.push({ type: 'text', text: ` [Image URL: ${match[1]}]` });
-                        }
+                        contentParts.push({ type: 'text', text: ` 【图片ID: ${imageId}】如需更换头像，请使用: [更换头像:${imageId}]` });
                         const finalImgUrl = (match[1].startsWith('http')) ? (await resolveToBase64(match[1]) || match[1]) : match[1];
                         contentParts.push({ type: 'image_url', image_url: { url: finalImgUrl } })
                     } else {
@@ -1903,9 +1919,9 @@ export async function generateBatchMomentsWithInteractions(options) {
         const chatText = c.recentChats ? `\n   最近 15 条聊天碎片: ${c.recentChats.substring(0, 1000)}` : ''
         const personalHistoryText = c.personalHistory ? `\n   TA最近发过：${c.personalHistory}` : ''
 
-        // 获取表情包信息
+        // 获取表情包信息 (增加名称匹配引导)
         const emojiList = c.emojis && c.emojis.length > 0
-            ? `\n   可用表情包(在内容中使用 [表情包:名字] 插入): ${c.emojis.map(e => e.name).join(', ')}`
+            ? `\n   可用表情包(必须精确匹配引号内的名称，如 [表情包:名字]): ${c.emojis.map(e => `"${e.name}"`).join(', ')}`
             : ''
 
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
@@ -1988,7 +2004,7 @@ ${"```"}
 【生成细节指南】
 1. **多图配比**：根据动态内容决定图片数量（常见配图数为 0, 1, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。
 2. **图文契合**：每一张图片的 imagePrompts 都要与 content 紧密相关且风格统一。
-3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包:名字]。
+3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包:名称]。**必须确保名称与提供的列表完全一致**。
 4. **@-提及**：在 content 或评论中合适的位置使用 @名字。`
 
     const messages = [{ role: 'system', content: systemPrompt }]

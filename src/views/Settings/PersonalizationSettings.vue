@@ -383,6 +383,14 @@ const resetAll = () => {
                                 <option value="settings">设置 (Settings)</option>
                                 <option value="couple">情侣空间 (Love Zone)</option>
                                 <option value="games">小游戏 (Games)</option>
+                                <option value="forum">论坛 (Forum)</option>
+                                <option value="calendar">日历 (Calendar)</option>
+                                <option value="shopping">购物 (Shopping)</option>
+                                <option value="eleme">饿了么 (Eleme)</option>
+                                <option value="live">直播 (Live)</option>
+                                <option value="douyin">抖音 (Douyin)</option>
+                                <option value="browser">浏览器 (Browser)</option>
+                                <option value="pomodoro">番茄钟 (Pomodoro)</option>
                             </select>
                             <i
                                 class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-[10px] opacity-30 pointer-events-none"></i>
@@ -396,6 +404,43 @@ const resetAll = () => {
                         :class="personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400'">
                     <button @click="applyIcon"
                         class="bg-indigo-500 text-white px-4 rounded-xl active:scale-95 transition-transform font-bold text-xs">应用</button>
+                </div>
+            </div>
+
+            <!-- Fonts -->
+            <div class="p-4 rounded-2xl shadow-sm transition-colors border"
+                :class="personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/5' : 'bg-white border-gray-100'">
+                <h3 class="text-sm font-bold mb-3 flex items-center gap-2"
+                    :class="personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">
+                    <i class="fa-solid fa-font text-green-500"></i>
+                    字体设置 / FONTS
+                </h3>
+
+                <div class="space-y-3">
+                    <div class="flex gap-2">
+                        <input v-model="fontUrlInput" type="text" placeholder="输入字体 URL..."
+                            class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-green-500 transition-all font-mono"
+                            :class="personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400'">
+                        <button @click="applyFontUrl"
+                            class="bg-green-500 text-white px-4 rounded-xl active:scale-95 transition-transform font-bold text-xs">应用</button>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <label class="text-[10px] font-bold uppercase tracking-widest"
+                            :class="personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">字体颜色</label>
+                        <input type="color" v-model="personalization.globalFont.color" @change="store.setGlobalFont({ color: personalization.globalFont.color })"
+                            class="w-8 h-8 rounded-lg border cursor-pointer"
+                            :class="personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-200'">
+                        <span class="text-xs font-mono"
+                            :class="personalization.theme === 'dark' ? 'text-blue-400' : 'text-blue-600'">
+                            {{ personalization.globalFont.color }}
+                        </span>
+                    </div>
+
+                    <button @click="resetFont"
+                        class="w-full py-2 bg-red-500/10 text-red-500 rounded-xl active:scale-95 transition-transform font-bold text-xs">
+                        <i class="fa-solid fa-rotate-right mr-2"></i>重置字体设置
+                    </button>
                 </div>
             </div>
 

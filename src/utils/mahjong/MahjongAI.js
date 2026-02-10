@@ -331,21 +331,26 @@ export class MahjongAI {
 
         const beans = Math.floor(Math.random() * 45000) + 5000 // 5000-50000
 
-        const doubaoVoices = [
-            'tts.other.BV008_streaming', // 霸道总裁 (男)
-            'ICL_zh_male_lengkugege_v1_tob', // 冷酷哥哥 (男)
-            'zh_male_rap', // Rap小哥 (男)
-            'tts.other.BV405_streaming', // 温柔女声 (女)
-            'zh_female_zhubo', // 温柔姐姐 (女)
-            'zh_female_qingxin', // 温柔小妹 (女)
-            'zh_female_story', // 故事姐姐 (女)
-            'zh_male_xiaoming', // 阳光青年 (男)
-            'zh_female_sichuan', // 四川姐姐 (女)
-            'tts.other.BV029_streaming', // 广西老表 (男)
-            'tts.other.BV056_streaming', // 温柔总裁 (男)
-            'zh_male_zhubo' // 新闻主播 (男)
+        const doubaoMale = [
+            'tts.other.BV008_streaming', // 霸道总裁
+            'ICL_zh_male_lengkugege_v1_tob', // 冷酷哥哥
+            'zh_male_rap', // Rap小哥
+            'zh_male_xiaoming', // 阳光青年
+            'tts.other.BV029_streaming', // 广西老表
+            'tts.other.BV056_streaming', // 温柔总裁
+            'zh_male_zhubo' // 新闻主播
         ]
-        const doubaoSpeaker = doubaoVoices[Math.floor(Math.random() * doubaoVoices.length)]
+        const doubaoFemale = [
+            'tts.other.BV405_streaming', // 温柔女声
+            'zh_female_zhubo', // 温柔姐姐
+            'zh_female_qingxin', // 温柔小妹
+            'zh_female_story', // 故事姐姐
+            'zh_female_sichuan', // 四川姐姐
+            'ICL_zh_female_huoli_v1_tob', // 活力女声
+            'zh_female_dianying' // 电影女声
+        ]
+        const doubaoList = bot.gender === '女' ? doubaoFemale : doubaoMale
+        const doubaoSpeaker = doubaoList[Math.floor(Math.random() * doubaoList.length)]
 
         // BDeTTS Voices
         // BDeTTS Voices

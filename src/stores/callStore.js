@@ -23,6 +23,7 @@ export const useCallStore = defineStore('call', () => {
 
     const customCallAvatarChar = ref('')
     const customCallAvatarUser = ref('')
+    const virtualAvatarMode = ref(0) // 0: None (DRAW mode), 1: Both, 2: AI Only
 
     let timer = null
     let ringtone = null
@@ -65,7 +66,8 @@ export const useCallStore = defineStore('call', () => {
     }
 
     const startCall = (callPartner, callType = 'voice') => {
-        if (status.value !== 'none') {
+        console.log('[CallStore] startCall called with type:', callType)
+        if (status.value !== 'none' && status.value !== 'ended') {
             const chatStore = useChatStore()
             chatStore.triggerToast('当前通话尚未结束', 'warning')
             return
@@ -73,6 +75,7 @@ export const useCallStore = defineStore('call', () => {
         status.value = 'dialing'
         initiator.value = 'user'
         type.value = callType
+        console.log('[CallStore] Call type set to:', type.value)
         partner.value = callPartner
         elapsedSeconds.value = 0
         transcript.value = []
@@ -354,6 +357,20 @@ export const useCallStore = defineStore('call', () => {
     }
 
     const addTranscriptLine = (role, content, action = '') => {
+        if (!content && !action) return;
+
+        // Anti-duplicate: Ignore if the exact same message was added in the last 2 seconds
+        // This handles cases where splitting and protocol extraction might both trigger an addition
+        const lastLine = transcript.value[transcript.value.length - 1];
+        if (lastLine &&
+            lastLine.role === role &&
+            lastLine.content === content &&
+            lastLine.action === action &&
+            (Date.now() - lastLine.timestamp) < 2000) {
+            console.log('[CallStore] Suppressed duplicate transcript line');
+            return;
+        }
+
         transcript.value.push({
             role,
             content,
@@ -375,6 +392,12 @@ export const useCallStore = defineStore('call', () => {
     const toggleSpeaker = () => { isSpeakerOn.value = !isSpeakerOn.value }
     const toggleCamera = () => { isCameraOff.value = !isCameraOff.value }
 
+    const toggleVirtualAvatarMode = () => {
+        // Cycle through modes: 0 -> 1 -> 2 -> 0
+        virtualAvatarMode.value = (virtualAvatarMode.value + 1) % 3
+        console.log('[CallStore] Virtual avatar mode updated:', virtualAvatarMode.value)
+    }
+
     return {
         status,
         type,
@@ -390,6 +413,7 @@ export const useCallStore = defineStore('call', () => {
         transcript,
         customCallAvatarChar,
         customCallAvatarUser,
+        virtualAvatarMode,
 
         startCall,
         receiveCall,
@@ -402,6 +426,7 @@ export const useCallStore = defineStore('call', () => {
         updateEnv,
         toggleMute,
         toggleSpeaker,
-        toggleCamera
+        toggleCamera,
+        toggleVirtualAvatarMode
     }
 })

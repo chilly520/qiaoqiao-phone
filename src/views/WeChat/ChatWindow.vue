@@ -624,7 +624,38 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                 handleDrawCommandInChat(lastMsg.id, drawMatch[1].trim())
             }
 
-            // 3. Family Card Status Logic
+            // 3. 修改拍一拍文字
+            const patMatch = contentStr.match(/\[修改拍一拍:\s*([^\s]+)\s+([^\]]+)\]/i)
+            if (patMatch) {
+                const action = patMatch[1].trim()
+                const text = patMatch[2].trim()
+                handleModifyPatText(action, text)
+            }
+
+            // 4. 更换头像
+            // 更宽松的正则表达式，处理可能被截断的URL，支持跨行匹配
+            const avatarMatch = contentStr.match(/\[更换头像:\s*([\s\S]*?)\]/i)
+            if (avatarMatch) {
+                let url = avatarMatch[1].trim()
+                // 处理可能被截断的URL，确保是有效的URL格式
+                if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+                    console.log('更换头像指令被触发:', url)
+                    handleChangeAvatar(url)
+                } else {
+                    console.log('无效的头像URL:', url)
+                    showToast('无效的头像URL格式', 'error')
+                }
+            } else {
+                // 尝试从消息内容中提取URL，即使没有[更换头像:]标签
+                const urlMatch = contentStr.match(/(https?:\/\/[^\s\]]+)/i)
+                if (urlMatch) {
+                    let url = urlMatch[1].trim()
+                    console.log('从消息中提取到URL:', url)
+                    // 这里可以添加逻辑，比如询问用户是否要将此URL设置为头像
+                }
+            }
+
+            // 5. Family Card Status Logic
             if (lastMsg.role === 'ai') {
                 if (contentStr.includes('FAMILY_CARD_REJECT') || (contentStr.includes('"type":"html"') && contentStr.includes('拒绝'))) {
                     const applyMsg = [...msgs.value].reverse().find(m => m.role === 'user' && ensureString(m.content).includes('FAMILY_CARD_APPLY'))
@@ -805,6 +836,41 @@ const saveStatus = () => {
 // Nudge / Pat Logic
 const shakingAvatars = ref(new Set())
 let avatarClickTimer = null
+
+// 处理修改拍一拍文字
+const handleModifyPatText = (action, text) => {
+    if (!chatData.value) return
+    chatStore.updateCharacter(chatData.value.id, {
+        patAction: action,
+        patSuffix: text
+    })
+    showToast('拍一拍文字已修改', 'success')
+}
+
+// 处理更换头像
+const handleChangeAvatar = (url) => {
+    if (!chatData.value) return
+    if (!url || typeof url !== 'string') {
+        showToast('无效的头像URL', 'error')
+        return
+    }
+    
+    // 验证图片URL是否有效
+    const img = new Image()
+    img.onload = () => {
+        // 图片加载成功，更新头像
+        chatStore.updateCharacter(chatData.value.id, {
+            avatar: url
+        })
+        showToast('头像已更换', 'success')
+    }
+    img.onerror = () => {
+        // 图片加载失败，显示错误提示
+        console.error('头像图片加载失败:', url)
+        showToast('头像图片加载失败，请尝试其他图片', 'error')
+    }
+    img.src = url
+}
 
 const handlePat = (msg) => {
     // Cancel any pending single click
@@ -1292,9 +1358,15 @@ const showToast = (msg, type = 'info') => {
     }, 3000);
 };
 
-// --- TTS Engine Core ---
+// --- TTS Engine Core ---  
 const speakOne = async (text, onEnd, interrupt = false) => {
     if (!text) {
+        if (onEnd) onEnd();
+        return;
+    }
+
+    // 检查是否正在通话中，如果是则不播放TTS（避免双重语音）
+    if (callStore.status === 'active' || callStore.status === 'dialing') {
         if (onEnd) onEnd();
         return;
     }
@@ -1391,6 +1463,11 @@ const speakMessage = (text, msgId = null, force = false) => {
     if (!text) return;
     const cleanText = getCleanSpeechText(text);
     if (!cleanText) return;
+    
+    // 检查是否正在通话中，如果是则不播放TTS（避免双重语音）
+    if (callStore.status === 'active' || callStore.status === 'dialing') {
+        return;
+    }
 
     // Prevent duplicate reading of the same message in auto-mode
     if (!force && msgId && spokenMsgIds.has(msgId)) return;
@@ -1481,6 +1558,8 @@ const getCleanContent = (contentRaw) => {
     clean = clean.trim();
     // Remove Claim Tags
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET)\]/gi, '').trim();
+    // Remove Avatar Change Commands
+    clean = clean.replace(/\[(?:更换头像|SET_AVATAR)[:：]\s*[^\]]*\]/gi, '').trim();
 
     // Filter out zero-width characters
     clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
@@ -2216,6 +2295,12 @@ const currentVoiceIndex = computed(() => {
 
 const playMessageTTS = (text) => {
     if (!text) return
+    
+    // 检查是否正在通话中，如果是则不播放TTS（避免双重语音）
+    if (callStore.status === 'active' || callStore.status === 'dialing') {
+        return;
+    }
+    
     const cleanText = getCleanSpeechText(text).replace(/\[.*?\]/g, '')
     if (!cleanText.trim()) return
 
@@ -2574,8 +2659,10 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 :style="computedBgStyle"></div>
 
             <!-- Header -->
-            <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
-                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-[#ededed] border-[#dcdcdc]'">
+            <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500 backdrop-blur-md"
+                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-blue-300/40 border-blue-300/20'"
+                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.4)', borderColor: 'rgba(147, 197, 253, 0.2)' } : {}"
+            >
                 <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
                     @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
                     <i class="fa-solid fa-chevron-left text-black text-lg"></i>

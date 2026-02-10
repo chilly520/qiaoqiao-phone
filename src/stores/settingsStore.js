@@ -9,9 +9,9 @@ export const useSettingsStore = defineStore('settings', () => {
             name: '默认配置',
             baseUrl: 'http://127.0.0.1:7861/v1',
             apiKey: 'pwd',
-            model: 'gemini-2.5-pro-nothinking',
+            model: 'gemini-2.0-flash-exp',
             temperature: 0.7,
-            maxTokens: 4096,
+            maxTokens: 8192,
             provider: 'openai'
         }
     ])

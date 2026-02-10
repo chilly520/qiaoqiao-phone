@@ -2,17 +2,18 @@
 import { useCallStore } from '../stores/callStore'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chatStore'
+import { useSettingsStore } from '../stores/settingsStore'
 
 const callStore = useCallStore()
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 const isExpanded = ref(true) // Always expanded now by default
 const userInput = ref('')
 
 const sendText = async () => {
     if (!userInput.value.trim() || !partner.value) return
     
-    // Send to chat system (will be captured by store as transcript line too, 
-    // but we might want to filter it from visualizer depending on preference)
+    // Send to chat system
     await chatStore.addMessage(partner.value.id, {
         role: 'user',
         content: userInput.value,
@@ -32,6 +33,12 @@ const partner = computed(() => callStore.partner)
 const status = computed(() => callStore.status)
 const isActive = computed(() => status.value === 'active' || status.value === 'dialing' || status.value === 'ended')
 
+const userAvatarFallback = computed(() => {
+    // Try to get from the current chat's metadata first
+    const chat = chatStore.chats[partner.value?.id]
+    return chat?.userAvatar || settingsStore.personalization?.userProfile?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me'
+})
+
 // Event listeners for expanding
 onMounted(() => {
     window.addEventListener('expand-call-visualizer', () => isExpanded.value = true)
@@ -50,6 +57,16 @@ const handleMinimize = () => {
     isExpanded.value = false
 }
 
+const acceptCall = () => {
+    console.log('[CallVisualizer] Accept Call Clicked');
+    callStore.acceptCall()
+}
+
+const rejectCall = () => {
+    console.log('[CallVisualizer] Reject Call Clicked');
+    callStore.rejectCall()
+}
+
 const toggleMute = () => callStore.toggleMute()
 const toggleSpeaker = () => callStore.toggleSpeaker()
 const toggleCamera = () => callStore.toggleCamera()
@@ -57,12 +74,71 @@ const toggleCamera = () => callStore.toggleCamera()
 
 const scrollContainer = ref(null)
 
+const robustParseJSON = (str) => {
+    if (!str) return null;
+    try {
+        // Normal parse
+        return JSON.parse(str);
+    } catch (e) {
+        try {
+            // Try after unescaping tendencies (AI sometimes over-escapes)
+            let fixedStr = str.replace(/\\"/g, '"').replace(/\\n/g, '\n');
+            return JSON.parse(fixedStr);
+        } catch (e2) {
+            // Try to find the inner-most object if it's wrapped
+            const firstBrace = str.indexOf('{');
+            const lastBrace = str.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1) {
+                try {
+                    return JSON.parse(str.substring(firstBrace, lastBrace + 1));
+                } catch (e3) {
+                   // Fallback: use regex for speech field
+                   const speechMatch = str.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                   if (speechMatch) {
+                       return { speech: speechMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n') };
+                   }
+                }
+            }
+        }
+    }
+    return null;
+}
+
 const cleanLineContent = (text) => {
-    if (!text) return ''
-    // Remove protocol tags and bracketed system labels
-    return text.replace(/\[CALL_START\]|\[CALL_END\]|\[INNER_VOICE\]|\[\/INNER_VOICE\]/gi, '')
-               .replace(/\{[\s\S]*?}/g, '') // Remove any raw JSON that leaked
-               .trim()
+    if (!text) return '';
+    let result = text;
+    
+    // 1. Try to extract from [CALL_START]...[CALL_END]
+    const callMatch = result.match(/\[CALL_START\][\s\S]*?(\{[\s\S]*?\})[\s\S]*?\[CALL_END\]/i);
+    if (callMatch) {
+        const data = robustParseJSON(callMatch[1]);
+        if (data && data.speech) {
+            result = data.speech;
+        }
+    } else {
+        // 2. Try to find raw JSON block even without tags
+        const jsonMatch = result.match(/\{[\s\S]*?"speech"[\s\S]*?\}/);
+        if (jsonMatch) {
+            const data = robustParseJSON(jsonMatch[0]);
+            if (data && data.speech) {
+                result = data.speech;
+            }
+        } else {
+            // 3. Last fallback: direct speech regex
+            const speechMatch = result.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (speechMatch && speechMatch[1]) {
+                result = speechMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+            }
+        }
+    }
+
+    // 4. Final cleanup: Remove any remaining system tags
+    return result.replace(/\[\/?(?:CALL_START|CALL_END|INNER[-_ ]?VOICE|朋友圈|MOMENT|REPLY|CARD|DRAW|MUSIC)\]/gi, '')
+                 .replace(/\[(?:图片|语音|IMAGE|VOICE|RED|TRANSFER)[:：].*?\]/gi, '')
+                 .replace(/\[(接听|拒绝|拒接|回复|撤回|LIKE|COMMENT)[:：].*?\]/gi, '')
+                 .replace(/\\n/g, '\n')
+                 .replace(/\s*[（\(]引用来自.*?[）\)]/gi, '')
+                 .trim();
 }
 
 const parseContentWithBrackets = (content) => {
@@ -101,6 +177,7 @@ const transcriptList = computed(() => {
 const isListening = ref(false)
 const interimTranscript = ref('')
 let recognition = null
+let isRestarting = false // 避免重复重启的标志
 
 const initRecognition = () => {
     if ('webkitSpeechRecognition' in window) {
@@ -145,19 +222,69 @@ const initRecognition = () => {
         }
 
         recognition.onend = () => {
-            // Keep listening even after a sentence is finalized, unless manually stopped
-            if (isListening.value) {
-                try { recognition.start() } catch(e) {}
-            }
+             // Keep listening even after a sentence is finalized, unless manually stopped
+             // Ensure we don't restart if an error-triggered restart is already in progress
+             if (isListening.value && recognition && !isRestarting) {
+                 try {
+                     recognition.start()
+                 } catch(e) {
+                     console.error('Auto-restart failed:', e)
+                     // 自动重启失败时，不做进一步处理，避免递归错误
+                 }
+             }
         }
 
         recognition.onerror = (event) => {
             console.error('Speech recognition error', event.error)
-            isListening.value = false
             if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                  chatStore.triggerToast('麦克风权限被拒绝或不可用，请在浏览器地址栏左侧开启权限。', 'warning')
+                 isListening.value = false
             } else if (event.error === 'no-speech') {
                  // Ignore "no speech" to keep listening if it was intended
+            } else if (event.error === 'network') {
+                 chatStore.triggerToast('语音识别网络错误，请检查网络连接后重试。', 'warning')
+                 // 发生网络错误时，先标记为正在重启，停止现有服务并稍后重启
+                 if (isListening.value && !isRestarting) {
+                     isRestarting = true
+                     try {
+                         // 先尝试停止，即使它可能已经停止了
+                         if (recognition) {
+                             try {
+                                 recognition.stop()
+                             } catch (e) {}
+                         }
+                         
+                         // 延迟更长时间后重新初始化并启动，确保系统释放资源
+                         setTimeout(() => {
+                            if (!isListening.value) {
+                                isRestarting = false;
+                                return;
+                            }
+                             try {
+                                 initRecognition()
+                                 if (recognition) {
+                                     recognition.start()
+                                 }
+                             } catch (e) {
+                                 console.error('Recognition retry failed', e)
+                                 chatStore.triggerToast('语音识别自动重启失败，请尝试重新开启麦克风。', 'warning')
+                             } finally {
+                                 isRestarting = false
+                             }
+                         }, 2000)
+                     } catch (e) {
+                         console.error('Network error recovery failed', e)
+                         isRestarting = false
+                     }
+                 }
+            } else if (event.error === 'audio-capture') {
+                 chatStore.triggerToast('麦克风无法捕获音频，请检查麦克风设备。', 'warning')
+                 isListening.value = false
+            } else if (event.error === 'aborted') {
+                 // 忽略中止错误，可能是手动停止导致的
+            } else {
+                 console.error('Unknown speech recognition error:', event.error)
+                 chatStore.triggerToast(`语音识别错误: ${event.error}`, 'warning')
             }
         }
 
@@ -185,7 +312,10 @@ const startListening = () => {
     // If permission was already denied, don't just spam recognition.start()
     if (recognition) {
         try {
-            recognition.start()
+            // 先检查是否已经在运行
+            if (!isListening.value) {
+                recognition.start()
+            }
             isListening.value = true
             callStore.isMuted = false
         } catch (e) {
@@ -196,11 +326,30 @@ const startListening = () => {
             } else {
                 console.error('Recognition start failed', e)
                 chatStore.triggerToast('麦克风启动失败，请检查权限', 'warning')
+                // 尝试重新初始化
+                setTimeout(() => {
+                    initRecognition()
+                    if (recognition) {
+                        try {
+                            recognition.start()
+                            isListening.value = true
+                            callStore.isMuted = false
+                        } catch (e2) {
+                            console.error('Recognition restart failed after error', e2)
+                        }
+                    }
+                }, 500)
             }
         }
     } else {
         initRecognition()
-        recognition?.start()
+        if (recognition) {
+            try {
+                recognition.start()
+            } catch (e) {
+                console.error('Initial recognition start failed', e)
+            }
+        }
         isListening.value = true
         callStore.isMuted = false
     }
@@ -208,11 +357,20 @@ const startListening = () => {
 
 const stopListening = () => {
     try {
-        recognition?.stop()
-    } catch(e) {}
-    isListening.value = false
-    interimTranscript.value = ''
-    callStore.isMuted = true // Mute store state
+        isRestarting = true
+        if (recognition) {
+            try {
+                recognition.stop()
+            } catch(e) {
+                console.error('Stop recognition failed:', e)
+            }
+        }
+    } finally {
+        isListening.value = false
+        interimTranscript.value = ''
+        callStore.isMuted = true // Mute store state
+        isRestarting = false
+    }
 }
 
 // Watch mute state changes from store (e.g. if toggled elsewhere)
@@ -266,7 +424,23 @@ const toggleCameraFunc = () => {
 }
 
 const toggleVirtualAvatar = () => {
-    isVirtualAvatarMode.value = !isVirtualAvatarMode.value
+    console.log('[CallVisualizer] Virtual avatar button clicked')
+    console.log('[CallVisualizer] Current virtual avatar mode:', callStore.virtualAvatarMode)
+    // Cycle through modes using callStore method
+    callStore.toggleVirtualAvatarMode()
+    console.log('[CallVisualizer] New virtual avatar mode:', callStore.virtualAvatarMode)
+    
+    // Toast notification for user
+    let msg = ''
+    if (callStore.virtualAvatarMode === 1) {
+        msg = '已开启两人虚拟形象。AI 将看到你的动作并配合虚拟演出。'
+    } else if (callStore.virtualAvatarMode === 2) {
+        msg = '已开启对方虚拟形象。若开启摄像头，AI 将重点感知你的视觉环境。'
+    } else {
+        msg = '已切换至实景动态。AI 观察你并每轮生成通话场景图，制造直播感。'
+    }
+    console.log('[CallVisualizer] Toast message:', msg)
+    chatStore.triggerToast(msg, 'success')
 }
 
 
@@ -289,8 +463,34 @@ watch(() => callStore.transcript.length, () => {
 <template>
   <Transition name="fade">
     <div v-if="isActive && (status !== 'none' && isExpanded)" class="call-visualizer-overlay">
-      <!-- Background (Blurred Partner Avatar or Video Feed) -->
-      <div class="call-background">
+      <!-- NEW: Full Screen Video Background for Video Calls -->
+      <div v-if="callStore.type === 'video' && status !== 'incoming'" class="video-container-full-screen">
+          <!-- AI/Partner View (Large Fullscreen) -->
+          <div class="main-video-view">
+              <!-- If Mode is 1 (Both) or 2 (AI Only), show Virtual Char Avatar. Otherwise show original (background img) -->
+              <img 
+                :src="(callStore.virtualAvatarMode === 1 || callStore.virtualAvatarMode === 2) ? (callStore.customCallAvatarChar || partner?.avatar) : (partner?.avatar)" 
+                class="main-img-full"
+                :class="{ 'is-virtual': callStore.virtualAvatarMode === 1 || callStore.virtualAvatarMode === 2 }"
+              >
+          </div>
+
+          <!-- Self View (PIP Overlay) -->
+          <div class="self-video-pip">
+              <!-- Real Camera Feed: Only if NOT in 'Both' virtual mode AND camera is ON -->
+              <div v-if="!callStore.isCameraOff && callStore.virtualAvatarMode !== 1" class="camera-feed-pip">
+                  <video ref="videoElement" autoplay playsinline muted class="pip-video-feed"></video>
+              </div>
+              <!-- Virtual Avatar: If in 'Both' virtual mode OR camera is OFF -->
+              <div v-else class="virtual-avatar-pip">
+                  <img :src="callStore.customCallAvatarUser || userAvatarFallback" class="pip-avatar-img">
+                  <div class="pip-label">我</div>
+              </div>
+          </div>
+      </div>
+
+      <!-- Background for Voice or Incoming (Blurred Partner Avatar) -->
+      <div v-if="callStore.type === 'voice' || status === 'incoming'" class="call-background">
         <img :src="partner?.avatar" class="bg-image" alt="Background">
         <div class="bg-overlay"></div>
       </div>
@@ -302,11 +502,12 @@ watch(() => callStore.transcript.length, () => {
         </button>
         <div class="partner-info">
           <div class="name">{{ partner?.name }}</div>
-          <div class="info" :class="{ 'text-green-400': chatStore.isTyping || callStore.isSpeaking }">
+          <div class="info" :class="{ 'text-green-400': (partner?.id && chatStore.typingStatus[partner.id]) || callStore.isSpeaking }">
             {{ 
                 status === 'dialing' ? '正在呼叫...' : 
                 status === 'ended' ? '通话已结束' :
                 isListening ? '对方正在聆听...' :
+                (partner?.id && chatStore.typingStatus[partner.id]) ? '对方正在说话...' :
                 callStore.isSpeaking ? '对方正在说话...' :
                 callStore.durationText 
             }}
@@ -333,6 +534,10 @@ watch(() => callStore.transcript.length, () => {
                <div class="voice-status-labels">
                    <div v-if="status === 'active'" class="active-status-label animate-fade-in">正在通话...</div>
                    <div v-else-if="status === 'dialing'" class="dialing-status-label animate-fade-in">正在呼叫对方...</div>
+                   <div v-else-if="status === 'incoming'" class="incoming-status-label animate-fade-in">
+                       <div>{{ partner?.name }}正在呼叫...</div>
+                       <div class="call-type">{{ callStore.type === 'video' ? '视频通话' : '语音通话' }}</div>
+                   </div>
                    
                    <!-- Real-time STT display bubble -->
                    <div v-if="isListening && interimTranscript" class="stt-feedback-bubble animate-fade-in">
@@ -344,31 +549,16 @@ watch(() => callStore.transcript.length, () => {
         </template>
 
 
-        <!-- CASE 2: Video Call Layout -->
+        <!-- CASE 2: Video Call Layout (Placeholder when not established) -->
         <template v-else>
-            <!-- Background if camera off -->
-            <div v-if="callStore.isCameraOff && !isVirtualAvatarMode" class="video-off-placeholder">
-                <i class="fa-solid fa-video-slash text-4xl mb-4 opacity-20"></i>
-                <div class="text-sm opacity-40">摄像头已关闭</div>
+            <div v-if="status === 'dialing' || status === 'incoming'" class="video-preview-placeholder">
+                <i class="fa-solid fa-video text-4xl mb-4 opacity-20"></i>
+                <div class="text-sm opacity-60">准备视频通话...</div>
             </div>
-
-            <div v-else class="video-container-full">
-                <!-- 2A: Virtual Avatar Mode -->
-                <div v-if="isVirtualAvatarMode" class="virtual-avatar-split">
-                     <div class="virtual-half char-half">
-                         <img :src="callStore.customCallAvatarChar || partner?.avatar" class="virtual-img">
-                         <div class="half-label">{{ partner?.name }}</div>
-                     </div>
-                     <div class="virtual-half user-half">
-                         <img :src="callStore.customCallAvatarUser || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me'" class="virtual-img">
-                         <div class="half-label">我</div>
-                     </div>
-                </div>
-
-                <!-- 2B: Real Camera Feed -->
-                <div v-else class="camera-feed-full">
-                    <video ref="videoElement" autoplay playsinline muted class="camera-video"></video>
-                </div>
+            <!-- Establish established established established established established -->
+            <div v-else-if="callStore.isCameraOff && !isVirtualAvatarMode" class="video-off-placeholder">
+                <i class="fa-solid fa-video-slash text-4xl mb-4 opacity-20"></i>
+                <div class="text-sm opacity-40">对方摄像头已关闭</div>
             </div>
         </template>
       </div>
@@ -378,13 +568,18 @@ watch(() => callStore.transcript.length, () => {
          <div v-for="(line, index) in transcriptList" :key="index" 
               class="transcript-line animate-fade-in" 
               :class="{ 'is-user': line.role === 'user' }">
-             <div class="speech-bubble">
+             <div v-if="line.parts.some(p => p.type === 'text')" class="speech-bubble">
                 <span v-if="line.role === 'user'" class="role-label-user">我: </span>
                 <span v-else class="role-label-ai">{{ partner?.name }}: </span>
                 <template v-for="(part, pIdx) in line.parts" :key="pIdx">
-                    <span :class="{ 'bracket-text': part.type === 'bracket' }">{{ part.text }}</span>
+                    <span v-if="part.type === 'text'">{{ part.text }}</span>
                 </template>
              </div>
+             <template v-for="(part, pIdx) in line.parts" :key="'extra-' + pIdx">
+                <div v-if="part.type === 'bracket'" class="action-hint">
+                    {{ part.text }}
+                </div>
+             </template>
              <div v-if="line.action" class="action-hint">
                 ({{ line.action }})
              </div>
@@ -392,74 +587,106 @@ watch(() => callStore.transcript.length, () => {
       </div>
         
         <div class="call-controls-container">
-            <!-- Main Controls -->
-            <div class="control-row main-controls">
-                
-                <!-- Mic / STT -->
-                <button class="control-btn" 
-                        :class="{ 
-                            active: isListening, 
-                            'is-listening': isListening,
-                            'is-muted-active': callStore.isMuted 
-                        }" 
-                        @click="toggleMic">
-                    <i class="fa-solid" :class="callStore.isMuted ? 'fa-microphone-slash' : 'fa-microphone'"></i>
-                    <span>{{ callStore.isMuted ? '已静音' : '听得见' }}</span>
-                </button>
-
-
-                <!-- Speaker (Visual Toggle) -->
-                <button class="control-btn" :class="{ active: callStore.isSpeakerOn }" @click="toggleSpeaker">
-                    <i class="fa-solid" :class="callStore.isSpeakerOn ? 'fa-volume-high' : 'fa-ear-listen'"></i>
-                    <span>{{ callStore.isSpeakerOn ? '免提' : '听筒' }}</span>
-                </button>
-
-                <!-- Video Toggles (Only show for video call) -->
-                <template v-if="callStore.type === 'video'">
-                    <!-- Camera Toggle -->
-                    <button class="control-btn" :class="{ active: !callStore.isCameraOff }" @click="toggleCameraFunc">
-                        <i class="fa-solid" :class="!callStore.isCameraOff ? 'fa-video' : 'fa-video-slash'"></i>
-                        <span>{{ !callStore.isCameraOff ? '视频中' : '摄像头' }}</span>
+            <!-- Incoming Call Controls -->
+            <div v-if="status === 'incoming'" class="incoming-controls">
+                <div class="incoming-buttons">
+                    <button class="incoming-btn reject-btn" @click="rejectCall">
+                        <i class="fa-solid fa-phone-slash"></i>
+                        <span>拒绝</span>
                     </button>
-
-                    <!-- Virtual Avatar Toggle -->
-                    <button class="control-btn" :class="{ active: isVirtualAvatarMode }" @click="toggleVirtualAvatar">
-                        <i class="fa-solid fa-image"></i>
-                        <span>虚拟形象</span>
+                    <button class="incoming-btn accept-btn" @click="acceptCall">
+                        <i class="fa-solid fa-phone"></i>
+                        <span>接听</span>
                     </button>
-                </template>
-
-                 <!-- Keyboard Toggle -->
-                <button class="control-btn" :class="{ active: isKeyboardVisible }" @click="toggleKeyboard">
-                    <i class="fa-solid fa-keyboard"></i>
-                    <span>键盘</span>
-                </button>
-
+                </div>
             </div>
 
-             <!-- Keyboard Area (Collapsible) -->
-            <div v-if="isKeyboardVisible" class="call-input-bar animate-fade-in">
-                <input 
-                    v-model="userInput" 
-                    @keyup.enter="sendText"
-                    type="text" 
-                    placeholder="在此输入文字..." 
-                    class="call-input"
-                >
-                <button class="send-btn" @click="sendText" :disabled="!userInput.trim()">
-                    <i class="fa-solid fa-paper-plane"></i>
-                </button>
-                 <!-- Generate button still useful if user types but wants to trigger AI explicitly -->
-                <button class="generate-btn" @click="handleGenerate">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i>
-                </button>
-            </div>
+            <!-- Active Call Controls -->
+            <div v-else>
+                <!-- Main Controls -->
+                <div class="control-row main-controls">
+                    
+                    <!-- Mic / STT -->
+                    <button class="control-btn" 
+                            :class="{ 
+                                active: isListening, 
+                                'is-listening': isListening,
+                                'is-muted-active': callStore.isMuted 
+                            }" 
+                            @click="toggleMic">
+                        <i class="fa-solid" :class="callStore.isMuted ? 'fa-microphone-slash' : 'fa-microphone'"></i>
+                        <span>{{ callStore.isMuted ? '已静音' : '听得见' }}</span>
+                    </button>
 
-            <!-- Hangup -->
-            <div class="hangup-row">
-                 <button class="hangup-btn" @click="handleHangup">
-                    <i class="fa-solid fa-phone-slash"></i>
-                 </button>
+
+                    <!-- Speaker (Visual Toggle) -->
+                    <button class="control-btn" :class="{ active: callStore.isSpeakerOn }" @click="toggleSpeaker">
+                        <i class="fa-solid" :class="callStore.isSpeakerOn ? 'fa-volume-high' : 'fa-ear-listen'"></i>
+                        <span>{{ callStore.isSpeakerOn ? '免提' : '听筒' }}</span>
+                    </button>
+
+                    <!-- Video Toggles (Only show for video call) -->
+                    <template v-if="callStore.type === 'video'">
+                        <!-- Camera Toggle -->
+                        <button class="control-btn" :class="{ active: !callStore.isCameraOff }" @click="toggleCameraFunc">
+                            <i class="fa-solid" :class="!callStore.isCameraOff ? 'fa-video' : 'fa-video-slash'"></i>
+                            <span>{{ !callStore.isCameraOff ? '视频中' : '摄像头' }}</span>
+                        </button>
+
+                        <!-- Virtual Avatar Toggle -->
+                        <button class="control-btn" :class="{ 'active': callStore.virtualAvatarMode > 0 }" @click="toggleVirtualAvatar">
+                            <i v-if="callStore.virtualAvatarMode === 1" class="fa-solid fa-users"></i>
+                            <i v-else-if="callStore.virtualAvatarMode === 2" class="fa-solid fa-user-tie"></i>
+                            <i v-else class="fa-solid fa-image"></i>
+                            <span>
+                                {{ 
+                                    callStore.virtualAvatarMode === 1 ? '两人形象' : 
+                                    callStore.virtualAvatarMode === 2 ? '对方形象' : 
+                                    '虚拟形象' 
+                                }}
+                            </span>
+                        </button>
+                    </template>
+
+                     <!-- Keyboard Toggle -->
+                    <button class="control-btn" :class="{ active: isKeyboardVisible }" @click="toggleKeyboard">
+                        <i class="fa-solid fa-keyboard"></i>
+                        <span>键盘</span>
+                    </button>
+
+                    <!-- Hangup -->
+                    <button class="control-btn hangup-control-btn" @click="handleHangup">
+                        <i class="fa-solid fa-phone-slash"></i>
+                        <span>挂断</span>
+                    </button>
+
+                </div>
+
+                 <!-- Keyboard Area (Collapsible) -->
+                <div v-if="isKeyboardVisible" class="call-input-bar animate-fade-in">
+                    <input 
+                        v-model="userInput" 
+                        @keyup.enter="sendText"
+                        type="text" 
+                        placeholder="在此输入文字..." 
+                        class="call-input"
+                    >
+                    <button 
+                        class="send-btn" 
+                        @click="sendText" 
+                        :disabled="!userInput.trim() || (partner && chatStore.typingStatus[partner.id])"
+                    >
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                     <!-- Generate button still useful if user types but wants to trigger AI explicitly -->
+                    <button 
+                        class="generate-btn" 
+                        @click="handleGenerate"
+                        :disabled="partner && chatStore.typingStatus[partner.id]"
+                    >
+                        <i class="fa-solid" :class="partner && chatStore.typingStatus[partner.id] ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -481,21 +708,75 @@ watch(() => callStore.transcript.length, () => {
 .call-background {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -2; /* Behind the video background (which is -1 or 0) */
+  background: linear-gradient(135deg, rgba(100, 200, 255, 0.9), rgba(60, 180, 255, 1));
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.call-background::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: lightFlow 6s linear infinite;
+}
+
+.call-background::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    -45deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  animation: lightFlow 8s linear infinite reverse;
+}
+
+@keyframes lightFlow {
+  0% {
+    transform: rotate(0deg) translateX(0) translateY(0);
+  }
+  25% {
+    transform: rotate(90deg) translateX(10%) translateY(10%);
+  }
+  50% {
+    transform: rotate(180deg) translateX(0) translateY(20%);
+  }
+  75% {
+    transform: rotate(270deg) translateX(-10%) translateY(10%);
+  }
+  100% {
+    transform: rotate(360deg) translateX(0) translateY(0);
+  }
 }
 
 .bg-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(40px) brightness(0.4);
+  filter: blur(40px) brightness(0.9);
   transform: scale(1.2);
+  opacity: 0.3;
 }
 
 .bg-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle, transparent 20%, rgba(0,0,0,0.6) 100%);
+  background: radial-gradient(circle, transparent 20%, rgba(0,0,0,0.05) 100%);
 }
 
 .call-header {
@@ -503,6 +784,8 @@ watch(() => callStore.transcript.length, () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
+  z-index: 10;
 }
 
 .header-btn {
@@ -520,66 +803,87 @@ watch(() => callStore.transcript.length, () => {
 
 .partner-info {
   text-align: center;
+  position: relative;
+  z-index: 10;
 }
 
 .partner-info .name {
   font-size: 20px;
   font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
 .partner-info .info {
   font-size: 14px;
   opacity: 0.7;
   margin-top: 4px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .visual-area {
   flex: 1;
   position: relative;
+  z-index: 5;
   display: flex;
   flex-direction: column; /* Vertical stack */
   padding-top: 20px;
 }
 
-.video-container-full {
+.video-container-full-screen {
     position: absolute;
     inset: 0;
-    z-index: 1; /* Above background but below controls */
-    display: flex;
-    flex-direction: column;
+    z-index: 0;
+    overflow: hidden;
 }
 
-.camera-feed-full {
+.main-video-view {
     width: 100%;
     height: 100%;
-    background: black;
 }
 
-.camera-video {
+.main-img-full {
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-.virtual-avatar-split {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    background: #000;
+.self-video-pip {
+    position: absolute;
+    top: 90px;
+    right: 15px;
+    width: 110px;
+    height: 165px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+    border: 1.5px solid rgba(255,255,255,0.3);
+    z-index: 10;
+    background: #111;
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
 }
 
-.virtual-half {
-    flex: 1;
-    overflow: hidden;
+.camera-feed-pip, .virtual-avatar-pip {
+    width: 100%;
+    height: 100%;
     position: relative;
 }
 
-.virtual-img {
+.pip-video-feed, .pip-avatar-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+.pip-label {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    font-size: 10px;
+    background: rgba(0,0,0,0.4);
+    color: white;
+    padding: 1px 5px;
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
 }
 
 .avatar-large {
@@ -620,6 +924,18 @@ watch(() => callStore.transcript.length, () => {
     opacity: 0.8;
 }
 
+.incoming-status-label {
+    text-align: center;
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.incoming-status-label .call-type {
+    font-size: 14px;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+
 .stt-feedback-bubble {
     background: rgba(7, 193, 96, 0.2);
     backdrop-filter: blur(10px);
@@ -631,6 +947,83 @@ watch(() => callStore.transcript.length, () => {
     max-width: 80%;
     text-align: center;
     box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.incoming-controls {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.video-off-placeholder, .video-preview-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    position: relative;
+    z-index: 5;
+    text-align: center;
+}
+
+.incoming-buttons {
+    display: flex;
+    gap: 60px;
+    align-items: center;
+    justify-content: center;
+}
+
+.incoming-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.incoming-btn i {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: all 0.3s ease;
+}
+
+.incoming-btn span {
+    font-size: 14px;
+    color: white;
+    opacity: 0.8;
+}
+
+.accept-btn i {
+    background: rgba(7, 193, 96, 0.8);
+    color: white;
+    box-shadow: 0 0 20px rgba(7, 193, 96, 0.6);
+}
+
+.reject-btn i {
+    background: rgba(255, 77, 79, 0.8);
+    color: white;
+    box-shadow: 0 0 20px rgba(255, 77, 79, 0.6);
+}
+
+.accept-btn:hover i {
+    transform: scale(1.1);
+    box-shadow: 0 0 30px rgba(7, 193, 96, 0.8);
+}
+
+.reject-btn:hover i {
+    transform: scale(1.1);
+    box-shadow: 0 0 30px rgba(255, 77, 79, 0.8);
 }
 
 .transcript-box {
@@ -731,22 +1124,22 @@ watch(() => callStore.transcript.length, () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: white;
   cursor: pointer;
-  width: 70px;
+  width: 64px;
   transition: all 0.2s ease;
 }
 
 .control-btn i {
-  width: 54px;
-  height: 54px;
+  width: 48px;  /* Shrink from 54px */
+  height: 48px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 20px; /* Shrink from 22px */
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255,255,255,0.1);
 }
@@ -919,6 +1312,14 @@ watch(() => callStore.transcript.length, () => {
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.send-btn:disabled, .generate-btn:disabled {
+    background: #333 !important;
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none !important;
 }
 
 .generate-btn { background: #10b981; }
@@ -935,6 +1336,17 @@ watch(() => callStore.transcript.length, () => {
     background: #07c160;
     color: white;
     box-shadow: 0 0 15px rgba(7, 193, 96, 0.5);
+}
+
+.hangup-control-btn i {
+    background: #ff4d4f;
+    color: white;
+    box-shadow: 0 0 15px rgba(255, 77, 79, 0.5);
+}
+
+.hangup-control-btn:hover i {
+    background: #ff7875;
+    box-shadow: 0 0 20px rgba(255, 77, 79, 0.7);
 }
 
 @keyframes wave-ping {

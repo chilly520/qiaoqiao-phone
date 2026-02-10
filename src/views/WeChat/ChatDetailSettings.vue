@@ -1138,6 +1138,44 @@
                 </div>
             </div>
         </Transition>
+
+        <!-- Delete History Confirm Modal -->
+        <div v-if="showDeleteConfirm"
+            class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+            @click="handleClearHistoryCancel">
+            <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up"
+                @click.stop>
+                <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">确认清除聊天记录</h3>
+
+                <div class="space-y-3 mb-6">
+                    <!-- Include Memory -->
+                    <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
+                        @click="clearIncludeMemory = !clearIncludeMemory">
+                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                            :class="clearIncludeMemory ? 'bg-red-500 border-red-500' : 'bg-white border-gray-300'">
+                            <i v-if="clearIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-sm font-bold text-gray-700">清空记忆管理库</div>
+                            <div class="text-[10px] text-gray-400 text-red-500">
+                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>此操作不可恢复
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button @click="handleClearHistoryCancel"
+                        class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold active:bg-gray-200 transition-colors">
+                        取消
+                    </button>
+                    <button @click="handleClearHistoryConfirm"
+                        class="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold active:bg-red-600 transition-colors shadow-md">
+                        确认删除
+                    </button>
+                </div>
+            </div>
+        </div>
     </div> <!-- End Main Wrapper -->
 </template>
 
@@ -1218,7 +1256,11 @@ const toggleLocationSync = async () => {
             const result = await weatherService.enableLocationSync()
             if (result.success) {
                 locationInfo.value = weatherService.getLocationInfo()
-                showToast(`定位成功: ${result.realCity} → ${result.virtualCity}`)
+                if (locationInfo.value) {
+                    showToast(`定位成功: ${locationInfo.value.realCity} → ${locationInfo.value.virtualCity}`)
+                } else {
+                    showToast('定位成功')
+                }
             } else {
                 showToast('定位失败，已使用默认城市')
                 locationInfo.value = weatherService.getLocationInfo()
@@ -1717,8 +1759,33 @@ const handleAvatarChange = async (e) => {
     }
 }
 const promptAvatarUrl = () => {
-    chatStore.triggerPrompt('设置角色头像', '请输入头像图片URL', 'https://...', localData.value.avatar, (url) => {
-        if (url) localData.value.avatar = url
+    // 尝试从最近的AI消息中提取头像URL作为默认值
+    let defaultAvatarUrl = localData.value.avatar
+    if (props.chatData && props.chatData.msgs) {
+        const recentMsgs = props.chatData.msgs.slice(-10) // 检查最近10条消息
+        for (let i = recentMsgs.length - 1; i >= 0; i--) {
+            const msg = recentMsgs[i]
+            if (msg.role === 'ai' && msg.content && typeof msg.content === 'string') {
+                const contentStr = msg.content
+                const avatarMatch = contentStr.match(/\[更换头像:\s*([^\]]*)\]/i)
+                if (avatarMatch) {
+                    let url = avatarMatch[1].trim()
+                    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+                        defaultAvatarUrl = url
+                        break
+                    }
+                }
+            }
+        }
+    }
+    
+    chatStore.triggerPrompt('设置角色头像', '请输入头像图片URL', 'https://...', defaultAvatarUrl, (url) => {
+        if (url) {
+            localData.value.avatar = url
+            // 直接保存头像更改，不需要用户点击保存按钮
+            chatStore.updateCharacter(props.chatData.id, { avatar: url })
+            showToast('头像URL已更新', 'success')
+        }
     })
 }
 
@@ -1743,6 +1810,7 @@ const handleUserAvatarChange = async (e) => {
     }
 }
 const promptUserAvatarUrl = () => {
+    showToast('测试：点击了用户头像URL按钮')
     chatStore.triggerPrompt('设置我的头像', '请输入我的头像图片URL', 'https://...', localData.value.userAvatar, (url) => {
         if (url) localData.value.userAvatar = url
     })
@@ -1963,10 +2031,30 @@ const confirmReset = () => {
 }
 
 const confirmClearHistory = () => {
-    chatStore.triggerConfirm('确认清除聊天记录?', '删除所有的聊天历史，此操作不可撤销。', () => {
-        chatStore.clearHistory(props.chatData.id, { includeMemory: false })
+    // 重置勾选状态
+    clearIncludeMemory.value = false
+    // 显示自定义的确认弹窗
+    showDeleteConfirm.value = true
+}
+
+const handleClearHistoryConfirm = async () => {
+    // 隐藏弹窗
+    showDeleteConfirm.value = false
+    // 调用clearHistory方法，根据勾选状态决定是否包含记忆
+    try {
+        await chatStore.clearHistory(props.chatData.id, { includeMemory: clearIncludeMemory.value })
         showToast('记录已清除', 'success')
-    })
+        // 关闭设置面板，返回聊天列表
+        emit('close')
+    } catch (err) {
+        console.error('清除聊天记录失败:', err)
+        showToast('清除失败', 'error')
+    }
+}
+
+const handleClearHistoryCancel = () => {
+    // 隐藏弹窗
+    showDeleteConfirm.value = false
 }
 
 const confirmDelete = () => {
@@ -1975,6 +2063,10 @@ const confirmDelete = () => {
         showToast('角色已删除', 'success')
         emit('close')
     }, null, '确认删除', '我再想想')
+}
+
+const handleClearHistoryClick = () => {
+    confirmClearHistory()
 }
 
 // --- Export Logic ---
