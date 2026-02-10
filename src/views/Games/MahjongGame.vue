@@ -16,15 +16,15 @@
             </div>
             <!-- 顶部信息栏 -->
             <div
-                class="game-top-bar h-[44px] shrink-0 bg-black/40 flex items-center justify-between px-2 z-50 relative border-b border-white/5">
-                <div class="flex items-center gap-1">
+                class="game-top-bar h-[44px] shrink-0 bg-blue-400/30 backdrop-blur-md flex items-center justify-between px-2 z-50 relative border-b border-blue-300/30">
+                <div class="flex items-center gap-2">
                     <button @click="handleExit" title="结束对局"
-                        class="w-7 h-7 flex items-center justify-center text-white/80 hover:text-red-400 active:scale-90 transition-all bg-white/5 rounded-full">
-                        <i class="fa-solid fa-xmark text-base"></i>
+                        class="w-6 h-6 flex items-center justify-center text-white/90 hover:text-red-300 active:scale-90 transition-all bg-blue-500/20 rounded-full shadow-md">
+                        <i class="fa-solid fa-xmark text-sm"></i>
                     </button>
                     <button @click="handleMinimize" title="最小化挂机"
-                        class="w-7 h-7 flex items-center justify-center text-white/80 hover:text-blue-400 active:scale-90 transition-all bg-white/5 rounded-full">
-                        <i class="fa-solid fa-minus text-base"></i>
+                        class="w-6 h-6 flex items-center justify-center text-white/90 hover:text-blue-300 active:scale-90 transition-all bg-blue-500/20 rounded-full shadow-md">
+                        <i class="fa-solid fa-minus text-sm"></i>
                     </button>
                 </div>
 
@@ -303,11 +303,10 @@
                         <div v-if="tingTiles.length > 0"
                             class="absolute right-2 top-0 pointer-events-auto flex flex-col items-center gap-1 group z-[60]"
                             @click="showTingPreview = !showTingPreview">
-                            <div :class="showTingPreview ? 'bg-yellow-400 text-white shadow-[0_0_15px_rgba(250,204,21,0.6)]' : 'bg-black/40 text-yellow-400 border border-yellow-400/50 backdrop-blur-md'"
+                            <div :class="showTingPreview ? 'bg-blue-400 text-white shadow-[0_0_15px_rgba(59,130,246,0.6)]' : 'bg-blue-400/40 text-blue-300 border border-blue-400/50 backdrop-blur-md'"
                                 class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-lg animate-pulse">
                                 <i class="fa-solid fa-lightbulb text-lg"></i>
                             </div>
-                            <span class="text-[9px] text-yellow-400 font-black shadow-black drop-shadow-md">听牌</span>
                         </div>
 
                         <!-- 吃牌选择器 -->
@@ -565,10 +564,10 @@
 
                             <div class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-1">
                                 <!-- 胡牌牌面显示 - 紧凑 -->
-                                <div class="bg-white/90 rounded-lg p-2 shadow-inner">
-                                    <div class="text-[10px] text-gray-500 mb-1 flex items-center justify-between">
+                                <div class="bg-blue-50/80 backdrop-blur-sm rounded-lg p-2 shadow-inner border border-blue-200/30">
+                                    <div class="text-[10px] text-blue-700 mb-1 flex items-center justify-between">
                                         <div class="flex items-center gap-1">
-                                            <span class="w-0.5 h-2.5 bg-red-500 rounded-full"></span> 赢家牌面
+                                            <span class="w-0.5 h-2.5 bg-blue-500 rounded-full"></span> 赢家牌面
                                         </div>
                                     </div>
                                     <div class="flex flex-wrap gap-y-1 items-end justify-center">
@@ -603,22 +602,22 @@
 
                                 <!-- 番数信息 - 紧凑横向 -->
                                 <div
-                                    class="bg-white/80 rounded-lg px-3 py-2 border border-amber-200 flex items-center justify-between">
+                                    class="bg-blue-50/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-blue-300/30 flex items-center justify-between">
                                     <div class="flex flex-col items-start">
-                                        <span class="text-[10px] text-gray-400">牌型</span>
-                                        <span class="text-base font-bold text-red-600 leading-tight">{{
+                                        <span class="text-[10px] text-blue-600">牌型</span>
+                                        <span class="text-base font-bold text-blue-700 leading-tight">{{
                                             mahjongStore.gameState.roundResult.type }}</span>
                                     </div>
-                                    <div class="h-6 w-[1px] bg-amber-200/50 mx-2"></div>
+                                    <div class="h-6 w-[1px] bg-blue-300/50 mx-2"></div>
                                     <div class="flex flex-col items-center">
-                                        <span class="text-[10px] text-gray-400">时长</span>
-                                        <span class="text-lg font-black text-blue-500 font-serif leading-tight">{{
+                                        <span class="text-[10px] text-blue-600">时长</span>
+                                        <span class="text-lg font-black text-blue-600 font-serif leading-tight">{{
                                             formatGameDuration(gameDuration) }}</span>
                                     </div>
-                                    <div class="h-6 w-[1px] bg-amber-200/50 mx-2"></div>
+                                    <div class="h-6 w-[1px] bg-blue-300/50 mx-2"></div>
                                     <div class="flex flex-col items-end">
-                                        <span class="text-[10px] text-gray-400">番数</span>
-                                        <span class="text-lg font-black text-orange-500 font-serif leading-tight">{{
+                                        <span class="text-[10px] text-blue-600">番数</span>
+                                        <span class="text-lg font-black text-blue-700 font-serif leading-tight">{{
                                             mahjongStore.gameState.roundResult.fan }}番</span>
                                     </div>
                                 </div>
@@ -676,10 +675,10 @@
 
                     <!-- 隐藏卡片后的中心按钮 (摊牌查看) -->
                     <div v-if="!showScoreCard"
-                        class="fixed inset-0 z-[80] flex flex-col items-center justify-center pointer-events-auto bg-black/20"
+                        class="fixed inset-0 z-[80] flex flex-col items-center justify-center pointer-events-auto bg-blue-500/10"
                         @click.stop="showScoreCard = true">
                         <div
-                            class="bg-black/60 backdrop-blur-md px-6 py-2 rounded-full text-white font-bold border border-white/20 shadow-2xl mb-6">
+                            class="bg-blue-400/40 backdrop-blur-md px-6 py-2 rounded-full text-white font-bold border border-blue-300/30 shadow-2xl mb-6">
                             {{ mahjongStore.gameState.roundResult.winner.name }} [{{
                                 mahjongStore.gameState.roundResult.type }}]
                         </div>
@@ -689,11 +688,11 @@
                                 <i class="fa-solid fa-play mr-2"></i> 再来一局
                             </button>
                             <button @click.stop="mahjongStore.exitRoom(); router.push('/games/mahjong-lobby')"
-                                class="bg-black/40 backdrop-blur-md text-white px-12 py-3 rounded-full font-bold text-lg border border-white/20 shadow-xl active:scale-90 transition-all">
+                                class="bg-blue-400/30 backdrop-blur-md text-white px-12 py-3 rounded-full font-bold text-lg border border-blue-300/30 shadow-xl active:scale-90 transition-all">
                                 退出大厅
                             </button>
                         </div>
-                        <div class="mt-6 text-white bg-black/40 px-4 py-1 rounded-full text-sm font-bold animate-pulse">
+                        <div class="mt-6 text-white bg-blue-400/30 px-4 py-1 rounded-full text-sm font-bold animate-pulse">
                             点击上方横条返回结算单</div>
                     </div>
                 </div>
@@ -702,7 +701,7 @@
             <!-- 动作特效文字 -->
             <Transition name="action-pop">
                 <div v-if="actionText"
-                    class="fixed inset-0 z-[150] flex flex-col items-center justify-center pointer-events-none bg-black/20 backdrop-blur-[1px]">
+                    class="fixed inset-0 z-[150] flex flex-col items-center justify-center pointer-events-none bg-blue-500/10 backdrop-blur-[1px]">
                     <!-- 全屏特效贴图 -->
                     <div class="relative w-full h-full flex items-center justify-center animate-scale-up-bounce">
                         <img v-if="actionType === 'hu'" src="/images/mahjong/胡-全屏.png"
@@ -782,12 +781,12 @@
             <!-- 作弊模式遮罩 -->
             <Transition name="fade">
                 <div v-if="mahjongStore.cheatMode"
-                    class="fixed top-[44px] inset-x-0 bottom-0 bg-black/90 z-[110] overflow-y-auto"
+                    class="fixed top-[44px] inset-x-0 bottom-0 bg-blue-500/30 backdrop-blur-md z-[110] overflow-y-auto"
                     @click="mahjongStore.cheatMode = false">
                     <div class="p-6 max-w-lg mx-auto">
                         <h2
-                            class="text-yellow-400 text-xl font-black mb-6 text-center flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-eye"></i> 听牌/偷窥模式
+                            class="text-blue-400 text-xl font-black mb-6 text-center flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-eye"></i> 偷窥模式
                         </h2>
                         <div v-for="player in otherPlayers" :key="player.id"
                             class="mb-6 bg-white/5 p-4 rounded-2xl border border-white/10">

@@ -354,6 +354,14 @@ const navigateToSettings = () => {
     router.push('/settings')
 }
 
+const handleOpenMoments = () => {
+    showMoments.value = true
+    const currentState = history.state || {}
+    if (!currentState.profileOpen) {
+        history.pushState({ ...currentState, profileOpen: true }, '')
+    }
+}
+
 // 初始化演示数据
 onMounted(async () => {
     await worldLoopStore.initStore()
@@ -765,11 +773,7 @@ const handleImport = async (e) => {
                 <div v-if="currentTab === 'discover'" class="bg-[#ededed] min-h-full pt-2">
                     <!-- Moments Entry -->
                     <div class="bg-white px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50"
-                        @click="() => {
-                            showMoments = true;
-                            const currentState = history.state || {};
-                            if (!currentState.profileOpen) history.pushState({ ...currentState, profileOpen: true }, '');
-                        }">
+                        @click="handleOpenMoments">
                         <i class="fa-solid fa-camera-retro text-orange-400 text-xl"></i>
                         <span class="text-base text-gray-900 flex-1">朋友圈</span>
                         <div v-if="momentsStore.unreadCount > 0" class="w-2 h-2 bg-red-500 rounded-full mr-1"></div>

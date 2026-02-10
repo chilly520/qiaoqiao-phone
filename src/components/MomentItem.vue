@@ -164,13 +164,17 @@ const getAuthorName = (id) => {
 
     // 2. Normalized search (Case-insensitive)
     const nid = String(id).toLowerCase()
-    const char = Object.values(chatStore.chats).find(c =>
-        (c.id && c.id.toLowerCase() === nid) ||
-        (c.wechatId && c.wechatId.toLowerCase() === nid) ||
-        (c.name && c.name.toLowerCase() === nid) ||
-        (c.remark && c.remark.toLowerCase() === nid)
-    )
+    const char = Object.values(chatStore.chats).find(c => {
+        const cid = (c.id || '').toLowerCase()
+        return cid === nid ||
+            cid === 'char_' + nid ||
+            cid === 'user_' + nid ||
+            (c.wechatId && c.wechatId.toLowerCase() === nid) ||
+            (c.name && c.name.toLowerCase() === nid) ||
+            (c.remark && c.remark.toLowerCase() === nid)
+    })
     if (char) return char.remark || char.name
+
 
     // 3. Fallback for pure numeric IDs
     if (/^\d{10,}$/.test(id)) return '神秘好友'
@@ -182,12 +186,16 @@ const getAuthorAvatar = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.avatar
 
     const nid = id ? String(id).toLowerCase() : ''
-    const char = chatStore.chats[id] || Object.values(chatStore.chats).find(c =>
-        (c.id && c.id.toLowerCase() === nid) ||
-        (c.wechatId && c.wechatId.toLowerCase() === nid) ||
-        (c.name && c.name.toLowerCase() === nid) ||
-        (c.remark && c.remark.toLowerCase() === nid)
-    )
+    const char = chatStore.chats[id] || Object.values(chatStore.chats).find(c => {
+        const cid = (c.id || '').toLowerCase()
+        return cid === nid ||
+            cid === 'char_' + nid ||
+            cid === 'user_' + nid ||
+            (c.wechatId && c.wechatId.toLowerCase() === nid) ||
+            (c.name && c.name.toLowerCase() === nid) ||
+            (c.remark && c.remark.toLowerCase() === nid)
+    })
+
 
     if (char && char.avatar) return char.avatar
 
@@ -597,7 +605,7 @@ const navigateToAuthor = () => {
                 class="flex items-center gap-1 text-[#576b95] text-[13px] mb-3 opacity-90">
                 <i class="fa-solid fa-location-dot scale-90"></i>
                 <span class="font-medium underline decoration-[#576b95]/30 underline-offset-2">{{ props.moment.location
-                    }}</span>
+                }}</span>
             </div>
 
             <!-- Images Grid -->
@@ -650,7 +658,7 @@ const navigateToAuthor = () => {
                     <i class="fa-solid text-sm"
                         :class="momentsStore.summoningIds.has(props.moment.id) ? 'fa-spinner fa-spin' : 'fa-wand-sparkles'"></i>
                     <span class="text-xs font-medium">{{ momentsStore.summoningIds.has(props.moment.id) ? '召唤中' : '召唤'
-                    }}</span>
+                        }}</span>
                 </button>
             </div>
 
@@ -759,7 +767,7 @@ const navigateToAuthor = () => {
                 @click.stop>
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
                     <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
-                    }}</span></span>
+                            }}</span></span>
                     <i class="fa-solid fa-xmark cursor-pointer" @click="replyToComment = null"></i>
                 </div>
                 <div class="flex gap-2">
@@ -858,7 +866,7 @@ const navigateToAuthor = () => {
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-800 text-sm">{{ chat.name }}</span>
                             <span class="text-xs text-gray-400 truncate max-w-[150px]">{{ chat.signature || '暂无签名'
-                                }}</span>
+                            }}</span>
                         </div>
                     </div>
                 </div>

@@ -162,7 +162,7 @@ export const useChatStore = defineStore('chat', () => {
                 id: chatId,
                 name,
                 avatar: options.avatar || getRandomAvatar(),
-                userAvatar: options.userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=Me`,
+                userAvatar: options.userAvatar || (useSettingsStore().personalization?.userProfile?.avatar) || `https://api.dicebear.com/7.x/open-peeps/svg?seed=Me&face=smile,cute`,
                 remark: '',
                 prompt: options.prompt || '你是一个友好的人。',
                 msgs: [],
@@ -2426,7 +2426,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Improved Content Cleaning ---
                 // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
-                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
                 let cleanContent = properlyOrderedContent
                     // .replace(cleanVoiceRegex, '') // KEEP INNER_VOICE for History/Card to read!
                     .replace(patRegex, '')
@@ -2797,7 +2797,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // 初始化测试数据
     function initDemoData() {
-        const avatarLinShen = getRandomAvatar()
+        const avatarLinShen = 'https://api.dicebear.com/7.x/notionists/svg?seed=LinShen&backgroundColor=b6e3f4,c0aede,d1d4f9'
         createChat('林深', avatarLinShen, {
             prompt: "你是Chilly的男朋友，名字叫林深。你性格温柔体贴，成熟稳重，深爱着Chilly。你会无微不至地关心她，秒回她的消息，生病时会很紧张。说话语气宠溺，偶尔会叫她'宝宝'或'傻瓜'。",
             userName: "Chilly"
@@ -2813,6 +2813,7 @@ export const useChatStore = defineStore('chat', () => {
         }, 'char_tester')
         addMessage('char_tester', { role: 'ai', content: '大小姐，您的专属测试员——测试酱已就位！请随时吩咐我测试任何功能哦！(｀・ω・´)' })
     }
+
 
     function clearAllChats() {
         Object.keys(chats.value).forEach(key => {

@@ -138,13 +138,9 @@
                             </div>
                         </div>
 
-                        <!-- Realistic Simulated Map with Geographic Layers -->
-                        <div class="mini-map-container mt-4 animate-scale-up">
-                            <div class="map-tile-layer"></div>
-                            <div class="map-water-layer"></div>
-                            <div class="map-park-layer"></div>
-                            <div class="map-road-network"></div>
-                            <div class="map-building-blocks"></div>
+                        <!-- Realistic Simulated Map with City Map Images -->
+                        <div class="mini-map-container mt-4 animate-scale-up" :style="mapContainerStyle">
+                            <div class="map-image-layer"></div>
                             <div class="map-glare-overlay"></div>
 
                             <!-- Distance Connector -->
@@ -156,8 +152,9 @@
                                         <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.2" />
                                     </linearGradient>
                                 </defs>
-                                <line :x1="userCoord.x + '%'" :y1="userCoord.y + '%'" :x2="charCoord.x + '%'"
-                                    :y2="charCoord.y + '%'" class="map-connection-line" />
+                                <line :x1="userCoord.x + '%'" :y1="userCoord.y + '%'" :x2="finalCharCoord.x + '%'"
+                                    :y2="finalCharCoord.y + '%'" class="map-connection-line" />
+
                             </svg>
 
                             <!-- Map Markers with Avatars -->
@@ -169,8 +166,7 @@
                                 </div>
                                 <div class="marker-info-tag">
                                     <span class="marker-name">{{ chatData?.userName || userProfile?.name || '我'
-                                        }}</span>
-                                    <span class="marker-label">我</span>
+                                    }}</span>
                                 </div>
                             </div>
 
@@ -181,9 +177,9 @@
                                 </div>
                                 <div class="marker-info-tag char">
                                     <span class="marker-name">{{ chatData?.name || '对方' }}</span>
-                                    <span class="marker-label char">对方</span>
                                 </div>
                             </div>
+
 
                             <div class="map-nav-panel">
                                 <div class="nav-item">
@@ -226,8 +222,12 @@
                         <i class="fa-solid fa-trash-can" style="font-size: 14px;"></i>
                     </button>
                     <div class="effect-badge" @click="toggleEffect">
-                        {{ currentEffect.name }}
+                        <div class="effect-emoji-box">{{ currentEffect.emoji }}</div>
+                        <div class="effect-name-box" :class="'len-' + currentEffect.name.length">
+                            <span v-for="(char, i) in currentEffect.name" :key="i">{{ char }}</span>
+                        </div>
                     </div>
+
                 </div>
             </div>
 
@@ -271,17 +271,18 @@ const activeTab = ref('main')
 
 // --- Effect Types from Old File ---
 const effectTypes = [
-    { id: 'bamboo', name: '🎋 听竹', color: '120, 160, 120', type: 'sway_fall' },
-    { id: 'sakura', name: '🌸 落樱', color: '255, 200, 210', type: 'sway_fall' },
-    { id: 'snow', name: '❄️ 寒雪', color: '220, 220, 230', type: 'sway_fall' },
-    { id: 'rain', name: '🌧️ 潇潇夜雨', color: '150, 180, 210', type: 'rain' },
-    { id: 'storm', name: '⚡ 深夜惊雷', color: '180, 200, 220', type: 'rain_storm' },
-    { id: 'fireworks', name: '🎆 线香花火', color: '255, 215, 0', type: 'burst' },
-    { id: 'meteor', name: '🌠 星陨', color: '255, 255, 255', type: 'meteor' },
-    { id: 'embers', name: '🔥 余烬', color: '255, 100, 50', type: 'float_up_fade' },
-    { id: 'gold', name: '✨ 流金', color: '212, 175, 55', type: 'flow_up' },
-    { id: 'firefly', name: '🦋 流萤', color: '160, 255, 160', type: 'wander' }
+    { id: 'bamboo', emoji: '🎋', name: '听竹', color: '120, 160, 120', type: 'sway_fall' },
+    { id: 'sakura', emoji: '🌸', name: '落樱', color: '255, 200, 210', type: 'sway_fall' },
+    { id: 'snow', emoji: '❄️', name: '寒雪', color: '220, 220, 230', type: 'sway_fall' },
+    { id: 'rain', emoji: '🌧️', name: '潇潇夜雨', color: '150, 180, 210', type: 'rain' },
+    { id: 'storm', emoji: '⚡', name: '深夜惊雷', color: '180, 200, 220', type: 'rain_storm' },
+    { id: 'fireworks', emoji: '🎆', name: '线香花火', color: '255, 215, 0', type: 'burst' },
+    { id: 'meteor', emoji: '🌠', name: '星陨', color: '255, 255, 255', type: 'meteor' },
+    { id: 'embers', emoji: '🔥', name: '余烬', color: '255, 100, 50', type: 'float_up_fade' },
+    { id: 'gold', emoji: '✨', name: '流金', color: '212, 175, 55', type: 'flow_up' },
+    { id: 'firefly', emoji: '🦋', name: '流萤', color: '160, 255, 160', type: 'wander' }
 ]
+
 const currentEffectIndex = ref(Math.floor(Math.random() * effectTypes.length))
 const currentEffect = computed(() => effectTypes[currentEffectIndex.value])
 
@@ -392,30 +393,116 @@ const sortedHistory = computed(() => {
 const formatTime = (ts) => ts ? new Date(ts).toLocaleString() : '---'
 
 // --- Stats Helpers ---
-const userCoord = computed(() => ({ x: 35, y: 35 })) // Anchored slightly off center
-const charCoord = computed(() => {
-    // Deterministic but "random-looking" position based on distance string
-    const dist = currentVoiceContent.value.stats?.distance || '10km'
-    const num = parseInt(dist) || 5
-    const angle = (num * 137) % 360
-    const rad = Math.min(40, num * 2)
+// --- Map Dynamics & Positioning ---
+const rawDistance = computed(() => {
+    const distStr = currentVoiceContent.value.stats?.distance || '5km'
+    const numMatch = distStr.match(/\d+(\.\d+)?/)
+    const num = numMatch ? parseFloat(numMatch[0]) : 5
+    const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 0.5)
+    return isKm ? num : num / 1000
+})
+
+// Randomized map offset based on location name and chatId to create "unique cutting" feel
+const mapSeed = computed(() => {
+    const str = (props.chatId || '') + (currentVoiceContent.value.stats?.location || '')
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i)
+        hash |= 0
+    }
+    return Math.abs(hash)
+})
+
+const markerScale = computed(() => {
+    // Distance-based scaling: 1.0 (close) to 0.7 (far)
+    const dist = rawDistance.value
+    const scaleFactor = Math.max(0.7, 1 - (dist / 100))
     return {
-        x: 50 + Math.cos(angle * Math.PI / 180) * rad,
-        y: 50 + Math.sin(angle * Math.PI / 180) * rad
+        user: 1.0,
+        char: scaleFactor
     }
 })
 
+const userCoord = computed(() => {
+    // User is slightly offset from center but relatively stable
+    return { x: 45, y: 55 }
+})
+
+const finalCharCoord = computed(() => {
+    const dist = rawDistance.value
+    const seed = mapSeed.value
+    const angle = (seed % 360) * (Math.PI / 180)
+
+    // Base radius from distance
+    let visualRadius = Math.min(42, 8 + (dist * 1.5))
+
+    // Anti-collision: Ensure at least 12% distance to prevent overlapping tags/avatars
+    const MIN_SAFE_DIST = 15
+    if (visualRadius < MIN_SAFE_DIST) {
+        visualRadius = MIN_SAFE_DIST
+    }
+
+    let targetX = userCoord.value.x + Math.cos(angle) * visualRadius
+    let targetY = userCoord.value.y + Math.sin(angle) * visualRadius
+
+    // Boundary & Obscuring check: Stay away from edges and bottom panel
+    // Left/Right: 5%-95%, Top: 5%-75% (avoiding bottom panel which is roughly at 80%+)
+    targetX = Math.max(10, Math.min(90, targetX))
+    targetY = Math.max(10, Math.min(72, targetY))
+
+    return { x: targetX, y: targetY }
+})
+
+
 const userPosStyle = computed(() => ({
     left: `${userCoord.value.x}%`,
-    top: `${userCoord.value.y}%`
+    top: `${userCoord.value.y}%`,
+    zIndex: 22,
+    transform: `translate(-50%, -50%) scale(${markerScale.value.user})`
 }))
 
 const charPosStyle = computed(() => ({
-    left: `${charCoord.value.x}%`,
-    top: `${charCoord.value.y}%`
+    left: `${finalCharCoord.value.x}%`,
+    top: `${finalCharCoord.value.y}%`,
+    zIndex: 21,
+    opacity: markerScale.value.char > 0.8 ? 1 : 0.9,
+    transform: `translate(-50%, -50%) scale(${markerScale.value.char})`
 }))
 
+
+
+const mapImages = [
+    '/maps/城市地图中.png',
+    '/maps/城市地图大1.png',
+    '/maps/城市地图大2.png',
+    '/maps/城市地图小.png'
+]
+
+
+const selectedMap = computed(() => {
+    return mapImages[mapSeed.value % mapImages.length]
+})
+
+const mapContainerStyle = computed(() => {
+    // Zoom effect: as distance increases, "zoom out" slightly, 
+    // but the base scale is very high to support "random cropping"
+    const dist = rawDistance.value
+    const dynamicZoom = Math.max(1.2, 3 - (dist / 50)) // Stronger zoom for cropping feel
+
+    return {
+        '--map-seed': mapSeed.value,
+        '--map-url': `url(${selectedMap.value})`,
+        '--map-offset-x': `${(mapSeed.value % 70)}%`,
+        '--map-offset-y': `${((mapSeed.value / 10) % 70)}%`,
+        '--map-rotation': `${(mapSeed.value % 20) - 10}deg`, // Subtle rotation
+        '--map-zoom': dynamicZoom
+    }
+})
+
+
+
 const getStatValue = (val) => {
+
     if (typeof val === 'object' && val !== null) return val.value || 0
     return val || 0
 }
@@ -464,9 +551,18 @@ const formatDistance = (distStr) => {
 const toggleHistory = () => { showHistory.value = !showHistory.value }
 const toggleEffect = () => {
     currentEffectIndex.value = (currentEffectIndex.value + 1) % effectTypes.length
-    particles = []
+    // Re-measure in case layout changed
+    const canvas = voiceCanvas.value
+    if (canvas) {
+        width = canvas.offsetWidth
+        height = canvas.offsetHeight
+        canvas.width = width
+        canvas.height = height
+    }
+    particles.length = 0 // Clear array correctly
     initParticles()
 }
+
 const loadFromHistory = (index) => {
     currentIndex.value = index
     showHistory.value = false
@@ -895,62 +991,31 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     border: 1px solid rgba(0, 0, 0, 0.1);
     overflow: hidden;
     box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.1);
+    --map-zoom: 1;
+    /* Default zoom */
 }
 
-.map-tile-layer {
-    position: absolute;
-    inset: 0;
-    background-color: #f0f2f5;
-    background-image:
-        radial-gradient(circle at 2px 2px, rgba(0, 0, 0, 0.02) 1px, transparent 0);
-    background-size: 20px 20px;
-}
 
-.map-water-layer {
+.map-image-layer {
     position: absolute;
-    inset: 0;
-    opacity: 0.6;
-    background:
-        radial-gradient(ellipse at 80% 20%, #aad3df 0%, transparent 60%),
-        radial-gradient(ellipse at 10% 90%, #9bc7d3 0%, transparent 50%);
-}
-
-.map-park-layer {
-    position: absolute;
-    inset: 0;
-    opacity: 0.5;
-    background:
-        radial-gradient(circle at 40% 60%, #c8e6c9 0%, transparent 40%),
-        radial-gradient(circle at 90% 80%, #a5d6a7 0%, transparent 35%);
-}
-
-.map-road-network {
-    position: absolute;
-    inset: 0;
-    opacity: 1;
-    background:
-        linear-gradient(90deg, transparent 49%, #ffffff 50%, transparent 51%),
-        linear-gradient(0deg, transparent 49%, #ffffff 50%, transparent 51%);
-    background-size: 100px 100px;
-}
-
-.map-building-blocks {
-    position: absolute;
-    inset: 0;
-    opacity: 0.2;
-    background-image:
-        linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-    background-size: 25px 25px;
+    inset: -50%;
+    background-image: var(--map-url);
+    background-size: cover;
+    background-position: var(--map-offset-x) var(--map-offset-y);
+    transform: scale(var(--map-zoom)) rotate(var(--map-rotation));
+    transition: all 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: brightness(0.95) contrast(1.05);
 }
 
 .map-glare-overlay {
+
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, transparent 60%);
     pointer-events: none;
     z-index: 5;
 }
+
 
 .map-marker-premium {
     position: absolute;
@@ -1037,7 +1102,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     font-size: 10px;
     color: #333;
     font-weight: 600;
-    max-width: 60px;
+    max-width: 65px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1047,15 +1112,6 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     color: #4a90e2;
 }
 
-.marker-label {
-    font-size: 7px;
-    color: #999;
-    font-weight: bold;
-}
-
-.marker-label.char {
-    color: rgba(74, 144, 226, 0.8);
-}
 
 .map-connection-line {
     stroke: #4a90e2;
@@ -1305,25 +1361,61 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
 
 .effect-badge {
-    font-size: 10px;
     color: #8c7e63;
-    letter-spacing: 1px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 4px 12px;
-    border-radius: 20px;
-    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(212, 175, 55, 0.15);
+    padding: 3px 10px;
+    border-radius: 8px;
+    background: rgba(10, 10, 12, 0.4);
+    backdrop-filter: blur(8px);
     cursor: pointer;
     transition: 0.3s;
     display: flex;
     align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.effect-emoji-box {
+    font-size: 16px;
+    filter: drop-shadow(0 0 5px rgba(212, 175, 55, 0.2));
+}
+
+.effect-name-box {
+    display: grid;
+    gap: 1.5px;
+    line-height: 1;
+}
+
+.effect-name-box.len-2 {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.effect-name-box.len-4 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.effect-name-box span {
+    font-size: 7.5px;
+    width: 9px;
+    height: 9px;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 0.5px solid rgba(212, 175, 55, 0.1);
+    color: #d4af37;
+    font-weight: bold;
+    border-radius: 1px;
 }
 
 .effect-badge:hover {
     border-color: rgba(212, 175, 55, 0.4);
-    color: #e6dcc0;
+    background: rgba(255, 255, 255, 0.08);
 }
+
+
 
 /* History Card */
 .voice-history-card {

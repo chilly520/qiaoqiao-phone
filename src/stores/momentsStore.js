@@ -4,6 +4,7 @@ import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
 import { useLoggerStore } from './loggerStore'
+import { useStickerStore } from './stickerStore'
 import localforage from 'localforage'
 
 // Configure localforage for moments
@@ -26,21 +27,43 @@ export const useMomentsStore = defineStore('moments', () => {
     const isInitialized = ref(false)
     async function initStore() {
         try {
+            // 1. Load Moments
             const savedMoments = await momentsDB.getItem('all_moments')
             if (savedMoments && Array.isArray(savedMoments)) {
-                // Merge persisted moments with any added during the async initialization window
                 const currentCount = moments.value.length
                 moments.value = [...savedMoments, ...moments.value]
-                console.log(`[MomentsStore] DB Loaded ${savedMoments.length} items. Merged with ${currentCount} new items.`)
             }
+
+            // 2. Load Background (Migrate from localStorage if needed)
+            const savedBg = await momentsDB.getItem('custom_background')
+            if (savedBg) {
+                backgroundUrl.value = savedBg
+            } else {
+                const legacyBg = localStorage.getItem('moments_background')
+                if (legacyBg) {
+                    backgroundUrl.value = legacyBg
+                    await momentsDB.setItem('custom_background', legacyBg)
+                    // Don't remove legacyBg yet to be safe, but we'll stop updating it
+                }
+            }
+
             isInitialized.value = true
+            startAutoGeneration()
+            return true
         } catch (e) {
             console.error('[MomentsStore] DB Init failed', e)
-            moments.value = JSON.parse(localStorage.getItem('wechat_moments') || '[]')
+            try {
+                moments.value = JSON.parse(localStorage.getItem('wechat_moments') || '[]')
+            } catch (le) { }
             isInitialized.value = true
         }
     }
-    initStore()
+
+    // DELAY initialization to prevent circular store dependency errors during boot
+    setTimeout(() => {
+        initStore()
+    }, 500)
+
 
     const config = ref({
         autoGenerateInterval: 30,
@@ -67,20 +90,31 @@ export const useMomentsStore = defineStore('moments', () => {
     }, { deep: true })
 
     watch(notifications, (val) => {
-        localStorage.setItem('wechat_moments_notifications', JSON.stringify(val))
+        try {
+            localStorage.setItem('wechat_moments_notifications', JSON.stringify(val))
+        } catch (e) { console.warn('[MomentsStore] Notifications save failed', e) }
     }, { deep: true })
 
     watch(topMoments, (val) => {
-        localStorage.setItem('wechat_moments_top', JSON.stringify(val))
+        try {
+            localStorage.setItem('wechat_moments_top', JSON.stringify(val))
+        } catch (e) { console.warn('[MomentsStore] Top moments save failed', e) }
     }, { deep: true })
 
     watch(config, (val) => {
-        localStorage.setItem('wechat_moments_config', JSON.stringify(val))
+        try {
+            localStorage.setItem('wechat_moments_config', JSON.stringify(val))
+        } catch (e) { console.warn('[MomentsStore] Config save failed', e) }
     }, { deep: true })
 
-    watch(backgroundUrl, (val) => {
-        localStorage.setItem('moments_background', val)
+    watch(backgroundUrl, async (val) => {
+        // Save to IndexedDB (localforage) to avoid 5MB localStorage limit for large images
+        try {
+            await momentsDB.setItem('custom_background', val)
+            // Still keep a small marker or fallback in localStorage if tiny enough, but safer to skip
+        } catch (e) { console.error('[MomentsStore] Background save failed', e) }
     })
+
 
     // --- Getters ---
     const sortedMoments = computed(() => {
@@ -131,12 +165,20 @@ export const useMomentsStore = defineStore('moments', () => {
             if (isMentioned) {
                 // Robust character lookup for notification source
                 const lookupId = data.authorId
+                const nId = String(lookupId).toLowerCase()
                 let char = chatStore.chats[lookupId]
                 if (!char) {
-                    char = Object.values(chatStore.chats).find(c =>
-                        c.id === lookupId || c.wechatId === lookupId || c.name === lookupId || c.remark === lookupId
-                    )
+                    char = Object.values(chatStore.chats).find(c => {
+                        const cid = (c.id || '').toLowerCase()
+                        return cid === nId ||
+                            cid === 'char_' + nId ||
+                            cid === 'user_' + nId ||
+                            (c.wechatId && c.wechatId.toLowerCase() === nId) ||
+                            (c.name && c.name.toLowerCase() === nId) ||
+                            (c.remark && c.remark.toLowerCase() === nId)
+                    })
                 }
+
 
                 addNotification({
                     type: 'mention',
@@ -488,6 +530,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
+        const stickerStore = useStickerStore()
 
         chatStore.triggerToast('正在召唤朋友前来互动...', 'info')
 
@@ -506,12 +549,18 @@ export const useMomentsStore = defineStore('moments', () => {
         const charInfos = allCharIds.map(id => {
             const chat = chatStore.chats[id]
             if (!chat) return null
+
+            const charStickers = stickerStore.getStickers(id) || []
+            const globalStickers = stickerStore.getStickers('global') || []
+            const allStickers = [...charStickers, ...globalStickers].filter(s => s && s.name)
+
             return {
                 id,
                 name: chat.name,
                 persona: chat.prompt,
                 recentChats: (chat.msgs || []).slice(-20).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join('\n'),
                 worldContext: (chat.tags || []).join(', '),
+                emojis: allStickers,
                 // 传递用户对该角色的设定
                 userName: chat.userName,
                 userPersona: chat.userPersona
@@ -595,10 +644,19 @@ export const useMomentsStore = defineStore('moments', () => {
 
         try {
             const ai = await import('../utils/aiService')
+
+            // Get character stickers
+            const charStickers = stickerStore.getStickers(replier.id) || []
+            const globalStickers = stickerStore.getStickers('global') || []
+            const allStickers = [...charStickers, ...globalStickers].filter(s => s && s.name)
+
             const reply = await ai.generateReplyToComment({
                 name: replier.char.name,
                 persona: replier.char.prompt,
-                worldContext: (replier.char.tags || []).join(', ')
+                worldContext: (replier.char.tags || []).join(', '),
+                emojis: allStickers,
+                userName: replier.char.userName,
+                userPersona: replier.char.userPersona
             }, {
                 authorName: moment.authorId === 'user' ? settingsStore.personalization.userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
                 content: moment.content,
@@ -625,6 +683,7 @@ export const useMomentsStore = defineStore('moments', () => {
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
         const worldBookStore = useWorldBookStore()
+        const stickerStore = useStickerStore()
 
         const candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id)) : [])
         if (candidates.length === 0) return
@@ -634,7 +693,7 @@ export const useMomentsStore = defineStore('moments', () => {
             const chat = chatStore.chats[id]
             if (!chat) return null
 
-            const lastMsgs = (chat.msgs || []).slice(-50).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
+            const lastMsgs = (chat.msgs || []).slice(-15).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
 
             // Get last 3 personal moments for this character
             const personalHistory = moments.value
@@ -643,12 +702,18 @@ export const useMomentsStore = defineStore('moments', () => {
                 .map(m => m.content)
                 .join(' || ')
 
+            // Get character stickers
+            const charStickers = stickerStore.getStickers(id) || []
+            const globalStickers = stickerStore.getStickers('global') || []
+            const allStickers = [...charStickers, ...globalStickers].filter(s => s && s.name)
+
             return {
                 id,
                 name: chat.name,
                 persona: chat.prompt,
                 recentChats: lastMsgs,
                 personalHistory: personalHistory,
+                emojis: allStickers,
                 // 重要：传递特定的人设信息
                 userName: chat.userName,
                 userPersona: chat.userPersona
@@ -703,14 +768,23 @@ export const useMomentsStore = defineStore('moments', () => {
                     if (!isInitialized.value) return
 
                     let finalAuthorId = data.authorId
+                    const nId = String(data.authorId).toLowerCase()
                     if (!chatStore.chats[finalAuthorId]) {
-                        const mappedChar = Object.values(chatStore.chats)
-                            .find(c => c.id === data.authorId || c.wechatId === data.authorId || c.name === data.authorId || c.remark === data.authorId)
+                        const mappedChar = Object.values(chatStore.chats).find(c => {
+                            const cid = (c.id || '').toLowerCase()
+                            return cid === nId ||
+                                cid === 'char_' + nId ||
+                                cid === 'user_' + nId ||
+                                (c.wechatId && c.wechatId.toLowerCase() === nId) ||
+                                (c.name && c.name.toLowerCase() === nId) ||
+                                (c.remark && c.remark.toLowerCase() === nId)
+                        })
                         if (mappedChar) {
                             const key = Object.keys(chatStore.chats).find(k => chatStore.chats[k] === mappedChar)
                             if (key) finalAuthorId = key
                         }
                     }
+
 
                     const moment = addMoment({
                         authorId: finalAuthorId,
@@ -771,9 +845,12 @@ export const useMomentsStore = defineStore('moments', () => {
             // Update last generate time regardless of success to prevent spam loops on error
             if (isInitialized.value) {
                 lastGenerateTime.value = Date.now()
-                localStorage.setItem('wechat_moments_last_gen', lastGenerateTime.value)
+                try {
+                    localStorage.setItem('wechat_moments_last_gen', lastGenerateTime.value)
+                } catch (e) { }
             }
         }
+
     }
 
     // Auto Gen Loop
@@ -941,7 +1018,8 @@ export const useMomentsStore = defineStore('moments', () => {
         }
     }
 
-    startAutoGeneration()
+    // Initial generation moved to initStore to avoid calling stores before Pinia is ready
+    // startAutoGeneration()
 
     return {
         moments, notifications, topMoments, summoningIds,

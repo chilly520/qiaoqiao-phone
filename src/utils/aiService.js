@@ -1,8 +1,9 @@
+import { getActivePinia } from 'pinia'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
-import { useMomentsStore } from '../stores/momentsStore'
+
 import { useWalletStore } from '../stores/walletStore'
 import { weatherService } from './weatherService'
 import { batteryMonitor } from './batteryMonitor'
@@ -133,8 +134,13 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
             saveAvatarDescCache(cache);
         }
     } catch (e) {
-        console.error('[AI Vision] Avatar description fail:', e);
-        // On network error or quota error, we just return null and don't cache
+        // Silently fail for transient network/server issues to avoid clogging the console
+        if (e.name === 'TypeError' && e.message.includes('fetch')) {
+            console.warn(`[AI Vision] Avatar description skipped: AI Server (${endpoint}) is unreachable.`);
+        } else {
+            console.warn('[AI Vision] Avatar description fail:', e.message);
+        }
+        return null;
     }
     return null;
 }
@@ -151,19 +157,30 @@ export async function generateReply(messages, char, abortSignal, options = {}) {
  */
 export function generateContextPreview(chatId, char) {
     const stickerStore = useStickerStore()
-    let worldBookStore = null
-    let momentsStore = null
+    const settingsStore = useSettingsStore()
 
+    // Use Pinia instance retrieval to completely avoid circular import of momentsStore.js
+    let momentsStore = null
+    try {
+        const pinia = getActivePinia()
+        if (pinia) {
+            momentsStore = pinia._s.get('moments')
+        }
+    } catch (e) {
+        console.warn('[AI Service] MomentsStore retrieval failed:', e)
+    }
+
+    let worldBookStore = null
     try {
         worldBookStore = useWorldBookStore()
-        momentsStore = useMomentsStore()
     } catch (e) {
-        console.warn('[AI Service] Store initialization failed:', e)
+        console.warn('[AI Service] WorldBookStore init failed:', e)
     }
+
 
     // 1. System Prompt (Base) - Reusing Template Logic with placeholders
     // We don't have the exact user object here usually, but we have char.userName/Persona
-    const settingsStore = useSettingsStore()
+    // We don't have the exact user object here usually, but we have char.userName/Persona
     const realUserProfile = settingsStore.personalization?.userProfile || {};
 
     const userForSystem = {
@@ -556,7 +573,15 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     // --- System Prompt Construction ---
-    const momentsStore = useMomentsStore()
+    // Dynamic import to avoid circular dependency
+    let momentsStore = null
+    try {
+        const { useMomentsStore } = await import('../stores/momentsStore')
+        momentsStore = useMomentsStore()
+    } catch (e) {
+        console.warn('[AI Service] MomentsStore dynamic load failed:', e)
+    }
+
     let momentsContext = ''
     if (momentsStore && momentsStore.moments) {
         const formatMoment = (m) => {
@@ -1875,7 +1900,7 @@ export async function generateBatchMomentsWithInteractions(options) {
         const userSpecificName = c.userName || userProfile?.name || '用户'
         const userSpecificPersona = c.userPersona ? `\n   【用户（${userSpecificName}）在此角色剧本中的身份/设定】：${c.userPersona}` : ''
 
-        const chatText = c.recentChats ? `\n   最近 50 条聊天碎片: ${c.recentChats.substring(0, 3000)}` : ''
+        const chatText = c.recentChats ? `\n   最近 15 条聊天碎片: ${c.recentChats.substring(0, 1000)}` : ''
         const personalHistoryText = c.personalHistory ? `\n   TA最近发过：${c.personalHistory}` : ''
 
         // 获取表情包信息
@@ -1917,51 +1942,54 @@ export async function generateBatchMomentsWithInteractions(options) {
     const systemPrompt = `你现在是“朋友圈拟真生态引擎”。当前虚拟时间：${currentVirtualTime}。
 
 【备选发帖角色】
-${charList}${worldBookText}${userCustomPrompt}
+${charList}
+
+${worldBookText}
+
+${userCustomPrompt}
 
 ${historyText}
+
 ${userContextText}
 
 【输出格式】必须是一个 JSON 对象，严禁包含任何 ID 作为展示名称：
-    \```json
-    {
-        "newMoments": [
-            {
-                "authorId": "选中的角色ID (如: char_123)",
-                "content": "发帖内容 (自然生活化，可包含 [表情包:名字] 和 @提及)",
-                "mentions": ["提及的角色姓名"],
-                "location": "地点",
-                "imagePrompts": ["英文生图提示词1", "英文生图提示词2"],
-                "imageDescriptions": ["中文图片描述1", "中文图片描述2"],
-                "interactions": [
-                    { "type": "comment", "authorId": "互动者角色ID (如果是备选角色)", "authorName": "角色姓名 (如果是备选角色) 或 虚构NPC名", "content": "评论内容", "isVirtual": false }
-                ]
-            }
-        ],
-        "ecosystemUpdates": [
-            {
-                "momentId": "旧动态的ID",
-                "newInteractions": [
-                    { "type": "comment", "authorId": "角色ID (如果是备选角色)", "authorName": "姓名", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false },
-                    { "type": "like", "authorId": "角色ID", "authorName": "姓名", "isVirtual": false }
-                ]
-            }
-        ]
-    }
-    \```
+${"```"}json
+{
+    "newMoments": [
+        {
+            "authorId": "选中的角色ID (如: char_123)",
+            "content": "发帖内容 (自然生活化，可包含 [表情包:名字] 和 @提及)",
+            "mentions": ["提及的角色姓名"],
+            "location": "地点",
+            "imagePrompts": ["英文生图提示词1", "英文生图提示词2"],
+            "imageDescriptions": ["中文图片描述1", "中文图片描述2"],
+            "interactions": [
+                { "type": "comment", "authorId": "互动者角色ID (如果是备选角色)", "authorName": "角色姓名 (如果是备选角色) 或 虚构NPC名", "content": "评论内容", "isVirtual": false }
+            ]
+        }
+    ],
+    "ecosystemUpdates": [
+        {
+            "momentId": "旧动态的ID",
+            "newInteractions": [
+                { "type": "comment", "authorId": "角色ID (如果是备选角色)", "authorName": "姓名", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false },
+                { "type": "like", "authorId": "角色ID", "authorName": "姓名", "isVirtual": false }
+            ]
+        }
+    ]
+}
+${"```"}
 
 【角色互动准则】
-1. **真实好友互动**：凡是备选角色列表中的人，必须使用其对应的 \`authorId\` 和 \`authorName\`。**严禁**在展示用的 \`authorName\` 中填入 \`char_xxx\` 这种内部 ID。
-2. **回复逻辑**：如果旧动态下有用户的评论，对应的动态作者角色**必须**进行回复。
-3. **提及与召唤**：鼓励在评论中使用 \`@${userProfile?.name || '用户'}\` 来吸引注意。
+1. **真实好友互动**：凡是备选角色列表中的人，必须使用其对应的 authorId 和 authorName。严禁在展示用的 authorName 中填入 char_xxx 这种内部 ID。
+2. **回复逻辑**：如果旧动态下有用户的评论，对应的动态作者角色必须进行回复。
+3. **提及与召唤**：鼓励在评论中使用 @${userProfile?.name || '用户'} 来吸引注意。
 
 【生成细节指南】
-1. **多图配比**：根据动态内容决定图片数量（微信常见配图数为 0, 1, 2, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。如果不需要图片，则 \`imagePrompts\` 为空数组。
-2. **图文契合**：每一张图片的 \`imagePrompts\` 都要与 \`content\` 紧密相关且风格统一。
-3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包:名字]。评论中也可以使用。杜绝无意义的 emoji 堆砌。
-4. **@-提及**：在 content 或评论中合适的位置使用 @名字。
-`
-
+1. **多图配比**：根据动态内容决定图片数量（常见配图数为 0, 1, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。
+2. **图文契合**：每一张图片的 imagePrompts 都要与 content 紧密相关且风格统一。
+3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包:名字]。
+4. **@-提及**：在 content 或评论中合适的位置使用 @名字。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2006,7 +2034,7 @@ ${userContextText}
         } catch (parseError) {
             console.error('[Batch Moments] JSON Parse Error:', parseError.message)
             console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
-            throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`)
+            throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
         }
 
         // Support both old array format and new object format
@@ -2028,48 +2056,37 @@ ${userContextText}
             ecosystemUpdates = []
         }
 
-        // Process each moment: generate images if needed
         const processedMoments = []
-        for (const data of momentsData) {
-            let authorId = data.authorId
-            if (authorId && typeof authorId === 'string') {
-                authorId = authorId.replace(/^(char|user)_/i, '')
-            }
+        for (const moment of momentsData) {
+            const authorId = moment.authorId
+            if (!authorId) continue
+
 
             const processed = {
                 authorId: authorId,
-                content: data.content,
-                location: data.location || '',
+                content: moment.content,
+                location: moment.location || '',
                 images: [],
                 imageDescriptions: [],
-                html: data.html || null,
-                mentions: data.mentions || [],
-                interactions: data.interactions || []
+                mentions: moment.mentions || [],
+                interactions: Array.isArray(moment.interactions) ? moment.interactions : []
             }
 
-            // 1. Handle legacy single imagePrompt
-            const prompts = data.imagePrompts || (data.imagePrompt ? [data.imagePrompt] : [])
-            const descriptions = data.imageDescriptions || (data.imageDescription ? [data.imageDescription] : [])
+            // Generate images
+            const prompts = moment.imagePrompts || (moment.imagePrompt ? [moment.imagePrompt] : [])
+            const descriptions = moment.imageDescriptions || (moment.imageDescription ? [moment.imageDescription] : [])
 
             if (prompts.length > 0) {
-                // Batch limit to 9 for safety
-                const limitedPrompts = prompts.slice(0, 9)
-                for (let i = 0; i < limitedPrompts.length; i++) {
-                    try {
-                        const imgUrl = await generateImage(limitedPrompts[i])
-                        processed.images.push(imgUrl)
-                        if (descriptions[i]) {
-                            processed.imageDescriptions.push(descriptions[i])
-                        }
-                    } catch (e) {
-                        console.warn(`[Batch Moments] Multi-image failed at index ${i}:`, e)
-                    }
-                }
+                const finalPrompts = prompts.slice(0, 9)
+                const results = await Promise.all(finalPrompts.map(p => generateImage(p).catch(() => null)))
+                processed.images = results.filter(Boolean)
+                processed.imageDescriptions = descriptions.slice(0, processed.images.length)
             }
 
-            if (processed.interactions) {
+            // Sanitization
+            if (processed.interactions.length > 0) {
                 processed.interactions.forEach(interaction => {
-                    const userName = userProfile?.name || 'Chilly'
+                    const userName = userProfile?.name || '用户'
                     if (interaction.replyTo === 'User' || interaction.replyTo === '用户' || interaction.replyTo === '我') {
                         interaction.replyTo = userName
                     }
@@ -2077,34 +2094,20 @@ ${userContextText}
                         interaction.content = interaction.content.replace(/User/g, userName)
                     }
 
-                    // Fix: Sanitize numeric/ID-like authorNames or IDs from AI hallucination
-                    if (interaction.authorName) {
-                        if (/^\d+$/.test(interaction.authorName)) {
-                            interaction.authorName = '热心群友'
-                        } else if (interaction.authorName.startsWith('char_') || interaction.authorName.startsWith('user_')) {
-                            interaction.authorName = interaction.authorName.replace(/^(char|user)_/i, '')
-                        }
+                    if (interaction.authorId && /^\d+$/.test(interaction.authorId)) {
+                        interaction.authorId = null
                     }
 
-                    if (interaction.authorId && typeof interaction.authorId === 'string') {
-                        interaction.authorId = interaction.authorId.replace(/^(char|user)_/i, '')
-                    }
 
-                    // Fix: Sanitize numeric/ID-like replyTo
                     if (interaction.replyTo) {
                         if (/^\d+$/.test(interaction.replyTo)) {
                             interaction.replyTo = '朋友'
-                        } else if (interaction.replyTo.startsWith('char_') || interaction.replyTo.startsWith('user_')) {
-                            interaction.replyTo = interaction.replyTo.replace(/^(char|user)_/i, '')
                         }
                     }
 
-                    // Mentions in interactions
-                    if (!interaction.mentions) interaction.mentions = []
 
-                    // ID Patch
                     if (interaction.isVirtual && !interaction.authorId) {
-                        interaction.authorId = `virtual - ${Date.now()} -${Math.random().toString(36).substr(2, 5)} `
+                        interaction.authorId = `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                     }
                 })
             }
@@ -2112,7 +2115,7 @@ ${userContextText}
             processedMoments.push(processed)
         }
 
-        // Sanitize ecosystemUpdates as well
+        // Sanitize ecosystemUpdates
         if (Array.isArray(ecosystemUpdates)) {
             ecosystemUpdates.forEach(update => {
                 if (update.newInteractions) {
@@ -2121,20 +2124,12 @@ ${userContextText}
                         if (inter.replyTo === 'User' || inter.replyTo === '用户' || inter.replyTo === '我') {
                             inter.replyTo = userName
                         }
-                        if (inter.content && inter.content.includes('User')) {
-                            inter.content = inter.content.replace(/User/g, userName)
-                        }
-
-                        // Sanitize replyTo names from AI hallucination
                         if (inter.replyTo) {
                             if (/^\d+$/.test(inter.replyTo)) {
                                 inter.replyTo = '朋友'
-                            } else if (inter.replyTo.startsWith('char_') || inter.replyTo.startsWith('user_')) {
-                                inter.replyTo = inter.replyTo.replace(/^(char|user)_/i, '')
                             }
                         }
 
-                        // Patch virtual IDs if missing
                         if (inter.isVirtual && !inter.authorId) {
                             inter.authorId = `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                         }
@@ -2222,7 +2217,7 @@ export async function generateImage(prompt) {
         // Force clothing and ban exposed skin unless explicitly requested
         const clothingEnforcement = hasAbs ? "" : "(fully clothed:1.4), (wearing shirt:1.3), (covered chest:1.3), "
         const bodyType = hasAbs ? "(lean athletic build:1.2)" : "(slender elegant build:1.5), (thin:1.3), (no muscles:1.5), (delicate frame:1.3)"
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen:1.6), (pretty boy:1.4), (otome game cg:1.5), (delicate features:1.4), (clean shaven:1.3), (no facial hair:1.3), ${clothingEnforcement}${bodyType}, (soft expression), ${prompt}, sharp focus, detailed sparkling eyes, handsome, elegant`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen: 1.6), (pretty boy: 1.4), (otome game cg: 1.5), (delicate features: 1.4), (clean shaven: 1.3), (no facial hair: 1.3), ${clothingEnforcement}${bodyType}, (soft expression), ${prompt}, sharp focus, detailed sparkling eyes, handsome, elegant`
     } else if (isFemale || isPerson) {
         enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime girl: 1.3), (detailed huge eyes), (soft skin), ${prompt}, sharp focus, vibrant pastel colors, cute`
     } else {
@@ -2478,15 +2473,16 @@ export async function generateMomentComment(charInfo, moment, historicalContext 
     const uName = charInfo.userName || '用户'
     const uPersona = charInfo.userPersona ? `\n用户在此角色剧本中的设定：${charInfo.userPersona}` : ''
 
-    const systemPrompt = `你现在是【${name}】。
-    你的设定：${persona}。${uPersona}
-${worldContext ? `当前世界背景：${worldContext}` : ''}
+    const systemPrompt = `你现在是【${charInfo.name}】。
+    你的设定：${charInfo.persona}。${uPersona}
+${charInfo.worldContext ? `当前世界背景：${charInfo.worldContext}` : ''}
 ${historicalContext ? `\n${historicalContext}` : ''}
+${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包(格式 [表情包:名字]): ${charInfo.emojis.map(e => e.name).join(', ')}` : ''}
 
 【任务】
-    请对【${authorName}】发布的一条朋友圈进行评论。注意：如果人设提及孤儿/父母双亡，严禁生成任何以家人身份自居的内容。
-    朋友圈内容：${content}
-    图片 / 视觉内容：${visualContext || '无图片'}
+    请对【${moment.authorName}】发布的一条朋友圈进行评论。注意：如果人设提及孤儿/父母双亡，严禁生成任何以家人身份自居的内容。
+    朋友圈内容：${moment.content}
+    图片 / 视觉内容：${moment.visualContext || '无图片'}
 
 【要求】
     1. 回复要简短、真实（类似微信评论），字数控制在30字以内。
@@ -2500,7 +2496,7 @@ ${historicalContext ? `\n${historicalContext}` : ''}
 
     try {
         // Skip visual context to prevent AI from getting distracted by analyzing avatars instead of generating comments
-        const result = await _generateReplyInternal(messages, { name }, null, { skipVisualContext: true })
+        const result = await _generateReplyInternal(messages, { name: charInfo.name }, null, { skipVisualContext: true })
         if (result.error) return null
 
         // Cleanup response (sometimes AI adds quotes or prefixes)
@@ -2522,13 +2518,14 @@ export async function generateReplyToComment(charInfo, moment, targetComment) {
     const uName = charInfo.userName || '用户'
     const uPersona = charInfo.userPersona ? `\n用户在此角色剧本中的身份设定：${charInfo.userPersona}` : ''
 
-    const systemPrompt = `你现在是【${name}】。
-    你的设定：${persona}。${uPersona}
-${worldContext ? `当前世界背景：${worldContext}` : ''}
+    const systemPrompt = `你现在是【${charInfo.name}】。
+    你的设定：${charInfo.persona}。${uPersona}
+${charInfo.worldContext ? `当前世界背景：${charInfo.worldContext}` : ''}
+${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包(格式 [表情包:名字]): ${charInfo.emojis.map(e => e.name).join(', ')}` : ''}
 
 【任务】
     你在朋友圈看到了【${targetComment.authorName}】的评论，请针对这条评论进行回复。
-    朋友圈原文（作者：${authorName}）：${content}
+    朋友圈原文（作者：${moment.authorName}）：${moment.content}
     对方的评论：${targetComment.content}
 
 【要求】
@@ -2541,7 +2538,7 @@ ${worldContext ? `当前世界背景：${worldContext}` : ''}
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name }, null, { skipVisualContext: true })
+        const result = await _generateReplyInternal(messages, { name: charInfo.name }, null, { skipVisualContext: true })
         if (result.error) return null
 
         // Cleanup

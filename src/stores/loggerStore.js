@@ -51,11 +51,23 @@ export const useLoggerStore = defineStore('logger', () => {
             truncatedDetail = detail.substring(0, maxDetailLength) + '... (truncated due to storage limits)'
         } else if (maxDetailLength !== Infinity && detail && typeof detail === 'object') {
             try {
-                const detailStr = JSON.stringify(detail)
+                // 尝试序列化对象，但如果失败，使用安全的字符串表示
+                let detailStr
+                try {
+                    detailStr = JSON.stringify(detail)
+                } catch (serializeError) {
+                    // 序列化失败，使用对象的基本信息
+                    detailStr = `[Object: ${detail.constructor?.name || 'Object'}]`
+                }
                 if (detailStr.length > maxDetailLength) {
                     truncatedDetail = detailStr.substring(0, maxDetailLength) + '... (truncated due to storage limits)'
                 } else {
-                    truncatedDetail = detail // Keep as is
+                    try {
+                        // 尝试使用序列化后的字符串作为安全的表示
+                        truncatedDetail = detailStr
+                    } catch (e) {
+                        truncatedDetail = '[Complex object]'
+                    }
                 }
             } catch (e) {
                 truncatedDetail = '[Circular or non-serializable object]'
@@ -78,7 +90,7 @@ export const useLoggerStore = defineStore('logger', () => {
 
         // Also mirror to console for dev convenience, stripping reactivity
         try {
-            const cleanDetail = detail ? JSON.parse(JSON.stringify(detail)) : detail
+            const cleanDetail = truncatedDetail ? JSON.parse(JSON.stringify(truncatedDetail)) : truncatedDetail
             if (type === 'error') console.error(`[LOG] ${title}`, cleanDetail)
             else if (type === 'warn') console.warn(`[LOG] ${title}`, cleanDetail)
             else console.log(`[LOG] ${title}`, cleanDetail)
