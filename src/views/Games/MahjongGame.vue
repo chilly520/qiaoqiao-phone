@@ -16,7 +16,7 @@
             </div>
             <!-- 顶部信息栏 -->
             <div
-                class="game-top-bar h-[44px] shrink-0 bg-blue-400/30 backdrop-blur-md flex items-center justify-between px-2 z-50 relative border-b border-blue-300/30">
+                class="game-top-bar h-[44px] shrink-0 bg-blue-400/30 backdrop-blur-md flex items-center justify-between px-2 z-[100] relative border-b border-blue-300/30">
                 <div class="flex items-center gap-2">
                     <button @click="handleExit" title="结束对局"
                         class="w-6 h-6 flex items-center justify-center text-white/90 hover:text-red-300 active:scale-90 transition-all bg-blue-500/20 rounded-full shadow-md">
