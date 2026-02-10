@@ -822,7 +822,7 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
             if (d.rank !== undefined) rank.value = d.rank
             if (d.playerStats !== undefined) playerStats.value = d.playerStats
             if (d.tablecloth !== undefined) tablecloth.value = d.tablecloth
-            if (d.tileBacks !== undefined) tileBacks.value = d.tileBacks
+            // 不覆盖tileBacks，确保使用最新的默认配置
         } catch (e) {
             console.error('Failed to load mahjong stats:', e)
         }
