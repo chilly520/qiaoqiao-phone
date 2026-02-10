@@ -2954,7 +2954,9 @@ watch(isChatPanelVisible, (val) => {
     .mahjong-tile-vertical {
         width: 5.5vmin !important;
         height: 3.5vmin !important;
-        background: linear-gradient(to bottom, var(--tile-back-primary), var(--tile-back-secondary)) !important;
+        background: var(--tile-back-image), linear-gradient(to bottom, var(--tile-back-primary), var(--tile-back-secondary)) !important;
+        background-size: cover !important;
+        background-position: center !important;
     }
 }
 </style>
