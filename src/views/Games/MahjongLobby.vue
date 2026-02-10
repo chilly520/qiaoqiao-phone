@@ -400,24 +400,24 @@
                                 <span class="text-xs text-blue-600 font-bold">点击选择桌布样式</span>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
-                                <div @click="mahjongStore.tablecloth = 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20traditional%20chinese%20patterns%2C%20golden%20symbols%20of%20prosperity%20and%20luck%2C%20elegant%20design&image_size=landscape_4_3'; mahjongStore.saveData()"
+                                <div @click="mahjongStore.tablecloth = '/tablecloths/桌布1.png'; mahjongStore.saveData()"
                                     class="relative group cursor-pointer">
                                     <div class="w-full aspect-[4/3] rounded-lg border-2 shadow-sm transition-all overflow-hidden"
-                                        :class="mahjongStore.tablecloth === 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20traditional%20chinese%20patterns%2C%20golden%20symbols%20of%20prosperity%20and%20luck%2C%20elegant%20design&image_size=landscape_4_3' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
-                                        <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20traditional%20chinese%20patterns%2C%20golden%20symbols%20of%20prosperity%20and%20luck%2C%20elegant%20design&image_size=landscape_4_3"
+                                        :class="mahjongStore.tablecloth === '/tablecloths/桌布1.png' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
+                                        <img src="/tablecloths/桌布1.png"
                                             class="w-full h-full object-cover" />
                                     </div>
-                                    <i v-if="mahjongStore.tablecloth === 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20traditional%20chinese%20patterns%2C%20golden%20symbols%20of%20prosperity%20and%20luck%2C%20elegant%20design&image_size=landscape_4_3'"
+                                    <i v-if="mahjongStore.tablecloth === '/tablecloths/桌布1.png'"
                                         class="fa-solid fa-circle-check absolute -top-1 -right-1 text-emerald-500 text-sm bg-white rounded-full"></i>
                                 </div>
-                                <div @click="mahjongStore.tablecloth = 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20bamboo%20patterns%2C%20traditional%20chinese%20design%20with%20four%20directions%20symbols%20and%20center%20fortune%20character&image_size=landscape_4_3'; mahjongStore.saveData()"
+                                <div @click="mahjongStore.tablecloth = '/tablecloths/桌布2.jpg'; mahjongStore.saveData()"
                                     class="relative group cursor-pointer">
                                     <div class="w-full aspect-[4/3] rounded-lg border-2 shadow-sm transition-all overflow-hidden"
-                                        :class="mahjongStore.tablecloth === 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20bamboo%20patterns%2C%20traditional%20chinese%20design%20with%20four%20directions%20symbols%20and%20center%20fortune%20character&image_size=landscape_4_3' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
-                                        <img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20bamboo%20patterns%2C%20traditional%20chinese%20design%20with%20four%20directions%20symbols%20and%20center%20fortune%20character&image_size=landscape_4_3"
+                                        :class="mahjongStore.tablecloth === '/tablecloths/桌布2.jpg' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-100'">
+                                        <img src="/tablecloths/桌布2.jpg"
                                             class="w-full h-full object-cover" />
                                     </div>
-                                    <i v-if="mahjongStore.tablecloth === 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tablecloth%20with%20green%20background%2C%20bamboo%20patterns%2C%20traditional%20chinese%20design%20with%20four%20directions%20symbols%20and%20center%20fortune%20character&image_size=landscape_4_3'"
+                                    <i v-if="mahjongStore.tablecloth === '/tablecloths/桌布2.jpg'"
                                         class="fa-solid fa-circle-check absolute -top-1 -right-1 text-emerald-500 text-sm bg-white rounded-full"></i>
                                 </div>
                             </div>

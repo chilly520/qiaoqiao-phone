@@ -49,10 +49,10 @@ export const useMahjongStore = defineStore('mahjong', () => {
     const tablecloth = ref('') // 自定义桌布 URL 或 Base64
     const tileBacks = ref([
         { id: 'default', type: 'color', value: '#10b981', active: true, name: '经典绿' },
-        { id: 'custom1', type: 'image', value: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tile%20back%20with%20blue%20water%20pattern%2C%20elegant%20design%2C%20chinese%20style%2C%20minimalist&image_size=square', active: true, name: '水蓝纹' },
-        { id: 'custom2', type: 'image', value: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tile%20back%20with%20red%20and%20gold%20traditional%20chinese%20pattern%2C%20luxury%20design&image_size=square', active: true, name: '金玉红' },
-        { id: 'custom3', type: 'image', value: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tile%20back%20with%20green%20jade%20pattern%2C%20natural%20chinese%20style&image_size=square', active: true, name: '翡翠绿' },
-        { id: 'custom4', type: 'image', value: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Mahjong%20tile%20back%20with%20purple%20floral%20pattern%2C%20elegant%20chinese%20traditional%20design&image_size=square', active: true, name: '紫花纹' }
+        { id: 'custom1', type: 'image', value: '/tilebacks/牌背1.png', active: true, name: '牌背1' },
+        { id: 'custom2', type: 'image', value: '/tilebacks/牌背2.png', active: true, name: '牌背2' },
+        { id: 'custom3', type: 'image', value: '/tilebacks/牌背3.png', active: true, name: '牌背3' },
+        { id: 'custom4', type: 'image', value: '/tilebacks/牌背4.png', active: true, name: '牌背4' }
     ]) // 牌背预设列表
     const customTileBackImage = ref('') // 自定义牌背图片
 
