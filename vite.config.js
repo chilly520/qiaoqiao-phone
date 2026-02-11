@@ -6,13 +6,14 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   esbuild: {
     charset: 'utf8',
   },
   plugins: [
     vue(),
     VitePWA({
+      disable: command === 'build', // 生产构建禁用，规避 Vercel 上 esbuild Utf8Error
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
@@ -102,4 +103,4 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   }
-})
+}))
