@@ -460,7 +460,8 @@ export function generateContextPreview(chatId, char) {
 1. **真实感**: 语言口语化，可以使用颜文字（如 (^_^) ）或常用语。
 2. **分段**: 适当使用换行或短句输出。
 3. **心声 (Inner Voice)**: **必须置于最后，且内容必须极度详尽、深刻，并且每轮回复都需要输出心声，这是系统面板关于你的状态栏卡片，禁止漏掉和抄袭上一轮的内容，着装地点之类的除外。**
-   格式：
+   **重要强调**: 无论何时，只要需要输出心声，你必须使用完整的 [INNER_VOICE] 标签包裹，并且包含完整的 JSON 结构，包括所有必要的字段。
+   **格式示例 (必须严格遵循)**:  
    [INNER_VOICE]
    {
      "status": "状态栏文案 (Max 10字)",
@@ -1177,23 +1178,23 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         provider,
         endpoint,
         payload: reqBody,
-        hasCustomSystem: fullMessages.length > 0 && fullMessages[0].role === 'system'
+        hasCustomSystem: fullMessages && fullMessages.length > 0 && fullMessages[0].role === 'system'
     })
 
     try {
         if (model.toLowerCase().includes('gemini')) {
             // Gemini (native) json format
-            if (fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
+            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
                 reqBody.generationConfig = { response_mime_type: "application/json" };
             }
         } else {
             // OpenAI compatible json object mode
-            if (fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
+            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
                 reqBody.response_format = { type: "json_object" };
             }
         }
 
-        console.log(`[AI Request] (${provider})`, { endpoint, model, msgCount: fullMessages.length })
+        console.log(`[AI Request] (${provider})`, { endpoint, model, msgCount: fullMessages ? fullMessages.length : 0 })
 
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -1418,12 +1419,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // [FIX] Prevent Call Protocol JSON from being re-detected as Inner Voice
         const isCallProtocol = content.includes('[CALL_START]') && content.includes('[CALL_END]');
 
-        if (!ivSegment && !isCallProtocol && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"'))) {
+        if (!ivSegment && !isCallProtocol && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"') || content.includes('"emotion"') || content.includes('"mood"'))) {
             // 尝试寻找最后一个包含关键词的大括号块
             const blocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
             for (let i = blocks.length - 1; i >= 0; i--) {
                 const block = blocks[i][0]
-                if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"thought"')) {
+                if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"thought"') || block.includes('"emotion"') || block.includes('"mood"') || block.includes('"spirit"')) {
                     ivSegment = block
                     console.log('[AI Service] Found untagged Inner Voice block via keyword scan')
                     break; // Found one, stop searching
@@ -1822,7 +1823,10 @@ ${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)
 
 【任务】
 1. 发布一条朋友圈动态。可以包含心情感悟、生活趣事、或是想对某人（Chilly）说的话。
-2. 为这条动态生成 3-5 条社交互动（点赞或评论），互动者应该是通讯录中的好友或虚构合理的NPC。
+2. 为这条动态生成 3-5 条社交互动（点赞或评论），互动者应该包括：
+   - 通讯录中的好友
+   - 虚构合理的NPC（如同事、同学、邻居、亲戚等）
+   - 确保互动多样性，既有现实好友也有虚拟NPC
 
 回复必须是一个 JSON 对象，格式如下：
 {
@@ -1841,6 +1845,7 @@ ${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)
 2. 如果有图片提示词，**必须**是关于场景、物品或角色的描述。
 3. 如果涉及到人物形象，系统将强制使用“日漫/少女漫”风格。
 4. 【严禁】不要生成任何代表用户的互动内容（点赞或评论）。
+5. **重要强调**：必须包含虚拟NPC的互动，且数量不少于总互动的30%。
 ${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
 ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
 
@@ -1980,7 +1985,8 @@ ${"```"}json
             "imagePrompts": ["英文生图提示词1", "英文生图提示词2"],
             "imageDescriptions": ["中文图片描述1", "中文图片描述2"],
             "interactions": [
-                { "type": "comment", "authorId": "互动者角色ID (如果是备选角色)", "authorName": "角色姓名 (如果是备选角色) 或 虚构NPC名", "content": "评论内容", "isVirtual": false }
+                { "type": "comment", "authorId": "互动者角色ID (如果是备选角色)", "authorName": "角色姓名 (如果是备选角色) 或 虚构NPC名", "content": "评论内容", "isVirtual": false },
+                { "type": "like", "authorId": "虚拟NPC角色ID", "authorName": "虚拟NPC名字", "isVirtual": true }
             ]
         }
     ],
@@ -2428,6 +2434,7 @@ ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有�
    - **身份一致性**：评论语气必须符合角色与用户之间的【用户身份设定】。
 3. **多样性要求**：
    - 优先选择现有好友。虚构 NPC 应符合发帖人的社会圈层。
+   - **重要强调**：必须包含虚拟NPC的互动，且数量不少于总互动的30%。
 4. **内容风格**：简短、真实、口语化。像真人微信对话。
 5. **绝对禁止**：严禁代表“用户”或“${userProfile.name}”生成任何内容。
 
