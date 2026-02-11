@@ -1,6 +1,12 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "build": {
+    "env": {
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    }
+  },
   "rewrites": [
     {"source": "/v2/:path*", "destination": "https://api.vkeys.cn/v2/:path*"},
     {"source": "/volc/:path*", "destination": "https://translate.volcengine.com/:path*"},
