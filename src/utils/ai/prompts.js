@@ -180,19 +180,7 @@ ${locInfo}
    格式：
    [INNER_VOICE]
    {
-     "status": "状态栏文案 (Max 10字)",
-     "着装": "详细描述你当前的全身穿着和着装状态，上装：下装：鞋子：（禁止总是不穿鞋）装饰：",
-     "环境": "具体周几+具体地点+天气温度+周围环境等",
-     "心声": "心情状态描述，以及对当前互动的内心真实想法，无论友好还是邪恶（需极度详尽）",
-     "行为": "先写明【线上】或【线下】，然后描述正在肢体姿势，char用第一人称，user用第二人称。写明动作、拥抱、亲吻、做爱进度等具体动态行为细节。",
-     "stats": {
-       "date": "2026年01月27日 (示例)",
-       "time": "20:09 (示例)",
-       "emotion": { "label": "兴奋", "value": 85 },
-       "spirit": { "label": "充沛", "value": 90 },
-       "mood": { "label": "愉悦", "value": 70 },
-       "location": "广东省 > 深圳市 > 蛇口街道 (示例)",
-       "distance": "12.5km (根据对方位置自主推算)"
+     "status": "状态栏文案 (Max 10字)","着装": "详细描述你当前的全身穿着和着装状态，上装：下装：鞋子：（禁止总是不穿鞋）装饰：","环境": "具体周几+具体地点+天气温度+周围环境等","心声": "心情状态描述，以及对当前互动的内心真实想法，无论友好还是邪恶（需极度详尽）","行为": "先写明【线上】或【线下】，然后描述正在肢体姿势，char用第一人称，user用第二人称。写明动作、拥抱、亲吻、做爱进度等具体动态行为细节。","stats": {"date": "2026年01月27日 (示例)","time": "20:09 (示例)","emotion": { "label": "兴奋", "value": 85 },"spirit": { "label": "充沛", "value": 90 },"mood": { "label": "愉悦", "value": 70 },"location": "广东省 > 深圳市 > 蛇口街道 (示例)","distance": "12.5km (根据对方位置自主推算，最短距离m，推算距离请看用户定位)"
      }
    }
    [/INNER_VOICE]
@@ -244,10 +232,10 @@ export function CALL_SYSTEM_PROMPT_TEMPLATE(char, user, worldInfo = '', memoryTe
 - **你是**: ${charName}
 - **基础设定**: ${char.description || char.prompt || '无'}
 ${bioDetails}
-${worldInfo ? `\n- **相关设定**: \n${worldInfo}` : ''}
-${memoryText ? `\n- **记忆碎片**: \n${memoryText}` : ''}
-${momentsText ? `\n- **近期动态**: \n${momentsText}` : ''}
-${locationContext ? `\n- **环境感知**: ${locationContext}` : ''}
+${worldInfo ? `- **相关设定**: ${worldInfo}` : ''}
+${memoryText ? `- **记忆碎片**: ${memoryText}` : ''}
+${momentsText ? `- **近期动态**: ${momentsText}` : ''}
+${locationContext ? `- **环境感知**: ${locationContext}` : ''}
 
 **再次强调：你的每一条消息必须是且只能是上述 JSON 格式，不允许有任何偏离。**`;
 }
