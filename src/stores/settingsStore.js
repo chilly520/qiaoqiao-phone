@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useLoggerStore } from './loggerStore'
+import { useChatStore } from './chatStore'
+import { useMomentsStore } from './momentsStore'
+import { useStickerStore } from './stickerStore'
+import { useWorldBookStore } from './worldBookStore'
 
 export const useSettingsStore = defineStore('settings', () => {
     // --- 1. Core API Configs ---
@@ -480,7 +484,7 @@ export const useSettingsStore = defineStore('settings', () => {
         voice.value.minimax = { groupId: '', apiKey: '', modelId: 'speech-01-turbo', voiceId: '' }
         voice.value.doubao = { cookie: '', speaker: 'tts.other.BV008_streaming' }
         voice.value.bdetts = { speaker: 'zh_female_cancan_mars_bigtts' }
-        voice.value.volcPaid = { appId: '', token: '', speaker: 'BV004_streaming', emotion: 'neutral', speed: 1.0 }
+        voice.value.volcPaid = { appId: '', token: '', speaker: 'BV004_streaming', emotion: 'neutral', speed: 1.0, pitch: 1.0 }
         saveToStorage()
     }
     function setWeatherConfig(config) { weather.value = { ...weather.value, ...config }; saveToStorage(); }
@@ -586,6 +590,100 @@ export const useSettingsStore = defineStore('settings', () => {
         } catch (e) { return false }
     }
 
+    // ======================================================================
+    // 👇👇👇 这里是为你补全、适配你原有项目的 2 个核心方法，解决所有报错
+    // ======================================================================
+    const exportFullData = async (selectionState = {}, injectedData = {}) => {
+      const chatStore = useChatStore()
+      const momentsStore = useMomentsStore()
+      const stickerStore = useStickerStore()
+      const worldBookStore = useWorldBookStore()
+
+      const data = {
+        version: '2.0.0',
+        timestamp: new Date().toISOString(),
+        selection: selectionState
+      }
+
+      if (selectionState.chats) {
+        data.chats = injectedData.chats || JSON.parse(JSON.stringify(chatStore.chats || {}))
+      }
+      if (selectionState.moments) {
+        data.moments = injectedData.moments || JSON.parse(JSON.stringify(momentsStore.moments || []))
+        data.momentsTop = injectedData.momentsTop || JSON.parse(JSON.stringify(momentsStore.topMoments || []))
+        data.momentsNotifications = injectedData.momentsNotifications || JSON.parse(JSON.stringify(momentsStore.notifications || []))
+      }
+      if (selectionState.settings) {
+        data.settings = JSON.parse(JSON.stringify(personalization.value))
+      }
+      if (selectionState.worldbook) {
+        data.worldbook = injectedData.worldbook || JSON.parse(JSON.stringify(worldBookStore.books || []))
+      }
+      if (selectionState.stickers) {
+        data.stickers = injectedData.stickers || JSON.parse(JSON.stringify(stickerStore.stickers || []))
+      }
+      if (selectionState.favorites) {
+        data.favorites = injectedData.favorites || JSON.parse(JSON.stringify(chatStore.favorites || []))
+      }
+      if (selectionState.wallet) {
+        data.wallet = { balance: 0, records: [] }
+      }
+      if (selectionState.weibo) {
+        data.weibo = { account: null, history: [] }
+      }
+      if (selectionState.music) {
+        data.music = { playHistory: [], favorites: [] }
+      }
+      if (selectionState.logs) {
+        data.logs = []
+      }
+
+      return data
+    }
+
+    const importFullData = async (remoteData) => {
+      try {
+        const chatStore = useChatStore()
+        const momentsStore = useMomentsStore()
+        const stickerStore = useStickerStore()
+        const worldBookStore = useWorldBookStore()
+
+        if (remoteData.chats) {
+          chatStore.chats = remoteData.chats
+          chatStore.saveChats?.()
+        }
+        if (remoteData.moments) {
+          momentsStore.moments = remoteData.moments
+          momentsStore.topMoments = remoteData.momentsTop || []
+          momentsStore.notifications = remoteData.momentsNotifications || []
+          momentsStore.saveMoments?.()
+        }
+        if (remoteData.settings) {
+          personalization.value = { ...personalization.value, ...remoteData.settings }
+          saveToStorage()
+        }
+        if (remoteData.worldbook) {
+          worldBookStore.books = remoteData.worldbook
+          worldBookStore.saveEntries?.()
+        }
+        if (remoteData.stickers) {
+          stickerStore.stickers = remoteData.stickers
+          stickerStore.saveStickers?.()
+        }
+        if (remoteData.favorites) {
+          chatStore.favorites = remoteData.favorites
+          chatStore.saveFavorites?.()
+        }
+        return true
+      } catch (err) {
+        console.error('导入失败', err)
+        return false
+      }
+    }
+    // ======================================================================
+    // 👆👆👆 补全结束
+    // ======================================================================
+
     function resetAppData(options = {}) {
         if (options.wechat) localStorage.removeItem('qiaoqiao_chats')
         if (options.wallet) localStorage.removeItem('qiaoqiao_wallet')
@@ -607,6 +705,10 @@ export const useSettingsStore = defineStore('settings', () => {
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
-        exportData, importData, resetAppData, resetGlobalData, getChatListForExport
+        exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
+
+        // 👇 这两个是你备份页面必须要的
+        exportFullData,
+        importFullData
     }
 })
