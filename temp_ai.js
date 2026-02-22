@@ -1,4 +1,4 @@
-﻿import { useSettingsStore } from '../stores/settingsStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
@@ -48,7 +48,7 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
                 contents: [{
                     role: 'user',
                     parts: [
-                        { text: `璇蜂负鍚嶅瓧鍙?${name}"鐨勪汉鐗╃殑澶村儚鎻愪緵涓€娈电畝鐭殑瑙嗚鎻忚堪锛?5瀛椾互鍐咃級銆傞噸鐐规弿杩板彂鑹层€佸彂鍨嬨€佽。鏈嶅拰绁炴€併€傝浠?"[DESC: 鎻忚堪鍐呭]" 鐨勬牸寮忚繑鍥炪€俙 },
+                        { text: `请为名字叫"${name}"的人物的头像提供一段简短的视觉描述（15字以内）。重点描述发色、发型、服装和神态。请以"[DESC: 描述内容]"的格式返回。` },
                         { inline_data: { mime_type: mime, data: data } }
                     ]
                 }],
@@ -64,7 +64,7 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
                 messages: [{
                     role: 'user',
                     content: [
-                        { type: 'text', text: `璇蜂负"${name}"鐨勫ご鍍忔彁渚涚畝鐭腑鏂囨弿杩帮紙15瀛楀唴锛夈€傛牸寮忥細[DESC: 鍐呭]` },
+                        { type: 'text', text: `请为"${name}"的头像提供简短中文描述（15字以内）。格式：[DESC: 内容]` },
                         { type: 'image_url', image_url: { url: b64 } }
                     ]
                 }],
@@ -125,9 +125,9 @@ export function generateContextPreview(chatId, char) {
     const realUserProfile = settingsStore.personalization?.userProfile || {};
 
     const userForSystem = {
-        name: char.userName || '鐢ㄦ埛',
+        name: char.userName || '用户',
         persona: char.userPersona || '',
-        gender: char.userGender || '鏈煡', // Add Gender
+        gender: char.userGender || '未知', // Add Gender
         signature: '', // Not stored in char usually
         avatarUrl: realUserProfile.avatar || char.userAvatarUrl || '',
         avatarDescription: realUserProfile.avatarDescription || ''
@@ -181,13 +181,13 @@ export function generateContextPreview(chatId, char) {
 
     // 2. Persona Context
     const personaContext = `
-銆愯鑹茶瀹氥€?濮撳悕锛?{char.name}
-鎬у埆锛?{char.gender || '鏈煡'}
-鎻忚堪锛?{char.prompt || char.description || '鏃?}
+【角色设定】姓名：${char.name}
+性别：${char.gender || '未知'}
+描述：${char.prompt || char.description || '无'}
 
-銆愮敤鎴疯瀹氥€?濮撳悕锛?{char.userName || '鐢ㄦ埛'}
-鎬у埆锛?{char.userGender || '鏈煡'}
-浜鸿锛?{char.userPersona || '鏃?}
+【用户设定】姓名：${char.userName || '用户'}
+性别：${char.userGender || '未知'}
+人设：${char.userPersona || '无'}
     `.trim()
 
     // 3. Moments Context (The complex part)
@@ -199,14 +199,14 @@ export function generateContextPreview(chatId, char) {
         // Helper to format moment
         const formatMoment = (m) => {
             if (!m) return ''
-            const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { hour12: false }) : '鏈煡鏃堕棿'
-            let text = `[鏃堕棿: ${timeStr}] ${m.authorId === char.id ? char.name : (m.authorName || '鐢ㄦ埛')}: ${m.content}`
+            const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { hour12: false }) : '未知时间'
+            let text = `[时间: ${timeStr}] ${m.authorId === char.id ? char.name : (m.authorName || '用户')}: ${m.content}`
             if (m.imageDescriptions && m.imageDescriptions.length > 0) {
-                text += `\n(鍥剧墖鍐呭: ${m.imageDescriptions.join(', ')})`
+                text += `\n(图片内容: ${m.imageDescriptions.join(', ')})`
             }
             if (m.comments && m.comments.length > 0) {
-                const commentsText = m.comments.map(c => `  - ${c.authorName}${c.replyTo ? '鍥炲' + c.replyTo : ''}: ${c.content}`).join('\n')
-                text += `\n  (璇勮浜掑姩):\n${commentsText}`
+                const commentsText = m.comments.map(c => `  - ${c.authorName}${c.replyTo ? '回复' + c.replyTo : ''}: ${c.content}`).join('\n')
+                text += `\n  (评论互动):\n${commentsText}`
             }
             return text
         }
@@ -222,10 +222,10 @@ export function generateContextPreview(chatId, char) {
         // Combine into context string
         const parts = []
         if (charPinned.length > 0) {
-            parts.push(`銆?{char.name}鐨勭疆椤舵湅鍙嬪湀銆慭n${charPinned.map(formatMoment).join('\n---\n')}`)
+            parts.push(`【${char.name}的置顶朋友圈】\n${charPinned.map(formatMoment).join('\n---\n')}`)
         }
         if (userLatests.length > 0) {
-            parts.push(`銆?{char.userName || '鐢ㄦ埛'}鐨勬渶鏂版湅鍙嬪湀銆慭n${userLatests.map(formatMoment).join('\n---\n')}`)
+            parts.push(`【${char.userName || '用户'}的最新朋友圈】\n${userLatests.map(formatMoment).join('\n---\n')}`)
         }
         momentsContext = parts.join('\n\n')
     }
@@ -238,36 +238,36 @@ export function generateContextPreview(chatId, char) {
     const diffMinutes = Math.floor((now - lastAiTime) / 1000 / 60)
 
     // Current Virtual Time (Real-time calculation for preview)
-    const weekDays = ['鏃?, '涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?]
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
     const d = new Date()
-    const currentVirtualTime = `${d.getFullYear()}骞?{d.getMonth() + 1}鏈?{d.getDate()}鏃?${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')} 鏄熸湡${weekDays[d.getDay()]}`
+    const currentVirtualTime = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')} 星期${weekDays[d.getDay()]}`
 
     const historyText = recentMsgs.map((m, index) => {
         let content = m.content
 
         // Parse Special Types for AI Context
-        if (m.type === 'favorite_card' || (content && content.includes('"source":"閫氳瘽璁板綍"'))) {
+        if (m.type === 'favorite_card' || (content && content.includes('"source":"通话记录"'))) {
             try {
                 const data = JSON.parse(content);
-                content = `[绯荤粺娑堟伅] ${data.title || '閫氳瘽'} 宸茬粨鏉熴€傛椂闀匡細${data.preview || ''}`;
-            } catch (e) { content = '[閫氳瘽璁板綍]'; }
+                content = `[系统消息] ${data.title || '通话'} 已结束。时长：${data.preview || ''}`;
+            } catch (e) { content = '[通话记录]'; }
         } else if (m.type === 'voice') {
             // Ensure voice content is text (transcript)
-            content = `[璇煶娑堟伅] ${content}`;
+            content = `[语音消息] ${content}`;
         }
 
         // Inject hint if it's the last message and delay > 1min
         if (index === recentMsgs.length - 1 && m.role === 'user' && diffMinutes >= 1) {
             const hours = Math.floor(diffMinutes / 60);
             const mins = diffMinutes % 60;
-            const timeStr = hours > 0 ? `${hours}灏忔椂${mins}鍒嗛挓` : `${mins}鍒嗛挓`;
-            content += ` \n\n銆愮郴缁熸彁绀猴細褰撳墠鏃堕棿涓?${currentVirtualTime}锛岃窛绂诲弻鏂逛笂涓€娆′簰鍔ㄦ椂闂翠负 ${timeStr}銆傝鏍规嵁鏃堕暱鍜屽綋鍓嶆椂闂存锛屽湪鍥炲涓〃鐜板嚭鍚堢悊鐨勫弽搴斻€傘€慲
+            const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
+            content += ` \n\n【系统提示：当前时间为${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。】`
         }
         return `${m.role === 'user' ? (char.userName || 'User') : char.name}: ${content}`
     }).join('\n')
 
     // 5. Summary
-    const summaryText = char.summary || '锛堟殏鏃犺嚜鍔ㄦ€荤粨锛?
+    const summaryText = char.summary || '（暂无自动总结）'
 
     // Update system prompt with fresh virtual time for accurate preview
     const charWithTime = { ...char, virtualTime: currentVirtualTime }
@@ -276,7 +276,7 @@ export function generateContextPreview(chatId, char) {
     return {
         system: systemPrompt,
         persona: personaContext,
-        worldBook: worldInfoText || '锛堟湭瑙﹀彂鍏抽敭璇嶏級',
+        worldBook: worldInfoText || '（未触发关键词）',
         moments: momentsContext,
         history: historyText,
         summary: summaryText
@@ -288,7 +288,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     const settingsStore = useSettingsStore()
     const stickerStore = useStickerStore()
 
-    // 鑾峰彇鎵€鏈夊彲鐢ㄨ〃鎯呭寘 (鍏ㄥ眬 + 褰撳墠瑙掕壊)
+    // 获取所有可用表情包 (全局 + 当前角色)
     const globalStickers = stickerStore.getStickers('global')
     // Attempt to get ID from char object (Chat object)
     const charId = char.id || char.uuid
@@ -314,19 +314,19 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     if (!config) {
-        return { error: '鏈壘鍒版湁鏁堢殑 API 閰嶇疆', internalError: 'Config is null', request: {} }
+        return { error: '未找到有效的 API 配置', internalError: 'Config is null', request: {} }
     }
 
     if (!apiKey) {
-        return { error: '璇峰厛鍦ㄨ缃腑閰嶇疆 API Key', request: {} }
+        return { error: '请先在设置中配置 API Key', request: {} }
     }
 
     // Use user info passed in 'char' object (per-chat settings) or global user profile
     const realUserProfile = settingsStore.personalization?.userProfile || {};
     const userProfile = {
-        name: char.userName || realUserProfile.name || '鐢ㄦ埛',
+        name: char.userName || realUserProfile.name || '用户',
         persona: char.userPersona || '',
-        gender: char.userGender || realUserProfile.gender || '鏈煡',
+        gender: char.userGender || realUserProfile.gender || '未知',
         signature: realUserProfile.signature || '',
         avatarUrl: char.userAvatar || char.userAvatarUrl || realUserProfile.avatar || ''
     }
@@ -360,7 +360,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             boundEntries.forEach(entry => {
                 if (!entry) return
                 if (!entry.keys || (Array.isArray(entry.keys) && entry.keys.length === 0)) {
-                    activeEntries.push(`[甯搁┗] ${entry.name || '鏈懡鍚?}: ${entry.content || ''} `)
+                    activeEntries.push(`[常驻] ${entry.name || '未命名'}: ${entry.content || ''} `)
                     return
                 }
                 const isHit = Array.isArray(entry.keys) && entry.keys.some(key => {
@@ -368,7 +368,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     return lowerContext.includes(String(key).toLowerCase())
                 })
                 if (isHit) {
-                    activeEntries.push(`[瑙﹀彂] ${entry.name || '鏈懡鍚?}: ${entry.content || ''} `)
+                    activeEntries.push(`[触发] ${entry.name || '未命名'}: ${entry.content || ''} `)
                 }
             })
 
@@ -380,7 +380,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
     }
 
-    // 鏋勫缓 System Message
+    // 构建 System Message
     // Memory Logic
     let memoryText = ''
     if (char && char.memory && Array.isArray(char.memory) && char.memory.length > 0) {
@@ -392,8 +392,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }).join('\n')
     }
 
-    // 鏋勫缓 System Message
-    // 濡傛灉浼犲叆鐨勬秷鎭腑宸茬粡鍖呭惈浜?System Prompt (渚嬪鏈嬪弸鍦堢敓鎴?锛屽垯璺宠繃榛樿妯℃澘
+    // 构建 System Message
+    // 如果传入的消息中已经包含了System Prompt (例如朋友圈生成)，则跳过默认模板
     let systemMsg = null
     const hasCustomSystem = messages && messages.length > 0 && messages[0].role === 'system'
 
@@ -407,7 +407,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Battery Context
         const batteryInfo = batteryMonitor.getBatteryInfo()
         const batteryContext = batteryInfo
-            ? `\n銆愭墜鏈虹數閲忋€?{batteryInfo.level}%${batteryInfo.charging ? ' (姝ｅ湪鍏呯數)' : ''}${batteryInfo.isLow ? ' (鐢甸噺鍛婃€?' : ''}`
+            ? `\n【手机电量】${batteryInfo.level}%${batteryInfo.charging ? ' (正在充电)' : ''}${batteryInfo.isLow ? ' (电量告急)' : ''}`
             : ''
 
         // Append battery info to location context (Environmental Context)
@@ -440,13 +440,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     // Process messages for Vision API (Multimodal)
-    // Convert [鍥剧墖:URL] or [琛ㄦ儏鍖?鍚嶇О] to { type: "image_url", image_url: { url: "..." } }
+    // Convert [图片:URL] or [表情包:名称] to { type: "image_url", image_url: { url: "..." } }
     // OPTIMIZATION: Only send the LAST 5 images to the AI to prevent massive payloads.
 
     // 1. First, count total images to determine the cutoff index
     let totalImagesCount = 0
     const visionLimit = 2 // Updated from 5 to 2 to minimize context length
-    const imageRegex = /\[(?:鍥剧墖|IMAGE)[:锛歖((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:琛ㄦ儏鍖厊STICKER)[:锛歖([^\]]+)\]/gi
+    const imageRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
 
     messages.forEach(msg => {
         if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) return
@@ -494,9 +494,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     const imageId = msg.id || 'curr';
                     const refText = ` [Image Reference ID: ${imageId}]`;
 
-                    let roleText = msg.role === 'user' ? '锛堢敤鎴峰彂閫佷簡涓€寮犲浘鐗囷級' : '锛堟垜鍙戦€佷簡涓€寮犲浘鐗囷級'
-                    if (msg.type === 'moment_card') roleText = '锛堢敤鎴峰垎浜簡涓€鏉℃湅鍙嬪湀鍔ㄦ€侊級'
-                    else if (msg.type === 'favorite_card') roleText = '锛堢敤鎴峰垎浜簡涓€涓敹钘忕綉椤?鍐呭锛?
+                    let roleText = msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）'
+                    if (msg.type === 'moment_card') roleText = '（用户分享了一条朋友圈动态）'
+                    else if (msg.type === 'favorite_card') roleText = '（用户分享了一个收藏网页/内容）'
 
                     // Resolve to B64 if remote
                     const imgUrl = (msg.image.startsWith('http')) ? (await resolveToBase64(msg.image) || msg.image) : msg.image;
@@ -512,7 +512,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 } else {
                     formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
-                        content: `${content} [鍥剧墖: (鐢变簬涓婁笅鏂囪繃闀匡紝鏃у浘鐗囪瑙変俊鎭凡蹇界暐)]`
+                        content: `${content} [图片: (由于上下文过长，旧图片视觉信息已忽略)]`
                     })
                     continue
                 }
@@ -530,7 +530,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
-                            { type: 'text', text: (msg.role === 'user' ? '锛堢敤鎴峰彂閫佷簡涓€寮犲浘鐗囷級' : '锛堟垜鍙戦€佷簡涓€寮犲浘鐗囷級') + refText },
+                            { type: 'text', text: (msg.role === 'user' ? '（用户发送了一张图片）' : '（我发送了一张图片）') + refText },
                             { type: 'image_url', image_url: { url: content } }
                         ]
                     })
@@ -539,7 +539,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     // Placeholder for older images
                     formattedMessages.push({
                         role: msg.role,
-                        content: `[鍥剧墖: (鍘嗗彶鍥剧墖宸茬渷鐣ヤ互鑺傜渷娴侀噺)]`
+                        content: `[图片: (历史图片已省略以节省流量)]`
                     })
                     continue
                 }
@@ -560,7 +560,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
-                            { type: 'text', text: msg.role === 'user' ? `锛堢敤鎴峰彂閫佷簡琛ㄦ儏鍖? ${matchedSticker.name}锛塦 : `[琛ㄦ儏鍖?${matchedSticker.name}]` },
+                            { type: 'text', text: msg.role === 'user' ? `（用户发送了表情包 ${matchedSticker.name}）` : `[表情包${matchedSticker.name}]` },
                             { type: 'image_url', image_url: { url: imgUrl } }
                         ]
                     })
@@ -568,14 +568,14 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 } else {
                     formattedMessages.push({
                         role: msg.role,
-                        content: `[琛ㄦ儏鍖? ${matchedSticker.name}]` // Just keep text
+                        content: `[表情包: ${matchedSticker.name}]` // Just keep text
                     })
                     continue
                 }
             }
 
-            // 3. Handle potential [鍥剧墖:URL] and [琛ㄦ儏鍖?鍚嶇О] within text
-            const combinedRegex = /\[(?:鍥剧墖|IMAGE)[:锛歖((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:琛ㄦ儏鍖厊STICKER)[:锛歖([^\]]+)\]/gi
+            // 3. Handle potential [图片:URL] and [表情包:名称] within text
+            const combinedRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
             let lastIndex = 0
             let match
             combinedRegex.lastIndex = 0
@@ -598,7 +598,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                         const finalImgUrl = (match[1].startsWith('http')) ? (await resolveToBase64(match[1]) || match[1]) : match[1];
                         contentParts.push({ type: 'image_url', image_url: { url: finalImgUrl } })
                     } else {
-                        contentParts.push({ type: 'text', text: `[鍥剧墖: ${match[1].startsWith('data:') ? '(鍘嗗彶鍥剧墖)' : match[1]}]` })
+                        contentParts.push({ type: 'text', text: `[图片: ${match[1].startsWith('data:') ? '(历史图片)' : match[1]}]` })
                     }
                 } else if (match[2]) {
                     const stickerName = match[2].trim()
@@ -607,14 +607,14 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     if (sticker) {
                         if (isVisionEnabled) {
                             const finalStickerUrl = (sticker.url.startsWith('http')) ? (await resolveToBase64(sticker.url) || sticker.url) : sticker.url;
-                            contentParts.push({ type: 'text', text: `[琛ㄦ儏鍖?${stickerName}]` })
+                            contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                             contentParts.push({ type: 'image_url', image_url: { url: finalStickerUrl } })
                         } else {
-                            contentParts.push({ type: 'text', text: `[琛ㄦ儏鍖?${stickerName}]` })
+                            contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                         }
                     } else {
                         currentImageIndex--
-                        contentParts.push({ type: 'text', text: `[琛ㄦ儏鍖?${stickerName}]` })
+                        contentParts.push({ type: 'text', text: `[表情包:${stickerName}]` })
                     }
                 }
                 lastIndex = combinedRegex.lastIndex
@@ -652,19 +652,19 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             getOrFetchAvatarDesc(charAvatar, charB64, char.name, provider, apiKey, apiUrl, model)
         ])
 
-        const contentParts = [{ type: 'text', text: '銆愯瑙夋儏鎶ワ細浜虹墿澶栬矊銆戜互涓嬫槸褰撳墠瀵硅瘽鍙備笌鑰呯殑澶栬矊鐗瑰緛鍙傝€冿細' }]
+        const contentParts = [{ type: 'text', text: '【视觉情报：人物外貌】以下是当前对话参与者的外貌特征参考：' }]
 
         if (userDesc) {
-            contentParts.push({ type: 'text', text: `鐢ㄦ埛 (${userProfile.name}) 鐨勫ご鍍忔弿杩帮細${userDesc}` })
+            contentParts.push({ type: 'text', text: `用户 (${userProfile.name}) 的头像描述：${userDesc}` })
         } else if (userB64) {
-            contentParts.push({ type: 'text', text: `杩欐槸鐢ㄦ埛 (${userProfile.name}) 鐨勫綋鍓嶅ご鍍忥細` })
+            contentParts.push({ type: 'text', text: `这是用户 (${userProfile.name}) 的当前头像：` })
             contentParts.push({ type: 'image_url', image_url: { url: userB64 } })
         }
 
         if (charDesc) {
-            contentParts.push({ type: 'text', text: `鎴?(${char.name}) 鐨勫綋鍓嶅ご鍍忔弿杩帮細${charDesc}` })
+            contentParts.push({ type: 'text', text: `我 (${char.name}) 的当前头像描述：${charDesc}` })
         } else if (charB64) {
-            contentParts.push({ type: 'text', text: `杩欐槸鎴?(${char.name}) 鐨勫綋鍓嶅ご鍍忥細` })
+            contentParts.push({ type: 'text', text: `这是我 (${char.name}) 的当前头像：` })
             contentParts.push({ type: 'image_url', image_url: { url: charB64 } })
         }
 
@@ -676,7 +676,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
     }
 
-    // 鏋勫缓瀹屾暣娑堟伅閾?    const fullMessages = [systemMsg, ...visualContextMessages, ...formattedMessages].filter(Boolean).filter(msg => {
+    // 构建完整消息链
+    const fullMessages = [systemMsg, ...visualContextMessages, ...formattedMessages].filter(Boolean).filter(msg => {
         // FILTER: Remove empty messages (Gemini throws 400 Invalid Argument for empty content)
         if (!msg.content) return false
         if (typeof msg.content === 'string') return msg.content.trim().length > 0
@@ -750,7 +751,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                             }
                         }
                         // Fallback for non-base64 or failed parse
-                        return { text: `[鍥剧墖: ${url}]` }
+                        return { text: `[图片: ${url}]` }
                     }
                     return { text: p.text || '' }
                 })
@@ -834,7 +835,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
 
         if (char.searchEnabled) {
-            const searchHint = "\n\n銆怱ystem Order: Web Search Enabled銆慪ou have access to real-time information via web search tools. When asked about current events, specific facts, or data after your cutoff, please prioritize using your search tools to provide accurate, up-to-date answers.";
+            const searchHint = "\n\n【System Order: Web Search Enabled】You have access to real-time information via web search tools. When asked about current events, specific facts, or data after your cutoff, please prioritize using your search tools to provide accurate, up-to-date answers.";
             if (finalMessages && finalMessages.length > 0) {
                 const lastMsg = finalMessages[0]; // Usually the system-user merged message
                 if (typeof lastMsg.content === 'string') lastMsg.content += searchHint;
@@ -913,7 +914,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     useLoggerStore().addLog('DEBUG', 'API Config', { endpoint, model, provider })
 
     // Log the Full Request Payload (for Context Tab)
-    useLoggerStore().addLog('AI', '缃戠粶璇锋眰 (Request)', {
+    useLoggerStore().addLog('AI', '网络请求 (Request)', {
         provider,
         endpoint,
         payload: reqBody,
@@ -956,20 +957,20 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
             // Helpful hints for 404
             if (response.status === 404) {
-                errorMsg += ' (鎻愮ず: 璇锋鏌?Base URL 鏄惁姝ｇ‘锛屽緢澶氭湇鍔″晢闇€瑕佷互 /v1 缁撳熬)'
+                errorMsg += ' (提示: 请检查 Base URL 是否正确，很多服务商需要以 /v1 结尾)'
             }
             // Hint for 503 Token/Service Error
             if (response.status === 503) {
                 if (errText.includes('Token') || errText.includes('refresh')) {
-                    errorMsg += ' (鎻愮ず: 浠ｇ悊鏈嶅姟鐨?Token 鍒锋柊澶辫触銆傝繖涓嶆槸浠ｇ爜闂锛岃€屾槸鎮ㄧ殑 API Key 鎴栦唬鐞嗘湇鍔″櫒鍐呴儴璐﹀彿杩囨湡锛岃灏濊瘯鏇存崲 Key 鎴栨ā鍨嬨€?'
+                    errorMsg += ' (提示: 代理服务的 Token 刷新失败。这不是代码问题，而是您的 API Key 或代理服务器内部账号过期，请尝试更换 Key 或模型。)'
                 } else {
-                    errorMsg += ' (鎻愮ず: 鏈嶅姟鏆傛椂涓嶅彲鐢紝璇风◢鍚庨噸璇曘€?'
+                    errorMsg += ' (提示: 服务暂时不可用，请稍后重试。)'
                 }
             }
             // Hint for Thinking Budget 400
             if (response.status === 400) {
                 if (errText.includes('thinking_budget')) {
-                    errorMsg += ' (鎻愮ず: 妫€娴嬪埌妯″瀷浠ｇ悊娉ㄥ叆浜嗕笉鏀寔鐨勫弬鏁?thinking_budget銆傝灏濊瘯鏇存崲涓嶅甫 "nothinking" 鍚庣紑鐨勬ā鍨嬪悕绉般€?'
+                    errorMsg += ' (提示: 检测到模型代理注入了不支持的参数 thinking_budget。请尝试更换不带 "nothinking" 后缀的模型名称。)'
                 } else {
                     // AUTO-RETRY LOGIC for General 400 (likely image corruption)
                     console.warn('[AI Service] 400 Error detected. Attempting text-only fallback...', errText)
@@ -991,7 +992,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     }
 
                     // 2. Add System Note
-                    useLoggerStore().addLog('AI', '鈿狅笍 400閿欒鑷姩閲嶈瘯 (杞函鏂囨湰妯″紡/SystemOrder)', { originalError: errText })
+                    useLoggerStore().addLog('AI', '⚠️ 400错误自动重试 (转纯文本模式/SystemOrder)', { originalError: errText })
 
                     // 3. Retry Request
                     const retryResp = await fetch(endpoint, {
@@ -1006,7 +1007,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                         // If retry also failed, capture that error
                         const retryErrText = await retryResp.text()
                         console.warn('[AI Service] Text-only retry failed:', retryErrText)
-                        errorMsg += `\n(鑷姩閲嶈瘯涔熷け璐ヤ簡: ${retryErrText})`
+                        errorMsg += `\n(自动重试也失败了: ${retryErrText})`
                         throw new Error(errorMsg)
                     }
                 }
@@ -1017,7 +1018,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // else data is already set above
 
         // Log Full Response (Success)
-        useLoggerStore().addLog('AI', 'AI鍝嶅簲 (Response)', data)
+        useLoggerStore().addLog('AI', 'AI响应 (Response)', data)
 
         // Robust Parsing: Support OpenAI 'choices' and Google 'candidates'
         let rawContent = ''
@@ -1034,12 +1035,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // Deep Debugging for Empty Content
         if (!rawContent) {
-            useLoggerStore().addLog('WARN', 'AI杩斿洖鍐呭涓虹┖', data)
+            useLoggerStore().addLog('WARN', 'AI返回内容为空', data)
             // Check for safety/finish reason
             const finishReason = data.choices?.[0]?.finish_reason || data.candidates?.[0]?.finishReason
             if (finishReason === 'safety' || finishReason === 'content_filter') {
                 return {
-                    error: '鍐呭琚獳I瀹夊叏绛栫暐鎷︽埅 (Safety Filter)',
+                    error: '内容被AI安全策略拦截 (Safety Filter)',
                     request: {
                         provider,
                         endpoint,
@@ -1049,7 +1050,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 }
             }
             return {
-                error: 'AI杩斿洖浜嗙┖鍐呭锛岃妫€鏌ユ棩蹇?(Raw Data)',
+                error: 'AI返回了空内容，请检查日志 (Raw Data)',
                 request: {
                     provider,
                     endpoint,
@@ -1065,18 +1066,22 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token Usage: ${total} `, data.usage)
         }
 
-        // 绠€鍗曠殑鍚庡鐞嗭細鍒嗙蹇冨０鍜屾鏂?        let content = rawContent
+        // 简单的后处理：分离心声和正文
+        let content = rawContent
         let innerVoice = null
 
-        // 鎻愬彇 [INNER_VOICE] - 澧炲己骞跺彂鎺樿兘鍔?        const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|绾㈠寘|杞处|琛ㄦ儏鍖厊鍥剧墖|SET_|NUDGE))|$)/i
+        // 提取 [INNER_VOICE] - 增强并发掘能力
+        const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i
         let ivMatch = content.match(ivPattern)
         let ivSegment = ivMatch ? ivMatch[1].trim() : null
 
-        // FALLBACK: 濡傛灉娌℃壘鍒版爣绛撅紝浣嗘枃鏈噷鏈夌湅璧锋潵鍍忓績澹扮殑 JSON 鍧?        if (!ivSegment && (content.includes('"status"') || content.includes('"蹇冨０"') || content.includes('"鎯呯华"'))) {
-            // 灏濊瘯瀵绘壘鏈€鍚庝竴涓寘鍚叧閿瘝鐨勫ぇ鎷彿鍧?            const blocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
+        // FALLBACK: 如果没找到标签，但文本里有看起来像心声的 JSON 块
+        if (!ivSegment && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"'))) {
+            // 尝试寻找最后一个包含关键词的大括号块
+            const blocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
             for (let i = blocks.length - 1; i >= 0; i--) {
                 const block = blocks[i][0]
-                if (block.includes('"status"') || block.includes('"蹇冨０"') || block.includes('"鐫€瑁?') || block.includes('"thought"')) {
+                if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"thought"')) {
                     ivSegment = block
                     console.log('[AI Service] Found untagged Inner Voice block via keyword scan')
                     break
@@ -1108,29 +1113,29 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
                 const extractField = (keys) => {
                     for (let k of keys) {
-                        const reg = new RegExp(`(?:"|\\\\")?${k}(?:"|\\\\")?\\s*[:锛歖\\s*(?:"|\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:"|\\\\")?(?:,|}|$)`, 'i');
+                        const reg = new RegExp(`(?:"|\\\\")?${k}(?:"|\\\\")?\\s*[:：]\\s*(?:"|\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:"|\\\\")?(?:,|}|$)`, 'i');
                         const m = ivSegment.match(reg);
                         if (m && m[1]) return m[1].replace(/\\"/g, '"').trim();
                     }
                     return null;
                 };
 
-                const status = extractField(['status', '鐘舵€?, '褰撳墠鐘舵€?, '蹇冩儏']);
-                const outfit = extractField(['鐫€瑁?, 'outfit', 'clothes', 'clothing', '绌跨潃']);
-                const scene = extractField(['鐜', 'scene', 'environment', '鍦烘櫙']);
-                const mind = extractField(['蹇冨０', 'thoughts', 'mind', 'inner_voice', 'thought', '鎯呯华', '鎯呮劅', '鎯虫硶']);
-                const action = extractField(['琛屼负', 'action', 'behavior', 'plan', '鍔ㄤ綔']);
+                const status = extractField(['status', '状态', '当前状态', '心情']);
+                const outfit = extractField(['着装', 'outfit', 'clothes', 'clothing', '穿着']);
+                const scene = extractField(['环境', 'scene', 'environment', '场景']);
+                const mind = extractField(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', '情绪', '情感', '想法']);
+                const action = extractField(['行为', 'action', 'behavior', 'plan', '动作']);
 
                 if (status || outfit || scene || mind || action) {
                     innerVoice = {
                         status: status || "",
-                        鐫€瑁? outfit || "",
-                        鐜: scene || "",
-                        蹇冨０: mind || "",
-                        琛屼负: action || ""
+                        着装: outfit || "",
+                        环境: scene || "",
+                        心声: mind || "",
+                        行为: action || ""
                     }
                 } else {
-                    useLoggerStore().addLog('WARN', '蹇冨０瑙ｆ瀽澶辫触', { error: e.message, segment: ivSegment.substring(0, 150) })
+                    useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivSegment.substring(0, 150) })
                 }
             }
         }
@@ -1142,7 +1147,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // 1. APPROVE & 2. REJECT - Pass through raw tags
         // No modification needed.
 
-        // 绉婚櫎 <reasoning_content> (濡傛灉鏈?
+        // 移除 <reasoning_content> (如果有)
         content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
 
         return {
@@ -1161,7 +1166,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         console.error('AI Generation Failed:', error)
         // [FIX] Ensure error is logged to System Logs UI
         try {
-            useLoggerStore().addLog('ERROR', `API璇锋眰澶辫触: ${error.message}`, { error: error.toString(), stack: error.stack })
+            useLoggerStore().addLog('ERROR', `API请求失败: ${error.message}`, { error: error.toString(), stack: error.stack })
         } catch (logErr) {
             console.error('Logger failed:', logErr)
         }
@@ -1170,13 +1175,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // If error is 400 and related to thinking_budget AND model has 'nothinking', try stripping it.
         if (error.message && error.message.includes('thinking_budget')) {
             // Aggressive Clean: Remove prefix (e.g. "channel/") AND "nothinking"
-            // Example: "娴佸紡鎶楁埅鏂?gemini-2.5-pro-nothinking" -> "gemini-2.5-pro"
+            // Example: "流式抗截流/gemini-2.5-pro-nothinking" -> "gemini-2.5-pro"
             const baseName = model.split('/').pop()
             const cleanModel = baseName.replace(/[-_.]?nothinking[-_.]?/i, '')
 
             // Check if we actually changed the model to avoid infinite retry of same thing
             if (cleanModel !== model) {
-                useLoggerStore().addLog('WARN', `妫€娴嬪埌浠ｇ悊娉ㄥ叆寮傚父锛屽皾璇曘€庢牴婧愬噣鍖栥€?鍘婚櫎鍓嶇紑+鍚庣紑: ${cleanModel}) 骞堕噸缃甌oken闄愬埗...`, { from: model, to: cleanModel })
+                useLoggerStore().addLog('WARN', `检测到代理注入异常，尝试「根源净化」(去除前缀+后缀: ${cleanModel}) 并重置Token限制...`, { from: model, to: cleanModel })
 
                 // Deep clone messages or use fullMessages if available in scope?? 
                 // We need to re-call _generateReplyInternal but we need arguments.
@@ -1201,7 +1206,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     }
 
                     const retryData = await retryResponse.json()
-                    useLoggerStore().addLog('AI', '鑷姩閲嶈瘯鎴愬姛 (Retry Success)', retryData)
+                    useLoggerStore().addLog('AI', '自动重试成功 (Retry Success)', retryData)
 
                     // ... Duplicate parsing logic ...
                     // To avoid code duplication, we return a recursive call? 
@@ -1220,7 +1225,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     // Post-process
                     let content = rawRetry
                     let innerVoice = null
-                    const ivMatch = content.match(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|绾㈠寘|杞处|琛ㄦ儏鍖厊鍥剧墖|SET_|NUDGE))|$)/i)
+                    const ivMatch = content.match(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
                     if (ivMatch) {
                         try {
                             let segment = ivMatch[1].trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
@@ -1237,7 +1242,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     return { content, innerVoice, raw: rawRetry }
 
                 } catch (retryErr) {
-                    useLoggerStore().addLog('ERROR', '鑷姩閲嶈瘯澶辫触', retryErr.message)
+                    useLoggerStore().addLog('ERROR', '自动重试失败', retryErr.message)
                     // Fall through to return original error
                 }
             }
@@ -1265,10 +1270,10 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
         }
     }
 
-    if (!config || !apiKey || !model) return 'API鏈厤缃?(妫€鏌ey/妯″瀷/鍩虹URL)'
+    if (!config || !apiKey || !model) return 'API未配置(检查Key/模型/基础URL)'
 
     // System Prompt (The instruction to summarize)
-    const systemContent = customPrompt || '璇风畝瑕佹€荤粨涓婅堪瀵硅瘽鐨勪富瑕佸唴瀹瑰拰鍏抽敭淇℃伅锛屼綔涓洪暱鏈熻蹇嗗綊妗ｃ€傝淇濇寔瀹㈣锛屼笉瑕佷娇鐢ㄧ涓€浜虹О銆?
+    const systemContent = customPrompt || '请简要总结上述对话的主要内容和关键信息，作为长期记忆归档。请保持客观，不要使用第一人称。'
 
     // --- PROVIDER SWITCHING LOGIC ---
     let endpoint = apiUrl || ''
@@ -1371,7 +1376,7 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     }
 
     // [MOVED & ENHANCED LOG]
-    useLoggerStore().addLog('AI', '鐢熸垚鎬荤粨 (Request)', {
+    useLoggerStore().addLog('AI', '生成总结 (Request)', {
         messagesCount: messages.length,
         provider,
         model,
@@ -1400,23 +1405,23 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
         }
 
         if (!content) {
-            useLoggerStore().addLog('WARN', '鎬荤粨缁撴灉涓虹┖ (Raw Response)', data)
+            useLoggerStore().addLog('WARN', '总结结果为空 (Raw Response)', data)
             throw new Error('Empty Content (Check Raw Response)')
         }
 
-        useLoggerStore().addLog('AI', '鎬荤粨缁撴灉 (Response)', { content })
+        useLoggerStore().addLog('AI', '总结结果 (Response)', { content })
         return content
 
     } catch (e) {
         console.error('Summary API Error:', e)
-        useLoggerStore().addLog('ERROR', '鎬荤粨澶辫触', e.message)
-        return `鎬荤粨鐢熸垚澶辫触: ${e.message}`
+        useLoggerStore().addLog('ERROR', '总结失败', e.message)
+        return `总结生成失败: ${e.message}`
     }
 }
 
 /**
- * 灏嗕腑鏂囨彁绀鸿瘝缈昏瘧/鎵╁厖涓鸿嫳鏂囩敓鍥炬彁绀鸿瘝
- * @param {String} text 涓枃鎻忚堪
+ * 将中文提示词翻译/扩充为英文生图提示词
+ * @param {String} text 中文描述
  */
 export async function translateToEnglish(text) {
     if (!text || !/[^\x00-\xff]/.test(text)) return text // No chinese, return as is
@@ -1444,29 +1449,30 @@ Strictly output ONLY the English prompt text without any explanations.`
 // --- Moments Feature AI Logic ---
 
 /**
- * 鐢熸垚鏈嬪弸鍦堝姩鎬佸唴瀹? * @param {Object} options { name, persona, worldContext, customPrompt }
+ * 生成朋友圈动态内容
+ * @param {Object} options { name, persona, worldContext, customPrompt }
  */
 export async function generateMomentContent(options) {
     const { name, persona, worldContext, recentChats, customPrompt } = options
 
-    const systemPrompt = `浣犵幇鍦ㄦ槸銆?{name}銆戙€?浣犵殑璁惧畾锛?{persona}銆?
-${recentChats ? `銆愭渶杩戣亰澶╄褰?(浣滀负鑳屾櫙鍙傝€冿紝涓嶈鐩存帴澶嶈)銆慭n${recentChats}\n` : ''}
+    const systemPrompt = `你现在是【${name}】。你的设定：${persona}。
+${recentChats ? `【最近聊天记录(作为背景参考，不要直接复读)】\n${recentChats}\n` : ''}
 
-銆愪换鍔°€?1. 鍙戝竷涓€鏉℃湅鍙嬪湀鍔ㄦ€併€傚彲浠ュ寘鍚績鎯呮劅鎮熴€佺敓娲昏叮浜嬨€佹垨鏄兂瀵规煇浜猴紙涔斾箶锛夎鐨勮瘽銆?2. 涓鸿繖鏉″姩鎬佺敓鎴?3-5 鏉＄ぞ浜や簰鍔紙鐐硅禐鎴栬瘎璁猴級锛屼簰鍔ㄨ€呭簲璇ユ槸閫氳褰曚腑鐨勫ソ鍙嬫垨铏氭瀯鍚堢悊鐨凬PC銆?
-鍥炲蹇呴』鏄竴涓?JSON 瀵硅薄锛屾牸寮忓涓嬶細
+【任务】1. 发布一条朋友圈动态。可以包含心情感悟、生活趣事、或是想对某人（乔乔）说的话。2. 为这条动态生成 3-5 条社交互动（点赞或评论），互动者应该是通讯录中的好友或虚构合理的NPC。
+回复必须是一个 JSON 对象，格式如下：
 {
-  "content": "鏈嬪弸鍦堟枃瀛楀唴瀹?,
-  "location": "鍦扮悊浣嶇疆锛堝彲閫夛紝濡傦細鈥樹笂娴仿锋煇鏌愬挅鍟″巺鈥欙級",
-  "imagePrompt": "鑻辨枃鐢熷浘鎻愮ず璇嶏紙鍙€夛級",
-  "imageDescription": "鍥剧墖鎻忚堪锛堝彲閫夛級",
+  "content": "朋友圈文字内容",
+  "location": "地理位置（可选，如：'上海·某某咖啡馆'）",
+  "imagePrompt": "英文生图提示词（可选）",
+  "imageDescription": "图片描述（可选）",
   "interactions": [
-    { "type": "like", "authorName": "鍚嶅瓧", "isVirtual": true/false },
-    { "type": "comment", "authorName": "鍚嶅瓧", "content": "鍐呭", "replyTo": "璋?, "isVirtual": true/false }
+    { "type": "like", "authorName": "名字", "isVirtual": true/false },
+    { "type": "comment", "authorName": "名字", "content": "内容", "replyTo": "谁", "isVirtual": true/false }
   ]
 }
 
-銆愪弗鏍肩害鏉熴€?1. 璇█鑷劧銆佺敓娲诲寲锛屼笉瑕佸儚 AI銆?2. 濡傛灉鏈夊浘鐗囨彁绀鸿瘝锛?*蹇呴』**鏄叧浜庡満鏅€佺墿鍝佹垨瑙掕壊鐨勬弿杩般€?3. 濡傛灉娑夊強鍒颁汉鐗╁舰璞★紝绯荤粺灏嗗己鍒朵娇鐢ㄢ€滄棩婕?灏戝コ婕€濋鏍笺€?4. 銆愪弗绂併€戜笉瑕佺敓鎴愪换浣曚唬琛ㄧ敤鎴风殑浜掑姩鍐呭锛堢偣璧炴垨璇勮锛夈€?${customPrompt ? `\n銆愮敤鎴疯嚜瀹氫箟鎸囦护銆慭n${customPrompt}` : ''}
-${worldContext ? `\n銆愯儗鏅弬鑰冦€慭n${worldContext}` : ''}`
+【严格约束】1. 语言自然、生活化，不要像 AI。2. 如果有图片提示词，**必须**是关于场景、物品或角色的描述。3. 如果涉及到人物形象，系统将强制使用“日系/少女漫”风格。4. 【严禁】不要生成任何代表用户的互动内容（点赞或评论）。${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
+${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -1503,7 +1509,7 @@ ${worldContext ? `\n銆愯儗鏅弬鑰冦€慭n${worldContext}` : ''}`
 }
 
 /**
- * 鎵归噺鐢熸垚鏈嬪弸鍦堝姩鎬?浜掑姩鍐呭锛堜竴娆℃€х敓鎴愶級
+ * 批量生成朋友圈动态+互动内容（一次性生成）
  * @param {Object} options { characters: [{id, name, persona}], worldContext, customPrompt, count }
  */
 export async function generateBatchMomentsWithInteractions(options) {
@@ -1512,52 +1518,61 @@ export async function generateBatchMomentsWithInteractions(options) {
     // Build character list for prompt with detailed persona and chat history
     const charList = characters.map((c, idx) => {
         const bio = localStorage.getItem(`char_bio_${c.id}`) || ''
-        const bioText = bio ? `\n   涓€х鍚嶏細${bio}` : ''
-        const chatText = c.recentChats ? `\n   鏈€杩戣亰澶╄褰?鍙傝€?: ${c.recentChats.substring(0, 800).replace(/\n/g, ' ')}...` : ''
-        return `${idx + 1}. 銆?{c.name}銆?ID: ${c.id})\n   浜鸿锛?{c.persona.substring(0, 1000)}${bioText}${chatText}`
+        const bioText = bio ? `\n   个性签名：${bio}` : ''
+        const chatText = c.recentChats ? `\n   最近聊天记录(参考): ${c.recentChats.substring(0, 800).replace(/\n/g, ' ')}...` : ''
+        return `${idx + 1}. 【${c.name}】(ID: ${c.id})\n   人设：${c.persona.substring(0, 1000)}${bioText}${chatText}`
     }).join('\n\n')
 
     const now = new Date()
-    const weekDays = ['鏃?, '涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?]
-    const currentVirtualTime = `${now.getFullYear()}骞?{now.getMonth() + 1}鏈?{now.getDate()}鏃?${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 鏄熸湡${weekDays[now.getDay()]}`
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+    const currentVirtualTime = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 星期${weekDays[now.getDay()]}`
 
     // Include user's bio and pinned moments if available
-    let userContextText = userProfile?.name ? `\n\n銆愬綋鍓嶇敤鎴?(${userProfile.name}) 璧勬枡銆慲 : ""
-    if (userProfile?.signature) userContextText += `\n涓€х鍚嶏細${userProfile.signature}`
+    let userContextText = userProfile?.name ? `\n\n【当前用户(${userProfile.name}) 资料】` : ""
+    if (userProfile?.signature) userContextText += `\n个性签名：${userProfile.signature}`
     if (userProfile?.pinnedMoments?.length > 0) {
-        userContextText += `\n缃《鍔ㄦ€侊細\n` + userProfile.pinnedMoments.map((m, i) => `${i + 1}. ${m.content}`).join('\n')
+        userContextText += `\n置顶动态：\n` + userProfile.pinnedMoments.map((m, i) => `${i + 1}. ${m.content}`).join('\n')
     }
-    if (userProfile?.persona) userContextText += `\n鑳屾櫙璁惧畾锛?{userProfile.persona}`
+    if (userProfile?.persona) userContextText += `\n背景设定：${userProfile.persona}`
 
-    const systemPrompt = `浣犳槸涓€涓ぞ浜ょ綉缁滄ā鎷熷櫒銆傚綋鍓嶇郴缁熸椂闂存槸锛?{currentVirtualTime}銆備互涓嬫槸鍙緵閫夋嫨鐨勫彂甯栬鑹插強浜掑姩濂藉弸鍒楄〃锛?${charList}
+    const systemPrompt = `你是一个社交网络模拟器。当前系统时间是：${currentVirtualTime}。以下是可供选择的发帖角色及互动好友列表：${charList}
 ${userContextText}
     
-銆愪换鍔°€?璇蜂粠涓婅堪鍒楄〃涓寫閫夎鑹诧紝鏍规嵁褰撳墠鏃堕棿锛?{currentVirtualTime}锛夛紝妯℃嫙浠栦滑鍦ㄦ湅鍙嬪湀鐨勫姩鎬併€傜敓鎴?${count} 鏉℃湅鍙嬪湀鍔ㄦ€併€傛瘡鏉″姩鎬侀渶瑕佸寘鍚細
-1. 鍙戝竷鑰咃紙蹇呴』浠庝笂杩?ID 鍒楄〃涓€夋嫨姝ｇ‘鐨?authorId锛?2. 鏈嬪弸鍦堝唴瀹?3. 閰嶅浘锛堝彲閫夛級
-4. 绀句氦浜掑姩锛堢偣璧炪€佽瘎璁恒€佸洖澶嶏級
+【任务】请从上述列表中挑选角色，根据当前时间（${currentVirtualTime}），模拟他们在朋友圈的动态。生成 ${count} 条朋友圈动态。每条动态需要包含：
+1. 发布者（必须从上述ID列表中选择正确的 authorId）
+2. 朋友圈内容
+3. 配图（可选）
+4. 社交互动（点赞、评论、回复）
 
-銆愯姹傘€?1. 浣犻渶瑕佷粠杩欎簺瑙掕壊涓寫閫?${count} 涓紝鍒嗗埆鐢熸垚涓€鏉℃湅鍙嬪湀锛屽苟涓烘瘡鏉℃湅鍙嬪湀閰嶅 3-6 涓ぞ浜や簰鍔紙鐐硅禐 30% / 璇勮 70%锛夈€?2. 鐐硅禐鍜岃瘎璁鸿€呭繀椤绘槸瑙掕壊鍒楄〃涓殑浜烘垨铏氭嫙NPC銆傜粷涓嶅厑璁稿嚭鐜?"User"銆?鐢ㄦ埛" 鎴?"鎴? 浣滀负浜掑姩鑰呫€?3. 濡傛灉璇勮鏄洖澶嶇粰褰撳墠鐢ㄦ埛鐨勶紝蹇呴』绉板懠鐢ㄦ埛涓?"${userProfile?.name || '涔斾箶'}"锛岃€屼笉鏄?"浣? 鎴?"涓讳汉"锛堥櫎闈炶鑹蹭汉璁惧姝わ級銆?4. 銆愪簰鍔ㄨ€呭鏍峰寲锛氭牳蹇冭姹傘€?   - 涓ョ鍚屼竴涓鑹诧紙濡傛灄娣憋級鍑虹幇鍦ㄤ竴鏉″姩鎬佺殑澶氭浜掑姩涓紙闄ら潪鏄洖澶嶏級銆?   - 姣忔潯鍔ㄦ€佺殑 3-6 鏉′簰鍔ㄤ腑锛?*蹇呴』鍖呭惈鑷冲皯 2 涓?* 铏氭瀯鐨?NPC锛堣櫄鎷熺綉鍙嬨€佽矾浜恒€侀偦灞呯瓑锛夛紝浠ヨ惀閫犵湡瀹炵殑绀句氦姘涘洿銆?   - 铏氭瀯 NPC 鐨勫悕瀛楄鎺ュ湴姘旓紙濡傦細闅斿鐜嬪ぇ濡堛€佷竴鍙皬閫忔槑銆佽€冪爺鍔犳补銆佸揩涔愭槦鐞冿級銆?   - 涓ョ鍒嗛厤涓嶇鍚堣鑹蹭汉璁剧殑鍙拌瘝銆傚鏋滀綘鍙湁 1-2 涓€氳褰曞ソ鍙嬶紝璇峰姟蹇呭ぇ閲忓垱閫犺櫄鎷烴PC鏉ュ垎閰嶈瘎璁轰换鍔°€?
-銆愯緭鍑烘牸寮忋€戝繀椤绘槸涓€涓?JSON 鏁扮粍锛?\`\`\`json
+【要求】1. 你需要从这些角色中挑选 ${count} 个，分别生成一条朋友圈，并为每条朋友圈配备 3-6 个社交互动（点赞 30% / 评论 70%）。
+2. 点赞和评论者必须是角色列表中的人或虚拟NPC。绝不允许出现"User"、"用户" 或"我" 作为互动者。
+3. 如果评论是回复给当前用户的，必须称呼用户为"${userProfile?.name || '乔乔'}"，而不是"你" 或"主人"（除非角色人设如此）。
+4. 【互动者多样化：核心要求】
+   - 严禁同一个角色（如林深）出现在一条动态的多次互动中（除非是回复）。
+   - 每条动态的 3-6 条互动中，**必须包含至少 2 个** 虚构的NPC（虚拟网友、路人、邻居等），以营造真实的社交氛围。
+   - 虚构 NPC 的名字要接地气（如：隔壁王大爷、一只小透明、考研加油、快乐星球）。
+   - 严禁分配不符合角色人设的台词。如果你只有 1-2 个通讯录好友，请务必大量创造虚拟NPC来分配评论任务。
+5. 【输出格式】必须是一个 JSON 数组，\`\`\`json
 [
   {
-    "authorId": "瑙掕壊ID锛堜粠杈撳叆涓€夋嫨锛?,
-    "content": "鏈嬪弸鍦堟枃瀛楀唴瀹广€備綘鍙互閫氳繃 @鍚嶅瓧 鎻愰啋鏌愪汉锛屽苟鍦ㄤ笅鏂?mentions 鏁扮粍涓櫥璁般€?,
-    "mentions": [ { "id": "user", "name": "${userProfile.name}" }, { "id": null, "name": "鏌愪汉" } ],
-    "location": "鍦扮悊浣嶇疆锛堝彲閫夛級",
-    "imagePrompt": "鑻辨枃鍥剧墖鐢熸垚鎻愮ず璇嶏紙鍙€夛紝濡傛灉闇€瑕侀厤鍥撅級",
-    "imageDescription": "鍥剧墖鎻忚堪锛堝彲閫夛級",
-    "html": "HTML鏍煎紡鍐呭锛堝彲閫夛紝鐢ㄤ簬鐗规畩鎺掔増濡傝瘲姝岋級",
+    "authorId": "角色ID（从输入中选择）",
+    "content": "朋友圈文字内容。你可以通过 @名字 提醒某人，并在下方 mentions 数组中登记。",
+    "mentions": [ { "id": "user", "name": "${userProfile.name}" }, { "id": null, "name": "某人" } ],
+    "location": "地理位置（可选）",
+    "imagePrompt": "英文图片生成提示词（可选，如果需要配图）",
+    "imageDescription": "图片描述（可选）",
+    "html": "HTML格式内容（可选，用于特殊排版如诗歌）",
     "interactions": [
       {
         "type": "like",
-        "authorName": "鐐硅禐鑰呯殑鍚嶅瓧锛堜粠瑙掕壊鍒楄〃鎴栬櫄鎷烴PC涓€夋嫨锛?,
+        "authorName": "点赞者的名字（从角色列表或虚拟NPC中选择）",
         "isVirtual": true/false
       },
       {
         "type": "comment",
-        "authorName": "璇勮鑰呯殑鍚嶅瓧",
-        "content": "璇勮鍐呭銆備篃鍙互鐢?@鍚嶅瓧銆?,
-        "replyTo": "琚洖澶嶈€呯殑鍚嶅瓧锛堝鏋滄槸鍥炲鏌愯瘎璁猴紝鍙€夛級",
+        "authorName": "评论者的名字",
+        "content": "评论内容。也可以用 @名字。",
+        "replyTo": "被回复者的名字（如果是回复某评论，可选）",
         "mentions": [],
         "isVirtual": true/false
       }
@@ -1566,15 +1581,16 @@ ${userContextText}
 ]
 \`\`\`
 
-銆愬唴瀹硅姹傘€?1. 20% 绾枃瀛楁湅鍙嬪湀锛堟棤閰嶅浘锛?2. 10% 鐗规畩鎺掔増锛圚TML鏍煎紡锛屽璇楁瓕銆佸紩鐢級
-3. 70% 閰嶅浘鏈嬪弸鍦?4. 璇█鑷劧銆佺敓娲诲寲
-5. imagePrompt 濡傛灉鎻愪緵锛屽繀椤绘槸鑻辨枃
-6. 銆愪弗绂併€戠粷瀵逛笉瑕佺敓鎴愪换浣曚唬琛ㄧ敤鎴凤紙User/鎴戯級鐨勭偣璧炪€佽瘎璁烘垨鍥炲銆傜偣璧炲拰璇勮鑰呭繀椤绘槸瑙掕壊鍒楄〃涓殑浜烘垨铏氭嫙NPC銆?7. 銆愭牸寮忓己鍒躲€戜簰鍔ㄨ€呯殑 'authorName' 蹇呴』鏄甯哥殑涓枃鏄电О锛堝 "鏋楁繁"銆?闅斿鑰佺帇"锛夛紝**涓ョ**浣跨敤 'char_linshen'銆?user_123' 绛夋妧鏈疘D锛屼篃**涓ョ**浣跨敤绾暟瀛椼€?
-${customPrompt ? `\n銆愮敤鎴疯嚜瀹氫箟鎸囦护銆慭n${customPrompt}` : ''}
-${worldContext ? `\n銆愯儗鏅弬鑰冦€慭n${worldContext}` : ''}
+【内容要求】1. 20% 纯文字朋友圈（无配图）2. 10% 特殊排版（HTML格式，如诗歌、引用）
+3. 70% 配图朋友圈 4. 语言自然、生活化
+5. imagePrompt 如果提供，必须是英文
+6. 【严禁】绝对不要生成任何代表用户（User/我）的点赞、评论或回复。点赞和评论者必须是角色列表中的人或虚拟NPC。
+7. 【格式强制】互动者的 'authorName' 必须是正常的中文昵称（如 "林深"、"隔壁老王"），**严禁**使用 'char_linshen'、'user_123' 等技术ID，也**严禁**使用纯数字。
+${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
+${worldContext ? `\n【背景参考】\n${worldContext}` : ''}
 ${userContextText}
 
-璇风洿鎺ヨ繑鍥?JSON 鏁扮粍锛屼笉瑕佹湁鍏朵粬鏂囧瓧銆俙
+请直接返回 JSON 数组，不要有其他文字。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -1617,8 +1633,8 @@ ${userContextText}
 
             if (processed.interactions) {
                 processed.interactions.forEach(interaction => {
-                    const userName = userProfile?.name || '涔斾箶'
-                    if (interaction.replyTo === 'User' || interaction.replyTo === '鐢ㄦ埛' || interaction.replyTo === '鎴?) {
+                    const userName = userProfile?.name || '乔乔'
+                    if (interaction.replyTo === 'User' || interaction.replyTo === '用户' || interaction.replyTo === '我') {
                         interaction.replyTo = userName
                     }
                     if (interaction.content && interaction.content.includes('User')) {
@@ -1628,7 +1644,7 @@ ${userContextText}
                     // Fix: Sanitize numeric/ID-like authorNames from AI hallucination
                     if (interaction.authorName) {
                         if (/^\d+$/.test(interaction.authorName)) {
-                            interaction.authorName = '鐑績缇ゅ弸'
+                            interaction.authorName = '热心群友'
                         } else if (interaction.authorName.startsWith('char_') || interaction.authorName.startsWith('user_')) {
                             // Attempt to strip prefix if AI leaks variables like char_linshen
                             interaction.authorName = interaction.authorName.replace(/^(char|user)_/i, '')
@@ -1638,7 +1654,7 @@ ${userContextText}
                     // Fix: Sanitize numeric/ID-like replyTo
                     if (interaction.replyTo) {
                         if (/^\d+$/.test(interaction.replyTo)) {
-                            interaction.replyTo = '鏈嬪弸'
+                            interaction.replyTo = '朋友'
                         } else if (interaction.replyTo.startsWith('char_') || interaction.replyTo.startsWith('user_')) {
                             interaction.replyTo = interaction.replyTo.replace(/^(char|user)_/i, '')
                         }
@@ -1666,8 +1682,8 @@ ${userContextText}
 }
 
 /**
- * 缁熶竴鐢熷浘鎺ュ彛 (Supports Pollinations standard, SiliconFlow, and API Key)
- * @param {String} prompt 鎻愮ず璇? */
+ * 统一生图接口 (Supports Pollinations standard, SiliconFlow, and API Key)
+ * @param {String} prompt 提示词 */
 export async function generateImage(prompt) {
     const settingsStore = useSettingsStore()
     // In some contexts (like plain JS files), Pinia might return the raw ref object.
@@ -1698,7 +1714,7 @@ export async function generateImage(prompt) {
     console.log(`[AI Image] Final Config - Provider: ${provider}, Model: ${model}, Has Key: ${!!apiKey}`)
 
     // Log image generation request
-    useLoggerStore().addLog('AI', '鍥剧墖鐢熸垚璇锋眰', {
+    useLoggerStore().addLog('AI', '图片生成请求', {
         provider,
         model,
         hasApiKey: !!apiKey,
@@ -1754,7 +1770,7 @@ export async function generateImage(prompt) {
         // SECURITY / ARCHITECTURE CHECK:
         if (apiKey.startsWith('sk_')) {
             console.error('[AI Image] DETECTED SECRET KEY (sk_). These keys are meant for SERVERS only and will be BLOCKED by Pollinations anti-bot (Turnstile) in a browser.')
-            throw new Error('妫€娴嬪埌 Secret Key (sk_)銆傛绫诲瘑閽ヤ笉閫傜敤浜庢祻瑙堝櫒鐩存帴璋冪敤锛屼細琚畼鏂规嫤鎴€傝浣跨敤 pk_ 寮€澶寸殑 Publishable Key銆?)
+            throw new Error('检测到 Secret Key (sk_)。此类密钥不适用于浏览器直接调用，会被官方拦截。请使用 pk_ 开头的 Publishable Key。')
         }
 
         try {
@@ -1764,7 +1780,7 @@ export async function generateImage(prompt) {
             // SANITIZATION: Heavily sanitize the prompt for URL safety.
             // URL params are extremely fragile for prompt text.
             const safePrompt = enhancedPrompt
-                .replace(/[,锛?锛歕n\r]/g, ' ') // CRITICAL: Stop commas/colons breaking URL structure
+                .replace(/[,，：:]/g, ' ') // CRITICAL: Stop commas/colons breaking URL structure
                 .replace(/[#?%&]/g, '')        // Remove strict URL control chars
                 .replace(/\s+/g, ' ')          // Collapse spaces
                 .trim()
@@ -1785,13 +1801,13 @@ export async function generateImage(prompt) {
                 const errText = await response.text()
 
                 if (response.status === 401) {
-                    throw new Error('瀵嗛挜鏍￠獙澶辫触 (401)銆傝繖閫氬父鎰忓懗鐫€鎮ㄧ殑 pk_ 瀵嗛挜棰濆害宸茶€楀敖 (瀹樻柟鍏嶈垂鐗堜粎 1寮?灏忔椂) 鎴栫敱浜庢彁绀鸿瘝杩濊琚嫤鎴€?)
+                    throw new Error('密钥验证失败 (401)。这通常意味着您的 pk_ 密钥额度已耗尽 (官方免费版仅 1张/小时) 或由于提示词违规被拦截。')
                 }
 
                 if (response.status === 403 || errText.includes('Turnstile') || errText.includes('token')) {
-                    throw new Error('琚畼鏂逛汉鏈洪獙璇佹嫤鎴?(Turnstile 403)銆傚嵆浣垮甫浜?Key 涔熷彲鑳界敱浜?IP 琚鎺с€傚缓璁敼鐢?SiliconFlow銆?)
+                    throw new Error('被官方人机验证拦截 (Turnstile 403)。即使带了 Key 也可能由于 IP 被风控。建议改用 SiliconFlow。')
                 }
-                throw new Error(`API 鍝嶅簲寮傚父 ${response.status}: ${errText.substring(0, 100)}`)
+                throw new Error(`API 响应异常 ${response.status}: ${errText.substring(0, 100)}`)
             }
 
             const contentType = response.headers.get('content-type') || ''
@@ -1811,7 +1827,7 @@ export async function generateImage(prompt) {
                 const reader = new FileReader()
                 reader.onloadend = () => {
                     const base64 = reader.result
-                    useLoggerStore().addLog('AI', '鍥剧墖鐢熸垚鎴愬姛 (Pollinations)', {
+                    useLoggerStore().addLog('AI', '图片生成成功 (Pollinations)', {
                         size: base64.length,
                         provider: 'pollinations'
                     })
@@ -1824,10 +1840,10 @@ export async function generateImage(prompt) {
             })
         } catch (e) {
             console.error('[AI Image] Pollinations Final Failure:', e)
-            useLoggerStore().addLog('ERROR', '鍥剧墖鐢熸垚澶辫触 (Pollinations)', e.message)
+            useLoggerStore().addLog('ERROR', '图片生成失败 (Pollinations)', e.message)
             // CRITICAL: Stop falling back to anonymous image.pollinations.ai because it returns the "WE HAVE MOVED" placeholder.
             // We want the user to see the AUTH error so they can fix their key.
-            throw new Error(`缁樺埗澶辫触: ${e.message}`)
+            throw new Error(`绘制失败: ${e.message}`)
         }
     }
 
@@ -1857,14 +1873,14 @@ export async function generateImage(prompt) {
 
             const data = await response.json()
             const imageUrl = data.images?.[0]?.url || data.data?.[0]?.url || `https://via.placeholder.com/1024?text=GenerationFailed`
-            useLoggerStore().addLog('AI', `鍥剧墖鐢熸垚鎴愬姛 (${provider})`, {
+            useLoggerStore().addLog('AI', `图片生成成功 (${provider})`, {
                 provider,
                 hasUrl: !!imageUrl
             })
             return imageUrl
         } catch (e) {
             console.error('Drawing API failed:', e)
-            useLoggerStore().addLog('ERROR', `鍥剧墖鐢熸垚澶辫触 (${provider})`, e.message)
+            useLoggerStore().addLog('ERROR', `图片生成失败 (${provider})`, e.message)
             throw e
         }
     }
@@ -1874,46 +1890,73 @@ export async function generateImage(prompt) {
 }
 
 /**
- * 鐢熸垚鏈嬪弸鍦堝姩鎬佺殑鎵归噺浜掑姩锛?-5鏉＄偣璧?璇勮锛? * 鍖呭惈锛氬凡鏈夎鑹?+ 铏氭嫙NPC锛堜翰鎴氥€佸悓浜嬬瓑锛? * @param {Object} moment 鐩爣鍔ㄦ€? * @param {Array} charInfos 澶囬€変簰鍔ㄨ鑹插垪琛? * @param {Array} historicalMoments 鍘嗗彶鏈嬪弸鍦堝垪琛? * @param {Object} userProfile 鐢ㄦ埛涓汉璧勬枡
+ * 生成朋友圈动态的批量互动（3-5条点赞/评论）
+ * 包含：已有角色 + 虚拟NPC（亲戚、同事等）
+ * @param {Object} moment 目标动态
+ * @param {Array} charInfos 备选互动角色列表
+ * @param {Array} historicalMoments 历史朋友圈列表
+ * @param {Object} userProfile 用户个人资料
  */
 export async function generateBatchInteractions(moment, charInfos, historicalMoments = [], userProfile = {}) {
-    // 1. 鏋勫缓鎻愮ず璇?    const historyStr = historicalMoments.length > 0
-        ? "銆愭湅鍙嬪湀鐑偣鑳屾櫙锛堝弬鑰冿級銆慭n" + historicalMoments.map(m => `ID: ${m.id} | 浣滆€? ${m.authorName} | 鍐呭: ${m.content} | 浜掑姩: 鐐硅禐[${m.likes}], 璇勮[${m.comments}]`).join('\n')
+    // 1. 构建提示词
+    const historyStr = historicalMoments.length > 0
+        ? "【朋友圈热点背景（参考）】\n" + historicalMoments.map(m => `ID: ${m.id} | 作者: ${m.authorName} | 内容: ${m.content} | 互动: 点赞[${m.likes}], 评论[${m.comments}]`).join('\n')
         : ""
 
-    // 绠€鍖栫幇鏈夎鑹蹭俊鎭紝鍑忓皯Token
+    // 简化现有角色信息，减少Token
     const friendsList = charInfos.map((c, index) => {
-        const chatSnippet = c.recentChats ? ` | 鏈€杩戣亰澶? ${c.recentChats.substring(0, 300).replace(/\n/g, ' ')}` : ''
-        return `${index + 1}. ${c.name}, 浜鸿: ${c.persona.substring(0, 100)}...${chatSnippet}`
+        const chatSnippet = c.recentChats ? ` | 最近聊天: ${c.recentChats.substring(0, 300).replace(/\n/g, ' ')}` : ''
+        return `${index + 1}. ${c.name}, 人设: ${c.persona.substring(0, 100)}...${chatSnippet}`
     }).join('\n')
 
     let userInformation = ""
     if (userProfile.name) {
-        userInformation = `\n銆愬綋鍓嶇敤鎴凤紙浣犱簰鍔ㄧ殑瀵硅薄锛夎祫鏂欍€慭n鍚嶅瓧: ${userProfile.name}\n`
-        if (userProfile.signature) userInformation += `涓€х鍚? ${userProfile.signature}\n`
+        userInformation = `\n【当前用户（你互动的对象）资料】\n名字: ${userProfile.name}\n`
+        if (userProfile.signature) userInformation += `个性签名: ${userProfile.signature}\n`
         if (userProfile.pinnedMoments?.length > 0) {
-            userInformation += `缃《鍔ㄦ€? \n` + userProfile.pinnedMoments.map((m, i) => `- ${m.content}`).join('\n') + "\n"
+            userInformation += `置顶动态: \n` + userProfile.pinnedMoments.map((m, i) => `- ${m.content}`).join('\n') + "\n"
         }
-        userInformation += `鑳屾櫙璁惧畾: ${userProfile.persona || '涓€浣嶆櫘閫氱敤鎴?}\n`
+        userInformation += `背景设定: ${userProfile.persona || '一位普通用户'}\n`
     }
 
-    const systemPrompt = `浣犳槸鏈嬪弸鍦堢敓鎴愬姪鎵嬨€備互涓嬫槸閫氳褰曠幇鏈夌殑瑙掕壊锛?${friendsList}
+    const systemPrompt = `你是朋友圈生成助手。以下是通讯录现有的角色：${friendsList}
 ${userInformation}
 
-銆愪换鍔°€?浣犵幇鍦ㄦ槸鈥滄湅鍙嬪湀鐢熷懡鍔涙ā鎷熷櫒鈥濄€備綘鐨勭洰鏍囨槸涓轰笅闈㈢殑鍔ㄦ€佹ā鎷熷嚭鐪熷疄鐨勭ぞ浜や簰鍔紙鍖呭惈鐐硅禐銆佽瘎璁哄拰澶氱骇鍥炲锛夈€?鍔ㄦ€佷綔鑰咃細${moment.authorName}
-鍔ㄦ€佸唴瀹癸細${moment.content}
-${moment.location ? `鍙戝竷浣嶇疆锛?{moment.location}` : ''}
-${moment.visualContext ? `鍥剧墖鍐呭锛?{moment.visualContext}` : ''}
-${moment.existingComments && moment.existingComments.length > 0 ? `\n銆愬凡鏈夎瘎璁猴細浣犲彲浠ラ拡瀵硅繖浜涜繘琛屽洖澶嶃€慭n${moment.existingComments.map((c, i) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
+【任务】你现在是“朋友圈生命力模拟器”。你的目标是为下面的动态模拟出真实的社交互动（包含点赞、评论和多级回复）。
+动态作者：${moment.authorName}
+动态内容：${moment.content}
+${moment.location ? `发布位置：${moment.location}` : ''}
+${moment.visualContext ? `图片内容：${moment.visualContext}` : ''}
+${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有评论：你可以针对这些进行回复】\n${moment.existingComments.map((c, i) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
 
 ${historyStr}
 
-銆愪簰鍔ㄨ鑹叉潵婧愩€?1. **宸叉湁濂藉弸**锛堜紭鍏堬級锛氫粠涓婇潰鐨勯€氳褰曞垪琛ㄤ腑閫夋嫨銆?2. **铏氭嫙NPC**锛堣ˉ鍏咃級锛氭牴鎹綔鑰呭彲鑳界殑绀句氦鍦堬紝铏氭瀯鍚堥€傜殑浜虹墿锛堝涓冨ぇ濮戝叓澶уЖ銆佸悓浜嬨€佸悓瀛︺€佷笅灞炪€佽€佹澘绛夛級銆?   - 鍚嶅瓧瑕佸儚鐪熷悕鎴栧井淇℃樀绉帮紙濡傦細浜屽Ж銆佺帇缁忕悊銆丄Asales灏忔潕锛夈€?
-銆愮敓鎴愯姹傘€?1. **浜掑姩绫诲瀷鍒嗚В**锛?   - **like**锛氱偣璧炪€傝鐢熸垚 5-15 涓紝钀ラ€犱汉姘斻€?   - **comment**锛氶拡瀵瑰姩鎬佸唴瀹圭殑鐩存帴璇勮銆?   - **reply**锛氥€愬叧閿€戦拡瀵瑰凡鏈夎瘎璁虹殑鍥炲銆傚鏋溾€滃凡鏈夎瘎璁衡€濅笉涓虹┖锛岃鍔″繀鐢熸垚 1-2 鏉″洖澶嶆潵褰㈡垚瀵硅瘽绾跨▼銆?2. **鎬绘暟瑕佹眰**锛氳瘎璁?(comment) + 鍥炲 (reply) 鎬昏蹇呴』杈惧埌 3-6 鏉°€?3. **鍐呭椋庢牸**锛氱煭灏忋€佸彛璇寲銆佸儚鐪熶汉寰俊銆備笉瑕佸濂楄瘽銆?4. 銆愮粷瀵逛弗绂併€戠粷瀵逛笉瑕佺敓鎴愪换浣曚唬琛ㄧ敤鎴凤紙鍗筹細${userProfile.name}锛夌殑鐐硅禐銆佽瘎璁烘垨鍥炲銆傜敤鎴锋槸瑙備紬锛屼笉鏄綘妯℃嫙鐨勫璞°€?   - **绂佹**鍦?authorName 涓娇鐢?"${userProfile.name}"銆?鎴?銆?User" 鎴?"鐢ㄦ埛"銆?   - 鎵€鏈夌殑鐐硅禐鍜岃瘎璁鸿€呭繀椤绘槸鍏朵粬濂藉弸瑙掕壊鎴栬櫄鎷烴PC銆?5. 銆愰噸瑕侊細鍘婚噸涓庡垎閰嶃€?   - 涓ョ鎵€鏈夎瘎璁洪兘鏉ヨ嚜鍚屼竴涓汉銆?   - 鍚屼竴涓鑹?*鍙互**鏃㈢偣璧炲張璇勮銆?   - **涓ョ**鎶婃墍鏈変笉鍚岃姘旂殑璇勮閮藉畨鍦ㄥ悓涓€涓幇鏈夊ソ鍙嬶紙濡傗€滄灄娣扁€濓級澶翠笂銆傚鏋滀綘鍙湁 1 涓ソ鍙嬶紝璇峰姟蹇呭ぇ閲忓垱閫犺櫄鎷烴PC鏉ュ垎閰嶉偅浜涗笉绗﹀悎璇ュソ鍙嬩汉璁剧殑鍙拌瘝銆?6. 銆愬叧閿細浜鸿涓€鑷存€?(Binding Check)銆?   - 濡傛灉璇勮璇皵鍍忊€滃コ浠?涓嬪睘鈥濓紝鍚嶅瓧蹇呴』瀵瑰簲锛堝娌℃湁鐜版垚瑙掕壊锛屽氨鏂板缓涓€涓櫄鎷烴PC鍙€滃コ浠嗗皬鐖扁€濓級銆?7. 銆愬己鍔涘幓閲嶏細涓ョ鍗曚汉闇稿睆銆?   - 涓€鏉″姩鎬佷笅鐨勬墍鏈夎瘎璁哄拰鐐硅禐锛?*涓ョ鏉ヨ嚜鍚屼竴涓汉**銆?   - 濡傛灉閫氳褰曚腑鍙湁 1-2 涓ソ鍙嬶紝浣?*蹇呴』**铏氭瀯鑷冲皯 3 涓悇鍏风壒鑹茬殑铏氭嫙 NPC锛堝锛氬鍗栧皬鍝ャ€佸皬瀛﹀悓瀛︺€佹繁澶滄綔姘村憳锛夋潵鍙戣〃璇勮锛岀‘淇濅簰鍔ㄨ€呭悕鍗曚笉灏戜簬 4 涓汉銆?   - 涓ョ璁╅€氳褰曞ソ鍙嬶紙濡傗€滄灄娣扁€濓級鍙戣〃澶氭潯鐩镐簰鐙珛鐨勮瘎璁恒€?   8. **蹇呴』**杩斿洖涓€涓?JSON 鏁扮粍锛屾牸寮忓涓嬶細
+【互动角色来源】1. **已有好友**（优先）：从上面的通讯录列表中选择。2. **虚拟NPC**（补充）：根据作者可能的社交圈，虚构合适的人物（如七大姑八大姨、同事、同学、下属、老板等）。
+   - 名字要像真名或微信昵称（如：二舅、王经理、Asales小李）。
+【生成要求】1. **互动类型分解**：
+   - **like**：点赞。请生成 5-15 个，营造人气。
+   - **comment**：针对动态内容的直接评论。
+   - **reply**：【关键】针对已有评论的回复。如果“已有评论”不为空，请务必生成 1-2 条回复来形成对话线程。
+2. **总数要求**：评论(comment) + 回复(reply) 总计必须达到 3-6 条。
+3. **内容风格**：短小、口语化、像真人微信。不要客套话。
+4. 【绝对严禁】绝对不要生成任何代表用户（即：${userProfile.name}）的点赞、评论或回复。用户是观众，不是你模拟的对象。
+   - **禁止**在 authorName 中使用"${userProfile.name}"、"我"、"User" 或"用户"。
+   - 所有的点赞和评论者必须是其他好友角色或虚拟NPC。
+5. 【重要：去重与分配】
+   - 严禁所有评论都来自同一个人。
+   - 同一个角色**可以**既点赞又评论。
+   - **严禁**把所有不同语气的评论都安在同一个现有好友（如“林深”）头上。如果你只有 1 个好友，请务必大量创造虚拟NPC来分配那些不符合该好友人设的台词。
+6. 【关键：人设一致性 (Binding Check)】
+   - 如果评论语气像“女仆/下属”，名字必须对应（如没有现成角色，就新建一个虚拟NPC叫“女仆小菲”）。
+7. 【强力去重：严禁单人霸屏】
+   - 一条动态下的所有评论和点赞，**严禁来自同一个人**。
+   - 如果通讯录中只有 1-2 个好友，你**必须**虚构至少 3 个各具特色的虚拟 NPC（如：外卖小哥、小学同学、深夜潜水员）来发表评论，确保互动者名单不少于 4 个人。
+   - 严禁让通讯录好友（如“林深”）发表多条相互独立的评论。
+8. **必须**返回一个 JSON 数组，格式如下：
 [
-  { "type": "like", "authorName": "鍚嶅瓧", "isVirtual": true/false, "authorId": "ID鎴杗ull" },
-  { "type": "comment", "authorName": "鍚嶅瓧", "content": "璇勮鍐呭", "mentions": [{ "id": "user", "name": "${userProfile.name}" }], "isVirtual": true/false, "authorId": "ID鎴杗ull" },
-  { "type": "reply", "authorName": "鍚嶅瓧", "content": "鍥炲鍐呭", "replyTo": "琚洖澶嶈€呯殑鍚嶅瓧", "mentions": [], "isVirtual": true/false, "authorId": "ID鎴杗ull" }
+  { "type": "like", "authorName": "名字", "isVirtual": true/false, "authorId": "ID或null" },
+  { "type": "comment", "authorName": "名字", "content": "评论内容", "mentions": [{ "id": "user", "name": "${userProfile.name}" }], "isVirtual": true/false, "authorId": "ID或null" },
+  { "type": "reply", "authorName": "名字", "content": "回复内容", "replyTo": "被回复者的名字", "mentions": [], "isVirtual": true/false, "authorId": "ID或null" }
 ]
 `
     try {
@@ -1925,14 +1968,14 @@ ${historyStr}
         if (!jsonMatch) return []
 
         const interactions = JSON.parse(jsonMatch[0])
-        const userName = userProfile.name || '鎴?
+        const userName = userProfile.name || '我'
 
         return interactions
             .filter(item => {
                 // Pre-filter: Absolutely forbid any interaction where the author is the user
                 const authorId = String(item.authorId || '').toLowerCase()
                 const authorName = String(item.authorName || '')
-                if (authorId === 'user' || authorName === userName || authorName === 'User' || authorName === '鐢ㄦ埛') {
+                if (authorId === 'user' || authorName === userName || authorName === 'User' || authorName === '用户') {
                     console.warn(`[aiService] Filtered out AI-generated interaction from forbidden author (user): ${authorName}`);
                     return false
                 }
@@ -1951,20 +1994,21 @@ ${historyStr}
 }
 
 /**
- * 鐢熸垚鏈嬪弸鍦堣瘎璁? * @param {Object} charInfo { name, persona, worldContext }
+ * 生成朋友圈评论
+ * @param {Object} charInfo { name, persona, worldContext }
  * @param {Object} moment { authorName, content, visualContext }
- * @param {String} historicalContext 鍙€夌殑鍘嗗彶鑳屾櫙瀛楃涓? */
+ * @param {String} historicalContext 可选的历史背景字符串 */
 export async function generateMomentComment(charInfo, moment, historicalContext = "") {
     const { name, persona, worldContext } = charInfo
     const { authorName, content, visualContext } = moment
 
-    const systemPrompt = `浣犵幇鍦ㄦ槸銆?{name}銆戙€?浣犵殑璁惧畾锛?{persona}銆?${worldContext ? `褰撳墠涓栫晫鑳屾櫙锛?{worldContext}` : ''}
+    const systemPrompt = `你现在是【${name}】。你的设定：${persona}。${worldContext ? `当前世界背景：${worldContext}` : ''}
 ${historicalContext ? `\n${historicalContext}` : ''}
 
-銆愪换鍔°€?璇峰銆?{authorName}銆戝彂甯冪殑涓€鏉℃湅鍙嬪湀杩涜璇勮銆?鏈嬪弸鍦堝唴瀹癸細${content}
-鍥剧墖/瑙嗚鍐呭锛?{visualContext || '鏃犲浘鐗?}
+【任务】请对【${authorName}】发布的一条朋友圈进行评论。朋友圈内容：${content}
+图片/视觉内容：${visualContext || '无图片'}
 
-銆愯姹傘€?1. 鍥炲瑕佺畝鐭€佺湡瀹烇紙绫讳技寰俊璇勮锛夛紝瀛楁暟鎺у埗鍦?0瀛椾互鍐呫€?2. 鏍规嵁浣犲拰瀵规柟鐨勫叧绯诲喅瀹氳姘旓紙璋冧緝銆佸叧蹇冦€佹拻濞囩瓑锛夈€?3. 濡傛灉鏈嬪弸鍦堝唴瀹规垨涔嬪墠鐨勫巻鍙插姩鎬佸緢鏈夋剰鎬濓紝璇风粨鍚堣儗鏅繘琛屽悙妲姐€佷簰鍔ㄦ垨鎺ユ銆?4. 濡傛灉鏈夊浘鐗囨弿杩帮紝璇峰皾璇曟彁鍙婂浘鐗囦腑鐨勫厓绱犱互澧炲己鈥滆瑙夋劅鈥濄€?5. **@鍔熻兘鏀寔**锛氫綘鍙互閫氳繃 '@鍚嶅瓧' 鎻愰啋鐗瑰畾鐨勪汉闃呰璇勮銆?6. 鐩存帴杈撳嚭璇勮鏂囧瓧锛屼笉瑕佸寘鍚换浣曟爣绛炬垨澶氫綑瑙ｉ噴銆俙
+【要求】1. 回复要简短、真实（类似微信评论），字数控制在20字以内。2. 根据你和对方的关系决定语气（调侃、关心、撒娇等）。3. 如果朋友圈内容或之前的历史动态很有意思，请结合背景进行吐槽、互动或接梗。4. 如果有图片描述，请尝试提及图片中的元素以增强“视觉感”。5. **@功能支持**：你可以通过 '@名字' 提醒特定的人阅读评论。6. 直接输出评论文字，不要包含任何标签或多余解释。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -1974,7 +2018,7 @@ ${historicalContext ? `\n${historicalContext}` : ''}
         if (result.error) return null
 
         // Cleanup response (sometimes AI adds quotes or prefixes)
-        let comment = result.content.replace(/^["'](.*)["']$/, '$1').replace(/^璇勮[锛?]\s*/, '').trim()
+        let comment = result.content.replace(/^["'](.*)["']$/, '$1').replace(/^评论[:：]?\s*/, '').trim()
         return comment
     } catch (e) {
         console.error('[aiService] generateMomentComment failed', e)
@@ -1983,7 +2027,7 @@ ${historicalContext ? `\n${historicalContext}` : ''}
 }
 
 /**
- * 鐢熸垚瀵硅瘎璁虹殑鍥炲
+ * 生成对评论的回复
  * @param {Object} charInfo { name, persona, worldContext }
  * @param {Object} moment { authorName, content, visualContext }
  * @param {Object} targetComment { authorName, content }
@@ -1992,12 +2036,12 @@ export async function generateReplyToComment(charInfo, moment, targetComment) {
     const { name, persona, worldContext } = charInfo
     const { authorName, content, visualContext } = moment
 
-    const systemPrompt = `浣犵幇鍦ㄦ槸銆?{name}銆戙€?浣犵殑璁惧畾锛?{persona}銆?${worldContext ? `褰撳墠涓栫晫鑳屾櫙锛?{worldContext}` : ''}
+    const systemPrompt = `你现在是【${name}】。你的设定：${persona}。${worldContext ? `当前世界背景：${worldContext}` : ''}
 
-銆愪换鍔°€?浣犲湪鏈嬪弸鍦堢湅鍒颁簡銆?{targetComment.authorName}銆戠殑璇勮锛岃閽堝杩欐潯璇勮杩涜鍥炲銆?鏈嬪弸鍦堝師鏂囷紙浣滆€咃細${authorName}锛夛細${content}
-瀵规柟鐨勮瘎璁猴細${targetComment.content}
+【任务】你在朋友圈看到了【${targetComment.authorName}】的评论，请针对这条评论进行回复。朋友圈原文（作者：${authorName}）：${content}
+对方的评论：${targetComment.content}
 
-銆愯姹傘€?1. 鍥炲瑕佺畝鐭€佸彛璇寲锛堢被浼煎井淇″洖澶嶏級锛屽瓧鏁版帶鍒跺湪20瀛椾互鍐呫€?2. 鍗充娇鏄洖澶嶏紝涔熸槸鍏紑灞曠ず鍦ㄦ湅鍙嬪湀涓嬫柟鐨勶紝璇蜂繚鎸佸緱浣撴垨鏈夎叮鐨勪簰鍔ㄩ鏍笺€?3. **@鍔熻兘鏀寔**锛氫綘鍙互閫氳繃 '@鍚嶅瓧' 鎻愰啋闃呰銆?4. 鐩存帴杈撳嚭鍥炲鍐呭锛屼笉瑕佸寘鍚换浣曟爣绛俱€俙
+【要求】1. 回复要简短、口语化（类似微信回复），字数控制在20字以内。2. 即使是回复，也是公开展示在朋友圈下方的，请保持得体或有趣的互动风格。3. **@功能支持**：你可以通过 '@名字' 提醒阅读。4. 直接输出回复内容，不要包含任何标签。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2006,7 +2050,7 @@ export async function generateReplyToComment(charInfo, moment, targetComment) {
         if (result.error) return null
 
         // Cleanup
-        let reply = result.content.replace(/^["'](.*)["']$/, '$1').replace(/^鍥炲[锛?]\s*/, '').trim()
+        let reply = result.content.replace(/^["'](.*)["']$/, '$1').replace(/^回复[:：]?\s*/, '').trim()
         return reply
     } catch (e) {
         console.error('[aiService] generateReplyToComment failed', e)
@@ -2021,40 +2065,40 @@ export async function generateReplyToComment(charInfo, moment, targetComment) {
  * @returns {Promise<Object>} { pinnedMoments: Array, backgroundUrl: String, bio: String }
  */
 export async function generateCompleteProfile(character, userProfile = {}) {
-    const userName = userProfile.name || '鎴?
-    const systemPrompt = `浣犳槸涓€涓垱鎰忓姪鎵嬶紝闇€瑕佷竴娆℃€т负瑙掕壊鐢熸垚瀹屾暣鐨勪富椤靛唴瀹广€?
-瑙掕壊淇℃伅锛?濮撳悕锛?{character.name}
-浜鸿锛?{character.prompt || '鏃?}
+    const userName = userProfile.name || '我'
+    const systemPrompt = `你是一个创意助手，需要一次性为角色生成完整的主页内容。
+角色信息：姓名：${character.name}
+人设：${character.prompt || '无'}
 
-褰撳墠鐢ㄦ埛锛?{userName}
+当前用户：${userName}
 
-瑕佹眰鐢熸垚浠ヤ笅鍐呭锛?1. **3鏉＄疆椤舵湅鍙嬪湀** - 鏈€鑳戒唬琛ㄨ鑹茬壒鐐圭殑绮惧崕鍐呭
-   - 鍙互閰嶅浘銆佺函鏂囧瓧銆佹垨HTML鎺掔増
-   - **鏀寔 @鎻愰啋**锛氬唴瀹逛腑鍙互浣跨敤 @${userName} 鎻愰啋鐢ㄦ埛銆?2. **涓€х鍚?* - 绠€鐭簿鐐硷紝绗﹀悎瑙掕壊姘旇川锛?0瀛椾互鍐咃級
-3. **鑳屾櫙鍥炬彁绀鸿瘝** - 鑻辨枃锛屾弿杩伴€傚悎浣滀负鏈嬪弸鍦堣儗鏅殑椋庢櫙/鍦烘櫙
+要求生成以下内容：1. **3条置顶朋友圈** - 最能代表角色特点的精华内容
+   - 可以配图、纯文字、或HTML排版
+   - **支持 @提醒**：内容中可以使用 @${userName} 提醒用户。2. **个性签名** - 简短精辟，符合角色气质（20字以内）
+3. **背景图提示词** - 英文，描述适合作为朋友圈背景的风景/场景
 
-璇蜂互JSON鏍煎紡杈撳嚭锛?\`\`\`json
+请以JSON格式输出：\`\`\`json
 {
   "pinnedMoments": [
     {
-      "content": "鏈嬪弸鍦堟枃瀛楀唴瀹癸紙鏀寔 @${userName} 鎻愰啋锛?,
+      "content": "朋友圈文字内容（支持 @${userName} 提醒）",
       "mentions": [ { "id": "user", "name": "${userName}" } ],
-      "imagePrompt": "鑻辨枃鍥剧墖鐢熸垚鎻愮ず璇嶏紙鍙€夛級",
-      "imageDescription": "鍥剧墖鎻忚堪锛堝彲閫夛級",
-      "html": "HTML鏍煎紡鍐呭锛堝彲閫夛級"
+      "imagePrompt": "英文图片生成提示词（可选）",
+      "imageDescription": "图片描述（可选）",
+      "html": "HTML格式内容（可选）"
     }
   ],
-  "bio": "涓€х鍚?,
-  "backgroundPrompt": "鑻辨枃鑳屾櫙鍥炬彁绀鸿瘝"
+  "bio": "个性签名",
+  "backgroundPrompt": "英文背景图提示词"
 }
 \`\`\`
 
-鐩存帴杈撳嚭JSON锛屼笉瑕佷换浣曢澶栬鏄庛€俙
+直接输出JSON，不要任何额外说明。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name: '涓婚〉鐢熸垚' }, null, { skipVisualContext: true })
+        const result = await _generateReplyInternal(messages, { name: '主页生成' }, null, { skipVisualContext: true })
         if (result.error) throw new Error(result.content)
 
         // Parse JSON
@@ -2122,18 +2166,18 @@ export async function generateCharacterProfile(char, userProfile, options = {}) 
     const { apiKey, baseUrl, model } = settingsStore.currentConfig
 
     const now = new Date()
-    const weekDays = ['鏃?, '涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?]
-    const currentVirtualTime = `${now.getFullYear()}骞?{now.getMonth() + 1}鏈?{now.getDate()}鏃?${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 鏄熸湡${weekDays[now.getDay()]}`
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六']
+    const currentVirtualTime = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} 星期${weekDays[now.getDay()]}`
 
-    if (!apiKey) throw new Error('璇峰厛閰嶇疆 API Key')
+    if (!apiKey) throw new Error('请先配置 API Key')
 
     // 1. Generate Content (Signature + 3 Moments + Background Description)
     const systemPrompt = `You are an expert character profiler. Current system time: ${currentVirtualTime}.
 You need to generate a "WeChat Moments Profile" for a specific character based on their persona.
 The profile consists of:
-1. A short, poetic, or character-typical "Signature" (涓€х鍚?.
+1. A short, poetic, or character-typical "Signature" (个性签名).
 2. A prompt for generating a background cover image that fits their vibe.
-3. 3 distinct "Moments" (social media posts) that highlight their personality, daily life, or hidden thoughts. These should be worthy of being "Pinned" (缃《).
+3. 3 distinct "Moments" (social media posts) that highlight their personality, daily life, or hidden thoughts. These should be worthy of being "Pinned" (置顶).
 
 Character Name: ${char.name}
 Character Persona: ${char.prompt || 'Unknown'}
@@ -2141,8 +2185,8 @@ Character Tags/World: ${(char.tags || []).join(', ')}
 
 User (Viewer) Name: ${userProfile.name}
 
-${customPrompt ? `銆怌ustom Generation Rule銆? ${customPrompt}` : ''}
-${worldContext ? `銆怶orld Context Reference銆? ${worldContext}` : ''}
+${customPrompt ? `【Custom Generation Rule】 ${customPrompt}` : ''}
+${worldContext ? `【World Context Reference】 ${worldContext}` : ''}
 
 Output format must be JSON:
 {
@@ -2191,12 +2235,12 @@ Output format must be JSON:
 
     // 2. Generate Images (Parallel)
     // Background
-    const bgPrommise = generateImage(parsed.background_prompt || `${char.name} atmospheric background`)
+    const bgPromise = generateImage(parsed.background_prompt || `${char.name} atmospheric background`)
 
     // Moment Images
     const momentPromises = parsed.moments.map(m => generateImage(m.image_description))
 
-    const [bgUrl, ...momentImages] = await Promise.all([bgPrommise, ...momentPromises])
+    const [bgUrl, ...momentImages] = await Promise.all([bgPromise, ...momentPromises])
 
     // Assemble Result
     return {
