@@ -1070,76 +1070,147 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         let content = rawContent
         let innerVoice = null
 
-        // 提取 [INNER_VOICE] - 增强并发掘能力
-        const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i
-        let ivMatch = content.match(ivPattern)
-        let ivSegment = ivMatch ? ivMatch[1].trim() : null
+        // 提取 [INNER_VOICE] - 增强并发掘能力（改进版）
+let ivSegment = null
+let innerVoice = null
 
-        // FALLBACK: 如果没找到标签，但文本里有看起来像心声的 JSON 块
-        if (!ivSegment && (content.includes('"status"') || content.includes('"心声"') || content.includes('"情绪"'))) {
-            // 尝试寻找最后一个包含关键词的大括号块
-            const blocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
-            for (let i = blocks.length - 1; i >= 0; i--) {
-                const block = blocks[i][0]
-                if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"thought"')) {
-                    ivSegment = block
-                    console.log('[AI Service] Found untagged Inner Voice block via keyword scan')
-                    break
-                }
+// 1. 首先尝试标准格式 [INNER_VOICE] ... [/INNER_VOICE]
+const standardPattern = /\[\s*INNER[-_\s]*VOICE\s*\]([\s\S]*?)\[\/\s*INNER[-_\s]*VOICE\s*\]/i
+let ivMatch = content.match(standardPattern)
+
+// 2. 如果没有标准格式，尝试单标签格式 [INNER_VOICE] ... (直到遇到其他标签或结尾)
+if (!ivMatch) {
+    const singleTagPattern = /\[\s*INNER[-_\s]*VOICE\s*\]([\s\S]*?)(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE|FAMILY|INNER)|$)/i
+    ivMatch = content.match(singleTagPattern)
+}
+
+ivSegment = ivMatch ? ivMatch[1].trim() : null
+
+// 3. 如果还是没找到，尝试找看起来像JSON的心声块（更智能的扫描）
+if (!ivSegment) {
+    // 使用更精确的JSON匹配，匹配嵌套的大括号
+    const jsonBlocks = [...content.matchAll(/\{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*\}/g)]
+    
+    // 从后往前找，通常心声在末尾
+    for (let i = jsonBlocks.length - 1; i >= 0; i--) {
+        const block = jsonBlocks[i][0]
+        // 扩展关键词列表
+        if (block.includes('"status"') || 
+            block.includes('"心声"') || 
+            block.includes('"情绪"') || 
+            block.includes('"着装"') || 
+            block.includes('"环境"') ||
+            block.includes('"行为"') ||
+            block.includes('"thought"') ||
+            block.includes('"inner_voice"') ||
+            block.includes('"mood"') ||
+            block.includes('"action"') ||
+            block.includes('"outfit"') ||
+            block.includes('"scene"')) {
+            ivSegment = block
+            console.log('[AI Service] Found untagged Inner Voice block via keyword scan')
+            break
+        }
+    }
+}
+
+// 4. 如果还是没找到，尝试找独立的JSON对象（可能AI忘记加任何标记）
+if (!ivSegment) {
+    // 查找末尾的JSON对象
+    const possibleJsonMatch = content.match(/\{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*\}(?=\s*$|\s*\n)/)
+    if (possibleJsonMatch) {
+        const possibleJson = possibleJsonMatch[0]
+        // 检查是否包含常见的状态字段（更宽松的检查）
+        if (possibleJson.includes('"') && 
+            (possibleJson.includes('status') || 
+             possibleJson.includes('心声') || 
+             possibleJson.includes('情绪') || 
+             possibleJson.includes('action'))) {
+            ivSegment = possibleJson
+            console.log('[AI Service] Found standalone JSON as potential Inner Voice')
+        }
+    }
+}
+
+if (ivSegment) {
+    try {
+        // 清理可能的Markdown代码块
+        let cleanSegment = ivSegment
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/, '')
+            .replace(/\s*```$/, '')
+            .trim()
+
+        // 尝试直接解析
+        try {
+            innerVoice = JSON.parse(cleanSegment)
+        } catch (e) {
+            // 如果失败，尝试提取第一个完整的JSON对象（处理可能的前后文本）
+            const jsonObjectMatch = cleanSegment.match(/\{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*\}/)
+            if (jsonObjectMatch) {
+                innerVoice = JSON.parse(jsonObjectMatch[0])
+            } else {
+                throw e
             }
         }
-
-        if (ivSegment) {
-            try {
-                // Robust Cleanup: Remove Markdown code blocks
-                let cleanSegment = ivSegment.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
-
-                // Try direct parse first
-                try {
-                    innerVoice = JSON.parse(cleanSegment)
-                } catch (e) {
-                    // Fallback 1: Find the FIRST JSON-like object '{ ... }' in the segment (if it was a partial match)
-                    const jsonObjectMatch = cleanSegment.match(/\{[\s\S]*\}/)
-                    if (jsonObjectMatch) {
-                        innerVoice = JSON.parse(jsonObjectMatch[0].trim())
-                    } else {
-                        throw e
-                    }
-                }
-            } catch (e) {
-                // FALLBACK 2: Regex Violence (From old version logic)
-                // If JSON.parse totally fails, we extract fields one by one
-                console.warn('[AI Service] JSON parse failed, triggering Regex Violence fallback', e)
-
-                const extractField = (keys) => {
-                    for (let k of keys) {
-                        const reg = new RegExp(`(?:"|\\\\")?${k}(?:"|\\\\")?\\s*[:：]\\s*(?:"|\\\\")?((?:[^"\\\\}]|\\\\.)*?)(?:"|\\\\")?(?:,|}|$)`, 'i');
-                        const m = ivSegment.match(reg);
-                        if (m && m[1]) return m[1].replace(/\\"/g, '"').trim();
-                    }
-                    return null;
-                };
-
-                const status = extractField(['status', '状态', '当前状态', '心情']);
-                const outfit = extractField(['着装', 'outfit', 'clothes', 'clothing', '穿着']);
-                const scene = extractField(['环境', 'scene', 'environment', '场景']);
-                const mind = extractField(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', '情绪', '情感', '想法']);
-                const action = extractField(['行为', 'action', 'behavior', 'plan', '动作']);
-
-                if (status || outfit || scene || mind || action) {
-                    innerVoice = {
-                        status: status || "",
-                        着装: outfit || "",
-                        环境: scene || "",
-                        心声: mind || "",
-                        行为: action || ""
-                    }
-                } else {
-                    useLoggerStore().addLog('WARN', '心声解析失败', { error: e.message, segment: ivSegment.substring(0, 150) })
-                }
+        
+        // 验证解析结果
+        if (innerVoice && typeof innerVoice === 'object') {
+            // 确保至少有一个标准字段（更宽松的验证）
+            const hasValidField = innerVoice.status || 
+                                 innerVoice.心声 || 
+                                 innerVoice.情绪 || 
+                                 innerVoice.着装 || 
+                                 innerVoice.环境 ||
+                                 innerVoice.行为 ||
+                                 innerVoice.action ||
+                                 innerVoice.mood ||
+                                 innerVoice.thought ||
+                                 innerVoice.outfit ||
+                                 innerVoice.scene
+            
+            if (!hasValidField) {
+                console.warn('[AI Service] Parsed Inner Voice missing expected fields:', innerVoice)
+                // 仍然保留，可能只是格式不同
             }
         }
+    } catch (e) {
+        console.warn('[AI Service] JSON parse failed for Inner Voice, trying regex fallback:', e)
+        
+        // 最后的回退：正则暴力提取（增强版）
+        const extractField = (keys) => {
+            for (let k of keys) {
+                // 更宽松的正则，支持各种格式
+                const reg = new RegExp(`(?:"|'|\\\\")?${k}(?:"|'|\\\\")?\\s*[:：]\\s*(?:"|'|\\\\")?([^"\\\\'}\\n,]*)(?:"|'|\\\\")?(?:,|}|$)`, 'i')
+                const m = ivSegment.match(reg)
+                if (m && m[1]) return m[1].replace(/\\"/g, '"').replace(/\\'/g, "'").trim()
+            }
+            return null
+        }
 
+        const status = extractField(['status', '状态', '当前状态', '心情', 'mood'])
+        const outfit = extractField(['着装', 'outfit', 'clothes', 'clothing', '穿着', '服装'])
+        const scene = extractField(['环境', 'scene', 'environment', '场景', 'location', '地点'])
+        const mind = extractField(['心声', 'thoughts', 'mind', 'inner_voice', 'thought', '情绪', '情感', '想法', '内心'])
+        const action = extractField(['行为', 'action', 'behavior', 'plan', '动作', '举动'])
+
+        if (status || outfit || scene || mind || action) {
+            innerVoice = {
+                status: status || '',
+                着装: outfit || '',
+                环境: scene || '',
+                心声: mind || '',
+                行为: action || ''
+            }
+            console.log('[AI Service] Extracted Inner Voice via regex fallback:', innerVoice)
+        } else {
+            useLoggerStore().addLog('WARN', '心声解析失败', { 
+                error: e.message, 
+                segment: ivSegment.substring(0, 200) 
+            })
+        }
+    }
+}
         // Family Card Logic (Auto-Process) -> NOW LEGACY, REMOVED to let Frontend handle it
         // The store (chatStore) will detect [FAMILY_CARD] tags and set msg.type = 'family_card'
         // ChatMessageItem.vue will render the native Vue component.
@@ -1222,21 +1293,57 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                         if (parts.length > 0) rawRetry = parts[0].text || ''
                     }
 
-                    // Post-process
-                    let content = rawRetry
-                    let innerVoice = null
-                    const ivMatch = content.match(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i)
-                    if (ivMatch) {
-                        try {
-                            let segment = ivMatch[1].trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
-                            try {
-                                innerVoice = JSON.parse(segment)
-                            } catch (e) {
-                                const jsonObjectMatch = segment.match(/\{[\s\S]*\}/)
-                                if (jsonObjectMatch) innerVoice = JSON.parse(jsonObjectMatch[0].trim())
-                            }
-                        } catch (e) { }
-                    }
+          // Post-process (改进版)
+let content = rawRetry
+let innerVoice = null
+
+// 使用改进的提取逻辑
+let ivSegment = null
+
+// 标准格式
+const standardPattern = /\[\s*INNER[-_\s]*VOICE\s*\]([\s\S]*?)\[\/\s*INNER[-_\s]*VOICE\s*\]/i
+let ivMatch = content.match(standardPattern)
+
+// 单标签格式
+if (!ivMatch) {
+    const singleTagPattern = /\[\s*INNER[-_\s]*VOICE\s*\]([\s\S]*?)(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE)|$)/i
+    ivMatch = content.match(singleTagPattern)
+}
+
+ivSegment = ivMatch ? ivMatch[1].trim() : null
+
+// 无标签回退
+if (!ivSegment) {
+    const jsonBlocks = [...content.matchAll(/\{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*\}/g)]
+    for (let i = jsonBlocks.length - 1; i >= 0; i--) {
+        const block = jsonBlocks[i][0]
+        if (block.includes('"status"') || block.includes('"心声"') || block.includes('"情绪"')) {
+            ivSegment = block
+            break
+        }
+    }
+}
+
+if (ivSegment) {
+    try {
+        let segment = ivSegment
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/, '')
+            .replace(/\s*```$/, '')
+            .trim()
+        
+        try {
+            innerVoice = JSON.parse(segment)
+        } catch (e) {
+            const jsonObjectMatch = segment.match(/\{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*\}/)
+            if (jsonObjectMatch) {
+                innerVoice = JSON.parse(jsonObjectMatch[0])
+            }
+        }
+    } catch (e) { 
+        console.warn('[AI Service] Retry Inner Voice parse failed:', e)
+    }
+}
                     content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
 
                     return { content, innerVoice, raw: rawRetry }
