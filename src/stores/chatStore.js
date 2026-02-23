@@ -1433,7 +1433,7 @@ export const useChatStore = defineStore('chat', () => {
                 if (rand < 0.2) {
                     const callType = Math.random() > 0.5 ? 'video' : 'voice'
                     sendMessageToAI(chatId, {
-                        hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                        hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
                         isProactiveCall: true
                     })
                 } else {
@@ -1738,7 +1738,7 @@ export const useChatStore = defineStore('chat', () => {
             const last = mergedContext[mergedContext.length - 1];
             if (last && last.role === 'user') {
                 const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
-                last.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。】`;
+                last.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。记得心声格式标签[INNER_VOICE]】`;
             }
         }
 
