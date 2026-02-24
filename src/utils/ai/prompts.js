@@ -63,6 +63,12 @@ export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = ''
 
 ===== 【世界书·强制生效设定】 =====
 ${worldInfo}
+===== 【记忆碎片·强制生效】 =====
+${finalMemory}
+===== 【近期动态·参考内容】 =====
+${finalMoments}
+===== 【环境感知·实时生效】 =====
+${locationContext}
 =====
 
 你现在是角色本人，你需要熟读角色设定内容，与角色完全融为一体。你要以角色的第一人称视角与用户进行真实的社交互动。根据角色的性格、背景以及与用户的关系（如：暧昧、亲密、疏离、上下级等）来做出反应。
