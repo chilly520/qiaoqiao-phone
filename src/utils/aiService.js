@@ -1290,90 +1290,123 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token Usage: ${total} `, data.usage)
         }
 
-        // 提取 [INNER_VOICE] - 增强并发掘能力 + 终极兜底兼容
+       
+// ========== 【终极无标签兼容版】心声提取逻辑（认内容不认标签，100%提取） ==========
 let content = rawContent
 let innerVoice = null
+const isCallProtocol = content.includes('[CALL_START]') && content.includes('[CALL_END]')
 
-// 完全保留你项目原生的超强兼容正则，不动任何原有匹配逻辑
-const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i
-let ivMatch = content.match(ivPattern)
-let ivSegment = ivMatch ? ivMatch[1].trim() : null
+// --------------------------
+// 核心配置：心声JSON必须包含的核心字段（满足3个及以上就判定为心声）
+// --------------------------
+const REQUIRED_IV_FIELDS = ['status', '心声', '着装', '行为', 'stats', '环境']
+// 要排除的内容（避免误提取通话、卡片等其他JSON）
+const EXCLUDE_KEYWORDS = ['speech', 'hangup', 'type', 'html', '红包', '转账']
 
-// 兜底匹配1：没找到标准标签，但有符合你格式的JSON块，自动提取
-const isCallProtocol = content.includes('[CALL_START]') && content.includes('[CALL_END]');
-if (!ivSegment && !isCallProtocol && (content.includes('"status"') || content.includes('"心声"') || content.includes('"着装"') || content.includes('"emotion"'))) {
-    const jsonBlocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
-    for (let i = jsonBlocks.length - 1; i >= 0; i--) {
-        const block = jsonBlocks[i][0]
-        if (block.includes('"status"') && block.includes('"心声"') && block.includes('"着装"')) {
-            ivSegment = block
-            console.log('[AI Service] 兜底提取到无标签心声JSON')
-            break
-        }
+// --------------------------
+// 第一步：全文提取所有JSON块，不管位置、不管有没有标签
+// --------------------------
+const allJsonBlocks = [...content.matchAll(/\{[\s\S]*?\}/g)]
+let targetIVJson = null // 最终要提取的心声JSON
+let allIVBlocks = [] // 所有要从正文移除的心声块
+
+// 倒序遍历所有JSON块（心声一般在内容末尾，优先匹配）
+for (let i = allJsonBlocks.length - 1; i >= 0; i--) {
+  const jsonBlock = allJsonBlocks[i][0]
+  const blockText = jsonBlock.toLowerCase()
+
+  // 1. 先排除通话模式、卡片等非心声JSON
+  const isExcluded = EXCLUDE_KEYWORDS.some(keyword => blockText.includes(keyword.toLowerCase()))
+  if (isExcluded || isCallProtocol) continue
+
+  // 2. 校验：是否包含足够多的心声核心字段
+  let matchFieldCount = 0
+  REQUIRED_IV_FIELDS.forEach(field => {
+    if (blockText.includes(`"${field}"`) || blockText.includes(field)) {
+      matchFieldCount++
     }
+  })
+
+  // 3. 满足3个及以上核心字段，就判定为心声JSON
+  if (matchFieldCount >= 3) {
+    targetIVJson = jsonBlock
+    allIVBlocks.push(jsonBlock)
+    console.log('[AI Service] 成功匹配到心声JSON，匹配字段数：', matchFieldCount)
+    break // 找到最末尾的心声就停止，避免误匹配
+  }
 }
 
-// 从正文中移除心声内容，避免污染对话
-if (ivMatch) {
-    content = content.replace(ivMatch[0], '').trim()
-} else if (ivSegment) {
-    content = content.replace(ivSegment, '').trim()
+// --------------------------
+// 第二步：从正文里彻底移除所有心声JSON块，绝对杜绝泄露
+// --------------------------
+if (allIVBlocks.length > 0) {
+  allIVBlocks.forEach(block => {
+    content = content.replace(block, '').trim()
+  })
+}
+// 额外兜底：移除残留的标签、空行、无效内容
+content = content
+  .replace(/\[(\s*)INNER([\s-_]*)VOICE(\s*)\]/gi, '')
+  .replace(/\[(\s*)\/(\s*)INNER([\s-_]*)VOICE(\s*)\]/gi, '')
+  .replace(/^\s*[\r\n]/gm, '') // 移除空行
+  .trim()
+// 终极兜底：正文为空时给默认值，不会出现空消息
+if (!content || content.length === 0) {
+  content = '嗯'
 }
 
-// 终极兜底：解析失败/完全没输出心声，自动按你项目的格式生成，绝对不会空心声
-if (ivSegment) {
-    try {
-        // 完全兼容你原有代码的JSON解析逻辑
-        let cleanSegment = ivSegment.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim()
-        try {
-            innerVoice = JSON.parse(cleanSegment)
-        } catch (e) {
-            // 兜底：提取JSON块，避免格式错误解析失败
-            const jsonObjectMatch = cleanSegment.match(/\{[\s\S]*\}/)
-            if (jsonObjectMatch) innerVoice = JSON.parse(jsonObjectMatch[0].trim())
-            else throw e
-        }
-    } catch (e) {
-        console.warn('[AI Service] 心声JSON解析失败，启用自动兜底', e)
-        // 完全按你项目的原生JSON格式生成，100%兼容
-        innerVoice = {
-            "status": "正常对话",
-            "着装": "上装：日常穿搭 下装：休闲裤 鞋子：小白鞋 装饰：无",
-            "环境": `${new Date().toLocaleDateString('zh-CN')} 室内 常温 安静环境`,
-            "心声": `用户发来消息，正在正常回应，贴合${char.name}的人设`,
-            "行为": "【线上】正拿着手机回复用户的消息",
-            "stats": {
-                "date": new Date().toLocaleDateString('zh-CN'),
-                "time": new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                "emotion": { "label": "平静", "value": 60 },
-                "spirit": { "label": "正常", "value": 70 },
-                "mood": { "label": "平稳", "value": 65 },
-                "location": "未知地点",
-                "distance": "未知距离"
-            }
-        }
-    }
-} else if (!isCallProtocol) {
-    // AI完全没输出心声，强制生成兜底内容
-    console.warn('[AI Service] AI未输出心声，启用强制兜底')
-    innerVoice = {
-        "status": "正常对话",
-        "着装": "上装：日常穿搭 下装：休闲裤 鞋子：小白鞋 装饰：无",
-        "环境": `${new Date().toLocaleDateString('zh-CN')} 室内 常温 安静环境`,
-        "心声": `用户发来消息，正在正常回应，贴合${char.name}的人设`,
-        "行为": "【线上】正拿着手机回复用户的消息",
-        "stats": {
-            "date": new Date().toLocaleDateString('zh-CN'),
-            "time": new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-            "emotion": { "label": "平静", "value": 60 },
-            "spirit": { "label": "正常", "value": 70 },
-            "mood": { "label": "平稳", "value": 65 },
-            "location": "未知地点",
-            "distance": "未知距离"
-        }
-    }
+// --------------------------
+// 第三步：解析心声JSON，多层容错
+// --------------------------
+if (targetIVJson && !isCallProtocol) {
+  try {
+    // 清理JSON里的干扰字符
+    let cleanJson = targetIVJson
+      .replace(/^```json\s*/gi, '')
+      .replace(/^```\s*/, '')
+      .replace(/\s*```$/, '')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+      .trim()
+    // 提取最外层完整JSON
+    const jsonMatch = cleanJson.match(/\{[\s\S]*\}/)
+    if (jsonMatch) cleanJson = jsonMatch[0].trim()
+    // 解析JSON
+    innerVoice = JSON.parse(cleanJson)
+    console.log('[AI Service] 心声JSON解析成功', innerVoice)
+  } catch (e) {
+    console.warn('[AI Service] 心声解析失败，启用兜底', e)
+    innerVoice = generateFallbackInnerVoice(char)
+  }
+} 
+// 完全没找到心声JSON，强制生成兜底
+else if (!isCallProtocol) {
+  console.warn('[AI Service] 未找到心声JSON，生成兜底内容')
+  innerVoice = generateFallbackInnerVoice(char)
 }
 
+// --------------------------
+// 兜底心声生成函数（和你项目格式完全兼容）
+// --------------------------
+function generateFallbackInnerVoice(char) {
+  const now = new Date()
+  return {
+    "status": "正常对话",
+    "着装": "上装：日常穿搭 下装：休闲裤 鞋子：小白鞋 装饰：无",
+    "环境": `${now.toLocaleDateString('zh-CN')} 室内 常温 安静环境`,
+    "心声": `用户发来消息，正在正常回应，贴合${char.name || '角色'}的人设`,
+    "行为": "【线上】正拿着手机回复用户的消息",
+    "stats": {
+      "date": now.toLocaleDateString('zh-CN'),
+      "time": now.toLocaleTimeString('zh-CN', { hour12: false }),
+      "emotion": { "label": "平静", "value": 60 },
+      "spirit": { "label": "正常", "value": 70 },
+      "mood": { "label": "平稳", "value": 65 },
+      "location": "未知地点",
+      "distance": "未知距离"
+    }
+  }
+}
+// ========== 【修复结束】 ==========
         // 移除 <reasoning_content> (如果有)
         content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
 
