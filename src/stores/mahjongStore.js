@@ -49,10 +49,10 @@ export const useMahjongStore = defineStore('mahjong', () => {
     const tablecloth = ref('') // 自定义桌布 URL 或 Base64
     const tileBacks = ref([
         { id: 'default', type: 'color', value: '#10b981', active: false, name: '经典绿' },
-        { id: 'custom1', type: 'image', value: 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b323f34009.webp', active: true, name: '牌背1' },
-        { id: 'custom2', type: 'image', value: 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b3233cd995.webp', active: false, name: '牌背2' },
-        { id: 'custom3', type: 'image', value: 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b323fa4d24.webp', active: false, name: '牌背3' },
-        { id: 'custom4', type: 'image', value: 'https://youke.xn--y7xa690gmna.cn/s1/2026/02/10/698b324056422.webp', active: false, name: '牌背4' }
+        { id: 'custom1', type: 'image', value: 'https://files.catbox.moe/i5ml5p.jpg', active: true, name: '牌背1' },
+        { id: 'custom2', type: 'image', value: 'https://files.catbox.moe/bx0xn5.jpg', active: false, name: '牌背2' },
+        { id: 'custom3', type: 'image', value: 'https://files.catbox.moe/i6wt7r.jpg', active: false, name: '牌背3' },
+        { id: 'custom4', type: 'image', value: 'https://files.catbox.moe/nyc3s2.jpg', active: false, name: '牌背4' }
     ]) // 牌背预设列表
     const customTileBackImage = ref('') // 自定义牌背图片
 
