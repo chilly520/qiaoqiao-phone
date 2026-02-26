@@ -258,7 +258,19 @@ export function generateContextPreview(chatId, char) {
         ? weatherService.getLocationContextText()
         : ''
     const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
-    const userLocText = `\n【用户位置】${userLoc.name || userLoc || '未知'}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
+const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
+let locationName = '未知';
+// 兼容字符串格式的位置和对象格式的位置
+if (typeof userLoc === 'string' && userLoc.trim()) {
+  locationName = userLoc.trim();
+} else if (typeof userLoc === 'object' && userLoc !== null) {
+  locationName = userLoc?.name?.trim() || '未知';
+}
+// 严谨校验坐标有效性
+const hasValidCoords = typeof userLoc === 'object' && userLoc !== null && userLoc?.coords?.lat != null && userLoc?.coords?.lng != null;
+const coordsText = hasValidCoords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '';
+// 最终文本
+const userLocText = `\n【用户位置】${locationName}${coordsText}`;
     const batteryInfo = batteryMonitor.getBatteryInfo()
     const batteryContext = batteryInfo
         ? `\n【手机电量】${batteryInfo.level}%${batteryInfo.charging ? ' (正在充电)' : ''}${batteryInfo.isLow ? ' (电量告急)' : ''}`
