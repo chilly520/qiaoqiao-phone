@@ -186,18 +186,14 @@ export class MahjongAI {
         const tingTiles = mahjongEngine.getTingPai(hand)
         const isTing = tingTiles.length > 0
 
-        // 3. 如果已听牌，不吃不碰（除非能胡）
-        if (isTing) {
-            // 杠牌可能改变听牌，谨慎考虑
-            if (actions.includes('gang')) {
-                return Math.random() > 0.8 ? 'gang' : 'pass'
-            }
-            return 'pass'
-        }
+        // 3. 如果已听牌，不吃不碰不杠（除非能胡），避免破坏听牌
+    if (isTing) {
+        return 'pass'
+    }
 
-        // 4. 杠牌（80% 概率）
+        // 4. 杠牌（50% 概率）
         if (actions.includes('gang')) {
-            return Math.random() > 0.2 ? 'gang' : 'pass'
+            return Math.random() > 0.5 ? 'gang' : 'pass'
         }
 
         // 5. 碰牌（90% 概率）
