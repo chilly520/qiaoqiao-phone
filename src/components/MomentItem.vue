@@ -79,6 +79,10 @@ const author = computed(() => {
     if (/^\d{10,}$/.test(authorId)) {
         return { name: '神秘好友', avatar: '' }
     }
+    // 如果是内部ID格式 (m-, c-, char_, virtual- 等)，显示为神秘好友
+    if (/^(?:m-|c-|char_|virtual[\s-])/i.test(authorId)) {
+        return { name: '神秘好友', avatar: '' }
+    }
     // 如果都找不到，使用authorId作为名称，确保显示正确的作者名
     return { name: authorId, avatar: '' }
 })
@@ -152,8 +156,8 @@ const getAuthorName = (id) => {
     if (!id) return '神秘好友'
     if (id === 'user' || id === settingsStore.personalization.userProfile.name) return settingsStore.personalization.userProfile.name
 
-    // 4. Filter out virtual IDs (like virtual-1770657213741-1gnbz)
-    if (typeof id === 'string' && id.startsWith('virtual-')) {
+    // 4. Filter out virtual IDs (like virtual-1770657213741-1gnbz or virtual - 123 -abc)
+    if (typeof id === 'string' && (id.startsWith('virtual-') || /^virtual\s*-/i.test(id))) {
         return '' // Return empty string to filter out virtual IDs
     }
 
@@ -178,6 +182,9 @@ const getAuthorName = (id) => {
 
     // 3. Fallback for pure numeric IDs
     if (/^\d{10,}$/.test(id)) return '神秘好友'
+
+    // 4b. Fallback for internal ID formats (m-, c-, char_)
+    if (/^(?:m-|c-|char_)/i.test(id)) return ''
 
     return id
 }
@@ -605,7 +612,7 @@ const navigateToAuthor = () => {
                 class="flex items-center gap-1 text-[#576b95] text-[13px] mb-3 opacity-90">
                 <i class="fa-solid fa-location-dot scale-90"></i>
                 <span class="font-medium underline decoration-[#576b95]/30 underline-offset-2">{{ props.moment.location
-                }}</span>
+                    }}</span>
             </div>
 
             <!-- Images Grid -->
@@ -658,7 +665,7 @@ const navigateToAuthor = () => {
                     <i class="fa-solid text-sm"
                         :class="momentsStore.summoningIds.has(props.moment.id) ? 'fa-spinner fa-spin' : 'fa-wand-sparkles'"></i>
                     <span class="text-xs font-medium">{{ momentsStore.summoningIds.has(props.moment.id) ? '召唤中' : '召唤'
-                        }}</span>
+                    }}</span>
                 </button>
             </div>
 
@@ -767,7 +774,7 @@ const navigateToAuthor = () => {
                 @click.stop>
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
                     <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
-                            }}</span></span>
+                    }}</span></span>
                     <i class="fa-solid fa-xmark cursor-pointer" @click="replyToComment = null"></i>
                 </div>
                 <div class="flex gap-2">
@@ -866,7 +873,7 @@ const navigateToAuthor = () => {
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-800 text-sm">{{ chat.name }}</span>
                             <span class="text-xs text-gray-400 truncate max-w-[150px]">{{ chat.signature || '暂无签名'
-                            }}</span>
+                                }}</span>
                         </div>
                     </div>
                 </div>

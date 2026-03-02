@@ -134,7 +134,7 @@ const customCss = computed(() => store.personalization.customCss)
 const statusBarStyle = computed(() => {
     const transparentRoutes = ['home']
     const wechatRoutes = ['wechat', 'moments', 'character-info']
-    
+
     if (transparentRoutes.includes(route.name)) {
         return {
             color: '#ffffff',
@@ -143,7 +143,7 @@ const statusBarStyle = computed(() => {
             borderBottomColor: 'transparent'
         }
     }
-    
+
     // WeChat pages use water-blue frosted glass (same as chat header)
     if (wechatRoutes.includes(route.name)) {
         return {
@@ -153,7 +153,7 @@ const statusBarStyle = computed(() => {
             borderBottomColor: 'rgba(147, 197, 253, 0.2)'
         }
     }
-    
+
     // Other pages: match page background (white for most, gray for settings)
     return {
         color: '#000000',
@@ -356,7 +356,7 @@ const handleGlobalPromptCancel = () => {
 <template>
     <div class="app-root w-full min-h-[100dvh] h-[100dvh] relative overflow-hidden flex flex-col text-gray-800"
         :style="[globalStyles, { paddingBottom: 'var(--safe-area-inset-bottom)' }]"
-        :data-theme="store.personalization.theme" style="max-width: 1224px; max-height: 2624px; margin: 0 auto;">
+        :data-theme="store.personalization.theme" style="margin: 0 auto;">
         <!-- Dynamic Styles Block -->
         <component is="style" v-if="customCss">{{ customCss }}</component>
 
@@ -416,7 +416,7 @@ const handleGlobalPromptCancel = () => {
                             class="text-[11px] text-[#1c1c1e]/40 font-semibold whitespace-nowrap tracking-tight uppercase">现在</span>
                     </div>
                     <div class="text-[14px] text-[#1c1c1e]/80 truncate leading-snug font-medium">{{ bannerData.content
-                    }}</div>
+                        }}</div>
                 </div>
             </div>
         </div>
@@ -621,22 +621,29 @@ const handleGlobalPromptCancel = () => {
     animation: toastPop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-/* 适配1224*2624屏幕尺寸 */
-@media (max-width: 1224px) {
-    .app-root {
-        max-width: 100vw;
-    }
+/* 全屏自适应 - 所有手机/平板全屏显示 */
+.app-root {
+    max-width: 100%;
+    width: 100%;
 }
 
-@media (max-height: 2624px) {
+/* 仅桌面端(>=768px)居中显示为手机模拟器 */
+@media (min-width: 768px) {
+
+    html,
+    body {
+        background: #1a1a2e;
+    }
+
     .app-root {
-        max-height: 100vh;
+        max-width: 430px;
+        box-shadow: 0 0 60px rgba(0, 0, 0, 0.3);
+        border-radius: 20px;
     }
 }
 
 /* 确保主内容区域适配减去状态栏后的高度 */
 .main-content {
-    height: calc(100vh - 28px);
-    max-height: 2548px;
+    height: calc(100dvh - 28px);
 }
 </style>

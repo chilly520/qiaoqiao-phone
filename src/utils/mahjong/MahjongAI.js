@@ -187,13 +187,14 @@ export class MahjongAI {
         const isTing = tingTiles.length > 0
 
         // 3. 如果已听牌，不吃不碰不杠（除非能胡），避免破坏听牌
-    if (isTing) {
-        return 'pass'
-    }
+        if (isTing) {
+            return 'pass'
+        }
 
-        // 4. 杠牌（50% 概率）
+        // 4. 杠牌（50% 概率，放弃杠时可以继续考虑碰）
         if (actions.includes('gang')) {
-            return Math.random() > 0.5 ? 'gang' : 'pass'
+            if (Math.random() > 0.5) return 'gang'
+            // 不杠的话，继续检查碰牌（如果也可碰的话）
         }
 
         // 5. 碰牌（90% 概率）

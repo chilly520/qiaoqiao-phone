@@ -31,9 +31,9 @@
                 <div
                     class="flex items-center gap-2 text-white text-xs font-black whitespace-nowrap overflow-hidden drop-shadow-sm">
                     <span class="opacity-80">局: <span class="text-white">{{ mahjongStore.currentRoom?.currentRound
-                    }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
+                            }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
                     <span class="opacity-80">底: <span class="text-white">{{ mahjongStore.currentRoom?.baseStake
-                    }}</span></span>
+                            }}</span></span>
                     <span class="opacity-80">堆: <span class="text-yellow-400 font-black">{{
                         mahjongStore.gameState?.deck?.length
                         || 0
@@ -121,7 +121,7 @@
                     <!-- 手牌（背面或结算亮出） -->
                     <div class="flex gap-0.5 mt-2">
                         <div v-for="(tile, i) in getPlayer('north')?.hand" :key="i"
-                            :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-up', getTileColorClass(tile)] : 'mahjong-tile-back'">
+                            :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-pool !w-6 !h-9 !text-[16px]', getTileColorClass(tile)] : 'mahjong-tile-back'">
                             <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content"
                                 v-html="getTileFaceHTML(tile)"></div>
                         </div>
@@ -170,8 +170,8 @@
                             <div class="flex flex-col items-center"
                                 :class="mahjongStore.gameState?.roundResult ? 'mr-3 my-auto' : 'gap-1'">
                                 <div v-for="tile in getPlayer('west')?.hand" :key="'west-hand-' + tile"
-                                    :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-small', '!w-[26px] !h-[36px] rotate-90 my-[-5px]', getTileColorClass(tile)] : 'mahjong-tile-vertical'">
-                                    <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content -rotate-90"
+                                    :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-pool', '!w-[36px] !h-[26px] my-[-2px]', getTileColorClass(tile)] : 'mahjong-tile-vertical'">
+                                    <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content"
                                         v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
@@ -198,7 +198,7 @@
                         <div v-else-if="mahjongStore.currentRoom?.status === 'settling'" class="text-white text-center">
                             <div class="text-5xl mb-3">🎉</div>
                             <div class="text-2xl font-bold mb-2">{{ mahjongStore.currentRoom.lastResult?.winnerName
-                                }}
+                            }}
                                 胡了！
                             </div>
                             <div class="text-lg">{{ mahjongStore.currentRoom.lastResult?.fan }}番</div>
@@ -214,9 +214,9 @@
                                 <!-- 扩大刚打出的牌提示 -->
                                 <Transition name="zoom">
                                     <div v-if="activeTile"
-                                        class="absolute z-40 bg-white border-4 border-orange-500 rounded-xl shadow-[0_0_20px_rgba(255,165,0,0.6)] flex items-center justify-center text-5xl w-20 h-28 -top-20 active-tile-zoom"
+                                        class="absolute z-40 bg-white border-4 border-orange-500 rounded-xl shadow-[0_0_20px_rgba(255,165,0,0.6)] flex items-center justify-center w-20 h-28 -top-20 active-tile-zoom overflow-hidden"
                                         :class="getTileColorClass(activeTile)">
-                                        <div class="tile-face-content scale-125" v-html="getTileFaceHTML(activeTile)">
+                                        <div class="tile-face-content" v-html="getTileFaceHTML(activeTile)">
                                         </div>
                                     </div>
                                 </Transition>
@@ -257,8 +257,8 @@
                             <div class="flex flex-col items-center"
                                 :class="mahjongStore.gameState?.roundResult ? 'ml-3 my-auto' : 'gap-1'">
                                 <div v-for="tile in getPlayer('east')?.hand" :key="'east-hand-' + tile"
-                                    :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-small', '!w-[26px] !h-[36px] -rotate-90 my-[-5px]', getTileColorClass(tile)] : 'mahjong-tile-vertical'">
-                                    <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content rotate-90"
+                                    :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-pool', '!w-[36px] !h-[26px] my-[-2px]', getTileColorClass(tile)] : 'mahjong-tile-vertical'">
+                                    <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content"
                                         v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
@@ -401,11 +401,11 @@
                             <!-- 手牌（立着显示或结算摊开） -->
                             <div class="flex items-end gap-0.5 relative w-full"
                                 :class="{ 'justify-center': mahjongStore.gameState?.roundResult }"
-                                :style="{ height: mahjongStore.gameState?.roundResult ? '40px' : '64px' }">
+                                :style="{ minHeight: '64px' }">
                                 <!-- 排序好的主手牌 -->
                                 <div v-for="item in displayedHand.main" :key="'main-' + item.i"
                                     @click="!mahjongStore.gameState?.roundResult && selectTile(item.i)" :class="[
-                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-up' : 'mahjong-tile',
+                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-pool !w-10 !h-14 !text-[28px]' : 'mahjong-tile',
                                         { 'selected': selectedTile === item.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
                                         getTileColorClass(item.t),
                                         'transition-all duration-200'
@@ -417,7 +417,7 @@
                                 <div v-if="displayedHand.drawn"
                                     @click="!mahjongStore.gameState?.roundResult && selectTile(displayedHand.drawn.i)"
                                     :class="[
-                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-up' : 'mahjong-tile',
+                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-pool !w-10 !h-14 !text-[28px]' : 'mahjong-tile',
                                         { 'selected': selectedTile === displayedHand.drawn.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
                                         getTileColorClass(displayedHand.drawn.t),
                                         'ml-3 transition-all duration-200 animate-slide-in'
@@ -524,13 +524,43 @@
             <!-- 记牌器组件 -->
             <Transition name="fade">
                 <div v-if="showCardCounter" class="card-counter-panel scrollbar-hide">
-                    <div class="text-[10px] text-white/50 text-center mb-1">剩余牌数</div>
-                    <div v-for="tile in ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'east', 'south', 'west', 'north', 'red', 'green', 'white']"
-                        :key="tile" class="counter-item">
-                        <span class="counter-tile" :class="getTileColorClass(tile)">
-                            <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
-                        </span>
-                        <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                    <div class="text-[10px] text-white/50 text-center mb-1 w-full">剩余牌数</div>
+                    <!-- 按花色分行 -->
+                    <div class="flex flex-wrap justify-center gap-1 w-full pb-1 border-b border-white/5">
+                        <div v-for="tile in ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9']" :key="tile"
+                            class="counter-item">
+                            <span class="counter-tile" :class="getTileColorClass(tile)">
+                                <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
+                            </span>
+                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap justify-center gap-1 w-full py-1 border-b border-white/5">
+                        <div v-for="tile in ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9']" :key="tile"
+                            class="counter-item">
+                            <span class="counter-tile" :class="getTileColorClass(tile)">
+                                <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
+                            </span>
+                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap justify-center gap-1 w-full py-1 border-b border-white/5">
+                        <div v-for="tile in ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9']" :key="tile"
+                            class="counter-item">
+                            <span class="counter-tile" :class="getTileColorClass(tile)">
+                                <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
+                            </span>
+                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap justify-center gap-1 w-full pt-1">
+                        <div v-for="tile in ['east', 'south', 'west', 'north', 'red', 'green', 'white']" :key="tile"
+                            class="counter-item">
+                            <span class="counter-tile" :class="getTileColorClass(tile)">
+                                <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
+                            </span>
+                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                        </div>
                     </div>
                 </div>
             </Transition>
@@ -646,7 +676,7 @@
                                                     v-if="change.isPao || (!mahjongStore.gameState.roundResult.isZiMo && change.amount < 0 && mahjongStore.gameState.roundResult.type !== '流局')">炮</span>
                                             </div>
                                             <span class="font-bold text-sm text-gray-800 truncate">{{ change.name
-                                            }}</span>
+                                                }}</span>
                                         </div>
                                         <span class="font-bold text-sm shrink-0"
                                             :class="change.amount > 0 ? 'text-green-600' : 'text-red-500'">
@@ -679,28 +709,14 @@
                         </div>
                     </Transition>
 
-                    <!-- 隐藏卡片后的中心按钮 (摊牌查看) -->
+                    <!-- 隐藏卡片后的透明交互层 (方便查看桌面) -->
                     <div v-if="!showScoreCard"
-                        class="fixed inset-0 z-[80] flex flex-col items-center justify-center pointer-events-auto bg-blue-500/10"
+                        class="fixed inset-0 z-[80] flex flex-col items-center justify-center pointer-events-auto cursor-pointer"
                         @click.stop="showScoreCard = true">
                         <div
-                            class="bg-blue-400/40 backdrop-blur-md px-6 py-2 rounded-full text-white font-bold border border-blue-300/30 shadow-2xl mb-6">
-                            {{ mahjongStore.gameState.roundResult.winner.name }} [{{
-                                mahjongStore.gameState.roundResult.type }}]
+                            class="mt-auto mb-10 px-4 py-2 bg-black/40 backdrop-blur-md rounded-full text-white/80 text-xs font-bold animate-pulse border border-white/10 shadow-lg">
+                            点击屏幕任意位置返回结算单
                         </div>
-                        <div class="flex flex-col gap-3">
-                            <button @click.stop="handleRoundEnd"
-                                class="bg-gradient-to-r from-red-500 to-orange-500 text-white px-12 py-5 rounded-full font-black text-2xl shadow-[0_0_40px_rgba(239,68,68,0.5)] border-4 border-white active:scale-90 transition-all hover:scale-105">
-                                <i class="fa-solid fa-play mr-2"></i> 再来一局
-                            </button>
-                            <button @click.stop="mahjongStore.exitRoom(); router.push('/games/mahjong-lobby')"
-                                class="bg-blue-400/30 backdrop-blur-md text-white px-12 py-3 rounded-full font-bold text-lg border border-blue-300/30 shadow-xl active:scale-90 transition-all">
-                                退出大厅
-                            </button>
-                        </div>
-                        <div
-                            class="mt-6 text-white bg-blue-400/30 px-4 py-1 rounded-full text-sm font-bold animate-pulse">
-                            点击上方横条返回结算单</div>
                     </div>
                 </div>
             </Transition>
@@ -1588,60 +1604,8 @@ const getTileGraphics = (tile) => {
 }
 
 const getTileFaceHTML = (tile) => {
-    const g = getTileGraphics(tile);
-    if (!g) return '';
-
-    const fontStack = "'PingFang SC', 'Microsoft YaHei', 'SimHei', sans-serif";
-
-    // 中發/东南西北 (缩小字号，防止溢出)
-    if (g.type === 'char') {
-        const charFontSize = ['中', '發'].includes(g.text) ? 82 : 78;
-        return `<svg viewBox="0 0 100 100" class="tile-svg"><text x="50" y="52" text-anchor="middle" dominant-baseline="middle" font-size="${charFontSize}" font-weight="900" fill="${g.color}" style="font-family: ${fontStack}">${g.text}</text></svg>`;
-    }
-
-    // 白板 (描边长方形)
-    if (g.type === 'white') {
-        return `<svg viewBox="0 0 100 100" class="tile-svg">
-            <rect x="15" y="15" width="70" height="70" rx="4" fill="none" stroke="${g.color}" stroke-width="8" />
-            <rect x="24" y="24" width="52" height="52" rx="2" fill="none" stroke="${g.color}" stroke-width="2" opacity="0.6" />
-        </svg>`;
-    }
-
-    // 万子 (缩小字号并拉开间距，解决重叠问题)
-    if (g.type === 'wan') {
-        const topSize = g.top.length > 1 ? 48 : 55;
-        return `<svg viewBox="0 0 100 100" class="tile-svg">
-            <text x="50" y="30" text-anchor="middle" dominant-baseline="middle" font-size="${topSize}" font-weight="900" fill="${g.color}" style="font-family: ${fontStack}">${g.top}</text>
-            <text x="50" y="78" text-anchor="middle" dominant-baseline="middle" font-size="44" font-weight="900" fill="${g.color}" style="font-family: ${fontStack}">${g.bottom}</text>
-        </svg>`;
-    }
-
-    // 筒子 (Dots)
-    if (g.type === 'dots') {
-        if (g.special) {
-            // 一筒：红绿蓝套圈样式
-            return `<svg viewBox="0 0 100 100" class="tile-svg">
-                <circle cx="50" cy="50" r="36" fill="#e11d48" />
-                <circle cx="50" cy="50" r="26" fill="#16a34a" />
-                <circle cx="50" cy="50" r="13" fill="#2563eb" />
-                <circle cx="50" cy="50" r="5" fill="white" opacity="0.3" />
-            </svg>`;
-        }
-        const r = g.items.length > 6 ? 8 : (g.items.length > 4 ? 10 : 12);
-        return `<svg viewBox="0 0 100 100" class="tile-svg">${g.items.map(d => `<circle cx="${d.x}" cy="${d.y}" r="${r}" fill="${d.color}" stroke="white" stroke-width="1.5" />`).join('')}</svg>`;
-    }
-
-    // 条子 (Bams) - 增加厚度与比例
-    if (g.type === 'bams') {
-        return `<svg viewBox="0 0 100 100" class="tile-svg">${g.items.map(b => `<rect x="${b.x - 6}" y="${b.y - 14}" width="12" height="28" rx="4" fill="${b.color}" stroke="white" stroke-width="1.5" />`).join('')}</svg>`;
-    }
-
-    // 幺鸡 (Bird)
-    if (g.type === 'bird') {
-        return `<svg viewBox="0 0 100 100" class="tile-svg"><text x="50" y="55" text-anchor="middle" dominant-baseline="middle" font-size="82">🦚</text></svg>`;
-    }
-
-    return '';
+    const emoji = getTileEmoji(tile);
+    return `<span class="tile-emoji">${emoji}</span>`;
 }
 
 // 获取牌的emoji (保留用于分享)
@@ -2422,21 +2386,28 @@ watch(isChatPanelVisible, (val) => {
     border: 1px solid #ddd;
 }
 
-.mahjong-tile span {
-    display: none;
-}
+/* span 用于渲染 emoji 牌面，不再隐藏 */
 
-/* 矢量牌面渲染器 */
+/* 矢量牌面渲染器 - 需要 :deep() 穿透 v-html 注入的内容 */
 .tile-face-content {
     width: 100%;
     height: 100%;
-    position: relative;
+    position: absolute;
+    inset: 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 10% 8%;
+    padding: 0;
     overflow: hidden;
+}
+
+:deep(.tile-emoji) {
+    font-size: 38px !important;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-3px);
 }
 
 .tile-svg {
@@ -2756,56 +2727,69 @@ watch(isChatPanelVisible, (val) => {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    top: 55px;
-    width: 92%;
-    max-width: 420px;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(10px);
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    z-index: 80;
-    padding: 4px;
+    top: 72px !important;
+    width: 96%;
+    max-width: 440px;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(15px);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    z-index: 100;
+    padding: 8px 4px;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 3px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.card-counter-panel :deep(.tile-emoji) {
+    font-size: 20px !important;
+    transform: scale(1.4) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+:deep(.active-tile-zoom .tile-emoji) {
+    font-size: 84px !important;
+    transform: translateY(-4px) !important;
+    white-space: nowrap !important;
+}
+
+.active-tile-zoom {
+    position: absolute !important;
 }
 
 .counter-item {
     display: flex;
     flex-direction: row;
-    /* 横向排列 */
     align-items: center;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 1px 3px;
-    border-radius: 3px;
-    gap: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 4px;
+    border-radius: 4px;
+    gap: 3px;
+    min-width: 38px;
+    justify-content: center;
 }
 
 .counter-tile {
-    font-size: 11px;
     background: white;
     border-radius: 2px;
     width: 14px;
-    /* 略微变宽一点 */
     height: 19px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-}
-
-.counter-tile span {
-    transform: scale(1.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-shrink: 0;
+    position: relative !important;
 }
 
 .counter-num {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 900;
     color: #fbbf24;
+    line-height: 1;
 }
 
 /* 操作大字特效 - 缩小版 */
@@ -3135,15 +3119,17 @@ watch(isChatPanelVisible, (val) => {
 
 
 /* 统一小牌样式（用于吃碰杠和对手明牌） */
-.mahjong-tile-small {
+.mahjong-tile-small,
+.mahjong-tile-pool {
     width: 24px;
     height: 34px;
-    background: #f9f9f7;
+    background-color: #f9f9f7;
     border-radius: 3px;
+    position: relative !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 22px;
     font-weight: bold;
     box-shadow: 0 1px 0 #ccc, 0 2px 3px rgba(0, 0, 0, 0.2);
     padding: 0;
@@ -3156,7 +3142,8 @@ watch(isChatPanelVisible, (val) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    transform: scale(1.6);
+    font-size: 3.5vmin !important;
+    transform: translateY(-0.2vmin);
     line-height: 1;
 }
 

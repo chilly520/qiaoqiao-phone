@@ -372,15 +372,21 @@ export const useMahjongStore = defineStore('mahjong', () => {
                 } else return true
             }
         }
-        // 碰杠
+        // 碰杠 — 分别检查能力，只传递实际可用的动作
         for (let i = 1; i <= 3; i++) {
             const idx = (currIdx + i) % 4
             const p = players[idx]
-            if (mahjongEngine.canGang(p.hand, tile) || mahjongEngine.canPeng(p.hand, tile)) {
+            const canGang = mahjongEngine.canGang(p.hand, tile)
+            const canPeng = mahjongEngine.canPeng(p.hand, tile)
+            if (canGang || canPeng) {
                 if (p.isAI) {
                     // 核心规则：最多只能有 4 个鸣牌组合
                     if (p.exposed.length >= 4) continue;
-                    const decision = mahjongAI.decideAction(p.hand, tile, ['peng', 'gang'])
+                    // 只传递真正可执行的动作，避免 AI 选了杠却手牌不够
+                    const availableActions = []
+                    if (canGang) availableActions.push('gang')
+                    if (canPeng) availableActions.push('peng')
+                    const decision = mahjongAI.decideAction(p.hand, tile, availableActions)
                     if (decision !== 'pass') { setTimeout(() => handleAction(decision, idx), 800); return true }
                 } else {
                     // 用户不受限，但逻辑上 4 组后通常也没法再碰了
@@ -417,12 +423,36 @@ export const useMahjongStore = defineStore('mahjong', () => {
         if (action === 'hu') { endRound(player); return }
         if (action === 'pass') { nextTurn(); return }
 
-        // 只要是鸣牌且非过，就得从牌池拿走（如果是明杠/碰/吃）
+        // ★ 先验证动作可行性，再操作牌池，避免失败时牌凭空消失
+        if (action === 'peng') {
+            const hasEnough = player.hand.filter(t => t === tile).length >= 2
+            if (!hasEnough) {
+                console.error(`[Mahjong] ${player.name} cannot PENG ${tile}: lack of cards`)
+                nextTurn(); return
+            }
+        } else if (action === 'gang') {
+            // 明杠需要手中有3张（暗杠走另一条路径，tile为null）
+            const isAnGang = gameState.value.currentPlayer === playerIndex && !tile
+            if (!isAnGang) {
+                const hasEnough = player.hand.filter(t => t === tile).length >= 3
+                if (!hasEnough) {
+                    console.error(`[Mahjong] ${player.name} cannot GANG ${tile}: lack of cards (has ${player.hand.filter(t => t === tile).length})`)
+                    nextTurn(); return
+                }
+            }
+        } else if (action === 'chi') {
+            const combs = mahjongEngine.canChi(player.hand, tile, 'previous')
+            if (combs.length === 0 && !chiCombo) {
+                console.error(`[Mahjong] ${player.name} cannot CHI ${tile}`)
+                nextTurn(); return
+            }
+        }
+
+        // ★ 验证通过，安全地从牌池和上家 discarded 中移除
         if (tile && (action === 'peng' || action === 'gang' || action === 'chi')) {
             const poolIdx = gameState.value.pool.lastIndexOf(tile)
             if (poolIdx !== -1) gameState.value.pool.splice(poolIdx, 1)
 
-            // 同时从上家（打牌的人）的个人打出列表中移除，防止重复计数或逻辑错误
             if (gameState.value.lastPlayer !== -1) {
                 const lastP = currentRoom.value.players[gameState.value.lastPlayer]
                 if (lastP) {
@@ -435,8 +465,6 @@ export const useMahjongStore = defineStore('mahjong', () => {
         if (action === 'peng' || action === 'gang' || action === 'chi') gameState.value.currentPlayer = playerIndex
 
         if (action === 'peng') {
-            const hasEnough = player.hand.filter(t => t === tile).length >= 2
-            if (!hasEnough) { console.error(`[Mahjong] ${player.name} cannot PENG ${tile}: lack of cards`); nextTurn(); return }
             let c = 0; player.hand = player.hand.filter(t => (t === tile && c < 2) ? (c++, false) : true)
             player.exposed.push({ type: 'peng', tiles: [tile, tile, tile] })
         } else if (action === 'gang') {
@@ -449,9 +477,7 @@ export const useMahjongStore = defineStore('mahjong', () => {
                     player.exposed.push({ type: 'gang', tiles: [t, t, t, t], isAnGang: true })
                 }
             } else {
-                // 明杠
-                const hasEnough = player.hand.filter(t => t === tile).length >= 3
-                if (!hasEnough) { console.error(`[Mahjong] ${player.name} cannot GANG ${tile}: lack of cards`); nextTurn(); return }
+                // 明杠 (已通过验证)
                 let c = 0; player.hand = player.hand.filter(t => (t === tile && c < 3) ? (c++, false) : true)
                 player.exposed.push({ type: 'gang', tiles: [tile, tile, tile, tile], isAnGang: false })
             }
@@ -461,7 +487,6 @@ export const useMahjongStore = defineStore('mahjong', () => {
             return
         } else if (action === 'chi') {
             const combs = mahjongEngine.canChi(player.hand, tile, 'previous')
-            if (combs.length === 0 && !chiCombo) { console.error(`[Mahjong] ${player.name} cannot CHI ${tile}`); nextTurn(); return }
             const comb = chiCombo || combs[0]
             comb.forEach(t => {
                 if (t !== tile) {

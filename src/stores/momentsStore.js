@@ -328,7 +328,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 displayName = realChar.remark || realChar.name
             } else {
                 // If still not found, check if it looks like an ID
-                const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^[a-z0-9-]{20,}$/.test(str))
+                const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^virtual\s*-/i.test(str) || /^[a-z0-9-]{20,}$/.test(str))
                 if (isIdLike(authorNameOrId)) {
                     displayName = (fallbackName && !isIdLike(fallbackName)) ? fallbackName : '神秘好友'
                 } else {
@@ -423,7 +423,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         // Fallback for Virtual characters (NPCs) or failed lookups
         if (!finalAuthorName) {
-            const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^[a-z0-9-]{20,}$/.test(str) || /^\d{10,}$/.test(str))
+            const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^virtual\s*-/i.test(str) || /^[a-z0-9-]{20,}$/.test(str) || /^\d{10,}$/.test(str))
             if (isIdLike(comment.authorName)) {
                 finalAuthorName = '神秘好友'
             } else {

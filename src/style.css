@@ -38,7 +38,7 @@ body {
 /* Wallpaper Layer - EXACT from original HTML */
 /* Wallpaper Layer */
 #wallpaper-layer {
-    position: fixed;
+    position: absolute;
     top: 0;
     left: 0;
     width: 100%;

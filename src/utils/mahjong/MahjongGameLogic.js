@@ -99,9 +99,7 @@ export class MahjongGameLogic {
      * AI决定操作
      */
     aiDecideAction(player, tile, actions) {
-    if (this.store.gameState.currentTile !== tile) return
-    const action = mahjongAI.decideAction(player.hand, tile, actions)
-    
+        if (this.store.gameState.currentTile !== tile) return
         const action = mahjongAI.decideAction(player.hand, tile, actions)
 
         if (action === 'hu') {
@@ -148,16 +146,15 @@ export class MahjongGameLogic {
      * 执行杠牌
      */
     performGang(player, tile) {
-    const tileCount = player.hand.filter(t => t === tile).length
-    if (tileCount < 3) return
-    const { gameState } = this.store
+        const tileCount = player.hand.filter(t => t === tile).length
+        if (tileCount < 3) return
         const { gameState } = this.store
 
         // 移除手牌中的3张相同的牌（安全写法，不会删错）
-    let removedCount = 0
-    player.hand = player.hand.filter(tileInHand => {
-        return tileInHand !== tile || removedCount++ >= 3
-    })
+        let removedCount = 0
+        player.hand = player.hand.filter(tileInHand => {
+            return tileInHand !== tile || removedCount++ >= 3
+        })
 
         // 添加到明牌
         player.exposed.push({
@@ -165,11 +162,11 @@ export class MahjongGameLogic {
             tiles: [tile, tile, tile, tile]
         })
 
-            // 从牌池移除刚打出的牌，避免删错
-    if (gameState.pool[gameState.pool.length - 1] === tile) {
-        gameState.pool.pop()
-    }
-    gameState.currentTile = null
+        // 从牌池移除刚打出的牌，避免删错
+        if (gameState.pool[gameState.pool.length - 1] === tile) {
+            gameState.pool.pop()
+        }
+        gameState.currentTile = null
 
         // AI发言
         const chatMsg = mahjongAI.generateChat('gang')
@@ -189,22 +186,22 @@ export class MahjongGameLogic {
     performPeng(player, tile) {
         const { gameState } = this.store
 
-    // 移除手牌中的2张相同的牌（安全写法，不会删错）
-    let removedPengCount = 0
-    player.hand = player.hand.filter(tileInHand => {
-        return tileInHand !== tile || removedPengCount++ >= 2
-    })
+        // 移除手牌中的2张相同的牌（安全写法，不会删错）
+        let removedPengCount = 0
+        player.hand = player.hand.filter(tileInHand => {
+            return tileInHand !== tile || removedPengCount++ >= 2
+        })
         // 添加到明牌
         player.exposed.push({
             type: 'peng',
             tiles: [tile, tile, tile]
         })
 
-            // 从牌池移除刚打出的牌，避免删错
-    if (gameState.pool[gameState.pool.length - 1] === tile) {
-        gameState.pool.pop()
-    }
-    gameState.currentTile = null
+        // 从牌池移除刚打出的牌，避免删错
+        if (gameState.pool[gameState.pool.length - 1] === tile) {
+            gameState.pool.pop()
+        }
+        gameState.currentTile = null
 
         // AI发言
         const chatMsg = mahjongAI.generateChat('peng')
@@ -233,7 +230,7 @@ export class MahjongGameLogic {
         // 选择第一个组合
         const [tile1, tile2] = combinations[0]
 
-            // 移除手牌
+        // 移除手牌
         if (!player.hand.includes(tile1) || !player.hand.includes(tile2)) return
         const idx1 = player.hand.indexOf(tile1)
         player.hand.splice(idx1, 1)
@@ -246,11 +243,11 @@ export class MahjongGameLogic {
             tiles: [tile1, tile2, tile].sort()
         })
 
-            // 从牌池移除刚打出的牌，避免删错
-    if (gameState.pool[gameState.pool.length - 1] === tile) {
-        gameState.pool.pop()
-    }
-    gameState.currentTile = null
+        // 从牌池移除刚打出的牌，避免删错
+        if (gameState.pool[gameState.pool.length - 1] === tile) {
+            gameState.pool.pop()
+        }
+        gameState.currentTile = null
 
         // AI发言
         const chatMsg = mahjongAI.generateChat('chi')

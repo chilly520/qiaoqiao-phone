@@ -369,14 +369,24 @@ const getPreviewText = (contentRaw) => {
         return '[亲属卡]'
     }
 
-    // Clean Inner Voice
-    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '')
+    // Clean Inner Voice tags and their content
+    let clean = content.replace(/\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, '')
     // Clean System tags
     clean = clean.replace(/\[System:[\s\S]+?\]/gi, '')
     // Clean DRAW tags
     clean = clean.replace(/\[DRAW:[\s\S]*?\]/gi, '[生图指令]')
+    // Clean MOMENT tags
+    clean = clean.replace(/\[(?:MOMENT|朋友圈)\][\s\S]*?(?:\[\/(?:MOMENT|朋友圈)\]|$)/gi, '')
 
-    return clean.trim() || '[特殊属性消息]'
+    // Strip raw Inner Voice JSON blocks (without tags) — e.g. { "status": "xxx", "着装": "..." }
+    clean = clean.replace(/\{[^{}]*(?:"status"|"心声"|"着装"|"状态")[^{}]*\}/gi, '')
+
+    clean = clean.trim()
+
+    // If nothing left, the message was entirely inner voice / metadata
+    if (!clean) return '[心声]'
+
+    return clean
 }
 
 const initialUnreadCount = ref(0)
@@ -700,7 +710,8 @@ const handleImport = async (e) => {
             <div v-if="showBackgroundSettings"
                 class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in"
                 @click.self="showBackgroundSettings = false">
-                <div class="bg-white w-[90%] max-w-[360px] max-h-[80vh] rounded-lg overflow-hidden shadow-xl flex flex-col">
+                <div
+                    class="bg-white w-[90%] max-w-[360px] max-h-[80vh] rounded-lg overflow-hidden shadow-xl flex flex-col">
                     <div class="p-4 border-b border-gray-200">
                         <div class="text-lg font-bold text-gray-900">背景设置</div>
                     </div>
@@ -709,10 +720,11 @@ const handleImport = async (e) => {
                         <div>
                             <div class="text-sm font-bold text-gray-700 mb-2">微信页面</div>
                             <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
-                                <img v-if="backgroundSettings.chat.localUrl || backgroundSettings.chat.url" 
-                                     :src="backgroundSettings.chat.localUrl || backgroundSettings.chat.url" 
-                                     class="w-full h-full object-cover">
-                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                <img v-if="backgroundSettings.chat.localUrl || backgroundSettings.chat.url"
+                                    :src="backgroundSettings.chat.localUrl || backgroundSettings.chat.url"
+                                    class="w-full h-full object-cover">
+                                <div v-else
+                                    class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
                                     预览图
                                 </div>
                             </div>
@@ -730,8 +742,8 @@ const handleImport = async (e) => {
                                         class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
                                         <i class="fa-solid fa-upload mr-2"></i>上传本地背景
                                     </button>
-                                    <input type="file" @change="(e) => handleBackgroundUpload('chat', e)" accept="image/*"
-                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                    <input type="file" @change="(e) => handleBackgroundUpload('chat', e)"
+                                        accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
                                 </div>
                                 <button @click="clearBackground('chat')"
                                     class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
@@ -744,16 +756,18 @@ const handleImport = async (e) => {
                         <div>
                             <div class="text-sm font-bold text-gray-700 mb-2">通讯录页面</div>
                             <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
-                                <img v-if="backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url" 
-                                     :src="backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url" 
-                                     class="w-full h-full object-cover">
-                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                <img v-if="backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url"
+                                    :src="backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url"
+                                    class="w-full h-full object-cover">
+                                <div v-else
+                                    class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
                                     预览图
                                 </div>
                             </div>
                             <div class="space-y-2">
                                 <div class="flex gap-2">
-                                    <input type="text" v-model="backgroundSettings.contacts.url" placeholder="输入背景 URL..."
+                                    <input type="text" v-model="backgroundSettings.contacts.url"
+                                        placeholder="输入背景 URL..."
                                         class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-blue-500 transition-all font-mono bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400">
                                     <button @click="handleBackgroundUrlApply('contacts')"
                                         class="bg-blue-500 text-white px-3 rounded-xl active:scale-95 transition-transform">
@@ -765,8 +779,8 @@ const handleImport = async (e) => {
                                         class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
                                         <i class="fa-solid fa-upload mr-2"></i>上传本地背景
                                     </button>
-                                    <input type="file" @change="(e) => handleBackgroundUpload('contacts', e)" accept="image/*"
-                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                    <input type="file" @change="(e) => handleBackgroundUpload('contacts', e)"
+                                        accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
                                 </div>
                                 <button @click="clearBackground('contacts')"
                                     class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
@@ -779,16 +793,18 @@ const handleImport = async (e) => {
                         <div>
                             <div class="text-sm font-bold text-gray-700 mb-2">发现页面</div>
                             <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
-                                <img v-if="backgroundSettings.discover.localUrl || backgroundSettings.discover.url" 
-                                     :src="backgroundSettings.discover.localUrl || backgroundSettings.discover.url" 
-                                     class="w-full h-full object-cover">
-                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                <img v-if="backgroundSettings.discover.localUrl || backgroundSettings.discover.url"
+                                    :src="backgroundSettings.discover.localUrl || backgroundSettings.discover.url"
+                                    class="w-full h-full object-cover">
+                                <div v-else
+                                    class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
                                     预览图
                                 </div>
                             </div>
                             <div class="space-y-2">
                                 <div class="flex gap-2">
-                                    <input type="text" v-model="backgroundSettings.discover.url" placeholder="输入背景 URL..."
+                                    <input type="text" v-model="backgroundSettings.discover.url"
+                                        placeholder="输入背景 URL..."
                                         class="flex-1 bg-transparent px-3 py-2 text-xs rounded-xl border outline-none focus:border-blue-500 transition-all font-mono bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-400">
                                     <button @click="handleBackgroundUrlApply('discover')"
                                         class="bg-blue-500 text-white px-3 rounded-xl active:scale-95 transition-transform">
@@ -800,8 +816,8 @@ const handleImport = async (e) => {
                                         class="w-full py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center">
                                         <i class="fa-solid fa-upload mr-2"></i>上传本地背景
                                     </button>
-                                    <input type="file" @change="(e) => handleBackgroundUpload('discover', e)" accept="image/*"
-                                        class="absolute inset-0 opacity-0 cursor-pointer">
+                                    <input type="file" @change="(e) => handleBackgroundUpload('discover', e)"
+                                        accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
                                 </div>
                                 <button @click="clearBackground('discover')"
                                     class="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-md">
@@ -814,10 +830,11 @@ const handleImport = async (e) => {
                         <div>
                             <div class="text-sm font-bold text-gray-700 mb-2">我页面</div>
                             <div class="w-full h-24 bg-gray-100 rounded-lg mb-3 overflow-hidden border">
-                                <img v-if="backgroundSettings.me.localUrl || backgroundSettings.me.url" 
-                                     :src="backgroundSettings.me.localUrl || backgroundSettings.me.url" 
-                                     class="w-full h-full object-cover">
-                                <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                                <img v-if="backgroundSettings.me.localUrl || backgroundSettings.me.url"
+                                    :src="backgroundSettings.me.localUrl || backgroundSettings.me.url"
+                                    class="w-full h-full object-cover">
+                                <div v-else
+                                    class="w-full h-full flex items-center justify-center text-gray-400 text-sm">
                                     预览图
                                 </div>
                             </div>
@@ -906,10 +923,10 @@ const handleImport = async (e) => {
 
             <!-- MAIN CONTENT AREA -->
             <div class="flex-1 overflow-y-auto relative" :style="{
-                backgroundImage: currentTab === 'chat' && (backgroundSettings.chat.localUrl || backgroundSettings.chat.url) ? `url(${backgroundSettings.chat.localUrl || backgroundSettings.chat.url})` : 
-                                currentTab === 'contacts' && (backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) ? `url(${backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url})` : 
-                                currentTab === 'discover' && (backgroundSettings.discover.localUrl || backgroundSettings.discover.url) ? `url(${backgroundSettings.discover.localUrl || backgroundSettings.discover.url})` : 
-                                currentTab === 'me' && (backgroundSettings.me.localUrl || backgroundSettings.me.url) ? `url(${backgroundSettings.me.localUrl || backgroundSettings.me.url})` : 'none',
+                backgroundImage: currentTab === 'chat' && (backgroundSettings.chat.localUrl || backgroundSettings.chat.url) ? `url(${backgroundSettings.chat.localUrl || backgroundSettings.chat.url})` :
+                    currentTab === 'contacts' && (backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) ? `url(${backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url})` :
+                        currentTab === 'discover' && (backgroundSettings.discover.localUrl || backgroundSettings.discover.url) ? `url(${backgroundSettings.discover.localUrl || backgroundSettings.discover.url})` :
+                            currentTab === 'me' && (backgroundSettings.me.localUrl || backgroundSettings.me.url) ? `url(${backgroundSettings.me.localUrl || backgroundSettings.me.url})` : 'none',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat'
@@ -917,7 +934,8 @@ const handleImport = async (e) => {
                 <!-- Tabs (chatList, contacts, discover, me) ... keep original logic -->
                 <div v-if="currentTab === 'chat'" class="h-full">
                     <!-- Search Bar -->
-                    <div v-if="showSearch" class="bg-white/30 backdrop-blur-md px-2 pb-2 -mt-1 border-b border-gray-200">
+                    <div v-if="showSearch"
+                        class="bg-white/30 backdrop-blur-md px-2 pb-2 -mt-1 border-b border-gray-200">
                         <div class="bg-white/30 backdrop-blur-md rounded-lg flex items-center px-3 py-1.5">
                             <i class="fa-solid fa-magnifying-glass text-gray-400 text-sm mr-2"></i>
                             <input v-model="searchQuery" type="text" placeholder="搜索"
@@ -928,11 +946,11 @@ const handleImport = async (e) => {
                     </div>
 
                     <div v-for="chat in filteredChatList" :key="chat.id"
-                            class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
-                            :class="chat.isPinned ? 'bg-white/30 backdrop-blur-md' : ''" @click="openChat(chat.id)"
-                            @contextmenu.prevent="openContextMenu('chat', chat, $event)"
-                            @touchstart="startLongPress('chat', chat, $event)" @touchend="clearLongPress"
-                            @touchmove="handleTouchMove">
+                        class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
+                        :class="chat.isPinned ? 'bg-white/30 backdrop-blur-md' : ''" @click="openChat(chat.id)"
+                        @contextmenu.prevent="openContextMenu('chat', chat, $event)"
+                        @touchstart="startLongPress('chat', chat, $event)" @touchend="clearLongPress"
+                        @touchmove="handleTouchMove">
                         <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
                         <div class="relative w-12 h-12 mr-3">
                             <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
@@ -958,7 +976,9 @@ const handleImport = async (e) => {
                     </div>
                 </div>
                 <!-- ... keep other tabs same as original ... -->
-                <div v-if="currentTab === 'contacts'" :class="{'bg-[#ededed]': !(backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url)}" class="min-h-full">
+                <div v-if="currentTab === 'contacts'"
+                    :class="{ 'bg-[#ededed]': !(backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) }"
+                    class="min-h-full">
                     <!-- 1. Group Chats Section (World Loops) -->
                     <div class="bg-white/30 backdrop-blur-md mb-2">
                         <div class="px-4 py-2 bg-gradient-to-r from-blue-50/30 to-white/30 text-[10px] text-blue-600 font-bold flex justify-between items-center cursor-pointer border-b border-blue-100/30"
@@ -1051,7 +1071,9 @@ const handleImport = async (e) => {
                     </div>
                 </div>
                 <!-- Simplified discover/me for brevity, assuming you have original source -->
-                <div v-if="currentTab === 'discover'" :class="{'bg-[#ededed]': !(backgroundSettings.discover.localUrl || backgroundSettings.discover.url)}" class="min-h-full pt-2">
+                <div v-if="currentTab === 'discover'"
+                    :class="{ 'bg-[#ededed]': !(backgroundSettings.discover.localUrl || backgroundSettings.discover.url) }"
+                    class="min-h-full pt-2">
                     <!-- Moments Entry -->
                     <div class="bg-white/30 backdrop-blur-md px-4 py-3 flex items-center gap-3 mb-2 cursor-pointer active:bg-gray-50/30"
                         @click="handleOpenMoments">
@@ -1079,7 +1101,9 @@ const handleImport = async (e) => {
                         <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
                 </div>
-                <div v-if="currentTab === 'me'" :class="{'bg-[#ededed]': !(backgroundSettings.me.localUrl || backgroundSettings.me.url)}" class="min-h-full">
+                <div v-if="currentTab === 'me'"
+                    :class="{ 'bg-[#ededed]': !(backgroundSettings.me.localUrl || backgroundSettings.me.url) }"
+                    class="min-h-full">
                     <div class="bg-white/30 backdrop-blur-md pt-12 pb-8 px-6 flex items-center gap-4 mb-2 active:bg-gray-50/30 transition-colors cursor-pointer"
                         @click="openProfileEdit">
                         <div class="w-16 h-16 rounded overflow-hidden bg-gray-200 shadow-sm border border-gray-100">
@@ -1118,7 +1142,7 @@ const handleImport = async (e) => {
                     <i class="text-xl"
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
-                        }}</span>
+                    }}</span>
                 </div>
             </div>
 

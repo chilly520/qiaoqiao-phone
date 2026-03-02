@@ -2247,63 +2247,106 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
 
-                // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
+                // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support + Balanced JSON) ---
                 // const momentsStore = useMomentsStore() // Already declared at top of function
 
-                // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
-                const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
-                const momentMatch = properlyOrderedContent.match(momentRegex);
-                if (momentMatch) {
+                // Use balanced brace matching to extract JSON from [MOMENT] tag, avoiding regex issues with [ in JSON arrays
+                const momentTagRegex = /\[(?:MOMENT|朋友圈)\]/i;
+                const momentTagMatch = properlyOrderedContent.match(momentTagRegex);
+                let momentFullMatch = null; // Store full match text for cleanContent removal
+                if (momentTagMatch) {
                     try {
-                        let jsonStr = momentMatch[1].trim()
-                        // ESCAPE FIX: Handle AI's tendency to escape quotes in JSON
-                        jsonStr = jsonStr.replace(/\\"/g, '"');
-
-                        // If it's not a full JSON but looks like it starts with {, try to close it if missing
-                        if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
-
-                        let momentData = JSON.parse(jsonStr)
-
-                        // Mapping Chinese Keys to English (Safety Net)
-                        const content = momentData.content || momentData.内容
-                        const interactions = momentData.interactions || momentData.互动 || []
-                        const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片
-
-                        if (momentData && (content || momentData.html)) {
-                            const newMoment = {
-                                authorId: chatId,
-                                content: content,
-                                html: momentData.html, // Add HTML support
-                                images: [],
-                                imageDescriptions: [],
-                                interactions: interactions.map(i => ({
-                                    type: i.type || (i.类型 === '点赞' ? 'like' : (i.类型 === '评论' ? 'comment' : (i.类型 === '回复' ? 'reply' : i.类型))),
-                                    author: i.author || i.作者 || i.名字,
-                                    text: i.text || i.内容 || i.文本 || i.content,
-                                    replyTo: i.replyTo || i.回复对象 || i.回复
-                                }))
-                            }
-
-                            if (imagePrompt) {
-                                // If it's already a URL (AI might pass existing URL), use it
-                                if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
-                                    newMoment.images.push(imagePrompt)
-                                } else {
-                                    const imageUrl = await generateImage(String(imagePrompt))
-                                    newMoment.images.push(imageUrl)
+                        const afterTag = properlyOrderedContent.substring(momentTagMatch.index + momentTagMatch[0].length);
+                        // Find the JSON object using balanced brace matching
+                        const jsonStart = afterTag.indexOf('{');
+                        if (jsonStart !== -1) {
+                            let balance = 0;
+                            let inString = false;
+                            let isEscaped = false;
+                            let jsonEnd = -1;
+                            for (let ci = jsonStart; ci < afterTag.length; ci++) {
+                                const ch = afterTag[ci];
+                                if (isEscaped) { isEscaped = false; continue; }
+                                if (ch === '\\') { isEscaped = true; continue; }
+                                if (ch === '"') { inString = !inString; continue; }
+                                if (!inString) {
+                                    if (ch === '{') balance++;
+                                    else if (ch === '}') {
+                                        balance--;
+                                        if (balance === 0) { jsonEnd = ci + 1; break; }
+                                    }
                                 }
                             }
 
-                            const momentResult = momentsStore.addMoment(newMoment);
+                            if (jsonEnd !== -1) {
+                                let jsonStr = afterTag.substring(jsonStart, jsonEnd).trim();
+                                // ESCAPE FIX: Handle AI's tendency to escape quotes in JSON
+                                jsonStr = jsonStr.replace(/\\"/g, '"');
+                                // Store the full matched text (from [MOMENT] to end of JSON) for removal
+                                const closingTag = afterTag.substring(jsonEnd).match(/^\s*\[\/(?:MOMENT|朋友圈)\]/i);
+                                const matchEnd = momentTagMatch.index + momentTagMatch[0].length + jsonEnd + (closingTag ? closingTag[0].length : 0);
+                                momentFullMatch = properlyOrderedContent.substring(momentTagMatch.index, matchEnd);
 
-                            addMessage(chatId, {
-                                type: 'system',
-                                content: `"${chat.name}" 发布了一条朋友圈`,
-                                _momentReferenceId: momentResult.id  // Store reference for follow-up
-                            });
+                                let momentData = JSON.parse(jsonStr);
+
+                                // Mapping Chinese Keys to English (Safety Net)
+                                const content = momentData.content || momentData.内容;
+                                const interactions = momentData.interactions || momentData.互动 || [];
+                                const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片;
+                                // Support "images" array (URLs directly from AI)
+                                const imagesArray = momentData.images || momentData.图片列表 || [];
+
+                                if (momentData && (content || momentData.html)) {
+                                    const newMoment = {
+                                        authorId: chatId,
+                                        content: content,
+                                        html: momentData.html,
+                                        images: [],
+                                        imageDescriptions: momentData.imageDescriptions || [],
+                                        location: momentData.location || momentData.地点 || '',
+                                        interactions: interactions.map(i => ({
+                                            type: i.type || (i.类型 === '点赞' ? 'like' : (i.类型 === '评论' ? 'comment' : (i.类型 === '回复' ? 'reply' : i.类型))),
+                                            author: i.author || i.作者 || i.名字,
+                                            text: i.text || i.内容 || i.文本 || i.content,
+                                            replyTo: i.replyTo || i.回复对象 || i.回复
+                                        }))
+                                    };
+
+                                    // Handle images: support both "images" array (direct URLs) and "imagePrompt" (generation)
+                                    if (Array.isArray(imagesArray) && imagesArray.length > 0) {
+                                        for (const img of imagesArray) {
+                                            if (typeof img === 'string' && (img.startsWith('http') || img.startsWith('data:'))) {
+                                                newMoment.images.push(img);
+                                            } else if (typeof img === 'string' && img.trim()) {
+                                                try {
+                                                    const imgUrl = await generateImage(img);
+                                                    newMoment.images.push(imgUrl);
+                                                } catch (e) { console.warn('[MOMENT] Image gen failed for:', img); }
+                                            }
+                                        }
+                                    } else if (imagePrompt) {
+                                        if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
+                                            newMoment.images.push(imagePrompt);
+                                        } else {
+                                            try {
+                                                const imageUrl = await generateImage(String(imagePrompt));
+                                                newMoment.images.push(imageUrl);
+                                            } catch (e) { console.warn('[MOMENT] Image gen failed'); }
+                                        }
+                                    }
+
+                                    const momentResult = momentsStore.addMoment(newMoment);
+
+                                    addMessage(chatId, {
+                                        type: 'system',
+                                        content: `"${chat.name}" 发布了一条朋友圈`,
+                                        _momentReferenceId: momentResult.id
+                                    });
+                                }
+                            }
                         }
                     } catch (e) {
-                        console.error('[ChatStore] Failed to parse [MOMENT]', e)
+                        console.error('[ChatStore] Failed to parse [MOMENT]', e);
                     }
                 }
 
@@ -2477,7 +2520,6 @@ export const useChatStore = defineStore('chat', () => {
                     // .replace(cleanVoiceRegex, '') // KEEP INNER_VOICE for History/Card to read!
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
-                    .replace(momentRegex, '')
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
@@ -2489,6 +2531,13 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(/[（\(]引用来自.*?[）\)]/gi, '')
                     .replace(/引用[^：:。^！]*[：:。^！]/gi, '')
                     .trim();
+
+                // Remove the exact MOMENT block captured by balanced brace matching
+                if (momentFullMatch) {
+                    cleanContent = cleanContent.replace(momentFullMatch, '').trim();
+                }
+                // Fallback: also remove any remaining [MOMENT]...[/MOMENT] tags that might have been missed
+                cleanContent = cleanContent.replace(/\[(?:MOMENT|朋友圈)\][\s\S]*?\[\/(?:MOMENT|朋友圈)\]/gi, '').trim();
 
                 // Clean AI Hallucinations & Residual Tags & TOXIC CSS
                 cleanContent = cleanContent
@@ -2595,39 +2644,81 @@ export const useChatStore = defineStore('chat', () => {
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // --- Improved Splitting Logic (V11 - Balanced Aware) ---
-                // We split by punctuation but keep segments meaningful.
-                // Avoid capturing nested parentheses in the split pattern itself if possible
+                // --- Improved Splitting Logic (V12 - Smart Paragraph Grouping) ---
+                // Core idea: Only split into separate bubbles on:
+                //   1. Special tags (DRAW, sticker, voice, image, card, INNER_VOICE)
+                //   2. Double-newlines (paragraph breaks)
+                // Single newlines and punctuation keep content in the SAME bubble.
+                // Short segments are merged with neighbors to avoid tiny isolated bubbles.
 
-                // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：]?.*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
-                const rawParts = processedContent.split(splitRegex);
-
-                useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
+                // Step 1: Extract special blocks as standalone segments using a global scan
+                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\[图片[:：]?.*?\]|\[语音[:：]?.*?\])/gi;
 
                 let rawSegments = [];
-                let currentRawSegment = "";
+                let lastIdx = 0;
+                let specialMatch;
 
-                for (let i = 0; i < rawParts.length; i++) {
-                    const part = rawParts[i];
-                    if (part === undefined) continue;
+                while ((specialMatch = specialBlockRegex.exec(processedContent)) !== null) {
+                    // Text before this special block
+                    if (specialMatch.index > lastIdx) {
+                        const textBefore = processedContent.substring(lastIdx, specialMatch.index).trim();
+                        if (textBefore) rawSegments.push(textBefore);
+                    }
+                    // The special block itself
+                    rawSegments.push(specialMatch[0]);
+                    lastIdx = specialMatch.index + specialMatch[0].length;
+                }
+                // Remaining text after last special block
+                if (lastIdx < processedContent.length) {
+                    const remaining = processedContent.substring(lastIdx).trim();
+                    if (remaining) rawSegments.push(remaining);
+                }
 
-                    const trimmedPart = part.trim();
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
-                    const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
-
-                    if (isSpecial) {
-                        if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }
-                        rawSegments.push(part);
-                    } else if (isPunctuation) {
-                        currentRawSegment += part;
-                        rawSegments.push(currentRawSegment);
-                        currentRawSegment = "";
+                // Step 2: For each text segment (non-special), split by double-newlines only
+                let expandedSegments = [];
+                for (const seg of rawSegments) {
+                    const trimSeg = seg.trim();
+                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/.test(trimSeg);
+                    if (isSpecialBlock) {
+                        expandedSegments.push(seg);
                     } else {
-                        currentRawSegment += part;
+                        // Split text on double-newlines (paragraph breaks) only
+                        const paragraphs = seg.split(/\n\s*\n/).map(p => p.trim()).filter(p => p);
+                        expandedSegments.push(...paragraphs);
                     }
                 }
-                if (currentRawSegment) rawSegments.push(currentRawSegment);
+
+                // Step 3: Merge short segments with neighbors to avoid tiny bubbles
+                // A segment shorter than MIN_BUBBLE_LEN chars gets merged with the previous or next text segment
+                const MIN_BUBBLE_LEN = 20;
+                let mergedSegments = [];
+                for (let i = 0; i < expandedSegments.length; i++) {
+                    const seg = expandedSegments[i];
+                    const trimSeg = seg.trim();
+                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/.test(trimSeg);
+
+                    if (isSpecialBlock) {
+                        mergedSegments.push(seg);
+                        continue;
+                    }
+
+                    // Plain text segment — check length
+                    const pureText = trimSeg.replace(/\([^)]*\)|（[^）]*）|"[^"]*"|"[^"]*"/g, '').trim();
+                    if (pureText.length < MIN_BUBBLE_LEN && mergedSegments.length > 0) {
+                        // Try to merge with the last segment if it was also text
+                        const lastIdx2 = mergedSegments.length - 1;
+                        const lastSeg = mergedSegments[lastIdx2];
+                        const lastIsSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/.test(lastSeg.trim());
+                        if (!lastIsSpecial) {
+                            mergedSegments[lastIdx2] = lastSeg + '\n' + trimSeg;
+                            continue;
+                        }
+                    }
+                    mergedSegments.push(seg);
+                }
+                rawSegments = mergedSegments;
+
+                useLoggerStore().debug(`[Split V12] Final segments: ${rawSegments.length}`);
 
                 // --- Restoring Card Blocks and Filtering Content ---
                 let finalSegments = [];
@@ -2655,6 +2746,10 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'text', content: '[图片]' }); // Handled as image msg by type: 'text' + content: '[图片]'
                     } else if (content.startsWith('[DRAW:')) {
                         finalSegments.push({ type: 'draw', content: content.trim() });
+                    } else if (/^\[\s*INNER[\s-_]*VOICE\s*\]/i.test(content.trim())) {
+                        // INNER_VOICE blocks are metadata, not displayable — skip them
+                        // They are still preserved in stored msg content for the Inner Voice Card to read
+                        continue;
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'];
