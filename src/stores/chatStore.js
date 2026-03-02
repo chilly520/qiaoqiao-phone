@@ -3070,7 +3070,8 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
-    async function saveChats() {
+    // Core save implementation — expensive (deep-clone + IndexedDB write)
+    async function _saveChatsCore() {
         if (!isLoaded.value) {
             console.warn('[Storage] saveChats ignored: data not yet loaded from DB.');
             return false;
@@ -3106,6 +3107,18 @@ export const useChatStore = defineStore('chat', () => {
             }
             return false
         }
+    }
+
+    // Debounced saveChats — prevents UI freeze from rapid sequential saves
+    // During AI message delivery, 3-5 addMessage calls fire in quick succession,
+    // each previously doing a full deep-clone + IndexedDB write. Now batched.
+    let _saveTimer = null;
+    function saveChats() {
+        if (_saveTimer) clearTimeout(_saveTimer);
+        _saveTimer = setTimeout(() => {
+            _saveTimer = null;
+            _saveChatsCore();
+        }, 1500);
     }
 
     async function loadChats() {
