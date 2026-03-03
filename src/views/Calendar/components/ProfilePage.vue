@@ -40,21 +40,21 @@
     <!-- 功能菜单 -->
     <div class="menu-section">
       <h3 class="section-title">功能设置</h3>
-      
+
       <div class="menu-list">
         <div class="menu-item" @click="showAISettings = true">
           <span class="menu-icon">🤖</span>
           <span class="menu-text">AI角色绑定</span>
           <span class="menu-arrow">›</span>
         </div>
-        
+
         <div class="menu-item" @click="showCountdownModal = true">
           <span class="menu-icon">⏰</span>
           <span class="menu-text">倒计时管理</span>
           <span class="menu-badge">{{ countdownCount }}</span>
           <span class="menu-arrow">›</span>
         </div>
-        
+
         <div class="menu-item" @click="showDiaryModal = true">
           <span class="menu-icon">📔</span>
           <span class="menu-text">我的日记</span>
@@ -66,7 +66,7 @@
     <!-- 提醒设置 -->
     <div class="menu-section">
       <h3 class="section-title">提醒设置</h3>
-      
+
       <div class="menu-list">
         <div class="menu-item toggle">
           <span class="menu-icon">🌙</span>
@@ -76,7 +76,7 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
-        
+
         <div class="menu-item toggle" v-if="reminderSettings.enabled">
           <span class="menu-icon">⏰</span>
           <span class="menu-text">提前提醒(天)</span>
@@ -92,14 +92,14 @@
     <!-- 数据管理 -->
     <div class="menu-section">
       <h3 class="section-title">数据管理</h3>
-      
+
       <div class="menu-list">
         <div class="menu-item" @click="exportData">
           <span class="menu-icon">📤</span>
           <span class="menu-text">导出数据</span>
           <span class="menu-arrow">›</span>
         </div>
-        
+
         <div class="menu-item danger" @click="clearAllData">
           <span class="menu-icon">🗑️</span>
           <span class="menu-text">清除所有数据</span>
@@ -111,7 +111,7 @@
     <!-- 帮助入口 -->
     <div class="menu-section">
       <h3 class="section-title">帮助</h3>
-      
+
       <div class="menu-list">
         <div class="menu-item" @click="goToHelp">
           <span class="menu-icon">�</span>
@@ -129,7 +129,7 @@
 
     <!-- 弹窗 -->
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
-    <CountdownModal v-if="showCountdownModal" @close="showCountdownModal = false" @save="saveCountdown" />
+    <CountdownManagerModal v-if="showCountdownModal" @close="showCountdownModal = false" />
     <DiaryModal v-if="showDiaryModal" :date="todayStr" @close="showDiaryModal = false" @save="saveDiary" />
 
     <!-- 头像编辑弹窗 -->
@@ -178,7 +178,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCalendarStore } from '../../../stores/calendarStore'
 import AISettingsModal from './AISettingsModal.vue'
-import CountdownModal from './CountdownModal.vue'
+import CountdownManagerModal from './CountdownManagerModal.vue'
 import DiaryModal from './DiaryModal.vue'
 
 const router = useRouter()
@@ -316,7 +316,7 @@ function exportData() {
     userProfile: userProfile.value,
     exportDate: new Date().toISOString()
   }
-  
+
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -324,7 +324,7 @@ function exportData() {
   a.download = `calendar_backup_${new Date().toISOString().split('T')[0]}.json`
   a.click()
   URL.revokeObjectURL(url)
-  
+
   alert('数据已导出！')
 }
 
@@ -560,11 +560,11 @@ function clearAllData() {
   transition: 0.3s;
 }
 
-input:checked + .toggle-slider {
+input:checked+.toggle-slider {
   background: linear-gradient(135deg, #ffb7c5, #c5c9ff);
 }
 
-input:checked + .toggle-slider:before {
+input:checked+.toggle-slider:before {
   transform: translateX(22px);
 }
 

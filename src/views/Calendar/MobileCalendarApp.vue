@@ -109,6 +109,18 @@
             <span v-else-if="periodStatus.type === 'ovulation'">🌸 排卵期</span>
           </div>
 
+          <!-- 倒计时展示 -->
+          <div v-if="topCountdowns.length > 0" class="countdown-widget">
+            <div v-for="cd in topCountdowns" :key="cd.id" class="cd-item"
+              :style="{ backgroundColor: (cd.color || '#ff9eb5') + '20', color: cd.color || '#ff6b9d' }">
+              <span class="cd-icon">⏳</span>
+              <span class="cd-title">{{ cd.title }}</span>
+              <span class="cd-days-text font-bold">
+                {{ cd.daysLeft === 0 ? '就是今天' : `还有 ${cd.daysLeft} 天` }}
+              </span>
+            </div>
+          </div>
+
           <!-- 今日日程 -->
           <div class="day-events">
             <div class="section-title">
@@ -248,6 +260,37 @@ const periodStatus = computed(() => calendarStore.getPeriodStatus(selectedDate.v
 const selectedEvents = computed(() => calendarStore.getEventsForDate(selectedDateStr.value))
 const selectedMood = computed(() => calendarStore.getMoodForDate(selectedDateStr.value))
 const selectedDiary = computed(() => calendarStore.diaries.find(d => d.date === selectedDateStr.value))
+
+// 首页倒计时展示 (近期的前2个)
+function getDaysLeft(targetDateStr, isRecurring) {
+  const target = new Date(targetDateStr)
+  target.setHours(0, 0, 0, 0)
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (isRecurring) {
+    const currentYear = today.getFullYear()
+    target.setFullYear(currentYear)
+    if (target < today) {
+      target.setFullYear(currentYear + 1)
+    }
+  }
+
+  const diffTime = target - today
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+}
+const topCountdowns = computed(() => {
+  if (!calendarStore.countdowns?.length) return []
+  return [...calendarStore.countdowns]
+    .map(c => ({
+      ...c,
+      daysLeft: getDaysLeft(c.targetDate, c.isRecurring)
+    }))
+    .filter(c => c.daysLeft >= 0)
+    .sort((a, b) => a.daysLeft - b.daysLeft)
+    .slice(0, 2)
+})
 
 // 方法
 function goBack() {
@@ -444,7 +487,7 @@ onMounted(() => {
 .main-content {
   flex: 1;
   overflow-y: auto;
-  padding: 0 16px 80px;
+  padding: 0 16px 120px;
 }
 
 .tab-content {
@@ -675,6 +718,32 @@ onMounted(() => {
   color: #8b7aa8;
 }
 
+.countdown-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.cd-title {
+  flex: 1;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.cd-days-text {
+  font-size: 14px;
+}
+
 .day-events {
   margin-top: 12px;
 }
@@ -850,6 +919,11 @@ onMounted(() => {
 .dark-mode .day-header,
 .dark-mode .event-item {
   border-color: rgba(55, 65, 81, 0.5);
+}
+
+.dark-mode .cd-item {
+  background: rgba(31, 41, 55, 0.8) !important;
+  color: #f9fafb !important;
 }
 
 .dark-mode .reminder-banner {
