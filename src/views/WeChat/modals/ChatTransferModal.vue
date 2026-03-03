@@ -41,7 +41,28 @@
                     <div class="text-gray-400 text-xs mb-6 px-4">对方确认后资金将存入其零钱。1天内未确认将自动退还。</div>
                 </div>
 
-                <!-- State: Waiting (Sent to User) -->
+                <!-- State: Group transfer NOT targeted to user (view details only) -->
+                <div v-else-if="isGroupTransferNotForMe" class="w-full">
+                    <div class="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fa-solid fa-arrow-right-arrow-left text-gray-400 text-3xl"></i>
+                    </div>
+                    <div class="text-lg font-bold text-gray-900 mb-1">转账详情</div>
+
+                    <!-- Sender Info -->
+                    <div
+                        class="flex items-center justify-center gap-1.5 mb-6 bg-gray-50 py-2 px-4 rounded-full w-fit mx-auto border border-gray-100">
+                        <span class="text-gray-400 text-[10px] font-medium">来自</span>
+                        <img :src="senderAvatar" class="w-4 h-4 rounded-full object-cover shadow-sm">
+                        <span class="text-gray-600 font-bold text-[11px]">{{ senderName }}</span>
+                    </div>
+
+                    <div class="text-4xl font-black text-gray-900 mb-4 font-mono tracking-tighter">¥{{ packet?.amount ||
+                        '0.00' }}</div>
+                    <div class="text-gray-400 text-xs">{{ packet?.note || '转账给您' }}</div>
+                    <div class="text-gray-300 text-[10px] mt-2">此转账非发送给你</div>
+                </div>
+
+                <!-- State: Waiting (Sent to User — show accept/reject) -->
                 <div v-else class="w-full">
                     <div class="w-16 h-16 bg-[#07c160]/10 rounded-full flex items-center justify-center mx-auto mb-6">
                         <i class="fa-solid fa-wallet text-[#07c160] text-3xl"></i>
@@ -49,12 +70,12 @@
 
                     <div class="text-lg font-bold text-gray-900 mb-2">收到转账</div>
 
-                    <!-- Sender Info Info -->
+                    <!-- Sender Info -->
                     <div
                         class="flex items-center justify-center gap-1.5 mb-6 bg-gray-50 py-2 px-4 rounded-full w-fit mx-auto border border-gray-100">
                         <span class="text-gray-400 text-[10px] font-medium">来自</span>
-                        <img :src="chatData.avatar" class="w-4 h-4 rounded-full object-cover shadow-sm">
-                        <span class="text-gray-600 font-bold text-[11px]">{{ chatData.name }}</span>
+                        <img :src="senderAvatar" class="w-4 h-4 rounded-full object-cover shadow-sm">
+                        <span class="text-gray-600 font-bold text-[11px]">{{ senderName }}</span>
                     </div>
 
                     <div class="text-4xl font-black text-gray-900 mb-8 font-mono tracking-tighter">¥{{ packet?.amount ||
@@ -85,12 +106,33 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
     visible: Boolean,
     packet: Object,
     chatData: Object
 })
+
+// In group chats, use sender info from the message itself
+const senderName = computed(() => {
+    return props.packet?.senderName || props.chatData?.name || '对方'
+})
+
+const senderAvatar = computed(() => {
+    return props.packet?.senderAvatar || props.chatData?.avatar || ''
+})
+
+// Check if this is a group transfer not targeted at the user
+const isGroupTransferNotForMe = computed(() => {
+    if (!props.chatData?.isGroup) return false
+    const targetId = props.packet?.targetId
+    if (!targetId) return false // No targetId means it's for the user (default)
+    // If targetId is 'user' or matches known user IDs, it's for the user
+    return targetId !== 'user' && targetId !== 'me'
+})
 </script>
+
 
 <style scoped>
 .animate-fade-in {

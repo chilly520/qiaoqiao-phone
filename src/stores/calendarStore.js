@@ -65,29 +65,29 @@ export function getLunarDate(date) {
   const year = date.getFullYear()
   const month = date.getMonth() + 1
   const day = date.getDate()
-  
+
   const baseDate = new Date(1900, 0, 31)
   const targetDate = new Date(year, month - 1, day)
   let offset = Math.floor((targetDate - baseDate) / 86400000)
-  
+
   let lunarYear = 1900
   let daysInYear = 0
-  
+
   for (; lunarYear < 2100 && offset > 0; lunarYear++) {
     daysInYear = lYearDays(lunarYear)
     offset -= daysInYear
   }
-  
+
   if (offset < 0) {
     offset += daysInYear
     lunarYear--
   }
-  
+
   const isLeap = leapMonth(lunarYear) > 0
   let lunarMonthIndex = 1
   let lunarDayIndex = offset + 1
   let isLeapMonth = false
-  
+
   for (let i = 1; i < 13 && lunarDayIndex > 0; i++) {
     let daysInMonth = 0
     if (isLeap && i === leapMonth(lunarYear) + 1) {
@@ -109,7 +109,7 @@ export function getLunarDate(date) {
       }
     }
   }
-  
+
   return {
     year: lunarYear,
     month: lunarMonthIndex,
@@ -155,11 +155,11 @@ export function getSolarTerm(date) {
   const y = date.getFullYear()
   const m = date.getMonth()
   const d = date.getDate()
-  
+
   const termInfo = [
     6, 20, 4, 19, 6, 21, 5, 20, 6, 21, 6, 22, 7, 23, 8, 23, 8, 23, 9, 24, 8, 23, 7, 22
   ]
-  
+
   const index = m * 2
   if (d === termInfo[index]) return solarTerm[index]
   if (d === termInfo[index + 1]) return solarTerm[index + 1]
@@ -175,17 +175,17 @@ export const useCalendarStore = defineStore('calendar', () => {
   // 当前选中日期
   const currentDate = ref(new Date())
   const selectedDate = ref(new Date())
-  
+
   // 视图模式: month, week, day, agenda
   const viewMode = ref('month')
-  
+
   // 主题设置
   const themeSettings = ref({
     currentTheme: 'default',
     isDarkMode: false,
     customThemes: []
   })
-  
+
   // 预设主题
   const presetThemes = ref([
     {
@@ -280,10 +280,10 @@ export const useCalendarStore = defineStore('calendar', () => {
       }
     }
   ])
-  
+
   // 事件/日程数据
   const events = ref([])
-  
+
   // 生理期数据
   const periodData = ref({
     cycles: [], // { startDate, endDate, duration }
@@ -292,30 +292,33 @@ export const useCalendarStore = defineStore('calendar', () => {
     lastPeriod: null,
     predictions: []
   })
-  
+
   // 心情记录
   const moodRecords = ref([])
-  
-  // 倒计时/纪念日
+
+  // 倒计时
   const countdowns = ref([])
-  
+
+  // 纪念日
+  const anniversaries = ref([])
+
   // 周期性任务
   const recurringTasks = ref([])
-  
+
   // 睡眠记录
   const sleepRecords = ref([])
-  
+
   // 饮水记录
   const waterRecords = ref([])
-  
+
   // 每日日记
   const diaries = ref([])
-  
+
   // AI角色绑定权限
   const aiAccessSettings = ref({
     // key: charId, value: { schedule: true, period: false, mood: true, ... }
   })
-  
+
   // 从localStorage加载数据
   function loadData() {
     try {
@@ -330,6 +333,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         sleepRecords.value = data.sleepRecords || []
         waterRecords.value = data.waterRecords || []
         diaries.value = data.diaries || []
+        anniversaries.value = data.anniversaries || []
         aiAccessSettings.value = data.aiAccessSettings || {}
         periodReminders.value = data.periodReminders || { enabled: true, remindBefore: 2, remindAt: '09:00', lastReminded: null }
       }
@@ -337,7 +341,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       console.error('[CalendarStore] Load failed:', e)
     }
   }
-  
+
   // 保存到localStorage
   function saveData() {
     try {
@@ -350,6 +354,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         sleepRecords: sleepRecords.value,
         waterRecords: waterRecords.value,
         diaries: diaries.value,
+        anniversaries: anniversaries.value,
         aiAccessSettings: aiAccessSettings.value,
         periodReminders: periodReminders.value
       }
@@ -358,13 +363,13 @@ export const useCalendarStore = defineStore('calendar', () => {
       console.error('[CalendarStore] Save failed:', e)
     }
   }
-  
+
   // 天气数据
   const weatherData = ref({
     current: null,
     forecast: []
   })
-  
+
   // 经期提醒设置
   const periodReminders = ref({
     enabled: true,
@@ -372,34 +377,34 @@ export const useCalendarStore = defineStore('calendar', () => {
     remindAt: '09:00',
     lastReminded: null
   })
-  
+
   // 统计概览数据
   const statsOverview = computed(() => {
     const today = new Date()
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000)
-    
+
     // 近30天数据
     const recentMoods = moodRecords.value.filter(m => new Date(m.date) >= thirtyDaysAgo)
     const recentSleep = sleepRecords.value.filter(s => new Date(s.date) >= thirtyDaysAgo)
     const recentWater = waterRecords.value.filter(w => new Date(w.date) >= thirtyDaysAgo)
-    
+
     // 心情统计
     const moodCounts = {}
     recentMoods.forEach(m => {
       moodCounts[m.mood] = (moodCounts[m.mood] || 0) + 1
     })
     const dominantMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'calm'
-    
+
     // 睡眠平均
     const avgSleep = recentSleep.length > 0
       ? recentSleep.reduce((sum, s) => sum + s.duration, 0) / recentSleep.length
       : 0
-    
+
     // 饮水平均
     const avgWater = recentWater.length > 0
       ? recentWater.reduce((sum, w) => sum + w.amount, 0) / recentWater.length
       : 0
-    
+
     return {
       totalEvents: events.value.length,
       completedEvents: events.value.filter(e => e.completed).length,
@@ -415,7 +420,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       recentWater
     }
   })
-  
+
   // 计算属性：当前月份的所有日期
   const currentMonthDays = computed(() => {
     const year = currentDate.value.getFullYear()
@@ -424,9 +429,9 @@ export const useCalendarStore = defineStore('calendar', () => {
     const lastDay = new Date(year, month + 1, 0)
     const startWeek = firstDay.getDay()
     const daysInMonth = lastDay.getDate()
-    
+
     const days = []
-    
+
     // 上月日期
     const prevMonthLastDay = new Date(year, month, 0).getDate()
     for (let i = startWeek - 1; i >= 0; i--) {
@@ -437,7 +442,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         term: getSolarTerm(new Date(year, month - 1, prevMonthLastDay - i))
       })
     }
-    
+
     // 当月日期
     for (let i = 1; i <= daysInMonth; i++) {
       const date = new Date(year, month, i)
@@ -455,7 +460,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         mood: getMoodForDate(dateStr)
       })
     }
-    
+
     // 下月日期
     const remaining = 42 - days.length
     for (let i = 1; i <= remaining; i++) {
@@ -466,10 +471,10 @@ export const useCalendarStore = defineStore('calendar', () => {
         term: getSolarTerm(new Date(year, month + 1, i))
       })
     }
-    
+
     return days
   })
-  
+
   // 获取指定日期的事件
   function getEventsForDate(dateStr) {
     return events.value.filter(e => {
@@ -484,15 +489,15 @@ export const useCalendarStore = defineStore('calendar', () => {
       return (a.startTime || '').localeCompare(b.startTime || '')
     })
   }
-  
+
   // 检查周期性事件
   function checkRecurringEvent(event, dateStr) {
     const date = parseDateStr(dateStr)
     const eventDate = parseDateStr(event.date)
     if (date < eventDate) return false
-    
+
     const diffDays = Math.floor((date - eventDate) / 86400000)
-    
+
     switch (event.recurringType) {
       case 'daily':
         return diffDays % (event.recurringInterval || 1) === 0
@@ -506,17 +511,17 @@ export const useCalendarStore = defineStore('calendar', () => {
         return false
     }
   }
-  
+
   // 获取节日
   function getFestival(date) {
     const key = `${date.getMonth() + 1}-${date.getDate()}`
     return festivals[key] || ''
   }
-  
+
   // 获取生理期状态
   function getPeriodStatus(date) {
     const dateStr = formatDateStr(date)
-    
+
     // 检查是否在记录周期内
     for (const cycle of periodData.value.cycles) {
       const start = new Date(cycle.startDate)
@@ -525,7 +530,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         return { type: 'period', day: Math.floor((date - start) / 86400000) + 1 }
       }
     }
-    
+
     // 检查预测
     for (const pred of periodData.value.predictions) {
       const start = new Date(pred.startDate)
@@ -534,7 +539,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         return { type: 'prediction', day: Math.floor((date - start) / 86400000) + 1 }
       }
     }
-    
+
     // 排卵期预测
     if (periodData.value.lastPeriod) {
       const lastStart = new Date(periodData.value.lastPeriod.startDate)
@@ -544,31 +549,31 @@ export const useCalendarStore = defineStore('calendar', () => {
         return { type: 'ovulation' }
       }
     }
-    
+
     return null
   }
-  
+
   // 获取心情记录
   function getMoodForDate(dateStr) {
     return moodRecords.value.find(m => m.date === dateStr)
   }
-  
+
   // 辅助函数
   function formatDateStr(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   }
-  
+
   function parseDateStr(str) {
     const [y, m, d] = str.split('-').map(Number)
     return new Date(y, m - 1, d)
   }
-  
+
   function isSameDay(d1, d2) {
-    return d1.getFullYear() === d2.getFullYear() && 
-           d1.getMonth() === d2.getMonth() && 
-           d1.getDate() === d2.getDate()
+    return d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
   }
-  
+
   // 添加事件
   function addEvent(event) {
     const newEvent = {
@@ -579,7 +584,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     events.value.push(newEvent)
     return newEvent
   }
-  
+
   // 更新事件
   function updateEvent(id, updates) {
     const idx = events.value.findIndex(e => e.id === id)
@@ -587,12 +592,12 @@ export const useCalendarStore = defineStore('calendar', () => {
       events.value[idx] = { ...events.value[idx], ...updates, updatedAt: new Date().toISOString() }
     }
   }
-  
+
   // 删除事件
   function deleteEvent(id) {
     events.value = events.value.filter(e => e.id !== id)
   }
-  
+
   // 记录生理期
   function recordPeriod(startDate, endDate, symptoms = []) {
     const cycle = {
@@ -604,7 +609,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
     periodData.value.cycles.push(cycle)
     periodData.value.lastPeriod = cycle
-    
+
     // 重新计算平均值
     if (periodData.value.cycles.length >= 2) {
       let totalCycle = 0
@@ -618,18 +623,18 @@ export const useCalendarStore = defineStore('calendar', () => {
       periodData.value.averageCycle = Math.round(totalCycle / (periodData.value.cycles.length - 1))
       periodData.value.averageDuration = Math.round(totalDuration / (periodData.value.cycles.length - 1))
     }
-    
+
     // 生成预测
     generatePeriodPredictions()
   }
-  
+
   // 生成生理期预测
   function generatePeriodPredictions() {
     if (!periodData.value.lastPeriod) return
-    
+
     const predictions = []
     const lastStart = new Date(periodData.value.lastPeriod.startDate)
-    
+
     for (let i = 1; i <= 6; i++) {
       const predStart = new Date(lastStart.getTime() + periodData.value.averageCycle * i * 86400000)
       const predEnd = new Date(predStart.getTime() + (periodData.value.averageDuration - 1) * 86400000)
@@ -639,10 +644,10 @@ export const useCalendarStore = defineStore('calendar', () => {
         isPrediction: true
       })
     }
-    
+
     periodData.value.predictions = predictions
   }
-  
+
   // 记录心情
   function recordMood(date, mood, note = '', tags = []) {
     const existing = moodRecords.value.findIndex(m => m.date === date)
@@ -653,7 +658,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       moodRecords.value.push(record)
     }
   }
-  
+
   // 添加倒计时/纪念日
   function addCountdown(data) {
     const countdown = {
@@ -664,14 +669,30 @@ export const useCalendarStore = defineStore('calendar', () => {
     countdowns.value.push(countdown)
     return countdown
   }
-  
+
+  // 添加纪念日
+  function addAnniversary(data) {
+    const anniversary = {
+      id: generateId(),
+      ...data,
+      createdAt: new Date().toISOString()
+    }
+    anniversaries.value.push(anniversary)
+    return anniversary
+  }
+
+  // 删除纪念日
+  function deleteAnniversary(id) {
+    anniversaries.value = anniversaries.value.filter(a => a.id !== id)
+  }
+
   // 记录睡眠
   function recordSleep(date, bedTime, wakeTime, quality, note = '') {
     const bed = new Date(bedTime)
     const wake = new Date(wakeTime)
     let duration = (wake - bed) / 3600000
     if (duration < 0) duration += 24
-    
+
     const record = {
       id: generateId(),
       date,
@@ -682,7 +703,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       note,
       timestamp: new Date().toISOString()
     }
-    
+
     const existing = sleepRecords.value.findIndex(s => s.date === date)
     if (existing !== -1) {
       sleepRecords.value[existing] = record
@@ -690,7 +711,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       sleepRecords.value.push(record)
     }
   }
-  
+
   // 记录饮水
   function recordWater(date, amount) {
     const existing = waterRecords.value.find(w => w.date === date)
@@ -705,7 +726,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       })
     }
   }
-  
+
   // 保存日记
   function saveDiary(date, content, tags = []) {
     const existing = diaries.value.findIndex(d => d.date === date)
@@ -721,7 +742,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       diaries.value.push({ ...diary, createdAt: new Date().toISOString() })
     }
   }
-  
+
   // 设置AI角色访问权限
   function setAIAccess(charId, permissions) {
     aiAccessSettings.value[charId] = {
@@ -729,12 +750,12 @@ export const useCalendarStore = defineStore('calendar', () => {
       ...permissions
     }
   }
-  
+
   // 获取AI可访问的数据
   function getAIAvailableData(charId) {
     const settings = aiAccessSettings.value[charId] || {}
     const data = {}
-    
+
     if (settings.schedule !== false) {
       data.events = events.value
     }
@@ -750,25 +771,25 @@ export const useCalendarStore = defineStore('calendar', () => {
     if (settings.countdowns !== false) {
       data.countdowns = countdowns.value
     }
-    
+
     return data
   }
-  
+
   // 获取AI可用的日历提示
   function getAIContextPrompt(charId) {
     const settings = aiAccessSettings.value[charId] || {}
     const today = formatDateStr(new Date())
     const todayLunar = getLunarDate(new Date())
-    
+
     let prompt = `【日历信息】\n今天是 ${today} (${todayLunar.yearName} ${todayLunar.monthName}${todayLunar.dayName})\n`
-    
+
     if (settings.schedule !== false) {
       const todayEvents = events.value.filter(e => e.date === today || checkRecurringEvent(e, today))
       if (todayEvents.length > 0) {
         prompt += `今日日程：\n${todayEvents.map(e => `- ${e.title} ${e.startTime || ''} ${e.allDay ? '(全天)' : ''}`).join('\n')}\n`
       }
     }
-    
+
     if (settings.period) {
       const status = getPeriodStatus(new Date())
       if (status) {
@@ -781,82 +802,82 @@ export const useCalendarStore = defineStore('calendar', () => {
         }
       }
     }
-    
+
     const upcoming = events.value
       .filter(e => e.date > today)
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5)
-    
+
     if (upcoming.length > 0) {
       prompt += `\n即将到来：\n${upcoming.map(e => `- ${e.date} ${e.title}`).join('\n')}\n`
     }
-    
+
     return prompt
   }
-  
+
   // 导航方法
   function prevMonth() {
     currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1)
   }
-  
+
   function nextMonth() {
     currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1)
   }
-  
+
   // 周视图导航
   function prevWeek() {
     currentDate.value = new Date(currentDate.value.getTime() - 7 * 86400000)
   }
-  
+
   function nextWeek() {
     currentDate.value = new Date(currentDate.value.getTime() + 7 * 86400000)
   }
-  
+
   // 日视图导航
   function prevDay() {
     currentDate.value = new Date(currentDate.value.getTime() - 86400000)
     selectedDate.value = new Date(currentDate.value)
   }
-  
+
   function nextDay() {
     currentDate.value = new Date(currentDate.value.getTime() + 86400000)
     selectedDate.value = new Date(currentDate.value)
   }
-  
+
   function goToToday() {
     currentDate.value = new Date()
     selectedDate.value = new Date()
   }
-  
+
   function selectDate(date) {
     selectedDate.value = date
   }
-  
+
   function setViewMode(mode) {
     viewMode.value = mode
   }
-  
+
   // 设置天气数据
   function setWeatherData(current, forecast) {
     weatherData.value.current = current
     weatherData.value.forecast = forecast
   }
-  
+
   // 获取经期提醒
   function getPeriodReminders() {
     if (!periodReminders.value.enabled || periodData.value.predictions.length === 0) {
       return []
     }
-    
+
     const today = new Date()
     const reminders = []
-    
+
     // 检查即将到来的经期
     const nextPeriod = periodData.value.predictions[0]
     if (nextPeriod) {
       const startDate = new Date(nextPeriod.startDate)
       const daysUntil = Math.ceil((startDate - today) / 86400000)
-      
+
       if (daysUntil > 0 && daysUntil <= periodReminders.value.remindBefore) {
         reminders.push({
           type: 'period_coming',
@@ -867,7 +888,7 @@ export const useCalendarStore = defineStore('calendar', () => {
         })
       }
     }
-    
+
     // 检查当前是否在经期
     const currentStatus = getPeriodStatus(today)
     if (currentStatus?.type === 'period') {
@@ -878,42 +899,42 @@ export const useCalendarStore = defineStore('calendar', () => {
         day: currentStatus.day
       })
     }
-    
+
     return reminders
   }
-  
+
   // 更新提醒设置
   function updatePeriodReminderSettings(settings) {
     periodReminders.value = { ...periodReminders.value, ...settings }
   }
-  
+
   // 初始化
   loadData()
   if (periodData.value.cycles.length > 0) {
     generatePeriodPredictions()
   }
-  
+
   // 主题相关方法
   const currentTheme = computed(() => {
     const allThemes = [...presetThemes.value, ...themeSettings.value.customThemes]
     return allThemes.find(theme => theme.id === themeSettings.value.currentTheme) || presetThemes.value[0]
   })
-  
+
   function setTheme(themeId) {
     themeSettings.value.currentTheme = themeId
     saveThemeSettings()
   }
-  
+
   function toggleDarkMode() {
     themeSettings.value.isDarkMode = !themeSettings.value.isDarkMode
     saveThemeSettings()
   }
-  
+
   function addCustomTheme(theme) {
     themeSettings.value.customThemes.push(theme)
     saveThemeSettings()
   }
-  
+
   function removeCustomTheme(themeId) {
     themeSettings.value.customThemes = themeSettings.value.customThemes.filter(t => t.id !== themeId)
     if (themeSettings.value.currentTheme === themeId) {
@@ -921,21 +942,21 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
     saveThemeSettings()
   }
-  
+
   function saveThemeSettings() {
     localStorage.setItem('calendar-theme-settings', JSON.stringify(themeSettings.value))
   }
-  
+
   function loadThemeSettings() {
     const saved = localStorage.getItem('calendar-theme-settings')
     if (saved) {
       themeSettings.value = JSON.parse(saved)
     }
   }
-  
+
   // 初始化时加载主题设置
   loadThemeSettings()
-  
+
   return {
     // 基础状态
     currentDate,
@@ -953,7 +974,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     periodReminders,
     currentMonthDays,
     statsOverview,
-    
+
     // 主题相关
     themeSettings,
     presetThemes,
@@ -962,7 +983,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     toggleDarkMode,
     addCustomTheme,
     removeCustomTheme,
-    
+
     // 方法
     getLunarDate,
     getSolarTerm,

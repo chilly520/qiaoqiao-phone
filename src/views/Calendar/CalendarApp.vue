@@ -5,60 +5,53 @@
       <div class="header-left">
         <button class="icon-btn" @click="goBack">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
+            <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </button>
         <h1 class="app-title">🌸 花间日历</h1>
       </div>
-      
+
       <div class="header-center">
         <!-- 视图切换按钮 -->
         <div class="view-switcher">
-          <button 
-            class="view-btn" 
-            :class="{ active: calendarStore.viewMode === 'month' }"
-            @click="calendarStore.setViewMode('month')"
-          >月</button>
-          <button 
-            class="view-btn" 
-            :class="{ active: calendarStore.viewMode === 'week' }"
-            @click="calendarStore.setViewMode('week')"
-          >周</button>
-          <button 
-            class="view-btn" 
-            :class="{ active: calendarStore.viewMode === 'day' }"
-            @click="calendarStore.setViewMode('day')"
-          >日</button>
+          <button class="view-btn" :class="{ active: calendarStore.viewMode === 'month' }"
+            @click="calendarStore.setViewMode('month')">月</button>
+          <button class="view-btn" :class="{ active: calendarStore.viewMode === 'week' }"
+            @click="calendarStore.setViewMode('week')">周</button>
+          <button class="view-btn" :class="{ active: calendarStore.viewMode === 'day' }"
+            @click="calendarStore.setViewMode('day')">日</button>
         </div>
-        
+
         <button class="nav-btn" @click="handlePrev">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="15,18 9,12 15,6"/>
+            <polyline points="15,18 9,12 15,6" />
           </svg>
         </button>
         <span class="current-month">{{ currentDateText }}</span>
         <button class="nav-btn" @click="handleNext">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9,18 15,12 9,6"/>
+            <polyline points="9,18 15,12 9,6" />
           </svg>
         </button>
-        <button class="today-btn" :class="`bg-gradient-to-r ${currentTheme.colors.primary}`" @click="goToToday">今天</button>
+        <button class="today-btn" :class="`bg-gradient-to-r ${currentTheme.colors.primary}`"
+          @click="goToToday">今天</button>
       </div>
-      
+
       <div class="header-right">
         <button class="icon-btn" :class="{ active: showThemeSettings }" @click="showThemeSettings = true" title="主题设置">
           🎨
         </button>
         <button class="icon-btn" :class="{ active: showAISettings }" @click="showAISettings = true">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
         <button class="icon-btn" @click="showQuickAdd = true">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
       </div>
@@ -89,21 +82,15 @@
 
         <!-- 月视图 -->
         <div v-if="calendarStore.viewMode === 'month'" class="calendar-grid">
-          <div
-            v-for="day in calendarDays"
-            :key="day.date.getTime()"
-            class="day-cell"
-            :class="{
-              'other-month': !day.isCurrentMonth,
-              'is-today': day.isToday,
-              'is-selected': day.isSelected,
-              'has-events': day.events?.length > 0,
-              'has-period': day.period?.type === 'period',
-              'has-prediction': day.period?.type === 'prediction',
-              'has-ovulation': day.period?.type === 'ovulation'
-            }"
-            @click="selectDate(day.date)"
-          >
+          <div v-for="day in calendarDays" :key="day.date.getTime()" class="day-cell" :class="{
+            'other-month': !day.isCurrentMonth,
+            'is-today': day.isToday,
+            'is-selected': day.isSelected,
+            'has-events': day.events?.length > 0,
+            'has-period': day.period?.type === 'period',
+            'has-prediction': day.period?.type === 'prediction',
+            'has-ovulation': day.period?.type === 'ovulation'
+          }" @click="selectDate(day.date)">
             <div class="day-number">{{ day.date.getDate() }}</div>
             <div class="day-lunar">
               <span v-if="day.festival" class="festival">{{ day.festival }}</span>
@@ -111,12 +98,8 @@
               <span v-else>{{ day.lunar.dayName }}</span>
             </div>
             <div v-if="day.events?.length" class="day-events">
-              <span
-                v-for="(event, idx) in day.events.slice(0, 3)"
-                :key="idx"
-                class="event-dot"
-                :style="{ backgroundColor: event.color || '#ff9eb5' }"
-              />
+              <span v-for="(event, idx) in day.events.slice(0, 3)" :key="idx" class="event-dot"
+                :style="{ backgroundColor: event.color || '#ff9eb5' }" />
             </div>
             <div v-if="day.mood" class="day-mood">{{ getMoodEmoji(day.mood.mood) }}</div>
           </div>
@@ -130,13 +113,8 @@
               <div style="font-size: 18px; margin-top: 4px;">{{ day.date.getDate() }}</div>
             </div>
             <div class="week-events">
-              <div
-                v-for="event in day.events"
-                :key="event.id"
-                class="event-item"
-                :style="{ borderLeft: '3px solid ' + (event.color || '#ff9eb5') }"
-                @click="editEvent(event)"
-              >
+              <div v-for="event in day.events" :key="event.id" class="event-item"
+                :style="{ borderLeft: '3px solid ' + (event.color || '#ff9eb5') }" @click="editEvent(event)">
                 <span class="event-time">{{ event.allDay ? '全天' : event.startTime }}</span>
                 <span class="event-title">{{ event.title }}</span>
               </div>
@@ -152,7 +130,8 @@
               {{ selectedDate.getMonth() + 1 }}月{{ selectedDate.getDate() }}日 {{ weekDays[selectedDate.getDay()] }}
             </div>
             <div style="font-size: 14px; color: #9a8fb8; margin-top: 4px;">
-              {{ selectedLunar.monthName }}{{ selectedLunar.dayName }} · {{ selectedTerm || selectedFestival || '普通日子' }}
+              {{ selectedLunar.monthName }}{{ selectedLunar.dayName }} · {{ selectedTerm || selectedFestival || '普通日子'
+              }}
             </div>
           </div>
           <div class="day-timeline">
@@ -162,25 +141,19 @@
             </div>
           </div>
           <div class="day-events-overlay" style="position: relative; margin-top: -1440px; padding-left: 62px;">
-            <div
-              v-for="event in selectedEvents"
-              :key="event.id"
-              class="day-event-item"
-              :style="{ 
-                background: event.color || '#ff9eb5',
-                position: 'absolute',
-                left: '62px',
-                right: '20px',
-                top: (parseInt(event.startTime?.split(':')[0] || 0) * 60 + parseInt(event.startTime?.split(':')[1] || 0)) + 'px',
-                height: '60px',
-                borderRadius: '8px',
-                padding: '8px 12px',
-                color: 'white',
-                fontSize: '13px',
-                cursor: 'pointer'
-              }"
-              @click="editEvent(event)"
-            >
+            <div v-for="event in selectedEvents" :key="event.id" class="day-event-item" :style="{
+              background: event.color || '#ff9eb5',
+              position: 'absolute',
+              left: '62px',
+              right: '20px',
+              top: (parseInt(event.startTime?.split(':')[0] || 0) * 60 + parseInt(event.startTime?.split(':')[1] || 0)) + 'px',
+              height: '60px',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              color: 'white',
+              fontSize: '13px',
+              cursor: 'pointer'
+            }" @click="editEvent(event)">
               <div style="font-weight: 600;">{{ event.title }}</div>
               <div style="font-size: 11px; opacity: 0.9;">{{ event.startTime }} - {{ event.endTime }}</div>
             </div>
@@ -213,7 +186,8 @@
             <span class="card-date">{{ selectedDateText }}</span>
           </div>
           <div class="lunar-info">
-            <div class="lunar-main">{{ selectedLunar.yearName }} {{ selectedLunar.monthName }}{{ selectedLunar.dayName }}</div>
+            <div class="lunar-main">{{ selectedLunar.yearName }} {{ selectedLunar.monthName }}{{ selectedLunar.dayName
+              }}</div>
             <div class="lunar-sub">
               <span v-if="selectedLunar.zodiac">🐲 {{ selectedLunar.zodiac }}年</span>
               <span v-if="selectedTerm">🌱 {{ selectedTerm }}</span>
@@ -306,13 +280,8 @@
             <button class="add-btn" @click="openEventModal()">+</button>
           </div>
           <div class="event-list">
-            <div
-              v-for="event in selectedEvents"
-              :key="event.id"
-              class="event-item"
-              :class="{ 'all-day': event.allDay, completed: event.completed }"
-              @click="editEvent(event)"
-            >
+            <div v-for="event in selectedEvents" :key="event.id" class="event-item"
+              :class="{ 'all-day': event.allDay, completed: event.completed }" @click="editEvent(event)">
               <span class="event-color" :style="{ backgroundColor: event.color || '#ff9eb5' }"></span>
               <span class="event-time">{{ event.allDay ? '全天' : event.startTime }}</span>
               <span class="event-title">{{ event.title }}</span>
@@ -322,10 +291,31 @@
           </div>
         </div>
 
+        <!-- 念记/纪念日 -->
+        <div class="panel-card">
+          <div class="card-header">
+            <span class="card-title">🌸 纪念日 ({{ calendarStore.anniversaries.length }})</span>
+            <button class="add-btn" @click="showAnniversaryModal = true">+</button>
+          </div>
+          <div class="countdown-list">
+            <div v-for="item in calendarStore.anniversaries" :key="item.id" class="countdown-item">
+              <div class="countdown-info">
+                <span class="countdown-title">{{ item.title }}</span>
+                <span class="countdown-date">{{ item.targetDate }} (每年)</span>
+              </div>
+              <div class="countdown-days anniversary">
+                {{ getAnniversaryDays(item.targetDate) }}
+                <small>天</small>
+              </div>
+            </div>
+            <div v-if="calendarStore.anniversaries.length === 0" class="empty-tip">记录重要纪念日</div>
+          </div>
+        </div>
+
         <!-- 倒计时 -->
         <div class="panel-card">
           <div class="card-header">
-            <span class="card-title">⏰ 倒计时</span>
+            <span class="card-title">⏰ 倒计时 ({{ calendarStore.countdowns.length }})</span>
             <button class="add-btn" @click="showCountdownModal = true">+</button>
           </div>
           <div class="countdown-list">
@@ -339,6 +329,7 @@
                 <small>天</small>
               </div>
             </div>
+            <div v-if="upcomingCountdowns.length === 0" class="empty-tip">点击 + 添加倒计时</div>
           </div>
         </div>
 
@@ -397,11 +388,16 @@
     </div>
 
     <!-- 弹窗组件 -->
-    <EventModal v-if="showEventModal" :event="editingEvent" :date="selectedDateStr" @close="closeEventModal" @save="saveEvent" />
+    <EventModal v-if="showEventModal" :event="editingEvent" :date="selectedDateStr" @close="closeEventModal"
+      @save="saveEvent" />
     <PeriodModal v-if="showPeriodModal" :date="selectedDateStr" @close="showPeriodModal = false" @save="savePeriod" />
-    <MoodModal v-if="showMoodModal" :date="selectedDateStr" :existing="selectedMood" @close="showMoodModal = false" @save="saveMood" />
+    <MoodModal v-if="showMoodModal" :date="selectedDateStr" :existing="selectedMood" @close="showMoodModal = false"
+      @save="saveMood" />
     <CountdownModal v-if="showCountdownModal" @close="showCountdownModal = false" @save="saveCountdown" />
-    <DiaryModal v-if="showDiaryModal" :date="selectedDateStr" :existing="selectedDiary" @close="showDiaryModal = false" @save="saveDiary" />
+    <CountdownModal v-if="showAnniversaryModal" title="创建纪念日" type="anniversary" @close="showAnniversaryModal = false"
+      @save="saveAnniversary" />
+    <DiaryModal v-if="showDiaryModal" :date="selectedDateStr" :existing="selectedDiary" @close="showDiaryModal = false"
+      @save="saveDiary" />
     <SleepModal v-if="showSleepModal" :date="selectedDateStr" @close="showSleepModal = false" @save="saveSleep" />
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
     <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
@@ -433,6 +429,7 @@ const showEventModal = ref(false)
 const showPeriodModal = ref(false)
 const showMoodModal = ref(false)
 const showCountdownModal = ref(false)
+const showAnniversaryModal = ref(false)
 const showDiaryModal = ref(false)
 const showSleepModal = ref(false)
 const showAISettings = ref(false)
@@ -453,7 +450,7 @@ const currentDateText = computed(() => {
   const d = calendarStore.currentDate
   const y = d.getFullYear()
   const m = d.getMonth() + 1
-  
+
   if (calendarStore.viewMode === 'month') {
     return `${y}年${m}月`
   } else if (calendarStore.viewMode === 'week') {
@@ -503,6 +500,18 @@ const upcomingCountdowns = computed(() => {
     .sort((a, b) => Math.abs(a.days) - Math.abs(b.days))
     .slice(0, 5)
 })
+
+function getAnniversaryDays(targetDate) {
+  const today = new Date()
+  const target = new Date(targetDate)
+  const thisYearTarget = new Date(today.getFullYear(), target.getMonth(), target.getDate())
+
+  if (thisYearTarget < today) {
+    thisYearTarget.setFullYear(today.getFullYear() + 1)
+  }
+
+  return Math.ceil((thisYearTarget - today) / 86400000)
+}
 
 const aiBoundChars = computed(() => {
   const settings = calendarStore.aiAccessSettings
@@ -620,7 +629,14 @@ function saveMood(data) {
 
 function saveCountdown(data) {
   calendarStore.addCountdown(data)
+  calendarStore.saveData()
   showCountdownModal.value = false
+}
+
+function saveAnniversary(data) {
+  calendarStore.addAnniversary(data)
+  calendarStore.saveData()
+  showAnniversaryModal.value = false
 }
 
 function saveDiary(data) {
@@ -644,6 +660,7 @@ function handleQuickAdd(type) {
   else if (type === 'period') showPeriodModal.value = true
   else if (type === 'mood') showMoodModal.value = true
   else if (type === 'countdown') showCountdownModal.value = true
+  else if (type === 'anniversary') showAnniversaryModal.value = true
   else if (type === 'diary') showDiaryModal.value = true
   else if (type === 'sleep') showSleepModal.value = true
 }
@@ -660,9 +677,11 @@ onMounted(() => {
 .calendar-app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   background: linear-gradient(135deg, #fef9f6 0%, #fff5f7 50%, #f8f9ff 100%);
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  overflow: hidden;
 }
 
 /* 顶部导航 */
@@ -926,9 +945,17 @@ onMounted(() => {
   border-radius: 50%;
 }
 
-.dot.period { background: linear-gradient(135deg, #ffb7c5, #ff9eb5); }
-.dot.prediction { background: linear-gradient(135deg, #ffd8a8, #ffb347); }
-.dot.ovulation { background: linear-gradient(135deg, #e6e6fa, #d8bfd8); }
+.dot.period {
+  background: linear-gradient(135deg, #ffb7c5, #ff9eb5);
+}
+
+.dot.prediction {
+  background: linear-gradient(135deg, #ffd8a8, #ffb347);
+}
+
+.dot.ovulation {
+  background: linear-gradient(135deg, #e6e6fa, #d8bfd8);
+}
 
 /* 侧边面板 */
 .side-panel {
@@ -938,6 +965,7 @@ onMounted(() => {
   gap: 16px;
   overflow-y: auto;
   padding-right: 4px;
+  padding-bottom: 100px;
 }
 
 .side-panel::-webkit-scrollbar {

@@ -2,21 +2,21 @@
   <div class="modal-overlay" @click.self="close">
     <div class="modal-container">
       <div class="modal-header">
-        <h3>⏰ 创建倒计时</h3>
+        <h3>{{ title }}</h3>
         <button class="close-btn" @click="close">&times;</button>
       </div>
-      
+
       <div class="modal-body">
         <div class="form-group">
           <label>标题</label>
           <input v-model="form.title" type="text" placeholder="例如：结婚纪念日、项目截止日..." />
         </div>
-        
+
         <div class="form-group">
           <label>目标日期</label>
           <input v-model="form.targetDate" type="date" />
         </div>
-        
+
         <div class="form-row">
           <div class="form-group">
             <label>类型</label>
@@ -35,41 +35,31 @@
             </label>
           </div>
         </div>
-        
+
         <div class="form-group">
           <label>颜色标记</label>
           <div class="color-picker">
-            <button
-              v-for="color in colors"
-              :key="color"
-              class="color-btn"
-              :class="{ active: form.color === color }"
-              :style="{ backgroundColor: color }"
-              @click="form.color = color"
-            />
+            <button v-for="color in colors" :key="color" class="color-btn" :class="{ active: form.color === color }"
+              :style="{ backgroundColor: color }" @click="form.color = color" />
           </div>
         </div>
-        
+
         <div class="form-group">
           <label>备注</label>
           <textarea v-model="form.note" rows="2" placeholder="添加备注..." />
         </div>
-        
+
         <div class="form-group">
           <label class="toggle-label">
             <input v-model="form.aiNotify" type="checkbox" />
             <span>让AI角色提醒我</span>
           </label>
         </div>
-        
+
         <div v-if="form.aiNotify" class="ai-bind-section">
           <label>选择提醒的AI角色</label>
           <div class="ai-char-list">
-            <label
-              v-for="char in availableChars"
-              :key="char.id"
-              class="ai-char-option"
-            >
+            <label v-for="char in availableChars" :key="char.id" class="ai-char-option">
               <input v-model="form.aiChars" type="checkbox" :value="char.id" />
               <img :src="char.avatar || '/default-avatar.png'" />
               <span>{{ char.name }}</span>
@@ -77,7 +67,7 @@
           </div>
         </div>
       </div>
-      
+
       <div class="modal-footer">
         <button class="btn-secondary" @click="close">取消</button>
         <button class="btn-primary" :disabled="!form.title || !form.targetDate" @click="save">创建</button>
@@ -97,11 +87,16 @@ const colors = ['#ff9eb5', '#ffd8a8', '#c5c9ff', '#a8d8ea', '#7fb069', '#e6e6fa'
 
 const availableChars = computed(() => chatStore.contactList)
 
+const props = defineProps({
+  title: { type: String, default: '创建倒计时' },
+  type: { type: String, default: 'custom' }
+})
+
 const form = ref({
   title: '',
   targetDate: new Date().toISOString().split('T')[0],
-  type: 'custom',
-  isRecurring: false,
+  type: props.type,
+  isRecurring: props.type === 'anniversary' || props.type === 'birthday',
   color: '#ff9eb5',
   note: '',
   aiNotify: false,
@@ -307,7 +302,7 @@ function save() {
   transition: all 0.3s ease;
 }
 
-.ai-char-option input:checked + img {
+.ai-char-option input:checked+img {
   border-color: #ff9eb5;
   box-shadow: 0 0 0 3px rgba(255, 158, 181, 0.3);
 }

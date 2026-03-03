@@ -184,8 +184,8 @@ const manageTarget = computed(() => {
   const actualChat = chatStore.chats[found.id]
   return {
     ...found,
-    gender: actualChat?.bio?.gender || found.gender || '未知',
-    persona: actualChat?.prompt || found.persona || '暂无详细背景设定'
+    gender: actualChat?.bio?.gender || found.bio?.gender || found.gender || '未知',
+    persona: actualChat?.prompt || found.prompt || found.persona || '暂无详细背景设定'
   }
 })
 
@@ -756,6 +756,43 @@ function handleSetNickname() {
   })
 }
 
+function handleSetPersona() {
+  const target = manageTarget.value
+  if (!target) return
+  if (target.id === 'user') {
+    chatStore.triggerPrompt('设置我的群人设', '你在本群扮演的角色设定', form.myPersona, 'textarea', (n) => {
+      form.myPersona = n || ''
+    })
+    return
+  }
+  chatStore.triggerPrompt('设置背景设定', `为 ${target.name} 设置人设背景`, target.persona, 'textarea', (n) => {
+    const idx = form.participants.findIndex(p => p.id === target.id)
+    if (idx !== -1) {
+      form.participants[idx].prompt = n || ''
+      // Also update the found object directly for immediate UI feedback if needed, 
+      // but form.participants is what matters for saving.
+      if (chatStore.chats[target.id]) {
+        chatStore.updateCharacter(target.id, { prompt: n || '' })
+      }
+    }
+  })
+}
+
+function handleSetGender() {
+  const target = manageTarget.value
+  if (!target || target.id === 'user') return
+  chatStore.triggerPrompt('设置性别', `修改 ${target.name} 的性别`, target.gender, 'text', (n) => {
+    const idx = form.participants.findIndex(p => p.id === target.id)
+    if (idx !== -1) {
+      if (!form.participants[idx].bio) form.participants[idx].bio = {}
+      form.participants[idx].bio.gender = n || '未知'
+      if (chatStore.chats[target.id]) {
+        chatStore.updateCharacter(target.id, { bio: { ...chatStore.chats[target.id].bio, gender: n || '未知' } })
+      }
+    }
+  })
+}
+
 function goToMoments(id) {
   if (!id) return
   router.push(`/moments/profile/${id}`)
@@ -1163,7 +1200,8 @@ onMounted(() => {
             </div>
             <input type="checkbox" v-model="form.timeAware" class="accent-green-600 scale-110" />
           </div>
-          <div v-if="form.timeAware" class="space-y-3 p-3 bg-green-50/30 rounded-xl border border-green-100 animate-fade-in">
+          <div v-if="form.timeAware"
+            class="space-y-3 p-3 bg-green-50/30 rounded-xl border border-green-100 animate-fade-in">
             <div class="flex items-center gap-4">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="radio" v-model="form.timeSyncMode" value="system" class="accent-green-500">
@@ -1629,9 +1667,11 @@ onMounted(() => {
                 class="bg-red-50 text-red-500 px-1.5 py-0.5 rounded text-[11px] font-bold border border-red-100 flex items-center gap-1">
                 <i class="fa-solid fa-microphone-slash text-[10px]"></i>禁言中
               </span>
-              <i v-if="manageTarget?.gender === '男'" class="fa-solid fa-mars text-blue-500 text-sm"></i>
-              <i v-else-if="manageTarget?.gender === '女'" class="fa-solid fa-venus text-pink-500 text-sm"></i>
-              <i v-else class="fa-solid fa-genderless text-gray-400 text-sm"></i>
+              <span @click="handleSetGender" class="cursor-pointer hover:scale-110 transition-transform">
+                <i v-if="manageTarget?.gender === '男'" class="fa-solid fa-mars text-blue-500 text-sm"></i>
+                <i v-else-if="manageTarget?.gender === '女'" class="fa-solid fa-venus text-pink-500 text-sm"></i>
+                <i v-else class="fa-solid fa-genderless text-gray-400 text-sm"></i>
+              </span>
             </div>
             <div class="text-[12px] text-gray-500 mt-2 tracking-wide font-mono">微信号: {{ manageTarget?.wechatId ||
               manageTarget?.id }}</div>
@@ -1651,8 +1691,15 @@ onMounted(() => {
 
         <div class="space-y-4">
           <div>
-            <div class="text-[11px] text-gray-400 mb-2 font-bold ml-1 uppercase tracking-tighter">背景人设 & 定位</div>
-            <div class="p-3 bg-gray-50 rounded-2xl text-xs text-gray-600 italic leading-relaxed shadow-inner">
+            <div class="flex items-center justify-between mb-2 px-1">
+              <div class="text-[11px] text-gray-400 font-bold uppercase tracking-tighter">背景人设 & 定位</div>
+              <button @click="handleSetPersona"
+                class="text-[10px] text-blue-500 flex items-center gap-1 hover:underline">
+                <i class="fa-solid fa-pen-to-square"></i>编辑
+              </button>
+            </div>
+            <div @click="handleSetPersona"
+              class="p-3 bg-gray-50 rounded-2xl text-xs text-gray-600 italic leading-relaxed shadow-inner cursor-pointer hover:bg-gray-100 transition-colors">
               {{ manageTarget?.persona || '这个成员很神秘，还没有设定背景...' }}
             </div>
           </div>

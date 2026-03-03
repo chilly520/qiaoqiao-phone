@@ -507,7 +507,12 @@ export const useChatStore = defineStore('chat', () => {
             // DICE fields
             diceResults: msg.diceResults || null,
             diceTotal: msg.diceTotal || null,
-            diceCount: msg.diceCount || null
+            diceCount: msg.diceCount || null,
+            // TAROT fields
+            tarotCards: msg.tarotCards || null,
+            tarotQuestion: msg.tarotQuestion || null,
+            tarotSpread: msg.tarotSpread || null,
+            tarotInterpretation: msg.tarotInterpretation || null
         }
 
         // 1.0 STRICT CONTENT FILTER: Reject "undefined", "null", or empty content
@@ -588,12 +593,13 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]+))?(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
                 const val1 = tagMatch[2].trim()
                 const val2 = (tagMatch[3] || '').trim()
+                const val3 = (tagMatch[4] || '').trim()
 
                 if (/^(发红包|红包)$/.test(tagType)) {
                     newMsg.type = 'redpacket'
@@ -604,8 +610,18 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.content = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
                 } else if (tagType === '转账') {
                     newMsg.type = 'transfer'
-                    newMsg.amount = parseFloat(val1) || 0
-                    newMsg.note = val2 || '转账给您'
+                    // Support both [转账:amount:note] and [转账:targetId:amount:note]
+                    const firstIsNumber = /^[0-9]/.test(val1)
+                    if (firstIsNumber) {
+                        // Format: [转账:amount:note]
+                        newMsg.amount = parseFloat(val1) || 0
+                        newMsg.note = val2 || '转账给您'
+                    } else {
+                        // Format: [转账:targetId:amount:note]
+                        newMsg.targetId = val1
+                        newMsg.amount = parseFloat(val2) || 0
+                        newMsg.note = val3 || '转账给您'
+                    }
                     newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                     newMsg.content = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
                 } else if (tagType === '图片' || tagType === 'DRAW') {
@@ -1374,7 +1390,7 @@ export const useChatStore = defineStore('chat', () => {
             const content = newMsg.content.trim();
             // User can send [红包:lucky:10:5:备注] or [红包:10:5:备注] (default lucky)
             const rpMatch = content.match(/^\[红包\s*[:：]\s*(lucky|fixed|手气|固定)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]$/i);
-            const tfMatch = content.match(/^\[转账\s*[:：]\s*(\w+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]$/i);
+            const tfMatch = content.match(/^\[转账\s*[:：]\s*([\w-]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]$/i);
 
             if (rpMatch) {
                 const typeRaw = (rpMatch[1] || 'lucky').toLowerCase();
@@ -3130,7 +3146,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             // [红包:类型(lucky|fixed|手气|固定):金额:个数:备注] 
                             const rpMatch = msgContent.match(/\[红包\s*[:：]\s*(lucky|fixed|手气|固定|手气红包|固定金额)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]/i);
                             // [转账:对象ID:金额:备注]
-                            const tfMatch = msgContent.match(/\[转账\s*[:：]\s*(\w+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i);
+                            const tfMatch = msgContent.match(/\[转账\s*[:：]\s*([\w-]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i);
 
                             let msgType = 'text', amount = null, note = null, extraData = {};
 

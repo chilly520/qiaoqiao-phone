@@ -214,10 +214,10 @@
                                                     <div class="flex flex-col items-end shrink-0">
                                                         <span class="text-[12px] font-bold text-gray-600">{{
                                                             parsedVoteData.optionVoters[idx].length
-                                                        }}</span>
+                                                            }}</span>
                                                         <span class="text-[9px] text-gray-400 font-medium">{{
                                                             calculateVotePercent(parsedVoteData.optionVoters[idx].length)
-                                                        }}%</span>
+                                                            }}%</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -510,6 +510,69 @@
                             </div>
                         </div>
 
+                        <!-- CASE: Tarot Result Card -->
+                        <div v-else-if="msg.tarotCards" class="flex flex-col gap-2 w-[300px]"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
+                            <div class="w-full bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-3 rounded-2xl shadow-lg border border-purple-400/50 text-center relative overflow-hidden"
+                                @contextmenu.prevent="emitContextMenu">
+
+                                <!-- 神秘装饰 -->
+                                <div class="absolute top-2 left-2 text-yellow-300 text-xs animate-twinkle z-0">✨</div>
+                                <div class="absolute top-3 right-3 text-purple-300 text-xs animate-twinkle z-0"
+                                    style="animation-delay: 0.5s">🌙
+                                </div>
+                                <div class="absolute bottom-2 left-3 text-pink-300 text-xs animate-twinkle z-0"
+                                    style="animation-delay: 1s">⭐
+                                </div>
+
+                                <div class="bg-black/40 backdrop-blur-sm rounded-xl p-4 relative z-10">
+                                    <!-- 标题 -->
+                                    <div class="flex items-center justify-center gap-2 mb-3">
+                                        <span class="text-xl">🔮</span>
+                                        <span class="text-sm font-bold text-white">{{ msg.tarotInterpretation ? '塔罗解牌' :
+                                            '塔罗占卜' }}</span>
+                                    </div>
+
+                                    <!-- 问题显示 -->
+                                    <div v-if="msg.tarotQuestion" class="mb-3 bg-white/10 rounded-lg p-2">
+                                        <p class="text-xs text-purple-200 mb-1">问题</p>
+                                        <p class="text-sm text-white">{{ msg.tarotQuestion }}</p>
+                                    </div>
+
+                                    <!-- 牌阵名称 -->
+                                    <div class="text-xs text-purple-300 mb-3">{{ msg.tarotSpread?.name }}</div>
+
+                                    <!-- 塔罗牌展示 -->
+                                    <div class="flex justify-center gap-2 mb-3 flex-wrap">
+                                        <div v-for="(card, i) in msg.tarotCards.slice(0, 5)" :key="i"
+                                            class="w-10 h-14 rounded-lg border border-purple-400/50 flex flex-col items-center justify-center"
+                                            :class="getTarotCardColorClass(card)"
+                                            :style="{ animationDelay: (i * 100) + 'ms' }">
+                                            <span class="text-sm">{{ getTarotCardIcon(card) }}</span>
+                                            <span v-if="card.isReversed" class="text-[6px] text-white/70">逆</span>
+                                        </div>
+                                        <div v-if="msg.tarotCards.length > 5"
+                                            class="w-10 h-14 rounded-lg border border-purple-400/30 bg-white/10 flex items-center justify-center">
+                                            <span class="text-xs text-white/70">+{{ msg.tarotCards.length - 5 }}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 解牌内容 -->
+                                    <div v-if="msg.tarotInterpretation"
+                                        class="bg-white/10 rounded-lg p-3 max-h-32 overflow-y-auto custom-scrollbar">
+                                        <p class="text-xs text-purple-200 mb-1">解牌</p>
+                                        <p class="text-sm text-white leading-relaxed whitespace-pre-wrap">{{
+                                            msg.tarotInterpretation }}</p>
+                                    </div>
+
+                                    <!-- 简单提示 -->
+                                    <div v-else class="text-xs text-purple-300">
+                                        抽到了 {{ msg.tarotCards.length }} 张塔罗牌
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -536,7 +599,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                    }}
+                                        }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -685,7 +748,7 @@ const senderTitleClass = computed(() => {
     const role = senderRole.value
     const custom = senderCustomTitle.value
     if (role === 'owner') return 'bg-[#f7b500]' // Yellow
-    if (role === 'admin') return 'bg-[#a855f7]' // Purple (Admin usually purple/green, but users often prefer distinct colors)
+    if (role === 'admin') return 'bg-[#07c160]' // Green
     if (custom) return 'bg-[#a855f7]' // Purple
     return 'bg-[#b1b1b1]' // Gray (For regular tiers)
 })
@@ -1432,10 +1495,14 @@ function formatMessageContent(msg) {
 
     // 5. Highlight Mentions (@name or @id)
     const userName = settingsStore.personalization.userProfile.name;
+    const myName = props.chatData?.groupSettings?.myNickname || userName || '我';
     const contactName = props.chatData?.name;
     const allMembers = props.chatData?.isGroup ? '全体成员' : null;
 
-    let namesToHighlight = [userName, contactName, allMembers].filter(Boolean);
+    // Normalize AI referring to user generically
+    text = text.replace(/@(user|User|我)(?!\w)/g, `@${myName}`);
+
+    let namesToHighlight = [myName, userName, contactName, allMembers].filter(Boolean);
 
     if (props.chatData?.isGroup && Array.isArray(props.chatData.participants)) {
         props.chatData.participants.forEach(p => {
@@ -1449,16 +1516,25 @@ function formatMessageContent(msg) {
         });
     }
 
-    // Deduplicate
-    namesToHighlight = [...new Set(namesToHighlight)];
+    // Deduplicate and sort by length descending to prevent double-wrapping (e.g., @Alice vs @Ali)
+    namesToHighlight = [...new Set(namesToHighlight)].sort((a, b) => b.length - a.length);
 
     namesToHighlight.forEach(name => {
         const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const mentionRegex = new RegExp(`@${escapedName}`, 'g')
         const isAll = name === allMembers
-        const highlightClass = isAll
-            ? 'text-orange-600 bg-orange-100/80 px-1 rounded font-bold'
-            : 'text-blue-500 font-medium bg-blue-50/50 px-1 rounded'
+        const isMe = (name === myName || name === userName)
+
+        // Improve styling: only highlight @Me and @All with background
+        let highlightClass = ''
+        if (isAll) {
+            highlightClass = 'text-orange-600 bg-orange-100/80 px-1 rounded font-bold'
+        } else if (isMe) {
+            highlightClass = 'text-[#07c160] bg-[#07c160]/10 px-1 rounded font-bold'
+        } else {
+            // For others, just blue text (like a handle) but NO background to avoid confusion
+            highlightClass = 'text-blue-500 font-medium'
+        }
         text = text.replace(mentionRegex, `<span class="${highlightClass}">@${name}</span>`)
     });
 
@@ -1772,8 +1848,29 @@ const handleEndVote = () => {
 const isOptionSelected = (optionIndex) => {
     const v = parsedVoteData.value
     if (!v || !v.votes) return false
-    return v.votes['user']?.includes(optionIndex)
+    return v.votes['user']?.includes(optionIndex) || false
 }
+
+// --- Tarot Helpers ---
+function getTarotCardColorClass(card) {
+    if (card.id < 22) return 'from-purple-600 to-indigo-700' // 大阿卡纳
+    if (card.suit === 'wands') return 'from-red-500 to-orange-600' // 权杖
+    if (card.suit === 'cups') return 'from-blue-500 to-cyan-600' // 圣杯
+    if (card.suit === 'swords') return 'from-yellow-500 to-amber-600' // 宝剑
+    if (card.suit === 'pentacles') return 'from-green-500 to-emerald-600' // 星币
+    return 'from-purple-600 to-indigo-700'
+}
+
+function getTarotCardIcon(card) {
+    if (card.id < 22) return '🔮' // 大阿卡纳
+    if (card.suit === 'wands') return '🔥' // 权杖
+    if (card.suit === 'cups') return '💧' // 圣杯
+    if (card.suit === 'swords') return '⚔️' // 宝剑
+    if (card.suit === 'pentacles') return '💰' // 星币
+    return '🔮'
+}
+
+
 
 const calculateVotePercent = (count) => {
     const total = getTotalVoters()
@@ -2288,5 +2385,24 @@ const scrollToVote = (refId) => {
     50% {
         transform: translateY(-3px);
     }
+}
+
+/* Custom scrollbar for tarot interpretation */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(168, 85, 247, 0.5);
+    border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 85, 247, 0.7);
 }
 </style>

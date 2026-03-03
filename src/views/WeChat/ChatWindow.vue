@@ -37,6 +37,7 @@ import MissionSchedulerModal from './modals/MissionSchedulerModal.vue'
 import GroupVoteModal from './modals/GroupVoteModal.vue'
 import GroupRankModal from './modals/GroupRankModal.vue'
 import DiceModal from './modals/DiceModal.vue'
+import TarotModal from './modals/TarotModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -90,6 +91,7 @@ const showGMMenu = ref(false)
 const showMissionScheduler = ref(false)
 const showVoteModal = ref(false)
 const showDiceModal = ref(false)
+const showTarotModal = ref(false)
 const showScrollToBottom = ref(false)
 const showRankModal = ref(false)
 const rankChatId = ref('')
@@ -1057,6 +1059,9 @@ const handlePanelAction = (type) => {
     } else if (type === 'dice') {
         showDiceModal.value = true
         showActionPanel.value = false
+    } else if (type === 'tarot') {
+        showTarotModal.value = true
+        showActionPanel.value = false
     }
 }
 
@@ -1100,7 +1105,34 @@ const handleDiceRoll = (diceCount, results, total) => {
     setTimeout(() => scrollToBottom(false), 100)
 }
 
+// Handle Tarot Share
+const handleTarotShare = (data) => {
+    chatStore.addMessage(chatStore.currentChatId, {
+        role: 'user',
+        type: 'tarot_card',
+        content: '[塔罗占卜]',
+        tarotQuestion: data.question,
+        tarotSpread: data.spread,
+        tarotCards: data.cards
+    })
+    scrollToBottom(true)
+}
+
+const handleTarotInterpretationShare = (data) => {
+    chatStore.addMessage(chatStore.currentChatId, {
+        role: 'user',
+        type: 'tarot_interpretation',
+        content: '[塔罗解牌]',
+        tarotQuestion: data.question,
+        tarotSpread: data.spread,
+        tarotCards: data.cards,
+        tarotInterpretation: data.interpretation
+    })
+    scrollToBottom(true)
+}
+
 // Handle Family Card Action Selection
+
 const handleFamilyCardAction = (actionType) => {
     if (actionType === 'apply') {
         // Show family card apply modal
@@ -3125,6 +3157,10 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
         <!-- Dice Modal -->
         <DiceModal :show="showDiceModal" @close="showDiceModal = false" @roll="handleDiceRoll" />
+
+        <!-- Tarot Modal -->
+        <TarotModal :show="showTarotModal" @close="showTarotModal = false" @share="handleTarotShare"
+            @share-interpretation="handleTarotInterpretationShare" />
 
         <!-- Modals -->
         <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />

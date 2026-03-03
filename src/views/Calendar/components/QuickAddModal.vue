@@ -5,7 +5,7 @@
         <h3>✨ 快速添加</h3>
         <button class="close-btn" @click="close">&times;</button>
       </div>
-      
+
       <div class="modal-body">
         <div class="quick-grid">
           <button class="quick-item" @click="select('event')">
@@ -13,31 +13,37 @@
             <span class="item-label">日程</span>
             <span class="item-desc">添加新的日程安排</span>
           </button>
-          
+
           <button class="quick-item" @click="select('period')">
             <span class="item-icon">🌙</span>
             <span class="item-label">记录经期</span>
             <span class="item-desc">记录生理周期</span>
           </button>
-          
+
           <button class="quick-item" @click="select('mood')">
             <span class="item-icon">😊</span>
             <span class="item-label">记录心情</span>
             <span class="item-desc">记录今天的心情</span>
           </button>
-          
+
           <button class="quick-item" @click="select('countdown')">
             <span class="item-icon">⏰</span>
             <span class="item-label">倒计时</span>
-            <span class="item-desc">创建纪念日提醒</span>
+            <span class="item-desc">创建近期目标提醒</span>
           </button>
-          
+
+          <button class="quick-item" @click="select('anniversary')">
+            <span class="item-icon">🌸</span>
+            <span class="item-label">纪念日</span>
+            <span class="item-desc">记录每年重要日子</span>
+          </button>
+
           <button class="quick-item" @click="select('diary')">
             <span class="item-icon">📝</span>
             <span class="item-label">写日记</span>
             <span class="item-desc">记录今日点滴</span>
           </button>
-          
+
           <button class="quick-item" @click="select('sleep')">
             <span class="item-icon">😴</span>
             <span class="item-label">睡眠记录</span>
@@ -78,8 +84,13 @@ function select(type) {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-container {
@@ -97,6 +108,7 @@ function select(type) {
     opacity: 0;
     transform: translateY(20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);

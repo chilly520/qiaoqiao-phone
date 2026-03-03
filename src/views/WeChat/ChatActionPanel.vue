@@ -85,7 +85,8 @@
       </div>
 
       <!-- Group Vote -->
-      <div v-if="showVote" class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'vote')">
+      <div v-if="showVote" class="flex flex-col items-center gap-2 cursor-pointer group"
+        @click="$emit('action', 'vote')">
         <div
           class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
           <i class="fa-solid fa-square-poll-vertical text-2xl text-[#07c160]"></i>
@@ -100,6 +101,15 @@
           <i class="fa-solid fa-dice text-2xl text-[#ff6b6b]"></i>
         </div>
         <span class="text-xs text-[#888]">摇骰子</span>
+      </div>
+
+      <!-- Tarot -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'tarot')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-wand-sparkles text-2xl text-[#8b5cf6]"></i>
+        </div>
+        <span class="text-xs text-[#888]">塔罗牌</span>
       </div>
     </div>
   </div>

@@ -52,7 +52,7 @@ const author = computed(() => {
     if (isUser.value) return settingsStore.personalization.userProfile
     const authorId = props.moment?.authorId
     if (!authorId) {
-        return { name: '神秘人', avatar: '' }
+        return { name: props.moment?.authorName || '神秘人', avatar: '' }
     }
     // 优先尝试通过 chatStore 的 key 查找
     if (chatStore.chats[authorId]) {
@@ -73,6 +73,18 @@ const author = computed(() => {
         return {
             ...char,
             name: char.remark || char.name
+        }
+    }
+    // 使用缓存的 authorName（如果有的话）
+    if (props.moment?.authorName) {
+        // Try to find the character by the cached name for the avatar
+        const charByName = Object.values(chatStore.chats).find(c =>
+            c.name === props.moment.authorName ||
+            c.remark === props.moment.authorName
+        )
+        return {
+            name: props.moment.authorName,
+            avatar: charByName?.avatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${props.moment.authorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`
         }
     }
     // 如果是纯数字长串ID，显示为神秘人，避免乱码
@@ -612,7 +624,7 @@ const navigateToAuthor = () => {
                 class="flex items-center gap-1 text-[#576b95] text-[13px] mb-3 opacity-90">
                 <i class="fa-solid fa-location-dot scale-90"></i>
                 <span class="font-medium underline decoration-[#576b95]/30 underline-offset-2">{{ props.moment.location
-                    }}</span>
+                }}</span>
             </div>
 
             <!-- Images Grid -->
@@ -665,7 +677,7 @@ const navigateToAuthor = () => {
                     <i class="fa-solid text-sm"
                         :class="momentsStore.summoningIds.has(props.moment.id) ? 'fa-spinner fa-spin' : 'fa-wand-sparkles'"></i>
                     <span class="text-xs font-medium">{{ momentsStore.summoningIds.has(props.moment.id) ? '召唤中' : '召唤'
-                    }}</span>
+                        }}</span>
                 </button>
             </div>
 
@@ -774,7 +786,7 @@ const navigateToAuthor = () => {
                 @click.stop>
                 <div v-if="replyToComment" class="flex items-center justify-between text-xs text-gray-600">
                     <span>回复 <span class="text-blue-600 font-medium">{{ getDisplayReplyName(replyToComment.authorName)
-                    }}</span></span>
+                            }}</span></span>
                     <i class="fa-solid fa-xmark cursor-pointer" @click="replyToComment = null"></i>
                 </div>
                 <div class="flex gap-2">
@@ -873,7 +885,7 @@ const navigateToAuthor = () => {
                         <div class="flex flex-col">
                             <span class="font-bold text-gray-800 text-sm">{{ chat.name }}</span>
                             <span class="text-xs text-gray-400 truncate max-w-[150px]">{{ chat.signature || '暂无签名'
-                                }}</span>
+                            }}</span>
                         </div>
                     </div>
                 </div>

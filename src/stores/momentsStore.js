@@ -127,9 +127,30 @@ export const useMomentsStore = defineStore('moments', () => {
 
     function addMoment(data, options = {}) {
         const id = 'm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+
+        // Resolve author name at creation time (cache it so UI doesn't depend on chatStore lookups)
+        let resolvedAuthorName = data.authorName || ''
+        if (!resolvedAuthorName && data.authorId && data.authorId !== 'user') {
+            const chatStore = useChatStore()
+            const chat = chatStore.chats[data.authorId]
+            if (chat) {
+                resolvedAuthorName = chat.remark || chat.name || ''
+            } else {
+                // Fuzzy search by name/id/wechatId
+                const char = Object.values(chatStore.chats).find(c =>
+                    c.id === data.authorId ||
+                    c.wechatId === data.authorId ||
+                    c.name === data.authorId ||
+                    c.remark === data.authorId
+                )
+                if (char) resolvedAuthorName = char.remark || char.name || ''
+            }
+        }
+
         const moment = {
             id,
             authorId: data.authorId,
+            authorName: resolvedAuthorName, // Cached display name
             content: data.content,
             images: data.images || [],
             imageDescriptions: data.imageDescriptions || [],
@@ -791,13 +812,21 @@ export const useMomentsStore = defineStore('moments', () => {
                     }
 
 
+                    // Resolve author name at this point while chatStore is available
+                    const resolvedChat = chatStore.chats[finalAuthorId]
+                    const resolvedAuthorName = resolvedChat
+                        ? (resolvedChat.remark || resolvedChat.name)
+                        : (data.authorId !== finalAuthorId ? (chatStore.chats[data.authorId]?.name || data.authorId) : '')
+
                     const moment = addMoment({
                         authorId: finalAuthorId,
+                        authorName: resolvedAuthorName,
                         content: data.content,
                         location: data.location,
                         images: data.images,
                         mentions: data.mentions || []
                     }, { skipAutoInteraction: true })
+
 
                     if (data.interactions) {
                         for (const inter of data.interactions) {
@@ -986,6 +1015,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 for (const mData of profileData.pinnedMoments) {
                     const moment = addMoment({
                         authorId: charId,
+                        authorName: char.remark || char.name,
                         content: mData.content,
                         images: mData.images,
                         visibility: 'public'
