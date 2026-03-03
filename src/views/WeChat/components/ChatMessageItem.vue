@@ -67,30 +67,56 @@
                         msg.role === 'user' ? 'items-end' : 'items-start',
                         (msg.type === 'html' || isHtmlCard) ? 'max-w-full' : 'max-w-[80%]'
                     ]">
-                        <!-- New: Sender Name for Group Chats -->
-                        <div v-if="chatData?.isGroup && msg.role !== 'user' && msg.role !== 'system'"
-                            class="text-[10px] text-gray-500 mb-0.5 px-1 ml-0.5">
-                            {{ msg.senderName }}
+                        <!-- New: Sender Name and Title for Group Chats -->
+                        <div v-if="chatData?.isGroup && msg.role !== 'system'"
+                            class="flex items-center gap-1 text-[10px] text-gray-400 mb-0.5 px-1"
+                            :class="msg.role === 'user' ? 'flex-row-reverse mr-0.5' : 'ml-0.5'">
+                            <!-- Title Badge -->
+                            <span v-if="senderTitle" :class="senderTitleClass"
+                                class="px-1 rounded-[2px] text-white transform scale-[0.85] origin-center font-bold">
+                                {{ senderTitle }}
+                            </span>
+                            <!-- Name -->
+                            <span :class="msg.role === 'user' ? 'text-gray-500' : ''">{{ displaySenderName }}</span>
                         </div>
 
-                        <!-- Pay Card -->
-                        <div v-if="isPayCard" class="pay-card"
-                            :class="{ 'received': msg.isClaimed || msg.status === 'received', 'rejected': msg.isRejected }"
-                            @click="$emit('click-pay', msg)" @contextmenu.prevent="emitContextMenu">
-                            <div class="pay-top"
-                                :class="{ 'bg-[#ea5f39]': !msg.type || msg.type === 'redpacket', 'bg-[#f79c1f]': msg.type === 'transfer', 'opacity-90': msg.isClaimed }">
-                                <div class="pay-icon">
-                                    <i v-if="msg.type === 'transfer'"
-                                        :class="msg.isClaimed ? 'fa-solid fa-check' : 'fa-solid fa-right-left'"></i>
-                                    <i v-else
-                                        :class="msg.isClaimed ? 'fa-regular fa-envelope-open' : 'fa-regular fa-envelope'"></i>
+                        <!-- Pay Card (Red Packet / Transfer) -->
+                        <div v-if="isPayCard"
+                            class="pay-card group relative w-[240px] overflow-hidden rounded-xl shadow-md transition-all active:scale-[0.98] select-none cursor-pointer"
+                            :class="[
+                                (msg.isClaimed || msg.status === 'received' || msg.isRejected) ? 'opacity-80 grayscale-[20%]' : 'hover:shadow-lg',
+                                msg.role === 'user' ? 'mr-1' : 'ml-1'
+                            ]" @click="$emit('click-pay', msg)" @contextmenu.prevent="emitContextMenu">
+
+                            <!-- Top Area -->
+                            <div class="p-3 flex items-center gap-3 transition-colors" :class="[
+                                (msg.type === 'transfer' || ensureString(msg.content).includes('转账')) ? 'bg-[#f79c1f]' : 'bg-[#fa9d3b]',
+                                (msg.isClaimed || msg.isRejected) && 'opacity-70'
+                            ]">
+                                <div class="w-10 h-10 rounded-lg bg-black/10 flex items-center justify-center shrink-0">
+                                    <i :class="getPayIcon(msg)" class="text-white text-xl"></i>
                                 </div>
-                                <div class="pay-info">
-                                    <div class="pay-title">{{ getPayTitle(msg) }}</div>
-                                    <div class="pay-desc">{{ getPayDesc(msg) }}</div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-white text-sm font-medium truncate drop-shadow-sm">{{
+                                        getPayTitle(msg) }}</div>
+                                    <div class="text-white/70 text-[10px] truncate">{{ getPayDesc(msg) }}</div>
                                 </div>
                             </div>
-                            <div class="pay-bottom">{{ getPayStatusText(msg) }}</div>
+
+                            <!-- Bottom Status Bar -->
+                            <div class="px-3 py-1.5 bg-white flex items-center justify-between">
+                                <span class="text-[10px] text-gray-400 font-medium">{{ getPayStatusText(msg) }}</span>
+                                <div
+                                    class="flex items-center gap-1 opacity-20 group-hover:opacity-40 transition-opacity">
+                                    <i class="fa-brands fa-weixin text-[#07c160] text-[10px]"></i>
+                                    <span class="text-[8px] transform scale-90">微信支付</span>
+                                </div>
+                            </div>
+
+                            <!-- Claimed Overlay Pattern (Subtle) -->
+                            <div v-if="msg.isClaimed || msg.isRejected"
+                                class="absolute inset-0 pointer-events-none bg-black/[0.02]">
+                            </div>
                         </div>
 
                         <!-- Case 5: Family Card (Priority High) -->
@@ -435,6 +461,48 @@ const familyCardModal = ref(null)
 const familyDetailModal = ref(null)
 const isPressing = ref(false)
 const pressTimer = ref(null)
+
+// --- Group Roles & Titles ---
+const senderRole = computed(() => {
+    if (props.msg.role === 'user') return props.chatData?.groupSettings?.myRole || 'member'
+    const pid = props.msg.senderId || props.chatData?.id
+    const p = props.chatData?.participants?.find(p => p.id === pid)
+    return p?.role || 'member'
+})
+
+const senderCustomTitle = computed(() => {
+    if (props.msg.role === 'user') return props.chatData?.groupSettings?.myCustomTitle || ''
+    const pid = props.msg.senderId || props.chatData?.id
+    const p = props.chatData?.participants?.find(p => p.id === pid)
+    return p?.customTitle || ''
+})
+
+const senderTitle = computed(() => {
+    const role = senderRole.value
+    const custom = senderCustomTitle.value
+    if (role === 'owner') return custom || '群主'
+    if (role === 'admin') return custom || '管理员'
+    if (custom) return custom
+    return '群员'
+})
+
+const displaySenderName = computed(() => {
+    if (props.msg.role === 'user') {
+        return props.chatData.groupSettings?.myNickname || props.chatData.userName || '我'
+    }
+    const pid = props.msg.senderId || props.chatData?.id
+    const p = props.chatData?.participants?.find(p => p.id === pid)
+    return p?.nickname || p?.name || props.msg.senderName
+})
+
+const senderTitleClass = computed(() => {
+    const role = senderRole.value
+    const custom = senderCustomTitle.value
+    if (role === 'owner') return 'bg-[#f7b500]' // Yellow
+    if (role === 'admin') return 'bg-[#07c160]' // Green
+    if (custom) return 'bg-[#a855f7]' // Purple
+    return 'bg-[#b1b1b1]' // Gray
+})
 
 // Settings History Sync
 
@@ -795,7 +863,7 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[COMMENT[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[REPLY[:：]\s*[^\]]+\]/gi, '');
-    
+
     // Remove TIMESTAMP tags (hidden from user, only for AI)
     clean = clean.replace(/\s*\[TIMESTAMP:\d{2}\/\d{2} \d{2}:\d{2}\]/gi, '');
     clean = clean.replace(/\s*\[TIMESTAMP:[^\]]+\]/gi, '');
@@ -1010,13 +1078,13 @@ function formatTimelineTime(timestamp) {
 
 function isImageMsg(msg) {
     if (!msg) return false
-    
+
     // 优先检查 msg.image 属性
     if (msg.image && (msg.image.startsWith('http') || msg.image.startsWith('data:'))) return true;
-    
+
     // 检查消息类型
     if (msg.type === 'image') return true;
-    
+
     const content = ensureString(msg.content)
     if (!content.trim()) return false
 
@@ -1175,12 +1243,16 @@ function formatMessageContent(msg) {
     // 5. Highlight Mentions (@name)
     const userName = settingsStore.personalization.userProfile.name;
     const contactName = props.chatData?.name;
+    const allMembers = props.chatData?.isGroup ? '全体成员' : null;
 
-    [userName, contactName].forEach(name => {
-        if (!name) return;
+    [userName, contactName, allMembers].filter(Boolean).forEach(name => {
         const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const mentionRegex = new RegExp(`@${escapedName}\\b|@${escapedName}(?!\\w)`, 'g')
-        text = text.replace(mentionRegex, `<span class="text-blue-500 font-medium">@${name}</span>`)
+        const mentionRegex = new RegExp(`@${escapedName}`, 'g')
+        const isAll = name === allMembers
+        const highlightClass = isAll
+            ? 'text-orange-600 bg-orange-100/80 px-1 rounded font-bold'
+            : 'text-blue-500 font-medium bg-blue-50/50 px-1 rounded'
+        text = text.replace(mentionRegex, `<span class="${highlightClass}">@${name}</span>`)
     });
 
     // --- STICKER INLINE REPLACER ---
@@ -1228,25 +1300,39 @@ function getDuration(msg) {
 }
 
 function getPayTitle(msg) {
-    const content = ensureString(msg.content)
-    if (msg.type === 'transfer' || content.includes('[转账]')) return `¥${msg.amount || '520.00'}`
+    const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
+    if (isTransfer) return `¥${msg.amount || '0.00'}`
+
+    // For Red Packet
     return msg.note || '恭喜发财，大吉大利'
 }
 
 function getPayDesc(msg) {
-    const content = ensureString(msg.content)
-    if (msg.type === 'transfer' || content.includes('[转账]')) return msg.note || '转账给您'
-    return '领取红包'
+    const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
+    if (isTransfer) return msg.note || '转账给您'
+
+    if (msg.packetType === 'lucky') return '微信手气红包'
+    return '微信红包'
 }
 
 function getPayStatusText(msg) {
     if (msg.isRejected) return '已拒收'
-    const content = ensureString(msg.content)
     if (msg.isClaimed || msg.status === 'received') {
-        return (msg.type === 'transfer' || content.includes('[转账]')) ? '已收款' : '已领取'
+        if (msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')) return '已收款'
+        return '已领取'
     }
-    if (msg.type === 'transfer' || content.includes('[转账]')) return '微信转账'
-    return '微信红包'
+
+    if (msg.type === 'redpacket' && msg.remainingCount === 0) return '已领完'
+
+    const content = ensureString(msg.content)
+    if (msg.type === 'transfer' || content.includes('[转账]')) return '待收款'
+    return '待领取'
+}
+
+function getPayIcon(msg) {
+    const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
+    if (isTransfer) return 'fa-solid fa-arrow-right-arrow-left'
+    return 'fa-solid fa-envelope-open-text'
 }
 
 function parseBubbleCss(cssString) {
@@ -1566,58 +1652,41 @@ function getHtmlContent(content) {
 }
 
 .pay-card {
-    width: 230px;
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    transition: transform 0.1s;
+    transition: all 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.pay-card:hover {
+    transform: translateY(-2px);
 }
 
 .pay-card:active {
-    transform: scale(0.98);
+    transform: scale(0.96);
 }
 
-.pay-card.received,
-.pay-card.rejected {
-    opacity: 0.6;
+.pay-card img {
+    pointer-events: none;
 }
 
-.pay-top {
-    padding: 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.pay-card i {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
-.pay-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 18px;
+/* Background Glow Effect */
+.pay-card::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
 }
 
-.pay-title {
-    font-size: 15px;
-    color: white;
-    margin-bottom: 2px;
-}
-
-.pay-desc {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.pay-bottom {
-    padding: 8px 12px;
-    font-size: 11px;
-    color: #999;
+.pay-card:hover::after {
+    opacity: 1;
 }
 
 /* Family Card Black Gold Design - Credit Card Form Factor */

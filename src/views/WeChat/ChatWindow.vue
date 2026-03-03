@@ -22,6 +22,8 @@ import ChatTransferModal from './modals/ChatTransferModal.vue'
 import ChatInputBar from './components/ChatInputBar.vue'
 import ChatMessageItem from './components/ChatMessageItem.vue'
 import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
+import FamilyCardDetailModal from './FamilyCardDetailModal.vue'
+import GroupAnnouncementModal from './modals/GroupAnnouncementModal.vue'
 import CallStatusBar from '../../components/CallStatusBar.vue'
 import WorldLoopGMPanel from './modals/WorldLoopGMPanel.vue'
 import WorldLoopSettings from './modals/WorldLoopSettings.vue'
@@ -116,6 +118,9 @@ const chatInputBarRef = ref(null)
 const chatData = computed(() => chatStore.currentChat)
 const msgs = computed(() => chatData.value?.msgs || [])
 
+// Settings Panel
+const showSettings = ref(false)
+
 // Status Bar Time
 const currentTime = ref('12:00')
 const updateTime = () => {
@@ -134,6 +139,8 @@ const showFriendRequest = computed(() => {
     if (!chatData.value || !chatData.value.msgs) return false
     // World Loop never shows friend request
     if (chatData.value.loopId) return false
+    // Hide for group chats
+    if (chatData.value.isGroup) return false
     // Show if: No messages AND Not hidden AND No Opening Line was set
     return chatData.value.msgs.length === 0 && !chatData.value.hideFriendRequest && !chatData.value.openingLine
 })
@@ -247,11 +254,24 @@ const handleSettingsPopState = (event) => {
 }
 
 const openSettings = () => {
+    if (chatData.value?.isGroup) {
+        openGroupSettings()
+        return
+    }
     showSettings.value = true
     const currentState = window.history.state || {}
     if (!currentState.settingsOpen) {
         window.history.pushState({ ...currentState, settingsOpen: true }, '')
     }
+}
+
+const openGroupSettings = (showAnnouncements = false) => {
+    if (!chatData.value?.isGroup) return
+    if (showAnnouncements && groupAnnouncementModal.value) {
+        groupAnnouncementModal.value.open()
+        return
+    }
+    router.push({ name: 'wechat-group-settings', params: { chatId: chatData.value.id } })
 }
 
 const openGMMenu = () => {
@@ -740,8 +760,9 @@ const scrollToBottom = (instant = false) => {
 
 const currentQuote = ref(null) // New State
 const showActionPanel = ref(false)
-const showSettings = ref(false)
-const imgUploadInput = ref(null)
+const isPressing = ref(false)
+const pressTimer = ref(null)
+const groupAnnouncementModal = ref(null)
 
 // Settings History Sync
 watch(showSettings, (newVal) => {
@@ -854,14 +875,22 @@ const handleChangeAvatar = (url) => {
         showToast('无效的头像URL', 'error')
         return
     }
-    
+
     // 验证图片URL是否有效
     const img = new Image()
+    img.crossOrigin = 'Anonymous'
     img.onload = () => {
-        // 图片加载成功，更新头像
-        chatStore.updateCharacter(chatData.value.id, {
-            avatar: url
-        })
+        let finalUrl = url;
+        try {
+            if (img.width !== img.height) {
+                let s = Math.min(img.width, img.height);
+                let c = document.createElement('canvas');
+                c.width = s; c.height = s;
+                c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, s, s);
+                finalUrl = c.toDataURL('image/png');
+            }
+        } catch (e) { }
+        chatStore.updateCharacter(chatData.value.id, { avatar: finalUrl })
         showToast('头像已更换', 'success')
     }
     img.onerror = () => {
@@ -1229,11 +1258,15 @@ const showSendModal = ref(false)
 const sendType = ref('redpacket') // 'redpacket' | 'transfer'
 const sendAmount = ref('')
 const sendNote = ref('')
+const sendCount = ref(1)
+const packetType = ref('lucky') // 'lucky' or 'fixed'
 
 const openSendDialog = (type) => {
     sendType.value = type
-    sendAmount.value = type === 'redpacket' ? '88' : '520'
+    sendAmount.value = type === 'redpacket' ? '8.88' : '520'
     sendNote.value = type === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您'
+    sendCount.value = 1
+    packetType.value = 'lucky'
     showSendModal.value = true
     showActionPanel.value = false
 }
@@ -1252,20 +1285,27 @@ const confirmSend = () => {
     const isRP = sendType.value === 'redpacket'
     const title = isRP ? '发红包' : '转账'
 
+    // Calculate actual total to deduct
+    const actualTotalAmount = (isRP && packetType.value === 'fixed')
+        ? amount * (parseInt(sendCount.value) || 1)
+        : amount;
+
     // 2. Try to deduct
     // Currently defaults to Balance logic (can be expanded to check specific methods)
-    const success = walletStore.decreaseBalance(amount, title)
+    const success = walletStore.decreaseBalance(actualTotalAmount, title)
 
     if (!success) {
         // Balance insufficient
-        return showToast(`支付失败：余额不足 (当前余额 ¥${walletStore.balance})`, 'error')
+        return showToast(`支付失败：余额不足 (当前余额 ¥${walletStore.balance.toFixed(2)})`, 'error')
     }
 
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: sendType.value,
         content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (amount + '元')}`,
-        amount: sendAmount.value,
+        amount: amount,
+        count: isRP ? parseInt(sendCount.value) || 1 : 1,
+        packetType: isRP ? packetType.value : null,
         note: sendNote.value || (isRP ? '恭喜发财，大吉大利' : '转账给您'),
         status: 'sent' // Initial status
     })
@@ -1463,7 +1503,7 @@ const speakMessage = (text, msgId = null, force = false) => {
     if (!text) return;
     const cleanText = getCleanSpeechText(text);
     if (!cleanText) return;
-    
+
     // 检查是否正在通话中，如果是则不播放TTS（避免双重语音）
     if (callStore.status === 'active' || callStore.status === 'dialing') {
         return;
@@ -1951,75 +1991,47 @@ const voiceEnd = () => {
 
 // Reject Payment
 const rejectPayment = () => {
-    // Prevent double action if opening
-    if (isOpening.value) return
+    if (isOpening.value || !currentRedPacket.value) return
 
-    // Update State
-    if (currentRedPacket.value) {
-        currentRedPacket.value.isRejected = true
-    }
-    showResult.value = true // [FIX] Switch to result view immediately
+    currentRedPacket.value.isRejected = true
+    showResult.value = true
 
     const chat = chatStore.chats[chatStore.currentChatId]
     const msg = chat.msgs.find(m => m.id === currentRedPacket.value.id)
     if (msg) {
         msg.isRejected = true
         msg.rejectTime = Date.now()
-
-        // [FIX] Add System Message
         const senderName = chat.remark || chat.name || '对方'
         const typeStr = (msg.type === 'transfer' || msg.content.includes('转账')) ? '转账' : '红包'
-
         chatStore.addMessage(chat.id, {
             role: 'system',
-            type: 'system',
             content: `你拒收了${senderName}的${typeStr}`
         })
         chatStore.saveChats()
     }
 }
 
-const openRedPacket = () => {
-    if (isOpening.value) return
+const openRedPacket = async () => {
+    if (isOpening.value || !currentRedPacket.value) return
     isOpening.value = true
 
+    const result = await chatStore.claimRedPacket(chatStore.currentChatId, currentRedPacket.value.id, 'user')
+
     setTimeout(() => {
-        // [FIX] Race condition check: If rejected during wait, abort
-        if (!currentRedPacket.value || currentRedPacket.value.isRejected) {
-            isOpening.value = false
-            return
-        }
-
         isOpening.value = false
-        showResult.value = true
-
-        const amount = parseFloat(currentRedPacket.value.amount || (Math.random() * 100).toFixed(2))
-        resultAmount.value = amount
-
-        // Add to Wallet
-        walletStore.increaseBalance(amount, '微信红包', `领取红包: ${currentRedPacket.value.note || ''}`)
-
-        // Update State
-        const chat = chatStore.chats[chatStore.currentChatId]
-        const msg = chat.msgs.find(m => m.id === currentRedPacket.value.id)
-        if (msg) {
-            msg.isClaimed = true
-            msg.claimTime = Date.now()
-
-            // Add System Message: "UserName claimed xx's red packet"
-            const senderName = chat.remark || chat.name
-            const userName = chat.userName || '你'
-            chatStore.addMessage(chat.id, {
-                role: 'system',
-                type: 'system',
-                content: `${userName}领取了${senderName}的红包`
-            })
-
-            chatStore.saveChats()
+        if (result && result.claimed) {
+            showResult.value = true
+            resultAmount.value = result.amount
+        } else if (result && result.already) {
+            showResult.value = true
+            resultAmount.value = result.item.amount
+        } else if (result && result.empty) {
+            showToast('手慢了，红包派完了', 'info')
+            showResult.value = true
+        } else {
+            showToast('领取失败', 'error')
         }
-        if (currentRedPacket.value) currentRedPacket.value.isClaimed = true
-
-    }, 1000)
+    }, 1200)
 }
 
 const closeRedPacketModal = () => {
@@ -2295,12 +2307,12 @@ const currentVoiceIndex = computed(() => {
 
 const playMessageTTS = (text) => {
     if (!text) return
-    
+
     // 检查是否正在通话中，如果是则不播放TTS（避免双重语音）
     if (callStore.status === 'active' || callStore.status === 'dialing') {
         return;
     }
-    
+
     const cleanText = getCleanSpeechText(text).replace(/\[.*?\]/g, '')
     if (!cleanText.trim()) return
 
@@ -2661,8 +2673,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <!-- Header -->
             <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500 backdrop-blur-md"
                 :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-blue-300/40 border-blue-300/20'"
-                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.4)', borderColor: 'rgba(147, 197, 253, 0.2)' } : {}"
-            >
+                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.4)', borderColor: 'rgba(147, 197, 253, 0.2)' } : {}">
                 <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
                     @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
                     <i class="fa-solid fa-chevron-left text-black text-lg"></i>
@@ -2691,9 +2702,17 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         </div>
                         <template v-else>
                             <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
-                                :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'"></div>
-                            <span class="text-[10px] text-gray-500 truncate max-w-[150px] font-medium">{{
-                                chatData?.statusText || '在线' }}</span>
+                                v-if="!chatData?.isGroup" :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'">
+                            </div>
+                            <span class="text-[10px] text-gray-500 truncate max-w-[170px] font-medium">
+                                <template v-if="chatData?.isGroup">
+                                    {{ (chatData?.groupProfile?.groupNo || '群聊') }} · {{ (chatData?.participants?.length
+                                        || 0) }}人
+                                </template>
+                                <template v-else>
+                                    {{ chatData?.statusText || '在线' }}
+                                </template>
+                            </span>
                         </template>
                     </div>
                 </div>
@@ -2706,10 +2725,16 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             :class="chatData?.autoRead ? 'fa-volume-high text-green-600' : 'fa-volume-xmark text-gray-400'"></i>
                     </div>
 
-                    <!-- Inner Voice Button -->
-                    <div class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
+                    <!-- Inner Voice / Group Announcement -->
+                    <div v-if="!chatData?.isGroup"
+                        class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
                         @click="openInnerVoiceModal" title="心声">
                         <i class="fa-solid fa-heart transition-all duration-300 text-pink-500 animate-heartbeat"></i>
+                    </div>
+                    <div v-else
+                        class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
+                        @click="openGroupSettings(true)" title="群公告">
+                        <i class="fa-solid fa-bullhorn text-amber-500"></i>
                     </div>
 
 
@@ -2846,7 +2871,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             </div>
 
             <!-- Action Panel (Drawer) -->
-            <ChatActionPanel v-if="showActionPanel" :show="showActionPanel"
+            <ChatActionPanel v-if="showActionPanel" :show="showActionPanel" :showCalls="!chatData?.isGroup"
                 class="h-[200px] border-t border-[#dcdcdc] bg-[#f7f7f7] relative z-20" @action="handlePanelAction" />
 
             <!-- Emoji Picker -->
@@ -2999,8 +3024,12 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         </div>
 
         <!-- Family Card Claim Modal -->
-        <FamilyCardClaimModal ref="familyCardModal" @confirm="handleCardClaim" />
+        <FamilyCardClaimModal ref="familyCardModal" @confirm="handleClaimConfirm" />
 
+        <!-- Family Card Detail Modal -->
+        <FamilyCardDetailModal ref="familyDetailModal" :userName="chatData.userName || '我'" />
+        <!-- Group Announcement Modal -->
+        <GroupAnnouncementModal ref="groupAnnouncementModal" :chatData="chatData" />
         <!-- World Loop GM Panel -->
         <WorldLoopGMPanel v-if="showGMMenu" :loopId="chatData?.loopId" @close="showGMMenu = false" />
 
@@ -3061,11 +3090,38 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         </div>
                     </div>
 
+                    <!-- Red Packet Type and Count (Red Packet Mode) -->
+                    <div v-if="sendType === 'redpacket'" class="flex flex-col gap-4">
+                        <div class="flex bg-gray-100 p-1 rounded-xl">
+                            <button @click="packetType = 'lucky'"
+                                class="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                                :class="packetType === 'lucky' ? 'bg-red-500 text-white shadow-md' : 'text-gray-500'">
+                                拼手气红包
+                            </button>
+                            <button @click="packetType = 'fixed'"
+                                class="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                                :class="packetType === 'fixed' ? 'bg-red-500 text-white shadow-md' : 'text-gray-500'">
+                                普通红包
+                            </button>
+                        </div>
+
+                        <div class="flex flex-col gap-2">
+                            <label class="text-xs font-medium text-gray-500 ml-1">红包个数</label>
+                            <div class="flex items-center gap-2 bg-white rounded-xl px-4 py-3 border-2 border-gray-100">
+                                <input type="number" v-model="sendCount" min="1" max="100"
+                                    class="flex-1 bg-transparent border-none outline-none text-lg font-bold text-gray-900">
+                                <span class="text-gray-400 text-sm">个</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Amount Input -->
                     <div class="flex flex-col gap-3">
-                        <div class="text-gray-600 font-medium text-sm ml-1" v-if="sendType === 'transfer'">转账金额</div>
+                        <div class="text-gray-600 font-medium text-sm ml-1">
+                            {{ sendType === 'transfer' ? '转账金额' : (packetType === 'lucky' ? '总金额' : '单个金额') }}
+                        </div>
                         <div class="flex items-center gap-2 border-b-2 pb-2 pt-1 transition-colors min-h-[80px]"
-                            :class="sendAmount ? 'border-red-500' : 'border-gray-300'">
+                            :class="sendAmount ? (sendType === 'redpacket' ? 'border-red-500' : 'border-orange-500') : 'border-gray-300'">
                             <span class="text-gray-900 font-bold text-4xl">¥</span>
                             <input type="text" inputmode="decimal" v-model="sendAmount" placeholder="0.00"
                                 class="flex-1 min-w-0 bg-transparent border-none outline-none text-5xl font-bold text-gray-900 placeholder-gray-300"
@@ -3113,7 +3169,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             {{ statusEditInput.length }}/30
                         </div>
                     </div>
-                    <div class="flex items-center justify-between mb-4 bg-gray-50 p-2 rounded-xl">
+                    <div v-if="!chatData?.isGroup"
+                        class="flex items-center justify-between mb-4 bg-gray-50 p-2 rounded-xl">
                         <span class="text-sm text-gray-500 ml-2">在线状态</span>
                         <div class="flex bg-gray-200 rounded-lg p-1">
                             <button @click="statusIsOnline = true"

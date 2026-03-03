@@ -8,6 +8,7 @@ import { useSettingsStore } from './settingsStore'
 import { useMusicStore } from './musicStore'
 import { useSchedulerStore } from './schedulerStore'
 import { useCallStore } from './callStore'
+import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from '../utils/ai/prompts'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
 import localforage from 'localforage'
@@ -139,6 +140,24 @@ export const useChatStore = defineStore('chat', () => {
         })
     })
 
+    const groupNpcs = computed(() => {
+        const npcs = []
+        Object.values(chats.value).forEach(chat => {
+            if (chat.isGroup && Array.isArray(chat.participants)) {
+                chat.participants.forEach(p => {
+                    if (p.isNPC) {
+                        npcs.push({
+                            ...p,
+                            groupId: chat.id,
+                            groupName: chat.name
+                        })
+                    }
+                })
+            }
+        })
+        return npcs
+    })
+
     const currentChat = computed(() => {
         const id = currentChatId.value
         if (!id || !chats.value[id]) return null
@@ -178,6 +197,8 @@ export const useChatStore = defineStore('chat', () => {
                 // Group Chat / World Loop Extensions
                 isGroup: options.isGroup || false,
                 participants: options.participants || [],
+                groupProfile: options.groupProfile || null,
+                groupSettings: options.groupSettings || null,
                 loopId: options.loopId || null,
                 systemRole: options.systemRole || null,
                 // Bio / Profile logic
@@ -194,6 +215,297 @@ export const useChatStore = defineStore('chat', () => {
             return newChat
         }
         return chats.value[chatId]
+    }
+
+    function _deriveGroupNoFromChatId(chatId) {
+        if (!chatId) return `G${Date.now()}`
+        const digits = String(chatId).replace(/\D/g, '').slice(-8)
+        return digits ? `G${digits}` : `G${Date.now().toString().slice(-8)}`
+    }
+
+    function _ensureGroupDefaults(chatId) {
+        const c = chats.value[chatId]
+        if (!c) return
+
+        if (c.isGroup === undefined) c.isGroup = false
+        if (!Array.isArray(c.participants)) c.participants = []
+
+        if (c.isGroup) {
+            if (!c.groupProfile || typeof c.groupProfile !== 'object') {
+                c.groupProfile = {
+                    avatar: c.avatar || getRandomAvatar(),
+                    name: c.name || '未命名群聊',
+                    groupNo: _deriveGroupNoFromChatId(chatId),
+                    announcement: '',
+                    announcements: []
+                }
+            } else {
+                if (!c.groupProfile.avatar) c.groupProfile.avatar = c.avatar || getRandomAvatar()
+                if (!c.groupProfile.name) c.groupProfile.name = c.name || '未命名群聊'
+                if (!c.groupProfile.groupNo) c.groupProfile.groupNo = _deriveGroupNoFromChatId(chatId)
+                if (c.groupProfile.announcement === undefined) c.groupProfile.announcement = ''
+                if (!Array.isArray(c.groupProfile.announcements)) c.groupProfile.announcements = []
+            }
+
+            if (!c.groupSettings || typeof c.groupSettings !== 'object') {
+                c.groupSettings = {
+                    myPersona: c.userPersona || '',
+                    myNickname: '',
+                    myRole: 'owner', // Default to owner for created groups
+                    myCustomTitle: '',
+                    muteUntil: 0,
+                    groupPrompt: '',
+                    worldBookLinks: Array.isArray(c.worldBookLinks) ? c.worldBookLinks : [],
+                    timeAware: c.timeAware !== false,
+                    allowInvite: true, // Whether members can invite
+                    autoInvite: false, // Whether AI can invite
+                    welcomeMessage: '',
+                    proactive: { enabled: false, intervalMinutes: 60 },
+                    memory: {
+                        contextMemoryCount: c.contextLimit || 20,
+                        contextDisplayCount: 50,
+                        autoSummaryEvery: 30
+                    },
+                    pat: { enabled: true, action: c.patAction || '', suffix: c.patSuffix || '' },
+                    bubbleBg: {
+                        preset: 'default',
+                        blur: 0,
+                        opacity: 1,
+                        theme: 'light'
+                    }
+                }
+            } else {
+                if (c.groupSettings.myPersona === undefined) c.groupSettings.myPersona = c.userPersona || ''
+                if (c.groupSettings.myNickname === undefined) c.groupSettings.myNickname = ''
+                if (c.groupSettings.myRole === undefined) c.groupSettings.myRole = 'owner'
+                if (c.groupSettings.myCustomTitle === undefined) c.groupSettings.myCustomTitle = ''
+                if (c.groupSettings.muteUntil === undefined) c.groupSettings.muteUntil = 0
+                if (c.groupSettings.groupPrompt === undefined) c.groupSettings.groupPrompt = ''
+                if (!Array.isArray(c.groupSettings.worldBookLinks)) c.groupSettings.worldBookLinks = Array.isArray(c.worldBookLinks) ? c.worldBookLinks : []
+                if (c.groupSettings.timeAware === undefined) c.groupSettings.timeAware = c.timeAware !== false
+                if (c.groupSettings.allowInvite === undefined) c.groupSettings.allowInvite = true
+                if (c.groupSettings.autoInvite === undefined) c.groupSettings.autoInvite = false
+                if (c.groupSettings.welcomeMessage === undefined) c.groupSettings.welcomeMessage = ''
+                if (!c.groupSettings.proactive) c.groupSettings.proactive = { enabled: false, intervalMinutes: 60 }
+                if (!c.groupSettings.memory) {
+                    c.groupSettings.memory = {
+                        contextMemoryCount: c.contextLimit || 20,
+                        contextDisplayCount: 50,
+                        autoSummaryEvery: 30
+                    }
+                } else {
+                    if (c.groupSettings.memory.contextMemoryCount === undefined) c.groupSettings.memory.contextMemoryCount = c.contextLimit || 20
+                    if (c.groupSettings.memory.contextDisplayCount === undefined) c.groupSettings.memory.contextDisplayCount = 50
+                    if (c.groupSettings.memory.autoSummaryEvery === undefined) c.groupSettings.memory.autoSummaryEvery = 30
+                }
+                if (!c.groupSettings.pat) c.groupSettings.pat = { enabled: true, action: c.patAction || '', suffix: c.patSuffix || '' }
+                if (!c.groupSettings.bubbleBg) c.groupSettings.bubbleBg = { preset: 'default', blur: 0, opacity: 1, theme: 'light' }
+            }
+
+            // Ensure participants have basic role structure
+            if (Array.isArray(c.participants)) {
+                c.participants.forEach(p => {
+                    if (p.role === undefined) p.role = 'member'
+                    if (p.customTitle === undefined) p.customTitle = ''
+                    if (p.nickname === undefined) p.nickname = ''
+                    if (p.muteUntil === undefined) p.muteUntil = 0
+                })
+            }
+
+            // Keep list display in sync
+            if (c.groupProfile?.name) c.name = c.groupProfile.name
+            if (c.groupProfile?.avatar) c.avatar = c.groupProfile.avatar
+        }
+    }
+
+    function createGroupChat(payload = {}) {
+        const name = payload.name || '未命名群聊'
+        const avatar = payload.avatar || getRandomAvatar()
+        const tempId = payload.id // optional
+
+        // Check if chat with this ID already exists to prevent duplicates
+        if (tempId && chats.value[tempId]) {
+            return chats.value[tempId]
+        }
+
+        const chat = createChat(name, {
+            id: tempId,
+            avatar,
+            isGroup: true,
+            participants: Array.isArray(payload.participants) ? payload.participants : [],
+            groupProfile: payload.groupProfile || {
+                avatar,
+                name,
+                groupNo: payload.groupNo || _deriveGroupNoFromChatId(tempId || ''),
+                announcement: payload.announcement || ''
+            },
+            groupSettings: payload.groupSettings || null
+        })
+
+        _ensureGroupDefaults(chat.id)
+        saveChats()
+        return chat
+    }
+
+    function updateGroupProfile(chatId, patch = {}) {
+        const chat = chats.value[chatId]
+        if (!chat) return false
+        chat.isGroup = true
+        _ensureGroupDefaults(chatId)
+        chat.groupProfile = { ...(chat.groupProfile || {}), ...(patch || {}) }
+        if (chat.groupProfile?.name) chat.name = chat.groupProfile.name
+        if (chat.groupProfile?.avatar) chat.avatar = chat.groupProfile.avatar
+        saveChats()
+        return true
+    }
+
+    function updateGroupSettings(chatId, patch = {}) {
+        const chat = chats.value[chatId]
+        if (!chat) return false
+        chat.isGroup = true
+        _ensureGroupDefaults(chatId)
+        chat.groupSettings = { ...(chat.groupSettings || {}), ...(patch || {}) }
+        // lightweight sync for AI service compatibility
+        if (chat.groupSettings?.myPersona !== undefined) chat.userPersona = chat.groupSettings.myPersona
+        if (Array.isArray(chat.groupSettings?.worldBookLinks)) chat.worldBookLinks = chat.groupSettings.worldBookLinks
+        if (chat.groupSettings?.timeAware !== undefined) chat.timeAware = chat.groupSettings.timeAware
+        if (chat.groupSettings?.memory?.contextMemoryCount !== undefined) chat.contextLimit = chat.groupSettings.memory.contextMemoryCount
+        if (chat.groupSettings?.memory?.autoSummaryEvery !== undefined) {
+            const n = parseInt(chat.groupSettings.memory.autoSummaryEvery) || 0
+            if (n > 0) {
+                chat.autoSummary = true
+                chat.summaryLimit = n
+            }
+        }
+        if (chat.groupSettings?.proactive?.enabled !== undefined) {
+            chat.proactiveChat = !!chat.groupSettings.proactive.enabled
+        }
+        if (chat.groupSettings?.proactive?.intervalMinutes !== undefined) {
+            chat.proactiveInterval = parseInt(chat.groupSettings.proactive.intervalMinutes) || 60
+        }
+        saveChats()
+        return true
+    }
+
+    function updateGroupParticipants(chatId, participants = []) {
+        const chat = chats.value[chatId]
+        if (!chat) return false
+        chat.isGroup = true
+        _ensureGroupDefaults(chatId)
+        chat.participants = Array.isArray(participants) ? participants : []
+        saveChats()
+        return true
+    }
+
+    function _extractJsonFromText(text) {
+        if (!text) return null
+        const s = String(text).trim()
+
+        // Match Markdown JSON blocks first
+        const fenceMatch = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/i)
+        const raw = (fenceMatch ? fenceMatch[1].trim() : s).trim()
+
+        // Find the FIRST [ and LAST ] or SECONDLY FIRST { and LAST }
+        const arrStart = raw.indexOf('[')
+        const arrEnd = raw.lastIndexOf(']')
+        if (arrStart !== -1 && arrEnd > arrStart) {
+            return raw.substring(arrStart, arrEnd + 1)
+        }
+
+        const objStart = raw.indexOf('{')
+        const objEnd = raw.lastIndexOf('}')
+        if (objStart !== -1 && objEnd > objStart) {
+            return raw.substring(objStart, objEnd + 1)
+        }
+
+        return null
+    }
+
+    async function generateGroupMembers(requirement, options = {}) {
+        const count = Math.max(1, Math.min(50, Number(options.count || 6)))
+        const groupTheme = String(options.groupTheme || '').trim()
+
+        const system = GROUP_MEMBER_GENERATOR_PROMPT(count, groupTheme, requirement)
+
+        const dummyChar = {
+            id: 'group-generator',
+            name: '群成员生成器',
+            userName: '用户',
+            userPersona: '',
+            avatar: '',
+            bio: {}
+        }
+
+        const resp = await generateReply(
+            [
+                { role: 'system', content: system },
+                { role: 'user', content: String(requirement || '').trim() || '生成一组有趣的群聊成员。' }
+            ],
+            dummyChar,
+            null,
+            { stream: false, skipProcessing: true }
+        )
+
+        const text = resp?.content || (resp?.choices && resp.choices[0]?.message?.content) || ''
+        const jsonStr = _extractJsonFromText(text)
+        if (!jsonStr) return { error: 'AI 未返回可解析的 JSON', raw: text }
+        try {
+            let parsed = JSON.parse(jsonStr)
+
+            // Normalize to array
+            if (!Array.isArray(parsed) && typeof parsed === 'object') {
+                if (Array.isArray(parsed.members)) parsed = parsed.members
+                else if (Array.isArray(parsed.data)) parsed = parsed.data
+                else if (Array.isArray(parsed.characters)) parsed = parsed.characters
+                else parsed = [parsed]
+            }
+
+            if (!Array.isArray(parsed)) return { error: 'AI 返回的 JSON 非法', raw: text }
+
+            // Final normalization and ASYNC IMAGE GENERATION
+            const normalized = parsed.map((p, idx) => {
+                const seed = encodeURIComponent((p?.name || `Member${idx + 1}`).toString().replace(/\s+/g, ''))
+                return {
+                    id: String(p?.id || `p-${Date.now()}-${idx}`),
+                    name: String(p?.name || `成员${idx + 1}`),
+                    avatar: String(p?.avatar || `https://api.dicebear.com/7.x/open-peeps/svg?seed=${seed}`),
+                    avatar_prompt: String(p?.avatar_prompt || ''),
+                    roleId: p?.roleId || null,
+                    isOwner: !!p?.isOwner,
+                    isAdmin: !!p?.isAdmin,
+                    prompt: String(p?.prompt || ''),
+                    bio: {
+                        gender: p?.bio?.gender || '未知',
+                        age: p?.bio?.age || '未知',
+                        mbti: p?.bio?.mbti || '未知',
+                        traits: Array.isArray(p?.bio?.traits) ? p.bio.traits : [],
+                        hobbies: Array.isArray(p?.bio?.hobbies) ? p.bio.hobbies : [],
+                        signature: p?.bio?.signature || ''
+                    }
+                }
+            })
+
+            // Run image generation in background but await final result
+            console.log(`[Batch Generator] Drawing avatars for ${normalized.length} members...`)
+            await Promise.all(normalized.map(async (m) => {
+                if (m.avatar_prompt && m.avatar_prompt.length > 5) {
+                    try {
+                        // Use the internal generateImage function
+                        const imgUrl = await generateImage(m.avatar_prompt)
+                        if (imgUrl) {
+                            m.avatar = imgUrl
+                            console.log(`[Batch Generator] Successfully drew avatar for ${m.name}`)
+                        }
+                    } catch (err) {
+                        console.warn(`[Batch Generator] Avatar draw failed for ${m.name}, keeping placeholder.`, err)
+                    }
+                }
+            }))
+
+            return { members: normalized, raw: text }
+        } catch (e) {
+            return { error: 'AI JSON 解析失败', raw: text }
+        }
     }
 
     async function addMessage(chatId, msg) {
@@ -295,7 +607,29 @@ export const useChatStore = defineStore('chat', () => {
             newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
         }
 
-        // 1.2 Rewrite content to canonical format [类型:金额:备注:ID] for AI context
+        // 1.2 Initialize payment specific fields
+        if (newMsg.type === 'redpacket') {
+            newMsg.count = msg.count || 1
+            newMsg.remainingCount = msg.remainingCount !== undefined ? msg.remainingCount : newMsg.count
+            newMsg.claims = msg.claims || []
+            newMsg.packetType = msg.packetType || 'lucky' // 'lucky' or 'fixed'
+
+            // Critical: Initialize the distribution amounts if not present
+            if (!newMsg.amounts || newMsg.amounts.length === 0) {
+                const total = parseFloat(newMsg.amount) || 0
+                const count = parseInt(newMsg.count) || 1
+                if (newMsg.packetType === 'lucky') {
+                    newMsg.amounts = _splitRedPacket(total, count)
+                } else {
+                    newMsg.amounts = Array(count).fill(total)
+                }
+            }
+        } else if (newMsg.type === 'transfer') {
+            newMsg.isClaimed = msg.isClaimed || false
+            newMsg.targetId = msg.targetId || null
+        }
+
+        // 1.3 Rewrite content to canonical format [类型:金额:备注:ID] for AI context
         if (newMsg.type === 'redpacket' && newMsg.paymentId) {
             newMsg.content = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
         } else if (newMsg.type === 'transfer' && newMsg.paymentId) {
@@ -960,6 +1294,56 @@ export const useChatStore = defineStore('chat', () => {
             }
         }
 
+        // Handle special message types based on content (Financial Commands)
+        if (newMsg.role === 'user' && typeof newMsg.content === 'string') {
+            const content = newMsg.content.trim();
+            // User can send [红包:lucky:10:5:备注] or [红包:10:5:备注] (default lucky)
+            const rpMatch = content.match(/^\[红包\s*[:：]\s*(lucky|fixed|手气|固定)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]$/i);
+            const tfMatch = content.match(/^\[转账\s*[:：]\s*(\w+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]$/i);
+
+            if (rpMatch) {
+                const typeRaw = (rpMatch[1] || 'lucky').toLowerCase();
+                const isLucky = typeRaw.includes('lucky') || typeRaw.includes('手气');
+                const amount = parseFloat(rpMatch[2]) || 1.0;
+                const count = parseInt(rpMatch[3]) || 1;
+                const note = rpMatch[4] || '恭喜发财，大吉大利';
+
+                // Deduct from wallet
+                const walletStore = useWalletStore();
+                if (walletStore.decreaseBalance(amount, `发送红包: ${note}`)) {
+                    newMsg.type = 'redpacket';
+                    newMsg.amount = amount;
+                    newMsg.note = note;
+                    newMsg.packetType = isLucky ? 'lucky' : 'fixed';
+                    newMsg.totalAmount = amount;
+                    newMsg.count = count;
+                    newMsg.remainingCount = count;
+                    newMsg.claims = [];
+                    newMsg.amounts = isLucky ? _splitRedPacket(amount, count) : Array(count).fill(Math.floor((amount / count) * 100) / 100);
+                } else {
+                    triggerToast('余额不足，无法发送红包', 'error');
+                    return false;
+                }
+            } else if (tfMatch) {
+                const targetId = tfMatch[1].trim();
+                const amount = parseFloat(tfMatch[2]) || 0.01;
+                const note = tfMatch[3] || '转账给您';
+
+                // Deduct from wallet
+                const walletStore = useWalletStore();
+                if (walletStore.decreaseBalance(amount, `转账: ${note}`)) {
+                    newMsg.type = 'transfer';
+                    newMsg.targetId = targetId;
+                    newMsg.amount = amount;
+                    newMsg.note = note;
+                    newMsg.isClaimed = false;
+                } else {
+                    triggerToast('余额不足，无法转账', 'error');
+                    return false;
+                }
+            }
+        }
+
         // 4. Persistence
         if (!chat.msgs) chat.msgs = []
         chat.msgs.push(newMsg)
@@ -1023,6 +1407,159 @@ export const useChatStore = defineStore('chat', () => {
         checkAutoSummary(chatId)
         saveChats()
         return newMsg
+    }
+
+    // --- Financial Actions ---
+    /**
+     * Fair lucky money splitting algorithm
+     */
+    function _splitRedPacket(total, count) {
+        if (count <= 0) return [];
+        if (count === 1) return [total];
+
+        const results = [];
+        let remainingTotal = total;
+        let remainingCount = count;
+
+        for (let i = 0; i < count - 1; i++) {
+            // Double mean method (Max = 2 * remainingAverage - 0.01)
+            // Min = 0.01
+            const max = (remainingTotal / remainingCount) * 2;
+            let amt = Math.random() * max;
+            amt = Math.max(0.01, Math.floor(amt * 100) / 100);
+
+            // Safety: don't leave less than 0.01 per remaining packet
+            if ((remainingTotal - amt) < (remainingCount - 1) * 0.01) {
+                amt = Math.max(0.01, remainingTotal - (remainingCount - 1) * 0.01);
+                amt = Math.floor(amt * 100) / 100;
+            }
+
+            results.push(amt);
+            remainingTotal = parseFloat((remainingTotal - amt).toFixed(2));
+            remainingCount--;
+        }
+
+        results.push(remainingTotal);
+        // Shuffle to avoid bias
+        return results.sort(() => Math.random() - 0.5);
+    }
+
+    async function claimRedPacket(chatId, messageId, claimantId) {
+        const chat = chats.value[chatId];
+        if (!chat) return null;
+        const msg = chat.msgs.find(m => m.id === messageId);
+        if (!msg || msg.type !== 'redpacket') return null;
+
+        // Check already claimed by this user
+        if (msg.claims.some(c => c.id === claimantId)) {
+            return { claimed: true, already: true, item: msg.claims.find(c => c.id === claimantId) };
+        }
+
+        if (msg.remainingCount <= 0) {
+            return { claimed: false, empty: true };
+        }
+
+        // Claim logic
+        const claimIndex = msg.claims.length;
+        const amount = msg.amounts[claimIndex];
+
+        // Find claimant name/avatar
+        let name = '未知', avatar = '';
+        if (claimantId === 'user') {
+            name = useSettingsStore().personalization?.userProfile?.name || '我';
+            avatar = useSettingsStore().personalization?.userProfile?.avatar || '';
+        } else {
+            const p = chat.participants.find(p => p.id === claimantId);
+            if (p) {
+                name = p.name;
+                avatar = p.avatar;
+            }
+        }
+
+        const claimInfo = {
+            id: claimantId,
+            name,
+            avatar,
+            amount,
+            time: Date.now()
+        };
+
+        msg.claims.push(claimInfo);
+        msg.remainingCount--;
+
+        // If user claimed, add to wallet
+        if (claimantId === 'user') {
+            useWalletStore().increaseBalance(amount, `领取红包: ${msg.note || '恭喜发财'}`);
+        }
+
+        // Add system message
+        const claimantStr = claimantId === 'user' ? '你' : name;
+        const ownerName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : chat.name);
+
+        // 1. Claimed notification
+        const rpType = msg.packetType === 'lucky' ? '拼手气红包' : '红包';
+        addMessage(chatId, {
+            role: 'system',
+            content: `${claimantStr}领取了${ownerName}的${rpType}`
+        });
+
+        // 2. Fully claimed notification
+        if (msg.remainingCount === 0) {
+            const durationMs = Date.now() - msg.timestamp;
+            let timeStr = '';
+            if (durationMs < 60000) {
+                timeStr = `${Math.ceil(durationMs / 1000)}秒`;
+            } else if (durationMs < 3600000) {
+                timeStr = `${Math.ceil(durationMs / 60000)}分钟`;
+            } else {
+                timeStr = `${Math.ceil(durationMs / 3600000)}小时`;
+            }
+            addMessage(chatId, {
+                role: 'system',
+                content: `${ownerName}的红包已领完，共用时${timeStr}`
+            });
+        }
+
+        saveChats();
+        return { claimed: true, amount, item: claimInfo };
+    }
+
+    async function claimTransfer(chatId, messageId, claimantId = 'user') {
+        const chat = chats.value[chatId];
+        if (!chat) return false;
+        const msg = chat.msgs.find(m => m.id === messageId);
+        if (!msg || msg.type !== 'transfer' || msg.isClaimed) return false;
+
+        // Verify target (if designated)
+        if (msg.targetId && msg.targetId !== claimantId) {
+            if (claimantId === 'user') triggerToast('这笔转账不是给你的', 'warn');
+            return false;
+        }
+
+        msg.isClaimed = true;
+        msg.claimTime = Date.now();
+        msg.claimedBy = claimantId;
+
+        // Find claimant name
+        let name = '未知';
+        if (claimantId === 'user') {
+            name = useSettingsStore().personalization?.userProfile?.name || '我';
+            useWalletStore().increaseBalance(msg.amount, `领到转账: ${msg.note || '无备注'}`);
+        } else {
+            const p = chat.participants.find(p => p.id === claimantId);
+            if (p) name = p.name;
+        }
+
+        const claimantStr = claimantId === 'user' ? '你' : name;
+        const ownerName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : chat.name);
+
+        addMessage(chatId, {
+            role: 'system',
+            content: `${claimantStr}已领取了${ownerName}的转账`
+        });
+
+        saveChats();
+        return true;
     }
 
     async function analyzeCharacterArchive(chatId) {
@@ -1266,7 +1803,12 @@ export const useChatStore = defineStore('chat', () => {
                 throw new Error('Empty context (selected messages contain no valid text)')
             }
 
-            const prompt = chat.summaryPrompt || '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。'
+            const groupSummaryPrompt = chat.groupSettings?.summaryPrompt
+            const defaultPrompt = chat.isGroup
+                ? '请总结上述群聊对话的核心内容、主要话题以及各成员的立场，保持简明扼要。'
+                : '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。'
+
+            const prompt = groupSummaryPrompt || chat.summaryPrompt || defaultPrompt
 
             // Pack into a single User message with the Instruction at the end (Best for LLMs)
             const summaryContext = [
@@ -1430,14 +1972,15 @@ export const useChatStore = defineStore('chat', () => {
             if (diffMinutes >= pInterval) {
                 const rand = Math.random()
                 logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
-                if (rand < 0.2) {
+                if (!chat.isGroup && rand < 0.2) {
                     const callType = Math.random() > 0.5 ? 'video' : 'voice'
                     sendMessageToAI(chatId, {
                         hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
                         isProactiveCall: true
                     })
                 } else {
-                    sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没说话了，给用户发条简短的消息。可以带上表情包。）` })
+                    // Group chats: no call triggers, only messages
+                    sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没说话了，给群里发条简短的消息。可以带上表情包。）` })
                 }
             }
         }
@@ -1450,7 +1993,7 @@ export const useChatStore = defineStore('chat', () => {
                     chat._lastActiveTriggeredTime = now
                     logger.sys(`[Proactive] Triggering check-in message for ${chat.name}`)
                     const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
-                    const callChance = Math.random() < 0.15
+                    const callChance = !chat.isGroup && Math.random() < 0.15
                     const hint = callChance
                         ? `（现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
                         : `（现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
@@ -1493,6 +2036,74 @@ export const useChatStore = defineStore('chat', () => {
         if (!chat) return
         chat.msgs = chat.msgs.filter(m => m.id !== msgId)
         saveChats()
+    }
+
+    /**
+     * Search local chat history for RAG (Retrieval-Augmented Generation)
+     * Finds messages matching keywords or within a specific date, returning surrounding context.
+     * @param {String} chatId
+     * @param {Object} query { keyword, date }
+     * @returns {Array} List of formatted context strings
+     */
+    function searchHistory(chatId, query) {
+        const chat = chats.value[chatId]
+        if (!chat || !chat.msgs || !query) return []
+
+        const { keyword, date } = query
+        if (!keyword && !date) return []
+
+        const results = []
+        const msgs = chat.msgs
+
+        // Helper to format a message
+        const formatMsg = (m) => {
+            const timeStr = new Date(m.timestamp).toLocaleString('zh-CN', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            })
+            const sender = m.sender === 'user' ? (chat.userName || '用户') : chat.name
+            return `[${timeStr}] ${sender}: ${typeof m.content === 'object' ? JSON.stringify(m.content) : m.content}`
+        }
+
+        // Search logic
+        for (let i = 0; i < msgs.length; i++) {
+            const m = msgs[i]
+            let isMatch = false
+
+            // Check Date
+            if (date) {
+                const msgDate = new Date(m.timestamp).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-')
+                if (msgDate === date || msgDate.includes(date)) isMatch = true
+            }
+
+            // Check Keyword
+            if (keyword && m.content) {
+                const textContent = typeof m.content === 'object' ? JSON.stringify(m.content) : String(m.content)
+                if (textContent.includes(keyword)) {
+                    isMatch = true
+                }
+            }
+
+            if (isMatch && m.type !== 'system') {
+                // Return context of 2 messages before and 2 after
+                const startIdx = Math.max(0, i - 2)
+                const endIdx = Math.min(msgs.length - 1, i + 2)
+
+                const contextBlock = []
+                for (let j = startIdx; j <= endIdx; j++) {
+                    if (msgs[j].type !== 'system') {
+                        contextBlock.push(formatMsg(msgs[j]))
+                    }
+                }
+
+                results.push(contextBlock.join('\n'))
+
+                // Skip the surrounding messages we just included to avoid overlapping duplicate blocks
+                i = endIdx
+            }
+        }
+
+        return results.slice(0, 5) // Return max 5 contextual blocks to save tokens
     }
 
 
@@ -1745,6 +2356,38 @@ export const useChatStore = defineStore('chat', () => {
 
         const context = mergedContext;
 
+        // --- Group Chat: Inject group context into the last user message ---
+        if (chat.isGroup) {
+            try {
+                const gs = chat.groupSettings || {}
+                const groupPrompt = gs.groupPrompt || ''
+                const myPersona = gs.myPersona || chat.userPersona || ''
+                const announcement = chat.groupProfile?.announcement || ''
+                const participants = Array.isArray(chat.participants) ? chat.participants : []
+
+                const roster = participants.slice(0, 30).map(p => {
+                    const bio = p.bio || {}
+                    const mbti = bio.mbti ? `MBTI:${bio.mbti}` : ''
+                    const sig = bio.signature ? `签名:${bio.signature}` : ''
+                    const brief = [mbti, sig].filter(Boolean).join('，')
+                    return `- id=${p.id} name=${p.name}${brief ? `（${brief}）` : ''}\n  prompt=${String(p.prompt || '').slice(0, 140)}`
+                }).join('\n')
+
+                const formatRule = `【群聊发言规则】\n1) 这是一个正常的群聊（类似微信/QQ），你需要扮演群里的“多个成员”进行生动互动。\n2) 你可以在单次回复中生成多条、多人的发言！群员可以互相聊天、互相@、抢红包，不一定都要围着“我(User)”转。\n3) 每段独立发言必须单起一行，并严格以 [FROM:成员id] 开头（成员id必须来自成员列表）。\n4) 发言内容直接连在标签后，绝对不要再额外加“成员名：”前缀！\n5) 支持系统全部所有功能：你可以发送 [图片:配图要求]、[表情包:描述]、[语音:台词]、甚至是 [DRAW:提示词]。\n6) 禁止输出任何 [INNER_VOICE] 标签（群聊不需要心声旁白）。`
+
+                const groupCtx = `【群聊设定】\n群名：${chat.name || ''}\n群公告：${announcement || '（无）'}\n我的人设：${myPersona || '（无）'}\n群聊规则/氛围：${groupPrompt || '（无）'}\n\n【群成员列表】\n${roster || '（暂无成员）'}\n\n${formatRule}`
+
+                const last = context[context.length - 1]
+                if (last && last.role === 'user') {
+                    last.content += `\n\n${groupCtx}`
+                } else {
+                    context.push({ role: 'user', content: groupCtx })
+                }
+            } catch (e) {
+                console.warn('[ChatStore] Group context injection failed:', e)
+            }
+        }
+
 
         // 3. 调用 AI
         try {
@@ -1772,7 +2415,21 @@ export const useChatStore = defineStore('chat', () => {
                 emojis: chat.emojis,
                 virtualTime: currentVirtualTime,
                 canDraw: true,
-                searchEnabled: aiOptions.searchEnabled
+                searchEnabled: aiOptions.searchEnabled,
+                isGroup: chat.isGroup,
+                groupSettings: chat.groupSettings,
+                participants: chat.participants
+            }
+
+            // Group: make persona consistent with group settings
+            if (chat.isGroup) {
+                const gs = chat.groupSettings || {}
+                if (gs.myPersona !== undefined) charInfo.userPersona = gs.myPersona || ''
+                if (Array.isArray(gs.worldBookLinks)) charInfo.worldBookLinks = gs.worldBookLinks
+                const participants = Array.isArray(chat.participants) ? chat.participants : []
+                const rosterShort = participants.slice(0, 30).map(p => `- ${p.id}: ${p.name}（${String(p.prompt || '').slice(0, 80)}）`).join('\n')
+                const groupPrompt = gs.groupPrompt || ''
+                charInfo.description = `【群聊】你现在在一个微信群聊中，群名：${chat.name || ''}。\n【群聊氛围/规则】${groupPrompt || '（无）'}\n【成员】\n${rosterShort || '（暂无成员）'}\n\n请严格遵守：每次回复只代表 1 位成员发言，且必须以 [FROM:成员id] 开头。`
             }
 
             // Inject Drawing Capability Hint globally if not explicitly disabled
@@ -1880,6 +2537,28 @@ export const useChatStore = defineStore('chat', () => {
                     const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
                     fullContent = fullContent.replace(nameRegex, '').trim();
+                }
+
+                // --- Group Speaker Tag Parsing ---
+                // Expect: [FROM:participantId] at the very beginning.
+                // We remove the tag and attach sender metadata to all delivered segments.
+                let groupSpeakerMeta = null
+                if (chat.isGroup) {
+                    const s = String(fullContent || '').trim()
+                    const m = s.match(/^\s*\[FROM\s*:\s*([^\]]+)\]\s*/i)
+                    if (m) {
+                        const fromKey = String(m[1] || '').trim()
+                        fullContent = s.replace(m[0], '').trim()
+                        const participants = Array.isArray(chat.participants) ? chat.participants : []
+                        const byId = participants.find(p => String(p.id) === fromKey)
+                        const byName = participants.find(p => String(p.name) === fromKey)
+                        const p = byId || byName
+                        if (p) {
+                            groupSpeakerMeta = { senderId: p.id, senderName: p.name, senderAvatar: p.avatar || chat.avatar }
+                        } else {
+                            groupSpeakerMeta = { senderId: fromKey, senderName: fromKey, senderAvatar: chat.avatar }
+                        }
+                    }
                 }
 
                 // Flag to prevent duplicate TTS playback
@@ -2055,12 +2734,15 @@ export const useChatStore = defineStore('chat', () => {
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
                 let innerVoiceBlock = allVoiceMatches.length > 0 ? allVoiceMatches[0][0] : '';
+                if (chat.isGroup) {
+                    innerVoiceBlock = ''; // Destroy it if it somehow leaked
+                }
 
                 // Pure Dialogue extraction
                 let pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
 
                 // Failsafe: If regex failed but AI Service successfully parsed Inner Voice, OR if we can find a JSON block manually
-                if (!innerVoiceBlock) {
+                if (!innerVoiceBlock && !chat.isGroup) {
                     if (result.innerVoice) {
                         // Case A: AI Service already parsed it (reliable)
                         try {
@@ -2644,81 +3326,69 @@ export const useChatStore = defineStore('chat', () => {
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // --- Improved Splitting Logic (V12 - Smart Paragraph Grouping) ---
-                // Core idea: Only split into separate bubbles on:
-                //   1. Special tags (DRAW, sticker, voice, image, card, INNER_VOICE)
-                //   2. Double-newlines (paragraph breaks)
-                // Single newlines and punctuation keep content in the SAME bubble.
-                // Short segments are merged with neighbors to avoid tiny isolated bubbles.
-
-                // Step 1: Extract special blocks as standalone segments using a global scan
-                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\[图片[:：]?.*?\]|\[语音[:：]?.*?\])/gi;
+                // --- Improved Splitting Logic (V13 - Aggressive Splitting) ---
+                //   4. Multi-member [FROM:ID] tags for group ecology
+                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[FROM:.*?\]|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\[图片[:：]?.*?\]|\[语音[:：]?.*?\])/gi;
 
                 let rawSegments = [];
                 let lastIdx = 0;
                 let specialMatch;
 
                 while ((specialMatch = specialBlockRegex.exec(processedContent)) !== null) {
-                    // Text before this special block
                     if (specialMatch.index > lastIdx) {
-                        const textBefore = processedContent.substring(lastIdx, specialMatch.index).trim();
-                        if (textBefore) rawSegments.push(textBefore);
+                        const textBefore = processedContent.substring(lastIdx, specialMatch.index);
+                        if (textBefore.trim()) rawSegments.push(textBefore);
                     }
-                    // The special block itself
                     rawSegments.push(specialMatch[0]);
                     lastIdx = specialMatch.index + specialMatch[0].length;
                 }
-                // Remaining text after last special block
                 if (lastIdx < processedContent.length) {
-                    const remaining = processedContent.substring(lastIdx).trim();
-                    if (remaining) rawSegments.push(remaining);
+                    const remaining = processedContent.substring(lastIdx);
+                    if (remaining.trim()) rawSegments.push(remaining);
                 }
 
-                // Step 2: For each text segment (non-special), split by double-newlines only
+                // Step 2: Split each non-special segment by ANY newline
                 let expandedSegments = [];
                 for (const seg of rawSegments) {
-                    const trimSeg = seg.trim();
-                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/.test(trimSeg);
+                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[FROM:|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/i.test(seg.trim());
                     if (isSpecialBlock) {
                         expandedSegments.push(seg);
                     } else {
-                        // Split text on double-newlines (paragraph breaks) only
-                        const paragraphs = seg.split(/\n\s*\n/).map(p => p.trim()).filter(p => p);
+                        // Split by any newline sequence (\r\n or \n)
+                        // Also split by "punctuation + newline" to encourage separate bubbles for distinct thoughts
+                        const paragraphs = seg.split(/\r?\n/).map(p => p.trim()).filter(p => p);
                         expandedSegments.push(...paragraphs);
                     }
                 }
 
-                // Step 3: Merge short segments with neighbors to avoid tiny bubbles
-                // A segment shorter than MIN_BUBBLE_LEN chars gets merged with the previous or next text segment
-                const MIN_BUBBLE_LEN = 20;
+                // Step 3: Merge extremely short disconnected fragments (like stray punctuation)
                 let mergedSegments = [];
                 for (let i = 0; i < expandedSegments.length; i++) {
                     const seg = expandedSegments[i];
                     const trimSeg = seg.trim();
-                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/.test(trimSeg);
+                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[FROM:|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/i.test(trimSeg);
 
-                    if (isSpecialBlock) {
+                    if (isSpecialBlock || mergedSegments.length === 0) {
                         mergedSegments.push(seg);
                         continue;
                     }
 
-                    // Plain text segment — check length
-                    const pureText = trimSeg.replace(/\([^)]*\)|（[^）]*）|"[^"]*"|"[^"]*"/g, '').trim();
-                    if (pureText.length < MIN_BUBBLE_LEN && mergedSegments.length > 0) {
-                        // Try to merge with the last segment if it was also text
-                        const lastIdx2 = mergedSegments.length - 1;
-                        const lastSeg = mergedSegments[lastIdx2];
-                        const lastIsSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/.test(lastSeg.trim());
-                        if (!lastIsSpecial) {
-                            mergedSegments[lastIdx2] = lastSeg + '\n' + trimSeg;
-                            continue;
-                        }
+                    const lastIdx2 = mergedSegments.length - 1;
+                    const lastSeg = mergedSegments[lastIdx2];
+                    const lastIsSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[FROM:|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音|\[CARD\]|\[FAMILY_CARD|\[图片)/i.test(lastSeg.trim());
+
+                    // Merge if the current segment is just punctuation or a very short word, AND the last was text
+                    const isPunctuationOnly = /^[\p{P}\p{S}]+$/u.test(trimSeg);
+                    if (!lastIsSpecial && (trimSeg.length < 2 || isPunctuationOnly)) {
+                        mergedSegments[lastIdx2] = lastSeg + " " + trimSeg;
+                        continue;
                     }
+
                     mergedSegments.push(seg);
                 }
                 rawSegments = mergedSegments;
 
-                useLoggerStore().debug(`[Split V12] Final segments: ${rawSegments.length}`);
+                useLoggerStore().debug(`[Split V13] Final segments: ${rawSegments.length}`);
 
                 // --- Restoring Card Blocks and Filtering Content ---
                 let finalSegments = [];
@@ -2744,6 +3414,32 @@ export const useChatStore = defineStore('chat', () => {
                     } else if (content.startsWith('[图片')) {
                         // AI sometimes outputs [图片] or [图片消息]
                         finalSegments.push({ type: 'text', content: '[图片]' }); // Handled as image msg by type: 'text' + content: '[图片]'
+                    } else if (content.startsWith('[红包:')) {
+                        const match = content.match(/\[红包:([^:]+):([^:]+):([^\]]+)\]/);
+                        if (match) {
+                            finalSegments.push({
+                                type: 'redpacket',
+                                amount: parseFloat(match[1]),
+                                note: match[2],
+                                paymentId: match[3],
+                                content: content.trim()
+                            });
+                        } else {
+                            finalSegments.push({ type: 'text', content: content.trim() });
+                        }
+                    } else if (content.startsWith('[转账:')) {
+                        const match = content.match(/\[转账:([^:]+):([^:]+):([^\]]+)\]/);
+                        if (match) {
+                            finalSegments.push({
+                                type: 'transfer',
+                                amount: parseFloat(match[1]),
+                                note: match[2],
+                                paymentId: match[3],
+                                content: content.trim()
+                            });
+                        } else {
+                            finalSegments.push({ type: 'text', content: content.trim() });
+                        }
                     } else if (content.startsWith('[DRAW:')) {
                         finalSegments.push({ type: 'draw', content: content.trim() });
                     } else if (/^\[\s*INNER[\s-_]*VOICE\s*\]/i.test(content.trim())) {
@@ -2780,6 +3476,8 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- 4. Sequential Delivery ---
+                let currentGroupMeta = groupSpeakerMeta ? { ...groupSpeakerMeta } : null;
+
                 for (let i = 0; i < finalSegments.length; i++) {
                     if (!typingStatus.value[chatId]) break;
 
@@ -2787,24 +3485,132 @@ export const useChatStore = defineStore('chat', () => {
                     let msgAdded = null;
                     let msgContent = content;
 
-                    if (type === 'card' || type === 'text') {
+                    // Handle Speaker Switching [FROM:ID]
+                    if (type === 'text' && /^\[FROM:\s*(.*?)\s*\]/i.test(msgContent.trim())) {
+                        const fromMatch = msgContent.match(/^\[FROM:\s*(.*?)\s*\]/i);
+                        const speakerId = fromMatch[1].trim();
+                        msgContent = msgContent.substring(fromMatch[0].length).trim();
+
+                        // Find participant in group
+                        const participant = (chat.participants || []).find(p => p.id === speakerId || p.name === speakerId);
+                        if (participant) {
+                            currentGroupMeta = {
+                                senderId: participant.id,
+                                senderName: participant.name,
+                                senderAvatar: participant.avatar
+                            };
+                        } else if (speakerId.toLowerCase() === 'user') {
+                            // User mention? Unlikely but supportable
+                            currentGroupMeta = { senderId: 'user', senderName: useSettingsStore().personalization?.userProfile?.name || '我', senderAvatar: useSettingsStore().personalization?.userProfile?.avatar };
+                        }
+
+                        // If segment is now empty, just continue to next segment with new speaker active
+                        if (!msgContent) continue;
+                    }
+
+                    if (type === 'card' || type === 'text' || type === 'redpacket' || type === 'transfer') {
                         // Process Payment Tags
                         let pendingSystemMsgs = [];
                         let claimMatch;
                         while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
-                            const paymentId = claimMatch[2].trim();
-                            const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
-                            if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
-                                targetMsg.isClaimed = true;
-                                targetMsg.claimTime = Date.now();
-                                targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
-                                pendingSystemMsgs.push(`${chat.name}领取了你的${claimMatch[1]}`);
+                            const pType = claimMatch[1]; // '红包' or '转账'
+                            const targetId = claimMatch[2].trim();
+
+                            // Find message by ID or paymentId
+                            const targetMsg = chat.msgs.find(m => m.id === targetId || m.paymentId === targetId);
+                            if (targetMsg) {
+                                const claimantId = currentGroupMeta?.senderId || 'ai';
+                                if (pType === '红包') {
+                                    claimRedPacket(chatId, targetMsg.id, claimantId);
+                                } else {
+                                    claimTransfer(chatId, targetMsg.id, claimantId);
+                                }
                             }
                         }
-                        // (Add similar logic for reject if needed)
 
-                        msgContent = msgContent.replace(/\[领取(红包|转账):[^\]]+\]/g, '').replace(/\[(退回|拒收)(红包|转账):[^\]]+\]/g, '').trim();
+                        let rejectMatch;
+                        while ((rejectMatch = rejectRegex.exec(msgContent)) !== null) {
+                            const pType = rejectMatch[2];
+                            const targetId = rejectMatch[3].trim();
+                            const targetMsg = chat.msgs.find(m => m.id === targetId || m.paymentId === targetId);
+                            if (targetMsg && pType === '转账' && !targetMsg.isClaimed && !targetMsg.isRejected) {
+                                targetMsg.isRejected = true;
+                                targetMsg.rejectTime = Date.now();
+                                addMessage(chatId, { role: 'system', content: `${currentGroupMeta?.senderName || chat.name}已拒收了你的转账` });
+                            }
+                        }
+
+                        msgContent = msgContent.replace(/\[领取(红包|转账):[^\]]+\]/g, '').replace(/\[(退回|拒收|拒收)(红包|转账):[^\]]+\]/g, '').trim();
                         if (!msgContent && pendingSystemMsgs.length === 0) continue;
+
+                        // --- AI Specialized Commands Parsing (Recall, Reply, Mute, Roles) ---
+                        // 1. Recall: [撤回:MSG_ID]
+                        const recallMatch = msgContent.match(/\[撤回\s*[:：]\s*(\w+)\]/i);
+                        if (recallMatch) {
+                            const targetId = recallMatch[1];
+                            setTimeout(() => deleteMessage(chatId, targetId), 500);
+                            continue;
+                        }
+
+                        // 2. Reply: [回复\s*[:：]\s*(\w+)\s*[:：]\s*(.*)\]
+                        const replyMatch = msgContent.match(/\[回复\s*[:：]\s*(\w+)\s*[:：]\s*(.*)\]/s);
+                        if (replyMatch) {
+                            const targetId = replyMatch[1];
+                            const actualText = replyMatch[2].trim();
+                            const targetMsg = chat.msgs.find(m => m.id === targetId);
+                            if (targetMsg) {
+                                msgAdded = addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'text',
+                                    content: actualText,
+                                    quote: { id: targetMsg.id, role: targetMsg.role, content: targetMsg.content },
+                                    ...(currentGroupMeta || {})
+                                });
+                                continue;
+                            }
+                        }
+
+                        // 3. Admin Commands
+                        // [禁言:ID:MINUTES]
+                        const muteMatch = msgContent.match(/\[禁言\s*[:：]\s*(\w+)\s*[:：]\s*(\d+)\]/i);
+                        if (muteMatch) {
+                            const mid = muteMatch[1];
+                            const mins = parseInt(muteMatch[2]);
+                            muteParticipant(chatId, mid, mins);
+                            const mname = mid === 'user' ? '你' : (chat.participants.find(p => p.id === mid)?.name || mid);
+                            addMessage(chatId, { role: 'system', content: `${mname} 已被${mins > 0 ? `禁言 ${mins} 分钟` : '取消禁言'}` });
+                            continue;
+                        }
+
+                        // [设为管理员:ID]
+                        const setAdminMatch = msgContent.match(/\[设为管理员\s*[:：]\s*(\w+)\]/i);
+                        if (setAdminMatch) {
+                            const mid = setAdminMatch[1];
+                            setParticipantRole(chatId, mid, 'admin');
+                            const mname = mid === 'user' ? '你' : (chat.participants.find(p => p.id === mid)?.name || mid);
+                            addMessage(chatId, { role: 'system', content: `${mname} 已被设为管理员` });
+                            continue;
+                        }
+                        // [设为成员:ID]
+                        const unsetAdminMatch = msgContent.match(/\[(设为成员|取消管理员)\s*[:：]\s*(\w+)\]/i);
+                        if (unsetAdminMatch) {
+                            const mid = unsetAdminMatch[2];
+                            setParticipantRole(chatId, mid, 'member');
+                            const mname = mid === 'user' ? '你' : (chat.participants.find(p => p.id === mid)?.name || mid);
+                            addMessage(chatId, { role: 'system', content: `${mname} 已被取消管理员权限` });
+                            continue;
+                        }
+
+                        // [修改头衔:ID:TITLE]
+                        const setTitleMatch = msgContent.match(/\[修改头衔\s*[:：]\s*(\w+)\s*[:：]\s*(.*?)\]/i);
+                        if (setTitleMatch) {
+                            const mid = setTitleMatch[1];
+                            const title = setTitleMatch[2].trim();
+                            setParticipantTitle(chatId, mid, title);
+                            const mname = mid === 'user' ? '你' : (chat.participants.find(p => p.id === mid)?.name || mid);
+                            addMessage(chatId, { role: 'system', content: `${mname} 的专属头衔已修改为: ${title || '无'}` });
+                            continue;
+                        }
 
                         if (type === 'card' || msgContent.match(/\[\s*CARD\s*\]/i) || msgContent.trim().startsWith('{')) {
                             // HTML Card Delivery
@@ -2818,15 +3624,42 @@ export const useChatStore = defineStore('chat', () => {
                                 if (parsed.html) extractedHtml = parsed.html;
                             } catch (e) { /* Fallback to raw */ }
 
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, ...(currentGroupMeta || {}) });
                         } else {
-                            // Text Message Delivery
-                            const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
-                            let msgType = 'text', amount = null, note = null;
+                            // --- Financial Transaction Processing (Red Packets & Transfers) ---
+                            // [红包:类型(lucky|fixed|手气|固定):金额:个数:备注] 
+                            const rpMatch = msgContent.match(/\[红包\s*[:：]\s*(lucky|fixed|手气|固定|手气红包|固定金额)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]/i);
+                            // [转账:对象ID:金额:备注]
+                            const tfMatch = msgContent.match(/\[转账\s*[:：]\s*(\w+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i);
+
+                            let msgType = 'text', amount = null, note = null, extraData = {};
+
                             if (rpMatch) {
-                                msgType = rpMatch[1] === '红包' ? 'redpacket' : 'transfer';
+                                msgType = 'redpacket';
+                                const typeRaw = (rpMatch[1] || 'lucky').toLowerCase();
+                                const isLucky = typeRaw.includes('lucky') || typeRaw.includes('手气');
                                 amount = parseFloat(rpMatch[2]) || 1.0;
-                                note = rpMatch[3];
+                                const count = parseInt(rpMatch[3]) || 1;
+                                note = rpMatch[4] || '恭喜发财，大吉大利';
+
+                                extraData = {
+                                    packetType: isLucky ? 'lucky' : 'fixed',
+                                    totalAmount: amount,
+                                    count: count,
+                                    remainingCount: count,
+                                    claims: [],
+                                    // Pre-split for lucky packets to ensure total matches exactly
+                                    amounts: isLucky ? _splitRedPacket(amount, count) : Array(count).fill(amount)
+                                };
+                            } else if (tfMatch) {
+                                msgType = 'transfer';
+                                const targetId = tfMatch[1].trim();
+                                amount = parseFloat(tfMatch[2]) || 0.01;
+                                note = tfMatch[3] || '转账给您';
+                                extraData = {
+                                    targetId: targetId,
+                                    isClaimed: false
+                                };
                             } else if (msgContent.includes('[FAMILY_CARD')) {
                                 msgType = 'family_card';
                             } else if (msgContent.includes('[演奏') || msgContent.includes('[MUSIC')) {
@@ -2847,8 +3680,10 @@ export const useChatStore = defineStore('chat', () => {
                                 content: msgContent,
                                 amount,
                                 note,
+                                ...extraData,
                                 quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode
+                                hidden: isCallMode,
+                                ...(currentGroupMeta || {})
                             });
                         }
 
@@ -2864,10 +3699,11 @@ export const useChatStore = defineStore('chat', () => {
                             type: 'sticker',
                             content,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            ...(groupSpeakerMeta || {})
                         });
                     } else if (type === 'voice') {
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1 });
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, ...(groupSpeakerMeta || {}) });
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
@@ -2881,7 +3717,8 @@ export const useChatStore = defineStore('chat', () => {
                                 role: 'ai',
                                 type: 'text',
                                 content: '🎨 正在根据灵感绘图...',
-                                quote: i === 0 ? aiQuote : null
+                                quote: i === 0 ? aiQuote : null,
+                                ...(groupSpeakerMeta || {})
                             });
 
                             // Safe ID retrieval - Now safe because we awaited addMessage
@@ -2924,7 +3761,7 @@ export const useChatStore = defineStore('chat', () => {
                 if (familyCardMatches.length > 0) {
                     for (const cardTag of familyCardMatches) {
                         if (!isTyping.value) break;
-                        addMessage(chatId, { role: 'ai', content: cardTag, type: 'text' });
+                        addMessage(chatId, { role: 'ai', content: cardTag, type: 'text', ...(groupSpeakerMeta || {}) });
                         await new Promise(resolve => setTimeout(resolve, 800));
                     }
                 }
@@ -3045,6 +3882,119 @@ export const useChatStore = defineStore('chat', () => {
             if (currentChatId.value === chatId) currentChatId.value = null
             saveChats()
         }
+    }
+
+    function updateGroupParticipants(chatId, participants) {
+        if (chats.value[chatId]) {
+            const chat = chats.value[chatId]
+            const oldIds = new Set((chat.participants || []).map(p => p.id))
+
+            // Ensure newcomers have default roles
+            const normalized = participants.map(p => ({
+                role: 'member',
+                customTitle: '',
+                nickname: '',
+                muteUntil: 0,
+                ...p
+            }))
+
+            const newMembers = normalized.filter(p => !oldIds.has(p.id) && p.id !== 'user')
+
+            chat.participants = normalized
+            saveChats()
+
+            // Handle Welcome Interactions
+            if (newMembers.length > 0) {
+                newMembers.forEach(m => {
+                    // 1. System Notification
+                    addMessage(chatId, {
+                        role: 'system',
+                        content: `"${m.nickname || m.name}" 通过扫描群二维码加入群聊`
+                    })
+
+                    // 2. Welcome Message (if defined)
+                    const welcome = chat.groupSettings?.welcomeMessage
+                    if (welcome) {
+                        // Find an owner/admin to say it
+                        const invoker = chat.participants.find(p => p.role === 'owner' || p.role === 'admin') || chat.participants[0]
+                        if (invoker) {
+                            addMessage(chatId, {
+                                role: 'ai',
+                                senderId: invoker.id,
+                                senderName: invoker.nickname || invoker.name,
+                                content: welcome
+                            })
+                        }
+                    } else {
+                        // Generic interactive nudge
+                        addMessage(chatId, {
+                            role: 'system',
+                            content: `欢迎新成员 ${m.nickname || m.name}！大家快来打个招呼吧~`
+                        })
+                    }
+                })
+                // Trigger AI response to acknowledge new members naturally
+                sendMessageToAI(chatId)
+            }
+        }
+    }
+
+    function transferGroupOwner(chatId, newOwnerId) {
+        if (!chats.value[chatId]) return
+        const chat = chats.value[chatId]
+        if (!chat.isGroup) return
+
+        // Reset current roles
+        if (chat.groupSettings.myRole === 'owner') chat.groupSettings.myRole = 'member'
+        chat.participants.forEach(p => {
+            if (p.role === 'owner') p.role = 'member'
+        })
+
+        // Assign new owner
+        if (newOwnerId === 'user') {
+            chat.groupSettings.myRole = 'owner'
+        } else {
+            const p = chat.participants.find(p => p.id === newOwnerId)
+            if (p) p.role = 'owner'
+        }
+        saveChats()
+    }
+
+    function setParticipantRole(chatId, participantId, role) {
+        if (!chats.value[chatId]) return
+        const chat = chats.value[chatId]
+        if (participantId === 'user') {
+            chat.groupSettings.myRole = role
+        } else {
+            const p = chat.participants.find(p => p.id === participantId)
+            if (p) p.role = role
+        }
+        saveChats()
+    }
+
+    function setParticipantTitle(chatId, participantId, title) {
+        if (!chats.value[chatId]) return
+        const chat = chats.value[chatId]
+        if (participantId === 'user') {
+            chat.groupSettings.myCustomTitle = title
+        } else {
+            const p = chat.participants.find(p => p.id === participantId)
+            if (p) p.customTitle = title
+        }
+        saveChats()
+    }
+
+    function muteParticipant(chatId, participantId, minutes) {
+        if (!chats.value[chatId]) return
+        const chat = chats.value[chatId]
+        const until = minutes > 0 ? Date.now() + minutes * 60000 : 0
+        if (participantId === 'user') {
+            chat.groupSettings.muteUntil = until
+        } else {
+            const p = chat.participants.find(p => p.id === participantId)
+            if (p) p.muteUntil = until
+        }
+        saveChats()
     }
 
     function pinChat(chatId) {
@@ -3176,7 +4126,27 @@ export const useChatStore = defineStore('chat', () => {
                     if (c.autoSummary === undefined) c.autoSummary = false;
                     if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0;
                     c.isSummarizing = false;
+
+                    // Group defaults / migration
+                    // NOTE: Use chat.id when available, otherwise derive from key later
+                    if (c.isGroup === undefined) c.isGroup = false
+                    if (!Array.isArray(c.participants)) c.participants = []
+                    if (c.isGroup) {
+                        // Ensure ID is present for helpers
+                        const cid = c.id || null
+                        if (cid && chats.value[cid] === c) {
+                            // already indexed by id
+                            _ensureGroupDefaults(cid)
+                        }
+                    }
                 });
+
+                // Second pass: ensure group defaults with actual keys (covers legacy data where c.id missing)
+                Object.entries(chats.value).forEach(([key, c]) => {
+                    if (!c) return
+                    if (!c.id) c.id = key
+                    if (c.isGroup) _ensureGroupDefaults(c.id)
+                })
             }
         } catch (e) {
             console.error('[Storage] Load failed:', e);
@@ -3277,23 +4247,36 @@ export const useChatStore = defineStore('chat', () => {
         return generateContextPreview(chatId, chats.value[chatId])
     }
 
-    function toggleSearch(chatId) {
-        if (chats.value[chatId]) {
-            chats.value[chatId].searchEnabled = !chats.value[chatId].searchEnabled
-            saveChats()
-            triggerToast(chats.value[chatId].searchEnabled ? '联网搜索模式已开启' : '联网搜索模式已关闭', 'info')
-        }
+    function hasUnclaimedRP(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat || !chat.msgs) return false
+        // Search back common list to find any unclaimed red packets/transfers
+        // Only check recent 50 messages for performance
+        const msgs = chat.msgs.slice(-50)
+        return msgs.some(m => {
+            if (m.type === 'redpacket') {
+                return m.remainingCount > 0 && !(m.claims || []).some(c => c.id === 'user')
+            }
+            if (m.type === 'transfer') {
+                return !m.isClaimed && (m.targetId === 'user' || !m.targetId) && m.role !== 'user'
+            }
+            return false
+        })
     }
 
     return {
         notificationEvent, patEvent, toastEvent, promptEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
-        deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
+        deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats, searchHistory,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
         getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm, triggerPrompt,
-        isProfileProcessing
+        isProfileProcessing,
+        createGroupChat, updateGroupProfile, updateGroupSettings, updateGroupParticipants,
+        generateGroupMembers, groupNpcs,
+        transferGroupOwner, setParticipantRole, setParticipantTitle, muteParticipant,
+        claimRedPacket, claimTransfer, hasUnclaimedRP
     }
 })

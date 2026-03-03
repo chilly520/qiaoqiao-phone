@@ -50,7 +50,7 @@
       </div>
 
       <!-- Video Call -->
-      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'video-call')">
+      <div v-if="showCalls" class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'video-call')">
         <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
            <i class="fa-solid fa-video text-2xl text-[#07c160]"></i>
         </div>
@@ -58,7 +58,7 @@
       </div>
 
       <!-- Voice Call -->
-      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'voice-call')">
+      <div v-if="showCalls" class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'voice-call')">
         <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
            <i class="fa-solid fa-phone text-2xl text-[#07c160]"></i>
         </div>
@@ -77,6 +77,9 @@
 </template>
 
 <script setup>
+defineProps({
+  showCalls: { type: Boolean, default: true }
+})
 defineEmits(['action'])
 </script>
 

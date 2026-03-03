@@ -668,6 +668,19 @@ const editUserSignature = () => {
 
 const scrollContainer = ref(null)
 
+const showBackToTop = ref(false)
+
+const handleScroll = (e) => {
+    // Show back to top button if scrolled more than 500px down
+    showBackToTop.value = e.target.scrollTop > 500
+}
+
+const scrollToTop = () => {
+    if (scrollContainer.value) {
+        scrollContainer.value.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+}
+
 const handleNotificationJump = (momentId) => {
     showNotifications.value = false
     // Small delay to ensure the notification modal is closed before scrolling
@@ -805,7 +818,14 @@ onMounted(() => {
         </div>
 
         <!-- Scrollable Content -->
-        <div ref="scrollContainer" class="flex-1 overflow-y-auto no-scrollbar scroll-smooth">
+        <div ref="scrollContainer" class="flex-1 overflow-y-auto no-scrollbar scroll-smooth" @scroll="handleScroll">
+            <!-- Back to Top Button -->
+            <div v-show="showBackToTop"
+                class="absolute bottom-20 right-6 w-11 h-11 bg-white/95 backdrop-blur-sm shadow-xl shadow-black/10 border border-gray-100 rounded-full flex items-center justify-center cursor-pointer z-50 active:scale-95 transition-all text-gray-500 will-change-transform"
+                @click="scrollToTop">
+                <i class="fa-solid fa-arrow-up text-lg"></i>
+            </div>
+
             <!-- Profile Header Switch -->
             <div v-if="!viewingProfile.isMe && filterAuthorId" class="bg-white pb-4 mb-2">
                 <!-- FRIEND PROFILE LAYOUT (Screenshot Style) -->

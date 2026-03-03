@@ -30,7 +30,7 @@ export class RequestQueue {
     }
 
     // Trigger explicit rate limit cooldown
-    triggerRateLimit(cooldownMs = 300000) { // Default 5 minutes
+    triggerRateLimit(cooldownMs = 30000) { // Reduced to 30 seconds for a better user experience
         this.isRateLimited = true;
         this.retryAfter = Date.now() + cooldownMs;
         const logger = useLoggerStore();
@@ -92,15 +92,23 @@ export class RequestQueue {
             const result = await task.apiFunc(...task.args);
 
             // Critical check for 429 in result (if apiFunc catches it)
-            if (result && result.error && (result.error.includes('429') || result.error.replace(/\s/g, '').includes('QuotaExceeded') || result.error.includes('Too Many Requests'))) {
-                this.triggerRateLimit(300000); // 5 mins
+            if (result && result.error && (
+                result.error.includes('429') ||
+                result.error.toLowerCase().includes('quota') ||
+                result.error.toLowerCase().includes('too many') ||
+                result.error.toLowerCase().includes('rate limit')
+            )) {
+                console.warn('[RequestQueue] 429 detected in result, triggering circuit breaker.');
+                this.triggerRateLimit(60000); // 60s
             }
 
             task.resolve(result);
         } catch (error) {
             // Handle raw throw (if apiFunc didn't catch)
-            if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
-                this.triggerRateLimit(300000);
+            const errMsg = error.message || '';
+            if (errMsg.includes('429') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('too many') || errMsg.toLowerCase().includes('rate limit')) {
+                console.warn('[RequestQueue] 429 threw error, triggering circuit breaker.');
+                this.triggerRateLimit(60000); // 60s
             }
 
             // Log error to System Logs UI
@@ -114,7 +122,9 @@ export class RequestQueue {
         } finally {
             this.isProcessing = false;
             // Delay next process slightly to ensure UI updates or avoid race
-            setTimeout(() => this.processQueue(), 500); // Increased buffer to 500ms
+            // Use dynamic delay: process faster if queue is backed up, but keep a safety gap.
+            const nextDelay = this.queue.length > 5 ? 200 : 800;
+            setTimeout(() => this.processQueue(), nextDelay);
         }
     }
 }

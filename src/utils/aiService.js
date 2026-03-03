@@ -8,10 +8,10 @@ import { useWalletStore } from '../stores/walletStore'
 import { weatherService } from './weatherService'
 import { batteryMonitor } from './batteryMonitor'
 
-import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE } from './ai/prompts'
+import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from './ai/prompts'
 import { RequestQueue } from './ai/requestQueue'
 
-const apiQueue = new RequestQueue(3, 60000); // 3 requests per 60 seconds (1 minute)
+const apiQueue = new RequestQueue(10, 60000); // Strict: 10 requests per 60 seconds as requested by the user
 
 /* --- Avatar Description Cache Logic --- */
 const AVATAR_DESC_CACHE_KEY = 'qiaoqiao_avatar_descriptions';
@@ -364,6 +364,12 @@ export function generateContextPreview(chatId, char) {
 
     // ========== 核心修改：复用prompts.js统一模板，彻底解决代码重复 ==========
     // 严格按照模板参数顺序传参，和实际AI调用逻辑100%一致
+    const groupCtxPreview = char.isGroup ? {
+        isGroup: true,
+        settings: char.groupSettings || {},
+        participants: char.participants || []
+    } : null;
+
     const simplifiedSystemPrompt = SYSTEM_PROMPT_TEMPLATE(
         charWithTime,
         userForSystem,
@@ -373,7 +379,8 @@ export function generateContextPreview(chatId, char) {
         patSettings,
         finalEnvContext,
         momentsContext,
-        char.bio
+        char.bio,
+        groupCtxPreview
     );
 
     return {
@@ -541,7 +548,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             : ''
 
         const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
-        const userLocText = `\n【用户位置】${userLoc.name || userLoc || '未知'}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
+        let locName = '未知'
+        if (typeof userLoc === 'string' && userLoc.trim()) locName = userLoc.trim()
+        else if (userLoc && typeof userLoc === 'object') locName = userLoc.name?.trim() || '未知'
+
+        const userLocText = `\n【用户位置】${locName}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
 
         // Battery Context
         const batteryInfo = batteryMonitor.getBatteryInfo()
@@ -555,9 +566,15 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Remove pruning for proactive call to keep identity intact
         const prunedChar = { ...char }
 
+        const runtimeGroupCtx = char.isGroup ? {
+            isGroup: true,
+            settings: char.groupSettings || {},
+            participants: char.participants || []
+        } : null;
+
         const promptContent = options.isCall
             ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
-            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio)
+            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx)
 
         systemMsg = {
             role: 'system',
@@ -1301,9 +1318,65 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token Usage: ${total} `, data.usage)
         }
 
+        // ========== 【长记忆检索 RAG-lite】==========
+        const searchPattern = /\[\s*SEARCH\s*\]([\s\S]*?)\[\s*\/\s*SEARCH\s*\]/i
+        const searchMatch = rawContent.match(searchPattern)
+
+        if (searchMatch && !options._isSearchRetry) { // Prevent infinite loops
+            console.log('[AI Service] AI Requested History Search!')
+            try {
+                const searchArgs = JSON.parse(searchMatch[1].trim())
+                useLoggerStore().addLog('INFO', 'AI触发了记忆检索', searchArgs)
+
+                // 1. Perform local search
+                const store = useChatStore()
+                const searchResults = store.searchHistory(settings.name, searchArgs) // settings.name is actually the chatId in generateReply context
+
+                // 2. Build injection block
+                let searchInjection = `\n\n【系统提示：您刚才发起了记忆检索，以下是本地数据库中找到的关联聊天记录，请结合以下记忆重新回答用户。】\n`
+                if (searchResults && searchResults.length > 0) {
+                    searchInjection += searchResults.join('\n\n---\n\n')
+                } else {
+                    searchInjection += `(未找到关于 ${searchArgs.keyword || searchArgs.date} 的记录)`
+                }
+
+                // 3. Inject and Retry (Self-Correction Loop)
+                useLoggerStore().addLog('INFO', '检索结果已注入，正在重新请求AI', searchResults)
+                const newMessages = [...messages]
+                newMessages.push({ role: 'assistant', content: searchMatch[0] }) // Pushed its search invocation
+                newMessages.push({ role: 'system', content: searchInjection }) // Pushed the system's reply to the invocation
+
+                // Recursive call (must set a flag to prevent loops)
+                return await _generateReplyInternal(newMessages, settings, providerType, { ...options, _isSearchRetry: true })
+
+            } catch (searchErr) {
+                console.error('[AI Service] Search parsing failed:', searchErr)
+                useLoggerStore().addLog('WARN', 'AI记忆检索指令解析失败', searchErr.message)
+                // Fallthrough and strip the broken search tag so it doesn't show in UI
+                rawContent = rawContent.replace(searchPattern, '').trim()
+            }
+        } else if (searchMatch && options._isSearchRetry) {
+            // Second retry also contained a search, strip it to prevent loop
+            rawContent = rawContent.replace(searchPattern, '').trim()
+        }
+
+
         // ========== 【终极修复版】心声提取逻辑（完美支持嵌套JSON，不认标签只认内容） ==========
         let content = rawContent
         let innerVoice = null
+
+        // [SKIP PROCESSING] Special flag for data-only requests (like generating members/summaries)
+        if (options.skipProcessing) {
+            console.log('[AI Service] skipProcessing enabled - returning raw content');
+            content = content.replace(/<reasoning_content>[\s\S]*?<\/reasoning_content>/gi, '').trim()
+            return {
+                content,
+                innerVoice: null,
+                raw: rawContent,
+                request: { provider, endpoint, headers: reqHeaders, body: reqBody }
+            }
+        }
+
         const isCallProtocol = content.includes('[CALL_START]') && content.includes('[CALL_END]')
 
         // --------------------------
@@ -1761,7 +1834,7 @@ ${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)
 
 【任务】
 1. 发布一条朋友圈动态。可以包含心情感悟、生活趣事、或是想对某人（Chilly）说的话。
-2. 为这条动态生成 3-5 条社交互动（点赞或评论），互动者应该包括：
+2. 强制要求：为新生成的这条动态必定生成 3-8 条评论回复等互动信息和 3-8 个点赞信息，互动者应该包括：
    - 通讯录中的好友
    - 虚构合理的NPC（如同事、同学、邻居、亲戚等）
    - 确保互动多样性，既有现实好友也有虚拟NPC
@@ -1944,6 +2017,7 @@ ${"```"}
 1. **真实好友互动**：凡是备选角色列表中的人，必须使用其对应的 authorId 和 authorName。严禁在展示用的 authorName 中填入 char_xxx 这种内部 ID。
 2. **回复逻辑**：如果旧动态下有用户的评论，对应的动态作者角色必须进行回复。
 3. **提及与召唤**：鼓励在评论中使用 @${userProfile?.name || '用户'} 来吸引注意。
+4. **强制数量准则**：每生成一条新的动态，【必须】为其生成 3-8 条评论回复等互动信息以及 3-8 个点赞信息，两者缺一不可。
 
 【生成细节指南】
 1. **多图配比**：根据动态内容决定图片数量（常见配图数为 0, 1, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。
@@ -2110,10 +2184,17 @@ ${"```"}
 }
 
 /**
- * 统一生图接口 (Supports Pollinations standard, SiliconFlow, and API Key)
+ * 统一生图接口 (Supports Pollinations standard, SiliconFlow, and API Key) - QUEUED
  * @param {String} prompt 提示词
  */
 export async function generateImage(prompt) {
+    return await apiQueue.enqueue(_generateImageInternal, [prompt]);
+}
+
+/**
+ * Internal logic for image generation, handled by apiQueue.
+ */
+async function _generateImageInternal(prompt) {
     const settingsStore = useSettingsStore()
     // In some contexts (like plain JS files), Pinia might return the raw ref object.
     // We check for .value to be safe, ensuring we get the actual configuration object.
@@ -2366,7 +2447,7 @@ ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有�
 【生成规则】
 1. **互动组合**：
    - 生成 5-15 个 **like** (点赞)。
-   - 生成 3-6 条 **comment** (直接评论) 或 **reply** (针对已有评论的回复)。
+   - 生成 3-8 条 **comment** (直接评论) 或 **reply** (针对已有评论的回复)。
 2. **严守人设背景**：
    - **绝对禁止冲突**：如果角色人设提到“父母双亡/孤儿”，严禁虚构“爸爸/妈妈/亲戚”这类 NPC 进行评论。
    - **身份一致性**：评论语气必须符合角色与用户之间的【用户身份设定】。
@@ -2388,7 +2469,7 @@ ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有�
 不要输出任何 Markdown 标签或额外解释。`
 
     try {
-        const result = await _generateReplyInternal([{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true })
+        const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true }])
         if (result.error) {
             console.error('[AiService] Batch interaction failed:', result.error)
             throw new Error(result.error)
@@ -2457,7 +2538,7 @@ ${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包(格式 [表
 
     try {
         // Skip visual context to prevent AI from getting distracted by analyzing avatars instead of generating comments
-        const result = await _generateReplyInternal(messages, { name: charInfo.name }, null, { skipVisualContext: true })
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: charInfo.name }, null, { skipVisualContext: true }])
         if (result.error) return null
 
         // Cleanup response (sometimes AI adds quotes or prefixes)
@@ -2499,7 +2580,7 @@ ${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包(格式 [表
     const messages = [{ role: 'system', content: systemPrompt }]
 
     try {
-        const result = await _generateReplyInternal(messages, { name: charInfo.name }, null, { skipVisualContext: true })
+        const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: charInfo.name }, null, { skipVisualContext: true }])
         if (result.error) return null
 
         // Cleanup
@@ -2563,7 +2644,7 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
 禁止解释，直接输出 JSON。`
 
     try {
-        const result = await _generateReplyInternal([{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true })
+        const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true }])
         const jsonMatch = result.content.match(/\{[\s\S]*\}/)
         if (!jsonMatch) throw new Error('Invalid JSON')
         const data = JSON.parse(jsonMatch[0])
@@ -2649,7 +2730,7 @@ JSON 格式要求：
 直接输出 JSON，不要任何回复语。`
 
     try {
-        const result = await _generateReplyInternal([{ role: 'system', content: systemPrompt }], { name: 'PersonaManager' }, null, { skipVisualContext: true })
+        const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'PersonaManager' }, null, { skipVisualContext: true }])
         if (result.error) throw new Error(result.error)
 
         const jsonMatch = result.content.match(/\{[\s\S]*\}/)

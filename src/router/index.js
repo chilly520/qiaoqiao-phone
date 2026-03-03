@@ -15,6 +15,11 @@ const router = createRouter({
             component: () => import('../views/WeChat/WeChatApp.vue')
         },
         {
+            path: '/wechat/group/:chatId/settings',
+            name: 'wechat-group-settings',
+            component: () => import('../views/WeChat/GroupSettings.vue')
+        },
+        {
             path: '/wechat/moments',
             name: 'moments',
             component: () => import('../views/WeChat/MomentsView.vue'),

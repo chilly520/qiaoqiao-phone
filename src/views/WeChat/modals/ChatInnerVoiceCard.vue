@@ -166,7 +166,7 @@
                                 </div>
                                 <div class="marker-info-tag">
                                     <span class="marker-name">{{ chatData?.userName || userProfile?.name || '我'
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </div>
 
@@ -436,8 +436,8 @@ const finalCharCoord = computed(() => {
     // Base radius from distance
     let visualRadius = Math.min(42, 8 + (dist * 1.5))
 
-    // Anti-collision: Ensure at least 12% distance to prevent overlapping tags/avatars
-    const MIN_SAFE_DIST = 15
+    // Anti-collision: Ensure at least sufficient distance to prevent overlapping tags/avatars
+    const MIN_SAFE_DIST = 28
     if (visualRadius < MIN_SAFE_DIST) {
         visualRadius = MIN_SAFE_DIST
     }

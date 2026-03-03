@@ -1,5 +1,6 @@
 <template>
-  <div class="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-sm flex items-center justify-center" @click.self="handleCancel">
+  <div class="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-sm flex items-center justify-center"
+    @click.self="handleCancel">
     <div class="bg-white w-[90%] max-w-lg rounded-xl overflow-hidden shadow-2xl flex flex-col">
       <!-- Header -->
       <div class="p-4 border-b flex items-center justify-between">
@@ -11,27 +12,17 @@
 
       <!-- Cropping Area -->
       <div class="flex-1 p-4 bg-gray-50">
-        <div 
-          ref="containerRef"
-          class="relative w-full aspect-square max-h-[50vh] overflow-hidden bg-white rounded-lg shadow-md border border-gray-200"
-        >
+        <div ref="containerRef"
+          class="relative w-full aspect-square max-h-[50vh] overflow-hidden bg-white rounded-lg shadow-md border border-gray-200">
           <!-- Original Image - Now movable and scalable -->
-          <img
-            ref="imageRef"
-            :src="imageSrc"
-            class="absolute cursor-move"
-            :style="imageStyle"
-            @load="handleImageLoad"
-            @mousedown="handleImageMouseDown($event)"
-            @touchstart="handleImageTouchStart($event)"
-            @wheel="handleWheel($event)"
-          />
+          <img ref="imageRef" :src="imageSrc" class="absolute cursor-move" :style="imageStyle" @load="handleImageLoad"
+            @mousedown="handleImageMouseDown($event)" @touchstart="handleImageTouchStart($event)"
+            @wheel="handleWheel($event)" />
 
           <!-- Fixed Cropping Frame -->
           <div
             class="absolute border-2 border-dashed border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-            :style="{ width: `${cropSize}px`, height: `${cropSize}px` }"
-          >
+            :style="{ width: `${cropSize}px`, height: `${cropSize}px` }">
             <div class="absolute inset-0 border-2 border-transparent hover:border-white/50 transition-colors"></div>
           </div>
         </div>
@@ -42,40 +33,34 @@
         <div class="flex justify-center gap-2 mb-4">
           <button
             class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
-            @click="resetCrop"
-          >
+            @click="resetCrop">
             <i class="fa-solid fa-rotate-left"></i> 重置
           </button>
           <button
             class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
-            @click="rotateImage"
-          >
+            @click="rotateImage">
             <i class="fa-solid fa-rotate-right"></i> 旋转
           </button>
           <button
             class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
-            @click="zoomIn"
-          >
+            @click="zoomIn">
             <i class="fa-solid fa-search-plus"></i> 放大
           </button>
           <button
             class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1"
-            @click="zoomOut"
-          >
+            @click="zoomOut">
             <i class="fa-solid fa-search-minus"></i> 缩小
           </button>
         </div>
         <div class="flex gap-2">
           <button
             class="flex-1 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-            @click="handleCancel"
-          >
+            @click="handleCancel">
             取消
           </button>
           <button
             class="flex-1 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors shadow-md"
-            @click="handleCrop"
-          >
+            @click="handleCrop">
             确认裁剪
           </button>
         </div>
@@ -129,22 +114,22 @@ const imageStyle = computed(() => {
 // Image Load Handler
 const handleImageLoad = () => {
   if (!imageRef.value) return
-  
+
   // Get original image dimensions
   const img = imageRef.value
   imageWidth.value = img.naturalWidth
   imageHeight.value = img.naturalHeight
-  
+
   // Calculate initial scale to fit image within container
   const containerEl = img.parentElement
   const containerWidth = containerEl.offsetWidth
   const containerHeight = containerEl.offsetHeight
-  
+
   // Start with scale that fits the image in the container
   const containerSize = Math.min(containerWidth, containerHeight)
   const maxImageDimension = Math.max(imageWidth.value, imageHeight.value)
   scale.value = containerSize / maxImageDimension
-  
+
   // Reset position and rotation
   translateX.value = 0
   translateY.value = 0
@@ -157,7 +142,7 @@ const handleImageMouseDown = (e) => {
   isDragging.value = true
   lastX.value = e.clientX
   lastY.value = e.clientY
-  
+
   document.addEventListener('mousemove', handleImageMouseMove)
   document.addEventListener('mouseup', handleImageMouseUp)
 }
@@ -169,7 +154,7 @@ const handleImageTouchStart = (e) => {
     isDragging.value = true
     lastX.value = e.touches[0].clientX
     lastY.value = e.touches[0].clientY
-    
+
     document.addEventListener('touchmove', handleImageTouchMove)
     document.addEventListener('touchend', handleImageTouchEnd)
   }
@@ -178,13 +163,13 @@ const handleImageTouchStart = (e) => {
 // Handle Image Mouse Move for dragging
 const handleImageMouseMove = (e) => {
   if (!isDragging.value) return
-  
+
   const deltaX = e.clientX - lastX.value
   const deltaY = e.clientY - lastY.value
-  
+
   translateX.value += deltaX
   translateY.value += deltaY
-  
+
   lastX.value = e.clientX
   lastY.value = e.clientY
 }
@@ -192,13 +177,13 @@ const handleImageMouseMove = (e) => {
 // Handle Image Touch Move for dragging
 const handleImageTouchMove = (e) => {
   if (!isDragging.value || e.touches.length !== 1) return
-  
+
   const deltaX = e.touches[0].clientX - lastX.value
   const deltaY = e.touches[0].clientY - lastY.value
-  
+
   translateX.value += deltaX
   translateY.value += deltaY
-  
+
   lastX.value = e.touches[0].clientX
   lastY.value = e.touches[0].clientY
 }
@@ -220,11 +205,11 @@ const handleImageTouchEnd = () => {
 // Handle Wheel for zooming
 const handleWheel = (e) => {
   e.preventDefault()
-  
+
   // Calculate zoom factor based on wheel delta
   const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
   const newScale = Math.max(0.1, Math.min(10, scale.value * zoomFactor))
-  
+
   scale.value = newScale
 }
 
@@ -241,64 +226,54 @@ const zoomOut = () => {
 // Crop Image
 const handleCrop = () => {
   if (!imageRef.value) return
-  
+
   const img = imageRef.value
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  
-  // Set canvas size to crop size (square)
-  canvas.width = cropSize
-  canvas.height = cropSize
-  
-  // Calculate the center of the container
-  const containerEl = img.parentElement
-  const containerCenterX = containerEl.offsetWidth / 2
-  const containerCenterY = containerEl.offsetHeight / 2
-  
-  // Calculate the top-left corner of the crop area
-  const cropLeft = containerCenterX - cropSize / 2
-  const cropTop = containerCenterY - cropSize / 2
-  
-  // Calculate the image's position relative to the container
-  const imageLeft = containerCenterX - (imageWidth.value * scale.value) / 2 + translateX.value
-  const imageTop = containerCenterY - (imageHeight.value * scale.value) / 2 + translateY.value
-  
-  // Calculate the area to crop from the original image
-  const sourceX = (cropLeft - imageLeft) / scale.value
-  const sourceY = (cropTop - imageTop) / scale.value
-  const sourceWidth = cropSize / scale.value
-  const sourceHeight = cropSize / scale.value
-  
-  // Draw the cropped image
+
+  // High quality output size (512x512)
+  const outputSize = 512
+  canvas.width = outputSize
+  canvas.height = outputSize
+
+  // Smoothing
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+
+  // Clear canvas
+  ctx.clearRect(0, 0, outputSize, outputSize)
+
+  // Calculate the scaling factor between output canvas and UI crop mask
+  // The UI mask is 'cropSize' pixels wide. We want to scale everything up to 'outputSize'.
+  const outputScale = outputSize / cropSize
+
+  // Start transformation
   ctx.save()
-  
-  // Translate to center of canvas for rotation
-  ctx.translate(cropSize / 2, cropSize / 2)
-  
-  // Apply rotation
+
+  // 1. Move to the center of the output canvas
+  ctx.translate(outputSize / 2, outputSize / 2)
+
+  // 2. Apply the drag translation (scaled to output resolution)
+  // translateX/Y are relative to the center of the mask in the UI.
+  ctx.translate(translateX.value * outputScale, translateY.value * outputScale)
+
+  // 3. Apply rotation
   ctx.rotate((imageRotation.value * Math.PI) / 180)
-  
-  // Translate back
-  ctx.translate(-cropSize / 2, -cropSize / 2)
-  
-  // Draw the cropped image
-  ctx.drawImage(
-    img,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
-    0,
-    0,
-    cropSize,
-    cropSize
-  )
-  
+
+  // 4. Apply scale (multiplied by outputScale)
+  const finalScale = scale.value * outputScale
+  ctx.scale(finalScale, finalScale)
+
+  // 5. Draw the image centered
+  // Since we are at the image's center in the canvas coordinate system,
+  // we draw it with offsets of half its natural dimensions.
+  ctx.drawImage(img, -imageWidth.value / 2, -imageHeight.value / 2)
+
   ctx.restore()
-  
-  // Convert canvas to data URL
-  const croppedImage = canvas.toDataURL('image/jpeg', 0.8)
-  
+
+  // Convert canvas to data URL (High quality JPEG)
+  const croppedImage = canvas.toDataURL('image/jpeg', 0.9)
+
   // Emit cropped image
   emit('crop', croppedImage)
 }

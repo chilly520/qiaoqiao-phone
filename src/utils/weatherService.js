@@ -20,14 +20,24 @@ class WeatherService {
         // this.locationEnabled = false // Removed
     }
 
+    // Helper to safely extract string from possible object location
+    _parseLoc(loc) {
+        if (!loc) return '';
+        if (typeof loc === 'string') return loc.trim();
+        if (typeof loc === 'object' && loc !== null) {
+            return loc.name || loc.city || loc.address || '';
+        }
+        return String(loc);
+    }
+
     // 获取定位信息文本（用于AI Prompt）
     getLocationContextText() {
         const store = useSettingsStore()
         const weather = store.weather
 
-        const realCity = weather.realLocation || '未知城市'
-        // 优先使用用户在设置中填写的“虚拟城市”，如果没有则默认等同于真实城市
-        const virtualCity = weather.virtualLocation || realCity
+        const uLocStr = this._parseLoc(weather.userLocation);
+        const realCity = this._parseLoc(weather.realLocation) || uLocStr || '未知城市'
+        const virtualCity = this._parseLoc(weather.virtualLocation) || realCity
 
         // 从Store获取实时天气数据（由HomeView更新）
         const temp = weather.temp || '--°'
@@ -44,15 +54,15 @@ class WeatherService {
 
     // 获取位置信息对象（用于UI显示）
     getLocationInfo() {
-        // if (!this.locationEnabled) return null // UI might want to show it even if disabled? No, usually coupled.
-
         const store = useSettingsStore()
         const weather = store.weather
-        const realCity = weather.realLocation || '未知'
+
+        const uLocStr = this._parseLoc(weather.userLocation);
+        const realCity = this._parseLoc(weather.realLocation) || uLocStr || '未知'
 
         return {
             realCity: realCity,
-            virtualCity: weather.virtualLocation || realCity,
+            virtualCity: this._parseLoc(weather.virtualLocation) || realCity,
             weather: {
                 weather: weather.desc || '未知',
                 temperature: weather.temp || '--',

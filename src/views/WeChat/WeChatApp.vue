@@ -318,6 +318,8 @@ const handleAddAction = (action) => {
     showAddMenu.value = false
     if (action === 'group') {
         showCreateLoopModal.value = true
+    } else if (action === 'createGroupChat') {
+        router.push({ name: 'wechat-group-settings', params: { chatId: 'new' } })
     } else if (action === 'friend') {
         newFriendName.value = ''
         showAddFriendModal.value = true
@@ -364,6 +366,10 @@ const getPreviewText = (contentRaw) => {
     // Identification patterns
     if (content.includes('"postId"')) return '[朋友圈分享]'
     if (content.includes('"type":"html"')) return '[卡片消息]'
+    if (content.includes('isAnnouncement') || content.includes('发布了新群公告')) return '[群公告]'
+    if (content.includes('@所有人') || content.includes('@me')) return '[有人@我]'
+    if (content.includes('[红包') || content.includes('"type":"redpacket"')) return '[红包]'
+    if (content.includes('[转账') || content.includes('"type":"transfer"')) return '[转账]'
     if (content.includes('FAMILY_CARD')) {
         if (content.includes('APPLY')) return '[亲属卡申请]'
         return '[亲属卡]'
@@ -907,6 +913,11 @@ const handleImport = async (e) => {
                                 <i class="fa-solid fa-earth-asia text-purple-400"></i>
                                 <span class="text-white text-sm font-bold">开启世界圈</span>
                             </div>
+                            <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f]"
+                                @click="handleAddAction('createGroupChat')">
+                                <i class="fa-solid fa-users text-green-300"></i>
+                                <span class="text-white text-sm font-bold">新建群聊</span>
+                            </div>
                             <div class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer"
                                 @click="handleAddAction('friend')">
                                 <i class="fa-solid fa-user-plus text-white"></i>
@@ -962,15 +973,44 @@ const handleImport = async (e) => {
                         </div>
                         <div class="flex-1 min-w-0">
                             <div class="flex justify-between items-center mb-1">
-                                <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
+                                <div class="flex items-center gap-1.5 truncate">
+                                    <span v-if="chat.isGroup"
+                                        class="bg-green-500 text-white text-[8px] px-1 rounded-sm shrink-0">群组</span>
+                                    <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
+                                </div>
                                 <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
                                     Date(chat.lastMsg.timestamp).toLocaleTimeString([], {
                                         hour: '2-digit',
                                         minute: '2-digit'
                                     }) : '' }}</span>
                             </div>
-                            <div class="text-xs text-gray-500 truncate">
-                                {{ chat.lastMsg ? getPreviewText(chat.lastMsg.content) : '暂无消息' }}
+                            <div class="text-xs truncate flex items-center gap-1">
+                                <template v-if="chat.lastMsg">
+                                    <span
+                                        v-if="chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]')"
+                                        class="text-[#ff8f00] font-bold shrink-0 animate-pulse-subtle">
+                                        [红包]
+                                    </span>
+                                    <span
+                                        v-else-if="chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]')"
+                                        class="text-[#ff8f00] font-bold shrink-0">
+                                        [转账]
+                                    </span>
+                                    <span
+                                        v-else-if="(chat.lastMsg?.role === 'system' && chat.lastMsg?.content?.includes('公告')) || chat.lastMsg?.content?.includes('[群公告]')"
+                                        class="text-[#ff8f00] font-bold shrink-0">
+                                        [群公告]
+                                    </span>
+                                    <span v-else-if="chat.lastMsg?.content?.includes('@')"
+                                        class="text-[#ff8f00] font-bold shrink-0">
+                                        [有人@我]
+                                    </span>
+                                    <span
+                                        :class="(chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@')) ? 'text-gray-400' : 'text-gray-500'">
+                                        {{ getPreviewText(chat.lastMsg.content) }}
+                                    </span>
+                                </template>
+                                <span v-else class="text-gray-400 italic">暂无消息</span>
                             </div>
                         </div>
                     </div>
@@ -979,19 +1019,19 @@ const handleImport = async (e) => {
                 <div v-if="currentTab === 'contacts'"
                     :class="{ 'bg-[#ededed]': !(backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) }"
                     class="min-h-full">
-                    <!-- 1. Group Chats Section (World Loops) -->
+                    <!-- 1. World Loops Section -->
                     <div class="bg-white/30 backdrop-blur-md mb-2">
-                        <div class="px-4 py-2 bg-gradient-to-r from-blue-50/30 to-white/30 text-[10px] text-blue-600 font-bold flex justify-between items-center cursor-pointer border-b border-blue-100/30"
-                            @click="expandGroupChats = !expandGroupChats">
+                        <div class="px-4 py-2 bg-gradient-to-r from-purple-50/30 to-white/30 text-[10px] text-purple-600 font-bold flex justify-between items-center cursor-pointer border-b border-purple-100/30"
+                            @click="expandLoopContacts = !expandLoopContacts">
                             <div class="flex items-center gap-2">
-                                <i class="fa-solid fa-users text-blue-500"></i>
-                                <span>我的群聊 (世界圈)</span>
+                                <i class="fa-solid fa-earth-asia text-purple-500"></i>
+                                <span>我的世界圈</span>
                             </div>
                             <i class="fa-solid fa-chevron-down transition-transform duration-200"
-                                :class="!expandGroupChats ? '-rotate-90' : ''"></i>
+                                :class="!expandLoopContacts ? '-rotate-90' : ''"></i>
                         </div>
-                        <div v-if="expandGroupChats">
-                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup)" :key="chat.id"
+                        <div v-if="expandLoopContacts">
+                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && c.loopId)" :key="chat.id"
                                 class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
                                 @click="openChat(chat.id)">
                                 <div class="relative w-10 h-10 mr-3">
@@ -1008,9 +1048,43 @@ const handleImport = async (e) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="chatStore.contactList.filter(c => c.isGroup).length === 0"
+                            <div v-if="chatStore.contactList.filter(c => c.isGroup && c.loopId).length === 0"
                                 class="py-4 text-center text-xs text-gray-400">
                                 暂无活跃的世界圈
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Standard Group Chats Section -->
+                    <div class="bg-white/30 backdrop-blur-md mb-2">
+                        <div class="px-4 py-2 bg-gradient-to-r from-blue-50/30 to-white/30 text-[10px] text-blue-600 font-bold flex justify-between items-center cursor-pointer border-b border-blue-100/30"
+                            @click="expandGroupChats = !expandGroupChats">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-users text-blue-500"></i>
+                                <span>我的群聊</span>
+                            </div>
+                            <i class="fa-solid fa-chevron-down transition-transform duration-200"
+                                :class="!expandGroupChats ? '-rotate-90' : ''"></i>
+                        </div>
+                        <div v-if="expandGroupChats">
+                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && !c.loopId)"
+                                :key="chat.id"
+                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
+                                @click="openChat(chat.id)">
+                                <div class="relative w-10 h-10 mr-3">
+                                    <img :src="chat.avatar || getRandomAvatar()"
+                                        class="w-full h-full rounded-lg bg-gray-200 object-cover">
+                                </div>
+                                <div class="flex-1">
+                                    <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
+                                    <div class="text-[10px] text-gray-400 truncate">
+                                        {{ chat.participants?.length || 0 }} 名成员参与中
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="chatStore.contactList.filter(c => c.isGroup && !c.loopId).length === 0"
+                                class="py-4 text-center text-xs text-gray-400">
+                                暂无群聊
                             </div>
                         </div>
                     </div>
@@ -1021,7 +1095,7 @@ const handleImport = async (e) => {
                             @click="expandLoopContacts = !expandLoopContacts">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-user-gear text-purple-500"></i>
-                                <span>剧本角色 (NPC)</span>
+                                <span>剧本角色 & 群聊NPC</span>
                             </div>
                             <i class="fa-solid fa-chevron-down transition-transform duration-200"
                                 :class="!expandLoopContacts ? '-rotate-90' : ''"></i>
@@ -1040,9 +1114,26 @@ const handleImport = async (e) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop).length === 0"
+                            <div v-if="chatStore.contactList.filter(c => !c.isGroup && c.belongToLoop).length === 0 && chatStore.groupNpcs.length === 0"
                                 class="py-4 text-center text-xs text-gray-400">
-                                暂无剧本角色
+                                暂无剧本角色或群聊NPC
+                            </div>
+
+                            <!-- Group NPCs List -->
+                            <div v-for="npc in chatStore.groupNpcs" :key="npc.id"
+                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
+                                @click="openChat(npc.groupId)">
+                                <img :src="npc.avatar || getRandomAvatar()"
+                                    class="w-10 h-10 rounded-lg bg-gray-200 mr-3 object-cover">
+                                <div class="flex-1">
+                                    <div class="text-base text-gray-900 font-medium flex items-center gap-2">
+                                        {{ npc.name }}
+                                        <span class="text-[8px] bg-blue-100 text-blue-600 px-1 rounded">NPC</span>
+                                    </div>
+                                    <div class="text-[10px] text-gray-400 truncate">
+                                        属于群聊: {{ npc.groupName }}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
