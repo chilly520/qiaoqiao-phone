@@ -214,10 +214,10 @@
                                                     <div class="flex flex-col items-end shrink-0">
                                                         <span class="text-[12px] font-bold text-gray-600">{{
                                                             parsedVoteData.optionVoters[idx].length
-                                                            }}</span>
+                                                        }}</span>
                                                         <span class="text-[9px] text-gray-400 font-medium">{{
                                                             calculateVotePercent(parsedVoteData.optionVoters[idx].length)
-                                                            }}%</span>
+                                                        }}%</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -536,7 +536,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                        }}
+                                    }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -1430,12 +1430,29 @@ function formatMessageContent(msg) {
 
     // text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '') // DESTRUCTIVE: Removed to let inline replacer handle it
 
-    // 5. Highlight Mentions (@name)
+    // 5. Highlight Mentions (@name or @id)
     const userName = settingsStore.personalization.userProfile.name;
     const contactName = props.chatData?.name;
     const allMembers = props.chatData?.isGroup ? '全体成员' : null;
 
-    [userName, contactName, allMembers].filter(Boolean).forEach(name => {
+    let namesToHighlight = [userName, contactName, allMembers].filter(Boolean);
+
+    if (props.chatData?.isGroup && Array.isArray(props.chatData.participants)) {
+        props.chatData.participants.forEach(p => {
+            if (p.id && p.name) {
+                // Escapie id for regex just in case
+                const escapedId = p.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const idRegex = new RegExp(`@${escapedId}`, 'g');
+                text = text.replace(idRegex, `@${p.name}`);
+                namesToHighlight.push(p.name);
+            }
+        });
+    }
+
+    // Deduplicate
+    namesToHighlight = [...new Set(namesToHighlight)];
+
+    namesToHighlight.forEach(name => {
         const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const mentionRegex = new RegExp(`@${escapedName}`, 'g')
         const isAll = name === allMembers
