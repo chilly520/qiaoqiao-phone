@@ -24,6 +24,11 @@ import ChatMessageItem from './components/ChatMessageItem.vue'
 import FamilyCardClaimModal from './FamilyCardClaimModal.vue'
 import FamilyCardDetailModal from './FamilyCardDetailModal.vue'
 import GroupAnnouncementModal from './modals/GroupAnnouncementModal.vue'
+import ChatSendMoneyModal from './modals/ChatSendMoneyModal.vue'
+import FamilyCardActionModal from './modals/FamilyCardActionModal.vue'
+import FamilyCardSendModal from './modals/FamilyCardSendModal.vue'
+import FamilyCardApplyModal from './modals/FamilyCardApplyModal.vue'
+import StatusEditModal from './modals/StatusEditModal.vue'
 import CallStatusBar from '../../components/CallStatusBar.vue'
 import WorldLoopGMPanel from './modals/WorldLoopGMPanel.vue'
 import WorldLoopSettings from './modals/WorldLoopSettings.vue'
@@ -833,20 +838,10 @@ const toggleAutoRead = () => {
 
 // Status Editing
 const showStatusModal = ref(false)
-const statusEditInput = ref('')
-const statusIsOnline = ref(true)
 const openStatusEditor = () => {
-    statusEditInput.value = chatData.value?.statusText || '在线'
-    statusIsOnline.value = chatData.value?.isOnline !== false
     showStatusModal.value = true
 }
-const saveStatus = () => {
-    chatStore.updateCharacter(chatData.value.id, {
-        statusText: statusEditInput.value,
-        isOnline: statusIsOnline.value
-    })
-    showStatusModal.value = false
-}
+
 // ... (rest of imports)
 
 // Template Injection (will handle in next chunk for template)
@@ -985,12 +980,8 @@ watch(() => chatStore.patEvent, (evt) => {
 
 // Family Card Modal State
 const showFamilyCardModal = ref(false)
-const familyCardActionType = ref('') // 'apply' or 'send'
 const showFamilyCardSendModal = ref(false)
 const showFamilyCardApplyModal = ref(false)
-const familyCardAmount = ref('5200')
-const familyCardNote = ref('我的钱就是你的钱')
-const familyCardApplyNote = ref('送我一张亲属卡好不好？以后你来管家~')
 
 // See Image (Text to Image) Modal
 const showSeeImageModal = ref(false)
@@ -1053,7 +1044,6 @@ const handlePanelAction = (type) => {
 
 // Handle Family Card Action Selection
 const handleFamilyCardAction = (actionType) => {
-    familyCardActionType.value = actionType
     if (actionType === 'apply') {
         // Show family card apply modal
         showFamilyCardModal.value = false
@@ -2912,116 +2902,12 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         <ChatTransferModal :visible="showTransferModal" :packet="currentRedPacket" :chatData="chatData"
             @close="closeModals" @confirm="confirmTransfer" @reject="rejectPayment" />
 
-        <!-- Family Card Action Selection Modal -->
-        <div v-if="showFamilyCardModal"
-            class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
-            <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
-                <h3 class="text-lg font-bold text-center mb-6">亲属卡</h3>
+        <!-- Family Card Modals -->
+        <FamilyCardActionModal v-model:visible="showFamilyCardModal" @action="handleFamilyCardAction" />
+        <FamilyCardSendModal v-model:visible="showFamilyCardSendModal" :chatId="chatData?.id" @toast="showToast" />
+        <FamilyCardApplyModal v-model:visible="showFamilyCardApplyModal" :chatId="chatData?.id" @toast="showToast" />
 
-                <div class="space-y-4">
-                    <!-- Apply for Family Card -->
-                    <button @click="handleFamilyCardAction('apply')"
-                        class="w-full bg-gradient-to-r from-[#ff9a9e] to-[#fecfef] text-white py-4 rounded-xl font-bold shadow-md hover:shadow-lg transition-all">
-                        <div class="flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-hand-holding-heart"></i>
-                            <span>申请亲属卡</span>
-                        </div>
-                    </button>
 
-                    <!-- Send Family Card -->
-                    <button @click="handleFamilyCardAction('send')"
-                        class="w-full bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-4 rounded-xl font-bold shadow-md hover:shadow-lg transition-all">
-                        <div class="flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-gift"></i>
-                            <span>赠送亲属卡</span>
-                        </div>
-                    </button>
-                </div>
-
-                <!-- Cancel Button -->
-                <button @click="showFamilyCardModal = false"
-                    class="w-full mt-4 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
-                    取消
-                </button>
-            </div>
-        </div>
-
-        <!-- Send Family Card Form Modal -->
-        <div v-if="showFamilyCardSendModal"
-            class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
-            <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
-                <h3 class="text-lg font-bold text-center mb-6">赠送亲属卡</h3>
-
-                <div class="space-y-5">
-                    <!-- Amount Input -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">设置额度</label>
-                        <div class="relative">
-                            <div class="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-500">¥
-                            </div>
-                            <input type="number" v-model="familyCardAmount"
-                                class="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="0.00" step="0.01" min="0.01">
-                        </div>
-                        <div class="text-xs text-gray-500 mt-1">请输入亲属卡额度，最低0.01元</div>
-                    </div>
-
-                    <!-- Note Input -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">备注</label>
-                        <input type="text" v-model="familyCardNote"
-                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="例如：我的钱就是你的钱">
-                        <div class="text-xs text-gray-500 mt-1">给亲属卡起个温馨的名字吧</div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="flex gap-3 pt-2">
-                        <button @click="showFamilyCardSendModal = false"
-                            class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
-                            取消
-                        </button>
-                        <button @click="confirmSendFamilyCard"
-                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all"
-                            :disabled="!familyCardAmount || parseFloat(familyCardAmount) <= 0">
-                            发送
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Apply Family Card Form Modal -->
-        <div v-if="showFamilyCardApplyModal"
-            class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
-            <div class="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-up">
-                <h3 class="text-lg font-bold text-center mb-6">申请亲属卡</h3>
-
-                <div class="space-y-5">
-                    <!-- Note Input -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">申请留言</label>
-                        <textarea v-model="familyCardApplyNote"
-                            class="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="例如：送我一张亲属卡好不好？以后你来管家~" rows="3" maxlength="100"></textarea>
-                        <div class="text-xs text-gray-500 mt-1">写下你想要申请亲属卡的理由吧</div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="flex gap-3 pt-2">
-                        <button @click="showFamilyCardApplyModal = false"
-                            class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all">
-                            取消
-                        </button>
-                        <button @click="confirmApplyFamilyCard"
-                            class="flex-1 bg-gradient-to-r from-[#4facfe] to-[#00f2fe] text-white py-3 rounded-xl font-bold hover:shadow-lg transition-all"
-                            :disabled="!familyCardApplyNote.trim()">
-                            发送申请
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Family Card Claim Modal -->
         <FamilyCardClaimModal ref="familyCardModal" @confirm="handleClaimConfirm" />
@@ -3079,7 +2965,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->
@@ -3154,42 +3040,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         </div>
 
         <!-- Status Edit Modal -->
-        <div v-if="showStatusModal"
-            class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-6 animate-fade-in"
-            @click="showStatusModal = false">
-            <div class="bg-white w-full max-w-[300px] rounded-2xl overflow-hidden shadow-2xl animate-scale-in"
-                @click.stop>
-                <div class="p-6">
-                    <div class="text-center font-bold text-lg text-gray-800 mb-4">编辑对方状态</div>
-                    <div class="relative mb-6">
-                        <input v-model="statusEditInput" type="text"
-                            class="w-full bg-gray-100 border-none rounded-xl px-4 py-3 text-[15px] outline-none focus:ring-2 focus:ring-[#07c160] transition-all"
-                            placeholder="想写啥写啥..." @keyup.enter="saveStatus">
-                        <div class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                            {{ statusEditInput.length }}/30
-                        </div>
-                    </div>
-                    <div v-if="!chatData?.isGroup"
-                        class="flex items-center justify-between mb-4 bg-gray-50 p-2 rounded-xl">
-                        <span class="text-sm text-gray-500 ml-2">在线状态</span>
-                        <div class="flex bg-gray-200 rounded-lg p-1">
-                            <button @click="statusIsOnline = true"
-                                class="px-3 py-1 rounded-md text-xs font-bold transition-all"
-                                :class="statusIsOnline ? 'bg-[#00df6c] text-white shadow-sm' : 'text-gray-500'">在线</button>
-                            <button @click="statusIsOnline = false"
-                                class="px-3 py-1 rounded-md text-xs font-bold transition-all"
-                                :class="!statusIsOnline ? 'bg-gray-400 text-white shadow-sm' : 'text-gray-500'">离线</button>
-                        </div>
-                    </div>
-                    <div class="flex gap-3">
-                        <button @click="showStatusModal = false"
-                            class="flex-1 py-3 rounded-xl font-medium text-gray-500 bg-gray-100 active:bg-gray-200 transition-colors">取消</button>
-                        <button @click="saveStatus"
-                            class="flex-1 py-3 rounded-xl font-medium text-white bg-[#07c160] active:bg-[#06ad56] shadow-sm transition-colors">确定</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <StatusEditModal v-model:visible="showStatusModal" :chatData="chatData" @toast="showToast" />
 
         <!-- Modals -->
         <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />
