@@ -1871,8 +1871,6 @@ export const useChatStore = defineStore('chat', () => {
                 charInfo.description = `【群聊】你现在在一个微信群聊中，群名：${chat.name || ''}。\n【群聊氛围/规则】${groupPrompt || '（无）'}\n【成员】\n${rosterShort || '（暂无成员）'}\n\n请严格遵守：每次回复只代表 1 位成员发言，且必须以 [FROM:成员id] 开头。`
             }
 
-            charInfo.description += drawingHint
-
             // Group Vote Awareness & Capability
             const activeVotes = (chat.msgs || []).filter(m => (m.type === 'vote' || m.vote) && !m.isRecall)
             let voteHint = ''

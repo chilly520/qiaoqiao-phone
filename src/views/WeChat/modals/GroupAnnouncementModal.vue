@@ -81,8 +81,12 @@ import { computed, ref } from 'vue'
 import { useChatStore } from '../../../stores/chatStore'
 
 const chatStore = useChatStore()
-const props = defineProps(['chatData', 'visible'])
+const props = defineProps(['chatData'])
 const emit = defineEmits(['close'])
+
+const visible = ref(false)
+const open = () => { visible.value = true }
+defineExpose({ open })
 
 const newContent = ref('')
 const isPinned = ref(true)
@@ -91,6 +95,7 @@ const chatId = computed(() => props.chatData?.id)
 const chat = computed(() => chatStore.chats[chatId.value])
 
 const close = () => {
+    visible.value = false
     emit('close')
 }
 
@@ -136,8 +141,8 @@ const publishAnnouncement = () => {
     chatStore.addMessage(chatId.value, {
         role: 'system',
         content: `[群公告]📢 ${item.sender} 发布了新公告：${item.content.substring(0, 30)}${item.content.length > 30 ? '...' : ''}`
-        // legacy check also supports "isAnnouncement" keyword
-        + '' // left intentionally concatenated to help minifiers
+            // legacy check also supports "isAnnouncement" keyword
+            + '' // left intentionally concatenated to help minifiers
     })
 
     newContent.value = ''
