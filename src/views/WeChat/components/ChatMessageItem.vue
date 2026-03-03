@@ -65,7 +65,7 @@
                     <!-- Content Column -->
                     <div class="flex flex-col" :class="[
                         msg.role === 'user' ? 'items-end' : 'items-start',
-                        (msg.type === 'html' || isHtmlCard) ? 'max-w-full' : 'max-w-[80%]'
+                        (msg.type === 'html' || isHtmlCard) ? 'max-w-[82%]' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]')
                     ]">
                         <!-- New: Sender Name and Title for Group Chats -->
                         <div v-if="chatData?.isGroup && msg.role !== 'system'"
@@ -76,9 +76,18 @@
                                 class="px-1 rounded-[2px] text-white transform scale-[0.85] origin-center font-bold">
                                 {{ senderTitle }}
                             </span>
+                            <!-- Only show leaderboard icon on the announcement message -->
+                            <div v-if="isAnnouncementMsg && chatData?.isGroup"
+                                @click.stop="$emit('show-rank', chatData.id)"
+                                class="cursor-pointer bg-amber-50 text-amber-500 px-1 rounded-[2px] border border-amber-100 font-black scale-[0.85] origin-center hover:bg-amber-100 transition-colors flex items-center shrink-0">
+                                <i class="fa-solid fa-trophy mr-0.5 text-[7px]"></i>榜
+                            </div>
                             <!-- Name -->
-                            <span :class="msg.role === 'user' ? 'text-gray-500' : ''">{{ displaySenderName }}</span>
+                            <span :class="msg.role === 'user' ? 'text-gray-500' : ''" class="truncate max-w-[120px]">{{
+                                displaySenderName }}</span>
                         </div>
+                        <!-- Anchor for scroll-to-vote -->
+                        <div v-if="msg.id" :id="'msg-' + msg.id" class="absolute -top-16"></div>
 
                         <!-- Pay Card (Red Packet / Transfer) -->
                         <div v-if="isPayCard"
@@ -119,69 +128,178 @@
                             </div>
                         </div>
 
-                        <!-- Case 5: Family Card (Priority High) -->
-                        <div v-else-if="isFamilyCard" class="flex flex-col items-center gap-1">
-                            <!-- Card Container -->
-                            <div class="flex flex-col items-start gap-2 max-w-[280px]">
-                                <!-- Mixed Text Bubble (if any) -->
-                                <div v-if="mixedText"
-                                    class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all rounded-[16px] text-gray-800 bg-white"
-                                    :class="msg.role === 'user' ? 'bg-[#95EC69]' : 'bg-white'">
-                                    <span v-html="marked(mixedText)"></span>
+                        <div v-else-if="parsedVoteData" class="flex flex-col gap-2 w-full"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
+                            <div class="w-full bg-white rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.08)] border border-gray-100/50 overflow-hidden animate-fade-in"
+                                @contextmenu.prevent="emitContextMenu">
+
+                                <!-- Vote Header: Softer Cute Gradient -->
+                                <div class="p-5 bg-gradient-to-br from-[#62a5ff] to-[#7c83ff] text-white relative">
+                                    <!-- Decorative circle -->
+                                    <div class="absolute -top-6 -right-6 w-20 h-20 bg-white/10 rounded-full blur-xl">
+                                    </div>
+
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <div
+                                                class="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-md">
+                                                <i class="fa-solid fa-chart-simple text-sm"></i>
+                                            </div>
+                                            <span class="text-[10px] font-bold tracking-widest opacity-90">POLL /
+                                                群投票</span>
+                                        </div>
+                                        <div
+                                            class="px-2 py-0.5 bg-black/10 rounded-full text-[9px] font-medium backdrop-blur-sm">
+                                            {{ parsedVoteData.isMultiple ? '多选' : '单选' }}
+                                        </div>
+                                    </div>
+
+                                    <h3 class="text-lg font-bold leading-tight tracking-tight drop-shadow-sm">{{
+                                        parsedVoteData.title }}</h3>
+
+                                    <div class="flex items-center gap-1.5 mt-3">
+                                        <div class="flex -space-x-1.5 items-center">
+                                            <template v-for="(voterAvatar, vIdx) in getVoterAvatars()" :key="vIdx">
+                                                <img v-if="vIdx < 3" :src="voterAvatar"
+                                                    class="w-4 h-4 rounded-full border border-white/30 object-cover">
+                                            </template>
+                                        </div>
+                                        <span class="text-[10px] opacity-80">{{ getTotalVoters() }} 人已参与活跃投票</span>
+                                    </div>
                                 </div>
 
-                                <!-- The Card -->
-                                <div class="cursor-pointer relative overflow-hidden transition-transform duration-200 active:scale-95 shadow-sm hover:shadow-md select-none rounded-xl bg-gradient-to-br from-[#2b2b2b] to-[#1a1a1a]"
-                                    :class="[
-                                        isFamilyCardReject || msg.isClaimed ? 'opacity-80 grayscale cursor-default' : ''
-                                    ]" style="width: 260px; height: 145px;" @click="handleFamilyCardClick">
+                                <!-- Vote Options: Bubbly Style -->
+                                <div class="p-4 bg-gray-50/30">
+                                    <div class="flex flex-col gap-2.5">
+                                        <div v-for="(option, idx) in parsedVoteData.options" :key="idx"
+                                            class="relative group transition-all duration-200"
+                                            :class="parsedVoteData.isEnded ? 'cursor-default' : 'cursor-pointer active:scale-[0.97]'"
+                                            @click="handleVoteToggle(idx)">
 
-                                    <!-- Decorative Background Elements -->
-                                    <div
-                                        class="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl transform translate-x-10 -translate-y-10">
-                                    </div>
-                                    <div
-                                        class="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-xl transform -translate-x-5 translate-y-5">
-                                    </div>
-                                    <div
-                                        class="absolute top-1/2 left-1/2 w-full h-full bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-x-12 animate-shine opacity-0 hover:opacity-100 transition-opacity duration-700">
-                                    </div>
+                                            <!-- Option Container -->
+                                            <div class="relative bg-white rounded-xl border border-gray-100 overflow-hidden min-h-[52px] transition-all group-hover:border-blue-200 group-hover:shadow-sm"
+                                                :class="isOptionSelected(idx) ? 'ring-2 ring-blue-400/30 border-blue-200' : ''">
 
-                                    <div class="family-card-chip"></div>
-                                    <i class="fa-brands fa-weixin family-card-logo"></i>
+                                                <!-- Progress Bar -->
+                                                <div class="absolute inset-y-0 left-0 bg-blue-50 transition-all duration-700 ease-out"
+                                                    :style="{ width: calculateVotePercent(parsedVoteData.optionVoters[idx].length) + '%' }">
+                                                </div>
 
-                                    <div class="family-card-inner">
-                                        <div class="family-card-top">
-                                            <div class="family-card-icon">
-                                                <i
-                                                    :class="isFamilyCardReject ? 'fa-solid fa-ban' : 'fa-solid fa-gift'"></i>
-                                            </div>
-                                            <div class="family-card-title">
-                                                {{ isFamilyCardReject ? '申请已拒绝' : (isFamilyCardApply ? '亲属卡申请' : '亲属卡')
-                                                }}
-                                            </div>
-                                        </div>
-                                        <div class="family-card-content">
-                                            <div class="family-card-text">{{ familyCardData.text ||
-                                                '送我一张亲属卡好不好？以后你来管家~'
-                                            }}
-                                            </div>
-                                            <div class="family-card-footer">
-                                                <div class="family-card-no">**** **** **** {{ isFamilyCardApply ? '8888'
-                                                    :
-                                                    '6666' }}</div>
-                                                <!-- Claimed Badge -->
-                                                <div v-if="msg.isClaimed || msg.status === 'claimed'"
-                                                    class="mt-2 text-xs text-[#d4af37] font-bold flex items-center justify-end gap-1">
-                                                    <i class="fa-solid fa-check-circle"></i> {{ isFamilyCardApply ?
-                                                        '已生效' : '已领取' }}
+                                                <!-- Content -->
+                                                <div class="relative px-4 py-3 flex items-center gap-3">
+                                                    <!-- Checkbox/Radio Circle -->
+                                                    <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-300"
+                                                        :class="isOptionSelected(idx) ? 'bg-[#5cafff] border-[#5cafff] scale-110 shadow-sm' : 'border-gray-200 bg-gray-50'">
+                                                        <i v-if="isOptionSelected(idx)"
+                                                            class="fa-solid fa-check text-white text-[10px]"></i>
+                                                    </div>
+
+                                                    <div class="flex-1 min-w-0">
+                                                        <div
+                                                            class="text-[13px] font-medium text-gray-700 truncate mb-0.5">
+                                                            {{ typeof option === 'string' ? option : option.text }}
+                                                        </div>
+                                                        <!-- Voter icons if real-name and has voters -->
+                                                        <div v-if="!parsedVoteData.isAnonymous && parsedVoteData.optionVoters[idx].length > 0"
+                                                            class="flex -space-x-1 mt-0.5">
+                                                            <template
+                                                                v-for="(uid, uIdx) in parsedVoteData.optionVoters[idx]"
+                                                                :key="uIdx">
+                                                                <img v-if="uIdx < 5" :src="getAvatarForUser(uid)"
+                                                                    class="w-3 h-3 rounded-full border border-white object-cover">
+                                                            </template>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="flex flex-col items-end shrink-0">
+                                                        <span class="text-[12px] font-bold text-gray-600">{{
+                                                            parsedVoteData.optionVoters[idx].length
+                                                            }}</span>
+                                                        <span class="text-[9px] text-gray-400 font-medium">{{
+                                                            calculateVotePercent(parsedVoteData.optionVoters[idx].length)
+                                                            }}%</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
+                                <!-- Vote Footer -->
+                                <div
+                                    class="px-4 py-2.5 border-t border-gray-50 bg-white/80 backdrop-blur-sm flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-user-shield text-[10px] text-blue-400"></i>
+                                        <span class="text-[10px] text-gray-400 font-medium tracking-tight">
+                                            {{ parsedVoteData.isAnonymous ? '匿名投票 (仅发起人可见)' : '公开实名投票' }}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <!-- End Vote Button -->
+                                        <button v-if="!parsedVoteData.isEnded && parsedVoteData.creatorId === 'user'"
+                                            @click.stop="handleEndVote"
+                                            class="px-2 py-0.5 bg-red-50 text-red-400 text-[10px] font-bold rounded-md hover:bg-red-100 transition-colors">
+                                            结束投票
+                                        </button>
+                                        <div class="flex items-center gap-1">
+                                            <div class="w-1.5 h-1.5 rounded-full"
+                                                :class="parsedVoteData.isEnded ? 'bg-gray-300' : 'bg-green-400 animate-pulse'">
+                                            </div>
+                                            <span class="text-[10px] text-gray-400 font-bold">
+                                                {{ parsedVoteData.isEnded ? '已结束' : '进行中' }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div v-else-if="parsedVoteResult" class="flex flex-col gap-2 w-[280px]"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
+                            <div class="w-full bg-[#fcfcfc] rounded-2xl border border-gray-100 p-4 shadow-sm animate-fade-in text-center relative overflow-hidden"
+                                @contextmenu.prevent="emitContextMenu">
+
+                                <i
+                                    class="fa-solid fa-flag-checkered absolute -top-1 -right-1 text-4xl text-gray-200 rotate-12 opacity-30"></i>
+
+                                <div class="relative z-10">
+                                    <div
+                                        class="inline-flex items-center gap-1.5 px-2 py-0.5 bg-green-50 rounded-full border border-green-100 mb-3">
+                                        <i class="fa-solid fa-circle-check text-green-500 text-[8px]"></i>
+                                        <span
+                                            class="text-[9px] font-black text-green-600 uppercase tracking-tighter">投票已落幕</span>
+                                    </div>
+
+                                    <h4 class="text-[13px] font-bold text-gray-800 mb-3 line-clamp-1">《{{
+                                        parsedVoteResult?.title }}》结果</h4>
+
+                                    <div class="space-y-1.5 mb-4">
+                                        <div v-for="(winner, wIdx) in getTopOptions()" :key="wIdx"
+                                            class="flex items-center justify-between p-2 bg-white rounded-xl border border-gray-50 shadow-sm">
+                                            <div class="flex items-center gap-2 overflow-hidden">
+                                                <div
+                                                    class="w-5 h-5 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                                                    <i class="fa-solid fa-trophy text-[10px] text-amber-500"></i>
+                                                </div>
+                                                <span class="text-[11px] font-bold text-gray-600 truncate">{{
+                                                    winner.text }}</span>
+                                            </div>
+                                            <span class="text-[10px] font-black text-orange-500 shrink-0 ml-2">{{
+                                                winner.count }} 票</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="text-[10px] text-gray-300 font-medium mb-1">
+                                        截止于 {{ new Date(parsedVoteResult?.endedAt || Date.now()).toLocaleTimeString() }}
+                                    </div>
+
+                                    <button @click.stop="scrollToVote(parsedVoteResult?.refId)"
+                                        class="text-[10px] font-bold text-blue-400 hover:text-blue-500 transition-colors">
+                                        <i class="fa-solid fa-eye mr-1"></i>查看完整计票
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- CASE: Moment Card -->
@@ -334,6 +452,64 @@
                             </div>
                         </div>
 
+                        <!-- CASE: Dice Result Card -->
+                        <div v-else-if="msg.diceResults" class="flex flex-col gap-2 w-[280px]"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
+                            <div class="w-full bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100 p-3 rounded-2xl shadow-sm border border-white/50 text-center relative overflow-hidden"
+                                @contextmenu.prevent="emitContextMenu">
+
+                                <!-- 装饰星星 -->
+                                <div class="absolute top-2 left-2 text-yellow-400 text-xs animate-twinkle z-0">✨</div>
+                                <div class="absolute top-3 right-3 text-purple-400 text-xs animate-twinkle z-0"
+                                    style="animation-delay: 0.5s">⭐
+                                </div>
+                                <div class="absolute bottom-2 left-3 text-pink-400 text-xs animate-twinkle z-0"
+                                    style="animation-delay: 1s">✨
+                                </div>
+
+                                <div class="bg-white/90 backdrop-blur-sm rounded-xl p-4 relative z-10">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xl">🎲</span>
+                                            <span class="text-sm font-bold text-purple-600">摇骰子</span>
+                                        </div>
+                                        <span v-if="msg.diceResults.every(r => r === msg.diceResults[0])"
+                                            class="text-xs bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">豹子!</span>
+                                        <span v-else-if="msg.diceTotal >= msg.diceCount * 6 * 0.8"
+                                            class="text-xs bg-gradient-to-r from-purple-400 to-pink-400 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">大吉!</span>
+                                        <span v-else-if="msg.diceTotal <= msg.diceCount * 2"
+                                            class="text-xs bg-gradient-to-r from-blue-400 to-blue-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">加油!</span>
+                                    </div>
+
+                                    <!-- 骰子结果展示 -->
+                                    <div class="flex justify-center gap-2 mb-3">
+                                        <div v-for="(r, i) in msg.diceResults" :key="i"
+                                            class="w-14 h-14 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-md flex items-center justify-center border-2 border-purple-200 dice-msg-dice"
+                                            :style="{ animationDelay: (i * 100) + 'ms' }">
+                                            <i class="fa-solid text-purple-600 drop-shadow-sm text-4xl"
+                                                :class="'fa-dice-' + ['one', 'two', 'three', 'four', 'five', 'six'][r - 1]">
+                                            </i>
+                                        </div>
+                                    </div>
+
+                                    <!-- 分数展示 -->
+                                    <div
+                                        class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-3 border border-purple-100">
+                                        <div class="flex items-center justify-center gap-2">
+                                            <span class="text-sm text-gray-600">合计点数</span>
+                                            <span class="text-3xl font-bold text-purple-600">{{ msg.diceTotal }}</span>
+                                            <span class="text-xs text-gray-400">/ {{ msg.diceCount * 6 }}</span>
+                                        </div>
+                                        <div class="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                            <div class="h-full bg-gradient-to-r from-purple-400 to-pink-400 rounded-full transition-all duration-1000"
+                                                :style="{ width: ((msg.diceTotal / (msg.diceCount * 6)) * 100) + '%' }">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -463,6 +639,15 @@ const isPressing = ref(false)
 const pressTimer = ref(null)
 
 // --- Group Roles & Titles ---
+const senderActivity = computed(() => {
+    if (props.msg.role === 'user') return props.chatData?.groupSettings?.myActivity || 0
+    const pid = props.msg.senderId || props.chatData?.id
+    const p = props.chatData?.participants?.find(p => p.id === pid)
+    return p?.activity || 0
+})
+
+const senderLv = computed(() => chatStore.calculateMemberLevel(senderActivity.value))
+
 const senderRole = computed(() => {
     if (props.msg.role === 'user') return props.chatData?.groupSettings?.myRole || 'member'
     const pid = props.msg.senderId || props.chatData?.id
@@ -478,12 +663,7 @@ const senderCustomTitle = computed(() => {
 })
 
 const senderTitle = computed(() => {
-    const role = senderRole.value
-    const custom = senderCustomTitle.value
-    if (role === 'owner') return custom || '群主'
-    if (role === 'admin') return custom || '管理员'
-    if (custom) return custom
-    return '群员'
+    return chatStore.getMemberTitle(props.chatData.id, props.msg.role === 'user' ? 'user' : (props.msg.senderId || props.chatData.id))
 })
 
 const displaySenderName = computed(() => {
@@ -495,13 +675,19 @@ const displaySenderName = computed(() => {
     return p?.nickname || p?.name || props.msg.senderName
 })
 
+// Only show the leaderboard shortcut when the message is the group announcement
+const isAnnouncementMsg = computed(() => {
+    const c = ensureString(props.msg.content || '').toString()
+    return c.includes('[群公告]') || c.includes('isAnnouncement') || c.includes('发布了新群公告')
+})
+
 const senderTitleClass = computed(() => {
     const role = senderRole.value
     const custom = senderCustomTitle.value
     if (role === 'owner') return 'bg-[#f7b500]' // Yellow
-    if (role === 'admin') return 'bg-[#07c160]' // Green
+    if (role === 'admin') return 'bg-[#a855f7]' // Purple (Admin usually purple/green, but users often prefer distinct colors)
     if (custom) return 'bg-[#a855f7]' // Purple
-    return 'bg-[#b1b1b1]' // Gray
+    return 'bg-[#b1b1b1]' // Gray (For regular tiers)
 })
 
 // Settings History Sync
@@ -867,6 +1053,10 @@ function getCleanContent(contentRaw, isCard = false) {
     // Remove TIMESTAMP tags (hidden from user, only for AI)
     clean = clean.replace(/\s*\[TIMESTAMP:\d{2}\/\d{2} \d{2}:\d{2}\]/gi, '');
     clean = clean.replace(/\s*\[TIMESTAMP:[^\]]+\]/gi, '');
+
+    // Remove Vote tags
+    clean = clean.replace(/\[VOTE:\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[CREATE_VOTE:\s*[^\]]+\]/gi, '');
 
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
     // Improved to handle unclosed [CARD] tags at the end or standalone cards
@@ -1437,9 +1627,16 @@ function getHtmlContent(content) {
         // 1. 移除[INNER_VOICE]标签和内容（包括换行符）
         processed = processed.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
 
-        // 2. 移除所有[CARD]和[/CARD]标签
-        processed = processed.replace(/\[CARD\]/gi, '').trim();
-        processed = processed.replace(/\[\/CARD\]/gi, '').trim();
+        // 2. 检查是否是[CARD]格式
+        if (processed.startsWith('[CARD]')) {
+            // 移除[CARD]标签
+            processed = processed.replace(/\[CARD\]/gi, '').trim();
+            // 移除[/CARD]标签（如果存在）
+            processed = processed.replace(/\[\/CARD\]/gi, '').trim();
+
+            // 直接返回HTML内容（因为[CARD]格式中直接包含HTML）
+            return processed;
+        }
 
         // 3. 移除markdown反引号
         processed = processed.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();
@@ -1501,6 +1698,136 @@ function getHtmlContent(content) {
             console.error('[ChatMessageItem] 所有解析尝试都失败了:', e2);
             return content;
         }
+    }
+}
+// --- Group Vote Logic ---
+const parsedVoteData = computed(() => {
+    // Both explicitly marked vote type or messages with vote object are valid
+    if (props.msg.type !== 'vote' && !props.msg.vote) return null
+    try {
+        const data = props.msg.vote || (typeof props.msg.content === 'string' ? JSON.parse(props.msg.content) : props.msg.content)
+
+        // Derive option voter lists for easy rendering
+        const optionVoters = (data.options || []).map(() => [])
+        Object.entries(data.votes || {}).forEach(([uid, oIdxs]) => {
+            oIdxs.forEach(oIdx => {
+                if (optionVoters[oIdx]) optionVoters[oIdx].push(uid)
+            })
+        })
+
+        return {
+            ...data,
+            optionVoters // Array of arrays of userIds per option
+        }
+    } catch (e) {
+        console.warn('[Vote] Parse error', e)
+        return null
+    }
+})
+
+const handleVoteToggle = (optionIndex) => {
+    const v = parsedVoteData.value
+    if (!v || v.isEnded) return
+
+    const currentVotes = v.votes?.['user'] || []
+    let newVotes = []
+
+    if (v.isMultiple) {
+        if (currentVotes.includes(optionIndex)) {
+            newVotes = currentVotes.filter(i => i !== optionIndex)
+        } else {
+            newVotes = [...currentVotes, optionIndex]
+        }
+    } else {
+        // Single choice: if already selected, unselect; else select
+        newVotes = currentVotes.includes(optionIndex) ? [] : [optionIndex]
+    }
+
+    console.log('[Vote] Casting vote:', newVotes)
+    chatStore.castVote(props.chatData.id, props.msg.id, 'user', newVotes)
+}
+
+const handleEndVote = () => {
+    if (!parsedVoteData.value) return
+    chatStore.endVote(props.chatData.id, props.msg.id)
+}
+
+const isOptionSelected = (optionIndex) => {
+    const v = parsedVoteData.value
+    if (!v || !v.votes) return false
+    return v.votes['user']?.includes(optionIndex)
+}
+
+const calculateVotePercent = (count) => {
+    const total = getTotalVoters()
+    if (total === 0) return 0
+    return Math.round((count / total) * 100)
+}
+
+const getTotalVoters = () => {
+    const v = parsedVoteData.value
+    if (!v || !v.votes) return 0
+    return Object.keys(v.votes).length
+}
+
+const getVoterAvatars = () => {
+    const v = parsedVoteData.value
+    if (!v || !v.votes) return []
+
+    const allVoterIds = Object.keys(v.votes)
+    return allVoterIds.map(voterId => getAvatarForUser(voterId))
+}
+
+const getAvatarForUser = (voterId) => {
+    if (voterId === 'user') return settingsStore.personalization.userProfile.avatar || '/avatars/user.png'
+    const participant = props.chatData.participants?.find(p => p.id === voterId)
+    if (participant) return participant.avatar
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${voterId}`
+}
+
+// --- Vote Result Logic ---
+const parsedVoteResult = computed(() => {
+    // Accept explicit vote_result messages or any content that looks like a result object.
+    let data = null
+    try {
+        data = typeof props.msg.content === 'string' ? JSON.parse(props.msg.content) : props.msg.content
+    } catch (e) {
+        return null
+    }
+
+    if (!data || typeof data !== 'object') return null
+
+    // basic shape check - refId plus options/votes
+    if (data.refId && data.options && data.votes) {
+        return data
+    }
+
+    return null
+})
+
+const getTopOptions = () => {
+    const res = parsedVoteResult.value
+    if (!res || !res.options || !res.votes) return []
+    const counts = res.options.map((opt, idx) => {
+        let count = 0
+        Object.values(res.votes).forEach(vArr => {
+            if (vArr.includes(idx)) count++
+        })
+        return { text: typeof opt === 'string' ? opt : opt.text, count }
+    })
+    return counts.sort((a, b) => b.count - a.count).slice(0, 2)
+}
+
+const scrollToVote = (refId) => {
+    if (!refId) return
+    const el = document.getElementById(`msg-${refId}`)
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        // Add highlight effect
+        el.classList.add('ring-2', 'ring-blue-400', 'rounded-2xl', 'transition-all', 'duration-1000')
+        setTimeout(() => {
+            el.classList.remove('ring-2', 'ring-blue-400')
+        }, 2000)
     }
 }
 
@@ -1802,6 +2129,49 @@ function getHtmlContent(content) {
     word-break: break-word;
     max-width: 100%;
     padding: 0 12px;
+}
+
+.msg-content {
+    word-break: break-word;
+}
+
+@keyframes twinkle {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+.dice-msg-dice {
+    animation: dice-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    opacity: 0;
+}
+
+@keyframes dice-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0) translateY(20px);
+    }
+
+    60% {
+        transform: scale(1.2) translateY(-5px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.animate-twinkle {
+    animation: twinkle 1.5s ease-in-out infinite;
 }
 
 .family-card-footer {

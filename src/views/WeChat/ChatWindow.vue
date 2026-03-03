@@ -34,6 +34,9 @@ import WorldLoopGMPanel from './modals/WorldLoopGMPanel.vue'
 import WorldLoopSettings from './modals/WorldLoopSettings.vue'
 import WorldLoopOfflineOverlay from './modals/WorldLoopOfflineOverlay.vue'
 import MissionSchedulerModal from './modals/MissionSchedulerModal.vue'
+import GroupVoteModal from './modals/GroupVoteModal.vue'
+import GroupRankModal from './modals/GroupRankModal.vue'
+import DiceModal from './modals/DiceModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -85,7 +88,11 @@ const worldLoopStore = useWorldLoopStore()
 
 const showGMMenu = ref(false)
 const showMissionScheduler = ref(false)
+const showVoteModal = ref(false)
+const showDiceModal = ref(false)
 const showScrollToBottom = ref(false)
+const showRankModal = ref(false)
+const rankChatId = ref('')
 const msgContainer = ref(null)
 
 const handleScroll = () => {
@@ -300,6 +307,11 @@ const handleProfileNavigation = (id) => {
     setTimeout(() => {
         emit('show-profile', id)
     }, 300)
+}
+
+const handleShowRank = (chatId) => {
+    rankChatId.value = chatId || chatData.value?.id
+    showRankModal.value = true
 }
 // Watch for call transcripts to trigger TTS
 watch(() => callStore.transcript.length, (newLen, oldLen) => {
@@ -1039,7 +1051,53 @@ const handlePanelAction = (type) => {
     } else if (type === 'timer') {
         showMissionScheduler.value = true
         showActionPanel.value = false
+    } else if (type === 'vote') {
+        showVoteModal.value = true
+        showActionPanel.value = false
+    } else if (type === 'dice') {
+        showDiceModal.value = true
+        showActionPanel.value = false
     }
+}
+
+// Handle Dice Roll
+const handleDiceRoll = (diceCount, results, total) => {
+    const diceEmojis = {
+        1: '⚀', 2: '⚁', 3: '⚂', 4: '⚃', 5: '⚄', 6: '⚅'
+    }
+
+    // 判断是否为大吉或豹子
+    const maxPossible = diceCount * 6
+    const isJackpot = results.every(r => r === results[0])
+    const isBigWin = total >= maxPossible * 0.8
+
+    // 根据分数确定标签和颜色
+    let badge = ''
+    let badgeColor = ''
+    if (isJackpot) {
+        badge = '豹子!'
+        badgeColor = 'from-yellow-400 to-orange-400'
+    } else if (isBigWin) {
+        badge = '大吉!'
+        badgeColor = 'from-purple-400 to-pink-400'
+    } else if (total <= diceCount * 2) {
+        badge = '加油!'
+        badgeColor = 'from-blue-400 to-blue-500'
+    }
+
+    // Add message to chat with dice_result type
+    chatStore.addMessage(chatStore.currentChatId, {
+        role: 'user',
+        type: 'dice_result',
+        content: '[摇骰子]',
+        diceResults: results,
+        diceTotal: total,
+        diceCount: diceCount
+    })
+
+    // Scroll to bottom
+    scrollToBottom(true)
+    setTimeout(() => scrollToBottom(false), 100)
 }
 
 // Handle Family Card Action Selection
@@ -1869,8 +1927,21 @@ const handleSendMessage = (payload) => {
 
 
 const generateAIResponse = () => {
-    // Manually trigger AI generation based on current context
-    chatStore.sendMessageToAI(chatStore.currentChatId)
+    // Manually trigger AI generation based on current context.
+    // If the chat is empty or the last message already comes from the AI,
+    // we want to keep the conversation going even though the user didn't
+    // send a new message.  Pass a hiddenHint so the model treats it as a
+    // continuation request rather than ending the story.
+    const options = {}
+    const chat = chatStore.chats[chatStore.currentChatId]
+    if (chat) {
+        const last = (chat.msgs || []).slice(-1)[0]
+        // no user message yet or last was AI message -> continue
+        if (!last || last.role === 'ai') {
+            options.hiddenHint = '（用户未输入，继续剧情…）'
+        }
+    }
+    chatStore.sendMessageToAI(chatStore.currentChatId, options)
 }
 
 const regenerateLastMessage = () => {
@@ -2728,6 +2799,13 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     </div>
 
 
+                    <!-- Activity Rank -->
+                    <div v-if="chatData?.isGroup"
+                        class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
+                        @click="handleShowRank(chatData.id)" title="群排行榜">
+                        <i class="fa-solid fa-ranking-star text-orange-400"></i>
+                    </div>
+
                     <!-- World Loop Entry (GM Mode) -->
                     <div v-if="loopData"
                         class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 group"
@@ -2804,7 +2882,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
                     :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
                     @context-menu="(e) => handleContextMenu(e.msg, e.event)" @toggle-select="toggleMessageSelection"
-                    @click-pay="handlePayClick" @play-voice="handleVoiceClick" />
+                    @click-pay="handlePayClick" @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
 
                 <!-- Typing Indicator -->
                 <div v-if="chatStore.isTyping" class="flex gap-2 w-full z-10 mb-2">
@@ -2862,7 +2940,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
             <!-- Action Panel (Drawer) -->
             <ChatActionPanel v-if="showActionPanel" :show="showActionPanel" :showCalls="!chatData?.isGroup"
-                class="h-[200px] border-t border-[#dcdcdc] bg-[#f7f7f7] relative z-20" @action="handlePanelAction" />
+                :showVote="!!chatData?.isGroup" class="h-[200px] border-t border-[#dcdcdc] bg-[#f7f7f7] relative z-20"
+                @action="handlePanelAction" />
 
             <!-- Emoji Picker -->
             <EmojiPicker v-if="showEmojiPicker" @select-emoji="handleEmojiSelect" @select-sticker="handleStickerSelect"
@@ -2880,6 +2959,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
             <!-- Mission Scheduler Modal -->
             <MissionSchedulerModal v-if="showMissionScheduler" @close="showMissionScheduler = false" />
+            <GroupVoteModal v-if="showVoteModal" :chatId="chatData.id" @close="showVoteModal = false" />
+            <GroupRankModal :visible="showRankModal" :chatId="rankChatId" @close="showRankModal = false" />
 
         </div><!-- End of Main Chat Content -->
 
@@ -2965,7 +3046,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                                }}</span></div>
+                        }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->
@@ -3041,6 +3122,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
         <!-- Status Edit Modal -->
         <StatusEditModal v-model:visible="showStatusModal" :chatData="chatData" @toast="showToast" />
+
+        <!-- Dice Modal -->
+        <DiceModal :show="showDiceModal" @close="showDiceModal = false" @roll="handleDiceRoll" />
 
         <!-- Modals -->
         <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />
@@ -4121,6 +4205,66 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
 .voice-wave.wave-right {
     flex-direction: row-reverse;
+}
+
+/* Dice Result Card Animations */
+@keyframes dice-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.5) rotate(-10deg);
+    }
+
+    50% {
+        transform: scale(1.05) rotate(2deg);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes dice-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0) translateY(20px);
+    }
+
+    60% {
+        transform: scale(1.2) translateY(-5px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes twinkle {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+.animate-dice-in {
+    animation: dice-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dice-msg-dice {
+    animation: dice-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    opacity: 0;
+}
+
+.animate-twinkle {
+    animation: twinkle 1.5s ease-in-out infinite;
 }
 
 /* Toast Transitions */

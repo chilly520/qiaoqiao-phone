@@ -3,6 +3,7 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
+import { useCalendarStore } from '../stores/calendarStore'
 
 import { useWalletStore } from '../stores/walletStore'
 import { weatherService } from './weatherService'
@@ -173,6 +174,63 @@ export function generateContextPreview(chatId, char) {
         worldBookStore = useWorldBookStore()
     } catch (e) {
         console.warn('[AI Service] WorldBookStore init failed:', e)
+    }
+
+    let chatStore = null
+    try {
+        const pinia = getActivePinia()
+        if (pinia) {
+            chatStore = pinia._s.get('chat')
+        }
+    } catch (e) {
+        console.warn('[AI Service] ChatStore retrieval failed:', e)
+    }
+
+    // --- Core Memory Interoperability Logic ---
+    let linkedGroupMemory = ''
+    if (chatStore) {
+        const memoryParts = []
+        if (char.groupMemoryIntero && char.linkedGroups) {
+            char.linkedGroups.forEach(gid => {
+                const gChat = chatStore.chats[gid]
+                if (gChat && gChat.isGroup) {
+                    const limit = (char.groupMemoryLimits && char.groupMemoryLimits[gid]) || 20
+                    const gMemArray = gChat.memory || []
+                    const relevantMems = gMemArray.slice(0, limit)
+                    if (relevantMems.length > 0) {
+                        const groupTitle = `【群聊: ${gChat.name} 的记忆碎片】`
+                        const groupText = relevantMems.map(m => {
+                            const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
+                            return `- ${content}`
+                        }).join('\n')
+                        memoryParts.push(`${groupTitle}\n${groupText}`)
+                    }
+                }
+            })
+        }
+
+        if (char.isGroup && Array.isArray(char.participants)) {
+            char.participants.forEach(p => {
+                if (p.id !== 'user' && p.privateMemoryIntero) {
+                    const pChat = chatStore.chats[p.id]
+                    if (pChat && Array.isArray(pChat.msgs)) {
+                        const limit = p.privateMemoryLimit || 20
+                        const pMsgs = pChat.msgs.filter(m => m.type !== 'system' && m.type !== 'favorite_card').slice(-limit)
+                        if (pMsgs.length > 0) {
+                            const title = `【成员: ${p.name} 与你的近期私聊记录】`
+                            const text = pMsgs.map(m => {
+                                const sender = m.role === 'user' ? (char.groupSettings?.myNickname || char.userName || '我') : p.name
+                                const content = typeof m.content === 'object' ? JSON.stringify(m.content) : m.content
+                                const cleanContent = String(content).replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
+                                return `${sender}: ${cleanContent}`
+                            }).join('\n')
+                            memoryParts.push(`${title}\n${text}`)
+                        }
+                    }
+                }
+            })
+        }
+        linkedGroupMemory = memoryParts.join('\n\n')
     }
     // 1. System Prompt (Base) - Reusing Template Logic with placeholders
     // We don't have the exact user object here usually, but we have char.userName/Persona
@@ -370,6 +428,8 @@ export function generateContextPreview(chatId, char) {
         participants: char.participants || []
     } : null;
 
+    const contactListStr = chatStore ? chatStore.contactList.filter(c => !c.isGroup).slice(0, 30).map(c => `- ${c.name} (ID: ${c.id})`).join('\n') : ''
+
     const simplifiedSystemPrompt = SYSTEM_PROMPT_TEMPLATE(
         charWithTime,
         userForSystem,
@@ -380,7 +440,9 @@ export function generateContextPreview(chatId, char) {
         finalEnvContext,
         momentsContext,
         char.bio,
-        groupCtxPreview
+        groupCtxPreview,
+        linkedGroupMemory,
+        contactListStr
     );
 
     return {
@@ -547,6 +609,59 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             ? weatherService.getLocationContextText()
             : ''
 
+        // --- Linked Group Memory Retrieval (Memory Interoperability) ---
+        let linkedGroupMemory = ''
+        try {
+            const pinia = getActivePinia()
+            const chatStore = pinia ? pinia._s.get('chat') : null
+            if (chatStore) {
+                const memoryParts = []
+                if (char.groupMemoryIntero && char.linkedGroups && Array.isArray(char.linkedGroups)) {
+                    char.linkedGroups.forEach(gid => {
+                        const gChat = chatStore.chats[gid]
+                        if (gChat && gChat.isGroup && gChat.memory) {
+                            const limit = (char.groupMemoryLimits && char.groupMemoryLimits[gid]) || 20
+                            const gMemArray = gChat.memory || []
+                            const relevantMems = gMemArray.slice(0, limit)
+                            if (relevantMems.length > 0) {
+                                const groupTitle = `【群聊: ${gChat.name} 的记忆碎片】`
+                                const groupText = relevantMems.map(m => {
+                                    const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
+                                    return `- ${content}`
+                                }).join('\n')
+                                memoryParts.push(`${groupTitle}\n${groupText}`)
+                            }
+                        }
+                    })
+                }
+
+                if (char.isGroup && Array.isArray(char.participants)) {
+                    char.participants.forEach(p => {
+                        if (p.id !== 'user' && p.privateMemoryIntero) {
+                            const pChat = chatStore.chats[p.id]
+                            if (pChat && Array.isArray(pChat.msgs)) {
+                                const limit = p.privateMemoryLimit || 20
+                                const pMsgs = pChat.msgs.filter(m => m.type !== 'system' && m.type !== 'favorite_card').slice(-limit)
+                                if (pMsgs.length > 0) {
+                                    const title = `【成员: ${p.name} 与你的近期私聊记录】`
+                                    const text = pMsgs.map(m => {
+                                        const sender = m.role === 'user' ? (char.groupSettings?.myNickname || '我') : p.name
+                                        const content = typeof m.content === 'object' ? JSON.stringify(m.content) : m.content
+                                        const cleanContent = String(content).replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
+                                        return `${sender}: ${cleanContent}`
+                                    }).join('\n')
+                                    memoryParts.push(`${title}\n${text}`)
+                                }
+                            }
+                        }
+                    })
+                }
+                linkedGroupMemory = memoryParts.join('\n\n')
+            }
+        } catch (e) {
+            console.warn('[AI Service] Failed to link memories:', e)
+        }
+
         const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
         let locName = '未知'
         if (typeof userLoc === 'string' && userLoc.trim()) locName = userLoc.trim()
@@ -572,9 +687,16 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             participants: char.participants || []
         } : null;
 
+        const pinia = getActivePinia()
+        const chatStore = pinia ? pinia._s.get('chat') : null
+        const calendarStore = useCalendarStore()
+        const calendarContext = char.id ? calendarStore.getAIContextPrompt(char.id) : ''
+        
+        const contactListStr = chatStore ? chatStore.contactList.filter(c => !c.isGroup).slice(0, 30).map(c => `- ${c.name} (ID: ${c.id})`).join('\n') : ''
+
         const promptContent = options.isCall
             ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
-            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx)
+            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx, linkedGroupMemory, contactListStr, calendarContext)
 
         systemMsg = {
             role: 'system',

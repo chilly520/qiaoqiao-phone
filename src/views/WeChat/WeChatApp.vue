@@ -8,6 +8,7 @@ import ChatWindow from './ChatWindow.vue'
 import MomentsView from './MomentsView.vue'
 import { useWorldLoopStore } from '../../stores/worldLoopStore'
 import WorldLoopCreateModal from './modals/WorldLoopCreateModal.vue'
+import PendingRequestsModal from './modals/PendingRequestsModal.vue'
 
 const worldLoopStore = useWorldLoopStore()
 const expandLoopContacts = ref(true)
@@ -63,6 +64,7 @@ const showAddMenu = ref(false)
 const expandFriends = ref(true)
 const expandNPC = ref(false)
 const showAddFriendModal = ref(false)
+const showPendingRequestsModal = ref(false)
 const showCreateLoopModal = ref(false)
 const showBackgroundSettings = ref(false)
 const newFriendName = ref('')
@@ -90,8 +92,9 @@ const backgroundSettings = ref({
 // Context Menu State
 const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
-const contextMenuTarget = ref(null) // { type: 'chat'|'contact', id: '...' }
+const contextMenuTarget = ref(null) // { type: 'chat'|'contact'|'group', id: '...' }
 const contextMenuOptions = ref([]) // [{ label: '...', action: '...' }]
+const contextMenuJustOpened = ref(false) // Flag to prevent immediate close on touch release
 
 // Local Confirm Dialog State (for delete operations)
 const showConfirmDialog = ref(false)
@@ -225,6 +228,13 @@ const handleTouchMove = (event) => {
 const openContextMenu = (type, item, event) => {
     event.preventDefault() // Prevent native menu
     showContextMenu.value = true
+    contextMenuJustOpened.value = true
+    
+    // Clear the flag after a short delay to prevent immediate close on touch release
+    setTimeout(() => {
+        contextMenuJustOpened.value = false
+    }, 300)
+    
     // Calculate position
     // If touch event, use touches[0]
     const clientX = event.touches ? event.touches[0].clientX : event.clientX
@@ -247,6 +257,10 @@ const openContextMenu = (type, item, event) => {
     } else if (type === 'contact') {
         contextMenuOptions.value = [
             { label: '删除好友', action: 'delete', icon: 'fa-user-xmark', danger: true }
+        ]
+    } else if (type === 'group') {
+        contextMenuOptions.value = [
+            { label: '解散群聊', action: 'dissolve', icon: 'fa-users-slash', danger: true }
         ]
     }
 }
@@ -297,6 +311,34 @@ const handleContextAction = (option) => {
                 } catch (err) {
                     console.error('删除好友失败:', err)
                     chatStore.triggerToast('删除失败', 'error')
+                    showConfirmDialog.value = false
+                } finally {
+                    confirmDialogData.value.isLoading = false
+                }
+            },
+            isLoading: false
+        }
+        showConfirmDialog.value = true
+    } else if (option.action === 'dissolve') {
+        confirmDialogData.value = {
+            title: '解散群聊',
+            message: '确定要解散该群聊吗？群聊将被删除且无法恢复。',
+            action: async () => {
+                try {
+                    confirmDialogData.value.isLoading = true
+                    // Use dissolveGroup from chatStore
+                    if (chatStore.dissolveGroup) {
+                        chatStore.dissolveGroup(id)
+                        chatStore.triggerToast('群聊已解散', 'success')
+                    } else {
+                        // Fallback: manually set dissolved state
+                        await chatStore.updateCharacter(id, { isDissolved: true, inChatList: false })
+                        chatStore.triggerToast('群聊已解散', 'success')
+                    }
+                    showConfirmDialog.value = false
+                } catch (err) {
+                    console.error('解散群聊失败:', err)
+                    chatStore.triggerToast('解散失败', 'error')
                     showConfirmDialog.value = false
                 } finally {
                     confirmDialogData.value.isLoading = false
@@ -615,8 +657,10 @@ const handleImport = async (e) => {
         <WorldLoopCreateModal :visible="showCreateLoopModal" :contacts="chatStore.contactList.filter(c => !c.isGroup)"
             @close="showCreateLoopModal = false" @confirm="handleCreateLoop" />
 
+        <PendingRequestsModal :visible="showPendingRequestsModal" @close="showPendingRequestsModal = false" />
+
         <!-- Context Menu (Restored) -->
-        <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="showContextMenu = false">
+        <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="!contextMenuJustOpened && (showContextMenu = false)">
             <!-- Backdrop for click outside -->
             <div class="absolute inset-0 bg-transparent"></div>
             <div class="absolute bg-[#4c4c4c] rounded-lg shadow-xl py-1 min-w-[140px] animate-scale-up origin-top-left"
@@ -1019,6 +1063,28 @@ const handleImport = async (e) => {
                 <div v-if="currentTab === 'contacts'"
                     :class="{ 'bg-[#ededed]': !(backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) }"
                     class="min-h-full">
+                    <!-- 0. Message Notification Entry (New) -->
+                    <div class="bg-white/30 backdrop-blur-md mb-2 border-b border-gray-100/50">
+                        <div class="flex items-center px-4 py-4 active:bg-gray-100 transition-colors cursor-pointer group"
+                            @click="showPendingRequestsModal = true">
+                            <div
+                                class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center mr-3 relative shadow-md shadow-orange-500/20 group-hover:scale-105 transition-transform">
+                                <i class="fa-solid fa-bell text-white text-lg"></i>
+                                <div v-if="chatStore.pendingRequests?.length > 0"
+                                    class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 border-2 border-white animate-pulse">
+                                    {{ chatStore.pendingRequests.length }}
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <span class="text-base text-gray-900 font-bold">消息通知</span>
+                                <div v-if="chatStore.pendingRequests?.length > 0"
+                                    class="text-[10px] text-orange-600 font-medium">
+                                    新消息等待处理</div>
+                                <div v-else class="text-[10px] text-gray-400">暂无新通知</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                        </div>
+                    </div>
                     <!-- 1. World Loops Section -->
                     <div class="bg-white/30 backdrop-blur-md mb-2">
                         <div class="px-4 py-2 bg-gradient-to-r from-purple-50/30 to-white/30 text-[10px] text-purple-600 font-bold flex justify-between items-center cursor-pointer border-b border-purple-100/30"
@@ -1069,8 +1135,11 @@ const handleImport = async (e) => {
                         <div v-if="expandGroupChats">
                             <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && !c.loopId)"
                                 :key="chat.id"
-                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
-                                @click="openChat(chat.id)">
+                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer prevent-select"
+                                @click="openChat(chat.id)"
+                                @contextmenu.prevent="openContextMenu('group', chat, $event)"
+                                @touchstart="startLongPress('group', chat, $event)" @touchend="clearLongPress"
+                                @touchmove="handleTouchMove">
                                 <div class="relative w-10 h-10 mr-3">
                                     <img :src="chat.avatar || getRandomAvatar()"
                                         class="w-full h-full rounded-lg bg-gray-200 object-cover">
@@ -1233,7 +1302,7 @@ const handleImport = async (e) => {
                     <i class="text-xl"
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
-                    }}</span>
+                        }}</span>
                 </div>
             </div>
 

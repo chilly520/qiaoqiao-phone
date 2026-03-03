@@ -3,74 +3,103 @@
     <div class="grid grid-cols-4 gap-4">
       <!-- Album (Image) -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'album')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-regular fa-image text-2xl text-[#505050]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-regular fa-image text-2xl text-[#505050]"></i>
         </div>
         <span class="text-xs text-[#888]">相册</span>
       </div>
 
       <!-- Camera (Placeholder) -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'camera')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-camera text-2xl text-[#505050]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-camera text-2xl text-[#505050]"></i>
         </div>
         <span class="text-xs text-[#888]">拍照</span>
       </div>
 
       <!-- Red Packet -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'redpacket')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-envelope text-2xl text-[#ea5f39]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-envelope text-2xl text-[#ea5f39]"></i>
         </div>
         <span class="text-xs text-[#888]">红包</span>
       </div>
 
       <!-- Transfer -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'transfer')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-arrow-right-arrow-left text-2xl text-[#f79e39]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-arrow-right-arrow-left text-2xl text-[#f79e39]"></i>
         </div>
         <span class="text-xs text-[#888]">转账</span>
       </div>
-      
+
       <!-- Family Card -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'family-card')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-people-roof text-2xl text-[#ea4335]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-people-roof text-2xl text-[#ea4335]"></i>
         </div>
         <span class="text-xs text-[#888]">亲属卡</span>
       </div>
 
       <!-- See Image (Text to Image) -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'see-image')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-image text-2xl text-[#4285f4]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-image text-2xl text-[#4285f4]"></i>
         </div>
         <span class="text-xs text-[#888]">见图</span>
       </div>
 
       <!-- Video Call -->
-      <div v-if="showCalls" class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'video-call')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-video text-2xl text-[#07c160]"></i>
+      <div v-if="showCalls" class="flex flex-col items-center gap-2 cursor-pointer group"
+        @click="$emit('action', 'video-call')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-video text-2xl text-[#07c160]"></i>
         </div>
         <span class="text-xs text-[#888]">视频通话</span>
       </div>
 
       <!-- Voice Call -->
-      <div v-if="showCalls" class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'voice-call')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-phone text-2xl text-[#07c160]"></i>
+      <div v-if="showCalls" class="flex flex-col items-center gap-2 cursor-pointer group"
+        @click="$emit('action', 'voice-call')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-phone text-2xl text-[#07c160]"></i>
         </div>
         <span class="text-xs text-[#888]">语音通话</span>
       </div>
 
       <!-- Timer Mission -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'timer')">
-        <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
-           <i class="fa-solid fa-clock text-2xl text-[#6366f1]"></i>
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-clock text-2xl text-[#6366f1]"></i>
         </div>
         <span class="text-xs text-[#888]">定时任务</span>
+      </div>
+
+      <!-- Group Vote -->
+      <div v-if="showVote" class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'vote')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-square-poll-vertical text-2xl text-[#07c160]"></i>
+        </div>
+        <span class="text-xs text-[#888]">群投票</span>
+      </div>
+
+      <!-- Dice -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'dice')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-dice text-2xl text-[#ff6b6b]"></i>
+        </div>
+        <span class="text-xs text-[#888]">摇骰子</span>
       </div>
     </div>
   </div>
@@ -78,7 +107,8 @@
 
 <script setup>
 defineProps({
-  showCalls: { type: Boolean, default: true }
+  showCalls: { type: Boolean, default: true },
+  showVote: { type: Boolean, default: false }
 })
 defineEmits(['action'])
 </script>
@@ -93,6 +123,7 @@ defineEmits(['action'])
     transform: translateY(100%);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;

@@ -6,6 +6,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
 import AvatarCropper from '../../components/AvatarCropper.vue'
 import GroupAnnouncementModal from './modals/GroupAnnouncementModal.vue'
+import GroupRankModal from './modals/GroupRankModal.vue'
 import { compressImage } from '../../utils/imageUtils'
 
 const route = useRoute()
@@ -53,7 +54,8 @@ const state = reactive({
   activeTab: 'basic',
   showSummaryDetail: false,
   showMemoryLibModal: false,
-  showAnnouncementModal: false
+  showAnnouncementModal: false,
+  showRankModal: false
 })
 
 // Memory Library States
@@ -86,6 +88,8 @@ const form = reactive({
   groupPrompt: '',
   worldBookLinks: [],
   timeAware: true,
+  timeSyncMode: 'system',
+  virtualTime: '',
   allowInvite: true,
   autoInvite: false,
   welcomeMessage: '',
@@ -113,7 +117,8 @@ const form = reactive({
   summaryPrompt: '请用客观中性的语气总结以下对话的主要内容、关键信息和双方达成的共识。',
   contextLimit: 20,
   displayLimit: 50,
-  summaryLimit: 30
+  summaryLimit: 30,
+  levelTitles: ['潜水', '冒泡', '吐槽', '活跃', '话痨', '传说']
 })
 
 const contacts = computed(() => {
@@ -145,6 +150,8 @@ const participantsView = computed(() => {
   // Normalize participants to ensure we have all required fields
   const list = Array.isArray(form.participants) ? form.participants : []
   list.forEach(p => {
+    // Skip if id is 'user' to avoid duplicate
+    if (p.id === 'user') return
     result.push({
       ...p,
       name: p.nickname || p.name || '未命名',
@@ -185,6 +192,25 @@ const manageTarget = computed(() => {
 const myRole = computed(() => form.myRole || 'member')
 const canIManage = computed(() => myRole.value === 'owner' || myRole.value === 'admin')
 
+const isFriend = (pid) => {
+  if (pid === 'user') return true
+  const c = chatStore.chats[pid]
+  // A friend is someone who is in the chat list and not a group
+  return c && !c.isGroup && !c.isArchived && c.inChatList
+}
+
+function handleAddFriendFromGroup() {
+  const target = manageTarget.value
+  if (!target || target.id === 'user') return
+
+  chatStore.triggerConfirm('添加好友', `确定要向 ${target.name} 发送好友申请吗？`, () => {
+    // In this app, we can just "force" add them or simulate a request
+    // For now, let's just add them to the chat list as a friend
+    chatStore.updateCharacter(target.id, { inChatList: true, isGroup: false })
+    chatStore.triggerToast('已添加为好友', 'success')
+  })
+}
+
 function deriveGroupNoFromId(chatId) {
   const digits = String(chatId || '').replace(/\D/g, '').slice(-8)
   return digits ? `G${digits}` : `G${Date.now().toString().slice(-8)}`
@@ -208,6 +234,8 @@ function hydrateFromChat(chat) {
   form.groupPrompt = gs.groupPrompt ?? ''
   form.worldBookLinks = Array.isArray(gs.worldBookLinks) ? [...gs.worldBookLinks] : (Array.isArray(chat.worldBookLinks) ? [...chat.worldBookLinks] : [])
   form.timeAware = gs.timeAware ?? (chat.timeAware !== false)
+  form.timeSyncMode = gs.timeSyncMode ?? chat.timeSyncMode ?? 'system'
+  form.virtualTime = gs.virtualTime ?? chat.virtualTime ?? ''
   form.allowInvite = gs.allowInvite ?? true
   form.autoInvite = gs.autoInvite ?? false
   form.welcomeMessage = gs.welcomeMessage ?? ''
@@ -238,6 +266,7 @@ function hydrateFromChat(chat) {
   form.bubbleSize = chat.bubbleSize || 15
   form.bubbleCss = chat.bubbleCss || ''
   form.summaryPrompt = gs.memory?.summaryPrompt || '请用客观中性的语气总结以下对话的主要内容、关键信息和双方达成的共识。'
+  form.levelTitles = Array.isArray(gs.levelTitles) ? [...gs.levelTitles] : ['潜水', '冒泡', '吐槽', '活跃', '话痨', '传说']
 }
 
 function triggerAvatarUpload() {
@@ -342,6 +371,32 @@ function handleMute() {
       chatStore.triggerToast(val === 0 ? '禁言已解除' : `已禁言 ${val} 分钟`, 'info')
     }
   })
+}
+
+function togglePrivateMemoryIntero(e) {
+  const target = manageTarget.value
+  if (!target || target.id === 'user') return
+  const checked = e.target.checked
+  const idx = form.participants.findIndex(p => p.id === target.id)
+  if (idx !== -1) {
+    if (form.participants[idx].privateMemoryIntero === undefined) {
+      // Setup reactively if missed
+      form.participants[idx] = { ...form.participants[idx], privateMemoryIntero: checked, privateMemoryLimit: 20 }
+    } else {
+      form.participants[idx].privateMemoryIntero = checked
+    }
+    chatStore.triggerToast(checked ? '已开启该成员私聊互通' : '已关闭私聊互通', 'info')
+  }
+}
+
+function updatePrivateMemoryLimit(e) {
+  const target = manageTarget.value
+  if (!target || target.id === 'user') return
+  const val = parseInt(e.target.value) || 20
+  const idx = form.participants.findIndex(p => p.id === target.id)
+  if (idx !== -1) {
+    form.participants[idx].privateMemoryLimit = val
+  }
 }
 
 const showManualSummaryModal = ref(false)
@@ -660,13 +715,8 @@ function resetGroupAll() {
   const chatId = chatIdParam.value
   if (!chatId || isCreateMode.value) return
 
-  chatStore.triggerConfirm('解散群聊', '确定要解散并归档此群吗？所有成员将被移出，该群将不再活跃。', () => {
-    // Logic to dissolve group
-    chatStore.updateCharacter(chatId, {
-      isArchived: true,
-      inChatList: false,
-      isGroup: true // Keep it as a group but inactive
-    })
+  chatStore.triggerConfirm('解散群聊', '确定要解散此群吗？此操作不可逆。', () => {
+    chatStore.dissolveGroup(chatId)
     chatStore.triggerToast('群聊已解散', 'info')
     router.push('/wechat')
   })
@@ -677,7 +727,7 @@ function quitGroup() {
   if (!chatId || isCreateMode.value) return
 
   chatStore.triggerConfirm('退出群聊', '确定要退出该群聊吗？', () => {
-    chatStore.deleteChat(chatId)
+    chatStore.exitGroup(chatId)
     chatStore.triggerToast('已退出群聊', 'info')
     router.push('/wechat')
   })
@@ -704,6 +754,12 @@ function handleSetNickname() {
       if (idx !== -1) form.participants[idx].nickname = n || ''
     }
   })
+}
+
+function goToMoments(id) {
+  if (!id) return
+  router.push(`/moments/profile/${id}`)
+  state.showMemberManageModal = false
 }
 
 async function saveAll() {
@@ -743,9 +799,12 @@ async function saveAll() {
       myPersona: form.myPersona,
       myRole: form.myRole,
       myCustomTitle: form.myCustomTitle,
+      levelTitles: [...form.levelTitles],
       groupPrompt: form.groupPrompt,
       worldBookLinks: form.worldBookLinks,
       timeAware: !!form.timeAware,
+      timeSyncMode: form.timeSyncMode || 'system',
+      virtualTime: form.virtualTime || '',
       allowInvite: !!form.allowInvite,
       autoInvite: !!form.autoInvite,
       welcomeMessage: form.welcomeMessage,
@@ -1096,6 +1155,36 @@ onMounted(() => {
               placeholder="新成员加入时的固定欢迎语，不填则由 AI 发挥"></textarea>
           </div>
 
+          <!-- 时间感知 -->
+          <div class="toggle-row">
+            <div class="flex flex-col">
+              <span class="text-sm font-medium">时间感知</span>
+              <span class="text-[10px] text-gray-400">AI 将感知当前时间并融入对话</span>
+            </div>
+            <input type="checkbox" v-model="form.timeAware" class="accent-green-600 scale-110" />
+          </div>
+          <div v-if="form.timeAware" class="space-y-3 p-3 bg-green-50/30 rounded-xl border border-green-100 animate-fade-in">
+            <div class="flex items-center gap-4">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" v-model="form.timeSyncMode" value="system" class="accent-green-500">
+                <span class="text-xs text-gray-700">系统同步</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" v-model="form.timeSyncMode" value="manual" class="accent-green-500">
+                <span class="text-xs text-gray-700">虚拟设定</span>
+              </label>
+            </div>
+            <div v-if="form.timeSyncMode === 'manual'">
+              <input v-model="form.virtualTime" type="text"
+                class="w-full bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white"
+                placeholder="虚拟时间 (如: 乾隆三十年)" />
+              <div class="text-[10px] text-gray-400 mt-1">基准时间设定后，系统将模拟其时间的流逝</div>
+            </div>
+            <div v-else class="text-xs text-green-600 bg-green-50/50 p-2 rounded border border-green-100/50">
+              <i class="fa-solid fa-clock-rotate-left mr-1"></i> 已启用实时同步：当前 AI 将时刻感知您的物理时间
+            </div>
+          </div>
+
           <div class="toggle-row">
             <span class="text-sm font-medium">允许成员邀请朋友</span>
             <input type="checkbox" v-model="form.allowInvite" class="accent-green-600 scale-110" />
@@ -1334,6 +1423,29 @@ onMounted(() => {
         </div>
       </section>
 
+      <!-- 8. 群成员等级设置 -->
+      <section class="space-y-2">
+        <h3 class="text-xs font-bold text-gray-500 ml-1">群成员等级称号 (1-6级)</h3>
+        <div class="bg-white/70 backdrop-blur-md rounded-2xl p-4 border border-white/40 space-y-4 shadow-sm">
+          <div class="grid grid-cols-2 gap-3">
+            <div v-for="(title, idx) in form.levelTitles" :key="idx" class="flex flex-col gap-1">
+              <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Level {{ idx + 1 }}</label>
+              <input v-model="form.levelTitles[idx]" type="text"
+                class="w-full bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:border-green-500 transition-all font-medium"
+                :placeholder="`等级 ${idx + 1} 称号`" />
+            </div>
+          </div>
+          <p class="text-[10px] text-gray-400 mt-2 px-1">
+            普通成员将根据活跃值获得对应等级。活跃值越高，越靠近等级 6（传说）。
+          </p>
+          <button
+            class="w-full mt-1 bg-amber-50/50 text-amber-600 hover:bg-amber-100/50 transition-all font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1.5"
+            @click="state.showRankModal = true">
+            <i class="fa-solid fa-ranking-star"></i> 查看当前活跃榜单
+          </button>
+        </div>
+      </section>
+
       <!-- 8. 数据与管理 -->
       <section class="space-y-2">
         <h3 class="text-xs font-bold text-gray-500 ml-1">数据与管理</h3>
@@ -1342,6 +1454,11 @@ onMounted(() => {
             class="w-full py-3 rounded-xl bg-blue-50 text-blue-600 font-medium text-sm border border-blue-100 active:bg-blue-100 transition-all flex items-center justify-center gap-2"
             @click="handleExportGroup">
             <i class="fa-solid fa-file-export"></i> 导出群聊配置
+          </button>
+          <button
+            class="w-full py-3 rounded-xl bg-amber-50 text-amber-600 font-medium text-sm border border-amber-100 active:bg-amber-100 transition-all flex items-center justify-center gap-2"
+            @click="state.showRankModal = true">
+            <i class="fa-solid fa-ranking-star"></i> 查看活跃排行榜
           </button>
           <div class="grid grid-cols-2 gap-2">
             <button
@@ -1503,13 +1620,32 @@ onMounted(() => {
               群主</div>
           </div>
           <div class="text-center">
-            <div class="font-bold text-xl text-gray-900 flex items-center justify-center gap-2">
+            <div class="font-bold text-xl text-gray-900 flex items-center justify-center gap-2 flex-wrap">
               {{ manageTarget?.nickname || manageTarget?.name }}
+              <span v-if="manageTarget?.customTitle"
+                class="bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded text-[11px] font-bold">{{
+                  manageTarget?.customTitle }}</span>
+              <span v-if="manageTarget?.isMuted"
+                class="bg-red-50 text-red-500 px-1.5 py-0.5 rounded text-[11px] font-bold border border-red-100 flex items-center gap-1">
+                <i class="fa-solid fa-microphone-slash text-[10px]"></i>禁言中
+              </span>
               <i v-if="manageTarget?.gender === '男'" class="fa-solid fa-mars text-blue-500 text-sm"></i>
               <i v-else-if="manageTarget?.gender === '女'" class="fa-solid fa-venus text-pink-500 text-sm"></i>
+              <i v-else class="fa-solid fa-genderless text-gray-400 text-sm"></i>
             </div>
-            <div class="text-[11px] text-gray-400 mt-1 uppercase tracking-widest">{{ manageTarget?.id === 'user' ? 'Me'
-              : 'UID: ' + manageTarget?.id }}</div>
+            <div class="text-[12px] text-gray-500 mt-2 tracking-wide font-mono">微信号: {{ manageTarget?.wechatId ||
+              manageTarget?.id }}</div>
+
+            <div class="flex items-center justify-center gap-4 mt-3 text-[11px] text-gray-500">
+              <div class="flex items-center gap-1">
+                <i class="fa-regular fa-calendar-days text-gray-400"></i>
+                入群时间: {{ manageTarget?.joinTime || '更早以前' }}
+              </div>
+              <div class="flex items-center gap-1 cursor-pointer hover:text-blue-500 transition-colors"
+                @click="goToMoments(manageTarget?.id)">
+                <i class="fa-regular fa-images text-blue-400"></i> 朋友圈
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1524,6 +1660,11 @@ onMounted(() => {
           <div class="grid grid-cols-2 gap-3">
             <button @click="handleSetNickname" class="manage-btn"><i class="fa-solid fa-signature"></i>设置昵称</button>
             <button @click="handleSetTitle" class="manage-btn"><i class="fa-solid fa-crown"></i>专属头衔</button>
+
+            <button v-if="manageTarget?.id !== 'user' && !isFriend(manageTarget?.id)" @click="handleAddFriendFromGroup"
+              class="manage-btn text-blue-600">
+              <i class="fa-solid fa-user-plus"></i>加为好友
+            </button>
 
             <template v-if="myRole === 'owner' && manageTarget?.id !== 'user'">
               <button @click="handleSetAdmin" class="manage-btn"
@@ -1548,6 +1689,25 @@ onMounted(() => {
               @click="removeParticipant(manageTarget?.id); state.showMemberManageModal = false"
               class="manage-btn text-red-500"><i class="fa-solid fa-user-minus"></i>踢出该群</button>
           </div>
+
+          <!-- Private Memory Interop Block -->
+          <div v-if="manageTarget?.id !== 'user'" class="p-3 bg-purple-50/30 rounded-2xl border border-purple-100 mt-3">
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-purple-700">私聊记忆互通</span>
+                <span class="text-[10px] text-gray-500">将角色与你的私聊记录引入群内上下文</span>
+              </div>
+              <input type="checkbox" :checked="manageTarget?.privateMemoryIntero" @change="togglePrivateMemoryIntero"
+                class="accent-purple-600 scale-110" />
+            </div>
+            <div v-if="manageTarget?.privateMemoryIntero"
+              class="flex items-center gap-2 mt-3 pt-3 border-t border-purple-100/50">
+              <span class="text-[10px] text-gray-500">调用近期单聊消息条数:</span>
+              <input type="number" :value="manageTarget?.privateMemoryLimit ?? 20" @change="updatePrivateMemoryLimit"
+                class="w-16 bg-white border border-purple-200 rounded-lg text-center text-xs py-1 outline-none focus:border-purple-400 font-bold text-purple-600" />
+            </div>
+          </div>
+
         </div>
 
         <button @click="state.showMemberManageModal = false"
@@ -1813,6 +1973,9 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    <!-- Group Rank Modal -->
+    <GroupRankModal :visible="state.showRankModal" :chatId="chatIdParam || chatId"
+      @close="state.showRankModal = false" />
   </div>
 </template>
 

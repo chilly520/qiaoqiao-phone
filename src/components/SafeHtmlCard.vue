@@ -60,7 +60,55 @@ const fullContent = computed(() => {
         transform: scale(0.95) !important;
         opacity: 0.8 !important;
       }
+      
+      /* 骰子消息卡片动画样式 */
+      @keyframes dice-in {
+        0% {
+          opacity: 0;
+          transform: scale(0.5) rotate(-10deg);
+        }
+        50% {
+          transform: scale(1.05) rotate(2deg);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) rotate(0deg);
+        }
+      }
+
+      @keyframes dice-pop {
+        0% {
+          opacity: 0;
+          transform: scale(0) translateY(20px);
+        }
+        60% {
+          transform: scale(1.2) translateY(-5px);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+
+      @keyframes twinkle {
+        0%, 100% { opacity: 0.3; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.2); }
+      }
+
+      .animate-dice-in {
+        animation: dice-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      .dice-msg-dice {
+        animation: dice-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        opacity: 0;
+      }
+
+      .animate-twinkle {
+        animation: twinkle 1.5s ease-in-out infinite;
+      }
     </style>
+    <script src="https://cdn.tailwindcss.com"><\/script>
     <script id="base-script">
       // Redirect alerts and modals to parent
       window.alert = function(msg) {

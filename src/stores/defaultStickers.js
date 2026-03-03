@@ -11,26 +11,6 @@ export const defaultStickers = [
         "category": "情绪"
     },
     {
-        "name": "又几把怎么了",
-        "url": "https://i.postimg.cc/ZRs6Gcdc/Screenshot-2025-0620-113353.png",
-        "category": "搞怪"
-    },
-    {
-        "name": "兄弟想操你",
-        "url": "https://i.postimg.cc/cCKf0n7N/Screenshot-2025-0620-113555.png",
-        "category": "情绪"
-    },
-    {
-        "name": "听不懂想亲嘴",
-        "url": "https://i.postimg.cc/mk0CDgV1/Screenshot-2025-0620-113631.png",
-        "category": "搞怪"
-    },
-    {
-        "name": "我都知错了",
-        "url": "https://i.postimg.cc/kXbWHWXQ/Screenshot-2025-0620-113652.png",
-        "category": "搞怪"
-    },
-    {
         "name": "怎？",
         "url": "https://i.postimg.cc/d03q3mfp/Screenshot-2025-0620-123200.png",
         "category": "搞怪"
@@ -113,11 +93,6 @@ export const defaultStickers = [
     {
         "name": "我咋活成这样了",
         "url": "https://i.postimg.cc/D0gD1RJg/Screenshot-2025-0620-123535.png",
-        "category": "搞怪"
-    },
-    {
-        "name": "不要这样子",
-        "url": "https://i.postimg.cc/CKm88Nmg/Screenshot-2025-0620-113757.png",
         "category": "搞怪"
     },
     {
@@ -2566,11 +2541,6 @@ export const defaultStickers = [
         "category": "搞怪"
     },
     {
-        "name": "不可置信",
-        "url": "https://i.postimg.cc/1ty8Kj0t/mmexpo",
-        "category": "搞怪"
-    },
-    {
         "name": "看呆",
         "url": "https://i.postimg.cc/MZPnytn6/mmexport1750081197674.jpg",
         "category": "搞怪"
@@ -2609,11 +2579,6 @@ export const defaultStickers = [
         "name": "嘚瑟蹦迪",
         "url": "https://i.postimg.cc/XvrW6cV8/mmexport1750081649018.gif",
         "category": "搞怪"
-    },
-    {
-        "name": "扑入怀中抱抱",
-        "url": "https://i.postimg.cc/1zBJ1Q2FImage-1755826825995.gif",
-        "category": "可爱"
     },
     {
         "name": "吃炸鸡",

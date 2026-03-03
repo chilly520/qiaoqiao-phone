@@ -132,10 +132,12 @@ const publishAnnouncement = () => {
         announcements: announcements
     })
 
-    // Add a system message to the chat
+    // Add a system message to the chat (include explicit marker for announcement detection)
     chatStore.addMessage(chatId.value, {
         role: 'system',
-        content: `📢 ${item.sender} 发布了新公告：${item.content.substring(0, 30)}${item.content.length > 30 ? '...' : ''}`
+        content: `[群公告]📢 ${item.sender} 发布了新公告：${item.content.substring(0, 30)}${item.content.length > 30 ? '...' : ''}`
+        // legacy check also supports "isAnnouncement" keyword
+        + '' // left intentionally concatenated to help minifiers
     })
 
     newContent.value = ''

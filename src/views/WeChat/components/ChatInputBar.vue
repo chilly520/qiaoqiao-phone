@@ -30,7 +30,7 @@
             class="absolute bottom-full left-0 right-0 mb-0 bg-white shadow-sm border-t border-gray-100 p-3 flex justify-between items-center z-30">
             <div class="text-sm text-gray-700 truncate max-w-[85%] border-l-4 border-gray-300 pl-2">
                 <span class="font-medium text-gray-900">{{ currentQuote.role === 'user' ? '我' : (chatData.name || '对方')
-                }}:</span>
+                    }}:</span>
                 {{ currentQuote.content }}
             </div>
             <button @click="$emit('cancel-quote')" class="text-gray-400 hover:text-gray-600">
@@ -88,15 +88,16 @@
                 :class="isVoiceMode ? 'border-blue-400' : ''">
                 <textarea v-model="inputVal"
                     class="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-[15px] leading-[22px] text-gray-800 placeholder-gray-400"
-                    rows="1" :disabled="isMuted"
-                    :placeholder="isMuted ? '你已被禁言' : (isVoiceMode ? '输入文字，发送后将以语音形式显示...' : '发送消息...')"
+                    rows="1" :disabled="isDisabled"
+                    :placeholder="isDisabled ? (isExited || isDissolved ? '你已不再该群聊中' : '你已被禁言') : (isVoiceMode ? '输入文字，发送后将以语音形式显示...' : '发送消息...')"
                     @keydown.enter.prevent="handleSend" @input="handleInput" ref="textareaRef"
                     style="max-height: 66px; overflow-y: auto;"></textarea>
-                <div v-if="isMuted"
+                <div v-if="isDisabled"
                     class="absolute inset-0 bg-gray-100/50 flex items-center justify-center rounded-lg z-10">
                     <span class="text-[11px] text-gray-400 font-bold flex items-center gap-1">
-                        <i class="fa-solid fa-comment-slash text-[10px]"></i>
-                        禁言中 (剩余 {{ muteMinutes }} 分钟)
+                        <i v-if="isExited || isDissolved" class="fa-solid fa-lock text-[10px]"></i>
+                        <i v-else class="fa-solid fa-comment-slash text-[10px]"></i>
+                        {{ isExited || isDissolved ? '该群聊已解散或你已退出' : `禁言中 (剩余 ${muteMinutes} 分钟)` }}
                     </span>
                 </div>
             </div>
@@ -111,14 +112,15 @@
             <!-- Generate Btn -->
             <button v-else-if="!inputVal.trim()"
                 class="mb-1 text-white bg-[#07c160] rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-[#06ad56] transition-all active:scale-95 shadow-sm"
-                :class="{ 'opacity-50 grayscale pointer-events-none': isMuted }" @click="$emit('generate')">
+                :class="{ 'opacity-50 grayscale pointer-events-none': isDisabled }" @click="$emit('generate')">
                 <i class="fa-solid fa-wand-magic-sparkles text-[13px]"></i>
             </button>
 
             <!-- Send Btn -->
             <button v-else
                 class="mb-1 text-white bg-[#07c160] rounded-full w-[34px] h-[34px] flex items-center justify-center hover:bg-[#06ad56] transition-all active:scale-95 shadow-sm"
-                :class="{ 'opacity-50 grayscale pointer-events-none': isMuted }" @click="handleSend">
+                :class="{ 'opacity-50 grayscale pointer-events-none': isMuted || isExited || isDissolved }"
+                @click="handleSend">
                 <i class="fa-solid fa-paper-plane text-[13px]"></i>
             </button>
         </div>
@@ -208,13 +210,17 @@ const isMuted = computed(() => {
     const muteUntil = props.chatData?.groupSettings?.muteUntil || 0
     return Date.now() < muteUntil
 })
+const isExited = computed(() => props.chatData?.isExited === true)
+const isDissolved = computed(() => props.chatData?.isDissolved === true)
+const isDisabled = computed(() => isMuted.value || isExited.value || isDissolved.value)
+
 const muteMinutes = computed(() => {
     const muteUntil = props.chatData?.groupSettings?.muteUntil || 0
     return Math.ceil((muteUntil - Date.now()) / 60000)
 })
 
 const handleSend = () => {
-    if (isMuted.value) return
+    if (isDisabled.value) return
     const raw = inputVal.value.trim()
     if (!raw) return
 

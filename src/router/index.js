@@ -126,6 +126,16 @@ const router = createRouter({
             component: () => import('../views/WeChat/GalleryView.vue')
         },
         {
+            path: '/calendar',
+            name: 'calendar',
+            component: () => import('../views/Calendar/MobileCalendarApp.vue')
+        },
+        {
+            path: '/calendar/help',
+            name: 'calendar-help',
+            component: () => import('../views/Calendar/components/HelpPage.vue')
+        },
+        {
             path: '/wechat/moments/detail/:id',
             name: 'moment-detail',
             component: () => import('../views/WeChat/MomentDetailView.vue')

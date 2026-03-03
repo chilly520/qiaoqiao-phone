@@ -502,6 +502,53 @@
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
                 </div>
 
+                <!-- Group Chat Memory Interoperability -->
+                <div class="mb-4 space-y-3 p-3 rounded-2xl glass-panel border"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-purple-900/10 border-purple-500/20' : 'bg-purple-50/30 border-purple-100'">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-bold text-purple-600">群聊记忆互通</span>
+                        <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
+                            :class="localData.groupMemoryIntero ? 'bg-purple-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-gray-200')"
+                            @click="localData.groupMemoryIntero = !localData.groupMemoryIntero">
+                            <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
+                                :class="localData.groupMemoryIntero ? 'left-[22px]' : 'left-[2px]'"></div>
+                        </div>
+                    </div>
+
+                    <div v-if="localData.groupMemoryIntero"
+                        class="space-y-3 pt-2 border-t border-purple-100/50 animate-fade-in transition-all">
+                        <div class="text-[10px] text-gray-400">单聊时，AI 会参考以下群聊的记忆。</div>
+
+                        <div class="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                            <div v-if="availableGroups.length === 0"
+                                class="text-[10px] text-gray-400 text-center py-4 italic">当前没有任何活跃群聊</div>
+                            <div v-for="group in availableGroups" :key="group.id"
+                                class="flex items-center justify-between p-2 rounded-xl bg-white/50 border border-white/80 transition-all hover:bg-white cursor-pointer shadow-sm"
+                                @click="toggleGroupLink(group.id)">
+                                <div class="flex items-center gap-2">
+                                    <img :src="group.avatar" class="w-8 h-8 rounded-lg object-cover" />
+                                    <div class="flex flex-col">
+                                        <span class="text-xs font-bold text-gray-700 truncate w-32">{{ group.name
+                                            }}</span>
+                                        <span class="text-[9px] text-gray-400 italic">我的：{{
+                                            group.groupSettings?.myNickname || '未设置' }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div class="flex items-center gap-1" @click.stop>
+                                        <span class="text-[9px] text-gray-400">词条:</span>
+                                        <input type="number" v-model.number="localData.groupMemoryLimits[group.id]"
+                                            class="w-10 h-6 bg-transparent border-b border-purple-200 text-center text-[10px] font-bold outline-none focus:border-purple-500"
+                                            placeholder="20" />
+                                    </div>
+                                    <i class="fa-solid"
+                                        :class="(localData.linkedGroups || []).includes(group.id) ? 'fa-circle-check text-purple-500' : 'fa-circle text-gray-200'"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mb-2 flex items-center gap-2">
                     <label class="text-xs w-24 font-bold text-blue-600">朋友圈记忆</label>
                     <input v-model="localData.momentsMemoryLimit" type="number"
@@ -852,7 +899,7 @@
                             :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-700'">总计
                             (Total Context)</span>
                         <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
-                            }}</span>
+                        }}</span>
                     </div>
 
                     <!-- Breakdown List -->
@@ -1414,6 +1461,25 @@ const executeManualSummary = async () => {
 
 // --- Memory Library Logic ---
 const showMemoryModal = ref(false)
+const toggleGroupLink = (chatId) => {
+    if (!localData.value.linkedGroups) localData.value.linkedGroups = []
+    if (!localData.value.groupMemoryLimits) localData.value.groupMemoryLimits = {}
+
+    const idx = localData.value.linkedGroups.indexOf(chatId)
+    if (idx === -1) {
+        localData.value.linkedGroups.push(chatId)
+        if (!localData.value.groupMemoryLimits[chatId]) {
+            localData.value.groupMemoryLimits[chatId] = 20
+        }
+    } else {
+        localData.value.linkedGroups.splice(idx, 1)
+    }
+}
+
+const availableGroups = computed(() => {
+    return Object.values(chatStore.chats).filter(c => c.isGroup && !c.isDissolved && !c.isArchived)
+})
+
 const memories = computed(() => {
     const memArray = chatStore.chats[props.chatData.id]?.memory || []
     // The store uses unshift, so new items are already at the beginning.
@@ -1682,7 +1748,10 @@ const localData = ref({
     callAvatarUser: '',
     randomProactive: false,
     randomMin: 30,
-    randomMax: 120
+    randomMax: 120,
+    groupMemoryIntero: false,
+    linkedGroups: [],
+    groupMemoryLimits: {} // { chatId: limit }
 })
 
 
@@ -1708,6 +1777,11 @@ watch(() => props.chatData, (newVal) => {
         // Ensure gender fields are present
         if (!dataCopy.gender) dataCopy.gender = '无'
         if (!dataCopy.userGender) dataCopy.userGender = '无'
+
+        // Group memory intero initialization
+        if (dataCopy.groupMemoryIntero === undefined) dataCopy.groupMemoryIntero = false
+        if (!Array.isArray(dataCopy.linkedGroups)) dataCopy.linkedGroups = []
+        if (!dataCopy.groupMemoryLimits) dataCopy.groupMemoryLimits = {}
 
         localData.value = { ...localData.value, ...dataCopy }
 
