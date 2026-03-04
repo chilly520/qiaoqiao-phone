@@ -123,7 +123,7 @@
 
     <!-- 版本信息 -->
     <div class="version-info">
-      <p>花间日历 v1.0.0</p>
+      <p>花间日历 v1.0.1</p>
       <p class="slogan">记录生活，珍藏时光</p>
     </div>
 

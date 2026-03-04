@@ -1559,8 +1559,10 @@ export const useChatStore = defineStore('chat', () => {
             const contentStr = String(newMsg.content || '');
             const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
             if (!isToxic && contentStr.trim().length > 0) {
-                // Play notification sound
-                playSound('notification');
+                // Play notification sound only for red packets and transfers
+                if (newMsg.type === 'redpacket' || newMsg.type === 'transfer') {
+                    playSound('notification');
+                }
 
                 notificationEvent.value = {
                     id: Date.now(),
