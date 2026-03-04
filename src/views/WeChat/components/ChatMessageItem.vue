@@ -46,7 +46,10 @@
 
                     <!-- Avatar -->
                     <div class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
-                        @click.stop="$emit('click-avatar', msg)" @dblclick="$emit('dblclick-avatar', msg)">
+                        @click.stop="handleAvatarClick(msg)" @dblclick="$emit('dblclick-avatar', msg)"
+                        @touchstart="startAvatarLongPress(msg, $event)" @touchend="cancelAvatarLongPress"
+                        @touchcancel="cancelAvatarLongPress" @mousedown="startAvatarLongPress(msg, $event)"
+                        @mouseup="cancelAvatarLongPress" @mouseleave="cancelAvatarLongPress">
                         <!-- Inner Avatar -->
                         <div class="absolute overflow-hidden bg-white shadow-sm transition-all duration-300" :class="[
                             (msg.role === 'user' ? chatData?.userAvatarFrame : chatData?.avatarFrame) || chatData?.avatarShape === 'circle' ? 'rounded-full' : 'rounded',
@@ -332,10 +335,10 @@
                                                     <div class="flex flex-col items-end shrink-0">
                                                         <span class="text-[12px] font-bold text-gray-600">{{
                                                             parsedVoteData.optionVoters[idx].length
-                                                            }}</span>
+                                                        }}</span>
                                                         <span class="text-[9px] text-gray-400 font-medium">{{
                                                             calculateVotePercent(parsedVoteData.optionVoters[idx].length)
-                                                            }}%</span>
+                                                        }}%</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -717,7 +720,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                        }}
+                                    }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -802,7 +805,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-    'click-avatar', 'dblclick-avatar', 'context-menu',
+    'click-avatar', 'dblclick-avatar', 'context-menu', 'avatar-longpress',
     'toggle-select', 'click-pay', 'play-voice', 'click-gift'
 ])
 
@@ -1836,6 +1839,36 @@ function cancelLongPress() {
         clearTimeout(longPressTimer)
         longPressTimer = null
     }
+}
+
+// Avatar Long Press Logic
+let avatarLongPressTimer = null
+let avatarLongPressTriggered = false
+
+function startAvatarLongPress(msg, event) {
+    avatarLongPressTriggered = false
+    cancelAvatarLongPress()
+
+    avatarLongPressTimer = setTimeout(() => {
+        avatarLongPressTriggered = true
+        emit('avatar-longpress', msg)
+        avatarLongPressTimer = null
+    }, 500)
+}
+
+function cancelAvatarLongPress() {
+    if (avatarLongPressTimer) {
+        clearTimeout(avatarLongPressTimer)
+        avatarLongPressTimer = null
+    }
+}
+
+function handleAvatarClick(msg) {
+    if (avatarLongPressTriggered) {
+        avatarLongPressTriggered = false // Reset
+        return
+    }
+    emit('click-avatar', msg)
 }
 
 // Helper for SafeHtmlCard - 处理完整的[CARD]格式

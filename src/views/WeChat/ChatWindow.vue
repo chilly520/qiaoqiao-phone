@@ -948,6 +948,25 @@ const handlePat = (msg) => {
     // }
 }
 
+// Handle Avatar Long Press (@ feature in group chats)
+const handleAvatarLongPress = (msg) => {
+    // Only allow in group chats
+    if (!chatData.value?.isGroup) return
+    // Don't @ yourself
+    if (msg.role === 'user') return
+
+    // Find the member's name
+    const senderName = msg.senderName || chatData.value?.participants?.find(p => p.id === (msg.senderId || msg.userId || chatData.value.id))?.name || '未知'
+
+    // Insert into input bar
+    if (chatInputBarRef.value) {
+        chatInputBarRef.value.insertText(`@${senderName} `)
+    }
+
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(50)
+}
+
 // Handle Avatar Click with double-click prevention
 const handleAvatarClick = (msg) => {
     // Cancel any existing timer
@@ -3032,9 +3051,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     v-show="isMsgVisible(msg)" :msg="msg" :prevMsg="displayedMsgs[index - 1]" :chatData="chatData"
                     :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
                     :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
-                    @context-menu="(e) => handleContextMenu(e.msg, e.event)" @toggle-select="toggleMessageSelection"
-                    @click-pay="handlePayClick" @click-gift="handleGiftClick" @play-voice="handleVoiceClick"
-                    @show-rank="handleShowRank" />
+                    @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
+                    @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
+                    @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
 
                 <!-- Typing Indicator -->
                 <div v-if="chatStore.isTyping" class="flex gap-2 w-full z-10 mb-2">
@@ -3201,7 +3220,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

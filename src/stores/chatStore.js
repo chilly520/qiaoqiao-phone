@@ -3297,6 +3297,11 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                                         isClaimed: false
                                     };
                                 }
+
+                                // robustly strip any AI-generated PAY-xxx ID from the note
+                                if (note) {
+                                    note = note.replace(/[:：]?\s*PAY-[\w-]+\s*$/, '').trim();
+                                }
                             } else if (msgContent.includes('[FAMILY_CARD')) {
                                 msgType = 'family_card';
                             } else if (msgContent.includes('[演奏') || msgContent.includes('[MUSIC')) {
