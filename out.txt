@@ -1,0 +1,86 @@
+﻿
+> qiaqiao-phone@0.0.0 build
+> vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m鉁?[39m 17 modules transformed.
+node.exe : [31mx[39m Build 
+failed in 816ms
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/
+node.exe" "C:\Program Files\n
+odejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: ([31mx  
+  [39m Build failed in 816   
+ ms:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+[31merror during build:
+[31m[vite-plugin-pwa:build] 
+There was an error during the
+ build:
+  [plugin vite:build-import-a
+nalysis] src/stores/chatStore
+.js (3776:1): Failed to parse
+ source for import analysis b
+ecause the content contains i
+nvalid JS syntax. If you are 
+using JSX, make sure to name 
+the file with the .jsx or .ts
+x extension.
+Additionally, handling the er
+ror in the 'buildEnd' hook ca
+used the following error:
+  [plugin vite:build-import-a
+nalysis] src/stores/chatStore
+.js (3776:1): Failed to parse
+ source for import analysis b
+ecause the content contains i
+nvalid JS syntax. If you are 
+using JSX, make sure to name 
+the file with the .jsx or .ts
+x extension.[31m
+file: [36mE:/CHILLY/phone/qi
+aqiao-phone/src/stores/chatSt
+ore.js:3776:1[31m
+[33m
+3774:         calculateMember
+Level, getMemberTitle
+3775:     }
+3776: })
+       ^
+[31m
+    at getRollupError (file:/
+//E:/CHILLY/phone/qiaqiao-pho
+ne/node_modules/rollup/dist/e
+s/shared/parseAst.js:402:41)
+    at file:///E:/CHILLY/phon
+e/qiaqiao-phone/node_modules/
+rollup/dist/es/shared/node-en
+try.js:23444:39
+    at async catchUnfinishedH
+ookActions (file:///E:/CHILLY
+/phone/qiaqiao-phone/node_mod
+ules/rollup/dist/es/shared/no
+de-entry.js:22902:16)
+    at async rollupInternal (
+file:///E:/CHILLY/phone/qiaqi
+ao-phone/node_modules/rollup/
+dist/es/shared/node-entry.js:
+23427:5)
+    at async build (file:///E
+:/CHILLY/phone/qiaqiao-phone/
+node_modules/vite/dist/node/c
+hunks/dep-BK3b2jBa.js:65709:1
+4)
+    at async CAC.<anonymous> 
+(file:///E:/CHILLY/phone/qiaq
+iao-phone/node_modules/vite/d
+ist/node/cli.js:829:5)[39m

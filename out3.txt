@@ -1,0 +1,7 @@
+﻿
+> qiaqiao-phone@0.0.0 build
+> vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m鉁?[39m 1221 modules transformed.

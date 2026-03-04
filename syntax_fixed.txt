@@ -1,0 +1,28 @@
+﻿node : E:\CHILLY\phone\qiaqia
+o-phone\src\stores\chatStore.
+js:3206
+所在位置 行:1 字符: 1
++ node -c src/stores/chatStor
+e.js > syntax_check.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: (E:\CHIL  
+  LY\phone...atStore.js:32   
+ 06:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+                            }
+ else if (msgContent.includes
+('[FAMILY_CARD')) {
+                             
+ ^^^^
+
+SyntaxError: Unexpected token
+ 'else'
+    at checkSyntax (node:inte
+rnal/main/check_syntax:72:5)
+
+Node.js v25.2.1

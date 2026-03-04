@@ -1888,16 +1888,23 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // Group Vote Awareness & Capability
-            const activeVotes = (chat.msgs || []).filter(m => (m.type === 'vote' || m.vote) && !m.isRecall)
+            const activeVotes = (chat.msgs || []).filter(m => m.type === 'vote' && !m.isRecall)
             let voteHint = ''
             if (activeVotes.length > 0) {
-                const latestVote = activeVotes[activeVotes.length - 1].vote
-                voteHint = `\n\n【投票进行中】\n当前有一个主题为“${latestVote.title}”的投票。
-选项：${latestVote.options.map((opt, i) => `${i + 1}.${opt.text}`).join(', ')}
+                let latestVote = null
+                try {
+                    const lastVoteMsg = activeVotes[activeVotes.length - 1]
+                    latestVote = typeof lastVoteMsg.content === 'string' ? JSON.parse(lastVoteMsg.content) : lastVoteMsg.content
+                } catch (e) { /* ignore parse error */ }
+                if (latestVote && latestVote.title && !latestVote.isEnded) {
+                    const optionsText = (latestVote.options || []).map((opt, i) => `${i + 1}.${typeof opt === 'string' ? opt : opt.text}`).join(', ')
+                    voteHint = `\n\n【投票进行中】\n当前有一个主题为“${latestVote.title}”的投票。
+选项：${optionsText}
 ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonymous ? '（匿名）' : '（实名）'}
 作为角色，你可以根据性格参与投票。
 参与投票指令（另起一行）：[VOTE: ${latestVote.title} : 选项序号]
 如果是多选：[VOTE: ${latestVote.title} : 1, 2]`
+                }
             }
 
             const createVoteHint = `\n\n【发起投票功能】\n你可以发起新投票。指令（另起一行）：
@@ -2396,12 +2403,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     const speakerName = groupSpeakerMeta?.senderName || chat.name
 
                     createVote(chatId, {
+                        role: 'ai',
                         title,
                         options: optionsArr,
                         isMultiple,
                         isAnonymous,
                         creatorId: speakerId,
-                        creatorName: speakerName
+                        creatorName: speakerName,
+                        senderId: speakerId,
+                        senderName: speakerName,
+                        senderAvatar: groupSpeakerMeta?.senderAvatar || ''
                     })
                     console.log(`[Vote] AI (${speakerId}) created vote:`, title)
                 }
@@ -3145,8 +3156,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             // --- Financial Transaction Processing (Red Packets & Transfers) ---
                             // [红包:类型(lucky|fixed|手气|固定):金额:个数:备注] 
                             const rpMatch = msgContent.match(/\[红包\s*[:：]\s*(lucky|fixed|手气|固定|手气红包|固定金额)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]/i);
-                            // [转账:对象ID:金额:备注]
-                            const tfMatch = msgContent.match(/\[转账\s*[:：]\s*([\w-]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i);
+                            // [转账:对象ID:金额:备注] or [转账:金额:备注]
+                            const tfMatch = msgContent.match(/\[转账\s*[:：]\s*([\w-]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i)
+                                || msgContent.match(/\[转账\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i);
 
                             let msgType = 'text', amount = null, note = null, extraData = {};
 
@@ -3169,13 +3181,26 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                                 };
                             } else if (tfMatch) {
                                 msgType = 'transfer';
-                                const targetId = tfMatch[1].trim();
-                                amount = parseFloat(tfMatch[2]) || 0.01;
-                                note = tfMatch[3] || '转账给您';
-                                extraData = {
-                                    targetId: targetId,
-                                    isClaimed: false
-                                };
+
+                                // Check if the first capture group is the targetId or the amount
+                                const firstIsNumber = /^[0-9]/.test(tfMatch[1].trim());
+
+                                if (firstIsNumber) {
+                                    amount = parseFloat(tfMatch[1]) || 0.01;
+                                    note = tfMatch[2] || '转账给您';
+                                    extraData = {
+                                        targetId: 'user', // Defaults to user if no target
+                                        isClaimed: false
+                                    };
+                                } else {
+                                    const targetId = tfMatch[1].trim();
+                                    amount = parseFloat(tfMatch[2]) || 0.01;
+                                    note = tfMatch[3] || '转账给您';
+                                    extraData = {
+                                        targetId: targetId,
+                                        isClaimed: false
+                                    };
+                                }
                             } else if (msgContent.includes('[FAMILY_CARD')) {
                                 msgType = 'family_card';
                             } else if (msgContent.includes('[演奏') || msgContent.includes('[MUSIC')) {
