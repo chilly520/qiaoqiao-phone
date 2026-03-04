@@ -44,33 +44,52 @@ export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = ''
     const myRole = groupContext.settings?.myRole || 'member';
     const myTitle = groupContext.settings?.myCustomTitle || '';
 
-    // Format participants with roles and titles
+    // Helper to calculate level for discrete display in prompt
+    const calculateLevel = (act) => {
+      if (act >= 1000) return 6; // 传说
+      if (act >= 500) return 5;  // 话痨
+      if (act >= 200) return 4;  // 活跃
+      if (act >= 100) return 3;  // 吐槽
+      if (act >= 50) return 2;   // 冒泡
+      return 1; // 潜水
+    };
+
+    // Format participants with roles and titles/levels
     const participants = (groupContext.participants || []).map(p => {
       const roleName = p.role === 'owner' ? '群主' : (p.role === 'admin' ? '管理员' : '成员');
-      const titleStr = p.customTitle ? `[${p.customTitle}]` : '';
-      return `- ${p.name} (ID: ${p.id}) | 角色: ${roleName}${titleStr} | 设定: ${p.prompt || '普通群成员'}`;
+
+      // Calculate level for display in prompt
+      const lv = calculateLevel(p.activity || 0);
+      const titleInfo = p.customTitle ? ` | 专属头衔: ${p.customTitle}` : '';
+
+      return `- 【${p.name}】 (ID: ${p.id}) | 级别: LV${lv} | 角色: ${roleName}${titleInfo} | 属性: ${p.prompt || '普通群成员'}`;
     }).join('\n');
 
+    const userLv = calculateLevel(groupContext.settings?.myActivity || 0);
+    const userTitle = groupContext.settings?.myCustomTitle || '';
+
     groupSection = `
-### 0.2 【群聊权益与社交协议 · 核心优先级】
+### 0.2 【群聊社交协议 · 核心优先级】
 你现在处于一个高度模拟真实社交（如QQ/微信）的群聊环境。
-1. **等级制度**: 群内存在【群主】、【管理员】和【成员】。
-   - **权利**: 群主/管理员可以禁言他人、修改他人头衔、撤回违规消息、点名（@）全体成员。
-    - **发红包、转账与礼物**: 
+1. **等级与头衔**: 每个成员都有【级别(LV)】、【角色(群主/管理)】和可选的【专属头衔】。
+   - **注意**: 【专属头衔】是荣誉称号（如“坑神”、“美女大人”），**绝对不是**成员的名字。
+   - **点名规则**: 在对话或使用 @ 功能时，请务必使用成员的【名字】（如 ${userName}），**严禁**直接用头衔或级别作为称呼，除非是特定的调侃或敬称场景。
+2. **权利与指令**:
+   - 群主/管理员可以禁言他人、修改他人头衔、撤回违规消息、点名（@）全体成员。
+    - **互动指令**: 
       - **红包**: \`[红包:总金额:个数:类型:祝福语]\`。
       - **转账**: \`[转账:ID:金额:备注]\`。
       - **礼物**: \`[GIFT:名称:数量:备注]\`。
-      - **领取**: \`[领取红包:消息ID]\`、\`[领取转账:消息ID]\` 或 \`[领取礼物:消息ID]\`。看到他人发送时可主动领取。
+      - **领取**: \`[领取红包:消息ID]\`、\`[领取转账:消息ID]\` 或 \`[领取礼物:消息ID]\`。
 3. **社交反馈**: 
-   - **激烈讨论**: 抢到红包后，你应该根据金额大小做出反应。抢到最多的（手气最佳/手气王）通常会很有成就感，抢到极少的（分钱/几分钱）可能会吐槽、自嘲。
-   - **互动频率**: 你可以吐槽别人发的太少，或者感谢老板（群主/发红包的人）。如果有人发了红包半天没人领，你可以调侃那个人被“孤立”了。
+   - 根据红包金额大小做出真实反应（抢到手气王要显摆，抢到几分钱要吐槽）。
 4. **管理指令 (仅限群主/管理员使用)**:
-   - **撤回**: \`[撤回:消息ID]\`。用于删除某条不合时宜的消息。
-   - **禁言**: \`[禁言:角色ID:分钟]\`。如 \`[禁言:user:10]\` 禁言用户10分钟。设为0则解除。
-   - **头衔**: \`[修改头衔:角色ID:新头衔]\`。为成员设置专属紫色头衔。
+   - **撤回**: \`[撤回:消息ID]\`。
+   - **禁言**: \`[禁言:角色ID:分钟]\`。
+   - **头衔**: \`[修改头衔:角色ID:新头衔]\`。
 5. **成员名单与当前状态**:
 ${participants}
-- 【我/用户】: ${userName} (ID: user) | 角色: ${myRole}${myTitle ? ` [${myTitle}]` : ''} | 人设: ${groupContext.settings?.myPersona || '普通成员'}
+- 【我/用户】: 【${userName}】 (ID: user) | 级别: LV${userLv} | 角色: ${myRole}${userTitle ? ` | 专属头衔: ${userTitle}` : ''} | 用户人设: ${groupContext.settings?.myPersona || '普通成员'}
 6. **群氛围**: ${groupContext.settings?.groupPrompt || '活跃、自然的群聊氛围'}
     `.trim();
   }
