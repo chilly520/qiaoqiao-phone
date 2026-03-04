@@ -3311,10 +3311,19 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
                             if (i === 0 && innerVoiceBlock) msgContent += '\n' + innerVoiceBlock;
 
+                            // For financial messages, use the note as content instead of the raw command tag
+                            // This prevents the internal tag (e.g. [转账:user:520:备注]) from being stored as content
+                            let displayContent = msgContent;
+                            if (msgType === 'redpacket') {
+                                displayContent = note || '恭喜发财，大吉大利';
+                            } else if (msgType === 'transfer') {
+                                displayContent = note || '转账给您';
+                            }
+
                             msgAdded = addMessage(chatId, {
                                 role: 'ai',
                                 type: msgType,
-                                content: msgContent,
+                                content: displayContent,
                                 amount,
                                 note,
                                 ...extraData,
@@ -3337,10 +3346,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            ...(groupSpeakerMeta || {})
+                            ...(currentGroupMeta || {})
                         });
                     } else if (type === 'voice') {
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, ...(groupSpeakerMeta || {}) });
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, ...(currentGroupMeta || {}) });
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
@@ -3355,7 +3364,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                                 type: 'text',
                                 content: '🎨 正在根据灵感绘图...',
                                 quote: i === 0 ? aiQuote : null,
-                                ...(groupSpeakerMeta || {})
+                                ...(currentGroupMeta || {})
                             });
 
                             // Safe ID retrieval - Now safe because we awaited addMessage

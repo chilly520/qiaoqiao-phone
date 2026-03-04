@@ -60,7 +60,8 @@ function openApp(appId) {
     router.push(path).catch(err => {
       // Ignore navigation failures (duplicates, cancelled) to prevent Promise Rejection logs
       if (err.name !== 'NavigationDuplicated' && !err.message.includes('Avoided redundant navigation')) {
-        logger.warn('Nav Warning', { path, error: err.message })
+        const isModuleError = err.message.includes('Failed to fetch dynamically imported module');
+        logger.warn(isModuleError ? 'Module Load Failed' : 'Nav Warning', { path, error: err.message })
       }
     })
   }

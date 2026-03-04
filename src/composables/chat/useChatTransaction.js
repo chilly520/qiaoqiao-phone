@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useWalletStore } from '../../stores/walletStore'
 import { useChatStore } from '../../stores/chatStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 export function useChatTransaction() {
     const walletStore = useWalletStore()
@@ -105,8 +106,9 @@ export function useChatTransaction() {
             // Add System Message
             const chat = chatStore.chats[chatStore.currentChatId]
             if (chat) {
-                const senderName = chat.remark || chat.name
-                const userName = chat.userName || '用户'
+                // In group chats, use the sender info from the message itself
+                const senderName = currentRedPacket.value?.senderName || chat.remark || chat.name
+                const userName = useSettingsStore().personalization?.userProfile?.name || '我'
                 chatStore.addMessage(chat.id, {
                     role: 'system',
                     type: 'system',
@@ -129,8 +131,9 @@ export function useChatTransaction() {
 
         const chat = chatStore.chats[chatStore.currentChatId]
         if (chat) {
-            const senderName = chat.remark || chat.name || '对方'
-            const userName = chat.userName || '用户'
+            // In group chats, use the sender info from the message itself
+            const senderName = currentRedPacket.value?.senderName || chat.remark || chat.name || '对方'
+            const userName = useSettingsStore().personalization?.userProfile?.name || '我'
             chatStore.addMessage(chat.id, {
                 role: 'system',
                 content: `${userName}已领取了${senderName}的转账`
@@ -152,7 +155,8 @@ export function useChatTransaction() {
 
         const chat = chatStore.chats[chatStore.currentChatId]
         if (chat && currentRedPacket.value) {
-            const senderName = chat.remark || chat.name || '对方'
+            // In group chats, use the sender info from the message itself
+            const senderName = currentRedPacket.value?.senderName || chat.remark || chat.name || '对方'
             const contentStr = typeof currentRedPacket.value.content === 'string' ? currentRedPacket.value.content : ''
             const typeStr = (currentRedPacket.value.type === 'transfer' || contentStr.includes('转账')) ? '转账' : '红包'
 

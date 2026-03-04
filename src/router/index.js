@@ -191,8 +191,15 @@ const router = createRouter({
 router.onError((error, to) => {
     if (error.message.includes('Failed to fetch dynamically imported module') ||
         error.message.includes('Loading chunk')) {
-        console.error('[Router] Module load failed! Auto-refresh disabled for debugging.', error);
-        // window.location.reload(); 
+        console.error('[Router] Module load failed! Auto-refreshing to sync with latest version.', error);
+
+        // Prevent infinite reload loops
+        const lastReload = parseInt(sessionStorage.getItem('last_module_reload') || '0');
+        const now = Date.now();
+        if (now - lastReload > 10000) {
+            sessionStorage.setItem('last_module_reload', String(now));
+            window.location.reload();
+        }
     }
 });
 

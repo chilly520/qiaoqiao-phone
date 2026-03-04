@@ -2207,7 +2207,8 @@ const rejectPayment = () => {
     if (msg) {
         msg.isRejected = true
         msg.rejectTime = Date.now()
-        const senderName = chat.remark || chat.name || '对方'
+        // In group chats, use the sender info from the message itself
+        const senderName = msg.senderName || chat.remark || chat.name || '对方'
         const typeStr = (msg.type === 'transfer' || msg.content.includes('转账')) ? '转账' : '红包'
         chatStore.addMessage(chat.id, {
             role: 'system',
@@ -3200,7 +3201,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                                }}</span></div>
+                        }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->
