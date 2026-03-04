@@ -490,20 +490,6 @@ const getThemeCardClass = () => {
   if (theme === 'poster') return base + (isDark ? 'bg-indigo-900/20 border-indigo-700/30 text-indigo-100' : 'bg-white border-indigo-100 text-gray-800')
   return base + (isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100')
 }
-const getThemeNumberClass = () => {
-  const theme = currentMemoryTheme.value;
-  let base = 'w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold '
-  if (theme === 'diary') return base + 'bg-amber-100 text-amber-600'
-  if (theme === 'newspaper') return base + 'bg-gray-900 text-white rounded-none'
-  if (theme === 'postage') return base + 'bg-red-500 text-white rotate-12'
-  if (theme === 'poster') return base + 'bg-indigo-500 text-white'
-  return base + 'bg-gray-100 text-gray-500'
-}
-const getThemeNumberPrefix = (n) => {
-  const theme = currentMemoryTheme.value;
-  if (theme === 'newspaper') return `VOL.${n}`
-  return n
-}
 const getThemeBadgeClass = () => {
   const theme = currentMemoryTheme.value;
   let base = 'text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider '
@@ -513,32 +499,16 @@ const getThemeBadgeClass = () => {
   if (theme === 'poster') return base + 'bg-indigo-500/10 text-indigo-500'
   return base + 'bg-gray-100 text-gray-500'
 }
-const getThemeLabel = () => {
+const getThemeNumberClass = () => {
   const theme = currentMemoryTheme.value;
-  if (theme === 'diary') return 'Memorandum'
-  if (theme === 'newspaper') return 'Extra Edition'
-  if (theme === 'postage') return 'Stamp'
-  if (theme === 'poster') return 'Headline'
-  return 'Memory'
+  let base = 'w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold '
+  if (theme === 'diary') return base + 'bg-amber-100 text-amber-600'
+  if (theme === 'newspaper') return base + 'bg-gray-900 text-white rounded-none'
+  if (theme === 'postage') return base + 'bg-red-500 text-white rotate-12'
+  if (theme === 'poster') return base + 'bg-indigo-500 text-white'
+  return base + 'bg-gray-100 text-gray-500'
 }
-const getThemeContentClass = () => {
-  const theme = currentMemoryTheme.value;
-  let base = 'text-sm leading-relaxed '
-  if (theme === 'diary') return base + 'font-serif italic'
-  if (theme === 'newspaper') return base + 'font-serif font-medium indent-4'
-  if (theme === 'postage') return base + 'font-mono'
-  if (theme === 'poster') return base + 'font-bold tracking-tight uppercase'
-  return base
-}
-const getThemeMetaClass = () => {
-  const theme = currentMemoryTheme.value;
-  let base = 'mt-3 text-[10px] flex items-center '
-  if (theme === 'diary') return base + 'text-amber-500/60'
-  if (theme === 'newspaper') return base + 'text-gray-500 uppercase font-bold border-t border-gray-100 pt-2'
-  if (theme === 'postage') return base + 'text-red-400'
-  if (theme === 'poster') return base + 'text-indigo-400 font-bold'
-  return base + 'text-gray-400'
-}
+
 
 // --- Memory Actions ---
 const startEdit = (index, mem) => {
@@ -590,47 +560,7 @@ function openMemoryLib() {
   showMemoryModal.value = true
 }
 
-function deleteMemory(index) {
-  const chat = existingChat.value
-  if (chat && Array.isArray(chat.memory)) {
-    chat.memory.splice(index, 1)
-    chatStore.saveChats()
-    chatStore.triggerToast('已删除', 'success')
-  }
-}
 
-function startEdit(index, mem) {
-  editingIndex.value = index
-  editingContent.value = typeof mem === 'object' ? (mem.content || JSON.stringify(mem)) : mem
-}
-
-function cancelEdit() {
-  editingIndex.value = -1
-  editingContent.value = ''
-}
-
-function saveEdit(index) {
-  const chat = existingChat.value
-  if (chat && Array.isArray(chat.memory)) {
-    if (typeof chat.memory[index] === 'object') {
-      chat.memory[index].content = editingContent.value
-    } else {
-      chat.memory[index] = editingContent.value
-    }
-    chatStore.saveChats()
-    chatStore.triggerToast('已保存', 'success')
-    editingIndex.value = -1
-    editingContent.value = ''
-  }
-}
-
-function toggleSelection(index) {
-  if (selectedIndices.value.has(index)) {
-    selectedIndices.value.delete(index)
-  } else {
-    selectedIndices.value.add(index)
-  }
-}
 
 function toggleSelectAll() {
   if (isAllSelected.value) {
@@ -661,45 +591,7 @@ const isAllSelected = computed(() => {
   return memories.value.length > 0 && selectedIndices.value.size === memories.value.length
 })
 
-function getThemeBackground() {
-  const themes = {
-    diary: 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50',
-    newspaper: 'bg-gray-100',
-    postage: 'bg-gradient-to-br from-red-50 via-pink-50 to-rose-50',
-    poster: 'bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50'
-  }
-  return themes[currentMemoryTheme.value] || themes.diary
-}
 
-function getThemeCardClass() {
-  const themes = {
-    diary: 'bg-amber-50 border border-amber-200 rounded-xl p-3 shadow-sm hover:shadow-md',
-    newspaper: 'bg-gray-50 border border-gray-300 rounded-xl p-3 shadow-sm hover:shadow-md',
-    postage: 'bg-red-50 border border-red-200 rounded-xl p-3 shadow-sm hover:shadow-md',
-    poster: 'bg-purple-50 border border-purple-200 rounded-xl p-3 shadow-sm hover:shadow-md'
-  }
-  return themes[currentMemoryTheme.value] || 'bg-white border border-gray-200 rounded-xl p-3'
-}
-
-function getThemeBadgeClass() {
-  const themes = {
-    diary: 'px-2 py-1 bg-amber-200 text-amber-800 rounded text-[10px] font-bold',
-    newspaper: 'px-2 py-1 bg-gray-300 text-gray-900 rounded text-[10px] font-bold',
-    postage: 'px-2 py-1 bg-red-200 text-red-800 rounded text-[10px] font-bold',
-    poster: 'px-2 py-1 bg-purple-200 text-purple-800 rounded text-[10px] font-bold'
-  }
-  return themes[currentMemoryTheme.value] || 'px-2 py-1 bg-gray-200 text-gray-800 rounded text-[10px] font-bold'
-}
-
-function getThemeNumberClass() {
-  const themes = {
-    diary: 'w-7 h-7 rounded-full bg-amber-300 text-amber-900 flex items-center justify-center text-[11px] font-bold',
-    newspaper: 'w-7 h-7 rounded-full bg-gray-400 text-white flex items-center justify-center text-[11px] font-bold',
-    postage: 'w-7 h-7 rounded-full bg-red-300 text-red-900 flex items-center justify-center text-[11px] font-bold',
-    poster: 'w-7 h-7 rounded-full bg-purple-300 text-purple-900 flex items-center justify-center text-[11px] font-bold'
-  }
-  return themes[currentMemoryTheme.value] || 'w-7 h-7 rounded-full bg-gray-300 text-gray-900 flex items-center justify-center text-[11px] font-bold'
-}
 
 function getThemeNumberPrefix(num) {
   const themes = {
