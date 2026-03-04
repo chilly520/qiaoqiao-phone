@@ -708,14 +708,22 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Remove pruning for proactive call to keep identity intact
         const prunedChar = { ...char }
 
+        const pinia = getActivePinia()
+        const chatStore = pinia ? pinia._s.get('chat') : null
+
         const runtimeGroupCtx = char.isGroup ? {
             isGroup: true,
             settings: char.groupSettings || {},
-            participants: char.participants || []
+            participants: (char.participants || []).map(p => {
+                // Fetch the specific 'User Persona' configured for this NPC in their private chat
+                const privateChat = chatStore?.chats?.[p.id];
+                return {
+                    ...p,
+                    individualUserPersona: privateChat?.userPersona || ''
+                };
+            })
         } : null;
 
-        const pinia = getActivePinia()
-        const chatStore = pinia ? pinia._s.get('chat') : null
         const calendarStore = useCalendarStore()
         const calendarContext = char.id ? calendarStore.getAIContextPrompt(char.id) : ''
 

@@ -61,8 +61,9 @@ export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = ''
       // Calculate level for display in prompt
       const lv = calculateLevel(p.activity || 0);
       const titleInfo = p.customTitle ? ` | 专属头衔: ${p.customTitle}` : '';
+      const personaInfo = p.individualUserPersona ? ` | 对【我/用户】的私有设定: ${p.individualUserPersona}` : '';
 
-      return `- 【${p.name}】 (ID: ${p.id}) | 级别: LV${lv} | 角色: ${roleName}${titleInfo} | 属性: ${p.prompt || '普通群成员'}`;
+      return `- 【${p.name}】 (ID: ${p.id}) | 级别: LV${lv} | 角色: ${roleName}${titleInfo}${personaInfo} | 属性: ${p.prompt || '普通群成员'}`;
     }).join('\n');
 
     const userLv = calculateLevel(groupContext.settings?.myActivity || 0);
@@ -74,6 +75,7 @@ export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = ''
 1. **等级与头衔**: 每个成员都有【级别(LV)】、【角色(群主/管理)】和可选的【专属头衔】。
    - **注意**: 【专属头衔】是荣誉称号（如“坑神”、“美女大人”），**绝对不是**成员的名字。
    - **点名规则**: 在对话或使用 @ 功能时，请务必使用成员的【名字】（如 ${userName}），**严禁**直接用头衔或级别作为称呼，除非是特定的调侃或敬称场景。
+   - **身份稳定性**: 即使在群聊中，你也必须牢记你与【我/用户】的私有关系（如：夫妻、情侣、死党等）。如果某成员的“私有设定”里写了他是你的家属，他在群里也应该表现出对应的亲昵或默契，不能只把你当普通群主。
 2. **权利与指令**:
    - 群主/管理员可以禁言他人、修改他人头衔、撤回违规消息、点名（@）全体成员。
     - **互动指令**: 
