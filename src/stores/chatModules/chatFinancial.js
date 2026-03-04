@@ -1,7 +1,7 @@
 import { useSettingsStore } from '../settingsStore'
 import { useWalletStore } from '../walletStore'
 
-export const setupFinancialLogic = (chats, addMessage, saveChats) => {
+export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => {
     /**
      * Fair lucky money splitting algorithm
      */
@@ -82,6 +82,7 @@ export const setupFinancialLogic = (chats, addMessage, saveChats) => {
         // If user claimed, add to wallet
         if (claimantId === 'user') {
             useWalletStore().increaseBalance(amount, `领取红包: ${msg.note || '恭喜发财'}`);
+            if (typeof playSound === 'function') playSound('coins');
         }
 
         // Add system message
@@ -137,6 +138,7 @@ export const setupFinancialLogic = (chats, addMessage, saveChats) => {
         if (claimantId === 'user') {
             name = useSettingsStore().personalization?.userProfile?.name || '我';
             useWalletStore().increaseBalance(msg.amount, `领到转账: ${msg.note || '无备注'}`);
+            if (typeof playSound === 'function') playSound('coins');
         } else {
             const p = chat.participants.find(p => p.id === claimantId);
             if (p) name = p.name;
@@ -201,7 +203,8 @@ export const setupFinancialLogic = (chats, addMessage, saveChats) => {
         // 添加已领取系统消息
         addMessage(chatId, {
             role: 'system',
-            content: `${claimantStr}已领取了${senderName}的礼物：${msg.giftName}`
+            content: `${claimantStr}已领取了${senderName}的礼物：${msg.giftName}`,
+            systemMsg: true // 标记为系统消息，避免触发其他逻辑
         });
 
         // 生成已领取卡片
@@ -217,7 +220,8 @@ export const setupFinancialLogic = (chats, addMessage, saveChats) => {
             claimantName: claimantName,
             claimantAvatar: claimantAvatar,
             claimTime: Date.now(),
-            senderName: chat.name
+            senderName: chat.name,
+            systemMsg: true // 标记为系统消息
         });
 
         saveChats();

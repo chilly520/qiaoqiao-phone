@@ -359,12 +359,21 @@ export const useCalendarStore = defineStore('calendar', () => {
 
         // Handle User Profile migration/loading
         if (data.userProfile) {
-          userProfile.value = data.userProfile
-        } else {
-          const legacyProfile = localStorage.getItem('calendar_user_profile')
-          if (legacyProfile) {
-            try { userProfile.value = JSON.parse(legacyProfile) } catch (e) { }
-          }
+          userProfile.value = { ...userProfile.value, ...data.userProfile }
+        }
+      }
+
+      // Always try loading legacy profile if name/avatar are still empty
+      if (!userProfile.value.name || !userProfile.value.avatar) {
+        const legacyProfile = localStorage.getItem('calendar_user_profile')
+        if (legacyProfile) {
+          try {
+            const parsed = JSON.parse(legacyProfile)
+            if (parsed) {
+              if (!userProfile.value.name) userProfile.value.name = parsed.name || ''
+              if (!userProfile.value.avatar) userProfile.value.avatar = parsed.avatar || ''
+            }
+          } catch (e) { }
         }
       }
     } catch (e) {
@@ -390,17 +399,19 @@ export const useCalendarStore = defineStore('calendar', () => {
         userProfile: userProfile.value
       }
       localStorage.setItem('calendar_data', JSON.stringify(data))
+      // Also save profile separately for extra safety
+      localStorage.setItem('calendar_user_profile', JSON.stringify(userProfile.value))
     } catch (e) {
       console.error('[CalendarStore] Save failed:', e)
     }
   }
 
-  // Watch for changes and auto-save
-  watch([
-    events, periodData, moodRecords, countdowns,
-    recurringTasks, sleepRecords, waterRecords,
-    diaries, anniversaries, aiAccessSettings,
-    periodReminders, userProfile
+  // Watch for changes and auto-save (Use a getter for the array to ensure better reactivity)
+  watch(() => [
+    events.value, periodData.value, moodRecords.value, countdowns.value,
+    recurringTasks.value, sleepRecords.value, waterRecords.value,
+    diaries.value, anniversaries.value, aiAccessSettings.value,
+    periodReminders.value, userProfile.value
   ], () => {
     saveData()
   }, { deep: true })

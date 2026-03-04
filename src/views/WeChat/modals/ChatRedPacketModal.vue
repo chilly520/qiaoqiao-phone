@@ -2,115 +2,161 @@
     <div v-if="visible"
         class="fixed inset-0 bg-black/85 z-[150] flex flex-col items-center justify-center animate-fade-in"
         @click.self="$emit('close')">
+
         <!-- The Card -->
-        <div class="w-[320px] h-[520px] rounded-[12px] relative overflow-hidden shadow-2xl transition-all duration-500 bg-[#f5f5f5]"
-            :class="!showResult ? 'bg-[#D04035]' : 'bg-[#f5f5f5]'">
+        <div class="w-[320px] h-[520px] rounded-[12px] relative overflow-hidden shadow-2xl transition-all duration-500"
+            :class="[
+                !showResult ? 'bg-[#CF3B32]' : 'bg-[#f5f5f5]',
+                isOpening ? 'animate-vibrate' : ''
+            ]">
 
-            <!-- 1. Unopened View -->
-            <div v-if="!showResult" class="w-full h-full flex flex-col items-center relative">
-                <!-- Top Arc Decoration -->
-                <div
-                    class="absolute -top-[150px] -left-[10%] w-[120%] h-[350px] bg-[#E35447] rounded-[50%] shadow-lg z-0">
-                </div>
+            <Transition name="packet-flip" mode="out-in">
+                <!-- 1. Unopened View -->
+                <div v-if="!showResult" key="unopened"
+                    class="w-full h-full flex flex-col items-center relative overflow-hidden bg-[#CF3B32]">
+                    <!-- Background Cover Image (If exists) -->
+                    <div v-if="packet?.coverImage" class="absolute inset-0 z-0">
+                        <img :src="packet.coverImage" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-black/20"></div>
+                    </div>
 
-                <!-- User Info -->
-                <div class="z-10 mt-[80px] flex flex-col items-center">
-                    <div class="flex items-center gap-2 mb-4">
+                    <!-- Envelope Flap (The 'Texture') -->
+                    <div
+                        class="absolute -top-[160px] -left-[10%] w-[120%] h-[380px] bg-[#DE4F45] rounded-[50%] shadow-[0_4px_15px_rgba(0,0,0,0.2)] z-10 border-b border-black/5">
+                    </div>
+
+                    <!-- User Info & Note -->
+                    <div class="z-20 mt-[60px] flex flex-col items-center w-full px-8">
                         <img :src="getSenderAvatar()"
-                            class="w-12 h-12 rounded-lg border-2 border-[#FFE2B1] shadow-sm object-cover">
-                        <span class="text-[#FFE2B1] font-medium text-lg">{{ getSenderName() }}</span>
-                    </div>
-                    <div class="text-[#FFE2B1] text-xs opacity-80 mb-2">给你发了一个红包</div>
-                    <div class="text-[#FFE2B1] text-xl font-bold px-8 text-center leading-relaxed mt-4 drop-shadow-md">
-                        {{ packet?.note || "恭喜发财，大吉大利" }}
-                    </div>
-                </div>
-
-                <!-- Open Button -->
-                <div class="z-10 mt-auto mb-[80px] flex flex-col items-center">
-                    <div v-if="packet?.remainingCount > 0"
-                        class="w-24 h-24 bg-[#EBC88E] rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-all active:scale-95 border-4 border-[#E35447] hover:brightness-105"
-                        :class="{ 'animate-spinning': isOpening }" @click="$emit('open')">
-                        <span class="text-[#333] font-bold text-4xl font-serif">開</span>
-                    </div>
-                    <div v-else class="text-[#FFE2B1] text-lg font-medium opacity-60">红包已被领光</div>
-
-                    <!-- Reject Link -->
-                    <div v-if="packet?.role === 'ai'"
-                        class="mt-8 text-[#FFE2B1]/60 text-sm cursor-pointer hover:text-white transition-colors underline underline-offset-4"
-                        @click="$emit('reject')">
-                        不想要，退还资金
-                    </div>
-                </div>
-
-                <div class="absolute bottom-4 text-[#FFE2B1]/40 text-[10px] tracking-widest">微信红包</div>
-            </div>
-
-            <!-- 2. Result Detail View -->
-            <div v-else class="w-full h-full flex flex-col relative animate-slide-up bg-[#f5f5f5]">
-                <!-- Header (Red Arc) -->
-                <div
-                    class="relative w-full h-[180px] bg-[#D04035] flex flex-col items-center pt-8 shrink-0 overflow-hidden">
-                    <div class="absolute -bottom-[40%] left-[-10%] w-[120%] h-[100%] bg-[#D04035] rounded-[50%] z-0">
-                    </div>
-
-                    <div class="z-10 flex flex-col items-center">
-                        <div class="flex items-center gap-2 mb-2">
-                            <img :src="getSenderAvatar()" class="w-6 h-6 rounded border border-white/20">
-                            <span class="text-white text-sm font-medium">{{ getSenderName() }}的红包</span>
+                            class="w-16 h-16 rounded-2xl border-2 border-[#EBC88E]/40 mb-4 shadow-2xl object-cover">
+                        <div class="text-[#FFE2B1] text-lg font-bold drop-shadow-lg tracking-wide">{{ getSenderName() }}
                         </div>
-                        <div class="text-white/80 text-xs mb-3">{{ packet?.note }}</div>
+                        <div class="text-[#FFE2B1]/60 text-[10px] mt-1 mb-12 tracking-[0.2em] font-light">给你发了一个红包</div>
 
-                        <!-- My Claim Result (If I claimed) -->
-                        <div v-if="myClaim" class="flex items-baseline text-[#f8d0a0]">
-                            <span class="text-2xl font-bold mr-1">{{ myClaim.amount }}</span>
-                            <span class="text-xs">元</span>
+                        <div class="text-[#EBC88E] text-2xl font-medium text-center line-clamp-3 leading-relaxed drop-shadow-xl"
+                            style="text-shadow: 0 2px 8px rgba(0,0,0,0.4);">
+                            {{ packet?.note || '恭喜发财，大吉大利' }}
                         </div>
-                        <div v-else class="text-white font-medium">共 {{ packet?.totalAmount }} 元</div>
                     </div>
+
+                    <!-- Open Button -->
+                    <div class="z-20 mt-auto mb-[80px] flex flex-col items-center">
+                        <div v-if="packet?.remainingCount > 0"
+                            class="w-24 h-24 bg-[#EBC88E] rounded-full flex items-center justify-center shadow-[0_10px_25px_rgba(0,0,0,0.4)] cursor-pointer transition-all active:scale-95 border-4 border-[#CF3B32]/30 hover:brightness-110"
+                            style="perspective: 1000px;" :class="{ 'animate-spinning-3d': isOpening }"
+                            @click="$emit('open')">
+                            <span class="text-[#333] font-bold text-4xl font-serif">開</span>
+                        </div>
+                        <div v-else
+                            class="text-[#FFE2B1] text-lg font-bold drop-shadow-lg bg-black/40 px-6 py-2 rounded-full backdrop-blur-md border border-white/10">
+                            红包已被领光</div>
+
+                        <!-- Reject Link -->
+                        <div v-if="packet?.role === 'ai'"
+                            class="mt-10 text-[#FFE2B1]/80 text-sm font-bold cursor-pointer hover:text-white transition-colors underline underline-offset-4 drop-shadow-lg"
+                            @click="$emit('reject')">
+                            退回红包
+                        </div>
+                    </div>
+
+                    <div
+                        class="absolute bottom-4 z-20 text-[#FFE2B1]/40 text-[10px] tracking-[0.3em] font-bold uppercase">
+                        WeChat Red Packet</div>
                 </div>
 
-                <!-- Claims List -->
-                <div class="flex-1 overflow-y-auto px-4 py-2 z-10 -mt-4">
-                    <div class="bg-white rounded-t-xl p-4 shadow-sm min-h-full">
+                <!-- 2. Result Detail View -->
+                <div v-else key="result" class="w-full h-full flex flex-col relative bg-[#f5f5f5]">
+                    <!-- Header (Red Arc) -->
+                    <div
+                        class="relative w-full h-[180px] bg-[#D04035] flex flex-col items-center pt-8 shrink-0 overflow-hidden">
+                        <!-- Header Decoration (Arc with optional Image) -->
                         <div
-                            class="text-gray-400 text-[10px] mb-4 uppercase tracking-tighter font-bold flex justify-between">
-                            <span>已领取 {{ packet?.claims?.length || 0 }}/{{ packet?.count || 1 }} 个</span>
-                            <span>{{ packet?.packetType === 'lucky' ? '手气红包' : '普通红包' }}</span>
+                            class="absolute -bottom-[40%] left-[-10%] w-[120%] h-[100%] bg-[#D04035] rounded-[50%] z-0 overflow-hidden">
+                            <img v-if="packet?.coverImage" :src="packet.coverImage"
+                                class="w-full h-full object-cover scale-150 transform translate-y-[-10%]">
+                            <div v-if="packet?.coverImage" class="absolute inset-0 bg-black/20"></div>
                         </div>
 
-                        <div v-for="(claim, idx) in packet?.claims" :key="idx"
-                            class="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0 group">
-                            <img :src="claim.avatar || '/avatars/default.png'"
-                                class="w-10 h-10 rounded-lg object-cover bg-gray-100">
-                            <div class="flex-1 min-w-0">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-sm font-medium text-gray-800 truncate">{{ claim.name }}</span>
-                                    <span class="text-sm font-bold text-gray-900">{{ claim.amount }}元</span>
+                        <div class="z-10 flex flex-col items-center">
+                            <div class="flex items-center gap-2 mb-2">
+                                <img :src="getSenderAvatar()" class="w-6 h-6 rounded border border-white/20">
+                                <span class="text-white text-sm font-medium">{{ getSenderName() }}的红包</span>
+                            </div>
+                            <div class="text-white/80 text-xs mb-3">{{ packet?.note }}</div>
+
+                            <!-- My Claim Result or Single Chat Amount -->
+                            <div v-if="myClaim || !chatData?.isGroup" class="flex flex-col items-center">
+                                <div class="flex items-baseline text-[#f8d0a0] drop-shadow-sm">
+                                    <span class="text-5xl font-black mr-1">{{ formatAmount }}</span>
+                                    <span class="text-sm font-bold">元</span>
                                 </div>
-                                <div class="flex justify-between items-center mt-0.5">
-                                    <span class="text-[10px] text-gray-400">{{ formatTime(claim.time) }}</span>
-                                    <span v-if="isLuckyKing(claim)"
-                                        class="text-[10px] text-orange-500 font-bold flex items-center gap-0.5">
-                                        <i class="fa-solid fa-crown text-[8px]"></i> 手气最佳
-                                    </span>
+                                <div v-if="!chatData?.isGroup"
+                                    class="text-white/60 text-[10px] mt-1 tracking-[0.2em] font-light">红包金额</div>
+                            </div>
+                            <div v-else class="text-[#f8d0a0] flex flex-col items-center">
+                                <div class="text-white/90 text-xs mb-1 tracking-widest opacity-80">总金额</div>
+                                <div class="flex items-baseline">
+                                    <span class="text-3xl font-bold mr-1">{{ formatAmount }}</span>
+                                    <span class="text-xs">元</span>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <div v-if="packet?.claims?.length === 0" class="py-12 flex flex-col items-center text-gray-300">
-                            <i class="fa-solid fa-hourglass-start text-3xl mb-2 opacity-20"></i>
-                            <span class="text-xs">暂无人领取</span>
+                    <!-- Claims List -->
+                    <div class="flex-1 overflow-y-auto px-4 py-2 z-10 -mt-4">
+                        <div class="bg-white rounded-t-xl p-4 shadow-sm min-h-full">
+                            <div v-if="chatData?.isGroup"
+                                class="text-gray-400 text-[10px] mb-4 uppercase tracking-tighter font-bold flex justify-between items-center border-b border-gray-50 pb-2">
+                                <span>已领取 {{ packet?.claims?.length || 0 }}/{{ packet?.count || 1 }} 个，共 {{
+                                    packet?.amount || '0.00' }} 元</span>
+                                <span class="bg-gray-100 px-2 py-0.5 rounded text-[8px] italic">{{ packet?.packetType
+                                    === 'lucky' ? '拼手气红包' : '普通红包' }}</span>
+                            </div>
+
+                            <div v-if="chatData?.isGroup">
+                                <div v-for="(claim, idx) in packet?.claims" :key="idx"
+                                    class="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
+                                    <div class="flex items-center gap-3">
+                                        <img :src="claim.avatar" class="w-10 h-10 rounded-lg bg-gray-100 object-cover">
+                                        <div class="flex flex-col">
+                                            <span class="text-sm font-bold text-gray-800">{{ claim.name }}</span>
+                                            <span class="text-[10px] text-gray-400">{{ formatTime(claim.timestamp)
+                                                }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col items-end">
+                                        <div class="flex items-baseline font-bold text-gray-700">
+                                            <span class="text-sm">{{ claim.amount }}</span>
+                                            <span class="text-[10px] ml-0.5">元</span>
+                                        </div>
+                                        <div v-if="claim.isBest" class="flex items-center gap-1 text-[#f79c1f]">
+                                            <i class="fa-solid fa-crown text-[8px]"></i>
+                                            <span class="text-[8px] font-bold">手气最佳</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="flex flex-col items-center py-10 text-gray-400">
+                                <template v-if="myClaim">
+                                    <i class="fa-solid fa-circle-check text-4xl mb-3 text-green-500"></i>
+                                    <span class="text-sm">已存入零钱，可直接使用</span>
+                                </template>
+                                <template v-else>
+                                    <i class="fa-solid fa-check-circle text-4xl mb-3 text-green-500 opacity-20"></i>
+                                    <span class="text-sm">红包已领取</span>
+                                </template>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Footer -->
-                <div class="p-4 bg-white border-t border-gray-100 flex justify-center shrink-0">
-                    <span class="text-[#576b95] text-xs font-medium cursor-pointer"
-                        @click="$emit('view-wallet')">查看我的零钱</span>
+                    <!-- Footer -->
+                    <div class="p-4 bg-white border-t border-gray-100 flex justify-center shrink-0">
+                        <span class="text-[#576b95] text-xs font-medium cursor-pointer"
+                            @click="$emit('view-wallet')">查看我的零钱</span>
+                    </div>
                 </div>
-            </div>
+            </Transition>
         </div>
 
         <!-- Bottom Close Button (Outside Card) -->
@@ -130,7 +176,15 @@ const props = defineProps({
     packet: Object,
     chatData: Object,
     isOpening: Boolean,
-    showResult: Boolean
+    showResult: Boolean,
+    resultAmount: [String, Number]
+})
+
+const formatAmount = computed(() => {
+    // Priority: My Claim Amount > Prop resultAmount > Packet Amount
+    const val = myClaim.value ? myClaim.value.amount : (props.resultAmount || props.packet?.amount)
+    if (!val && val !== 0) return '0.00'
+    return parseFloat(val).toFixed(2)
 })
 
 const myClaim = computed(() => {
@@ -139,7 +193,6 @@ const myClaim = computed(() => {
 
 const getSenderAvatar = () => {
     if (props.packet?.role === 'user') return props.chatData?.userAvatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=User'
-    // If targeted member sent it
     if (props.packet?.senderId) {
         const p = props.chatData?.participants?.find(p => p.id === props.packet.senderId)
         if (p) return p.avatar
@@ -156,15 +209,6 @@ const getSenderName = () => {
     return props.chatData?.name || '对方'
 }
 
-const isLuckyKing = (claim) => {
-    if (props.packet?.packetType !== 'lucky') return false
-    if (!props.packet?.claims || props.packet.claims.length < props.packet.count) return false
-
-    // Max amount among all claims
-    const max = Math.max(...props.packet.claims.map(c => c.amount))
-    return claim.amount === max
-}
-
 const formatTime = (ts) => {
     if (!ts) return ''
     const date = new Date(ts)
@@ -177,12 +221,67 @@ const formatTime = (ts) => {
     animation: fadeIn 0.15s ease-out;
 }
 
-.animate-slide-up {
-    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+/* 3D Coin Spinning Animation */
+.animate-spinning-3d {
+    animation: spinCoin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    transform-style: preserve-3d;
 }
 
-.animate-spinning {
-    animation: spinRedPacket 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+@keyframes spinCoin {
+    0% {
+        transform: rotateY(0deg) scale(1);
+    }
+
+    50% {
+        transform: rotateY(180deg) scale(1.1);
+    }
+
+    100% {
+        transform: rotateY(360deg) scale(1);
+    }
+}
+
+/* Vibrate Animation for the whole card */
+.animate-vibrate {
+    animation: vibrate 0.1s linear infinite;
+}
+
+@keyframes vibrate {
+    0% {
+        transform: translate(0);
+    }
+
+    25% {
+        transform: translate(1px, 1px);
+    }
+
+    50% {
+        transform: translate(-1px, 1px);
+    }
+
+    75% {
+        transform: translate(1px, -1px);
+    }
+
+    100% {
+        transform: translate(-1px, -1px);
+    }
+}
+
+/* Transition between unopened and result */
+.packet-flip-enter-active,
+.packet-flip-leave-active {
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.packet-flip-enter-from {
+    opacity: 0;
+    transform: scale(0.8) rotateY(-90deg);
+}
+
+.packet-flip-leave-to {
+    opacity: 0;
+    transform: scale(1.1) rotateY(90deg);
 }
 
 @keyframes fadeIn {
@@ -192,28 +291,6 @@ const formatTime = (ts) => {
 
     to {
         opacity: 1;
-    }
-}
-
-@keyframes slideUp {
-    from {
-        transform: translateY(20px);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-@keyframes spinRedPacket {
-    0% {
-        transform: rotateY(0deg);
-    }
-
-    100% {
-        transform: rotateY(360deg);
     }
 }
 

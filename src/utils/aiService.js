@@ -600,6 +600,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     const hasCustomSystem = (messages && messages.length > 0 && messages[0].role === 'system')
     const isProactiveCall = options.isProactiveCall
 
+    let systemMsg = null
     if (options.isSimpleTask === true) {
         // [FIX] 简单任务模式：只使用 char.prompt，彻底跳过通用角色扮演模板
         systemMsg = {

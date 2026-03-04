@@ -9,6 +9,7 @@ import MomentsView from './MomentsView.vue'
 import { useWorldLoopStore } from '../../stores/worldLoopStore'
 import WorldLoopCreateModal from './modals/WorldLoopCreateModal.vue'
 import PendingRequestsModal from './modals/PendingRequestsModal.vue'
+import { compressImage } from '../../utils/imageUtils'
 
 const worldLoopStore = useWorldLoopStore()
 const expandLoopContacts = ref(true)
@@ -70,13 +71,36 @@ const showBackgroundSettings = ref(false)
 const newFriendName = ref('')
 
 // Background Settings from Store
-const backgroundSettings = computed(() => settingsStore.personalization.wechatBackgrounds || {
-    chat: { url: '', localUrl: '' },
-    contacts: { url: '', localUrl: '' },
-    discover: { url: '', localUrl: '' },
-    me: { url: '', localUrl: '' }
+const backgroundSettings = computed(() => {
+    const defaultBgs = {
+        chat: { url: '', localUrl: '' },
+        contacts: { url: '', localUrl: '' },
+        discover: { url: '', localUrl: '' },
+        me: { url: '', localUrl: '' }
+    }
+    const saved = settingsStore.personalization.wechatBackgrounds || {}
+    return {
+        chat: { ...defaultBgs.chat, ...(saved.chat || {}) },
+        contacts: { ...defaultBgs.contacts, ...(saved.contacts || {}) },
+        discover: { ...defaultBgs.discover, ...(saved.discover || {}) },
+        me: { ...defaultBgs.me, ...(saved.me || {}) }
+    }
 })
 
+const currentBgStyle = computed(() => {
+    const bg = backgroundSettings.value[currentTab.value]
+    if (bg && (bg.localUrl || bg.url)) {
+        return {
+            backgroundImage: `url(${bg.localUrl || bg.url})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat'
+        }
+    }
+    return {}
+})
+
+// Path: e:/CHILLY/phone/qiaqiao-phone/src/views/WeChat/WeChatApp.vue
 // Context Menu State
 const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
@@ -140,11 +164,15 @@ const loadBackgroundSettings = () => {
 const handleBackgroundUpload = (tab, e) => {
     const file = e.target.files[0]
     if (file) {
-        const reader = new FileReader()
-        reader.onload = (ev) => {
-            settingsStore.setWechatBackground(tab, { localUrl: ev.target.result })
-        }
-        reader.readAsDataURL(file)
+        compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.6 })
+            .then(base64 => {
+                settingsStore.setWechatBackground(tab, { localUrl: base64 })
+                chatStore.triggerToast('背景图已上传并压缩', 'success')
+            })
+            .catch(err => {
+                console.error('压缩失败:', err)
+                chatStore.triggerToast('图片处理失败', 'error')
+            })
     }
 }
 
@@ -1008,27 +1036,10 @@ const handleImport = async (e) => {
                             </div>
                             <div class="text-xs truncate flex items-center gap-1">
                                 <template v-if="chat.lastMsg">
-                                    <span
-                                        v-if="chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]')"
-                                        class="text-[#ff8f00] font-bold shrink-0 animate-pulse-subtle">
-                                        [红包]
-                                    </span>
-                                    <span
-                                        v-else-if="chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]')"
-                                        class="text-[#ff8f00] font-bold shrink-0">
-                                        [转账]
-                                    </span>
-                                    <span
-                                        v-else-if="(chat.lastMsg?.role === 'system' && chat.lastMsg?.content?.includes('公告')) || chat.lastMsg?.content?.includes('[群公告]')"
-                                        class="text-[#ff8f00] font-bold shrink-0">
-                                        [群公告]
-                                    </span>
-                                    <span v-else-if="chat.lastMsg?.content?.includes('@')"
-                                        class="text-[#ff8f00] font-bold shrink-0">
-                                        [有人@我]
-                                    </span>
-                                    <span
-                                        :class="(chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@')) ? 'text-gray-400' : 'text-gray-500'">
+                                    <span :class="{
+                                        'text-[#ff8f00] font-bold': (chat.lastMsg?.role !== 'user' && (chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))),
+                                        'text-gray-500': chat.lastMsg?.role === 'user' || !(chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))
+                                    }">
                                         {{ getPreviewText(chat.lastMsg.content) }}
                                     </span>
                                 </template>

@@ -416,7 +416,7 @@ const handleGlobalPromptCancel = () => {
                             class="text-[11px] text-[#1c1c1e]/40 font-semibold whitespace-nowrap tracking-tight uppercase">现在</span>
                     </div>
                     <div class="text-[14px] text-[#1c1c1e]/80 truncate leading-snug font-medium">{{ bannerData.content
-                        }}</div>
+                    }}</div>
                 </div>
             </div>
         </div>
@@ -507,7 +507,7 @@ const handleGlobalPromptCancel = () => {
                     <h3 class="text-[18px] font-bold mb-2"
                         :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{
                             globalConfirmData.title }}</h3>
-                    <p class="text-[14px] leading-relaxed mb-6"
+                    <p class="text-[14px] leading-relaxed mb-6 whitespace-pre-wrap break-words"
                         :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{
                             globalConfirmData.message }}</p>
                     <div class="flex gap-3">
@@ -535,7 +535,7 @@ const handleGlobalPromptCancel = () => {
                     <h3 class="text-[18px] font-bold mb-2"
                         :class="store.personalization.theme === 'dark' ? 'text-white' : 'text-gray-900'">{{
                             globalPromptData.title }}</h3>
-                    <p class="text-[14px] leading-relaxed mb-4"
+                    <p class="text-[14px] leading-relaxed mb-4 whitespace-pre-wrap break-words"
                         :class="store.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">{{
                             globalPromptData.message }}</p>
 

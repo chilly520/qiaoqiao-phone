@@ -269,9 +269,17 @@ export const useSettingsStore = defineStore('settings', () => {
             compressQuality: compressQuality.value,
             drawing: drawing.value
         }
-        const json = JSON.stringify(data)
-        localStorage.setItem('qiaoqiao_settings', json)
-        console.log('[SettingsStore] Saved to localStorage. JSON length:', json.length)
+        try {
+            const json = JSON.stringify(data)
+            localStorage.setItem('qiaoqiao_settings', json)
+            console.log('[SettingsStore] Saved to localStorage. JSON length:', json.length)
+        } catch (e) {
+            console.error('[SettingsStore] Failed to save to localStorage:', e)
+            if (e.name === 'QuotaExceededError' || e.code === 22) {
+                const chatStore = useChatStore()
+                chatStore.triggerToast('存储空间已满！请尝试清理高分辨率背景或旧记录。', 'error')
+            }
+        }
     }
 
     function loadFromStorage() {

@@ -2,13 +2,13 @@
   <div class="profile-page">
     <!-- 用户信息卡片 -->
     <div class="profile-card">
-      <div class="user-avatar" @click="showAvatarEdit = true">
-        <img v-if="userProfile.avatar" :src="userProfile.avatar" class="avatar-img" alt="avatar">
+      <div class="user-avatar" @click="openAvatarEdit">
+        <img v-if="userProfile?.avatar" :src="userProfile.avatar" class="avatar-img" alt="avatar">
         <div v-else class="avatar-circle">👤</div>
         <div class="avatar-edit-hint">📷</div>
       </div>
       <div class="user-info">
-        <h2 class="user-name" @click="showNameEdit = true">{{ userProfile.name || '用户' }}</h2>
+        <h2 class="user-name" @click="openNameEdit">{{ userProfile?.name || '用户' }}</h2>
         <p class="user-bio">记录每一天的美好时光</p>
       </div>
     </div>
@@ -250,6 +250,12 @@ function loadAvatarFromUrl() {
   showUrlInput.value = false
 }
 
+// 打开头像编辑
+function openAvatarEdit() {
+  tempAvatar.value = calendarStore.userProfile.avatar || ''
+  showAvatarEdit.value = true
+}
+
 // 保存头像
 function saveAvatar() {
   if (tempAvatar.value) {
@@ -262,7 +268,7 @@ function saveAvatar() {
 
 // 保存昵称
 function saveName() {
-  if (tempName.value.trim()) {
+  if (tempName.value && tempName.value.trim()) {
     calendarStore.userProfile.name = tempName.value.trim()
   }
   showNameEdit.value = false
@@ -270,7 +276,7 @@ function saveName() {
 
 // 打开昵称编辑时初始化
 function openNameEdit() {
-  tempName.value = calendarStore.userProfile.name || ''
+  tempName.value = calendarStore.userProfile.name || '用户'
   showNameEdit.value = true
 }
 

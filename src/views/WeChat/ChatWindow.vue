@@ -40,6 +40,7 @@ import GroupRankModal from './modals/GroupRankModal.vue'
 import DiceModal from './modals/DiceModal.vue'
 import TarotModal from './modals/TarotModal.vue'
 import BackpackModal from './modals/BackpackModal.vue'
+import GiftDetailModal from './modals/GiftDetailModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -101,6 +102,7 @@ const showRankModal = ref(false)
 const rankChatId = ref('')
 const msgContainer = ref(null)
 const backpackModal = ref(null)
+const giftDetailModal = ref(null)
 
 const handleScroll = () => {
     if (!msgContainer.value) return
@@ -1115,21 +1117,32 @@ const handleDiceRoll = (diceCount, results, total) => {
 }
 
 // Handle Backpack Send Card
-const handleBackpackSendCard = ({ content, itemId, isGift }) => {
+const handleBackpackSendCard = (payload) => {
     // 1. 发送消息
-    chatStore.addMessage(chatStore.currentChatId, {
-        role: 'user',
-        type: 'html',
-        content: content
-    })
+    if (payload.type === 'gift') {
+        const giftContent = `[GIFT:${payload.giftName}:${payload.giftQuantity}:${payload.giftNote || ''}]`
+        chatStore.addMessage(chatStore.currentChatId, {
+            role: 'user',
+            type: 'gift',
+            content: giftContent,
+            giftId: payload.giftId,
+            giftName: payload.giftName,
+            giftImage: payload.giftImage,
+            giftNote: payload.giftNote,
+            giftQuantity: payload.giftQuantity,
+            status: 'pending',
+            senderName: settingsStore?.personalization?.userProfile?.name || '我'
+        })
+    } else {
+        chatStore.addMessage(chatStore.currentChatId, {
+            role: 'user',
+            type: 'html',
+            content: payload.content
+        })
+    }
 
     // 2. 从背包移除物品
-    backpackStore.removeItem(itemId, 1)
-
-    // 3. 自动触发 AI 回复
-    setTimeout(() => {
-        chatStore.sendMessageToAI(chatStore.currentChatId)
-    }, 800)
+    backpackStore.removeItem(payload.itemId, 1)
 }
 
 // Handle Tarot Share
@@ -1367,11 +1380,15 @@ const sendAmount = ref('')
 const sendNote = ref('')
 const sendCount = ref(1)
 const packetType = ref('lucky') // 'lucky' or 'fixed'
+const coverImage = ref(null) // Local Base64
+const coverImageUrl = ref('') // Remote URL
 
 const openSendDialog = (type) => {
     sendType.value = type
     sendAmount.value = type === 'redpacket' ? '8.88' : '520'
     sendNote.value = type === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您'
+    coverImage.value = null
+    coverImageUrl.value = ''
 
     // 强制单聊红包为1个普通红包
     if (!chatData.value?.isGroup && type === 'redpacket') {
@@ -1422,71 +1439,71 @@ const confirmSend = () => {
         count: isRP ? parseInt(sendCount.value) || 1 : 1,
         packetType: isRP ? packetType.value : null,
         note: sendNote.value || (isRP ? '恭喜发财，大吉大利' : '转账给您'),
+        coverImage: isRP ? (coverImageUrl.value || coverImage.value) : null,
         status: 'sent' // Initial status
     })
 
+    // Reset fields
+    coverImage.value = null
+    coverImageUrl.value = ''
     showSendModal.value = false
+}
+
+const applyCoverUrl = () => {
+    if (!coverImageUrl.value) return
+    showToast('红包封面已设置 (URL)', 'success')
+}
+
+const triggerCoverUpload = () => {
+    chatStore.triggerConfirm(
+        '设置红包封面',
+        '请选择封面上传方式',
+        () => {
+            // Option: Local
+            const input = document.getElementById('cover-upload-input')
+            if (input) input.click()
+        },
+        () => {
+            // Option: URL
+            chatStore.triggerPrompt('输入封面URL', '请输入图片的超链接地址', 'https://...', '', (url) => {
+                if (url) {
+                    coverImageUrl.value = url
+                    showToast('红包封面已设置 (URL)', 'success')
+                }
+            })
+        },
+        '本地图片',
+        '网络URL'
+    )
+}
+
+const handleCoverUpload = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+    compressImage(file, { maxWidth: 400, maxHeight: 400, quality: 0.7 })
+        .then(base64 => {
+            coverImage.value = base64
+            showToast('红包封面已设置', 'success')
+        })
 }
 
 const handleGiftClick = (msg) => {
     if (!chatData.value) return
 
-    if (msg.status === 'claimed') {
-        // 已领取的礼物，显示领取详情
-        const claimTime = new Date(msg.claimTime || Date.now()).toLocaleString()
-        const claimantName = msg.claimantName || '对方'
-        const originalSender = msg.originalSender || chatData.value.name
-        
-        let detailContent = `🎁 礼物详情\n\n`
-        detailContent += `📦 礼物名称：${msg.giftName}\n`
-        detailContent += `📊 数量：${msg.giftQuantity}\n`
-        detailContent += `📝 留言：${msg.giftNote || '无'}\n\n`
-        detailContent += `🎅 赠送者：${originalSender}\n`
-        detailContent += `👤 领取者：${claimantName}\n`
-        detailContent += `⏰ 领取时间：${claimTime}\n`
-        detailContent += `🆔 礼物ID：${msg.giftId?.slice(-6) || '未知'}`
-        
-        showToast(detailContent, 'info', 5000)
-    } else if (msg.type === 'gift_claimed') {
-        // 已领取卡片，显示领取详情
-        const claimTime = new Date(msg.claimTime || Date.now()).toLocaleString()
-        const claimantName = msg.claimantName || '对方'
-        const originalSender = msg.originalSender || chatData.value.name
-        
-        let detailContent = `✅ 礼物已领取\n\n`
-        detailContent += `📦 礼物名称：${msg.giftName}\n`
-        detailContent += `📊 数量：${msg.giftQuantity}\n`
-        detailContent += `📝 原留言：${msg.giftNote || '无'}\n\n`
-        detailContent += `🎅 赠送者：${originalSender}\n`
-        detailContent += `👤 领取者：${claimantName}\n`
-        detailContent += `⏰ 领取时间：${claimTime}\n`
-        detailContent += `🆔 礼物ID：${msg.giftId?.slice(-6) || '未知'}`
-        
-        showToast(detailContent, 'info', 5000)
-    } else {
-        // Role check: User can claim AI's gifts
-        if (msg.role === 'assistant' || msg.senderId !== 'user') {
-            chatStore.confirmEvent = {
-                title: '领取礼物',
-                message: `确认领取来自 ${chatData.value.name} 的礼物「${msg.giftName}」吗？\n\n留言: "${msg.giftNote || '无'}"`,
-                confirmText: '立即领取',
-                cancelText: '稍后再说',
-                onConfirm: async () => {
-                    const success = await chatStore.claimGift(chatData.value.id, msg.id, 'user')
-                    if (success) {
-                        showToast('领取成功！已存入背包', 'success')
-                        // Auto trigger AI acknowledgment
-                        setTimeout(() => {
-                            chatStore.sendMessageToAI(chatData.value.id)
-                        }, 1000)
-                    }
-                }
-            }
-        } else {
-            // User's own gift: View details
-            showToast('🎁 礼物待对方领取中...\n点击可查看状态', 'info', 3000)
-        }
+    // 为弹窗添加发送者名称信息
+    const displayMsg = {
+        ...msg,
+        senderName: msg.senderName || (msg.role === 'user' ? '你' : chatData.value.name),
+        _isSender: msg.role === 'user' || msg.senderId === 'user'
     }
+
+    giftDetailModal.value?.open(displayMsg, async () => {
+        // Confirm claim logic (for AI gifts)
+        const success = await chatStore.claimGift(chatData.value.id, msg.id, 'user')
+        if (success) {
+            showToast('✅ 领取成功！已存入背包', 'success')
+        }
+    })
 }
 
 const handleImgUpload = (event) => {
@@ -2284,13 +2301,16 @@ const handlePayClick = (msg) => {
     const content = ensureString(msg.content)
 
     // Determine initial view state
-    // Show result/detail if:
-    // 1. User sent it (viewing own packet)
-    // 2. Already claimed or rejected
-    // 3. Status is received
-    const shouldShowDetail = msg.role === 'user' || msg.isClaimed || msg.isRejected || msg.status === 'received'
+    // For group chats, if I haven't claimed it, I should see the "Open" view (even if I'm sender)
+    const hasMyClaim = msg.claims?.some(c => c.id === 'user')
+    let shouldShowDetail = msg.isClaimed || msg.isRejected || msg.status === 'received' || hasMyClaim
 
-    showResult.value = shouldShowDetail
+    // For private chat, if I am the sender, show detail view (to see status)
+    if (!chatData.value?.isGroup && (msg.role === 'user' || msg.senderId === 'user')) {
+        shouldShowDetail = true
+    }
+
+    showResult.value = !!shouldShowDetail
 
     // Ensure amount is displayed for detail view
     if (shouldShowDetail) {
@@ -2309,6 +2329,7 @@ const handlePayClick = (msg) => {
     }
 }
 
+
 const isMsgVisible = (msg) => {
     if (msg.hidden) return false
     if (msg.role === 'user' || msg.role === 'ai') return true
@@ -2316,6 +2337,7 @@ const isMsgVisible = (msg) => {
     // For System messages, check content
     const content = ensureString(msg.content)
     if (msg.type === 'redpacket' || msg.type === 'transfer' || content.includes('[红包]') || content.includes('[转账]')) return true
+    if (msg.type === 'gift' || msg.type === 'gift_claimed') return true
     if (msg.type === 'image' || isImageMsg(msg)) return true
 
     // Check Text
@@ -3124,6 +3146,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
         <!-- Family Card Detail Modal -->
         <FamilyCardDetailModal ref="familyDetailModal" :userName="chatData.userName || '我'" />
+
+        <!-- Gift Detail Modal -->
+        <GiftDetailModal ref="giftDetailModal" />
         <!-- Group Announcement Modal -->
         <GroupAnnouncementModal ref="groupAnnouncementModal" :chatData="chatData" />
         <!-- World Loop GM Panel -->
@@ -3175,19 +3200,64 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->
-                    <div v-if="sendType === 'redpacket'" class="flex justify-center -mt-2">
-                        <div
-                            class="w-20 h-20 bg-gradient-to-br from-red-500 to-red-600 rounded-2xl flex items-center justify-center shadow-xl transform rotate-3">
-                            <i class="fa-solid fa-gift text-white text-4xl drop-shadow-lg"></i>
+                    <div v-if="sendType === 'redpacket'" class="flex flex-col items-center gap-4 -mt-2">
+                        <div class="relative group">
+                            <!-- Mini Red Packet Preview -->
+                            <div @click="triggerCoverUpload"
+                                class="w-24 h-32 bg-[#D04035] rounded-xl flex flex-col items-center shadow-2xl transform hover:scale-105 transition-all cursor-pointer relative overflow-hidden ring-4 ring-white/20">
+                                <!-- Top Arc -->
+                                <div v-if="!(coverImageUrl || coverImage)"
+                                    class="absolute -top-10 -left-[10%] w-[120%] h-20 bg-[#E35447] rounded-[50%] z-0 border-b border-white/10 shadow-sm">
+                                </div>
+
+                                <img v-if="coverImageUrl || coverImage" :src="coverImageUrl || coverImage"
+                                    class="w-full h-full object-cover z-0">
+
+                                <div class="z-10 mt-4 flex flex-col items-center">
+                                    <div
+                                        class="w-8 h-8 rounded-full border border-yellow-200/50 flex items-center justify-center bg-white/10 mb-1">
+                                        <i class="fa-solid fa-gift text-[#FFE2B1] text-lg"></i>
+                                    </div>
+                                    <span class="text-[#FFE2B1] text-[10px] font-bold opacity-80">红包预览</span>
+                                </div>
+
+                                <div v-if="!(coverImageUrl || coverImage)"
+                                    class="absolute bottom-6 w-10 h-10 bg-[#EBC88E] rounded-full border-2 border-[#E35447] flex items-center justify-center shadow-lg">
+                                    <span class="text-[#333] font-bold text-xs">開</span>
+                                </div>
+
+                                <div
+                                    class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center z-20">
+                                    <i class="fa-solid fa-cloud-arrow-up text-white text-xl mb-2"></i>
+                                    <span class="text-[10px] text-white font-black tracking-widest">更换本地封面</span>
+                                </div>
+                            </div>
                         </div>
+
+                        <!-- URL Input for Cover -->
+                        <div class="w-full max-w-[240px] flex gap-2">
+                            <div
+                                class="flex-1 bg-white/50 rounded-xl px-3 py-2 border border-gray-200 flex items-center gap-2">
+                                <i class="fa-solid fa-link text-gray-400 text-xs text-nowrap"></i>
+                                <input type="text" v-model="coverImageUrl" placeholder="或输入封面图 URL..."
+                                    class="w-full bg-transparent border-none outline-none text-xs text-gray-700">
+                            </div>
+                            <button v-if="coverImageUrl" @click="applyCoverUrl"
+                                class="bg-blue-500 text-white p-2 rounded-xl active:scale-95 transition-all">
+                                <i class="fa-solid fa-check text-xs"></i>
+                            </button>
+                        </div>
+
+                        <input type="file" id="cover-upload-input" class="hidden" accept="image/*"
+                            @change="handleCoverUpload">
                     </div>
 
                     <!-- Red Packet Type and Count (Red Packet Mode) -->
-                    <div v-if="sendType === 'redpacket'" class="flex flex-col gap-4">
+                    <div v-if="sendType === 'redpacket' && chatData?.isGroup" class="flex flex-col gap-4">
                         <div class="flex bg-gray-100 p-1 rounded-xl">
                             <button @click="packetType = 'lucky'"
                                 class="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
@@ -3214,7 +3284,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     <!-- Amount Input -->
                     <div class="flex flex-col gap-3">
                         <div class="text-gray-600 font-medium text-sm ml-1">
-                            {{ sendType === 'transfer' ? '转账金额' : (packetType === 'lucky' ? '总金额' : '单个金额') }}
+                            {{ sendType === 'transfer' ? '转账金额' : (!chatData?.isGroup ? '单个金额' : (packetType === 'lucky'
+                                ? '总金额'
+                                : '单个金额')) }}
                         </div>
                         <div class="flex items-center gap-2 border-b-2 pb-2 pt-1 transition-colors min-h-[80px]"
                             :class="sendAmount ? (sendType === 'redpacket' ? 'border-red-500' : 'border-orange-500') : 'border-gray-300'">

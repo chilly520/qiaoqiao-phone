@@ -64,8 +64,21 @@ export const useChatStore = defineStore('chat', () => {
     const messagePageSize = ref(50) // 每页显示50条消息
     const loadedMessageCounts = ref({}) // { chatId: 加载的消息数 }
 
+    // Sound Helpers
+    const playSound = (type) => {
+        const sounds = {
+            notification: '/sounds/wechat/notification.mp3',
+            coins: '/sounds/wechat/coins.mp3'
+        }
+        const url = sounds[type]
+        if (url) {
+            const audio = new Audio(url)
+            audio.play().catch(e => console.warn('Sound play failed:', e))
+        }
+    }
+
     // MODULE EXTRACTS
-    const { _splitRedPacket, claimRedPacket, claimTransfer, claimGift, hasUnclaimedRP } = setupFinancialLogic(chats, addMessage, saveChats)
+    const { _splitRedPacket, claimRedPacket, claimTransfer, claimGift, hasUnclaimedRP } = setupFinancialLogic(chats, addMessage, saveChats, playSound)
 
     const _extractJsonFromText = (text) => {
         if (!text) return null
@@ -438,7 +451,10 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         // Parse special tags (Mission: Priority)
-        if (msg.role === 'ai') {
+        // Skip special processing for system messages to avoid loops
+        if (msg.systemMsg) {
+            console.log('[ChatStore] System message detected, skipping special processing');
+        } else if (msg.role === 'ai') {
             let processedContent = msg.content;
             if (typeof processedContent === 'string') {
                 processedContent = processTaskCommands(processedContent, chatId);
@@ -490,6 +506,7 @@ export const useChatStore = defineStore('chat', () => {
             senderName: msg.senderName || (msg.role === 'user' ? '我' : (chat.isGroup ? (msg.senderName || chat.name) : chat.name)),
             senderAvatar: msg.senderAvatar || (msg.role === 'user' ? '' : (chat.isGroup ? (msg.senderAvatar || chat.avatar) : chat.avatar)),
             image: msg.image || null,
+            coverImage: msg.coverImage || null,
             sticker: msg.sticker || null,
             html: msg.html || null,
             forceCard: msg.forceCard || false,
@@ -1462,17 +1479,19 @@ export const useChatStore = defineStore('chat', () => {
                 const note = giftMatch[3]?.trim() || '';
 
                 newMsg.type = 'gift';
-                newMsg.giftId = 'GIFT-U-' + Date.now();
-                newMsg.giftName = name;
-                newMsg.giftQuantity = qty;
-                newMsg.giftNote = note;
+                // 仅覆盖未传入的参数
+                newMsg.giftId = newMsg.giftId || ('GIFT-U-' + Date.now());
+                newMsg.giftName = newMsg.giftName || name;
+                newMsg.giftQuantity = newMsg.giftQuantity || qty;
+                newMsg.giftNote = newMsg.giftNote || note;
                 newMsg.status = 'pending'; // 改为pending状态，不直接送达
-                newMsg.senderName = useSettingsStore().personalization?.userProfile?.name || '我';
+                newMsg.senderName = newMsg.senderName || useSettingsStore().personalization?.userProfile?.name || '我';
 
-                try {
-                    // Try to fetch image by importing store (async not allowed in sync addMessage, so we use placeholder)
-                    newMsg.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png';
-                } catch (e) { }
+                if (!newMsg.giftImage) {
+                    try {
+                        newMsg.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png';
+                    } catch (e) { }
+                }
             }
         }
 
@@ -1540,6 +1559,9 @@ export const useChatStore = defineStore('chat', () => {
             const contentStr = String(newMsg.content || '');
             const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
             if (!isToxic && contentStr.trim().length > 0) {
+                // Play notification sound
+                playSound('notification');
+
                 notificationEvent.value = {
                     id: Date.now(),
                     chatId: chatId,
