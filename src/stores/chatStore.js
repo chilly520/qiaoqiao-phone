@@ -219,7 +219,10 @@ export const useChatStore = defineStore('chat', () => {
         Object.values(chats.value).forEach(chat => {
             if (chat.isGroup && Array.isArray(chat.participants)) {
                 chat.participants.forEach(p => {
-                    if (p.isNPC) {
+                    // Treat as NPC if explicitly marked, or if they are not 'user' and not a standalone character
+                    if (p.isNPC || (p.id !== 'user' && !chats.value[p.id])) {
+                        // Mark it on the object so it behaves structurally like an NPC
+                        p.isNPC = true;
                         npcs.push({
                             ...p,
                             groupId: chat.id,

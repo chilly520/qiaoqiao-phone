@@ -279,6 +279,7 @@ export const setupGroupLogic = (chats, createChat, addMessage, saveChats, getRan
                     roleId: p?.roleId || null,
                     isOwner: !!p?.isOwner,
                     isAdmin: !!p?.isAdmin,
+                    isNPC: true, // Required so they show up in the contact list
                     prompt: String(p?.prompt || ''),
                     bio: {
                         gender: p?.bio?.gender || '未知',

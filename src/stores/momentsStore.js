@@ -555,7 +555,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         chatStore.triggerToast('正在召唤朋友前来互动...', 'info')
 
-        const allCharIds = chatStore.chats ? Object.keys(chatStore.chats) : []
+        const allCharIds = chatStore.chats ? Object.keys(chatStore.chats).filter(id => !chatStore.chats[id].isGroup) : []
         if (allCharIds.length === 0) {
             summoningIds.value.delete(momentId)
             return
@@ -706,7 +706,7 @@ export const useMomentsStore = defineStore('moments', () => {
         const worldBookStore = useWorldBookStore()
         const stickerStore = useStickerStore()
 
-        let candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id)) : [])
+        let candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id) && !chatStore.chats[id].isGroup) : [])
         if (candidates.length === 0) return
 
         // 核心优化：如果启用了太多角色，只随机抽取 8 个参与本次“朋友圈生态”生成，节省 Token 且避免 AI 混乱
