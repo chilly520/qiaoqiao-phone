@@ -2446,15 +2446,28 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     const voteTitle = voteMatch[1].trim()
                     const optionIndexes = voteMatch[2].split(/[,，]/).map(s => parseInt(s.trim()) - 1).filter(n => !isNaN(n))
 
-                    const voteMsg = (chat.msgs || []).findLast(m =>
-                        (m.type === 'vote' || m.vote) &&
-                        m.vote?.title === voteTitle &&
-                        !m.isRecall
-                    )
+                    let parsedVoteData = null;
+                    const voteMsg = (chat.msgs || []).findLast(m => {
+                        if (m.isRecall) return false;
+                        if (m.type === 'vote') {
+                            try {
+                                const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                                if (data.title === voteTitle) {
+                                    parsedVoteData = data;
+                                    return true;
+                                }
+                            } catch (e) { return false; }
+                        }
+                        if (m.vote && m.vote.title === voteTitle) {
+                            parsedVoteData = m.vote;
+                            return true;
+                        }
+                        return false;
+                    })
 
-                    if (voteMsg) {
+                    if (voteMsg && parsedVoteData) {
                         const speakerId = groupSpeakerMeta?.senderId || chatId
-                        const validIndices = optionIndexes.filter(idx => idx >= 0 && idx < ((voteMsg.vote?.options?.length) || 0))
+                        const validIndices = optionIndexes.filter(idx => idx >= 0 && idx < (parsedVoteData.options?.length || 0))
 
                         if (validIndices.length > 0) {
                             castVote(chatId, voteMsg.id, speakerId, validIndices)
