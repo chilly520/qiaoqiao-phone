@@ -83,6 +83,10 @@ export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = ''
       - **转账**: \`[转账:ID:金额:备注]\`。备注只写纯文字，**严禁**自行编造任何编号（如PAY-xxx、TXN-xxx等），系统会自动生成支付编号。
       - **礼物**: \`[GIFT:名称:数量:备注]\`。
       - **领取**: \`[领取红包:消息ID]\`、\`[领取转账:消息ID]\` 或 \`[领取礼物:消息ID]\`。
+      - **群投票**: 
+         - 发起投票: \`[CREATE_VOTE:标题:选项1,选项2:多选true/false:匿名true/false]\`
+         - 参与投票: \`[VOTE:投票标题:选项序号]\` (例如 \`[VOTE:晚上吃啥:1]\`)
+         - 结束投票: \`[END_VOTE:投票ID]\` (仅群主/管理员/发起人可用)
 3. **社交反馈**: 
    - 根据红包金额大小做出真实反应（抢到手气王要显摆，抢到几分钱要吐槽）。
 4. **管理指令 (仅限群主/管理员使用)**:
@@ -126,6 +130,7 @@ ${(groupContext.participants || []).map(p => `  - 【${p.name}】(ID: ${p.id}): 
   return `### 0. 角色沉浸准则 (Ultra-Priority)
 ${lockInst}
 
+${groupSection}
 ${groupInfo}
 
 ===== 【强制规则汇总】 =====

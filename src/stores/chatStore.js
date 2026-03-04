@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useLoggerStore } from './loggerStore'
@@ -1803,6 +1803,14 @@ export const useChatStore = defineStore('chat', () => {
             } else if (m.type === 'dice_result') {
                 const sName = m.senderName || (m.role === 'user' ? '我' : (chat.name || '对方'))
                 content = `[摇骰子] ${sName}摇了${m.diceCount || 1}颗骰子，合计点数：${m.diceTotal}`
+            } else if (m.type === 'vote') {
+                try {
+                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                    const opts = (data.options || []).map((o, i) => `${i + 1}. ${o}`).join(', ');
+                    content = `[群投票] 标题: "${data.title}", 选项: ${opts}, ${data.isMultiple ? '多选' : '单选'}, ID: ${data.id}`;
+                } catch (e) {
+                    content = '[群投票]';
+                }
             }
 
             if (m.role === 'ai') {
@@ -1907,39 +1915,7 @@ export const useChatStore = defineStore('chat', () => {
 
         const context = mergedContext;
 
-        // --- Group Chat: Inject group context into the last user message ---
-        if (chat.isGroup) {
-            try {
-                const gs = chat.groupSettings || {}
-                const groupPrompt = gs.groupPrompt || ''
-                const myPersona = gs.myPersona || chat.userPersona || ''
-                const announcement = chat.groupProfile?.announcement || ''
-                const participants = Array.isArray(chat.participants) ? chat.participants : []
-
-                const roster = participants.slice(0, 30).map(p => {
-                    const bio = p.bio || {}
-                    const mbti = bio.mbti ? `MBTI:${bio.mbti}` : ''
-                    const sig = bio.signature ? `签名:${bio.signature}` : ''
-                    const brief = [mbti, sig].filter(Boolean).join('，')
-                    return `- id=${p.id} name=${p.name}${brief ? `（${brief}）` : ''}\n  prompt=${String(p.prompt || '').slice(0, 140)}`
-                }).join('\n')
-
-                const formatRule = `【群聊发言规则】\n1) 这是一个正常的群聊（类似微信/QQ），你需要扮演群里的“多个成员”进行生动互动。\n2) 你可以在单次回复中生成多条、多人的发言！群员可以互相聊天、互相@、抢红包，不一定都要围着“我(User)”转。\n3) 每段独立发言必须单起一行，并严格以 [FROM:成员id] 开头（成员id必须来自成员列表）。\n4) 发言内容直接连在标签后，绝对不要再额外加“成员名：”前缀！\n5) 支持系统全部所有功能：你可以发送 [图片:配图要求]、[表情包:描述]、[语音:台词]、甚至是 [DRAW:提示词]。\n6) 禁止输出任何 [INNER_VOICE] 标签（群聊不需要心声旁白）。`
-
-                const groupCtx = `【群聊设定】\n群名：${chat.name || ''}\n群公告：${announcement || '（无）'}\n我的人设：${myPersona || '（无）'}\n群聊规则/氛围：${groupPrompt || '（无）'}\n\n【群成员列表】\n${roster || '（暂无成员）'}\n\n${formatRule}`
-
-                const last = context[context.length - 1]
-                if (last && last.role === 'user') {
-                    last.content += `\n\n${groupCtx}`
-                } else {
-                    context.push({ role: 'user', content: groupCtx })
-                }
-            } catch (e) {
-                console.warn('[ChatStore] Group context injection failed:', e)
-            }
-        }
-
-
+        // Group context injection moved to prompts.js
         // 3. 调用 AI
         try {
             // Stop any previous generation for THIS specific chat
@@ -2511,6 +2487,15 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         senderAvatar: groupSpeakerMeta?.senderAvatar || ''
                     })
                     console.log(`[Vote] AI (${speakerId}) created vote:`, title)
+                }
+
+                // --- Handle [END_VOTE:] Command ---
+                const endVoteRegex = /\[(?:END_VOTE|结束投票):\s*(v-[^\]]+)\]/i
+                const endVoteMatch = properlyOrderedContent.match(endVoteRegex)
+                if (endVoteMatch) {
+                    const voteIdToClose = endVoteMatch[1].trim()
+                    endVote(chatId, voteIdToClose)
+                    console.log(`[Vote] AI closed vote:`, voteIdToClose)
                 }
 
                 // --- Handle [RECALL] / [撤回] Command ---
