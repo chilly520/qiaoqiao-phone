@@ -154,6 +154,76 @@ export const setupFinancialLogic = (chats, addMessage, saveChats) => {
         return true;
     }
 
+    async function claimGift(chatId, messageId, claimantId = 'user') {
+        const chat = chats.value[chatId];
+        if (!chat) return false;
+        const msg = chat.msgs.find(m => m.id === messageId);
+        if (!msg || msg.type !== 'gift' || msg.status === 'claimed') return false;
+
+        msg.status = 'claimed';
+        msg.claimTime = Date.now();
+
+        let claimantName = '未知';
+        let claimantAvatar = '';
+        if (claimantId === 'user') {
+            claimantName = useSettingsStore().personalization?.userProfile?.name || '我';
+            claimantAvatar = useSettingsStore().personalization?.userProfile?.avatar || '';
+            // If user claims AI gift, add to backpack
+            try {
+                const { useBackpackStore } = await import('../backpackStore')
+                useBackpackStore().addItem({
+                    id: msg.itemId || `item_${Date.now()}`,
+                    title: msg.giftName,
+                    image: msg.giftImage,
+                    description: msg.giftNote || '对方送来的礼物。',
+                    source: `好友赠送`,
+                    category: 'all'
+                }, msg.giftQuantity || 1)
+            } catch (e) { console.error('Failed to add item to backpack:', e) }
+        } else {
+            const p = chat.participants.find(p => p.id === claimantId);
+            if (p) {
+                claimantName = p.name;
+                claimantAvatar = p.avatar;
+            }
+        }
+
+        msg.claimedBy = {
+            id: claimantId,
+            name: claimantName,
+            avatar: claimantAvatar,
+            time: Date.now()
+        };
+
+        const claimantStr = claimantId === 'user' ? '你' : claimantName;
+        const senderName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : chat.name);
+
+        // 添加已领取系统消息
+        addMessage(chatId, {
+            role: 'system',
+            content: `${claimantStr}已领取了${senderName}的礼物：${msg.giftName}`
+        });
+
+        // 生成已领取卡片
+        addMessage(chatId, {
+            role: 'assistant',
+            type: 'gift_claimed',
+            giftId: msg.giftId,
+            giftName: msg.giftName,
+            giftQuantity: msg.giftQuantity,
+            giftNote: msg.giftNote,
+            giftImage: msg.giftImage,
+            originalSender: msg.senderName,
+            claimantName: claimantName,
+            claimantAvatar: claimantAvatar,
+            claimTime: Date.now(),
+            senderName: chat.name
+        });
+
+        saveChats();
+        return true;
+    }
+
     function hasUnclaimedRP(chatId) {
         const chat = chats.value[chatId]
         if (!chat || !chat.msgs) return false
@@ -175,6 +245,7 @@ export const setupFinancialLogic = (chats, addMessage, saveChats) => {
         _splitRedPacket,
         claimRedPacket,
         claimTransfer,
+        claimGift,
         hasUnclaimedRP
     }
 }

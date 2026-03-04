@@ -189,10 +189,7 @@ const showCountdownModal = ref(false)
 const showDiaryModal = ref(false)
 
 // 用户资料
-const userProfile = ref({
-  name: '',
-  avatar: ''
-})
+const userProfile = computed(() => calendarStore.userProfile)
 
 // 头像编辑
 const showAvatarEdit = ref(false)
@@ -214,17 +211,14 @@ const reminderSettings = ref({
   remindBefore: calendarStore.periodReminders?.remindBefore ?? 2
 })
 
-// 加载用户资料
+// 加载与保存已交由 store 统一管理
 onMounted(() => {
-  const saved = localStorage.getItem('calendar_user_profile')
-  if (saved) {
-    userProfile.value = JSON.parse(saved)
-  }
+  // 确保 store 已初始化
 })
 
-// 保存用户资料
+// 保存用户资料 (现在直接修改 store 的响应式对象即可)
 function saveUserProfile() {
-  localStorage.setItem('calendar_user_profile', JSON.stringify(userProfile.value))
+  // calendarStore.saveData() // store 内部有 watch 自动触发，无需手动
 }
 
 // 触发文件上传
@@ -259,8 +253,7 @@ function loadAvatarFromUrl() {
 // 保存头像
 function saveAvatar() {
   if (tempAvatar.value) {
-    userProfile.value.avatar = tempAvatar.value
-    saveUserProfile()
+    calendarStore.userProfile.avatar = tempAvatar.value
   }
   showAvatarEdit.value = false
   tempAvatar.value = ''
@@ -270,15 +263,14 @@ function saveAvatar() {
 // 保存昵称
 function saveName() {
   if (tempName.value.trim()) {
-    userProfile.value.name = tempName.value.trim()
-    saveUserProfile()
+    calendarStore.userProfile.name = tempName.value.trim()
   }
   showNameEdit.value = false
 }
 
 // 打开昵称编辑时初始化
 function openNameEdit() {
-  tempName.value = userProfile.value.name || ''
+  tempName.value = calendarStore.userProfile.name || ''
   showNameEdit.value = true
 }
 
@@ -313,7 +305,7 @@ function exportData() {
     sleepRecords: calendarStore.sleepRecords,
     waterRecords: calendarStore.waterRecords,
     diaries: calendarStore.diaries,
-    userProfile: userProfile.value,
+    userProfile: calendarStore.userProfile,
     exportDate: new Date().toISOString()
   }
 

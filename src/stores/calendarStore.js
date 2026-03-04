@@ -179,6 +179,12 @@ export const useCalendarStore = defineStore('calendar', () => {
   // 视图模式: month, week, day, agenda
   const viewMode = ref('month')
 
+  // 用户信息
+  const userProfile = ref({
+    name: '',
+    avatar: ''
+  })
+
   // 主题设置
   const themeSettings = ref({
     currentTheme: 'default',
@@ -319,6 +325,20 @@ export const useCalendarStore = defineStore('calendar', () => {
     // key: charId, value: { schedule: true, period: false, mood: true, ... }
   })
 
+  // 天气数据
+  const weatherData = ref({
+    current: null,
+    forecast: []
+  })
+
+  // 经期提醒设置
+  const periodReminders = ref({
+    enabled: true,
+    remindBefore: 2, // 提前2天提醒
+    remindAt: '09:00',
+    lastReminded: null
+  })
+
   // 从localStorage加载数据
   function loadData() {
     try {
@@ -336,6 +356,16 @@ export const useCalendarStore = defineStore('calendar', () => {
         anniversaries.value = data.anniversaries || []
         aiAccessSettings.value = data.aiAccessSettings || {}
         periodReminders.value = data.periodReminders || { enabled: true, remindBefore: 2, remindAt: '09:00', lastReminded: null }
+
+        // Handle User Profile migration/loading
+        if (data.userProfile) {
+          userProfile.value = data.userProfile
+        } else {
+          const legacyProfile = localStorage.getItem('calendar_user_profile')
+          if (legacyProfile) {
+            try { userProfile.value = JSON.parse(legacyProfile) } catch (e) { }
+          }
+        }
       }
     } catch (e) {
       console.error('[CalendarStore] Load failed:', e)
@@ -356,7 +386,8 @@ export const useCalendarStore = defineStore('calendar', () => {
         diaries: diaries.value,
         anniversaries: anniversaries.value,
         aiAccessSettings: aiAccessSettings.value,
-        periodReminders: periodReminders.value
+        periodReminders: periodReminders.value,
+        userProfile: userProfile.value
       }
       localStorage.setItem('calendar_data', JSON.stringify(data))
     } catch (e) {
@@ -364,19 +395,15 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
   }
 
-  // 天气数据
-  const weatherData = ref({
-    current: null,
-    forecast: []
-  })
-
-  // 经期提醒设置
-  const periodReminders = ref({
-    enabled: true,
-    remindBefore: 2, // 提前2天提醒
-    remindAt: '09:00',
-    lastReminded: null
-  })
+  // Watch for changes and auto-save
+  watch([
+    events, periodData, moodRecords, countdowns,
+    recurringTasks, sleepRecords, waterRecords,
+    diaries, anniversaries, aiAccessSettings,
+    periodReminders, userProfile
+  ], () => {
+    saveData()
+  }, { deep: true })
 
   // 统计概览数据
   const statsOverview = computed(() => {
@@ -678,6 +705,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       createdAt: new Date().toISOString()
     }
     anniversaries.value.push(anniversary)
+    saveData()
     return anniversary
   }
 
@@ -970,6 +998,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     waterRecords,
     diaries,
     aiAccessSettings,
+    userProfile, // Exported
     weatherData,
     periodReminders,
     currentMonthDays,

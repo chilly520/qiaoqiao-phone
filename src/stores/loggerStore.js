@@ -1,76 +1,85 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import localforage from 'localforage'
 
 export const useLoggerStore = defineStore('logger', () => {
-    // Initial load from localStorage
-    const savedLogs = localStorage.getItem('system_logs')
     const logs = ref([])
-    try {
-        if (savedLogs) logs.value = JSON.parse(savedLogs)
-    } catch (e) {
-        console.warn('Failed to parse logs', e)
-        localStorage.removeItem('system_logs')
-    }
-
-    const MAX_LOGS = 150 // Increased to keep more logs
+    const isLoaded = ref(false)
+    const MAX_LOGS = 2000 // Increased significantly for permanent history
     const autoScroll = ref(true)
 
-    const saveLogs = () => {
+    // Configuration for localforage
+    const logStorage = localforage.createInstance({
+        name: "qiaoqiao_logs"
+    });
+
+    // Initial load from IndexedDB
+    const loadLogs = async () => {
         try {
-            const data = JSON.stringify(logs.value)
-            localStorage.setItem('system_logs', data)
-        } catch (e) {
-            console.warn('[LoggerStore] Storage failed, clearing logs...', e)
-            logs.value = logs.value.slice(-1) // Absolute minimum
-            try {
-                localStorage.setItem('system_logs', JSON.stringify(logs.value))
-            } catch (err) {
-                localStorage.removeItem('system_logs')
-                logs.value = []
+            // Check new storage first
+            let saved = await logStorage.getItem('system_logs_v2')
+
+            // Migration from old localStorage if needed
+            if (!saved) {
+                const oldData = localStorage.getItem('system_logs')
+                if (oldData) {
+                    try {
+                        saved = JSON.parse(oldData)
+                        localStorage.removeItem('system_logs')
+                        await logStorage.setItem('system_logs_v2', saved)
+                    } catch (e) { }
+                }
             }
+
+            if (saved && Array.isArray(saved)) {
+                logs.value = saved
+            }
+            isLoaded.value = true
+        } catch (e) {
+            console.warn('[LoggerStore] Failed to load logs', e)
+            isLoaded.value = true
+        }
+    }
+
+    const saveLogs = async () => {
+        if (!isLoaded.value) return
+        try {
+            // Use JSON.parse(JSON.stringify()) to ensure we're saving plain objects, not Vue proxies
+            await logStorage.setItem('system_logs_v2', JSON.parse(JSON.stringify(logs.value)))
+        } catch (e) {
+            console.error('[LoggerStore] IndexedDB storage failed:', e)
         }
     }
 
     const addLog = (type, title, detail = null) => {
-        // Dynamic truncation
+        // Dynamic truncation for individual log entries
         const isCriticalAI = /网络请求|AI响应|Request|Response/i.test(title)
         const isAIRelated = /AI|生成|Generation/i.test(title)
 
         let maxDetailLength
         if (isCriticalAI) {
-            maxDetailLength = 200000 // Increased to 200k chars for complete network request context
+            maxDetailLength = 200000
         } else if (isAIRelated) {
-            maxDetailLength = 50000 // Increased to 50k for other AI logs
+            maxDetailLength = 50000
         } else {
-            maxDetailLength = 1000 // 1k for general logs
+            maxDetailLength = 5000 // Increased from 1k for better detail
         }
 
-        // Truncate overly large details to prevent storage bloat
+        // Truncate overly large details
         let truncatedDetail = detail
-        if (maxDetailLength !== Infinity && detail && typeof detail === 'string' && detail.length > maxDetailLength) {
-            truncatedDetail = detail.substring(0, maxDetailLength) + '... (truncated due to storage limits)'
-        } else if (maxDetailLength !== Infinity && detail && typeof detail === 'object') {
+        if (detail && typeof detail === 'string' && detail.length > maxDetailLength) {
+            truncatedDetail = detail.substring(0, maxDetailLength) + '... (truncated)'
+        } else if (detail && typeof detail === 'object') {
             try {
-                // 尝试序列化对象，但如果失败，使用安全的字符串表示
-                let detailStr
-                try {
-                    detailStr = JSON.stringify(detail)
-                } catch (serializeError) {
-                    // 序列化失败，使用对象的基本信息
-                    detailStr = `[Object: ${detail.constructor?.name || 'Object'}]`
-                }
+                const detailStr = JSON.stringify(detail)
                 if (detailStr.length > maxDetailLength) {
-                    truncatedDetail = detailStr.substring(0, maxDetailLength) + '... (truncated due to storage limits)'
+                    // If too big, store as truncated string instead of trying to parse back
+                    truncatedDetail = detailStr.substring(0, maxDetailLength) + '... (truncated object string)'
                 } else {
-                    try {
-                        // 尝试使用序列化后的字符串作为安全的表示
-                        truncatedDetail = detailStr
-                    } catch (e) {
-                        truncatedDetail = '[Complex object]'
-                    }
+                    truncatedDetail = detail // Store as object (reactive proxy will be cleaned in saveLogs)
                 }
             } catch (e) {
-                truncatedDetail = '[Circular or non-serializable object]'
+                truncatedDetail = '[Un-serializable Object]'
             }
         }
 
@@ -81,35 +90,36 @@ export const useLoggerStore = defineStore('logger', () => {
             title,
             detail: truncatedDetail
         }
+
         logs.value.push(entry)
 
+        // Trim logs if they exceeding limit
         if (logs.value.length > MAX_LOGS) {
-            logs.value.shift()
+            logs.value = logs.value.slice(-MAX_LOGS)
         }
+
         saveLogs()
 
-        // Also mirror to console for dev convenience, stripping reactivity
+        // Mirror to console
         try {
-            const cleanDetail = truncatedDetail ? JSON.parse(JSON.stringify(truncatedDetail)) : truncatedDetail
-            if (type === 'error') console.error(`[LOG] ${title}`, cleanDetail)
-            else if (type === 'warn') console.warn(`[LOG] ${title}`, cleanDetail)
-            else console.log(`[LOG] ${title}`, cleanDetail)
-        } catch (e) {
-            console.log(`[LOG] ${title}`, '[Complex Object]')
-        }
+            if (type === 'error') console.error(`[LOG] ${title}`, detail)
+            else if (type === 'warn') console.warn(`[LOG] ${title}`, detail)
+            else console.log(`[LOG] ${title}`, detail)
+        } catch (e) { }
     }
 
-    // Helper methods for semantic logging
+    // Helper methods
     const info = (title, detail) => addLog('info', title, detail)
     const error = (title, detail) => addLog('error', title, detail)
     const warn = (title, detail) => addLog('warn', title, detail)
     const sys = (title, detail) => addLog('sys', title, detail)
     const ai = (title, detail) => addLog('ai', title, detail)
     const debug = (title, detail) => addLog('debug', title, detail)
+    const success = (title, detail) => addLog('sys', `✅ ${title}`, detail)
 
-    const clearLogs = () => {
+    const clearLogs = async () => {
         logs.value = []
-        localStorage.removeItem('system_logs')
+        await logStorage.removeItem('system_logs_v2')
     }
 
     const exportLogs = () => {
@@ -127,8 +137,12 @@ export const useLoggerStore = defineStore('logger', () => {
         return reversed.find(l => (l.type === 'AI' || l.type === 'DEBUG') && (l.title.includes('网络请求') || l.title.includes('Request')))
     })
 
+    // Initialization
+    loadLogs()
+
     return {
         logs,
+        isLoaded,
         autoScroll,
         addLog,
         info,
@@ -137,6 +151,7 @@ export const useLoggerStore = defineStore('logger', () => {
         sys,
         ai,
         debug,
+        success,
         clearLogs,
         exportLogs,
         lastContext

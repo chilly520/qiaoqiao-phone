@@ -41,7 +41,115 @@
                     </div>
                 </div>
 
-                <!-- CASE 2: Regular Message -->
+                <!-- CASE 2: Gift Card -->
+                <div v-else-if="msg.type === 'gift'"
+                    class="group relative w-[240px] overflow-hidden rounded-2xl shadow-md transition-all active:scale-[0.98] select-none cursor-pointer"
+                    :class="[
+                        msg.status === 'claimed' ? 'opacity-80 grayscale-[20%]' : 'hover:shadow-lg',
+                        msg.role === 'user' ? 'mr-1' : 'ml-1'
+                    ]" @click="$emit('click-gift', msg)" @contextmenu.prevent="emitContextMenu">
+
+                    <!-- Top Area -->
+                    <div class="p-4 flex flex-col gap-3 transition-colors" :class="[
+                        msg.status === 'claimed' ? 'bg-gray-400' : 'bg-gradient-to-br from-pink-400 to-rose-500',
+                    ]">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+                                <img :src="msg.giftImage || 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png'"
+                                    class="w-9 h-9 object-contain drop-shadow-md">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-white text-xs font-black uppercase tracking-widest opacity-80 mb-0.5">
+                                    {{ msg.status === 'claimed' ? '礼物已领取' : '收到新礼物' }}
+                                </div>
+                                <div class="text-white text-base font-bold truncate drop-shadow-sm">{{ msg.giftName }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Note -->
+                        <div class="bg-black/5 rounded-lg p-2 border border-white/10">
+                            <p class="text-white/90 text-xs leading-relaxed italic line-clamp-2">"{{ msg.giftNote ||
+                                '送给你的小惊喜' }}"</p>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Status Bar -->
+                    <div class="px-4 py-2 bg-white flex items-center justify-between border-t border-gray-50">
+                        <div class="flex items-center gap-1.5">
+                            <template v-if="msg.status === 'claimed'">
+                                <img :src="msg.claimedBy?.avatar"
+                                    class="w-4 h-4 rounded-full object-cover grayscale-[30%]">
+                                <span class="text-[10px] text-gray-400 font-bold">{{ msg.claimedBy?.name }} 已领取</span>
+                            </template>
+                            <template v-else>
+                                <i class="fa-solid fa-gift text-rose-400 text-[10px] animate-bounce"></i>
+                                <span class="text-[10px] text-rose-500 font-black animate-pulse">待领取</span>
+                            </template>
+                        </div>
+                        <div class="text-[9px] text-gray-300 font-mono tracking-tighter">ID: {{ msg.giftId?.slice(-6) }}
+                        </div>
+                    </div>
+
+                    <!-- Claimed Overlay -->
+                    <div v-if="msg.status === 'claimed'"
+                        class="absolute inset-0 pointer-events-none bg-black/[0.03] flex items-center justify-center">
+                        <div class="rotate-[-12deg] border-4 border-gray-400/20 px-4 py-1 rounded-xl opacity-20">
+                            <span class="text-2xl font-black text-gray-400 uppercase">CLAIMED</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CASE 2.1: Gift Claimed Card -->
+                <div v-else-if="msg.type === 'gift_claimed'"
+                    class="group relative w-[240px] overflow-hidden rounded-2xl shadow-md transition-all active:scale-[0.98] select-none cursor-pointer"
+                    :class="[
+                        'bg-gradient-to-br from-green-400 to-emerald-500 hover:shadow-lg',
+                        msg.role === 'user' ? 'mr-1' : 'ml-1'
+                    ]" @click="$emit('click-gift', msg)" @contextmenu.prevent="emitContextMenu">
+
+                    <!-- Top Area -->
+                    <div class="p-4 flex flex-col gap-3">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+                                <img :src="msg.giftImage || 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png'"
+                                    class="w-9 h-9 object-contain drop-shadow-md">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-white text-xs font-black uppercase tracking-widest opacity-80 mb-0.5">
+                                    礼物已领取
+                                </div>
+                                <div class="text-white text-base font-bold truncate drop-shadow-sm">{{ msg.giftName }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Claim Info -->
+                        <div class="bg-black/5 rounded-lg p-2 border border-white/10">
+                            <p class="text-white/90 text-xs leading-relaxed italic line-clamp-2">"{{ msg.giftNote ||
+                                '送给你的小惊喜' }}"</p>
+                            <div class="mt-2 pt-2 border-t border-white/20">
+                                <div class="flex items-center gap-2">
+                                    <img :src="msg.claimantAvatar"
+                                        class="w-4 h-4 rounded-full object-cover">
+                                    <span class="text-white/80 text-xs">{{ msg.claimantName }} 领取了这份礼物</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Status Bar -->
+                    <div class="px-4 py-2 bg-white flex items-center justify-between border-t border-gray-50">
+                        <div class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-check-circle text-green-500 text-[10px]"></i>
+                            <span class="text-[10px] text-green-600 font-bold">已领取</span>
+                        </div>
+                        <div class="text-[9px] text-gray-300 font-mono tracking-tighter">ID: {{ msg.giftId?.slice(-6) }}
+                        </div>
+                    </div>
+                </div>
                 <div v-else-if="isValidMessage" class="flex gap-2 w-full animate-fade-in"
                     :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
 
@@ -214,10 +322,10 @@
                                                     <div class="flex flex-col items-end shrink-0">
                                                         <span class="text-[12px] font-bold text-gray-600">{{
                                                             parsedVoteData.optionVoters[idx].length
-                                                            }}</span>
+                                                        }}</span>
                                                         <span class="text-[9px] text-gray-400 font-medium">{{
                                                             calculateVotePercent(parsedVoteData.optionVoters[idx].length)
-                                                            }}%</span>
+                                                        }}%</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -599,7 +707,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                        }}
+                                    }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -1167,6 +1275,7 @@ function getCleanContent(contentRaw, isCard = false) {
 
     clean = clean.trim();
     clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET|HTML卡片)\]/gi, '').trim();
+    clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '').trim();
 
     // Final pass for logic symbols and garbage
     clean = clean.replace(/\\n/g, '\n');
@@ -1565,10 +1674,18 @@ function formatMessageContent(msg) {
             return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
         }
 
+        // If it was a generated image URL directly in the tag, remove it
+        if (n.startsWith('http') || n.includes('//')) {
+            return '';
+        }
+
         // Fallback: If sticker not found, return the original match to render as text
         // This allows the user to see the hallucinated name and edit it.
         return match;
     });
+
+    // Also remove any standalone [图片:https...] URLs to prevent duplicate display for DRAW commands
+    html = html.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '');
 
     // --- WECHAT EMOJI FALLBACK ---
     // Handle [微笑] [心] etc.

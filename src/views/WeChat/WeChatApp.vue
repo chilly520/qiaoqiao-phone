@@ -69,24 +69,12 @@ const showCreateLoopModal = ref(false)
 const showBackgroundSettings = ref(false)
 const newFriendName = ref('')
 
-// Background Settings
-const backgroundSettings = ref({
-    chat: {
-        url: '',
-        localUrl: ''
-    },
-    contacts: {
-        url: '',
-        localUrl: ''
-    },
-    discover: {
-        url: '',
-        localUrl: ''
-    },
-    me: {
-        url: '',
-        localUrl: ''
-    }
+// Background Settings from Store
+const backgroundSettings = computed(() => settingsStore.personalization.wechatBackgrounds || {
+    chat: { url: '', localUrl: '' },
+    contacts: { url: '', localUrl: '' },
+    discover: { url: '', localUrl: '' },
+    me: { url: '', localUrl: '' }
 })
 
 // Context Menu State
@@ -142,18 +130,11 @@ const handleProfileAvatarChange = (e) => {
 
 // Background Settings Methods
 const saveBackgroundSettings = () => {
-    localStorage.setItem('qiaqiao_background_settings', JSON.stringify(backgroundSettings.value))
+    // Now handled by settingsStore auto-save
 }
 
 const loadBackgroundSettings = () => {
-    const savedSettings = localStorage.getItem('qiaqiao_background_settings')
-    if (savedSettings) {
-        try {
-            backgroundSettings.value = JSON.parse(savedSettings)
-        } catch (error) {
-            console.error('Failed to load background settings:', error)
-        }
-    }
+    // Now handled by settingsStore on init
 }
 
 const handleBackgroundUpload = (tab, e) => {
@@ -161,22 +142,19 @@ const handleBackgroundUpload = (tab, e) => {
     if (file) {
         const reader = new FileReader()
         reader.onload = (ev) => {
-            backgroundSettings.value[tab].localUrl = ev.target.result
-            saveBackgroundSettings()
+            settingsStore.setWechatBackground(tab, { localUrl: ev.target.result })
         }
         reader.readAsDataURL(file)
     }
 }
 
 const handleBackgroundUrlApply = (tab) => {
-    saveBackgroundSettings()
+    settingsStore.setWechatBackground(tab, { url: backgroundSettings.value[tab].url })
     chatStore.triggerToast('背景设置已应用', 'success')
 }
 
 const clearBackground = (tab) => {
-    backgroundSettings.value[tab].url = ''
-    backgroundSettings.value[tab].localUrl = ''
-    saveBackgroundSettings()
+    settingsStore.setWechatBackground(tab, { url: '', localUrl: '' })
     chatStore.triggerToast('背景已清除', 'success')
 }
 
@@ -229,12 +207,12 @@ const openContextMenu = (type, item, event) => {
     event.preventDefault() // Prevent native menu
     showContextMenu.value = true
     contextMenuJustOpened.value = true
-    
+
     // Clear the flag after a short delay to prevent immediate close on touch release
     setTimeout(() => {
         contextMenuJustOpened.value = false
     }, 300)
-    
+
     // Calculate position
     // If touch event, use touches[0]
     const clientX = event.touches ? event.touches[0].clientX : event.clientX
@@ -534,7 +512,6 @@ const handleOpenMoments = () => {
 // 初始化演示数据
 onMounted(async () => {
     await worldLoopStore.initStore()
-    loadBackgroundSettings()
     window.addEventListener('popstate', handlePopState)
 })
 
@@ -660,7 +637,8 @@ const handleImport = async (e) => {
         <PendingRequestsModal :visible="showPendingRequestsModal" @close="showPendingRequestsModal = false" />
 
         <!-- Context Menu (Restored) -->
-        <div v-if="showContextMenu" class="fixed inset-0 z-[100]" @click="!contextMenuJustOpened && (showContextMenu = false)">
+        <div v-if="showContextMenu" class="fixed inset-0 z-[100]"
+            @click="!contextMenuJustOpened && (showContextMenu = false)">
             <!-- Backdrop for click outside -->
             <div class="absolute inset-0 bg-transparent"></div>
             <div class="absolute bg-[#4c4c4c] rounded-lg shadow-xl py-1 min-w-[140px] animate-scale-up origin-top-left"
@@ -978,10 +956,10 @@ const handleImport = async (e) => {
 
             <!-- MAIN CONTENT AREA -->
             <div class="flex-1 overflow-y-auto relative" :style="{
-                backgroundImage: currentTab === 'chat' && (backgroundSettings.chat.localUrl || backgroundSettings.chat.url) ? `url(${backgroundSettings.chat.localUrl || backgroundSettings.chat.url})` :
-                    currentTab === 'contacts' && (backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) ? `url(${backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url})` :
-                        currentTab === 'discover' && (backgroundSettings.discover.localUrl || backgroundSettings.discover.url) ? `url(${backgroundSettings.discover.localUrl || backgroundSettings.discover.url})` :
-                            currentTab === 'me' && (backgroundSettings.me.localUrl || backgroundSettings.me.url) ? `url(${backgroundSettings.me.localUrl || backgroundSettings.me.url})` : 'none',
+                backgroundImage: currentTab === 'chat' && (backgroundSettings?.chat?.localUrl || backgroundSettings?.chat?.url) ? `url(${backgroundSettings.chat.localUrl || backgroundSettings.chat.url})` :
+                    currentTab === 'contacts' && (backgroundSettings?.contacts?.localUrl || backgroundSettings?.contacts?.url) ? `url(${backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url})` :
+                        currentTab === 'discover' && (backgroundSettings?.discover?.localUrl || backgroundSettings?.discover?.url) ? `url(${backgroundSettings.discover.localUrl || backgroundSettings.discover.url})` :
+                            currentTab === 'me' && (backgroundSettings?.me?.localUrl || backgroundSettings?.me?.url) ? `url(${backgroundSettings.me.localUrl || backgroundSettings.me.url})` : 'none',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat'
@@ -1136,8 +1114,7 @@ const handleImport = async (e) => {
                             <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && !c.loopId)"
                                 :key="chat.id"
                                 class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer prevent-select"
-                                @click="openChat(chat.id)"
-                                @contextmenu.prevent="openContextMenu('group', chat, $event)"
+                                @click="openChat(chat.id)" @contextmenu.prevent="openContextMenu('group', chat, $event)"
                                 @touchstart="startLongPress('group', chat, $event)" @touchend="clearLongPress"
                                 @touchmove="handleTouchMove">
                                 <div class="relative w-10 h-10 mr-3">
@@ -1302,7 +1279,7 @@ const handleImport = async (e) => {
                     <i class="text-xl"
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
-                        }}</span>
+                    }}</span>
                 </div>
             </div>
 

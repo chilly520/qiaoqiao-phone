@@ -597,11 +597,16 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
     // 构建 System Message
     // 如果传入的消息中已经包含了 System Prompt (例如朋友圈生成)，则跳过默认模板
-    let systemMsg = null
-    const hasCustomSystem = messages && messages.length > 0 && messages[0].role === 'system'
+    const hasCustomSystem = (messages && messages.length > 0 && messages[0].role === 'system')
     const isProactiveCall = options.isProactiveCall
 
-    if (!hasCustomSystem) {
+    if (options.isSimpleTask === true) {
+        // [FIX] 简单任务模式：只使用 char.prompt，彻底跳过通用角色扮演模板
+        systemMsg = {
+            role: 'system',
+            content: char.prompt || '你是一个直接完成任务的 AI 助手。不要进行多余的对话或自我介绍，严格按照指令输出结果。'
+        }
+    } else if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
 
         // Environmental Context (Location & Battery)
@@ -619,17 +624,38 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 if (char.groupMemoryIntero && char.linkedGroups && Array.isArray(char.linkedGroups)) {
                     char.linkedGroups.forEach(gid => {
                         const gChat = chatStore.chats[gid]
-                        if (gChat && gChat.isGroup && gChat.memory) {
+                        if (gChat && gChat.isGroup) {
                             const limit = (char.groupMemoryLimits && char.groupMemoryLimits[gid]) || 20
+                            let currentGroupInfo = ''
+
                             const gMemArray = gChat.memory || []
-                            const relevantMems = gMemArray.slice(0, limit)
+                            const relevantMems = [...gMemArray].slice(-limit)
                             if (relevantMems.length > 0) {
                                 const groupTitle = `【群聊: ${gChat.name} 的记忆碎片】`
                                 const groupText = relevantMems.map(m => {
                                     const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
                                     return `- ${content}`
                                 }).join('\n')
-                                memoryParts.push(`${groupTitle}\n${groupText}`)
+                                currentGroupInfo += `${groupTitle}\n${groupText}\n`
+                            }
+
+                            const msgsArray = gChat.msgs || []
+                            const recentMsgs = msgsArray.filter(m => m.type !== 'system' && m.type !== 'favorite_card').slice(-15) // Recent context limit
+                            if (recentMsgs.length > 0) {
+                                const msgsTitle = `【群聊: ${gChat.name} 近期实际对话】`
+                                const msgsText = recentMsgs.map(m => {
+                                    let sender = m.groupSpeakerMeta?.name || m.senderName
+                                    if (!sender) sender = m.role === 'user' ? (gChat.groupSettings?.myNickname || '我') : '群成员'
+                                    let content = typeof m.content === 'object' ? JSON.stringify(m.content) : String(m.content)
+                                    // simple clean
+                                    content = content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
+                                    return `${sender}: ${content}`
+                                }).join('\n')
+                                currentGroupInfo += `\n${msgsTitle}\n${msgsText}\n`
+                            }
+
+                            if (currentGroupInfo.trim()) {
+                                memoryParts.push(currentGroupInfo.trim())
                             }
                         }
                     })
@@ -691,7 +717,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         const chatStore = pinia ? pinia._s.get('chat') : null
         const calendarStore = useCalendarStore()
         const calendarContext = char.id ? calendarStore.getAIContextPrompt(char.id) : ''
-        
+
         const contactListStr = chatStore ? chatStore.contactList.filter(c => !c.isGroup).slice(0, 30).map(c => `- ${c.name} (ID: ${c.id})`).join('\n') : ''
 
         const promptContent = options.isCall
@@ -926,7 +952,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     let userAvatarDesc = null
     let charAvatarDesc = null
 
-    if (isImage(userAvatar) || isImage(charAvatar)) {
+    if ((isImage(userAvatar) || isImage(charAvatar)) && !options.isSimpleTask) {
         const [userB64, charB64] = await Promise.all([
             resolveToBase64(userAvatar),
             resolveToBase64(charAvatar)

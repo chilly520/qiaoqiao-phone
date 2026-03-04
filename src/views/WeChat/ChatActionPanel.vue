@@ -19,6 +19,15 @@
         <span class="text-xs text-[#888]">拍照</span>
       </div>
 
+      <!-- Backpack -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'backpack')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-box-archive text-2xl text-[#f59e0b]"></i>
+        </div>
+        <span class="text-xs text-[#888]">背包</span>
+      </div>
+
       <!-- Red Packet -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'redpacket')">
         <div

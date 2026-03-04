@@ -65,7 +65,7 @@ export const useChatStore = defineStore('chat', () => {
     const loadedMessageCounts = ref({}) // { chatId: 加载的消息数 }
 
     // MODULE EXTRACTS
-    const { _splitRedPacket, claimRedPacket, claimTransfer, hasUnclaimedRP } = setupFinancialLogic(chats, addMessage, saveChats)
+    const { _splitRedPacket, claimRedPacket, claimTransfer, claimGift, hasUnclaimedRP } = setupFinancialLogic(chats, addMessage, saveChats)
 
     const _extractJsonFromText = (text) => {
         if (!text) return null
@@ -546,6 +546,27 @@ export const useChatStore = defineStore('chat', () => {
         } else if (newMsg.type === 'transfer') {
             newMsg.isClaimed = msg.isClaimed || false
             newMsg.targetId = msg.targetId || null
+        } else if (newMsg.type === 'gift') {
+            newMsg.status = msg.status || 'pending'
+            newMsg.giftId = msg.giftId || null
+            newMsg.giftName = msg.giftName || ''
+            newMsg.giftQuantity = msg.giftQuantity || 1
+            newMsg.giftNote = msg.giftNote || ''
+            newMsg.giftImage = msg.giftImage || ''
+            newMsg.senderName = msg.senderName || ''
+            newMsg.claimedBy = msg.claimedBy || null
+            newMsg.claimTime = msg.claimTime || null
+        } else if (newMsg.type === 'gift_claimed') {
+            newMsg.giftId = msg.giftId || null
+            newMsg.giftName = msg.giftName || ''
+            newMsg.giftQuantity = msg.giftQuantity || 1
+            newMsg.giftNote = msg.giftNote || ''
+            newMsg.giftImage = msg.giftImage || ''
+            newMsg.originalSender = msg.originalSender || ''
+            newMsg.claimantName = msg.claimantName || ''
+            newMsg.claimantAvatar = msg.claimantAvatar || ''
+            newMsg.claimTime = msg.claimTime || null
+            newMsg.senderName = msg.senderName || ''
         }
 
         // 1.3 Rewrite content to canonical format [类型:金额:备注:ID] for AI context
@@ -1385,13 +1406,12 @@ export const useChatStore = defineStore('chat', () => {
             }
         }
 
-        // Handle special message types based on content (Financial Commands)
+        // Handle special message types based on content (Financial & Gift Commands)
         if (newMsg.role === 'user' && typeof newMsg.content === 'string') {
             const content = newMsg.content.trim();
-            // User can send [红包:lucky:10:5:备注] or [红包:10:5:备注] (default lucky)
-            const rpMatch = content.match(/^\[红包\s*[:：]\s*(lucky|fixed|手气|固定)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]$/i);
-            const tfMatch = content.match(/^\[转账\s*[:：]\s*([\w-]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]$/i);
 
+            // 1. Red Packet
+            const rpMatch = content.match(/^\[红包\s*[:：]\s*(lucky|fixed|手气|固定)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]$/i);
             if (rpMatch) {
                 const typeRaw = (rpMatch[1] || 'lucky').toLowerCase();
                 const isLucky = typeRaw.includes('lucky') || typeRaw.includes('手气');
@@ -1399,7 +1419,6 @@ export const useChatStore = defineStore('chat', () => {
                 const count = parseInt(rpMatch[3]) || 1;
                 const note = rpMatch[4] || '恭喜发财，大吉大利';
 
-                // Deduct from wallet
                 const walletStore = useWalletStore();
                 if (walletStore.decreaseBalance(amount, `发送红包: ${note}`)) {
                     newMsg.type = 'redpacket';
@@ -1415,12 +1434,14 @@ export const useChatStore = defineStore('chat', () => {
                     triggerToast('余额不足，无法发送红包', 'error');
                     return false;
                 }
-            } else if (tfMatch) {
-                const targetId = tfMatch[1].trim();
-                const amount = parseFloat(tfMatch[2]) || 0.01;
-                const note = tfMatch[3] || '转账给您';
+            }
+            // 2. Transfer
+            const tfMatch = content.match(/^\[(转账|TRANSFER)\s*[:：]\s*([^:：\s\]]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]$/i);
+            if (tfMatch) {
+                const targetId = tfMatch[2].trim();
+                const amount = parseFloat(tfMatch[3]) || 0.01;
+                const note = tfMatch[4] || '转账给您';
 
-                // Deduct from wallet
                 const walletStore = useWalletStore();
                 if (walletStore.decreaseBalance(amount, `转账: ${note}`)) {
                     newMsg.type = 'transfer';
@@ -1433,16 +1454,81 @@ export const useChatStore = defineStore('chat', () => {
                     return false;
                 }
             }
+            // 3. User GIFT Command
+            const giftMatch = content.match(/^\[GIFT\s*[:：]\s*([^:：\]]+)(?:\s*[:：]?\s*(\d*))?(?:\s*[:：]?\s*([^\]]*))?\]/i);
+            if (giftMatch) {
+                const name = giftMatch[1].trim();
+                const qty = parseInt(giftMatch[2]) || 1;
+                const note = giftMatch[3]?.trim() || '';
+
+                newMsg.type = 'gift';
+                newMsg.giftId = 'GIFT-U-' + Date.now();
+                newMsg.giftName = name;
+                newMsg.giftQuantity = qty;
+                newMsg.giftNote = note;
+                newMsg.status = 'pending'; // 改为pending状态，不直接送达
+                newMsg.senderName = useSettingsStore().personalization?.userProfile?.name || '我';
+
+                try {
+                    // Try to fetch image by importing store (async not allowed in sync addMessage, so we use placeholder)
+                    newMsg.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png';
+                } catch (e) { }
+            }
+        }
+
+        // --- AI COMMANDS HANDLING ---
+        if (newMsg.role === 'assistant' && typeof newMsg.content === 'string') {
+            const content = newMsg.content.trim();
+
+            // 1. [GIFT:name:quantity:note]
+            const giftMatch = content.match(/\[GIFT\s*[:：]\s*([^:：\]]+)(?:\s*[:：]?\s*(\d*))?(?:\s*[:：]?\s*([^\]]*))?\]/i);
+            if (giftMatch) {
+                const name = giftMatch[1].trim();
+                const qty = parseInt(giftMatch[2]) || 1;
+                const note = giftMatch[3]?.trim() || '';
+
+                newMsg.type = 'gift';
+                newMsg.giftId = 'GIFT-AI-' + Date.now();
+                newMsg.giftName = name;
+                newMsg.giftQuantity = qty;
+                newMsg.giftNote = note;
+                newMsg.status = 'pending'; // 改为pending状态，不直接送达
+                newMsg.senderName = chat.name;
+                newMsg.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png';
+            }
+
+            // 2. [领取礼物:giftId]
+            const claimMatch = content.match(/\[领取礼物\s*[:：]\s*([^\]]+)\]/);
+            if (claimMatch) {
+                const targetId = claimMatch[1].trim();
+                const targetMsg = chat.msgs.find(m => m.giftId === targetId || m.id === targetId);
+                if (targetMsg && targetMsg.status === 'pending') {
+                    claimGift(chatId, targetMsg.id, 'ai');
+                    // 不隐藏原消息，而是让claimGift函数处理状态更新
+                }
+            }
+
+            // 3. Financial claims
+            const rpClaim = content.match(/\[领取红包\s*[:：]\s*([^\]]+)\]/);
+            if (rpClaim) {
+                claimRedPacket(chatId, rpClaim[1].trim(), 'ai');
+                newMsg.hidden = true;
+            }
+            const tfClaim = content.match(/\[领取转账\s*[:：]\s*([^\]]+)\]/);
+            if (tfClaim) {
+                claimTransfer(chatId, tfClaim[1].trim(), 'ai');
+                newMsg.hidden = true;
+            }
         }
 
         // 4. Persistence
         if (!chat.msgs) chat.msgs = []
         chat.msgs.push(newMsg)
 
-        // 4.1 Insert pending system messages (if any)
+        // 4.1 Insert pending system messages
         if (newMsg._pendingSystemMessages && newMsg._pendingSystemMessages.length > 0) {
             chat.msgs.push(...newMsg._pendingSystemMessages)
-            delete newMsg._pendingSystemMessages // Clean up
+            delete newMsg._pendingSystemMessages
         }
 
         if (!chat.inChatList) chat.inChatList = true
@@ -1450,50 +1536,36 @@ export const useChatStore = defineStore('chat', () => {
             chat.unreadCount = (chat.unreadCount || 0) + 1
         }
 
-        // Trigger Global Notification (Only for AI or other users, not self)
         if (newMsg.role !== 'user') {
             const contentStr = String(newMsg.content || '');
             const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
-
             if (!isToxic && contentStr.trim().length > 0) {
-                // App internal notification event
                 notificationEvent.value = {
                     id: Date.now(),
                     chatId: chatId,
                     name: chat.name,
                     avatar: chat.avatar,
-                    content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
+                    content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'gift' ? '[礼物]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]'))),
                     timestamp: Date.now()
                 }
             }
         }
 
-
-        // Auto-generate system messages for family cards
-        content = typeof newMsg.content === 'string' ? newMsg.content : ''
+        // Auto-generate system messages
+        const msgContent = typeof newMsg.content === 'string' ? newMsg.content : ''
         const userName = chat.userName || '用户'
         const charName = chat.name || '对方'
 
-        if (content.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
-            setTimeout(() => {
-                addMessage(chatId, { role: 'system', content: `${userName}正在向${charName}申请绑定亲属卡` })
-            }, 100)
+        if (msgContent.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
+            setTimeout(() => addMessage(chatId, { role: 'system', content: `${userName}正在向${charName}申请绑定亲属卡` }), 100)
         }
-
-        if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
-            const match = content.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
-            const cardName = match ? match[2] : '亲属卡'
-            setTimeout(() => {
-                addMessage(chatId, { role: 'system', content: `${charName}向您发送了亲属卡「${cardName}」，点击领取` })
-            }, 100)
+        if (msgContent.includes('[FAMILY_CARD:') && !msgContent.includes('APPLY') && !msgContent.includes('REJECT') && newMsg.role === 'ai') {
+            const match = msgContent.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
+            setTimeout(() => addMessage(chatId, { role: 'system', content: `${charName}向您发送了亲属卡「${match ? match[2] : '亲属卡'}」，点击领取` }), 100)
         }
-
-        if (content.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
-            setTimeout(() => {
-                addMessage(chatId, { role: 'system', content: `${charName}已拒绝${userName}的亲属卡申请` })
-            }, 100)
+        if (msgContent.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
+            setTimeout(() => addMessage(chatId, { role: 'system', content: `${charName}已拒绝${userName}的亲属卡申请` }), 100)
         }
-
 
         checkAutoSummary(chatId)
         saveChats()
@@ -3767,7 +3839,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         generateGroupMembers, groupNpcs,
         transferGroupOwner, setParticipantRole, setParticipantTitle, muteParticipant,
         exitGroup, dissolveGroup,
-        claimRedPacket, claimTransfer, hasUnclaimedRP,
+        claimRedPacket, claimTransfer, claimGift, hasUnclaimedRP,
         createVote, castVote, endVote,
         calculateMemberLevel, getMemberTitle
     }

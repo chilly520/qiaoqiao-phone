@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useMusicStore } from '../../stores/musicStore'
 import { useCallStore } from '../../stores/callStore'
 import { useWorldLoopStore } from '../../stores/worldLoopStore'
+import { useBackpackStore } from '../../stores/backpackStore'
 
 import ChatActionPanel from './ChatActionPanel.vue'
 import ChatDetailSettings from './ChatDetailSettings.vue'
@@ -38,6 +39,7 @@ import GroupVoteModal from './modals/GroupVoteModal.vue'
 import GroupRankModal from './modals/GroupRankModal.vue'
 import DiceModal from './modals/DiceModal.vue'
 import TarotModal from './modals/TarotModal.vue'
+import BackpackModal from './modals/BackpackModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -86,16 +88,19 @@ const favoritesStore = useFavoritesStore()
 const musicStore = useMusicStore()
 const callStore = useCallStore()
 const worldLoopStore = useWorldLoopStore()
+const backpackStore = useBackpackStore()
 
 const showGMMenu = ref(false)
 const showMissionScheduler = ref(false)
 const showVoteModal = ref(false)
 const showDiceModal = ref(false)
 const showTarotModal = ref(false)
+const showBackpackModal = ref(false)
 const showScrollToBottom = ref(false)
 const showRankModal = ref(false)
 const rankChatId = ref('')
 const msgContainer = ref(null)
+const backpackModal = ref(null)
 
 const handleScroll = () => {
     if (!msgContainer.value) return
@@ -625,6 +630,7 @@ const handleIframeMessage = (event) => {
 onMounted(async () => {
     // 1. Initialize world loops from storage
     await worldLoopStore.initStore()
+    backpackStore.initStore()
 
     // 2. Add event listeners
     window.addEventListener('message', handleIframeMessage)
@@ -1062,6 +1068,9 @@ const handlePanelAction = (type) => {
     } else if (type === 'tarot') {
         showTarotModal.value = true
         showActionPanel.value = false
+    } else if (type === 'backpack') {
+        showBackpackModal.value = true
+        showActionPanel.value = false
     }
 }
 
@@ -1103,6 +1112,24 @@ const handleDiceRoll = (diceCount, results, total) => {
     // Scroll to bottom
     scrollToBottom(true)
     setTimeout(() => scrollToBottom(false), 100)
+}
+
+// Handle Backpack Send Card
+const handleBackpackSendCard = ({ content, itemId, isGift }) => {
+    // 1. 发送消息
+    chatStore.addMessage(chatStore.currentChatId, {
+        role: 'user',
+        type: 'html',
+        content: content
+    })
+
+    // 2. 从背包移除物品
+    backpackStore.removeItem(itemId, 1)
+
+    // 3. 自动触发 AI 回复
+    setTimeout(() => {
+        chatStore.sendMessageToAI(chatStore.currentChatId)
+    }, 800)
 }
 
 // Handle Tarot Share
@@ -1345,8 +1372,16 @@ const openSendDialog = (type) => {
     sendType.value = type
     sendAmount.value = type === 'redpacket' ? '8.88' : '520'
     sendNote.value = type === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您'
-    sendCount.value = 1
-    packetType.value = 'lucky'
+
+    // 强制单聊红包为1个普通红包
+    if (!chatData.value?.isGroup && type === 'redpacket') {
+        sendCount.value = 1
+        packetType.value = 'fixed'
+    } else {
+        sendCount.value = 1
+        packetType.value = 'lucky'
+    }
+
     showSendModal.value = true
     showActionPanel.value = false
 }
@@ -1391,6 +1426,67 @@ const confirmSend = () => {
     })
 
     showSendModal.value = false
+}
+
+const handleGiftClick = (msg) => {
+    if (!chatData.value) return
+
+    if (msg.status === 'claimed') {
+        // 已领取的礼物，显示领取详情
+        const claimTime = new Date(msg.claimTime || Date.now()).toLocaleString()
+        const claimantName = msg.claimantName || '对方'
+        const originalSender = msg.originalSender || chatData.value.name
+        
+        let detailContent = `🎁 礼物详情\n\n`
+        detailContent += `📦 礼物名称：${msg.giftName}\n`
+        detailContent += `📊 数量：${msg.giftQuantity}\n`
+        detailContent += `📝 留言：${msg.giftNote || '无'}\n\n`
+        detailContent += `🎅 赠送者：${originalSender}\n`
+        detailContent += `👤 领取者：${claimantName}\n`
+        detailContent += `⏰ 领取时间：${claimTime}\n`
+        detailContent += `🆔 礼物ID：${msg.giftId?.slice(-6) || '未知'}`
+        
+        showToast(detailContent, 'info', 5000)
+    } else if (msg.type === 'gift_claimed') {
+        // 已领取卡片，显示领取详情
+        const claimTime = new Date(msg.claimTime || Date.now()).toLocaleString()
+        const claimantName = msg.claimantName || '对方'
+        const originalSender = msg.originalSender || chatData.value.name
+        
+        let detailContent = `✅ 礼物已领取\n\n`
+        detailContent += `📦 礼物名称：${msg.giftName}\n`
+        detailContent += `📊 数量：${msg.giftQuantity}\n`
+        detailContent += `📝 原留言：${msg.giftNote || '无'}\n\n`
+        detailContent += `🎅 赠送者：${originalSender}\n`
+        detailContent += `👤 领取者：${claimantName}\n`
+        detailContent += `⏰ 领取时间：${claimTime}\n`
+        detailContent += `🆔 礼物ID：${msg.giftId?.slice(-6) || '未知'}`
+        
+        showToast(detailContent, 'info', 5000)
+    } else {
+        // Role check: User can claim AI's gifts
+        if (msg.role === 'assistant' || msg.senderId !== 'user') {
+            chatStore.confirmEvent = {
+                title: '领取礼物',
+                message: `确认领取来自 ${chatData.value.name} 的礼物「${msg.giftName}」吗？\n\n留言: "${msg.giftNote || '无'}"`,
+                confirmText: '立即领取',
+                cancelText: '稍后再说',
+                onConfirm: async () => {
+                    const success = await chatStore.claimGift(chatData.value.id, msg.id, 'user')
+                    if (success) {
+                        showToast('领取成功！已存入背包', 'success')
+                        // Auto trigger AI acknowledgment
+                        setTimeout(() => {
+                            chatStore.sendMessageToAI(chatData.value.id)
+                        }, 1000)
+                    }
+                }
+            }
+        } else {
+            // User's own gift: View details
+            showToast('🎁 礼物待对方领取中...\n点击可查看状态', 'info', 3000)
+        }
+    }
 }
 
 const handleImgUpload = (event) => {
@@ -2914,7 +3010,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
                     :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
                     @context-menu="(e) => handleContextMenu(e.msg, e.event)" @toggle-select="toggleMessageSelection"
-                    @click-pay="handlePayClick" @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
+                    @click-pay="handlePayClick" @click-gift="handleGiftClick" @play-voice="handleVoiceClick"
+                    @show-rank="handleShowRank" />
 
                 <!-- Typing Indicator -->
                 <div v-if="chatStore.isTyping" class="flex gap-2 w-full z-10 mb-2">
@@ -3161,6 +3258,10 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         <!-- Tarot Modal -->
         <TarotModal :show="showTarotModal" @close="showTarotModal = false" @share="handleTarotShare"
             @share-interpretation="handleTarotInterpretationShare" />
+
+        <!-- Backpack Modal -->
+        <BackpackModal ref="backpackModal" v-if="showBackpackModal" @close="showBackpackModal = false"
+            @send-card="handleBackpackSendCard" />
 
         <!-- Modals -->
         <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />

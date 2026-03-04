@@ -75,21 +75,24 @@ export const setupProactiveLogic = (chats, currentChatId, typingStatus, sendMess
 
         if (typingStatus.value[chatId] || callStore.status !== 'none') return
 
-        // 1. Proactive Chat / Call (While user is in the current chat but idle)
-        if (chat.proactiveChat && currentChatId.value === chatId) {
+        // 1. Proactive Chat / Call (Trigger when idle, applies globally now)
+        if (chat.proactiveChat) {
             const pInterval = parseInt(chat.proactiveInterval) || 30
             if (diffMinutes >= pInterval) {
-                const rand = Math.random()
-                logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
-                if (!chat.isGroup && rand < 0.2) {
-                    const callType = Math.random() > 0.5 ? 'video' : 'voice'
-                    sendMessageToAI(chatId, {
-                        hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
-                        isProactiveCall: true
-                    })
-                } else {
-                    // Group chats: no call triggers, only messages
-                    sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没说话了，给群里发条简短的消息。可以带上表情包。）` })
+                if (!chat._lastProactiveTriggeredTime || (now - chat._lastProactiveTriggeredTime >= pInterval * 60000)) {
+                    chat._lastProactiveTriggeredTime = now
+                    const rand = Math.random()
+                    logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
+                    if (!chat.isGroup && rand < 0.2) {
+                        const callType = Math.random() > 0.5 ? 'video' : 'voice'
+                        sendMessageToAI(chatId, {
+                            hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                            isProactiveCall: true
+                        })
+                    } else {
+                        // Group chats: no call triggers, only messages
+                        sendMessageToAI(chatId, { hiddenHint: `（距离上次发言已过 ${Math.floor(diffMinutes)} 分钟，给${chat.isGroup ? '群里' : '用户'}主动发条简短的消息开启新话题或分享动态。可带上表情包。）` })
+                    }
                 }
             }
         }

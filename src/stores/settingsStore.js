@@ -67,6 +67,12 @@ export const useSettingsStore = defineStore('settings', () => {
         customCss: '',
         theme: 'default', // 新增：主题选择 (default | kawaii | business)
         wallpaperOverlayOpacity: 0.5, // 新增：夜间模式聊天壁纸遮罩透明度 (0-1)
+        wechatBackgrounds: {
+            chat: { url: '', localUrl: '' },
+            contacts: { url: '', localUrl: '' },
+            discover: { url: '', localUrl: '' },
+            me: { url: '', localUrl: '' }
+        },
         userProfile: {
             name: '乔乔',
             avatar: '/avatars/小猫星星眼.jpg',
@@ -304,6 +310,26 @@ export const useSettingsStore = defineStore('settings', () => {
                     card2: savedWidgets.card2 || defaultWidgets.card2
                 }
 
+                // WeChat Backgrounds Migration
+                if (data.personalization.wechatBackgrounds) {
+                    personalization.value.wechatBackgrounds = {
+                        ...personalization.value.wechatBackgrounds,
+                        ...data.personalization.wechatBackgrounds
+                    }
+                } else {
+                    // Legacy: Check old key if necessary
+                    const legacy = localStorage.getItem('qiaqiao_background_settings')
+                    if (legacy) {
+                        try {
+                            const legacyData = JSON.parse(legacy)
+                            personalization.value.wechatBackgrounds = {
+                                ...personalization.value.wechatBackgrounds,
+                                ...legacyData
+                            }
+                        } catch (e) { }
+                    }
+                }
+
                 // Inject Default Preset '乌金' if missing
                 if (!personalization.value.presets) personalization.value.presets = [];
                 const hasWuJin = personalization.value.presets.some(p => p.name === '乌金');
@@ -433,6 +459,13 @@ export const useSettingsStore = defineStore('settings', () => {
     function setCustomCss(css) { personalization.value.customCss = css; saveToStorage(); }
     function setTheme(themeName) { personalization.value.theme = themeName; saveToStorage(); }
     function updateUserProfile(profile) { personalization.value.userProfile = { ...personalization.value.userProfile, ...profile }; saveToStorage(); }
+    function setWechatBackground(tab, data) {
+        if (!personalization.value.wechatBackgrounds) {
+            personalization.value.wechatBackgrounds = { chat: {}, contacts: {}, discover: {}, me: {} }
+        }
+        personalization.value.wechatBackgrounds[tab] = { ...personalization.value.wechatBackgrounds[tab], ...data }
+        saveToStorage()
+    }
 
     // Preset Actions
     function savePreset(name) {
@@ -594,91 +627,91 @@ export const useSettingsStore = defineStore('settings', () => {
     // 👇👇👇 这里是为你补全、适配你原有项目的 2 个核心方法，解决所有报错
     // ======================================================================
     const exportFullData = async (selectionState = {}, injectedData = {}) => {
-      const chatStore = useChatStore()
-      const momentsStore = useMomentsStore()
-      const stickerStore = useStickerStore()
-      const worldBookStore = useWorldBookStore()
-
-      const data = {
-        version: '2.0.0',
-        timestamp: new Date().toISOString(),
-        selection: selectionState
-      }
-
-      if (selectionState.chats) {
-        data.chats = injectedData.chats || JSON.parse(JSON.stringify(chatStore.chats || {}))
-      }
-      if (selectionState.moments) {
-        data.moments = injectedData.moments || JSON.parse(JSON.stringify(momentsStore.moments || []))
-        data.momentsTop = injectedData.momentsTop || JSON.parse(JSON.stringify(momentsStore.topMoments || []))
-        data.momentsNotifications = injectedData.momentsNotifications || JSON.parse(JSON.stringify(momentsStore.notifications || []))
-      }
-      if (selectionState.settings) {
-        data.settings = JSON.parse(JSON.stringify(personalization.value))
-      }
-      if (selectionState.worldbook) {
-        data.worldbook = injectedData.worldbook || JSON.parse(JSON.stringify(worldBookStore.books || []))
-      }
-      if (selectionState.stickers) {
-        data.stickers = injectedData.stickers || JSON.parse(JSON.stringify(stickerStore.stickers || []))
-      }
-      if (selectionState.favorites) {
-        data.favorites = injectedData.favorites || JSON.parse(JSON.stringify(chatStore.favorites || []))
-      }
-      if (selectionState.wallet) {
-        data.wallet = { balance: 0, records: [] }
-      }
-      if (selectionState.weibo) {
-        data.weibo = { account: null, history: [] }
-      }
-      if (selectionState.music) {
-        data.music = { playHistory: [], favorites: [] }
-      }
-      if (selectionState.logs) {
-        data.logs = []
-      }
-
-      return data
-    }
-
-    const importFullData = async (remoteData) => {
-      try {
         const chatStore = useChatStore()
         const momentsStore = useMomentsStore()
         const stickerStore = useStickerStore()
         const worldBookStore = useWorldBookStore()
 
-        if (remoteData.chats) {
-          chatStore.chats = remoteData.chats
-          chatStore.saveChats?.()
+        const data = {
+            version: '2.0.0',
+            timestamp: new Date().toISOString(),
+            selection: selectionState
         }
-        if (remoteData.moments) {
-          momentsStore.moments = remoteData.moments
-          momentsStore.topMoments = remoteData.momentsTop || []
-          momentsStore.notifications = remoteData.momentsNotifications || []
-          momentsStore.saveMoments?.()
+
+        if (selectionState.chats) {
+            data.chats = injectedData.chats || JSON.parse(JSON.stringify(chatStore.chats || {}))
         }
-        if (remoteData.settings) {
-          personalization.value = { ...personalization.value, ...remoteData.settings }
-          saveToStorage()
+        if (selectionState.moments) {
+            data.moments = injectedData.moments || JSON.parse(JSON.stringify(momentsStore.moments || []))
+            data.momentsTop = injectedData.momentsTop || JSON.parse(JSON.stringify(momentsStore.topMoments || []))
+            data.momentsNotifications = injectedData.momentsNotifications || JSON.parse(JSON.stringify(momentsStore.notifications || []))
         }
-        if (remoteData.worldbook) {
-          worldBookStore.books = remoteData.worldbook
-          worldBookStore.saveEntries?.()
+        if (selectionState.settings) {
+            data.settings = JSON.parse(JSON.stringify(personalization.value))
         }
-        if (remoteData.stickers) {
-          stickerStore.stickers = remoteData.stickers
-          stickerStore.saveStickers?.()
+        if (selectionState.worldbook) {
+            data.worldbook = injectedData.worldbook || JSON.parse(JSON.stringify(worldBookStore.books || []))
         }
-        if (remoteData.favorites) {
-          chatStore.favorites = remoteData.favorites
-          chatStore.saveFavorites?.()
+        if (selectionState.stickers) {
+            data.stickers = injectedData.stickers || JSON.parse(JSON.stringify(stickerStore.stickers || []))
         }
-        return true
-      } catch (err) {
-        console.error('导入失败', err)
-        return false
-      }
+        if (selectionState.favorites) {
+            data.favorites = injectedData.favorites || JSON.parse(JSON.stringify(chatStore.favorites || []))
+        }
+        if (selectionState.wallet) {
+            data.wallet = { balance: 0, records: [] }
+        }
+        if (selectionState.weibo) {
+            data.weibo = { account: null, history: [] }
+        }
+        if (selectionState.music) {
+            data.music = { playHistory: [], favorites: [] }
+        }
+        if (selectionState.logs) {
+            data.logs = []
+        }
+
+        return data
+    }
+
+    const importFullData = async (remoteData) => {
+        try {
+            const chatStore = useChatStore()
+            const momentsStore = useMomentsStore()
+            const stickerStore = useStickerStore()
+            const worldBookStore = useWorldBookStore()
+
+            if (remoteData.chats) {
+                chatStore.chats = remoteData.chats
+                chatStore.saveChats?.()
+            }
+            if (remoteData.moments) {
+                momentsStore.moments = remoteData.moments
+                momentsStore.topMoments = remoteData.momentsTop || []
+                momentsStore.notifications = remoteData.momentsNotifications || []
+                momentsStore.saveMoments?.()
+            }
+            if (remoteData.settings) {
+                personalization.value = { ...personalization.value, ...remoteData.settings }
+                saveToStorage()
+            }
+            if (remoteData.worldbook) {
+                worldBookStore.books = remoteData.worldbook
+                worldBookStore.saveEntries?.()
+            }
+            if (remoteData.stickers) {
+                stickerStore.stickers = remoteData.stickers
+                stickerStore.saveStickers?.()
+            }
+            if (remoteData.favorites) {
+                chatStore.favorites = remoteData.favorites
+                chatStore.saveFavorites?.()
+            }
+            return true
+        } catch (err) {
+            console.error('导入失败', err)
+            return false
+        }
     }
     // ======================================================================
     // 👆👆👆 补全结束
@@ -702,6 +735,7 @@ export const useSettingsStore = defineStore('settings', () => {
         updateConfig, createConfig, deleteConfig,
         saveToStorage, loadFromStorage,
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
+        setWechatBackground,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,

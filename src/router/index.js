@@ -175,6 +175,11 @@ const router = createRouter({
             path: '/wallet/bill/statistics',
             name: 'wallet-bill-statistics',
             component: () => import('../views/Wallet/WalletStatisticsView.vue')
+        },
+        {
+            path: '/shopping',
+            name: 'shopping',
+            component: () => import('../views/Shopping/ShoppingApp.vue')
         }
     ]
 })
