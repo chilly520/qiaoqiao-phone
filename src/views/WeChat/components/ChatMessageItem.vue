@@ -335,10 +335,10 @@
                                                     <div class="flex flex-col items-end shrink-0">
                                                         <span class="text-[12px] font-bold text-gray-600">{{
                                                             parsedVoteData.optionVoters[idx].length
-                                                        }}</span>
+                                                            }}</span>
                                                         <span class="text-[9px] text-gray-400 font-medium">{{
                                                             calculateVotePercent(parsedVoteData.optionVoters[idx].length)
-                                                        }}%</span>
+                                                            }}%</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -720,7 +720,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                    }}
+                                        }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -1955,8 +1955,8 @@ function getHtmlContent(content) {
 }
 // --- Group Vote Logic ---
 const parsedVoteData = computed(() => {
-    // Both explicitly marked vote type or messages with vote object are valid
-    if (props.msg.type !== 'vote' && !props.msg.vote) return null
+    // Only show votes in group chats.
+    if ((props.msg.type !== 'vote' && !props.msg.vote) || !props.chatData.isGroup) return null
     try {
         const data = props.msg.vote || (typeof props.msg.content === 'string' ? JSON.parse(props.msg.content) : props.msg.content)
 

@@ -10,29 +10,28 @@ export const useWorldBookStore = defineStore('worldBook', {
     actions: {
         async loadEntries() {
             try {
+                // safeguard: if already loaded, don't reload
+                if (this.books && this.books.length > 0) return;
+
+                // 1. Try localforage
                 const data = await localforage.getItem('wechat_worldbook_books')
                 if (data && Array.isArray(data) && data.length > 0) {
                     this.books = data
+                    console.log('[WorldBook] Loaded from localForage:', data.length)
                 } else {
-                    // MIGRATION: Check raw localStorage for legacy data
+                    // 2. MIGRATION: Check legacy localStorage
                     const legacy = localStorage.getItem('wechat_worldbook_books')
                     if (legacy) {
                         try {
                             const parsed = JSON.parse(legacy)
                             if (Array.isArray(parsed) && parsed.length > 0) {
-                                console.log('[WorldBook] Migrating legacy localStorage data to localForage')
+                                console.log('[WorldBook] Migrating legacy data:', parsed.length)
                                 this.books = parsed
-                                await this.saveEntries()
                                 return
                             }
-                        } catch (e) {
-                            console.error('[WorldBook] Legacy migration failed', e)
-                        }
+                        } catch (e) { console.error('[WorldBook] Legacy migration failed', e) }
                     }
-
-                    // Init empty if nothing found
                     this.books = []
-                    this.saveEntries() // Initialize DB
                 }
             } catch (e) {
                 console.error('[WorldBook] Load error', e)
@@ -41,26 +40,47 @@ export const useWorldBookStore = defineStore('worldBook', {
         },
 
         async saveEntries() {
-            await localforage.setItem('wechat_worldbook_books', JSON.parse(JSON.stringify(this.books)))
+            try {
+                const dataToSave = JSON.parse(JSON.stringify(this.books))
+                await localforage.setItem('wechat_worldbook_books', dataToSave)
+            } catch (e) { console.error('[WorldBook] Save failed', e) }
         },
 
         // --- Book Actions ---
-        createBook(name, description = '') {
+        // Aligned with WorldBookApp.vue expectations
+        addBook(bookData) {
             const newBook = {
-                id: 'book_' + Date.now(),
-                name,
-                description,
-                entries: [] // Entries inside this book
+                id: 'book_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                name: bookData.name || '未命名世界书',
+                description: bookData.description || '',
+                entries: []
             }
             this.books.push(newBook)
             this.saveEntries()
             return newBook
         },
 
-        updateBook(id, updates) {
+        // Kept for backward compatibility
+        createBook(name, description = '') {
+            return this.addBook({ name, description })
+        },
+
+        updateBook(idOrData, maybeUpdates) {
+            let id, updates;
+            if (typeof idOrData === 'object' && idOrData.id) {
+                id = idOrData.id
+                updates = idOrData
+            } else {
+                id = idOrData
+                updates = maybeUpdates
+            }
+
             const idx = this.books.findIndex(b => b.id === id)
-            if (idx !== -1) {
+            if (idx !== -1 && updates) {
+                // Ensure we don't clobber entries
+                const oldEntries = this.books[idx].entries
                 this.books[idx] = { ...this.books[idx], ...updates }
+                if (!updates.entries) this.books[idx].entries = oldEntries
                 this.saveEntries()
             }
         },
@@ -88,14 +108,23 @@ export const useWorldBookStore = defineStore('worldBook', {
             }
         },
 
-        updateEntry(bookId, entryId, updates) {
+        updateEntry(bookId, entryIdOrObj, maybeUpdates) {
             const book = this.books.find(b => b.id === bookId)
-            if (book) {
-                const idx = book.entries.findIndex(e => e.id === entryId)
-                if (idx !== -1) {
-                    book.entries[idx] = { ...book.entries[idx], ...updates }
-                    this.saveEntries()
-                }
+            if (!book) return;
+
+            let entryId, updates;
+            if (typeof entryIdOrObj === 'object' && entryIdOrObj.id) {
+                entryId = entryIdOrObj.id
+                updates = entryIdOrObj
+            } else {
+                entryId = entryIdOrObj
+                updates = maybeUpdates
+            }
+
+            const idx = book.entries.findIndex(e => e.id === entryId)
+            if (idx !== -1 && updates) {
+                book.entries[idx] = { ...book.entries[idx], ...updates }
+                this.saveEntries()
             }
         },
 

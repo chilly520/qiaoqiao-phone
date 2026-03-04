@@ -86,8 +86,8 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         }
 
         // Add system message
-        const claimantStr = claimantId === 'user' ? '你' : name;
-        const ownerName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : chat.name);
+        const claimantStr = claimantId === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : name;
+        const ownerName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : (chat.isGroup ? (chat.participants.find(p => p.id === msg.senderId)?.name || chat.name) : chat.name));
 
         // 1. Claimed notification
         const rpType = msg.packetType === 'lucky' ? '拼手气红包' : '红包';

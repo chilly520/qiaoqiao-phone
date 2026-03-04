@@ -467,10 +467,119 @@ function toggleAiSelect(id) {
 
 
 const memories = computed(() => {
-  const chat = existingChat.value
-  if (!chat || !Array.isArray(chat.memory)) return []
-  return chat.memory
+  if (!existingChat.value) return []
+  return existingChat.value.memory || []
 })
+
+// --- Memory Modal Themes Support ---
+const getThemeBackground = () => {
+  const theme = currentMemoryTheme.value;
+  if (theme === 'diary') return 'bg-amber-50/30'
+  if (theme === 'newspaper') return 'bg-gray-100/50'
+  if (theme === 'postage') return 'bg-red-50/30'
+  if (theme === 'poster') return 'bg-indigo-50/20'
+  return ''
+}
+const getThemeCardClass = () => {
+  const theme = currentMemoryTheme.value;
+  const isDark = settingsStore.personalization.theme === 'dark'
+  let base = 'p-4 rounded-xl shadow-sm border '
+  if (theme === 'diary') return base + (isDark ? 'bg-amber-900/20 border-amber-700/30 text-amber-100' : 'bg-white border-amber-100 text-gray-800')
+  if (theme === 'newspaper') return base + (isDark ? 'bg-gray-800 border-gray-600 text-gray-100 font-serif' : 'bg-white border-gray-300 text-gray-900 font-serif')
+  if (theme === 'postage') return base + (isDark ? 'bg-red-900/10 border-red-800/20 text-red-100 border-dashed border-2' : 'bg-white border-red-200 text-gray-800 border-dashed border-2')
+  if (theme === 'poster') return base + (isDark ? 'bg-indigo-900/20 border-indigo-700/30 text-indigo-100' : 'bg-white border-indigo-100 text-gray-800')
+  return base + (isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100')
+}
+const getThemeNumberClass = () => {
+  const theme = currentMemoryTheme.value;
+  let base = 'w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold '
+  if (theme === 'diary') return base + 'bg-amber-100 text-amber-600'
+  if (theme === 'newspaper') return base + 'bg-gray-900 text-white rounded-none'
+  if (theme === 'postage') return base + 'bg-red-500 text-white rotate-12'
+  if (theme === 'poster') return base + 'bg-indigo-500 text-white'
+  return base + 'bg-gray-100 text-gray-500'
+}
+const getThemeNumberPrefix = (n) => {
+  const theme = currentMemoryTheme.value;
+  if (theme === 'newspaper') return `VOL.${n}`
+  return n
+}
+const getThemeBadgeClass = () => {
+  const theme = currentMemoryTheme.value;
+  let base = 'text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider '
+  if (theme === 'diary') return base + 'bg-amber-500/10 text-amber-600'
+  if (theme === 'newspaper') return base + 'bg-black text-white'
+  if (theme === 'postage') return base + 'bg-red-500/10 text-red-500'
+  if (theme === 'poster') return base + 'bg-indigo-500/10 text-indigo-500'
+  return base + 'bg-gray-100 text-gray-500'
+}
+const getThemeLabel = () => {
+  const theme = currentMemoryTheme.value;
+  if (theme === 'diary') return 'Memorandum'
+  if (theme === 'newspaper') return 'Extra Edition'
+  if (theme === 'postage') return 'Stamp'
+  if (theme === 'poster') return 'Headline'
+  return 'Memory'
+}
+const getThemeContentClass = () => {
+  const theme = currentMemoryTheme.value;
+  let base = 'text-sm leading-relaxed '
+  if (theme === 'diary') return base + 'font-serif italic'
+  if (theme === 'newspaper') return base + 'font-serif font-medium indent-4'
+  if (theme === 'postage') return base + 'font-mono'
+  if (theme === 'poster') return base + 'font-bold tracking-tight uppercase'
+  return base
+}
+const getThemeMetaClass = () => {
+  const theme = currentMemoryTheme.value;
+  let base = 'mt-3 text-[10px] flex items-center '
+  if (theme === 'diary') return base + 'text-amber-500/60'
+  if (theme === 'newspaper') return base + 'text-gray-500 uppercase font-bold border-t border-gray-100 pt-2'
+  if (theme === 'postage') return base + 'text-red-400'
+  if (theme === 'poster') return base + 'text-indigo-400 font-bold'
+  return base + 'text-gray-400'
+}
+
+// --- Memory Actions ---
+const startEdit = (index, mem) => {
+  editingIndex.value = index
+  editingContent.value = typeof mem === 'object' ? mem.content : mem
+}
+
+const cancelEdit = () => {
+  editingIndex.value = -1
+  editingContent.value = ''
+}
+
+const saveEdit = async (index) => {
+  if (!existingChat.value) return
+  const newMemories = [...memories.value]
+  if (typeof newMemories[index] === 'object') {
+    newMemories[index] = { ...newMemories[index], content: editingContent.value, timestamp: Date.now() }
+  } else {
+    newMemories[index] = editingContent.value
+  }
+  await chatStore.updateCharacter(existingChat.value.id, { memory: newMemories })
+  editingIndex.value = -1
+  chatStore.triggerToast('记忆已更新', 'success')
+}
+
+const deleteMemory = async (index) => {
+  if (!existingChat.value) return
+  chatStore.triggerConfirm('删除记忆', '确定要删除这条记忆吗？', async () => {
+    const newMemories = memories.value.filter((_, i) => i !== index)
+    await chatStore.updateCharacter(existingChat.value.id, { memory: newMemories })
+    chatStore.triggerToast('已删除', 'info')
+  })
+}
+
+const toggleSelection = (index) => {
+  if (selectedIndices.value.has(index)) {
+    selectedIndices.value.delete(index)
+  } else {
+    selectedIndices.value.add(index)
+  }
+}
 
 function openMemoryLib() {
   const chatId = existingChat.value?.id
@@ -1288,28 +1397,37 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="p-3 bg-white/50 rounded-xl border border-gray-100 space-y-3">
+          <div class="p-3 rounded-xl border space-y-3 transition-colors duration-300 shadow-sm"
+            :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white/50 border-gray-100'">
             <div class="flex items-center justify-between">
               <div class="flex flex-col">
-                <span class="text-sm font-medium">自动总结 (Auto Summary)</span>
+                <span class="text-sm font-medium"
+                  :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">自动总结 (Auto
+                  Summary)</span>
                 <span class="text-[10px] text-gray-400">节省 Token 并维持长效记忆</span>
               </div>
-              <input type="checkbox" v-model="form.autoSummary" class="accent-green-600 scale-110" />
+              <input type="checkbox" v-model="form.autoSummary" class="accent-green-600 scale-110 cursor-pointer" />
             </div>
 
-            <div class="pt-2 border-t border-gray-100">
-              <label class="text-[10px] text-gray-400 mb-1 block">总结提示词 (Prompt)</label>
+            <div class="pt-2 border-t"
+              :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-100'">
+              <label class="text-[10px] mb-1 block"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">总结提示词
+                (Prompt)</label>
               <textarea v-model="form.summaryPrompt"
-                class="w-full bg-white/80 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none resize-none h-24 focus:bg-white transition-all shadow-inner"
+                class="w-full rounded-xl px-3 py-2 text-xs outline-none resize-none h-24 transition-all shadow-inner font-serif"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white focus:bg-black/30' : 'bg-white/80 border-gray-100 text-gray-800 focus:bg-white'"
                 placeholder="自定义总结提示词..."></textarea>
 
               <div class="flex gap-2 mt-3">
                 <button @click="triggerManualSummary"
-                  class="flex-1 py-4 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold border border-blue-100 active:bg-blue-100 transition-all flex items-center justify-center">
+                  class="flex-1 py-4 rounded-xl text-xs font-bold border transition-all flex items-center justify-center active:scale-95"
+                  :class="settingsStore.personalization.theme === 'dark' ? 'bg-blue-900/20 text-blue-400 border-blue-900/30 hover:bg-blue-900/40' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'">
                   <i class="fa-solid fa-brain mr-1.5 text-sm"></i>手动总结
                 </button>
                 <button @click="showMemoryModal = true"
-                  class="flex-1 py-4 rounded-xl bg-purple-50 text-purple-600 text-xs font-bold border border-purple-100 active:bg-purple-100 transition-all flex items-center justify-center">
+                  class="flex-1 py-4 rounded-xl text-xs font-bold border transition-all flex items-center justify-center active:scale-95"
+                  :class="settingsStore.personalization.theme === 'dark' ? 'bg-purple-900/20 text-purple-400 border-purple-900/30 hover:bg-purple-900/40' : 'bg-purple-50 text-purple-600 border-purple-100 hover:bg-purple-100'">
                   <i class="fa-solid fa-database mr-1.5 text-sm"></i>记忆管理库
                 </button>
               </div>
@@ -1321,20 +1439,24 @@ onMounted(() => {
       <!-- 6. 互动增强 -->
       <section class="space-y-2">
         <h3 class="text-xs font-bold text-gray-500 ml-1">互动增强</h3>
-        <div class="bg-white/70 backdrop-blur-md rounded-2xl p-4 border border-white/40 space-y-4 shadow-sm">
+        <div class="rounded-2xl p-4 border space-y-4 shadow-sm transition-all duration-300"
+          :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white/70 backdrop-blur-md border-white/40'">
           <div class="toggle-row">
             <div class="flex flex-col">
-              <span class="text-sm font-medium">启用拍一拍互动</span>
+              <span class="text-sm font-medium"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">启用拍一拍互动</span>
               <span class="text-[10px] text-gray-400">双击头像触发互动反馈</span>
             </div>
-            <input type="checkbox" v-model="form.patEnabled" class="accent-green-600 scale-110" />
+            <input type="checkbox" v-model="form.patEnabled" class="accent-green-600 scale-110 cursor-pointer" />
           </div>
           <div v-if="form.patEnabled" class="grid grid-cols-2 gap-2 animate-fade-in pt-1">
             <input v-model="form.patAction"
-              class="bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none"
+              class="rounded-xl px-3 py-2 text-xs outline-none transition-all duration-300"
+              :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white focus:bg-black/40' : 'bg-white/50 border-gray-100 focus:bg-white'"
               placeholder="动作: 拍了拍" />
             <input v-model="form.patSuffix"
-              class="bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none"
+              class="rounded-xl px-3 py-2 text-xs outline-none transition-all duration-300"
+              :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10 text-white focus:bg-black/40' : 'bg-white/50 border-gray-100 focus:bg-white'"
               placeholder="后缀: 的屁股" />
           </div>
         </div>
@@ -1416,13 +1538,13 @@ onMounted(() => {
           <div class="grid grid-cols-2 gap-4">
             <div>
               <div class="flex justify-between text-[10px] text-gray-400 mb-1"><span>背景模糊</span><span>{{ form.bgBlur
-                  }}px</span></div>
+              }}px</span></div>
               <input type="range" v-model.number="form.bgBlur" min="0" max="20"
                 class="w-full h-1 bg-gray-200 rounded-lg accent-green-600" />
             </div>
             <div>
               <div class="flex justify-between text-[10px] text-gray-400 mb-1"><span>背景透明度</span><span>{{ form.bgOpacity
-                  }}</span></div>
+              }}</span></div>
               <input type="range" v-model.number="form.bgOpacity" min="0" max="1" step="0.1"
                 class="w-full h-1 bg-gray-200 rounded-lg accent-green-600" />
             </div>
@@ -1573,74 +1695,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Memory Library Modal (Themed) -->
-    <div v-if="showMemoryModal"
-      class="fixed inset-0 z-[10001] bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in"
-      @click="showMemoryModal = false">
-      <div
-        class="bg-white w-full max-w-[400px] p-6 rounded-t-3xl space-y-4 animate-slide-up max-h-[90vh] overflow-y-auto"
-        @click.stop>
-        <div class="flex justify-between items-center pb-4 border-b border-gray-50">
-          <h3 class="font-bold text-gray-900 text-lg">群聊记忆统计</h3>
-          <button @click="state.showMemoryLibModal = false" class="text-gray-400 hover:text-gray-600">
-            <i class="fa-solid fa-times"></i>
-          </button>
-        </div>
 
-        <div class="space-y-3">
-          <div class="text-xs font-bold text-gray-500 uppercase tracking-widest">📊 记忆统计</div>
-          <div class="grid grid-cols-3 gap-2">
-            <div class="bg-blue-50 rounded-lg p-3 text-center border border-blue-100">
-              <div class="text-xs text-blue-600 font-bold">总消息数</div>
-              <div class="text-xl font-bold text-blue-700">{{ existingChat?.msgs?.length || 0 }}</div>
-            </div>
-            <div class="bg-purple-50 rounded-lg p-3 text-center border border-purple-100">
-              <div class="text-xs text-purple-600 font-bold">记忆条数</div>
-              <div class="text-xl font-bold text-purple-700">{{ form.contextMemoryCount || 0 }}</div>
-            </div>
-            <div class="bg-orange-50 rounded-lg p-3 text-center border border-orange-100">
-              <div class="text-xs text-orange-600 font-bold">显示条数</div>
-              <div class="text-xl font-bold text-orange-700">{{ form.contextDisplayCount || 0 }}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-3 border-t border-gray-100 pt-4">
-          <div class="text-xs font-bold text-gray-500 uppercase tracking-widest">⚙️ 配置</div>
-          <div class="space-y-2">
-            <div>
-              <label class="text-xs text-gray-600 font-bold block mb-1">上下文记忆条数</label>
-              <input v-model.number="form.contextMemoryCount" type="number"
-                class="w-full bg-white/50 border border-gray-100 rounded-lg px-3 py-2 text-sm" placeholder="默认 20" />
-              <div class="text-[10px] text-gray-400 mt-1">AI 会记住这么多条过去的消息</div>
-            </div>
-            <div>
-              <label class="text-xs text-gray-600 font-bold block mb-1">上下文显示条数</label>
-              <input v-model.number="form.contextDisplayCount" type="number"
-                class="w-full bg-white/50 border border-gray-100 rounded-lg px-3 py-2 text-sm" placeholder="默认 50" />
-              <div class="text-[10px] text-gray-400 mt-1">聊天窗口最多显示这么多条消息</div>
-            </div>
-            <div>
-              <label class="text-xs text-gray-600 font-bold block mb-1">自动总结触发条数</label>
-              <input v-model.number="form.autoSummaryEvery" type="number"
-                class="w-full bg-white/50 border border-gray-100 rounded-lg px-3 py-2 text-sm" placeholder="默认 30" />
-              <div class="text-[10px] text-gray-400 mt-1">每隔这么多条新消息后自动总结</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex gap-2 pt-4 border-t border-gray-100">
-          <button @click="state.showMemoryLibModal = false"
-            class="flex-1 py-3 rounded-lg bg-gray-50 text-gray-600 font-medium text-sm hover:bg-gray-100">
-            关闭
-          </button>
-          <button @click="saveAll(); state.showMemoryLibModal = false"
-            class="flex-1 py-3 rounded-lg bg-green-600 text-white font-medium text-sm hover:bg-green-700">
-            保存配置
-          </button>
-        </div>
-      </div>
-    </div>
 
     <!-- Member Manage Modal -->
     <div v-if="state.showMemberManageModal"
@@ -1898,15 +1953,20 @@ onMounted(() => {
     <div v-if="showMemoryModal"
       class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
       @click="showMemoryModal = false">
-      <div class="w-[90%] max-w-[360px] h-[85%] rounded-2xl overflow-hidden shadow-2xl flex flex-col bg-white"
-        @click.stop>
+      <div
+        class="w-[90%] max-w-[360px] h-[85%] rounded-2xl overflow-hidden shadow-2xl flex flex-col transition-all duration-300"
+        :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-white'" @click.stop>
         <!-- Header with Theme Switcher -->
-        <div class="p-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
+        <div class="p-4 border-b transition-all duration-300" :class="settingsStore.personalization.theme === 'dark'
+          ? 'border-[#334155] bg-gradient-to-r from-purple-900/50 to-pink-900/50'
+          : 'border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50'">
           <div class="flex justify-between items-center mb-3">
-            <span class="font-bold flex items-center gap-2 text-lg text-gray-800">
+            <span class="font-bold flex items-center gap-2 text-lg transition-all duration-300"
+              :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">
               <i class="fa-solid fa-brain text-purple-500"></i> 记忆管理库
             </span>
-            <button @click="showMemoryModal = false" class="transition-colors text-gray-500 hover:text-gray-800">
+            <button @click="showMemoryModal = false" class="transition-colors"
+              :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'">
               <i class="fa-solid fa-xmark text-xl"></i>
             </button>
           </div>
@@ -1917,7 +1977,7 @@ onMounted(() => {
               class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0"
               :class="currentMemoryTheme === theme.id
                 ? 'bg-gradient-to-r ' + theme.activeGradient + ' text-white shadow-md scale-105'
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'">
+                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 border border-white/10 hover:border-white/20' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300')">
               <i :class="theme.icon"></i> {{ theme.name }}
             </button>
           </div>
@@ -1944,10 +2004,11 @@ onMounted(() => {
               <!-- Editing Mode -->
               <div v-if="editingIndex === index">
                 <textarea v-model="editingContent"
-                  class="w-full border-2 border-purple-300 rounded-lg p-3 text-sm h-32 mb-2 focus:ring-2 focus:ring-purple-400 outline-none font-serif bg-white"></textarea>
+                  class="w-full border-2 border-purple-300 rounded-lg p-3 text-sm h-32 mb-2 focus:ring-2 focus:ring-purple-400 outline-none font-serif"
+                  :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-white border-purple-600 focus:ring-purple-500' : 'bg-white'"></textarea>
                 <div class="flex justify-end gap-2">
-                  <button
-                    class="text-xs px-4 py-1.5 rounded-lg transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  <button class="text-xs px-4 py-1.5 rounded-lg transition-colors"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                     @click="cancelEdit">取消</button>
                   <button
                     class="text-xs px-4 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors shadow-md"
@@ -1992,27 +2053,30 @@ onMounted(() => {
         </div>
 
         <!-- Footer with Edit Mode Toggle -->
-        <div class="p-3 border-t border-gray-200 flex justify-between items-center gap-2 bg-white">
+        <div class="p-3 border-t flex justify-between items-center gap-2 transition-all duration-300"
+          :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a] border-[#334155]' : 'bg-white border-gray-200'">
           <!-- Edit Mode Toggle -->
           <button @click="isEditMode = !isEditMode"
-            class="px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2" :class="isEditMode
+            class="px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2"
+            :class="isEditMode
               ? 'bg-purple-500 text-white shadow-md'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+              : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')">
             <i class="fa-solid" :class="isEditMode ? 'fa-check' : 'fa-edit'"></i>
             {{ isEditMode ? '完成' : '编辑' }}
           </button>
 
           <!-- Batch Delete (Only in Edit Mode) -->
           <div v-if="isEditMode" class="flex items-center gap-2">
-            <label class="flex items-center gap-1.5 text-xs cursor-pointer select-none text-gray-600">
+            <label class="flex items-center gap-1.5 text-xs cursor-pointer select-none"
+              :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
               <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"
                 class="rounded border-gray-300 text-purple-600 focus:ring-purple-500">
               全选
             </label>
-            <button class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5" :class="selectedIndices.size > 0
-              ? 'bg-red-500 text-white hover:bg-red-600 shadow-md'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed'" @click="batchDeleteMemory"
-              :disabled="selectedIndices.size === 0">
+            <button class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
+              :class="selectedIndices.size > 0
+                ? 'bg-red-500 text-white hover:bg-red-600 shadow-md'
+                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')" @click="batchDeleteMemory" :disabled="selectedIndices.size === 0">
               <i class="fa-solid fa-trash"></i>
               删除 ({{ selectedIndices.size }})
             </button>

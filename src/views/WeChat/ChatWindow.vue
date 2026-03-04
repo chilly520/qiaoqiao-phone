@@ -282,8 +282,18 @@ const openSettings = () => {
     showSettings.value = true
     const currentState = window.history.state || {}
     if (!currentState.settingsOpen) {
-        window.history.pushState({ ...currentState, settingsOpen: true }, '')
+        window.history.pushState({ ...currentState, settingsOpen: true }, '', '')
     }
+}
+
+const openPhoneInspection = () => {
+    if (!chatData.value || chatData.value.isGroup) return
+
+    // Navigate to phone inspection page
+    router.push({
+        name: 'phone-inspection',
+        params: { charId: chatData.value.id }
+    })
 }
 
 const openGroupSettings = (showAnnouncements = false) => {
@@ -956,11 +966,14 @@ const handleAvatarLongPress = (msg) => {
     if (msg.role === 'user') return
 
     // Find the member's name
-    const senderName = msg.senderName || chatData.value?.participants?.find(p => p.id === (msg.senderId || msg.userId || chatData.value.id))?.name || '未知'
+    const memberId = msg.senderId || msg.userId || msg.id
+    const member = chatData.value?.participants?.find(p => p.id === memberId)
+    const senderName = msg.senderName || member?.name || '未知'
 
     // Insert into input bar
     if (chatInputBarRef.value) {
         chatInputBarRef.value.insertText(`@${senderName} `)
+        chatInputBarRef.value.focus()
     }
 
     // Haptic feedback
@@ -1832,19 +1845,26 @@ const getCleanSpeechText = (text) => {
     // 3. Remove other non-speech Protocol Tags
     clean = clean.replace(/\[DRAW:[\s\S]*?\]/gi, ''); // Distinctly remove DRAW tags first
     clean = clean.replace(/\[(图片|表情|表情包|红包|转账|CARD|MOMENT|SET_|NUDGE|HTML卡片|领取红包|RECEIVE_RED_PACKET)[:：]?.*?\]/gi, '');
+    clean = clean.replace(/\[(图片|表情|表情包|HTML卡片|领取红包|RECEIVE_RED_PACKET)[:：]?.*?\]/gi, '');
 
-    // 4. Remove Moment Interaction tags
+    // 5. Remove Moment Interaction tags
     clean = clean.replace(/\[(LIKE|COMMENT|REPLY)[:：]\s*[^\]]+\]/gi, '');
 
-    // 5. Remove JSON blocks (robust match for metadata)
-    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state|metadata|html)"[\s\S]*?\}/gi, '');
+    // 6. Remove JSON blocks (robust match for metadata)
+    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|心心声|行为|mind|outfit|scene|action|thoughts|mood|state|stats|reasoning_content|metadata|html)"[\s\S]*?\}/gi, '');
 
-    // 6. Remove Markdown Formatting
+    // 6.5 Remove system status / stats text (fallback)
+    clean = clean.replace(/stats[:：]?\s*\{[\s\S]*?\}/gi, '');
+    clean = clean.replace(/stats[:：]?\s*[\d.km\s]+心声卡片/gi, '');
+    clean = clean.replace(/\(绘画失败[:：].*?\)/gi, '');
+    clean = clean.replace(/🎨\s*正在.*?(绘图|成图片).*/gi, '');
+
+    // 7. Remove Markdown Formatting
     clean = clean.replace(/#+\s/g, ''); // Headers
     clean = clean.replace(/[*_~`]/g, ''); // Bold, italic, etc.
     clean = clean.replace(/\[(.*?)\]\(.*?\)/g, '$1'); // Links [text](url) -> text
 
-    // 7. Remove HTML tags
+    // 9. Remove HTML tags
     clean = clean.replace(/<[^>]*>/g, '');
 
     // 8. Remove content in parentheses (CN/EN) - e.g. (laughs), （笑）
@@ -2321,9 +2341,17 @@ const handlePayClick = (msg) => {
     const content = ensureString(msg.content)
 
     // Determine initial view state
-    // For group chats, if I haven't claimed it, I should see the "Open" view (even if I'm sender)
+    const isRedPacket = msg.type === 'redpacket'
     const hasMyClaim = msg.claims?.some(c => c.id === 'user')
-    let shouldShowDetail = msg.isClaimed || msg.isRejected || msg.status === 'received' || hasMyClaim
+    const isFinished = isRedPacket ? (msg.remainingCount === 0) : msg.isClaimed
+
+    let shouldShowDetail = isFinished || msg.isRejected || msg.status === 'received' || hasMyClaim
+
+    // Special Check: If it's a group chat and I haven't claimed it yet, I should see the "Open" view
+    // even if others have claimed some (as long as remainingCount > 0)
+    if (chatData.value?.isGroup && isRedPacket && !hasMyClaim && msg.remainingCount > 0) {
+        shouldShowDetail = false
+    }
 
     // For private chat, if I am the sender, show detail view (to see status)
     if (!chatData.value?.isGroup && (msg.role === 'user' || msg.senderId === 'user')) {
@@ -2989,6 +3017,13 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         @click="openSettings">
                         <i class="fa-solid fa-gear" :class="loopData ? 'text-purple-400' : 'text-gray-500'"></i>
                     </div>
+
+                    <!-- Phone Inspection Entry (查手机入口) -->
+                    <div v-if="!chatData?.isGroup"
+                        class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
+                        @click="openPhoneInspection" title="查手机">
+                        <i class="fa-solid fa-magnifying-glass text-blue-500"></i>
+                    </div>
                 </div>
             </div>
 
@@ -3220,7 +3255,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                                }}</span></div>
+                        }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

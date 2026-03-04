@@ -1612,7 +1612,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // 第四步：解析心声JSON，多层容错
         // --------------------------
         // 心声JSON必须包含的核心字段（满足2个就判定为有效心声）
-        const REQUIRED_FIELDS = ['status', '心声', '着装', 'stats', '行为']
+        const REQUIRED_FIELDS = ['status', '心声', '心心声', '着装', 'stats', '行为']
         function isValidInnerVoiceJson(obj) {
             if (typeof obj !== 'object' || obj === null) return false
             let matchCount = 0

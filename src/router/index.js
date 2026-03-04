@@ -180,6 +180,18 @@ const router = createRouter({
             path: '/shopping',
             name: 'shopping',
             component: () => import('../views/Shopping/ShoppingApp.vue')
+        },
+        // Phone Inspection Routes
+        {
+            path: '/phone-inspection/:charId',
+            name: 'phone-inspection',
+            component: () => import('../views/PhoneInspection/PhoneInspectionApp.vue')
+        },
+        // Search Route (查手机入口)
+        {
+            path: '/search',
+            name: 'search',
+            component: () => import('../views/PhoneInspection/SearchView.vue')
         }
     ]
 })

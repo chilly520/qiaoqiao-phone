@@ -506,8 +506,8 @@ export const useChatStore = defineStore('chat', () => {
             content: msg.content || '',
             // World Loop Extensions
             senderId: msg.senderId || (msg.role === 'user' ? 'user' : chatId),
-            senderName: msg.senderName || (msg.role === 'user' ? '我' : (chat.isGroup ? (msg.senderName || chat.name) : chat.name)),
-            senderAvatar: msg.senderAvatar || (msg.role === 'user' ? '' : (chat.isGroup ? (msg.senderAvatar || chat.avatar) : chat.avatar)),
+            senderName: msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '我') : (chat.isGroup ? (chat.participants.find(p => p.id === msg.senderId)?.name || chat.name) : chat.name)),
+            senderAvatar: msg.senderAvatar || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.avatar || '') : (chat.isGroup ? (chat.participants.find(p => p.id === msg.senderId)?.avatar || chat.avatar) : chat.avatar)),
             image: msg.image || null,
             coverImage: msg.coverImage || null,
             sticker: msg.sticker || null,
@@ -552,6 +552,7 @@ export const useChatStore = defineStore('chat', () => {
             newMsg.remainingCount = msg.remainingCount !== undefined ? msg.remainingCount : newMsg.count
             newMsg.claims = msg.claims || []
             newMsg.packetType = msg.packetType || 'lucky' // 'lucky' or 'fixed'
+            newMsg.amounts = msg.amounts || []
 
             // Critical: Initialize the distribution amounts if not present
             if (!newMsg.amounts || newMsg.amounts.length === 0) {
@@ -806,12 +807,22 @@ export const useChatStore = defineStore('chat', () => {
                 const paymentType = claimMatch[1];
                 const paymentId = claimMatch[2].trim();
                 const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
-                if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
-                    targetMsg.isClaimed = true;
-                    targetMsg.claimTime = Date.now();
-                    targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
-                    console.log(`[ChatStore] AI claimed ${paymentType} ${paymentId}`);
-                    claimedPayments.push(paymentType);
+                if (targetMsg && !targetMsg.isRejected) {
+                    // For single-target payments (transfers, family cards), mark as claimed
+                    if (paymentType === '转账' || paymentType === '亲属卡') {
+                        if (!targetMsg.isClaimed) {
+                            targetMsg.isClaimed = true;
+                            targetMsg.claimTime = Date.now();
+                            targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
+                            console.log(`[ChatStore] AI claimed ${paymentType} ${paymentId}`);
+                            claimedPayments.push(paymentType);
+                        }
+                    } else if (paymentType === '红包') {
+                        // For red packets, the actual claim state is managed by the claims array in chatFinancial.js
+                        // The claimRedPacket function is already called later in addMessage processing (around line 1537)
+                        // So we don't set isClaimed = true here to avoid the "Already Claimed" UI bug.
+                        console.log(`[ChatStore] AI processing red packet claim for ${paymentId}`);
+                    }
                 }
             }
 
@@ -2442,10 +2453,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     triggerPatEffect(chatId, target);
                 }
 
-                // --- Handle [VOTE:] Command ---
-                const voteRegex = /\[VOTE:\s*(.+?)\s*:\s*([^\]]+)\]/i
-                const voteMatch = properlyOrderedContent.match(voteRegex)
-                if (voteMatch) {
+                // --- Handle [VOTE:] AI Casting Choice (ONLY for Group Chats) ---
+                const voteMatch = properlyOrderedContent.match(/\[(?:VOTE|投票):\s*(.+?)\s*:\s*(.+?)\]/i)
+                if (voteMatch && chat.isGroup) {
                     const voteTitle = voteMatch[1].trim()
                     const optionIndexes = voteMatch[2].split(/[,，]/).map(s => parseInt(s.trim()) - 1).filter(n => !isNaN(n))
 
@@ -2479,10 +2489,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     }
                 }
 
-                // --- Handle [CREATE_VOTE:] Command ---
+                // --- Handle [CREATE_VOTE:] Command (ONLY for Group Chats) ---
                 const createVoteRegex = /\[CREATE_VOTE:\s*(.+?)\s*:\s*([^\]]+?)\s*:\s*(true|false)\s*:\s*(true|false)\]/i
                 const createVoteMatch = properlyOrderedContent.match(createVoteRegex)
-                if (createVoteMatch) {
+                if (createVoteMatch && chat.isGroup) {
                     const title = createVoteMatch[1].trim()
                     const optionsArr = createVoteMatch[2].split(/[,，]/).map(s => s.trim()).filter(Boolean)
                     const isMultiple = createVoteMatch[3].toLowerCase() === 'true'
@@ -2502,16 +2512,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         senderName: speakerName,
                         senderAvatar: groupSpeakerMeta?.senderAvatar || ''
                     })
-                    console.log(`[Vote] AI (${speakerId}) created vote:`, title)
+                    console.log(`[Vote] AI (${speakerId}) created vote in group:`, title)
                 }
 
-                // --- Handle [END_VOTE:] Command ---
+                // --- Handle [END_VOTE:] Command (ONLY for Group Chats) ---
                 const endVoteRegex = /\[(?:END_VOTE|结束投票):\s*(v-[^\]]+)\]/i
                 const endVoteMatch = properlyOrderedContent.match(endVoteRegex)
-                if (endVoteMatch) {
+                if (endVoteMatch && chat.isGroup) {
                     const voteIdToClose = endVoteMatch[1].trim()
                     endVote(chatId, voteIdToClose)
-                    console.log(`[Vote] AI closed vote:`, voteIdToClose)
+                    console.log(`[Vote] AI closed vote in group:`, voteIdToClose)
                 }
 
                 // --- Handle [RECALL] / [撤回] Command ---
@@ -3251,21 +3261,28 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, ...(currentGroupMeta || {}) });
                         } else {
                             // --- Financial Transaction Processing (Red Packets & Transfers) ---
-                            // [红包:类型(lucky|fixed|手气|固定):金额:个数:备注] 
-                            const rpMatch = msgContent.match(/\[红包\s*[:：]\s*(lucky|fixed|手气|固定|手气红包|固定金额)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]/i);
-                            // [转账:对象ID:金额:备注] or [转账:金额:备注]
-                            const tfMatch = msgContent.match(/\[转账\s*[:：]\s*([\w-]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i)
-                                || msgContent.match(/\[转账\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]/i);
+                            const isRedPacketMatch = msgContent.match(/\[(?:发)?红包.*?\]/i);
+                            const isTransferMatch = msgContent.match(/\[(?:转账|TRANSFER).*?\]/i);
 
                             let msgType = 'text', amount = null, note = null, extraData = {};
 
-                            if (rpMatch) {
+                            if (isRedPacketMatch) {
                                 msgType = 'redpacket';
-                                const typeRaw = (rpMatch[1] || 'lucky').toLowerCase();
+                                const contentInner = isRedPacketMatch[0].slice(1, -1); // remove [ and ]
+                                const typeRaw = contentInner.toLowerCase();
                                 const isLucky = typeRaw.includes('lucky') || typeRaw.includes('手气');
-                                amount = parseFloat(rpMatch[2]) || 1.0;
-                                const count = parseInt(rpMatch[3]) || 1;
-                                note = rpMatch[4] || '恭喜发财，大吉大利';
+
+                                // Extract numbers
+                                const nums = contentInner.match(/\d+(\.\d+)?/g);
+                                amount = nums && nums.length > 0 ? parseFloat(nums[0]) : 10.0;
+                                const count = nums && nums.length > 1 ? parseInt(nums[1]) : (isGroup ? Object.keys(currentChat?.participants || {}).length + 1 : 1);
+
+                                // Extract note
+                                const parts = contentInner.split(/[:：\s]+/);
+                                const lastPart = parts[parts.length - 1];
+                                note = (isNaN(parseFloat(lastPart)) && !lastPart.includes('红包') && !lastPart.includes('手气') && !lastPart.includes('lucky') && !lastPart.includes('普通'))
+                                    ? lastPart
+                                    : '恭喜发财，大吉大利';
 
                                 extraData = {
                                     packetType: isLucky ? 'lucky' : 'fixed',
@@ -3276,32 +3293,39 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                                     // Pre-split for lucky packets to ensure total matches exactly
                                     amounts: isLucky ? _splitRedPacket(amount, count) : Array(count).fill(amount)
                                 };
-                            } else if (tfMatch) {
+                            } else if (isTransferMatch) {
                                 msgType = 'transfer';
+                                const contentInner = isTransferMatch[0].slice(1, -1);
+                                const nums = contentInner.match(/\d+(\.\d+)?/g);
+                                amount = nums && nums.length > 0 ? parseFloat(nums[0]) : 0.01;
 
-                                // Check if the first capture group is the targetId or the amount
-                                const firstIsNumber = /^[0-9]/.test(tfMatch[1].trim());
-
-                                if (firstIsNumber) {
-                                    amount = parseFloat(tfMatch[1]) || 0.01;
-                                    note = tfMatch[2] || '转账给您';
-                                    extraData = {
-                                        targetId: 'user', // Defaults to user if no target
-                                        isClaimed: false
-                                    };
-                                } else {
-                                    const targetId = tfMatch[1].trim();
-                                    amount = parseFloat(tfMatch[2]) || 0.01;
-                                    note = tfMatch[3] || '转账给您';
-                                    extraData = {
-                                        targetId: targetId,
-                                        isClaimed: false
-                                    };
+                                const parts = contentInner.split(/[:：\s]+/);
+                                // Target ID is usually after '转账' but before amount.
+                                // It could be anything not a number.
+                                let targetId = 'user'; // default
+                                if (parts.length > 2 && isNaN(parseFloat(parts[1]))) {
+                                    targetId = parts[1];
                                 }
 
+                                const lastPart = parts[parts.length - 1];
+                                note = (isNaN(parseFloat(lastPart)) && !lastPart.includes('转账') && !lastPart.includes('TRANSFER'))
+                                    ? lastPart
+                                    : '转账给您';
+
+                                extraData = {
+                                    targetId: targetId,
+                                    amount: amount,
+                                    status: 'unclaimed' // 'unclaimed', 'received', 'rejected'
+                                };
                                 // robustly strip any AI-generated PAY-xxx ID from the note
                                 if (note) {
-                                    note = note.replace(/[:：]?\s*PAY-[\w-]+\s*$/, '').trim();
+                                    // Strip redundant ID if AI echoed it into the message part
+                                    note = note.replace(/[:：]?\s*PAY-[\w-]+\s*$/, '').replace(/\[?PAY-[\w-]+\]?$/, '').trim();
+
+                                    // If note is empty or just the ID after stripping, set to default
+                                    if (!note || note.startsWith('PAY-')) {
+                                        note = msgType === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您';
+                                    }
                                 }
                             } else if (msgContent.includes('[FAMILY_CARD')) {
                                 msgType = 'family_card';

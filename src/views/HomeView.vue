@@ -165,7 +165,7 @@ async function fetchWeather() {
   if (!queryLoc) return
 
   try {
-    const res = await fetch(`https://wttr.in/${encodeURIComponent(queryLoc)}?format=j1`)
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(`https://wttr.in/${queryLoc}?format=j1`)}`);
     if (res.ok) {
       const data = await res.json()
       const current = data.current_condition[0]

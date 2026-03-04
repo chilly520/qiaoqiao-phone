@@ -166,7 +166,7 @@
                                 </div>
                                 <div class="marker-info-tag">
                                     <span class="marker-name">{{ chatData?.userName || userProfile?.name || '我'
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </div>
 
@@ -336,7 +336,7 @@ const parseVoiceData = (text) => {
             return {
                 clothes: getString(target.着装 || target.outfit || target.clothes),
                 scene: getString(target.环境 || target.scene || target.environment),
-                mind: getString(target.心声 || target.mind || target.thought || target.thoughts || target.emotion),
+                mind: getString(target.心声 || target.心心声 || target.mind || target.thought || target.thoughts || target.emotion),
                 action: getString(target.行为 || target.action || target.behavior || target.plan),
                 stats: target.stats || target[" stats"] || null
             }
@@ -398,8 +398,9 @@ const rawDistance = computed(() => {
     const distStr = currentVoiceContent.value.stats?.distance || '5km'
     const numMatch = distStr.match(/\d+(\.\d+)?/)
     const num = numMatch ? parseFloat(numMatch[0]) : 5
+    // Global rule: if starts with 'km' or (no 'm' and >=0.5) => km. If has 'm' => m.
     const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 0.5)
-    return isKm ? num : num / 1000
+    return isKm ? num : (distStr.includes('m') ? num / 1000 : num / 1000)
 })
 
 // Randomized map offset based on location name and chatId to create "unique cutting" feel
@@ -518,10 +519,8 @@ const calculateTravelTime = (distStr) => {
     // 解析距离字符串，支持m和km单位
     const numMatch = distStr.match(/\d+(\.\d+)?/)
     const num = numMatch ? parseFloat(numMatch[0]) : 0
-    const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 1)
-
-    // 将距离转换为km进行计算
-    const distanceInKm = isKm ? num : num / 1000
+    const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 0.5)
+    const distanceInKm = isKm ? num : (distStr.includes('m') ? num / 1000 : num)
     if (distanceInKm <= 0) return 0
     return Math.ceil(distanceInKm * 1.5)
 }
@@ -533,17 +532,20 @@ const formatDistance = (distStr) => {
     // 解析距离字符串
     const numMatch = distStr.match(/\d+(\.\d+)?/)
     const num = numMatch ? parseFloat(numMatch[0]) : 0
+    // Fix: Explicitly check for 'm' first, and avoid incorrectly tagging as 'km' if 'm' is present
+    const isKm = distStr.includes('km') || (!distStr.includes('m') && num >= 0.5)
+    const distanceInKm = isKm ? num : (distStr.includes('m') ? num / 1000 : num)
 
     // 根据距离大小选择合适的单位
-    if (num < 1) {
+    if (distanceInKm < 1) {
         // 小于1km，转换为米
-        return `${Math.round(num * 1000)}m`
-    } else if (num < 10) {
+        return `${Math.round(distanceInKm * 1000)}m`
+    } else if (distanceInKm < 10) {
         // 1-10km，保留一位小数
-        return `${num.toFixed(1)}km`
+        return `${distanceInKm.toFixed(1)}km`
     } else {
         // 10km以上，取整数
-        return `${Math.round(num)}km`
+        return `${Math.round(distanceInKm)}km`
     }
 }
 
