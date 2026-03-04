@@ -3457,12 +3457,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         }
     }
 
-    function updateCharacter(chatId, updates) {
-        if (chats.value[chatId]) {
-            chats.value[chatId] = { ...chats.value[chatId], ...updates }
-            saveChats()
-        }
-    }
+
 
     function getTokenCount(chatId) {
         const stats = getTokenBreakdown(chatId)

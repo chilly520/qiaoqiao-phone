@@ -529,7 +529,7 @@
                                     <img :src="group.avatar" class="w-8 h-8 rounded-lg object-cover" />
                                     <div class="flex flex-col">
                                         <span class="text-xs font-bold text-gray-700 truncate w-32">{{ group.name
-                                            }}</span>
+                                        }}</span>
                                         <span class="text-[9px] text-gray-400 italic">我的：{{
                                             group.groupSettings?.myNickname || '未设置' }}</span>
                                     </div>
@@ -899,7 +899,7 @@
                             :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-700'">总计
                             (Total Context)</span>
                         <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
-                        }}</span>
+                            }}</span>
                     </div>
 
                     <!-- Breakdown List -->
@@ -2320,7 +2320,7 @@ const selectAllBook = (book) => {
     }
 }
 
-const saveSettings = () => {
+const saveSettings = async () => {
     if (!props.chatData || !props.chatData.id) {
         console.error('[Settings] FAILED TO SAVE: Chat ID is missing!', props.chatData)
         showToast('保存失败：会话ID缺失')
@@ -2340,11 +2340,13 @@ const saveSettings = () => {
     const newRemark = localData.value.remark
 
     // Cleanup stale world book links
-    if (localData.value.worldBookLinks) {
+    if (localData.value.worldBookLinks && Array.isArray(worldBookStore.books)) {
         const allEntryIds = new Set()
         worldBookStore.books.forEach(book => {
-            if (book.entries) {
-                book.entries.forEach(e => allEntryIds.add(e.id))
+            if (book && Array.isArray(book.entries)) {
+                book.entries.forEach(e => {
+                    if (e && e.id) allEntryIds.add(e.id)
+                })
             }
         })
         localData.value.worldBookLinks = localData.value.worldBookLinks.filter(id => allEntryIds.has(id))
@@ -2359,25 +2361,25 @@ const saveSettings = () => {
     const finalData = JSON.parse(JSON.stringify(localData.value))
 
     // CRITICAL: Protect live fields from being overwritten by stale local state
-    // These fields are updated in the background (AI analysis, messages, summaries)
     const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'lastSummaryCount', 'isSummarizing', 'unreadCount']
     protectedFields.forEach(field => delete finalData[field])
 
     console.log('[Settings] Dispatching Update to Store (Sanitized):', finalData)
 
     // Sync with scheduler store
-    schedulerStore.setRandomConfig(props.chatData.id, {
-        enabled: localData.value.randomProactive,
-        min: localData.value.randomMin,
-        max: localData.value.randomMax
-    })
+    if (schedulerStore.setRandomConfig) {
+        schedulerStore.setRandomConfig(props.chatData.id, {
+            enabled: localData.value.randomProactive,
+            min: localData.value.randomMin,
+            max: localData.value.randomMax
+        })
+    }
 
     // 1. Update character in centralized store
-    const success = chatStore.updateCharacter(props.chatData.id, finalData)
+    const success = await chatStore.updateCharacter(props.chatData.id, finalData)
 
     if (success) {
         // 2. Add system notification if remark changed
-        // (SKIP for new chats, or if remark is cleared/empty)
         if (!props.chatData.isNew && newRemark !== undefined && newRemark !== oldRemark && newRemark.trim() !== '') {
             chatStore.addMessage(props.chatData.id, {
                 role: 'system',
@@ -2388,15 +2390,14 @@ const saveSettings = () => {
         showToast('设置已保存')
 
         // Use a slightly longer delay to ensure Vue has processed the store update 
-        // and reflected it back to props BEFORE we destroy the component.
         setTimeout(() => {
             isSaving.value = false
             console.log('[Settings] Save Sequence Complete. Closing modal.')
             emit('close')
-        }, 600)
+        }, 300)
     } else {
-        // saveChats already showed an alert/console error
         isSaving.value = false
+        showToast('保存失败')
     }
 }
 

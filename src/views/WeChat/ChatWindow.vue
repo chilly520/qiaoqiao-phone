@@ -3018,12 +3018,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         <i class="fa-solid fa-gear" :class="loopData ? 'text-purple-400' : 'text-gray-500'"></i>
                     </div>
 
-                    <!-- Phone Inspection Entry (查手机入口) -->
-                    <div v-if="!chatData?.isGroup"
-                        class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
-                        @click="openPhoneInspection" title="查手机">
-                        <i class="fa-solid fa-magnifying-glass text-blue-500"></i>
-                    </div>
+
                 </div>
             </div>
 
@@ -3255,7 +3250,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             </div>
                         </div>
                         <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
+                                }}</span></div>
                     </div>
 
                     <!-- Red Packet Icon (Red Packet Mode) -->

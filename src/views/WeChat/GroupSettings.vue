@@ -860,7 +860,7 @@ async function saveAll() {
     })
 
     // Sync top-level chat properties
-    chatStore.updateCharacter(chatId, {
+    await chatStore.updateCharacter(chatId, {
       autoSummary: !!form.autoSummary,
       autoTTS: !!form.autoTTS,
       bgTheme: form.bgTheme,
@@ -1430,13 +1430,13 @@ onMounted(() => {
           <div class="grid grid-cols-2 gap-4">
             <div>
               <div class="flex justify-between text-[10px] text-gray-400 mb-1"><span>背景模糊</span><span>{{ form.bgBlur
-              }}px</span></div>
+                  }}px</span></div>
               <input type="range" v-model.number="form.bgBlur" min="0" max="20"
                 class="w-full h-1 bg-gray-200 rounded-lg accent-green-600" />
             </div>
             <div>
               <div class="flex justify-between text-[10px] text-gray-400 mb-1"><span>背景透明度</span><span>{{ form.bgOpacity
-              }}</span></div>
+                  }}</span></div>
               <input type="range" v-model.number="form.bgOpacity" min="0" max="1" step="0.1"
                 class="w-full h-1 bg-gray-200 rounded-lg accent-green-600" />
             </div>
