@@ -200,11 +200,23 @@ let isLongPressTriggered = false
 let startX = 0
 let startY = 0
 
+// Swipe Helper
+const swipedItem = ref(null) // { type: 'chat' | 'contact', id: string }
+const swipeThreshold = 50 // px
+const chatSwipeOffset = ref(0) // 聊天列表滑动偏移量
+const contactSwipeOffset = ref(0) // 通讯录滑动偏移量
+const isSwiping = ref(false) // 是否正在滑动
+const swipeStartX = ref(0) // 滑动起始 X 坐标
+const maxSwipeOffsetChat = 160 // 聊天列表最大滑动距离（两个按钮宽度）
+const maxSwipeOffsetContact = 80 // 通讯录最大滑动距离（一个按钮宽度）
+
 const startLongPress = (type, item, event) => {
     isLongPressTriggered = false
-    if (event.touches && event.touches[0]) {
-        startX = event.touches[0].clientX
-        startY = event.touches[0].clientY
+    const clientX = event.touches ? event.touches[0].clientX : event.clientX
+    const clientY = event.touches ? event.touches[0].clientY : event.clientY
+    if (clientX !== undefined && clientY !== undefined) {
+        startX = clientX
+        startY = clientY
     }
     longPressTimer = setTimeout(() => {
         isLongPressTriggered = true
@@ -221,14 +233,166 @@ const clearLongPress = () => {
 
 const handleTouchMove = (event) => {
     if (!longPressTimer) return
-    if (event.touches && event.touches[0]) {
-        const moveX = event.touches[0].clientX
-        const moveY = event.touches[0].clientY
+    const clientX = event.touches ? event.touches[0].clientX : event.clientX
+    const clientY = event.touches ? event.touches[0].clientY : event.clientY
+    if (clientX !== undefined && clientY !== undefined) {
+        const moveX = clientX
+        const moveY = clientY
         // Tolerance: 30px (more relaxed for mobile)
         if (Math.abs(moveX - startX) > 30 || Math.abs(moveY - startY) > 30) {
             clearLongPress()
         }
     }
+}
+
+// Mouse/Touch Swipe Actions
+const handleSwipeStart = (type, item, event) => {
+    if (event.touches && event.touches.length > 1) return // 忽略多指触摸
+    const clientX = event.touches ? event.touches[0].clientX : event.clientX
+    
+    isSwiping.value = true
+    swipeStartX.value = clientX
+    
+    // 重置当前类型的偏移量
+    if (type === 'chat') {
+        chatSwipeOffset.value = 0
+    } else {
+        contactSwipeOffset.value = 0
+    }
+    
+    // 临时存储当前滑动项
+    swipedItem.value = { type, id: item.id, name: item.name }
+}
+
+const handleSwipeMove = (type, item, event) => {
+    if (!isSwiping.value) return
+    event.preventDefault() // 防止滚动
+    
+    const clientX = event.touches ? event.touches[0].clientX : event.clientX
+    const deltaX = clientX - swipeStartX.value
+    
+    // 根据类型确定最大滑动距离
+    const maxOffset = type === 'chat' ? maxSwipeOffsetChat : maxSwipeOffsetContact
+    const currentOffset = type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
+    
+    // 只处理左滑（向左移动，deltaX 为负）
+    if (deltaX < 0) {
+        // 使用缓动曲线，越往后越难滑动
+        const newOffset = Math.min(Math.abs(deltaX), maxOffset)
+        if (type === 'chat') {
+            chatSwipeOffset.value = newOffset
+        } else {
+            contactSwipeOffset.value = newOffset
+        }
+    } else if (deltaX > 0 && currentOffset > 0) {
+        // 向右滑动（回滑）
+        const newOffset = Math.max(0, maxOffset - deltaX)
+        if (type === 'chat') {
+            chatSwipeOffset.value = newOffset
+        } else {
+            contactSwipeOffset.value = newOffset
+        }
+    }
+}
+
+const handleSwipeEnd = (type, item, event) => {
+    if (!isSwiping.value) return
+    isSwiping.value = false
+    
+    // 根据类型确定阈值和最大偏移量
+    const maxOffset = swipedItem.value?.type === 'chat' ? maxSwipeOffsetChat : maxSwipeOffsetContact
+    const currentOffset = swipedItem.value?.type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
+    
+    // 判断是否达到滑动阈值
+    if (currentOffset > swipeThreshold) {
+        // 超过阈值，吸附到最大位置
+        if (swipedItem.value?.type === 'chat') {
+            chatSwipeOffset.value = maxOffset
+        } else {
+            contactSwipeOffset.value = maxOffset
+        }
+    } else {
+        // 未超过阈值，弹回原位
+        if (swipedItem.value?.type === 'chat') {
+            chatSwipeOffset.value = 0
+        } else {
+            contactSwipeOffset.value = 0
+        }
+        // 如果没有达到展示状态，清除 swipedItem
+        setTimeout(() => {
+            const checkOffset = swipedItem.value?.type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
+            if (checkOffset === 0) {
+                swipedItem.value = null
+            }
+        }, 300) // 等待动画结束
+    }
+}
+
+const closeSwipe = () => {
+    if (swipedItem.value?.type === 'chat') {
+        chatSwipeOffset.value = 0
+    } else {
+        contactSwipeOffset.value = 0
+    }
+    setTimeout(() => {
+        const checkOffset = swipedItem.value?.type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
+        if (checkOffset === 0) {
+            swipedItem.value = null
+        }
+    }, 300)
+}
+
+const handleSwipeAction = (chatId, action) => {
+    if (action === 'pin') {
+        chatStore.pinChat(chatId)
+    } else if (action === 'clear') {
+        confirmDialogData.value = {
+            title: '移除聊天',
+            message: '确定要在消息列表中移除该聊天吗？\n(通讯录中仍可找到)',
+            action: async () => {
+                try {
+                    confirmDialogData.value.isLoading = true
+                    await chatStore.updateCharacter(chatId, { inChatList: false })
+                    await chatStore.clearHistory(chatId)
+                    if (chatStore.currentChatId === chatId) {
+                        chatStore.currentChatId = null
+                    }
+                    chatStore.triggerToast('已移除', 'success')
+                    showConfirmDialog.value = false
+                } catch (err) {
+                    console.error('删除聊天记录失败:', err)
+                    chatStore.triggerToast('删除失败', 'error')
+                    showConfirmDialog.value = false
+                } finally {
+                    confirmDialogData.value.isLoading = false
+                }
+            },
+            isLoading: false
+        }
+        showConfirmDialog.value = true
+    } else if (action === 'delete') {
+        confirmDialogData.value = {
+            title: '删除好友',
+            message: '确定要删除该好友吗？将同时删除所有记录。',
+            action: async () => {
+                try {
+                    confirmDialogData.value.isLoading = true
+                    chatStore.deleteChat(chatId)
+                    chatStore.triggerToast('已删除', 'success')
+                    showConfirmDialog.value = false
+                } catch (err) {
+                    console.error('删除好友失败:', err)
+                    chatStore.triggerToast('删除失败', 'error')
+                    showConfirmDialog.value = false
+                } finally {
+                    confirmDialogData.value.isLoading = false
+                }
+            },
+            isLoading: false
+        }
+        showConfirmDialog.value = true
+    }
+    closeSwipe()
 }
 
 const openContextMenu = (type, item, event) => {
@@ -1007,52 +1171,80 @@ const handleImport = async (e) => {
                     </div>
 
                     <div v-for="chat in filteredChatList" :key="chat.id"
-                        class="flex items-center px-4 py-3 border-b border-gray-100 active:bg-gray-100 transition cursor-pointer relative prevent-select"
-                        :class="chat.isPinned ? 'bg-white/30 backdrop-blur-md' : ''" @click="openChat(chat.id)"
+                        class="relative overflow-hidden select-none"
+                        @click="!isSwiping && openChat(chat.id)"
                         @contextmenu.prevent="openContextMenu('chat', chat, $event)"
-                        @touchstart="startLongPress('chat', chat, $event)" @touchend="clearLongPress"
-                        @touchmove="handleTouchMove">
-                        <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
-                        <div class="relative w-12 h-12 mr-3">
-                            <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
-                                class="w-full h-full rounded-lg object-cover bg-gray-200">
-                            <div v-if="chat.unreadCount > 0"
-                                class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
-                                {{ chat.unreadCount > 99 ? '99+' : chat.unreadCount }}
-                            </div>
+                        @touchstart="startLongPress('chat', chat, $event)"
+                        @touchend="clearLongPress"
+                        @touchmove="handleTouchMove"
+                        @mousedown="handleSwipeStart('chat', chat, $event)"
+                        @mousemove="handleSwipeMove('chat', chat, $event)"
+                        @mouseup="handleSwipeEnd('chat', chat, $event)"
+                        @mouseleave="handleSwipeEnd('chat', chat, $event)">
+                        <!-- 左滑操作按钮（背景层，固定在右侧） -->
+                        <div v-if="swipedItem?.type === 'chat' && swipedItem?.id === chat.id"
+                            class="absolute inset-y-0 right-0 flex items-center"
+                            :style="{ width: '160px', zIndex: 0 }">
+                            <button @click.stop="handleSwipeAction(chat.id, 'pin')"
+                                class="h-full bg-blue-500 text-white shadow-md active:bg-blue-600 flex items-center justify-center" 
+                                style="width: 80px; height: 100%;">
+                                <i class="fa-solid fa-thumbtack text-2xl"></i>
+                            </button>
+                            <button @click.stop="handleSwipeAction(chat.id, 'clear')"
+                                class="h-full bg-orange-500 text-white shadow-md active:bg-orange-600 flex items-center justify-center"
+                                style="width: 80px; height: 100%;">
+                                <i class="fa-solid fa-eraser text-2xl"></i>
+                            </button>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <div class="flex justify-between items-center mb-1">
-                                <div class="flex items-center gap-1.5 truncate">
-                                    <span v-if="chat.isGroup"
-                                        class="bg-green-500 text-white text-[8px] px-1 rounded-sm shrink-0">群组</span>
-                                    <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
+                        <!-- 聊天内容（前景层，可滑动） -->
+                        <div class="bg-white active:bg-gray-100 transition-colors cursor-pointer relative"
+                            :class="chat.isPinned ? 'bg-white/30 backdrop-blur-md' : ''"
+                            :style="swipedItem?.id === chat.id ? { transform: `translateX(-${chatSwipeOffset}px)`, transition: isSwiping ? 'none' : 'transform 0.3s ease', zIndex: 10 } : {}">
+                            <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
+                            <div class="flex items-center px-4 py-3 border-b border-gray-100 prevent-select">
+                                <div class="relative w-12 h-12 mr-3">
+                                    <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
+                                        class="w-full h-full rounded-lg object-cover bg-gray-200">
+                                    <div v-if="chat.unreadCount > 0"
+                                        class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
+                                        {{ chat.unreadCount > 99 ? '99+' : chat.unreadCount }}
+                                    </div>
                                 </div>
-                                <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
-                                    Date(chat.lastMsg.timestamp).toLocaleTimeString([], {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                    }) : '' }}</span>
-                            </div>
-                            <div class="text-xs truncate flex items-center gap-1">
-                                <template v-if="chat.lastMsg">
-                                    <span :class="{
-                                        'text-[#ff8f00] font-bold': (chat.lastMsg?.role !== 'user' && (chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))),
-                                        'text-gray-500': chat.lastMsg?.role === 'user' || !(chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))
-                                    }">
-                                        {{ getPreviewText(chat.lastMsg.content) }}
-                                    </span>
-                                </template>
-                                <span v-else class="text-gray-400 italic">暂无消息</span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <div class="flex items-center gap-1.5 truncate">
+                                            <span v-if="chat.isGroup"
+                                                class="bg-green-500 text-white text-[8px] px-1 rounded-sm shrink-0">群组</span>
+                                            <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
+                                        </div>
+                                        <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
+                                            Date(chat.lastMsg.timestamp).toLocaleTimeString([], {
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                            }) : '' }}</span>
+                                    </div>
+                                    <div class="text-xs truncate flex items-center gap-1">
+                                        <template v-if="chat.lastMsg">
+                                            <span :class="{
+                                                'text-[#ff8f00] font-bold': (chat.lastMsg?.role !== 'user' && (chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))),
+                                                'text-gray-500': chat.lastMsg?.role === 'user' || !(chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))
+                                            }">
+                                                {{ getPreviewText(chat.lastMsg.content) }}
+                                            </span>
+                                        </template>
+                                        <span v-else class="text-gray-400 italic">暂无消息</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- ... keep other tabs same as original ... -->
+
+                <!-- 通讯录 Tab -->
                 <div v-if="currentTab === 'contacts'"
                     :class="{ 'bg-[#ededed]': !(backgroundSettings.contacts.localUrl || backgroundSettings.contacts.url) }"
                     class="min-h-full">
-                    <!-- 0. Message Notification Entry (New) -->
+                    <!-- 消息通知入口 -->
                     <div class="bg-white/30 backdrop-blur-md mb-2 border-b border-gray-100/50">
                         <div class="flex items-center px-4 py-4 active:bg-gray-100 transition-colors cursor-pointer group"
                             @click="showPendingRequestsModal = true">
@@ -1074,6 +1266,7 @@ const handleImport = async (e) => {
                             <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
                         </div>
                     </div>
+
                     <!-- 1. World Loops Section -->
                     <div class="bg-white/30 backdrop-blur-md mb-2">
                         <div class="px-4 py-2 bg-gradient-to-r from-purple-50/30 to-white/30 text-[10px] text-purple-600 font-bold flex justify-between items-center cursor-pointer border-b border-purple-100/30"
@@ -1206,19 +1399,41 @@ const handleImport = async (e) => {
                         <div v-if="expandFriends">
                             <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)"
                                 :key="chat.id"
-                                class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer prevent-select"
-                                @click="openChat(chat.id)"
+                                class="relative overflow-hidden select-none"
+                                @click="!isSwiping && openChat(chat.id)"
                                 @contextmenu.prevent="openContextMenu('contact', chat, $event)"
-                                @touchstart="startLongPress('contact', chat, $event)" @touchend="clearLongPress"
-                                @touchmove="handleTouchMove">
-                                <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
-                                    class="w-9 h-9 rounded bg-gray-200 mr-3">
-                                <span class="text-base text-gray-900">{{ chat.name }}</span>
+                                @touchstart="startLongPress('contact', chat, $event)"
+                                @touchend="clearLongPress"
+                                @touchmove="handleTouchMove"
+                                @mousedown="handleSwipeStart('contact', chat, $event)"
+                                @mousemove="handleSwipeMove('contact', chat, $event)"
+                                @mouseup="handleSwipeEnd('contact', chat, $event)"
+                                @mouseleave="handleSwipeEnd('contact', chat, $event)">
+                                <!-- 左滑删除按钮（背景层，固定在右侧） -->
+                                <div v-if="swipedItem?.type === 'contact' && swipedItem?.id === chat.id"
+                                    class="absolute inset-y-0 right-0 flex items-center"
+                                    :style="{ width: '80px', zIndex: 0 }">
+                                    <button @click.stop="handleSwipeAction(chat.id, 'delete')"
+                                        class="h-full w-full bg-red-500 text-white shadow-md active:bg-red-600 flex items-center justify-center"
+                                        style="height: 100%;">
+                                        <i class="fa-solid fa-trash text-2xl"></i>
+                                    </button>
+                                </div>
+                                <!-- 好友内容（前景层，可滑动） -->
+                                <div class="bg-white active:bg-gray-50/80 transition-colors cursor-pointer relative"
+                                    :style="swipedItem?.id === chat.id ? { transform: `translateX(-${contactSwipeOffset}px)`, transition: isSwiping ? 'none' : 'transform 0.3s ease', zIndex: 10 } : {}">
+                                    <div class="flex items-center px-4 py-3 border-b border-gray-100/80 prevent-select">
+                                        <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
+                                            class="w-9 h-9 rounded bg-gray-200 mr-3">
+                                        <span class="text-base text-gray-900">{{ chat.name }}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- Simplified discover/me for brevity, assuming you have original source -->
+
+                <!-- 发现 Tab -->
                 <div v-if="currentTab === 'discover'"
                     :class="{ 'bg-[#ededed]': !(backgroundSettings.discover.localUrl || backgroundSettings.discover.url) }"
                     class="min-h-full pt-2">

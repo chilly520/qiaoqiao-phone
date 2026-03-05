@@ -644,6 +644,11 @@ onMounted(async () => {
     await worldLoopStore.initStore()
     backpackStore.initStore()
 
+    // NEW: Kickstart message consumption for the current chat if segments are pending
+    if (chatData.value?.id) {
+        chatStore.consumePendingSegments(chatData.value.id);
+    }
+
     // 2. Add event listeners
     window.addEventListener('message', handleIframeMessage)
     window.addEventListener('popstate', handleSettingsPopState)
@@ -1796,10 +1801,16 @@ const getCleanContent = (contentRaw) => {
     }
 
     // Remove Inner Voice block (Standard)
-    let clean = content.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '');
+    // Refined: Priority match full blocks, then handle unclosed, then scrub stray closing tags
+    let clean = content.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); // Scrub stray closing tags
+
+    // Removal of strictly internal protocol tags
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈)[:：]\s*[^\]]+\]/gi, '');
 
     // Remove Naked JSON blocks (Fallback) - Only if they contain specific Inner Voice keys
-    clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|state)"[\s\S]*?\}/gi, '');
+    clean = clean.replace(/\{[\s\n]*"(?:着装|环境|status|心声|心心声|行为|mind|outfit|scene|action|thoughts|mood|state|stats|spirit)"[\s\S]*?\}/gi, '');
 
     // NEW: Remove HTML Card JSON blocks (Greedy & Robust)
     if (clean.includes('"type"') && clean.includes('"html"')) {
@@ -1837,7 +1848,8 @@ const getCleanSpeechText = (text) => {
     let clean = ensureString(text);
 
     // 1. Remove Inner Voice Protocol
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\s*\n\s*\[(?!\/))|(?=\s*\n\s*\{)|$)/gi, '');
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); // Scrub stray closing tags too
 
     // 2. Extract content from voice tags instead of deleting them entirely
     clean = clean.replace(/\[语音(?:消息)?[:：]?\s*(.*?)\]/gi, '$1');
@@ -2380,7 +2392,15 @@ const handlePayClick = (msg) => {
 
 const isMsgVisible = (msg) => {
     if (msg.hidden) return false
-    if (msg.role === 'user' || msg.role === 'ai') return true
+
+    const contentStr = ensureString(msg.content);
+
+    // Check if it's a hidden AI metadata block (e.g. INNER_VOICE)
+    if (msg.role === 'ai' || msg.role === 'user') {
+        const cleanContent = getCleanContent(contentStr);
+        if (!cleanContent.trim()) return false;
+        return true;
+    }
 
     // For System messages, check content
     const content = ensureString(msg.content)

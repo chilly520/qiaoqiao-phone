@@ -477,6 +477,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         ...(globalStickers || []),
         ...(charStickers || [])
     ].filter(s => s && s.name)
+    
+    console.log('[aiService] 表情包库:', {
+        globalCount: globalStickers?.length || 0,
+        charCount: charStickers?.length || 0,
+        totalCount: availableStickers.length,
+        stickers: availableStickers.map(s => s.name)
+    })
 
     const config = settingsStore.currentConfig || settingsStore.apiConfig
     // Mismatch fix: Store uses 'baseUrl', Service expected 'apiUrl'
@@ -530,7 +537,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const boundEntries = allEntries.filter(e => e && e.id && char.worldBookLinks.includes(e.id))
 
             const contextText = (messages || []).map(m => {
-                const c = m && m.content ? m.content : ''
+                let c = m && m.content ? m.content : ''
+                // Include giftId in context for gift messages
+                if (m && m.type === 'gift' && m.giftId) {
+                    c = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
+                }
                 return typeof c === 'string' ? c : JSON.stringify(c)
             }).join('\n')
 
@@ -648,6 +659,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                     let sender = m.groupSpeakerMeta?.name || m.senderName
                                     if (!sender) sender = m.role === 'user' ? (gChat.groupSettings?.myNickname || '我') : '群成员'
                                     let content = typeof m.content === 'object' ? JSON.stringify(m.content) : String(m.content)
+                                    // Include giftId in context for gift messages
+                                    if (m.type === 'gift' && m.giftId) {
+                                        content = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
+                                    }
                                     // simple clean
                                     content = content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
                                     return `${sender}: ${content}`
@@ -673,7 +688,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                     const title = `【成员: ${p.name} 与你的近期私聊记录】`
                                     const text = pMsgs.map(m => {
                                         const sender = m.role === 'user' ? (char.groupSettings?.myNickname || '我') : p.name
-                                        const content = typeof m.content === 'object' ? JSON.stringify(m.content) : m.content
+                                        let content = typeof m.content === 'object' ? JSON.stringify(m.content) : m.content
+                                        // Include giftId in context for gift messages
+                                        if (m.type === 'gift' && m.giftId) {
+                                            content = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
+                                        }
                                         const cleanContent = String(content).replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
                                         return `${sender}: ${cleanContent}`
                                     }).join('\n')
@@ -805,6 +824,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Only process User/AI messages for AI Vision perception
         if (msg.role === 'user' || msg.role === 'assistant') {
             let content = msg.content || ''
+
+            // Include giftId in context for gift messages
+            if (msg.type === 'gift' && msg.giftId) {
+                content = `[GIFT:${msg.giftName || '礼物'}:${msg.giftQuantity || 1}:${msg.giftNote || ''}](ID:${msg.giftId})`
+            }
 
             // 1. Priority: msg.image property (New standard)
             if (msg.image) {
@@ -2112,7 +2136,12 @@ export async function generateBatchMomentsWithInteractions(options) {
         ? "\n【最近 20 条朋友圈现状（请分析后决定是否进行互动，如回复评论、补赞、@-用户点赞等）】\n" + historicalMoments.map(m => {
             const commentsStr = (m.comments || []).map(c => `   - [评论] ${c.authorName}: ${c.content}`).join('\n')
             const likesStr = (m.likes || []).join(', ')
-            return `动态ID: ${m.id}\n作者: ${m.authorName}\n内容: ${m.content}\n点赞: [${likesStr}]\n评论区:\n${commentsStr || '   (暂无评论)'}`
+            return `动态ID: ${m.id}
+作者: ${m.authorName}
+内容: ${m.content}
+点赞: [${likesStr}]
+评论区:
+${commentsStr || '   (暂无评论)'}`
         }).join('\n\n')
         : ""
 
@@ -2343,15 +2372,17 @@ ${"```"}
 /**
  * 统一生图接口 (Supports Pollinations standard, SiliconFlow, and API Key) - QUEUED
  * @param {String} prompt 提示词
+ * @param {Object} options 可选参数 { width, height, ... }
  */
-export async function generateImage(prompt) {
-    return await apiQueue.enqueue(_generateImageInternal, [prompt]);
+export async function generateImage(prompt, options = {}) {
+    return await apiQueue.enqueue(_generateImageInternal, [prompt, options]);
 }
 
 /**
  * Internal logic for image generation, handled by apiQueue.
  */
-async function _generateImageInternal(prompt) {
+async function _generateImageInternal(prompt, options = {}) {
+    const { width = 1024, height = 1024 } = options;
     const settingsStore = useSettingsStore()
     // In some contexts (like plain JS files), Pinia might return the raw ref object.
     // We check for .value to be safe, ensuring we get the actual configuration object.
@@ -2361,13 +2392,13 @@ async function _generateImageInternal(prompt) {
     let model = drawingVal.model || 'flux'
 
     // REDUNDANT FALLBACK: If store seems empty, try reading directly from localStorage
-    if (!apiKey) {
+    if (!apiKey && provider !== 'pollinations') {
         try {
             const raw = localStorage.getItem('qiaoqiao_settings')
             if (raw) {
                 const data = JSON.parse(raw)
                 if (data.drawing && data.drawing.apiKey) {
-                    console.log('[AI Image] Recovered API key from raw localStorage')
+                    console.log('[AI Image] Recovered API key/config from raw localStorage')
                     apiKey = data.drawing.apiKey.trim()
                     provider = data.drawing.provider || provider
                     model = data.drawing.model || model
@@ -2378,7 +2409,11 @@ async function _generateImageInternal(prompt) {
         }
     }
 
-    console.log(`[AI Image] Final Config - Provider: ${provider}, Model: ${model}, Has Key: ${!!apiKey} `)
+    console.log(`[AI Image] Drawing Triggered - Provider: ${provider}, Model: ${model}, Has Key: ${!!apiKey}`)
+
+    if (provider !== 'pollinations') {
+        console.log(`[AI Image] Using Custom Generator API (${provider})...`)
+    }
 
     // Log image generation request
     useLoggerStore().addLog('AI', '图片生成请求', {
@@ -2453,7 +2488,7 @@ async function _generateImageInternal(prompt) {
                 .replace(/\s+/g, ' ')          // Collapse spaces
                 .trim()
 
-            const url = `https://${host}/${path}/${encodeURIComponent(safePrompt)}?model=${model || 'flux'}&seed=${seed}&width=1024&height=1024&nologo=true&key=${apiKey}`
+            const url = `https://${host}/${path}/${encodeURIComponent(safePrompt)}?model=${model || 'flux'}&seed=${seed}&width=${width}&height=${height}&nologo=true&key=${apiKey}`
 
             console.log('[AI Image] Requesting (Sanitized):', url.replace(apiKey, 'REDACTED'))
 
@@ -2529,8 +2564,8 @@ async function _generateImageInternal(prompt) {
                     model: model || 'flux-v1',
                     prompt: enhancedPrompt,
                     negative_prompt: negativeBoost,
-                    width: 1024,
-                    height: 1024
+                    width: width,
+                    height: height
                 })
             })
 
@@ -2554,7 +2589,7 @@ async function _generateImageInternal(prompt) {
     }
 
     // Default Fallback
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${seed}`
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=${width}&height=${height}&nologo=true&seed=${seed}`
 }
 
 /**

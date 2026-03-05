@@ -155,7 +155,9 @@ const publish = () => {
         isAnonymous: form.value.isAnonymous,
         deadline,
         creatorId: 'user',
-        creatorName: creatorProfile.name
+        creatorName: creatorProfile.name,
+        senderId: 'user',
+        senderName: creatorProfile.name
     })
 
     emit('close')

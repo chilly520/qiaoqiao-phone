@@ -166,7 +166,7 @@
                                 </div>
                                 <div class="marker-info-tag">
                                     <span class="marker-name">{{ chatData?.userName || userProfile?.name || '我'
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </div>
 
@@ -294,6 +294,7 @@ const parseVoiceData = (text) => {
         result = text
     } else {
         const raw = text.toString().trim()
+        console.log('[parseVoiceData] 原始输入:', raw.substring(0, 200))
 
         // 1. Extract potential JSON block
         let jsonStr = raw.replace(/\[INNER[\s-_]*VOICE\]/i, '')
@@ -305,15 +306,30 @@ const parseVoiceData = (text) => {
             jsonStr = jsonMatch[0]
         }
 
+        console.log('[parseVoiceData] 提取的 JSON:', jsonStr.substring(0, 200))
+
         // 2. Attempt Parse
         try {
             result = JSON.parse(jsonStr)
+            console.log('[parseVoiceData] 解析成功 (原始)')
         } catch (e) {
+            console.warn('[parseVoiceData] 第一次解析失败:', e.message)
             try {
-                let fixed = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
-                fixed = fixed.replace(/[“”]/g, '"')
-                result = JSON.parse(fixed)
+                // 处理转义字符：AI 经常返回带反斜杠的 JSON
+                let unescaped = jsonStr
+                    .replace(/\\"/g, '"')
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t')
+                    .replace(/\\\\/g, '\\')
+                    .replace(/,\s*}/g, '}')
+                    .replace(/,\s*]/g, ']')
+                unescaped = unescaped.replace(/[“"]/g, '"')
+
+                console.log('[parseVoiceData] 去转义后:', unescaped.substring(0, 200))
+                result = JSON.parse(unescaped)
+                console.log('[parseVoiceData] 解析成功 (去转义)')
             } catch (e2) {
+                console.error('[parseVoiceData] 第二次解析失败:', e2.message)
                 // Aggressive extraction...
             }
         }
@@ -350,8 +366,8 @@ const historyList = computed(() => {
     if (!props.chatId) return []
     const msgs = chatStore.chats[props.chatId]?.msgs || []
 
-    // Robust Regex matching the one used in Store (Relaxed spaces)
-    const voiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/i;
+    // Robust Regex matching the one used in Store (Negative lookahead for closing tag)
+    const voiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\s*\n\s*\[(?!\/))|$)/i;
 
     return msgs.filter(m => {
         if (!m.content) return false;

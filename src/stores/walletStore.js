@@ -104,7 +104,8 @@ export const useWalletStore = defineStore('wallet', () => {
 
     // Increase Balance (Receive Red Packet / Top up from Bank)
     function increaseBalance(amount, title, sourceInfo = '零钱') {
-        const numAmount = parseFloat(amount)
+        const numAmount = parseFloat(amount) || 0
+        if (isNaN(numAmount)) return
         balance.value = parseFloat((balance.value + numAmount).toFixed(2))
         addTransaction({
             type: 'income',

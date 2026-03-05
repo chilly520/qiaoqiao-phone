@@ -23,11 +23,14 @@ class BatteryMonitor {
                 console.log('[BatteryMonitor] Initialized successfully')
                 return true
             } else {
-                console.warn('[BatteryMonitor] Battery API not supported')
+                // 静默处理，不输出警告
                 return false
             }
         } catch (error) {
-            console.error('[BatteryMonitor] Failed to initialize:', error)
+            // 只在非生产环境输出错误
+            if (import.meta.env.DEV) {
+                console.warn('[BatteryMonitor] Battery API unavailable:', error.message)
+            }
             return false
         }
     }

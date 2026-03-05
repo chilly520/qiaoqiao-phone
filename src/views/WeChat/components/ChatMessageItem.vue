@@ -229,7 +229,7 @@
                                 <div class="flex-1 min-w-0">
                                     <div class="text-white text-sm font-medium truncate drop-shadow-sm">{{
                                         getPayTitle(msg) }}</div>
-                                    <div class="text-white/70 text-[10px] truncate">{{ getPayDesc(msg) }}</div>
+                                    <div class="text-white/70 text-[10px] truncate">{{ getPayDesc(msg, chatData) }}</div>
                                 </div>
                             </div>
 
@@ -854,9 +854,16 @@ const displaySenderName = computed(() => {
     if (props.msg.role === 'user') {
         return props.chatData.groupSettings?.myNickname || props.chatData.userName || '我'
     }
-    const pid = props.msg.senderId || props.chatData?.id
-    const p = props.chatData?.participants?.find(p => p.id === pid)
-    return p?.nickname || p?.name || props.msg.senderName
+    // Priority 1: Use senderId to find participant
+    const pid = props.msg.senderId
+    if (pid) {
+        const p = props.chatData?.participants?.find(p => p.id === pid)
+        if (p) return p?.nickname || p?.name
+    }
+    // Priority 2: Use explicit senderName
+    if (props.msg.senderName) return props.msg.senderName
+    // Priority 3: Fallback to chat name (for system messages)
+    return props.chatData?.name || '未知'
 })
 
 // Only show the leaderboard shortcut when the message is the group announcement
@@ -1037,6 +1044,11 @@ const hasHtmlContent = computed(() => {
 })
 
 const isValidMessage = computed(() => {
+    // Debug: Log gift messages
+    if (props.msg.type === 'gift') {
+        console.log('[ChatMessageItem] Checking gift message:', { id: props.msg.id, type: props.msg.type, giftName: props.msg.giftName })
+    }
+
     // 1. If it's a system message, it must have content
     if (props.msg.role === 'system') {
         const clean = getCleanContent(ensureString(props.msg.content))
@@ -1153,18 +1165,27 @@ const musicInfo = computed(() => {
     if (props.msg.type !== 'music') return ''
     const content = ensureString(props.msg.content)
     let info = '点击重听'
-    if (content.includes(':')) {
-        const inst = content.split(/[:：]/)[0].trim().toLowerCase()
+
+    // Robust parsing for [演奏:piano:score] or [MUSIC:piano:score] or piano:score
+    const clean = content.replace(/[\[\]]/g, '').replace(/^(演奏|MUSIC)[:：]?/i, '');
+
+    if (clean.includes(':') || clean.includes('：')) {
+        const parts = clean.split(/[:：]/)
+        const inst = parts[0].trim().toLowerCase()
         const instMap = {
             'piano': '🎹 钢琴',
             'guitar': '🎸 吉他',
             'violin': '🎻 小提琴',
             'flute': '🪈 长笛',
             'game': '👾 8-bit',
-            'drum': '🥁 鼓点'
+            'drum': '🥁 架子鼓',
+            'search': '🎵 音乐点播'
         }
-        info = (instMap[inst] || inst) + '演奏'
+        info = instMap[inst] || '🎵 音乐演奏'
+    } else if (content.toUpperCase().includes('SEARCH')) {
+        info = '🎵 音乐点播'
     }
+
     return info
 })
 
@@ -1222,12 +1243,13 @@ function getCleanContent(contentRaw, isCard = false) {
 
     // EARLY FILTER: JSON Fragment Detection
     const trimmed = content.trim();
-    // ... (rest of filtering logic)
     let clean = content;
 
-    // ... (inner voice removal, etc.)
     // Removal of strictly internal protocol tags
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|\[\/INNER_OICE\]|(?=\n\s*[^\n\s\{"\['])|$)/gi, '');
+    // Refined: Priority match full blocks, then handle unclosed, then scrub stray closing tags
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); // Scrub stray closing tags
 
     // Remove Moment Interaction tags from display bubble
     clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
@@ -1243,34 +1265,23 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[CREATE_VOTE:\s*[^\]]+\]/gi, '');
 
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
-    // Improved to handle unclosed [CARD] tags at the end or standalone cards
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
 
     // Remove JSON metadata blocks (心声, 着装, status, etc.)
-    // 4. Remove JSON blocks (including Call Protocol fragments)
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
 
     // AGGRESSIVE: Remove loose JSON properties (e.g. spirit: {...}, "mood": {...}) that might be missing enclosing braces
-    // This handles the specific leak seen in user screenshots
     clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
 
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {
-        // 0. Remove [CARD]...[/CARD] blocks
         clean = clean.replace(/\[\s*CARD\s*\][\s\S]*?(?:\[\/\s*CARD\s*\]|$)/gi, '');
-
-        // 1. Remove Markdown code blocks
         clean = clean.replace(/```[\s\S]*?```/gi, '');
-
-        // 2. Remove JSON-like structures
         clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
         clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform|stats|spirit|speech|hangup)"[\s\S]*?\}/gi, '');
-
-        // 3. Remove loose CSS
         clean = clean.replace(/(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[^{}]*\{[^{}]*\}[^{}]*\}|(?:\s|^)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');
         clean = clean.replace(/(?:\s|^)\d+%\s*\{[\s\S]*?\}/gi, '');
 
-        // 4. Remove HTML Blocks
         const f = clean.indexOf('<');
         const l = clean.lastIndexOf('>');
         if (f !== -1 && l > f) {
@@ -1287,17 +1298,14 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/&[a-z0-9#]+;/gi, ''); // HTML entities
 
     clean = clean.trim();
-    clean = clean.replace(/\[(领取红包|RECEIVE_RED_PACKET|HTML卡片)\]/gi, '').trim();
+    // Strip operational tags (claims, rejections, financial, and multi-media commands)
+    const opRegex = /\[(领取|拒收|退回|GIFT|MUSIC|演奏|UPDATE_BIO|VOTE|CREATE_VOTE|RECEIVE_RED_PACKET|HTML卡片)[:：\-\s]?[^\]]*\]/gi;
+    clean = clean.replace(opRegex, '').trim();
     clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '').trim();
 
-    // Final pass for logic symbols and garbage
-    clean = clean.replace(/\\n/g, '\n');
-    // Remove trailing/leading punctuation but PRESERVE brackets [ ] as they are used for protocol tags
-    clean = clean.replace(/^[\s,;:"'}\\|/]+|[\s,;:"'}\\|/]+$/g, '');
-
+    // Final clean
     // FINAL GUARD: If it's a card and the remaining text is minimal, hide the bubble
     if (isCard && (clean.length < 150)) {
-        // More aggressive: if there's no normal sentence structure, hide it
         const hasNaturalLanguage = /[\u4e00-\u9fa5]/.test(clean) || (/[a-zA-Z]/.test(clean) && clean.split(' ').length > 2);
         if (!hasNaturalLanguage || clean.length < 5) {
             return '';
@@ -1720,11 +1728,12 @@ function getPayTitle(msg) {
     return msg.note || '恭喜发财，大吉大利'
 }
 
-function getPayDesc(msg) {
+function getPayDesc(msg, chatData) {
     const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
     if (isTransfer) return msg.note || '转账给您'
 
-    if (msg.packetType === 'lucky') return '微信手气红包'
+    // Private chat always shows '微信红包', group chat shows '微信手气红包' for lucky type
+    if (chatData?.isGroup && msg.packetType === 'lucky') return '微信手气红包'
     return '微信红包'
 }
 
@@ -1812,7 +1821,10 @@ function handleToggleVoice() {
 }
 
 function handlePlayMusic() {
-    musicBoxStore.playScore(ensureString(props.msg.content))
+    const raw = ensureString(props.msg.content)
+    // Clean protocol wrapping before playing
+    const clean = raw.replace(/[\[\]]/g, '').replace(/^(演奏|MUSIC)[:：]?/i, '');
+    musicBoxStore.playScore(clean)
 }
 
 function emitContextMenu(event) {

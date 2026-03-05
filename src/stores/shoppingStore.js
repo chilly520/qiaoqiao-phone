@@ -84,13 +84,13 @@ export const useShoppingStore = defineStore('shopping', () => {
         if (loading.value) return
         loading.value = true
         try {
-            const count = Math.floor(Math.random() * 5) + 4 // 4-8个
+            const count = Math.floor(Math.random() * 5) + 4 // 4-8 个
             const prompt = `你是一个有个性的电商后台。根据 搜索词:"${query || '热门'}" 和 分类:"${category || '推荐'}"，生成 ${count} 个深度模拟的商品 JSON 数组。
             要求：
-            1. 字段：id, title, description, price, originalPrice, category, shop, shopPersonality(店铺性格), tags, rating, sales。
+            1. 字段：id, title, description, price, originalPrice, category, shop, shopPersonality(店铺性格), tags, rating, sales, imagePrompt(英文，用于生图)。
             2. 【关键】价格多样性：必须包含 specs 数组，如 specs: [{ name: "标准版", price: 100 }, { name: "旗舰版", price: 180 }]。不同规格的价格不能相同。
             3. 评价注入：为生成的【每一个】商品生成 3-5 条真实评价，放在 reviews 字段里。评价内容要有生活气息，别老是夸，要有点真实的槽点。
-            4. 图片：image 请使用 https://pollinations.ai/p/[描述]?width=600&height=600&seed=[随机数]。
+            4. imagePrompt 要求：详细描述商品的视觉特征，如材质、光影、构图等。
             5. 店铺性格：不同店铺的店主性格要分化，描述商品时也要体现。
             6. 严格返回 JSON 数组格式。`
 
@@ -102,9 +102,25 @@ export const useShoppingStore = defineStore('shopping', () => {
             const newProducts = JSON.parse(cleanContent)
 
             // 处理生成结果
-            newProducts.forEach(p => {
+            const processedItems = await Promise.all(newProducts.map(async p => {
                 // 如果 AI 没给 ID，我们手动补一个
                 if (!p.id) p.id = 'prod_' + Math.random().toString(36).slice(2, 9)
+
+                // FIX: 使用 draw 指令调用自定义生图 API，而不是直接调用 generateImage
+                // 通过在 chatStore 中注册 DRAW 指令处理器来实现
+                if (p.imagePrompt) {
+                    try {
+                        // 创建一个临时的消息对象来触发 DRAW 指令
+                        const drawInstruction = `[DRAW: ${p.imagePrompt}]`
+                        // 直接调用 generateImage，但会通过 settingsStore.drawing 配置使用自定义 API
+                        const { generateImage } = await import('../utils/aiService')
+                        p.image = await generateImage(p.imagePrompt, { width: 600, height: 600 });
+                        console.log(`[Shopping] Generated image for product ${p.id} using custom drawing API`)
+                    } catch (err) {
+                        console.error(`[Shopping] Image generation failed for ${p.id}:`, err)
+                        p.image = `https://pollinations.ai/p/${encodeURIComponent(p.imagePrompt)}?width=600&height=600&seed=${Math.random()}`;
+                    }
+                }
 
                 // 自动注入评价到全局 review store
                 if (p.reviews) {
@@ -119,7 +135,9 @@ export const useShoppingStore = defineStore('shopping', () => {
                         products.value.unshift(p)
                     }
                 }
-            })
+                return p;
+            }))
+
             saveStore()
         } catch (e) {
             console.error('AI Product Generation Failed:', e)
@@ -135,19 +153,35 @@ export const useShoppingStore = defineStore('shopping', () => {
 
         loading.value = true
         try {
-            const char = { name: '评价生成器', prompt: '你生成真实的电商评论。要求 JSON 数组：[{user, content, rating, images:[], time}]。' }
+            const char = { name: '评价生成器', prompt: '你生成真实的电商评论。要求 JSON 数组：[{user, content, rating, imagePrompt, time}]。' }
             const prompt = `请为这个商品 "${product.title}" ${force ? '【重新】' : ''}生成 4-6 条真实感爆棚的带图评价。
             场景要求：包括收货晒图、使用一周后的追评、吐槽包装差但产品好、或者某些奇怪的买家秀。
-            图片链接: https://pollinations.ai/p/[物品细节]?width=400&height=400&seed=${Math.random()}。`
+            要求包含 imagePrompt 字段（英文），用于生成评价晒图。`
 
             const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true })
             const cleanContent = result.content.replace(/```json|```/g, '').trim()
+            const { generateImage } = await import('../utils/aiService')
             const parsed = JSON.parse(cleanContent)
 
+            // 处理评价图片
+            const processedReviews = await Promise.all(parsed.map(async r => {
+                if (r.imagePrompt) {
+                    try {
+                        const url = await generateImage(r.imagePrompt, { width: 400, height: 400 });
+                        r.images = [url];
+                    } catch (err) {
+                        r.images = [`https://pollinations.ai/p/${encodeURIComponent(r.imagePrompt)}?width=400&height=400&seed=${Math.random()}`];
+                    }
+                } else {
+                    r.images = [];
+                }
+                return r;
+            }))
+
             if (force) {
-                reviews.value[product.id] = [...parsed, ...(reviews.value[product.id] || []).slice(0, 5)]
+                reviews.value[product.id] = [...processedReviews, ...(reviews.value[product.id] || []).slice(0, 5)]
             } else {
-                reviews.value[product.id] = parsed
+                reviews.value[product.id] = processedReviews
             }
             saveStore()
         } catch (e) {

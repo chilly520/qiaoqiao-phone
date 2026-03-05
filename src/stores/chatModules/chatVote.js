@@ -21,7 +21,10 @@ export const setupVoteLogic = (chats, addMessage, updateMessage, saveChats) => {
                 creatorName: voteData.creatorName || '管理员',
                 votes: {}, // userId -> [optionIdx1, optionIdx2, ...]
                 createdAt: Date.now()
-            })
+            }),
+            senderId: voteData.senderId,
+            senderName: voteData.senderName,
+            senderAvatar: voteData.senderAvatar
         }
         return addMessage(chatId, msg)
     }

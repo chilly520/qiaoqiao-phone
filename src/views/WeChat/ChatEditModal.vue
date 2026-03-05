@@ -41,6 +41,7 @@
                             <option value="redpacket">红包</option>
                             <option value="transfer">转账</option>
                             <option value="family_card">亲属卡</option>
+                            <option value="gift">礼物</option>
                         </select>
                     </div>
 
@@ -126,7 +127,7 @@ const init = () => {
 }
 
 const normalizeType = (type) => {
-    if (['redpacket', 'transfer', 'image', 'voice', 'html', 'family_card'].includes(type)) return type
+    if (['redpacket', 'transfer', 'image', 'voice', 'html', 'family_card', 'gift'].includes(type)) return type
     return 'text'
 }
 
@@ -248,6 +249,37 @@ const save = () => {
                 }
                 base.content = `[FAMILY_CARD:${amt}:${note}]`
             }
+        } else if (b.type === 'gift') {
+            base.type = 'gift'
+            
+            // If already formatted, use as is
+            if (b.content && b.content.trim().startsWith('[GIFT:')) {
+                base.content = b.content
+            } else {
+                // Parse content: name:quantity:note
+                let giftName = '礼物'
+                let giftQty = 1
+                let giftNote = ''
+                
+                const parts = b.content.split(':')
+                if (parts.length >= 1) {
+                    giftName = parts[0].trim() || '礼物'
+                }
+                if (parts.length >= 2) {
+                    giftQty = parseInt(parts[1]) || 1
+                }
+                if (parts.length >= 3) {
+                    giftNote = parts[2].trim()
+                }
+                
+                base.content = `[GIFT:${giftName}:${giftQty}:${giftNote}]`
+            }
+            base.giftId = 'GIFT-U-' + Date.now()
+            base.giftName = base.content.match(/\[GIFT:([^:]+)/)?.[1] || '礼物'
+            base.giftQuantity = parseInt(base.content.match(/\[GIFT:[^:]+:(\d+)/)?.[1]) || 1
+            base.giftNote = base.content.match(/\[GIFT:[^:]+:\d+:(.*?)\]/)?.[1] || ''
+            base.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png'
+            base.status = 'pending'
         }
 
         return base

@@ -201,27 +201,36 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
         if (chat.isSummarizing) return
 
         const msgs = chat.msgs || []
-        const summaryLimit = parseInt(chat.summaryLimit) || 50
+        // Limit Priority: Chat-specific > Group Settings > Global Personalization > Default (300)
+        let summaryLimit = parseInt(chat.summaryLimit) ||
+            (chat.isGroup ? (parseInt(chat.groupSettings?.summaryLimit) || parseInt(chat.groupSettings?.memory?.autoSummaryEvery)) : 0) ||
+            useSettingsStore().personalization?.summaryLimit ||
+            300;
 
-        // Use lastSummaryCount (total messages at last summary) for better diff
-        let lastCount = chat.lastSummaryCount || 0
-
-        // PROACTIVE FIX: If lastCount exceeds current msgs length (e.g. deletion occurred), we must clamp it to avoid negative backlog
-        if (lastCount > msgs.length) {
-            console.log('[AutoSummary] Clamping lastCount (deletion detected)', lastCount, '->', msgs.length)
+        // FIX: Use lastSummaryIndex as the single source of truth, not lastSummaryCount
+        // lastSummaryIndex represents the actual index of last summarized message
+        let lastIndex = chat.lastSummaryIndex || 0
+        
+        // PROACTIVE FIX: If lastIndex exceeds current msgs length (e.g. deletion occurred), reset it
+        if (lastIndex > msgs.length) {
+            console.log('[AutoSummary] Index reset (deletion detected)', lastIndex, '->', msgs.length)
+            chat.lastSummaryIndex = msgs.length
             chat.lastSummaryCount = msgs.length
-            chat.lastSummaryIndex = Math.min(chat.lastSummaryIndex || 0, msgs.length)
-            lastCount = msgs.length
-            // Don't saveChats() here to avoid I/O loop
+            lastIndex = msgs.length
         }
 
-        const backlog = msgs.length - lastCount
+        const backlog = msgs.length - lastIndex
 
         // Check if new messages (since last summary) exceed limit
         if (backlog >= summaryLimit) {
-            console.log(`[AutoSummary] Triggered for ${chat.name}. New msgs (backlog): ${backlog}, Limit: ${summaryLimit}`)
-            useLoggerStore().info(`触发自动总结: ${chat.name}`, { backlog, limit: summaryLimit })
+            console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog}, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
+            useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex: lastIndex, totalMsgs: msgs.length })
             summarizeHistory(chatId, { silent: true })
+        } else {
+            // Debug log to track progress
+            if (backlog > 0 && backlog < summaryLimit) {
+                console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit}`)
+            }
         }
     }
 

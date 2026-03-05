@@ -42,6 +42,18 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         const msg = chat.msgs.find(m => m.id === messageId);
         if (!msg || msg.type !== 'redpacket') return null;
 
+        // Critical: Initialize the distribution amounts if not present BEFORE claim
+        if (!msg.amounts || msg.amounts.length === 0) {
+            const total = parseFloat(msg.amount) || 0
+            const count = parseInt(msg.count) || 1
+            if (msg.packetType === 'lucky' && count > 1) {
+                msg.amounts = _splitRedPacket(total, count)
+            } else {
+                msg.amounts = Array(count).fill(total)
+            }
+            console.log(`[RP_SAFETY_INIT] ID=${msg.id} Total=${total} Count=${count} Amounts=`, msg.amounts)
+        }
+
         // Check already claimed by this user
         if (msg.claims.some(c => c.id === claimantId)) {
             return { claimed: true, already: true, item: msg.claims.find(c => c.id === claimantId) };
@@ -53,7 +65,9 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
 
         // Claim logic
         const claimIndex = msg.claims.length;
-        const amount = msg.amounts[claimIndex];
+        const amount = (msg.amounts && msg.amounts[claimIndex] !== undefined) ? msg.amounts[claimIndex] : 0;
+
+        console.log(`[RP_CLAIM] ChatID=${chatId} MsgID=${messageId} User=${claimantId} Amount=${amount} Index=${claimIndex}`);
 
         // Find claimant name/avatar
         let name = '未知', avatar = '';
@@ -89,15 +103,15 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         const claimantStr = claimantId === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : name;
         const ownerName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : (chat.isGroup ? (chat.participants.find(p => p.id === msg.senderId)?.name || chat.name) : chat.name));
 
-        // 1. Claimed notification
-        const rpType = msg.packetType === 'lucky' ? '拼手气红包' : '红包';
+        // 1. Claimed notification (private chat always shows '红包', group chat shows '拼手气红包' for lucky type)
+        const rpType = (chat.isGroup && msg.packetType === 'lucky') ? '拼手气红包' : '红包';
         addMessage(chatId, {
             role: 'system',
             content: `${claimantStr}领取了${ownerName}的${rpType}`
         });
 
-        // 2. Fully claimed notification
-        if (msg.remainingCount === 0) {
+        // 2. Fully claimed notification (only for group chats)
+        if (msg.remainingCount === 0 && chat.isGroup) {
             const durationMs = Date.now() - msg.timestamp;
             let timeStr = '';
             if (durationMs < 60000) {
@@ -183,10 +197,15 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
                 }, msg.giftQuantity || 1)
             } catch (e) { console.error('Failed to add item to backpack:', e) }
         } else {
-            const p = chat.participants.find(p => p.id === claimantId);
+            // Try to find in participants (group chat) or use chat info (private chat)
+            const p = chat.participants?.find(p => p.id === claimantId);
             if (p) {
                 claimantName = p.name;
                 claimantAvatar = p.avatar;
+            } else if (chat.id === claimantId) {
+                // Private chat: the chat itself is the AI character
+                claimantName = chat.name;
+                claimantAvatar = chat.avatar;
             }
         }
 
@@ -208,8 +227,10 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         });
 
         // 生成已领取卡片
+        // 根据领取者角色设置消息角色：用户领取显示在右侧(user)，AI领取显示在左侧(assistant)
+        const claimCardRole = claimantId === 'user' ? 'user' : 'assistant';
         addMessage(chatId, {
-            role: 'assistant',
+            role: claimCardRole,
             type: 'gift_claimed',
             giftId: msg.giftId,
             giftName: msg.giftName,

@@ -161,43 +161,119 @@ const weatherIconClass = ref('fa-sun')
 const weatherAqi = ref('AQI --')
 
 async function fetchWeather() {
-  const queryLoc = weather.value.realLocation || weather.value.virtualLocation || 'Beijing'
+  const queryLoc = weather.value.realLocation || weather.value.virtualLocation || '上海'
   if (!queryLoc) return
 
   try {
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(`https://wttr.in/${queryLoc}?format=j1`)}`);
-    if (res.ok) {
-      const data = await res.json()
-      const current = data.current_condition[0]
-
-      weatherTemp.value = `${current.temp_C}°`
-      weatherDesc.value = current.lang_zh?.[0]?.value || current.weatherDesc?.[0]?.value || '晴'
-
-      const descLower = (current.weatherDesc?.[0]?.value || '').toLowerCase()
-      if (descLower.includes('rain') || descLower.includes('shower')) weatherIconClass.value = 'fa-cloud-rain'
-      else if (descLower.includes('cloud') || descLower.includes('overcast') || descLower.includes('partly')) weatherIconClass.value = 'fa-cloud'
-      else if (descLower.includes('snow')) weatherIconClass.value = 'fa-snowflake'
-      else if (descLower.includes('fog') || descLower.includes('mist')) weatherIconClass.value = 'fa-smog'
-      else if (descLower.includes('thunder')) weatherIconClass.value = 'fa-bolt'
-      else weatherIconClass.value = 'fa-sun'
-
-      weatherAqi.value = `AQI ${Math.floor(Math.random() * 50 + 20)}`
-
-      // Sync to Global Store for AI Context
+    // 使用 Open-Meteo 免费天气 API（无需 API Key）
+    // 文档：https://open-meteo.com/
+    // 1. 先获取地理编码
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryLoc)}&count=1&language=zh&format=json`)
+    
+    if (!geoRes.ok) {
+      throw new Error('地理位置查询失败')
+    }
+    
+    const geoData = await geoRes.json()
+    
+    if (!geoData.results || geoData.results.length === 0) {
+      throw new Error(`找不到城市：${queryLoc}`)
+    }
+    
+    const { latitude, longitude, name, name_en } = geoData.results[0]
+    // 优先使用英文名获取 AQI，没有英文名则使用拼音
+    const aqiCityName = name_en || name
+    
+    // 2. 获取天气数据
+    const weatherRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&weathercode=true`
+    )
+    
+    if (!weatherRes.ok) {
+      throw new Error('天气数据获取失败')
+    }
+    
+    const weatherData = await weatherRes.json()
+    const current = weatherData.current_weather
+    
+    if (current) {
+      weatherTemp.value = `${Math.round(current.temperature)}°`
+      
+      // WMO 天气代码映射
+      const weatherCodeMap = {
+        0: { text: '晴', icon: 'fa-sun' },
+        1: { text: '多云', icon: 'fa-cloud' },
+        2: { text: '多云', icon: 'fa-cloud' },
+        3: { text: '阴', icon: 'fa-cloud' },
+        45: { text: '雾', icon: 'fa-smog' },
+        48: { text: '雾', icon: 'fa-smog' },
+        51: { text: '小雨', icon: 'fa-cloud-rain' },
+        53: { text: '小雨', icon: 'fa-cloud-rain' },
+        55: { text: '小雨', icon: 'fa-cloud-rain' },
+        61: { text: '小雨', icon: 'fa-cloud-rain' },
+        63: { text: '中雨', icon: 'fa-cloud-rain' },
+        65: { text: '大雨', icon: 'fa-cloud-rain' },
+        80: { text: '阵雨', icon: 'fa-cloud-rain' },
+        81: { text: '中雨', icon: 'fa-cloud-rain' },
+        82: { text: '暴雨', icon: 'fa-cloud-rain' },
+        95: { text: '雷阵雨', icon: 'fa-bolt' },
+        96: { text: '雷雨', icon: 'fa-bolt' },
+        99: { text: '雷雨', icon: 'fa-bolt' }
+      }
+      
+      const weatherInfo = weatherCodeMap[current.weathercode] || { text: '未知', icon: 'fa-sun' }
+      weatherDesc.value = weatherInfo.text
+      weatherIconClass.value = weatherInfo.icon
+      
+      // 3. 获取 AQI 数据（使用 WAQI - 世界空气质量指数项目）
+      // 这是免费的，使用你的专属 token
+      try {
+        const WAQI_TOKEN = 'aaae869d45d449aada6f69701077db35ced2a21f'
+        console.log('[AQI] 请求城市:', aqiCityName, '(中文名:', name, ')')
+        const aqiRes = await fetch(`https://api.waqi.info/feed/${aqiCityName}/?token=${WAQI_TOKEN}`)
+        console.log('[AQI] 响应状态:', aqiRes.status)
+        
+        if (aqiRes.ok) {
+          const aqiData = await aqiRes.json()
+          console.log('[AQI] 返回数据:', aqiData)
+          
+          if (aqiData.status === 'ok' && aqiData.data.aqi) {
+            const aqi = aqiData.data.aqi
+            weatherAqi.value = `AQI ${aqi}`
+            console.log('[AQI] 成功:', aqi)
+          } else {
+            console.warn('[AQI] 数据异常:', aqiData.status)
+            weatherAqi.value = 'AQI --'
+          }
+        } else {
+          console.warn('[AQI] 请求失败:', aqiRes.status)
+          weatherAqi.value = 'AQI --'
+        }
+      } catch (aqiError) {
+        console.warn('[AQI] 获取失败:', aqiError.message)
+        weatherAqi.value = 'AQI --'
+      }
+      
+      // 更新到 store
       store.updateLiveWeather({
         temp: weatherTemp.value,
         desc: weatherDesc.value,
         aqi: weatherAqi.value,
         icon: weatherIconClass.value
       })
-
-      logger.debug('天气更新成功', { temp: weatherTemp.value, desc: weatherDesc.value, icon: weatherIconClass.value })
+      
+      logger.debug('天气更新成功', { 
+        temp: weatherTemp.value, 
+        desc: weatherDesc.value,
+        location: name
+      })
     } else {
-      logger.warn('天气获取失败', { status: res.status, statusText: res.statusText })
+      throw new Error('天气数据格式错误')
     }
-  } catch (e) {
-    logger.error('天气接口报错', { message: e.message, stack: e.stack })
-    weatherDesc.value = '离线'
+  } catch (error) {
+    // 静默失败，使用缓存数据
+    console.warn('[Weather] Failed to fetch weather:', error.message)
+    logger.warn('天气接口失败', { error: error.message })
   }
 }
 
@@ -222,22 +298,14 @@ onMounted(() => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
 
-  // Check Weather Cache
+  // 清除旧的缓存，强制刷新天气数据
   const now = Date.now()
   const lastUpdate = weather.value.lastUpdate || 0
   const cacheDuration = 30 * 60 * 1000 // 30 mins
 
-  if (weather.value.temp && weather.value.temp !== '--°' && (now - lastUpdate < cacheDuration)) {
-    // Use cached data locally
-    weatherTemp.value = weather.value.temp
-    weatherDesc.value = weather.value.desc
-    weatherIconClass.value = weather.value.icon
-    weatherAqi.value = weather.value.aqi
-    logger.debug('使用缓存天气数据', { time: new Date(lastUpdate).toLocaleTimeString() })
-  } else {
-    // Fetch fresh data
-    fetchWeather()
-  }
+  // 临时禁用缓存，立即刷新
+  logger.debug('强制刷新天气数据')
+  fetchWeather()
 
   // Background refresh
   setInterval(fetchWeather, cacheDuration)
