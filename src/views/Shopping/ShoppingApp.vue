@@ -1,49 +1,50 @@
 <template>
-    <div class="shopping-app bg-gray-50 h-screen flex flex-col font-sans overflow-hidden">
-        <!-- 统一 Header: 包含返回按钮和标题/搜索 -->
-        <header
-            class="flex-none bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-4 py-3 z-50 flex items-center gap-3">
-            <!-- 回到桌面按钮 (触发全局事件) -->
+    <div class="shopping-app bg-slate-50 h-screen flex flex-col font-sans overflow-hidden">
+        <!-- 统一 Header -->
+        <header class="flex-none bg-white/90 backdrop-blur-xl border-b border-slate-200/50 px-4 py-3 z-50 flex items-center gap-3 shadow-sm">
+            <!-- 回到桌面按钮 -->
             <button @click="handleReturnHome"
-                class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm active:scale-90 transition-transform flex-none">
+                class="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-lg active:scale-90 transition-all flex-none">
                 🏠
             </button>
             <div v-if="currentView === 'home'" class="flex-1 relative flex items-center gap-2 overflow-hidden">
                 <div class="flex-1 relative">
                     <input v-model="searchQuery" @keyup.enter="handleSearchAI" type="text" placeholder="搜索并 AI 发现商品..."
-                        class="w-full bg-gray-100 rounded-full px-4 py-1.5 pl-9 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/20">
-                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+                        class="w-full bg-slate-100 rounded-2xl px-4 py-2 pl-9 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition-all">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
                 </div>
                 <button @click="clearProducts"
-                    class="text-[10px] text-gray-400 hover:text-red-500 flex-none px-1">清空</button>
+                    class="text-xs text-slate-400 hover:text-red-500 flex-none px-2 py-1 rounded-xl hover:bg-red-50 transition-all">
+                    清空
+                </button>
             </div>
             <div v-else class="flex-1 overflow-hidden">
-                <h1 class="text-sm font-black text-gray-700 truncate">
+                <h1 class="text-base font-bold text-slate-800 truncate">
                     {{navigation.find(n => n.id === currentView)?.label}}
                 </h1>
             </div>
         </header>
 
-        <!-- 主内容区：弹性容器，内部自管理滚动 -->
+        <!-- 主内容区 -->
         <main class="flex-1 overflow-hidden relative">
             <!-- 首页 -->
             <div v-if="currentView === 'home'" class="h-full flex flex-col animate-fade-in">
                 <!-- 分类标签 -->
-                <div class="flex-none bg-white/90 backdrop-blur-lg border-b border-gray-100 flex items-center">
-                    <div class="flex overflow-x-auto px-2 py-3 gap-1 scrollbar-hide flex-1">
+                <div class="flex-none bg-white/90 backdrop-blur-lg border-b border-slate-100 flex items-center">
+                    <div class="flex overflow-x-auto px-3 py-2.5 gap-2 scrollbar-hide flex-1">
                         <button v-for="cat in categories" :key="cat.id" @click="setCategory(cat.id)" :class="[
-                            'flex items-center gap-1 px-4 py-2 rounded-full text-sm whitespace-nowrap transition-all',
+                            'flex items-center gap-1.5 px-4 py-2 rounded-2xl text-sm font-medium whitespace-nowrap transition-all',
                             currentCategory === cat.id
-                                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/25 scale-105'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         ]">
-                            <span>{{ cat.icon }}</span>
+                            <span class="text-base">{{ cat.icon }}</span>
                             <span>{{ cat.name }}</span>
                         </button>
                     </div>
                     <!-- 生成按钮 -->
                     <button @click="generateCategoryAI"
-                        class="mx-2 w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs shadow-md animate-pulse active:scale-90 transition-transform">
+                        class="mx-2 w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-red-500 text-white flex items-center justify-center text-base shadow-lg shadow-orange-500/30 hover:shadow-xl hover:scale-105 active:scale-95 transition-all">
                         ✨
                     </button>
                 </div>
@@ -51,10 +52,10 @@
                 <!-- 滚动列表区 -->
                 <div class="flex-1 overflow-y-auto px-4 pb-4">
                     <!-- 加载状态 -->
-                    <div v-if="loading" class="p-8 text-center text-gray-400 flex flex-col items-center gap-2">
-                        <div class="w-10 h-10 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin">
+                    <div v-if="loading" class="p-8 text-center text-slate-400 flex flex-col items-center gap-3">
+                        <div class="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin">
                         </div>
-                        <p class="text-xs font-bold animate-pulse">AI 正在根据分类挖掘好物...</p>
+                        <p class="text-xs font-medium animate-pulse">AI 正在根据分类挖掘好物...</p>
                     </div>
 
                     <!-- 商品网格 -->
@@ -65,9 +66,9 @@
                                 @delete="deleteProduct(product.id)" />
                         </div>
                     </div>
-                    <div v-else-if="!loading" class="h-full flex flex-col items-center justify-center text-gray-300">
-                        <p class="text-4xl mb-4">📭</p>
-                        <p class="text-sm">暂无商品，点击上方 ✨ 按钮生成吧</p>
+                    <div v-else-if="!loading" class="h-full flex flex-col items-center justify-center text-slate-300">
+                        <p class="text-5xl mb-4">📭</p>
+                        <p class="text-sm font-medium">暂无商品，点击上方 ✨ 按钮生成吧</p>
                     </div>
                 </div>
             </div>
@@ -89,8 +90,8 @@
                 :orders="orders" />
         </main>
 
-        <!-- 底部导航：支持被子页面显式隐藏 -->
-        <nav v-if="isDockVisible" class="flex-none bg-white border-t border-gray-100 px-6 py-2 pb-safe">
+        <!-- 底部导航 -->
+        <nav v-if="isDockVisible" class="flex-none bg-white/90 backdrop-blur-xl border-t border-slate-200/50 px-6 py-3 pb-safe shadow-lg">
             <div class="flex justify-around items-center">
                 <NavButton v-for="nav in navigation" :key="nav.id" :icon="nav.icon" :label="nav.label"
                     :active="currentView === nav.id" :badge="nav.badge" @click="switchView(nav.id)" />

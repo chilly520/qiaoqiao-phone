@@ -245,21 +245,107 @@ const handleTouchMove = (event) => {
     }
 }
 
+// Touch Swipe Actions (Mobile)
+const touchStartX = ref(0)
+const touchStartY = ref(0)
+const isTouchSwiping = ref(false)
+const touchStartTime = ref(0)
+
+const handleTouchStart = (type, item, event) => {
+    if (event.touches && event.touches.length > 1) return // 忽略多指触摸
+    const touch = event.touches[0]
+    touchStartX.value = touch.clientX
+    touchStartY.value = touch.clientY
+    touchStartTime.value = Date.now()
+    isTouchSwiping.value = false
+    
+    // 同时启动长按计时器
+    startLongPress(type, item, event)
+}
+
+const handleTouchMoveSwipe = (type, item, event) => {
+    if (!event.touches || event.touches.length === 0) return
+    const touch = event.touches[0]
+    const deltaX = touch.clientX - touchStartX.value
+    const deltaY = touch.clientY - touchStartY.value
+    
+    // 如果水平移动大于垂直移动，且超过阈值，则认为是滑动
+    if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        // 取消长按
+        clearLongPress()
+        isTouchSwiping.value = true
+        
+        // 执行滑动逻辑
+        const maxOffset = type === 'chat' ? maxSwipeOffsetChat : maxSwipeOffsetContact
+        
+        if (deltaX < 0) {
+            // 左滑
+            const newOffset = Math.min(Math.abs(deltaX), maxOffset)
+            if (type === 'chat') {
+                chatSwipeOffset.value = newOffset
+            } else {
+                contactSwipeOffset.value = newOffset
+            }
+            swipedItem.value = { type, id: item.id, name: item.name }
+        } else if (deltaX > 0) {
+            // 右滑（回滑）
+            const currentOffset = type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
+            if (currentOffset > 0) {
+                const newOffset = Math.max(0, currentOffset - deltaX)
+                if (type === 'chat') {
+                    chatSwipeOffset.value = newOffset
+                } else {
+                    contactSwipeOffset.value = newOffset
+                }
+            }
+        }
+    }
+}
+
+const handleTouchEndSwipe = (type, item, event) => {
+    clearLongPress()
+    
+    if (isTouchSwiping.value) {
+        // 完成滑动
+        const maxOffset = type === 'chat' ? maxSwipeOffsetChat : maxSwipeOffsetContact
+        const currentOffset = type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
+        
+        if (currentOffset > swipeThreshold) {
+            // 超过阈值，吸附到最大位置
+            if (type === 'chat') {
+                chatSwipeOffset.value = maxOffset
+            } else {
+                contactSwipeOffset.value = maxOffset
+            }
+        } else {
+            // 未超过阈值，弹回原位
+            if (type === 'chat') {
+                chatSwipeOffset.value = 0
+            } else {
+                contactSwipeOffset.value = 0
+            }
+            swipedItem.value = null
+        }
+    }
+    
+    isTouchSwiping.value = false
+}
+
 // Mouse/Touch Swipe Actions
 const handleSwipeStart = (type, item, event) => {
     if (event.touches && event.touches.length > 1) return // 忽略多指触摸
     const clientX = event.touches ? event.touches[0].clientX : event.clientX
-    
+
     isSwiping.value = true
     swipeStartX.value = clientX
-    
+
     // 重置当前类型的偏移量
     if (type === 'chat') {
         chatSwipeOffset.value = 0
     } else {
         contactSwipeOffset.value = 0
     }
-    
+
     // 临时存储当前滑动项
     swipedItem.value = { type, id: item.id, name: item.name }
 }
@@ -267,14 +353,14 @@ const handleSwipeStart = (type, item, event) => {
 const handleSwipeMove = (type, item, event) => {
     if (!isSwiping.value) return
     event.preventDefault() // 防止滚动
-    
+
     const clientX = event.touches ? event.touches[0].clientX : event.clientX
     const deltaX = clientX - swipeStartX.value
-    
+
     // 根据类型确定最大滑动距离
     const maxOffset = type === 'chat' ? maxSwipeOffsetChat : maxSwipeOffsetContact
     const currentOffset = type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
-    
+
     // 只处理左滑（向左移动，deltaX 为负）
     if (deltaX < 0) {
         // 使用缓动曲线，越往后越难滑动
@@ -298,11 +384,11 @@ const handleSwipeMove = (type, item, event) => {
 const handleSwipeEnd = (type, item, event) => {
     if (!isSwiping.value) return
     isSwiping.value = false
-    
+
     // 根据类型确定阈值和最大偏移量
     const maxOffset = swipedItem.value?.type === 'chat' ? maxSwipeOffsetChat : maxSwipeOffsetContact
     const currentOffset = swipedItem.value?.type === 'chat' ? chatSwipeOffset.value : contactSwipeOffset.value
-    
+
     // 判断是否达到滑动阈值
     if (currentOffset > swipeThreshold) {
         // 超过阈值，吸附到最大位置
@@ -747,8 +833,12 @@ const goBack = () => {
 
     // 3. If no overlays, go back to previous route (Home)
     console.log('[WeChatApp] Navigating to home')
-    router.back()
+    router.push('/').catch(() => {
+        window.location.href = '/'
+    })
 }
+
+
 
 // --- Import Logic ---
 const importFileInput = ref(null)
@@ -829,17 +919,18 @@ const handleImport = async (e) => {
         <PendingRequestsModal :visible="showPendingRequestsModal" @close="showPendingRequestsModal = false" />
 
         <!-- Context Menu (Restored) -->
-        <div v-if="showContextMenu" class="fixed inset-0 z-[100]"
+        <div v-if="showContextMenu" class="fixed inset-0 z-[100] flex items-center justify-center"
             @click="!contextMenuJustOpened && (showContextMenu = false)">
             <!-- Backdrop for click outside -->
-            <div class="absolute inset-0 bg-transparent"></div>
-            <div class="absolute bg-[#4c4c4c] rounded-lg shadow-xl py-1 min-w-[140px] animate-scale-up origin-top-left"
-                :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }" @click.stop>
+            <div class="absolute inset-0 bg-black/20"></div>
+            <!-- 居中显示的菜单 -->
+            <div class="relative bg-[#4c4c4c] rounded-xl shadow-2xl py-2 min-w-[160px] animate-scale-up"
+                @click.stop>
                 <div v-for="(option, index) in contextMenuOptions" :key="index"
-                    class="px-4 py-3 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f] last:border-none"
+                    class="px-5 py-4 flex items-center gap-3 active:bg-[#5f5f5f] cursor-pointer border-b border-[#5f5f5f]/50 last:border-none transition-colors"
                     @click="handleContextAction(option)">
                     <i :class="['fa-solid', option.icon, option.danger ? 'text-red-400' : 'text-white']"></i>
-                    <span :class="['text-sm', option.danger ? 'text-red-400' : 'text-white']">{{ option.label }}</span>
+                    <span :class="['text-base', option.danger ? 'text-red-400' : 'text-white']">{{ option.label }}</span>
                 </div>
             </div>
         </div>
@@ -1170,23 +1261,21 @@ const handleImport = async (e) => {
                         </div>
                     </div>
 
-                    <div v-for="chat in filteredChatList" :key="chat.id"
-                        class="relative overflow-hidden select-none"
+                    <div v-for="chat in filteredChatList" :key="chat.id" class="relative overflow-hidden select-none"
                         @click="!isSwiping && openChat(chat.id)"
                         @contextmenu.prevent="openContextMenu('chat', chat, $event)"
-                        @touchstart="startLongPress('chat', chat, $event)"
-                        @touchend="clearLongPress"
-                        @touchmove="handleTouchMove"
+                        @touchstart.passive="handleTouchStart('chat', chat, $event)"
+                        @touchmove.passive="handleTouchMoveSwipe('chat', chat, $event)"
+                        @touchend="handleTouchEndSwipe('chat', chat, $event)"
                         @mousedown="handleSwipeStart('chat', chat, $event)"
                         @mousemove="handleSwipeMove('chat', chat, $event)"
                         @mouseup="handleSwipeEnd('chat', chat, $event)"
                         @mouseleave="handleSwipeEnd('chat', chat, $event)">
                         <!-- 左滑操作按钮（背景层，固定在右侧） -->
                         <div v-if="swipedItem?.type === 'chat' && swipedItem?.id === chat.id"
-                            class="absolute inset-y-0 right-0 flex items-center"
-                            :style="{ width: '160px', zIndex: 0 }">
+                            class="absolute inset-y-0 right-0 flex items-center" :style="{ width: '160px', zIndex: 0 }">
                             <button @click.stop="handleSwipeAction(chat.id, 'pin')"
-                                class="h-full bg-blue-500 text-white shadow-md active:bg-blue-600 flex items-center justify-center" 
+                                class="h-full bg-blue-500 text-white shadow-md active:bg-blue-600 flex items-center justify-center"
                                 style="width: 80px; height: 100%;">
                                 <i class="fa-solid fa-thumbtack text-2xl"></i>
                             </button>
@@ -1200,7 +1289,8 @@ const handleImport = async (e) => {
                         <div class="bg-white active:bg-gray-100 transition-colors cursor-pointer relative"
                             :class="chat.isPinned ? 'bg-white/30 backdrop-blur-md' : ''"
                             :style="swipedItem?.id === chat.id ? { transform: `translateX(-${chatSwipeOffset}px)`, transition: isSwiping ? 'none' : 'transform 0.3s ease', zIndex: 10 } : {}">
-                            <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50"></div>
+                            <div v-if="chat.isPinned" class="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500/50">
+                            </div>
                             <div class="flex items-center px-4 py-3 border-b border-gray-100 prevent-select">
                                 <div class="relative w-12 h-12 mr-3">
                                     <img :src="chat.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${chat.name || 'AI'}`"
@@ -1398,13 +1488,12 @@ const handleImport = async (e) => {
                         </div>
                         <div v-if="expandFriends">
                             <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)"
-                                :key="chat.id"
-                                class="relative overflow-hidden select-none"
+                                :key="chat.id" class="relative overflow-hidden select-none"
                                 @click="!isSwiping && openChat(chat.id)"
                                 @contextmenu.prevent="openContextMenu('contact', chat, $event)"
-                                @touchstart="startLongPress('contact', chat, $event)"
-                                @touchend="clearLongPress"
-                                @touchmove="handleTouchMove"
+                                @touchstart.passive="handleTouchStart('contact', chat, $event)"
+                                @touchmove.passive="handleTouchMoveSwipe('contact', chat, $event)"
+                                @touchend="handleTouchEndSwipe('contact', chat, $event)"
                                 @mousedown="handleSwipeStart('contact', chat, $event)"
                                 @mousemove="handleSwipeMove('contact', chat, $event)"
                                 @mouseup="handleSwipeEnd('contact', chat, $event)"
@@ -1505,7 +1594,7 @@ const handleImport = async (e) => {
                     <i class="text-xl"
                         :class="[currentTab === tab ? 'fa-solid' : 'fa-regular', tab === 'chat' ? 'fa-comment' : tab === 'contacts' ? 'fa-address-book' : tab === 'discover' ? 'fa-compass' : 'fa-user']"></i>
                     <span>{{ tab === 'chat' ? '微信' : tab === 'contacts' ? '通讯录' : tab === 'discover' ? '发现' : '我'
-                    }}</span>
+                        }}</span>
                 </div>
             </div>
 

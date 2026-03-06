@@ -1,5 +1,5 @@
 <template>
-    <div class="chat-container bg-gray-50 flex flex-col h-full overflow-hidden">
+    <div class="chat-container bg-gray-50 flex flex-col h-screen overflow-hidden">
         <!-- 客服列表模式 -->
         <div v-if="!activeChatId" class="flex-1 overflow-y-auto pb-10 animate-fade-in text-gray-800">
             <div class="p-4 pt-10 bg-white border-b sticky top-0 z-20">
@@ -9,7 +9,7 @@
             <div class="p-4 space-y-3">
                 <!-- 官方客服固定项 -->
                 <div @click="enterChat('platform')"
-                    class="bg-white p-4 rounded-3xl shadow-sm border border-transparent hover:border-orange-200 flex items-center gap-4 active:scale-95 transition-all">
+                    class="bg-white p-4 rounded-3xl shadow-sm border border-transparent hover:border-orange-200 flex items-center gap-4 active:scale-95 transition-all relative overflow-hidden">
                     <div class="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl">🤖</div>
                     <div class="flex-1">
                         <div class="flex justify-between items-center">
@@ -20,19 +20,33 @@
                     </div>
                 </div>
 
-                <!-- 店铺客服动态列表 -->
-                <div v-for="(msgs, shopId) in store.chatMessages" :key="shopId" @click="enterChat(shopId)"
-                    class="bg-white p-4 rounded-3xl shadow-sm border border-transparent hover:border-gray-200 flex items-center gap-4 active:scale-95 transition-all">
-                    <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-2xl">🏬</div>
-                    <div class="flex-1">
-                        <div class="flex justify-between items-center">
-                            <h4 class="font-bold text-sm">{{ shopId }}</h4>
-                            <span class="text-[10px] text-gray-300">{{ formatTime(msgs[msgs.length - 1].timestamp)
-                            }}</span>
+                <!-- 店铺客服动态列表 - 带左滑删除 -->
+                <div v-for="(msgs, shopId) in store.chatMessages" :key="shopId"
+                    class="relative overflow-hidden"
+                    @touchstart="handleTouchStart(shopId, $event)"
+                    @touchmove="handleTouchMove(shopId, $event)"
+                    @touchend="handleTouchEnd(shopId)">
+                    <!-- 删除按钮背景 -->
+                    <div v-if="swipedChatId === shopId"
+                        class="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center text-white font-bold text-sm"
+                        @click="showDeleteConfirm(shopId)">
+                        🗑️ 删除
+                    </div>
+                    <!-- 聊天项内容 -->
+                    <div @click="enterChat(shopId)"
+                        class="bg-white p-4 rounded-3xl shadow-sm border border-transparent hover:border-gray-200 flex items-center gap-4 active:scale-95 transition-all relative z-10"
+                        :style="chatSwipeOffset[shopId] ? { transform: `translateX(-${chatSwipeOffset[shopId]}px)` } : {}">
+                        <div class="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-2xl">🏬</div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center">
+                                <h4 class="font-bold text-sm">{{ shopId }}</h4>
+                                <span class="text-[10px] text-gray-300">{{ formatTime(msgs[msgs.length - 1].timestamp)
+                                }}</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-1 line-clamp-1 italic">{{ msgs[msgs.length - 1].content
+                                }}
+                            </p>
                         </div>
-                        <p class="text-[10px] text-gray-400 mt-1 line-clamp-1 italic">{{ msgs[msgs.length - 1].content
-                            }}
-                        </p>
                     </div>
                 </div>
 
@@ -132,6 +146,32 @@
                 </button>
             </div>
         </div>
+
+        <!-- 删除确认弹窗 -->
+        <div v-if="showConfirmDialog" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            @click="showConfirmDialog = false">
+            <div class="bg-white rounded-3xl mx-6 max-w-sm w-full animate-scale-in" @click.stop>
+                <div class="p-6 text-center">
+                    <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
+                        🗑️
+                    </div>
+                    <h3 class="text-lg font-black text-gray-800 mb-2">删除聊天记录</h3>
+                    <p class="text-sm text-gray-500 mb-6">
+                        确定要删除与"<span class="font-bold text-gray-700">{{ confirmShopId }}</span>"的聊天记录吗？
+                    </p>
+                    <div class="flex gap-3">
+                        <button @click="showConfirmDialog = false"
+                            class="flex-1 py-3 bg-gray-100 text-gray-700 rounded-2xl font-bold active:scale-95 transition-transform">
+                            取消
+                        </button>
+                        <button @click="confirmDelete"
+                            class="flex-1 py-3 bg-red-500 text-white rounded-2xl font-bold active:scale-95 transition-transform">
+                            删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -140,9 +180,72 @@ import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useShoppingStore } from '@/stores/shoppingStore'
 
 const store = useShoppingStore()
-const activeChatId = ref(store.activeShopId || null)
+const activeChatId = ref(null) // 初始为 null，显示列表
 const inputText = ref('')
 const messageContainer = ref(null)
+
+// 左滑删除相关
+const swipedChatId = ref(null)
+const chatSwipeOffset = ref({})
+const touchStartX = ref(0)
+const showConfirmDialog = ref(false)
+const confirmShopId = ref('')
+
+const handleTouchStart = (shopId, event) => {
+    const touch = event.touches[0]
+    touchStartX.value = touch.clientX
+    // 如果之前有滑动的，先复位
+    if (swipedChatId.value && swipedChatId.value !== shopId) {
+        chatSwipeOffset.value[swipedChatId.value] = 0
+        swipedChatId.value = null
+    }
+}
+
+const handleTouchMove = (shopId, event) => {
+    const touch = event.touches[0]
+    const deltaX = touch.clientX - touchStartX.value
+    
+    // 只处理左滑（向左滑动，deltaX 为负）
+    if (deltaX < 0 && Math.abs(deltaX) > 10) {
+        chatSwipeOffset.value[shopId] = Math.min(Math.abs(deltaX), 80) // 最大滑动 80px
+        swipedChatId.value = shopId
+    } else if (deltaX > 0) {
+        // 向右滑动，减小偏移
+        if (chatSwipeOffset.value[shopId]) {
+            chatSwipeOffset.value[shopId] = Math.max(0, chatSwipeOffset.value[shopId] - deltaX)
+        }
+    }
+}
+
+const handleTouchEnd = (shopId) => {
+    const offset = chatSwipeOffset.value[shopId] || 0
+    const threshold = 60 // 滑动阈值
+    
+    if (offset > threshold) {
+        // 超过阈值，保持滑动状态
+        chatSwipeOffset.value[shopId] = 80
+    } else {
+        // 未超过阈值，复位
+        chatSwipeOffset.value[shopId] = 0
+        swipedChatId.value = null
+    }
+}
+
+const showDeleteConfirm = (shopId) => {
+    confirmShopId.value = shopId
+    showConfirmDialog.value = true
+}
+
+const confirmDelete = () => {
+    if (confirmShopId.value) {
+        delete store.chatMessages[confirmShopId.value]
+        chatSwipeOffset.value[confirmShopId.value] = 0
+        swipedChatId.value = null
+        showConfirmDialog.value = false
+        confirmShopId.value = ''
+        store.saveStore()
+    }
+}
 
 const emit = defineEmits(['show-product', 'toggle-dock'])
 
@@ -203,6 +306,14 @@ onMounted(() => {
         emit('toggle-dock', true) // 初始强制更新状态
         setTimeout(() => emit('toggle-dock', false), 50)
     }
+    
+    // 监听进入聊天的事件
+    window.addEventListener('enter-chat', (e) => {
+        const shopId = e.detail
+        if (shopId) {
+            enterChat(shopId)
+        }
+    })
 })
 </script>
 

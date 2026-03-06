@@ -157,6 +157,84 @@
                             </div>
                         </div>
 
+                        <!-- CASE 3: Order Share Card -->
+                        <div v-else-if="msg.type === 'order_share'"
+                            class="group relative w-[280px] overflow-hidden rounded-2xl shadow-md transition-all active:scale-[0.98] select-none cursor-pointer"
+                            :class="[
+                                'bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 hover:shadow-lg',
+                                msg.role === 'user' ? 'mr-1' : 'ml-1'
+                            ]" @click="handleOrderCardClick(msg)" @contextmenu.prevent="emitContextMenu">
+
+                            <!-- 头部 -->
+                            <div class="p-4 flex flex-col gap-3 relative overflow-hidden">
+                                <!-- 装饰图案 -->
+                                <div class="absolute top-0 left-0 w-full h-full opacity-10">
+                                    <div class="absolute top-2 left-2 w-8 h-8 border-2 border-white rounded-full"></div>
+                                    <div class="absolute bottom-2 right-2 w-12 h-12 border-2 border-white rounded-full"></div>
+                                </div>
+
+                                <div class="relative z-10 flex items-center gap-3">
+                                    <div class="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+                                        <span class="text-3xl">📦</span>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-white text-xs font-black uppercase tracking-widest opacity-80 mb-0.5">
+                                            订单分享
+                                        </div>
+                                        <div class="text-white text-sm font-bold truncate drop-shadow-sm">
+                                            {{ msg.orderData?.items?.[0]?.title || '订单分享' }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 订单信息 -->
+                            <div class="bg-white px-4 pb-4 pt-2">
+                                <div v-if="msg.orderData?.items?.[0]" class="flex items-center gap-3 mb-3">
+                                    <img :src="msg.orderData.items[0].image" class="w-16 h-16 rounded-xl object-cover bg-slate-100">
+                                    <div class="flex-1 min-w-0">
+                                        <h4 class="text-sm font-bold text-slate-800 line-clamp-2">
+                                            {{ msg.orderData.items[0].title }}
+                                        </h4>
+                                        <p class="text-xs text-slate-400 mt-1">订单号：{{ msg.orderId }}</p>
+                                    </div>
+                                </div>
+                                <div v-else class="flex items-center gap-3 mb-3">
+                                    <div class="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center text-3xl">📦</div>
+                                    <div class="flex-1">
+                                        <h4 class="text-sm font-bold text-slate-800">订单分享</h4>
+                                        <p class="text-xs text-slate-400 mt-1">订单号：{{ msg.orderId }}</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+                                    <span class="text-xs text-slate-500">实付金额</span>
+                                    <span class="text-lg font-black text-orange-600">¥{{ msg.orderData?.total || '0' }}</span>
+                                </div>
+                            </div>
+
+                            <!-- 物流信息 -->
+                            <div v-if="msg.orderData?.status" class="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3 border-t border-orange-100">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="text-lg">🚚</span>
+                                    <span class="text-xs font-bold text-slate-700">物流状态</span>
+                                    <span :class="[
+                                        'text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto',
+                                        msg.orderData.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'
+                                    ]">
+                                        {{ getOrderStatusText(msg.orderData.status) }}
+                                    </span>
+                                </div>
+                                <p class="text-[10px] text-slate-500">
+                                    {{ getOrderLogisticsInfo(msg) }}
+                                </p>
+                            </div>
+                            <div v-else class="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3 border-t border-orange-100">
+                                <p class="text-[10px] text-slate-500 text-center">
+                                    🔒 点击可查看订单详情和物流状态
+                                </p>
+                            </div>
+                        </div>
+
                         <!-- CASE 2.1: Gift Claimed Card -->
                         <div v-else-if="msg.type === 'gift_claimed'"
                             class="group relative w-[240px] overflow-hidden rounded-2xl shadow-md transition-all active:scale-[0.98] select-none cursor-pointer"
@@ -1299,7 +1377,7 @@ function getCleanContent(contentRaw, isCard = false) {
 
     clean = clean.trim();
     // Strip operational tags (claims, rejections, financial, and multi-media commands)
-    const opRegex = /\[(领取|拒收|退回|GIFT|MUSIC|演奏|UPDATE_BIO|VOTE|CREATE_VOTE|RECEIVE_RED_PACKET|HTML卡片)[:：\-\s]?[^\]]*\]/gi;
+    const opRegex = /\[(领取|拒收|退回|GIFT|礼物|DRAW|MUSIC|演奏|UPDATE_BIO|VOTE|CREATE_VOTE|RECEIVE_RED_PACKET|HTML卡片)[:：\-\s]?[^\]]*\]/gi;
     clean = clean.replace(opRegex, '').trim();
     clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '').trim();
 
@@ -1825,6 +1903,70 @@ function handlePlayMusic() {
     // Clean protocol wrapping before playing
     const clean = raw.replace(/[\[\]]/g, '').replace(/^(演奏|MUSIC)[:：]?/i, '');
     musicBoxStore.playScore(clean)
+}
+
+// 处理订单卡片点击
+function handleOrderCardClick(msg) {
+    // 跳转到订单分享页面
+    const orderId = msg.orderId
+    router.push(`/share/order/${orderId}`)
+}
+
+// 获取订单标题
+function getOrderTitle(msg) {
+    if (msg.orderData?.items?.[0]?.title) {
+        return msg.orderData.items[0].title
+    }
+    if (msg.content?.title) {
+        return msg.content.title
+    }
+    return '订单分享'
+}
+
+// 获取订单图片
+function getOrderImage(msg) {
+    if (msg.orderData?.items?.[0]?.image) {
+        return msg.orderData.items[0].image
+    }
+    if (msg.content?.image) {
+        return msg.content.image
+    }
+    return 'https://via.placeholder.com/150?text=订单'
+}
+
+// 获取订单总价
+function getOrderTotal(msg) {
+    if (msg.orderData?.total) {
+        return msg.orderData.total
+    }
+    if (msg.content?.total) {
+        return msg.content.total
+    }
+    return '0'
+}
+
+// 获取订单状态文本
+function getOrderStatusText(status) {
+    const statusMap = {
+        'pending': '待发货',
+        'paid': '已付款',
+        'shipped': '已发货',
+        'shipping': '运输中',
+        'delivering': '派送中',
+        'completed': '已签收',
+        'cancelled': '已取消'
+    }
+    return statusMap[status] || status
+}
+
+// 获取物流信息
+function getOrderLogisticsInfo(msg) {
+    // 从 orderData 中获取物流信息
+    if (msg.orderData?.logistics?.status) {
+        return msg.orderData.logistics.status
+    }
+    // 默认返回
+    return '物流信息同步中...'
 }
 
 function emitContextMenu(event) {

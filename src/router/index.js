@@ -181,6 +181,11 @@ const router = createRouter({
             name: 'shopping',
             component: () => import('../views/Shopping/ShoppingApp.vue')
         },
+        {
+            path: '/share/order/:orderId',
+            name: 'share-order',
+            component: () => import('../views/Shopping/ShareOrder.vue')
+        },
         // Phone Inspection Routes
         {
             path: '/phone-inspection/:charId',

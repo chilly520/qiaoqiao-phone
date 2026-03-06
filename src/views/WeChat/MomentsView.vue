@@ -207,9 +207,15 @@ const filteredMoments = computed(() => {
         all = all.filter(m => {
             if (m.authorId === targetId) return true
             // Check if m.authorId maps to the same character as targetId
-            const charM = chatStore.chats[m.authorId] || Object.values(chatStore.chats).find(c => c.id === m.authorId || c.wechatId === m.authorId)
-            const charT = chatStore.chats[targetId] || Object.values(chatStore.chats).find(c => c.id === targetId || c.wechatId === targetId)
-            return charM && charT && charM === charT
+            // Optimization: Only do full lookup if strings are different
+            const charM = chatStore.chats[m.authorId]
+            const charT = chatStore.chats[targetId]
+            if (charM && charT && charM === charT) return true
+
+            // Fallback for robust matching if direct mapping fails
+            const charM2 = charM || Object.values(chatStore.chats).find(c => c.id === m.authorId || c.wechatId === m.authorId)
+            const charT2 = charT || Object.values(chatStore.chats).find(c => c.id === targetId || c.wechatId === targetId)
+            return charM2 && charT2 && charM2 === charT2
         })
 
         // 3. Profile View: Sort by Pinned First, then by Timestamp
@@ -224,6 +230,17 @@ const filteredMoments = computed(() => {
         // 4. Global Feed: Strictly Chronological (Using the store's pre-sorted getter)
         return momentsStore.sortedMoments
     }
+})
+
+// Correctly determine which character info to show in the Individual Profile Modal
+const currentProfileChar = computed(() => {
+    if (!showingProfileCharId.value) return {}
+    const id = showingProfileCharId.value
+    let char = chatStore.chats[id]
+    if (!char) {
+        char = Object.values(chatStore.chats).find(c => c.id === id || c.wechatId === id)
+    }
+    return char || {}
 })
 
 // ... existing code ...
@@ -424,7 +441,6 @@ const handleAIImageGenerate = async () => {
         console.error('[AI Image] Error:', e)
         chatStore.triggerToast(`生成失败: ${e.message}`, 'error')
     } finally {
-        isAIImageLoading.value = true // Wait, should be false
         isAIImageLoading.value = false
     }
 }
@@ -744,10 +760,17 @@ watch(() => route.query.author, (newVal) => {
     if (newVal) {
         filterAuthorId.value = newVal
         showingProfileCharId.value = null
+    } else if (!isCharacterMode.value) {
+        // If not opened in character mode and no query, reset filter
+        filterAuthorId.value = null
     }
 }, { immediate: true })
 
 onMounted(() => {
+    if (props.initialProfileId) {
+        filterAuthorId.value = props.initialProfileId
+        showingProfileCharId.value = null
+    }
     momentsStore.startAutoGeneration()
 })
 </script>
@@ -876,7 +899,7 @@ onMounted(() => {
                                 class="w-full h-full flex flex-col items-center justify-center p-2 bg-gray-50 text-center">
                                 <i class="fa-solid fa-quote-left text-gray-300 mb-2"></i>
                                 <span class="text-[10px] text-gray-400 leading-tight line-clamp-3">{{ pm.content
-                                }}</span>
+                                    }}</span>
                             </div>
                         </div>
                     </div>
@@ -898,7 +921,7 @@ onMounted(() => {
                 <!-- User Info Row (Overlapping bottom) -->
                 <div class="absolute bottom-0 right-4 flex items-end gap-4 transform translate-y-[24px] z-30">
                     <span class="text-white font-bold text-xl drop-shadow-md mb-8 tracking-tight">{{ viewingProfile.name
-                        }}</span>
+                    }}</span>
                     <div class="w-20 h-20 rounded-2xl overflow-hidden border-[4px] border-white shadow-lg bg-white relative active:scale-95 transition-all"
                         @click.stop="handleUserAvatarClick">
                         <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
@@ -935,7 +958,7 @@ onMounted(() => {
                 <div v-if="filteredMoments.length === 0"
                     class="flex flex-col items-center justify-center py-20 opacity-30">
                     <i class="fa-solid fa-earth-asia text-5xl mb-4"></i>
-                    <p>{{ filterAuthorId ? '由于该角色暂时没有动态' : '暂无动态，快去发布或点击一键生成吧' }}</p>
+                    <p>{{ filterAuthorId ? '该角色暂时没有动态' : '暂无动态，快去发布或点击一键生成吧' }}</p>
                 </div>
 
                 <MomentItem v-for="moment in filteredMoments" :key="moment.id" :id="moment.id" :moment="moment"
@@ -1110,7 +1133,7 @@ onMounted(() => {
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-blue-500 truncate max-w-[120px]">{{ postForm.location || '选择位置'
-                            }}</span>
+                                }}</span>
                             <i class="fa-solid fa-chevron-right text-gray-300 text-[10px]"></i>
                         </div>
                     </div>

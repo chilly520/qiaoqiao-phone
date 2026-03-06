@@ -31,9 +31,9 @@
                 <div
                     class="flex items-center gap-2 text-white text-xs font-black whitespace-nowrap overflow-hidden drop-shadow-sm">
                     <span class="opacity-80">局: <span class="text-white">{{ mahjongStore.currentRoom?.currentRound
-                            }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
+                    }}/{{ mahjongStore.currentRoom?.totalRounds }}</span></span>
                     <span class="opacity-80">底: <span class="text-white">{{ mahjongStore.currentRoom?.baseStake
-                            }}</span></span>
+                    }}</span></span>
                     <span class="opacity-80">堆: <span class="text-yellow-400 font-black">{{
                         mahjongStore.gameState?.deck?.length
                         || 0
@@ -121,7 +121,7 @@
                     <!-- 手牌（背面或结算亮出） -->
                     <div class="flex gap-0.5 mt-2">
                         <div v-for="(tile, i) in getPlayer('north')?.hand" :key="i"
-                            :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-pool !w-6 !h-9 !text-[16px]', getTileColorClass(tile)] : 'mahjong-tile-back'">
+                            :class="mahjongStore.gameState?.roundResult ? ['mahjong-tile-pool !w-6 !h-9 !text-[14px]', getTileColorClass(tile)] : 'mahjong-tile-back'">
                             <div v-if="mahjongStore.gameState?.roundResult" class="tile-face-content"
                                 v-html="getTileFaceHTML(tile)"></div>
                         </div>
@@ -131,7 +131,7 @@
                         <div v-for="(group, idx) in getPlayer('north').exposed" :key="idx"
                             class="flex bg-black/40 p-0.5 rounded shadow-inner border border-white/10 scale-90">
                             <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
-                                class="mahjong-tile-small !w-5 !h-7 !text-[12px]" :class="getTileColorClass(tile)">
+                                class="mahjong-tile-small !w-5 !h-7 !text-[10px]" :class="getTileColorClass(tile)">
                                 <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                             </div>
                         </div>
@@ -179,7 +179,7 @@
                                 <div v-for="(group, idx) in getPlayer('west')?.exposed" :key="idx"
                                     class="flex flex-col gap-0.5 bg-black/40 p-0.5 rounded shadow-inner border border-white/10 scale-90">
                                     <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
-                                        class="mahjong-tile-small !w-5 !h-7 !text-[12px] rotate-90 my-[-2px] mx-auto"
+                                        class="mahjong-tile-small !w-5 !h-7 !text-[10px] rotate-90 my-[-2px] mx-auto"
                                         :class="getTileColorClass(tile)">
                                         <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                     </div>
@@ -198,7 +198,7 @@
                         <div v-else-if="mahjongStore.currentRoom?.status === 'settling'" class="text-white text-center">
                             <div class="text-5xl mb-3">🎉</div>
                             <div class="text-2xl font-bold mb-2">{{ mahjongStore.currentRoom.lastResult?.winnerName
-                            }}
+                                }}
                                 胡了！
                             </div>
                             <div class="text-lg">{{ mahjongStore.currentRoom.lastResult?.fan }}番</div>
@@ -222,7 +222,7 @@
                                 </Transition>
 
                                 <div v-for="(tile, i) in mahjongStore.gameState?.pool" :key="i"
-                                    class="mahjong-tile-pool !w-5 !h-7 !text-[12px]" :class="getTileColorClass(tile)">
+                                    class="mahjong-tile-pool !w-5 !h-7 !text-[10px]" :class="getTileColorClass(tile)">
                                     <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
@@ -266,7 +266,7 @@
                                 <div v-for="(group, idx) in getPlayer('east')?.exposed" :key="idx"
                                     class="flex flex-col gap-0.5 bg-black/40 p-0.5 rounded shadow-inner border border-white/10 scale-90">
                                     <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
-                                        class="mahjong-tile-small !w-5 !h-7 !text-[12px] -rotate-90 my-[-2px] mx-auto"
+                                        class="mahjong-tile-small !w-5 !h-7 !text-[10px] -rotate-90 my-[-2px] mx-auto"
                                         :class="getTileColorClass(tile)">
                                         <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                     </div>
@@ -324,7 +324,7 @@
                                     <div v-for="(comb, idx) in chiOptions" :key="idx" @click="confirmChi(comb)"
                                         class="flex bg-white/10 p-2 rounded-xl hover:bg-white/20 active:bg-blue-500/30 active:scale-95 transition-all cursor-pointer border border-white/10 hover:border-blue-400 group gap-1 shadow-lg">
                                         <div v-for="t in comb" :key="t"
-                                            class="mahjong-tile-small !w-[24px] !h-[34px] !text-[16px] shadow-sm transform group-hover:scale-105 transition-transform">
+                                            class="mahjong-tile-small !w-[24px] !h-[34px] !text-[14px] shadow-sm transform group-hover:scale-105 transition-transform">
                                             <div class="tile-face-content" v-html="getTileFaceHTML(t)"></div>
                                         </div>
                                     </div>
@@ -362,7 +362,8 @@
                             <div v-for="(group, idx) in getPlayer('south').exposed" :key="idx"
                                 class="flex bg-black/30 p-0.5 rounded shadow-inner scale-85 origin-left border border-white/10">
                                 <div v-for="(tile, tIdx) in group.tiles" :key="tIdx"
-                                    class="mahjong-tile-small !w-6 !h-9 !text-[16px]" :class="getTileColorClass(tile)">
+                                    class="mahjong-tile-small !w-[22px] !h-[30px] !text-[11px]"
+                                    :class="getTileColorClass(tile)">
                                     <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                 </div>
                             </div>
@@ -383,7 +384,7 @@
                                 </div>
                                 <div class="flex flex-wrap gap-2.5 max-w-[160px]">
                                     <div v-for="tile in tingTiles" :key="tile" class="flex flex-col items-center gap-1">
-                                        <div class="mahjong-tile-small !w-7 !h-10 !text-[20px] bg-white shadow-md border border-gray-300"
+                                        <div class="mahjong-tile-small !w-7 !h-10 !text-[16px] bg-white shadow-md border border-gray-300"
                                             :class="getTileColorClass(tile)">
                                             <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                                         </div>
@@ -405,7 +406,7 @@
                                 <!-- 排序好的主手牌 -->
                                 <div v-for="item in displayedHand.main" :key="'main-' + item.i"
                                     @click="!mahjongStore.gameState?.roundResult && selectTile(item.i)" :class="[
-                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-pool !w-10 !h-14 !text-[28px]' : 'mahjong-tile',
+                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-pool !w-10 !h-14 !text-[22px]' : 'mahjong-tile',
                                         { 'selected': selectedTile === item.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
                                         getTileColorClass(item.t),
                                         'transition-all duration-200'
@@ -417,7 +418,7 @@
                                 <div v-if="displayedHand.drawn"
                                     @click="!mahjongStore.gameState?.roundResult && selectTile(displayedHand.drawn.i)"
                                     :class="[
-                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-pool !w-10 !h-14 !text-[28px]' : 'mahjong-tile',
+                                        mahjongStore.gameState?.roundResult ? 'mahjong-tile-pool !w-10 !h-14 !text-[22px]' : 'mahjong-tile',
                                         { 'selected': selectedTile === displayedHand.drawn.i, 'disabled': !isMyTurn || mahjongStore.gameState?.roundResult },
                                         getTileColorClass(displayedHand.drawn.t),
                                         'ml-3 transition-all duration-200 animate-slide-in'
@@ -520,6 +521,105 @@
                 </div>
             </Transition>
 
+            <!-- 最终结算页面 -->
+            <Transition name="fade">
+                <div v-if="showFinalSettlement"
+                    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                    @click.stop>
+                    <div class="bg-gradient-to-br from-amber-50 to-orange-100 w-full max-w-[min(95vw,420px)] rounded-[24px] overflow-hidden shadow-2xl border-2 border-amber-400"
+                        @click.stop>
+                        <!-- 标题 -->
+                        <div class="relative p-4 text-center bg-gradient-to-r from-red-600 to-orange-600">
+                            <div class="text-4xl mb-1">🏆</div>
+                            <h2 class="text-xl font-bold text-white">对局结束</h2>
+                            <div class="text-sm text-white/80 mt-1">
+                                {{ mahjongStore.currentRoom?.totalRounds || 8 }}局 · 底分{{ mahjongStore.currentRoom?.baseStake || 100 }}
+                            </div>
+                        </div>
+                        
+                        <!-- 排名列表 -->
+                        <div class="p-4 space-y-3">
+                            <div v-for="(player, idx) in finalRanking" :key="player.id"
+                                class="flex items-center gap-3 p-3 rounded-xl transition-all"
+                                :class="[
+                                    idx === 0 ? 'bg-gradient-to-r from-yellow-100 to-amber-100 border-2 border-yellow-400' :
+                                    idx === 1 ? 'bg-gradient-to-r from-gray-100 to-slate-100 border-2 border-gray-300' :
+                                    idx === 2 ? 'bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300' :
+                                    'bg-white border border-gray-200'
+                                ]">
+                                <!-- 排名 -->
+                                <div class="w-8 h-8 flex items-center justify-center rounded-full font-bold text-lg"
+                                    :class="[
+                                        idx === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                        idx === 1 ? 'bg-gray-300 text-gray-700' :
+                                        idx === 2 ? 'bg-orange-400 text-orange-900' :
+                                        'bg-gray-200 text-gray-600'
+                                    ]">
+                                    {{ idx + 1 }}
+                                </div>
+                                <!-- 头像和名字 -->
+                                <div class="flex-1 flex items-center gap-2">
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
+                                        <img v-if="player.avatar && !player.avatar.startsWith('👤')" :src="player.avatar" class="w-full h-full object-cover" />
+                                        <span v-else class="w-full h-full flex items-center justify-center text-xl">👤</span>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-gray-800">{{ player.name }}</div>
+                                        <div class="text-xs text-gray-500">
+                                            {{ player.isAI ? 'AI' : '玩家' }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- 得分 -->
+                                <div class="text-right">
+                                    <div class="text-lg font-black"
+                                        :class="player.totalScore > 0 ? 'text-red-600' : player.totalScore < 0 ? 'text-gray-500' : 'text-gray-700'">
+                                        {{ player.totalScore > 0 ? '+' : '' }}{{ player.totalScore }}
+                                    </div>
+                                    <div class="text-xs text-gray-500">豆</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 用户战绩 -->
+                        <div class="px-4 pb-2">
+                            <div class="bg-white rounded-xl p-3 border border-gray-200">
+                                <div class="text-center text-sm text-gray-600 mb-2">本场合计</div>
+                                <div class="flex justify-around text-center">
+                                    <div>
+                                        <div class="text-2xl font-black text-green-600">{{ userFinalStats.wins }}</div>
+                                        <div class="text-xs text-gray-500">胜</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-2xl font-black text-gray-400">{{ userFinalStats.losses }}</div>
+                                        <div class="text-xs text-gray-500">负</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-2xl font-black"
+                                            :class="userFinalStats.beans > 0 ? 'text-red-600' : 'text-gray-500'">
+                                            {{ userFinalStats.beans > 0 ? '+' : '' }}{{ userFinalStats.beans }}
+                                        </div>
+                                        <div class="text-xs text-gray-500">豆</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 按钮 -->
+                        <div class="p-4 flex gap-3">
+                            <button @click="returnToLobby"
+                                class="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300 transition-colors">
+                                返回大厅
+                            </button>
+                            <button @click="startNewGame"
+                                class="flex-1 py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold rounded-xl hover:from-red-600 hover:to-orange-600 transition-colors">
+                                再来一局
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+
 
             <!-- 记牌器组件 -->
             <Transition name="fade">
@@ -532,7 +632,7 @@
                             <span class="counter-tile" :class="getTileColorClass(tile)">
                                 <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                             </span>
-                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                            <span class="counter-num">{{ Math.max(0, 4 - (playedCardsMap[tile] || 0)) }}</span>
                         </div>
                     </div>
                     <div class="flex flex-wrap justify-center gap-1 w-full py-1 border-b border-white/5">
@@ -541,7 +641,7 @@
                             <span class="counter-tile" :class="getTileColorClass(tile)">
                                 <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                             </span>
-                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                            <span class="counter-num">{{ Math.max(0, 4 - (playedCardsMap[tile] || 0)) }}</span>
                         </div>
                     </div>
                     <div class="flex flex-wrap justify-center gap-1 w-full py-1 border-b border-white/5">
@@ -550,7 +650,7 @@
                             <span class="counter-tile" :class="getTileColorClass(tile)">
                                 <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                             </span>
-                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                            <span class="counter-num">{{ Math.max(0, 4 - (playedCardsMap[tile] || 0)) }}</span>
                         </div>
                     </div>
                     <div class="flex flex-wrap justify-center gap-1 w-full pt-1">
@@ -559,7 +659,7 @@
                             <span class="counter-tile" :class="getTileColorClass(tile)">
                                 <div class="tile-face-content" v-html="getTileFaceHTML(tile)"></div>
                             </span>
-                            <span class="counter-num">{{ 4 - (playedCardsMap[tile] || 0) }}</span>
+                            <span class="counter-num">{{ Math.max(0, 4 - (playedCardsMap[tile] || 0)) }}</span>
                         </div>
                     </div>
                 </div>
@@ -676,7 +776,7 @@
                                                     v-if="change.isPao || (!mahjongStore.gameState.roundResult.isZiMo && change.amount < 0 && mahjongStore.gameState.roundResult.type !== '流局')">炮</span>
                                             </div>
                                             <span class="font-bold text-sm text-gray-800 truncate">{{ change.name
-                                                }}</span>
+                                            }}</span>
                                         </div>
                                         <span class="font-bold text-sm shrink-0"
                                             :class="change.amount > 0 ? 'text-green-600' : 'text-red-500'">
@@ -1027,23 +1127,23 @@ const TILE_BACK_COLORS = [
 // 移除原有的随机逻辑，改为使用 store 的配置
 const randomTileBackColor = () => { }
 
-// 辅助计算：当前桌面/手中已出现的牌（用于记牌器）
+// 辅助计算：当前桌面/手中已出现的牌（不包括摸在手里还没出的那张）
 const playedCardsMap = computed(() => {
     const counts = {}
     if (!mahjongStore.gameState) return counts
 
-    // 牌池
+    // 1. 牌池 (已打出的牌)
     mahjongStore.gameState.pool.forEach(t => counts[t] = (counts[t] || 0) + 1)
 
-    // 各家明牌
+    // 2. 各家明牌 (吃碰杠)
     mahjongStore.currentRoom?.players?.forEach(p => {
         p.exposed.forEach(group => {
             group.tiles.forEach(t => counts[t] = (counts[t] || 0) + 1)
         })
     })
 
-    // 我的手牌
-    const myHand = mahjongStore.currentRoom?.players?.[0]?.hand || []
+    // 3. 我的手牌 (扣除当前刚摸的那张以便后续逻辑计算)
+    const myHand = getPlayer('south')?.hand || []
     myHand.forEach(t => counts[t] = (counts[t] || 0) + 1)
 
     return counts
@@ -1113,6 +1213,7 @@ const tingTiles = ref([])
 const showTingPreview = ref(false) // 点击听按钮显示预览
 const showTingHelp = ref(false) // 选牌时的听牌提示
 const showScoreCard = ref(false) // 结果卡片展示状态
+const showFinalSettlement = ref(false) // 最终结算页面展示状态
 
 // 开局动画状态
 const showGameStart = ref(false)
@@ -1240,6 +1341,9 @@ const tileNames = {
 // 全局语音缓存，避免重复生成相同的牌名语音，大幅提升响应速度
 const ttsCache = new Map();
 
+const currentSfx = ref(null)
+const activeVoices = new Map() // 用于控制各角色语音，解决重叠问题
+
 const playSfx = (name) => {
     if (!mahjongStore.soundEnabled) return
     // 使用用户提供的本地拟真音效
@@ -1333,7 +1437,8 @@ const playSelectedTile = () => {
     const tile = myHand[selectedTile.value]
 
     // 播放出牌音效
-    playSfx('play')
+    // 移除重复触发，统一由 watch(lastAction) 处理
+    // playSfx('play')
 
     // 显示放大预览
     activeTile.value = tile
@@ -1411,31 +1516,14 @@ watch(() => mahjongStore.gameState?.roundResult, (newVal) => {
         stopGameTimer()
 
         // 只有当有胜利者时才播放胡牌特效
+        // 只有当有胜利者时才播放结算延迟展示
         if (newVal.winner && newVal.type !== '流局') {
-            const winnerIdx = mahjongStore.currentRoom?.players?.findIndex(p => p.name === newVal.winner.name)
-
-            // 播放胜负音效
-            if (winnerIdx === 0) {
-                playSfx('hu') // 我方胡牌 BGM
-            } else {
-                playSfx('lose') // 别人胡牌失败音效
-            }
-
-            // 确保播放胡牌语音 (防止 lastAction 监听未触发)
-            speak('hu', winnerIdx)
-
-            // 延长等待时间到 3.5 秒，让摊牌和“胡”字特效展示完整
+            // 延长等待时间到 3.5 秒，让摊牌和“胡”字特效展示完整（语音由 lastAction 统一触发）
             setTimeout(() => {
                 showScoreCard.value = true
             }, 3500)
         } else if (newVal.type === '流局') {
-            // 流局特殊处理
-            triggerActionEffect('流局', 'liuju')
-            playSfx('lose') // 或者专门的流局音效
-            // 说话
-            speak('流局了', 0)
-
-            // 流局稍微快一点出结果
+            // 流局稍微快一点出结果（语音和特效由 lastAction 统一触发）
             setTimeout(() => {
                 showScoreCard.value = true
             }, 2000)
@@ -1503,8 +1591,8 @@ const performAction = (action, chiCombo = null) => {
     }
 
     if (action !== 'pass') {
-        triggerActionEffect(textMap[action], action)
-        // 移除重复的 speak 调用，统一由 watch(lastAction) 处理
+        // 移除重复触发，统一由 watch(lastAction) 处理
+        // triggerActionEffect(textMap[action], action)
         // speak(action, 0)
     }
 
@@ -1643,21 +1731,23 @@ watch(() => mahjongStore.lastAction, (action) => {
             'peng': '碰',
             'gang': '杠',
             'hu': '胡',
-            'play': '打牌', // 虽然不显示文字特效，但需要触发语音
-            'chat': '聊天'  // 触发 AI 回复语音
+            'liuju': '流局',
+            'play': '打牌',
+            'chat': '聊天'
         }
         if (textMap[action.type]) {
-            if (['chi', 'peng', 'gang', 'hu'].includes(action.type)) {
+            const playerIdx = action.playerIndex !== undefined ? action.playerIndex : mahjongStore.gameState?.lastPlayer
+
+            if (['chi', 'peng', 'gang', 'hu', 'liuju'].includes(action.type)) {
                 triggerActionEffect(textMap[action.type], action.type)
             }
 
-            const playerIdx = action.playerIndex !== undefined ? action.playerIndex : mahjongStore.gameState?.lastPlayer
-
             // 播报语音
-            if (action.type === 'chat') {
-                speak(action.text, playerIdx)
-            } else {
-                speak(action.type, playerIdx)
+            speak(action.type === 'chat' ? action.text : action.type, playerIdx)
+
+            // 处理流局特殊音效
+            if (action.type === 'liuju') {
+                playSfx('lose')
             }
 
             // 音效逻辑区分：
@@ -1759,10 +1849,22 @@ const speak = async (actionType, playerIndex) => {
 
     console.log(`[Mahjong-TTS] ${player?.name || '未知'} 说话: "${text}" 引擎: ${engine} ID: ${speakerId}`);
 
+    const stopPreviousAudio = (pIdx) => {
+        if (activeVoices.has(pIdx)) {
+            try {
+                const oldAudio = activeVoices.get(pIdx)
+                oldAudio.pause()
+                oldAudio.currentTime = 0
+            } catch (e) { }
+        }
+    }
+
     const cacheKey = `${speakerId}_${text}`;
     if (ttsCache.has(cacheKey)) {
         console.log(`[Mahjong-TTS] 使用缓存语音: ${text}`);
+        stopPreviousAudio(playerIndex)
         const audio = new Audio(ttsCache.get(cacheKey));
+        activeVoices.set(playerIndex, audio)
         audio.playbackRate = 1.3;
         audio.play().catch(() => { });
         return;
@@ -1771,6 +1873,7 @@ const speak = async (actionType, playerIndex) => {
     if (engine === 'browser' || !speakerId) {
         window.speechSynthesis.cancel()
         const u = new SpeechSynthesisUtterance(text);
+        u.onstart = () => { stopPreviousAudio(playerIndex) }
         u.rate = isMe ? (voiceConfig.speed || 1.1) : 1.3;
         if (!isMe) {
             u.pitch = gender === '男' ? 0.8 : 1.2;
@@ -1904,7 +2007,9 @@ const speak = async (actionType, playerIndex) => {
                 // 存入缓存
                 ttsCache.set(cacheKey, url);
 
+                stopPreviousAudio(playerIndex)
                 const audio = new Audio(url);
+                activeVoices.set(playerIndex, audio)
                 audio.playbackRate = 1.3;
                 audio.play().catch(err => console.warn('[Mahjong-TTS] Audio play blocked:', err));
             }
@@ -1933,38 +2038,27 @@ const speak = async (actionType, playerIndex) => {
 }
 
 // 核心监听：监听所有可能触发操作变化的状态
-watch([
-    () => mahjongStore.gameState?.currentTile,
-    () => mahjongStore.gameState?.currentPlayer,
-    () => getPlayer('south')?.hand?.length
-], ([newTile, currPlayer, handLen]) => {
-    // 处理出牌时的公共视觉/听觉反馈
+const updateActions = () => {
+    const myHand = getPlayer('south')?.hand || []
+    const myExposed = getPlayer('south')?.exposed || []
+    const newTile = mahjongStore.gameState?.currentTile
+
+    // 处理出牌时的公共视觉反馈
     if (newTile) {
-        // 1. 优先播报语音 (自带缓存，响应最快)
-        speak(newTile, mahjongStore.gameState?.lastPlayer)
-
-        // 2. 播放出牌音效
-        playSfx('play')
-
-        // 3. 视觉反馈：显示放大动画
         activeTile.value = newTile
-
         setTimeout(() => {
-            if (activeTile.value === newTile) {
-                activeTile.value = null
-            }
+            if (activeTile.value === newTile) activeTile.value = null
         }, 1000)
     }
-
-    const myHand = getPlayer('south')?.hand || []
 
     // 如果是我的回合：检查自摸和暗杠/补杠
     if (isMyTurn.value) {
         canHu.value = mahjongEngine.canHu(myHand) // 自摸检查
 
-        // 杠检查：暗杠
-        const gangTiles = mahjongEngine.canAnGang(myHand)
-        canGang.value = gangTiles.length > 0
+        // 杠检查：暗杠 + 补杠
+        const anGangTiles = mahjongEngine.canAnGang(myHand)
+        const buGangTiles = mahjongEngine.canBuGang(myHand, myExposed)
+        canGang.value = (anGangTiles.length + buGangTiles.length) > 0
 
         canPeng.value = false
         canChi.value = false
@@ -1977,27 +2071,28 @@ watch([
         canGang.value = mahjongEngine.canGang(myHand, newTile)
         canPeng.value = mahjongEngine.canPeng(myHand, newTile)
 
-        // 只能吃上家（左侧玩家 index 3）打出来的牌
-        // 注意：这里逻辑需要严谨，lastPlayer 是 打牌的人
         const lastPlayer = mahjongStore.gameState?.lastPlayer
         const isFromPrevious = lastPlayer === 3
         const options = mahjongEngine.canChi(myHand, newTile, 'previous')
         canChi.value = isFromPrevious && options.length > 0
-
-        // 如果当前牌变了或者不能吃了，关闭吃牌选择框
         if (!canChi.value) showChiOptions.value = false
-
-        // 检查是否可以听牌 (由专门的 watch 处理 tingTiles，canTing 是其计算属性)
-        if (isMyTurn.value) {
-            // 这里不需要手动设置 canTing，watch(hand) 会自动更新 tingTiles
-        }
     } else {
-        // 无人出牌时清空除自摸外的标志
-        canHu.value = isMyTurn.value ? mahjongEngine.canHu(myHand) : false
-        canGang.value = isMyTurn.value ? (mahjongEngine.canAnGang(myHand).length > 0) : false
-
-        // 抓牌后也检查听 (由专门的 watch 处理 tingTiles)
+        // 无人出牌时清空除自摸/杠外的标志
+        canHu.value = false
+        canGang.value = false
+        canPeng.value = false
+        canChi.value = false
     }
+}
+
+// 核心监听：监听所有可能触发操作变化的状态
+watch([
+    () => mahjongStore.gameState?.currentTile,
+    () => mahjongStore.gameState?.currentPlayer,
+    () => mahjongStore.gameState?.drawnTile,
+    () => getPlayer('south')?.hand?.length
+], () => {
+    updateActions()
 }, { immediate: true })
 
 // 专门监听手牌变化来更新听牌
@@ -2201,12 +2296,63 @@ const formatGameDuration = (seconds) => {
 // 结算结束，进入下一局前的处理
 const handleRoundEnd = async () => {
     showScoreCard.value = false // 关闭结算界面
+    
+    // 检查是否已经打完所有局数
+    const totalRounds = mahjongStore.currentRoom?.totalRounds || 8
+    const currentRound = mahjongStore.currentRoom?.currentRound || 1
+    
+    if (currentRound >= totalRounds) {
+        // 游戏结束，显示整体结算
+        showFinalSettlement.value = true
+        return
+    }
+    
     randomTileBackColor() // 每一局换个颜色
     tingTiles.value = [] // 清除听牌状态
     showTingPreview.value = false
     resetGameTimer() // 重置本局时长计时器
     mahjongStore.startNextRound()
     await runGameFlow()
+}
+
+// 最终排名计算
+const finalRanking = computed(() => {
+    const players = mahjongStore.currentRoom?.players || []
+    return [...players]
+        .map(p => ({
+            ...p,
+            totalScore: p.score || 0
+        }))
+        .sort((a, b) => b.totalScore - a.totalScore)
+})
+
+// 用户最终战绩
+const userFinalStats = computed(() => {
+    const user = mahjongStore.currentRoom?.players?.find(p => p.id === 'user')
+    return {
+        wins: user?.wins || 0,
+        losses: user?.losses || 0,
+        beans: user?.score || 0
+    }
+})
+
+// 返回大厅
+const returnToLobby = () => {
+    sendGameEndNotification()
+    mahjongStore.exitRoom()
+    router.push('/games/mahjong-lobby')
+}
+
+// 再来一局
+const startNewGame = () => {
+    sendGameEndNotification()
+    mahjongStore.exitRoom()
+    // 重新创建房间
+    router.push('/games/mahjong-lobby')
+    setTimeout(() => {
+        mahjongStore.createRoom({ mode: 'quick', baseStake: 100, totalRounds: 8 })
+        router.push('/games/mahjong-room')
+    }, 100)
 }
 
 // 游戏结束时发送系统提示
@@ -2367,9 +2513,9 @@ watch(isChatPanelVisible, (val) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
+    font-size: 24px;
     line-height: 1;
-    font-weight: 900;
+    font-weight: 500;
     padding: 0;
     overflow: hidden;
     cursor: pointer;
@@ -2402,12 +2548,12 @@ watch(isChatPanelVisible, (val) => {
 }
 
 :deep(.tile-emoji) {
-    font-size: 38px !important;
+    font-size: 28px !important;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    transform: translateY(-3px);
+    transform: translateY(0);
 }
 
 .tile-svg {
@@ -2502,6 +2648,15 @@ watch(isChatPanelVisible, (val) => {
 
 .tile-green {
     color: #16a34a !important;
+}
+
+.card-counter-panel::-webkit-scrollbar {
+    display: none;
+}
+
+.card-counter-panel {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 .tile-blue {
@@ -3129,8 +3284,8 @@ watch(isChatPanelVisible, (val) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
-    font-weight: bold;
+    font-size: 16px;
+    font-weight: normal;
     box-shadow: 0 1px 0 #ccc, 0 2px 3px rgba(0, 0, 0, 0.2);
     padding: 0;
     overflow: hidden;
@@ -3142,8 +3297,8 @@ watch(isChatPanelVisible, (val) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 3.5vmin !important;
-    transform: translateY(-0.2vmin);
+    font-size: 1.1em;
+    transform: translateY(-0.1vmin);
     line-height: 1;
 }
 
@@ -3181,7 +3336,7 @@ watch(isChatPanelVisible, (val) => {
     .mahjong-tile {
         width: 5.8vmin !important;
         height: 8.2vmin !important;
-        font-size: 3.8vmin !important;
+        font-size: 3.2vmin !important;
         padding-bottom: 0 !important;
         margin-bottom: 0 !important;
     }

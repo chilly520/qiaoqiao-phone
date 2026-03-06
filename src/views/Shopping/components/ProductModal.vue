@@ -1,8 +1,8 @@
 <template>
-    <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
+    <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm"
         @click.self="$emit('close')">
         <div
-            class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[95vh] overflow-y-auto animate-slide-up pb-safe">
+            class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[95vh] overflow-y-auto animate-slide-up pb-safe border border-slate-100">
             <!-- 图片区 -->
             <div class="relative group">
                 <img :src="product.image" class="w-full h-80 object-cover">
@@ -74,7 +74,7 @@
                 </div>
 
                 <!-- 评价系统 -->
-                <div class="mb-6">
+                <div ref="reviewSection" class="mb-6">
                     <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2">
                             <h4 class="text-sm font-bold flex items-center gap-2">
@@ -85,24 +85,30 @@
                                 点击生成新评价
                             </button>
                         </div>
-                        <span class="text-xs text-orange-500">好评率 99% ></span>
+                        <button @click="scrollToReviews"
+                            class="text-xs text-orange-500 cursor-pointer hover:underline">
+                            好评率 {{ goodRatingPercent }}% >
+                        </button>
                     </div>
 
-                    <div v-if="productReviews.length > 0" class="space-y-4">
+                    <div v-if="productReviews.length > 0" class="space-y-4" ref="reviewsContainer">
                         <div v-for="(review, idx) in productReviews" :key="idx" class="bg-gray-50 rounded-2xl p-4">
                             <div class="flex items-center gap-2 mb-2">
                                 <img :src="`https://api.dicebear.com/7.x/pixel-art/svg?seed=${review.user}`"
                                     class="w-6 h-6 rounded-full bg-white">
                                 <span class="text-xs font-medium">{{ review.user }}</span>
-                                <div class="flex ml-auto text-[8px] text-orange-400">
-                                    <span v-for="i in review.rating" :key="i">★</span>
+                                <div class="flex ml-auto text-[10px]">
+                                    <span v-for="i in 5" :key="i" :class="i <= review.rating ? 'text-orange-400' : 'text-gray-300'">★</span>
                                 </div>
                             </div>
-                            <p class="text-xs text-gray-700 leading-relaxed">{{ review.content }}</p>
+                            <p class="text-xs text-gray-700 leading-relaxed">
+                                {{ review.content || review.text || '暂无评价内容' }}
+                            </p>
                             <div v-if="review.images && review.images.length > 0" class="flex gap-2 mt-2">
                                 <img v-for="(img, i) in review.images.slice(0, 3)" :key="i" :src="img"
                                     class="w-20 h-20 rounded-lg object-cover bg-white">
                             </div>
+                            <p class="text-[10px] text-gray-400 mt-2">{{ review.time }}</p>
                         </div>
                     </div>
                     <div v-else class="text-center py-6 text-gray-400 text-xs italic">
@@ -141,6 +147,7 @@ const store = useShoppingStore()
 
 const quantity = ref(1)
 const isAdded = ref(false)
+const reviewsContainer = ref(null)
 
 const availableSpecs = computed(() => {
     if (props.product.specs && props.product.specs.length > 0) {
@@ -161,12 +168,38 @@ const currentPrice = computed(() => {
 
 const isFavorite = computed(() => store.favorites.includes(props.product.id))
 const isFollowed = computed(() => store.subscribedShops.some(s => s.name === props.product.shop))
-const productReviews = computed(() => store.reviews[props.product.id] || [])
+const productReviews = computed(() => {
+    const reviews = store.reviews[props.product.id] || []
+    console.log('商品评价数据:', reviews)
+    return reviews
+})
+
+// 计算好评率
+const goodRatingPercent = computed(() => {
+    const reviews = productReviews.value
+    if (reviews.length === 0) return 100
+    const goodReviews = reviews.filter(r => r.rating >= 4).length
+    return Math.round((goodReviews / reviews.length) * 100)
+})
+
+// 滚动到评论区
+const scrollToReviews = () => {
+    const modal = document.querySelector('.max-h-\\[95vh\\]')
+    if (modal && reviewsContainer.value) {
+        const containerRect = reviewsContainer.value.getBoundingClientRect()
+        const modalRect = modal.getBoundingClientRect()
+        const scrollTop = modal.scrollTop + containerRect.top - modalRect.top - 20
+        modal.scrollTo({ top: scrollTop, behavior: 'smooth' })
+    }
+}
 
 onMounted(() => {
     store.addFootprint(props.product.id)
-    if (productReviews.value.length === 0) {
-        store.generateReviewsAI(props.product)
+    // 确保评价存在
+    if (!productReviews.value || productReviews.value.length === 0) {
+        setTimeout(() => {
+            store.generateReviewsAI(props.product)
+        }, 100)
     }
 })
 
@@ -190,6 +223,11 @@ const chatWithShop = () => {
     store.activeShopId = props.product.shop
     store.switchView('chat')
     emit('close')
+    // 触发 ChatView 进入聊天模式
+    setTimeout(() => {
+        const event = new CustomEvent('enter-chat', { detail: props.product.shop })
+        window.dispatchEvent(event)
+    }, 100)
 }
 
 const handleAddToCart = () => {

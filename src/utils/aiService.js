@@ -2800,12 +2800,17 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
     if (includeArchive) tasks.push("灵魂档案 (底层规格与性格)");
     if (includeMoments) tasks.push("置顶动态 (3条朋友圈)");
 
-    const systemPrompt = `你现在是“角色主页架构师”。
+    const systemPrompt = `你现在是"角色主页架构师"。
 任务：为角色生成以下内容：${tasks.join('、')}。
 
 角色姓名：${character.name}
 基础人设：${character.prompt || '无'}${uPersona}
-当前用户：${userName}
+
+【用户身份说明】
+- 微信"我"页面显示的昵称是："${userName}"
+- 角色设定中的用户昵称也是："${userName}"
+- 这两个名称指向的是同一个人，即微信的使用者本人。
+- 在生成朋友圈动态时，如果需要提到用户，使用名称"${userName}"，id 设为 "user"。
 
 【输出格式】请严格返回以下结构的 JSON：
 {
@@ -2832,14 +2837,51 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
     }
   ]` : ''}
 }
-注意：如果人设注明“孤儿/单亲/父母不在”，动态评论区严禁虚构对应的亲属评论。
+【重要规则】
+1. 如果人设注明"孤儿/单亲/父母不在"，动态评论区严禁虚构对应的亲属评论。
+2. interactions 中的点赞和评论只能来自虚拟路人角色，严禁生成用户(${userName})的点赞、评论或任何互动。用户只能出现在 mentions 中。
 禁止解释，直接输出 JSON。`
 
     try {
         const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true }])
-        const jsonMatch = result.content.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) throw new Error('Invalid JSON')
-        const data = JSON.parse(jsonMatch[0])
+        
+        // 增强的 JSON 提取逻辑
+        let jsonText = result.content || ''
+        
+        // 1. 清理 Markdown 代码块
+        jsonText = jsonText.replace(/```json/gi, '').replace(/```/g, '').trim()
+        
+        // 2. 定位最外层的 JSON 对象
+        const start = jsonText.indexOf('{')
+        const end = jsonText.lastIndexOf('}')
+        
+        if (start === -1 || end === -1 || end <= start) {
+            throw new Error('Invalid JSON: no valid object found')
+        }
+        
+        jsonText = jsonText.substring(start, end + 1)
+        
+        // 3. 预处理：修复常见的 AI 输出错误
+        let data = null
+        try {
+            data = JSON.parse(jsonText)
+        } catch (parseError) {
+            // 尝试修复常见问题
+            try {
+                // 修复末尾逗号
+                const fixed = jsonText.replace(/,(\s*[}\]])/g, '$1')
+                data = JSON.parse(fixed)
+            } catch (e2) {
+                // 修复未转义的换行符
+                try {
+                    const fixed2 = jsonText.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+                    data = JSON.parse(fixed2)
+                } catch (e3) {
+                    console.error('[aiService] JSON parse failed, raw content:', jsonText.substring(0, 200))
+                    throw new Error('Invalid JSON: ' + parseError.message)
+                }
+            }
+        }
 
         let backgroundUrl = null
         if (includeSocial && data.backgroundPrompt) {

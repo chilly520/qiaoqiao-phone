@@ -132,8 +132,14 @@ export const useMahjongStore = defineStore('mahjong', () => {
 
     const updateScore = (delta) => {
         score.value += delta
-        if (delta > 0) { wins.value++; winStreak.value++ }
-        else { losses.value++; winStreak.value = 0 }
+        if (delta > 0) {
+            wins.value++
+            winStreak.value++
+        } else if (delta < 0) {
+            losses.value++
+            winStreak.value = 0
+        }
+        // 和牌/流局(delta === 0) 不计入胜负次数
         rank.value = rankInfo.value.name
         saveData()
     }
@@ -469,12 +475,29 @@ export const useMahjongStore = defineStore('mahjong', () => {
             player.exposed.push({ type: 'peng', tiles: [tile, tile, tile] })
         } else if (action === 'gang') {
             if (gameState.value.currentPlayer === playerIndex && !tile) {
-                // 暗杠
-                const gangTiles = mahjongEngine.canAnGang(player.hand)
-                const t = gangTiles[0]
-                if (t) {
+                // 检查暗杠
+                const anGangTiles = mahjongEngine.canAnGang(player.hand)
+                // 检查补杠 (加杠)
+                const buGangTiles = mahjongEngine.canBuGang(player.hand, player.exposed)
+
+                if (anGangTiles.length > 0) {
+                    const t = anGangTiles[0]
                     player.hand = player.hand.filter(x => x !== t)
                     player.exposed.push({ type: 'gang', tiles: [t, t, t, t], isAnGang: true })
+                } else if (buGangTiles.length > 0) {
+                    const t = buGangTiles[0]
+                    // 从手牌中移除那张牌
+                    const idx = player.hand.indexOf(t)
+                    if (idx !== -1) player.hand.splice(idx, 1)
+                    // 在副牌中找到对应的碰，将其改为杠
+                    const expIdx = player.exposed.findIndex(e => e.type === 'peng' && e.tiles[0] === t)
+                    if (expIdx !== -1) {
+                        // 使用 splice 替换以确保 Vue 响应式更新
+                        player.exposed.splice(expIdx, 1, { type: 'gang', tiles: [t, t, t, t], isAnGang: false })
+                        console.log(`[Mahjong] 补杠成功: ${player.name} 将 ${t} 从碰改为杠`)
+                    } else {
+                        console.warn(`[Mahjong] 补杠失败: 找不到对应的碰牌 ${t}`)
+                    }
                 }
             } else {
                 // 明杠 (已通过验证)
@@ -521,6 +544,12 @@ export const useMahjongStore = defineStore('mahjong', () => {
                     isPao: false,
                     idx: i
                 }))
+            }
+            lastAction.value = { type: 'liuju', playerIndex: 0, time: Date.now() }
+            
+            // 房间模式：流局也分享结算卡片
+            if (currentRoom.value?.mode !== 'quick') {
+                autoShareResultToChat(gameState.value.roundResult, null, 0, false, '流局')
             }
             return
         }
@@ -574,6 +603,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
                     // 点炮：一家赔
                     amount = totalScore
                 }
+                // 记录胜场
+                p.wins = (p.wins || 0) + 1
             } else {
                 // 输家
                 if (realIsZiMo) {
@@ -588,10 +619,15 @@ export const useMahjongStore = defineStore('mahjong', () => {
                         amount = 0
                     }
                 }
+                // 记录负场（只有真正输的才算）
+                if (amount < 0) {
+                    p.losses = (p.losses || 0) + 1
+                }
             }
 
-            // 更新玩家豆子
+            // 更新玩家豆子和分数
             p.beans += amount
+            p.score = (p.score || 0) + amount
 
             // 如果是用户(索引0)，更新全局状态
             if (i === 0) {
@@ -622,6 +658,11 @@ export const useMahjongStore = defineStore('mahjong', () => {
             isZiMo: realIsZiMo,
             type: winInfo.name,
             changes: changes
+        }
+
+        // 房间模式：自动分享结算卡片到所有房间内玩家的聊天
+        if (currentRoom.value?.mode !== 'quick') {
+            autoShareResultToChat(gameState.value.roundResult, winner, fan, realIsZiMo, winInfo.name)
         }
 
         // --- 排行榜记录 ---
@@ -683,14 +724,21 @@ export const useMahjongStore = defineStore('mahjong', () => {
                 }
             }
 
-            const isNpc = aiId.startsWith('npc_') || aiId.startsWith('ai_bot_')
+            // [Fix] 判定逻辑优化：ai_bot 是临时随机生成的机器人，而 npc_ 或 UUID 通常是用户创建或持久化的本体角色
+            const isBot = aiId.startsWith('ai_bot_')
+            const isMainChar = !isBot
+
+            // 获取该角色对用户的特别设定 (User Persona)
+            // 优先使用该角色私聊中的“用户人设”，如果没有则回退到全局设置
+            const charSpecificUserPersona = chatChar?.userPersona || userPersona
 
             return {
                 name: ai.name,
                 position: ai.position,
                 hand: (ai.hand || []).join(', '),
-                isMainChar: !isNpc, // 所有非NPC都是主要角色
+                isMainChar: isMainChar,
                 persona: chatChar ? chatChar.prompt : (ai.signature || '一个爱打麻将的好友'),
+                userPersona: charSpecificUserPersona,
                 scoreStatus: `当前积分${ai.score}，排名${ai.rank}`
             }
         })
@@ -719,14 +767,14 @@ export const useMahjongStore = defineStore('mahjong', () => {
 
 ## 角色设定与关系
 请根据以下每个角色的设定，以及**该角色与用户的具体关系**来决定回复内容和语气。
-用户人设：${userPersona}
 
 ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position})
    - 类型：${c.isMainChar ? '主要角色' : '普通NPC'}
    - **核心人设**：${c.persona}
+   - **对用户的人设/关系**：${c.userPersona}
    - **手牌状态**：[${c.hand}]
    - **当前局势**：${c.scoreStatus}
-   - **行动指南**：请结合你的核心人设，判断你与用户【${userName}】的关系（是亲密、敌对、还是陌生人？），并基于此关系和用户人设进行互动。`).join('\n\n')}
+   - **行动指南**：根据你的核心人设，以及你对用户【${userName}】的私有设定（${c.userPersona}），以该角色身份做出自然、符合性格的互动。`).join('\n\n')}
 
 ## 牌局局势
 - 桌面牌池(最近打出的)：[${poolStr}]
@@ -902,6 +950,75 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
         gameState.value = null
         gameChatMessages.value = []
         activeReplies.value = {}
+    }
+
+    // 房间模式：自动分享结算卡片到所有房间内玩家的聊天（不触发AI回复）
+    const autoShareResultToChat = async (result, winner, fan, isZiMo, winTypeName) => {
+        if (!currentRoom.value || currentRoom.value.mode === 'quick') return
+        
+        const { useChatStore } = await import('./chatStore.js')
+        const chatStore = useChatStore()
+        const players = currentRoom.value.players || []
+        
+        // 构建结算卡片
+        const isUserWin = winner?.id === 'user'
+        const isLiuju = !winner
+        const title = isLiuju ? '🀄️ 流局了' : (isUserWin ? '🀄️ 清账啦！大获全胜！' : '🀄️ 输麻了... 技不如人')
+        const color = isLiuju ? '#6b7280' : (isUserWin ? '#ef4444' : '#6b7280')
+        const bgColor = isLiuju ? '#f9fafb' : (isUserWin ? '#fff3f4' : '#f9fafb')
+
+        const getTileEmoji = (tile) => {
+            if (!tile) return ''
+            if (tile.startsWith('w')) return ['一','二','三','四','五','六','七','八','九'][parseInt(tile[1]) - 1] + '万'
+            if (tile.startsWith('t')) return ['一','二','三','四','五','六','七','八','九'][parseInt(tile[1]) - 1] + '条'
+            if (tile.startsWith('b')) return ['一','二','三','四','五','六','七','八','九'][parseInt(tile[1]) - 1] + '筒'
+            const honorMap = { 'east': '东', 'south': '南', 'west': '西', 'north': '北', 'red': '红中', 'green': '发财', 'white': '白板' }
+            return honorMap[tile] || tile
+        }
+
+        const winnerHandDisplay = result.winnerHand?.map(t => getTileEmoji(t)).join(' ') || ''
+        const winningTileDisplay = result.winningTile ? getTileEmoji(result.winningTile) : ''
+        const changesDisplay = result.changes?.map(c => `${c.name}: ${c.amount > 0 ? '+' : ''}${c.amount}豆`).join('<br>') || ''
+
+        const htmlContent = `
+<div style="background: ${bgColor}; border-radius: 16px; border: 2px solid ${color}55; padding: 16px; font-family: system-ui; overflow: visible; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-height: 200px; height: auto; word-break: break-word; overflow-wrap: break-word;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-weight: 800; color: ${color}; font-size: 14px;">${title}</span>
+        <span style="font-size: 10px; color: ${color}aa;">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div style="background: white; border-radius: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid ${color}22; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div style="font-size: 12px; color: #666; margin-bottom: 4px;">本局结算：${winTypeName}${fan ? ` (${fan}番)` : ''}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+            <div style="font-size: 20px; font-weight: 900; color: ${isUserWin ? '#e11d48' : '#333'};">
+                ${isLiuju ? '0' : (isUserWin ? '+' : '') + (result.changes?.find(c => c.isWinner)?.amount || 0)} 豆
+            </div>
+            <div style="font-size: 12px; font-weight: 600; color: #3b82f6;">
+                ${isZiMo ? '自摸' : '点炮'}
+            </div>
+        </div>
+    </div>
+    ${winnerHandDisplay ? `<div style="font-size: 14px; color: #333; margin-bottom: 12px; padding: 8px; background: white; border-radius: 8px;">
+        ${winnerHandDisplay} ${winningTileDisplay ? `<span style="color: ${color}; font-weight: bold;">[${winningTileDisplay}]</span>` : ''}
+    </div>` : ''}
+    <div style="margin-top: 8px; font-size: 10px; color: ${color}99; text-align: right; margin-bottom: 8px;">— 雀神争霸赛 —</div>
+    ${changesDisplay ? `<div style="margin-top: 8px; font-size: 10px; color: #9ca3af; text-align: left; line-height: 1.5; padding: 8px; background: rgba(255,255,255,0.8); border-radius: 8px;">
+        ${changesDisplay}
+    </div>` : ''}
+</div>
+`.trim()
+
+        // 向所有房间内的非用户玩家发送结算卡片（不触发AI回复）
+        const timestamp = Date.now()
+        players.forEach(player => {
+            if (player.id !== 'user') {
+                chatStore.addMessage(player.id, {
+                    role: 'user',
+                    content: `[CARD]${htmlContent}[/CARD]`,
+                    timestamp: timestamp,
+                    skipAI: true // 标记不触发AI回复
+                })
+            }
+        })
     }
 
     loadData()

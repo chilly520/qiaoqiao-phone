@@ -99,6 +99,16 @@ export class MahjongEngine {
     }
 
     /**
+     * 判断是否可以补杠 (手中拿到了已经碰过的第四张牌)
+     */
+    canBuGang(hand, exposed) {
+        if (!exposed || exposed.length === 0) return []
+        const pengTiles = exposed.filter(e => e.type === 'peng').map(e => e.tiles[0])
+        // 去重返回可补杠的牌面
+        return [...new Set(hand.filter(tile => pengTiles.includes(tile)))]
+    }
+
+    /**
      * 判断是否可以胡牌
      */
     canHu(hand, newTile = null) {
@@ -299,6 +309,9 @@ export class MahjongEngine {
         }
 
         let total = fanList.reduce((s, i) => s + i.fan, 0)
+        if (total === 0) {
+            total = 1 // 至少1番（平胡），支持积分记录
+        }
         // Cap
         if (total > 64) total = 64
 

@@ -1,4 +1,4 @@
-<script setup>
+
 import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../../stores/chatStore'
@@ -108,7 +108,7 @@ const getCleanContent = (contentRaw) => {
     const voiceBlockRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi;
     const voiceUnclosedRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi;
     const voiceClosingRegex = /\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi;
-    const protocolTagsRegex = /\[(?:LIKE|COMMENT|REPLY|VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈)[:：]\s*[^\]]+\]/gi;
+    const protocolTagsRegex = /\[(?:LIKE|COMMENT|REPLY|VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友�?[:：]\s*[^\]]+\]/gi;
     const jsonBlocksRegex = /\{[\s\n]*"(?:着装|环境|status|心声|心心声|行为|mind|outfit|scene|action|thoughts|mood|state|stats|spirit)"[\s\S]*?\}/gi;
     const systemTagRegex = /\[System:[\s\S]+?\]/gi;
     const claimTagsRegex = /\[(领取红包|RECEIVE_RED_PACKET)\]/gi;
@@ -179,7 +179,7 @@ const isImageMsg = (msg) => {
         }
     }
 
-    // Tag check: contains [图片:...] or [表情包:...]
+    // Tag check: contains [图片:...] or [表情�?...]
     // We use a more relaxed regex without strict ^ $ to handle potential surrounding chars/newlines
     return /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]/i.test(clean)
 }
@@ -208,33 +208,24 @@ const msgContainer = ref(null)
 const virtualListContainer = ref(null)
 
 const isMsgVisible = (msg) => {
-    if (!msg) return false
     if (msg.hidden) return false
 
-    // 1. Always show special message types as long as they aren't explicitly hidden
-    if (msg.type && msg.type !== 'text') return true
-
+    // 1. Priority check for media/special types
     const content = ensureString(msg.content)
-    if (content.includes('[红包]') || content.includes('[转账]') || content.includes('[GIFT:')) return true
+    if (msg.type === 'redpacket' || msg.type === 'transfer' || content.includes('[红包]') || content.includes('[转账]')) return true
+    if (msg.type === 'gift' || msg.type === 'gift_claimed') return true
     if (msg.type === 'image' || isImageMsg(msg)) return true
 
-    // 2. Role-based filtering
-    // If it's a known AI respondent or user, check content
-    const knownRoles = ['ai', 'assistant', 'user', 'thought', 'bot', 'system']
-    const role = msg.role ? msg.role.toLowerCase() : 'ai'
-
-    if (knownRoles.includes(role)) {
-        const cleanContent = getCleanContent(content)
-        // For AI/Assistant/Thought, hide if it's purely protocol/metadata JSON
-        if (['ai', 'assistant', 'thought', 'bot'].includes(role)) {
-            if (!cleanContent || cleanContent.trim().length === 0) return false
-        }
-        return true
+    // 2. Role-based text filtering
+    if (['ai', 'assistant', 'user'].includes(msg.role)) {
+        const cleanContent = getCleanContent(content);
+        if (!cleanContent.trim()) return false;
+        return true;
     }
 
-    // 3. Last fallback: if it has any readable content, show it
+    // 3. System/Other fallback
     const clean = getCleanContent(content)
-    return !!(clean && clean.trim().length > 0)
+    return clean && clean.length > 0
 }
 
 const displayedMsgs = computed(() => {
@@ -325,13 +316,13 @@ const handleAcceptFriend = () => {
     // 2. System Message
     chatStore.addMessage(chatData.value.id, {
         role: 'system',
-        content: '你已添加了' + chatData.value.name + '，现在可以开始聊天了。' // Standard WeChat Text
+        content: '你已添加�? + chatData.value.name + '，现在可以开始聊天了�? // Standard WeChat Text
     })
 
     // 3. User Auto Reply (My side)
     chatStore.addMessage(chatData.value.id, {
         role: 'user',
-        content: '我们已经是好友了，快来聊天吧。'
+        content: '我们已经是好友了，快来聊天吧�?
     })
 
     // DO NOT trigger AI reply
@@ -384,7 +375,7 @@ const checkNewChat = () => {
             <i class="fa-solid fa-earth-asia text-purple-300"></i>
         </div>
         <div>
-            <div class="text-[10px] text-purple-300 font-bold uppercase tracking-widest">世界观加载完成</div>
+            <div class="text-[10px] text-purple-300 font-bold uppercase tracking-widest">世界观加载完�?/div>
             <div class="text-sm font-bold">${loop.name}</div>
         </div>
     </div>
@@ -392,7 +383,7 @@ const checkNewChat = () => {
         ${loop.description || '开启一段未知的冒险...'}
     </div>
     <div class="mt-4 pt-3 border-t border-purple-500/20 flex justify-between items-center">
-        <div class="text-[9px] text-purple-400">上帝视角：已开启</div>
+        <div class="text-[9px] text-purple-400">上帝视角：已开�?/div>
         <div class="flex -space-x-2">
             ${chatData.value.participants.slice(0, 3).map(pId => `<div class="w-5 h-5 rounded-full border border-purple-900 bg-gray-800"></div>`).join('')}
         </div>
@@ -411,7 +402,7 @@ const checkNewChat = () => {
         }
     } catch (error) {
         console.error('[ChatWindow] checkNewChat error:', error)
-        showToast('聊天初始化失败: ' + error.message, 'error')
+        showToast('聊天初始化失�? ' + error.message, 'error')
     }
 }
 
@@ -537,7 +528,7 @@ onMounted(async () => {
             const systemMsg = {
                 id: `sys_battery_${Date.now()}`,
                 role: 'system',
-                content: `[系统提醒] 当前设备电量为 ${info.level}%，建议尽快充电。`,
+                content: `[系统提醒] 当前设备电量�?${info.level}%，建议尽快充电。`,
                 timestamp: Date.now(),
                 type: 'system'
             }
@@ -560,9 +551,7 @@ onUnmounted(() => {
 
 
 
-// 监听聊天切换，重置分页
-// 监听聊天切换，重置分页并瞬间滚动到底部
-watch(() => chatStore.currentChatId, (newId) => {
+// 监听聊天切换，重置分�?// 监听聊天切换，重置分页并瞬间滚动到底�?watch(() => chatStore.currentChatId, (newId) => {
     if (newId) {
         selectedMsgIds.value.clear()
         isMultiSelectMode.value = false
@@ -593,7 +582,7 @@ const addToFavorites = (msg) => {
     }
 
     favoritesStore.addFavorite(msgToSave, chatName, avatarUrl)
-    showToast('已收藏', 'success')
+    showToast('已收�?, 'success')
 }
 
 // Multi-select State
@@ -683,7 +672,7 @@ const showSystemMsgDetail = (msg) => {
     if (msg.realContent) {
         // Show as Toast or temporary overlay
         // For debug mostly
-        showToast('内容已撤回', 'info')
+        showToast('内容已撤�?, 'info')
         console.log('Recall Content:', msg.realContent)
     }
 }
@@ -813,8 +802,7 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                 handleDrawCommandInChat(lastMsg.id, drawMatch[1].trim())
             }
 
-            // 3. 修改拍一拍文字
-            const patMatch = contentStr.match(/\[修改拍一拍:\s*([^\s]+)\s+([^\]]+)\]/i)
+            // 3. 修改拍一拍文�?            const patMatch = contentStr.match(/\[修改拍一�?\s*([^\s]+)\s+([^\]]+)\]/i)
             if (patMatch) {
                 const action = patMatch[1].trim()
                 const text = patMatch[2].trim()
@@ -822,13 +810,12 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
             }
 
             // 4. 更换头像
-            // 更宽松的正则表达式，处理可能被截断的URL，支持跨行匹配
-            const avatarMatch = contentStr.match(/\[更换头像:\s*([\s\S]*?)\]/i)
+            // 更宽松的正则表达式，处理可能被截断的URL，支持跨行匹�?            const avatarMatch = contentStr.match(/\[更换头像:\s*([\s\S]*?)\]/i)
             if (avatarMatch) {
                 let url = avatarMatch[1].trim()
                 // 处理可能被截断的URL，确保是有效的URL格式
                 if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-                    console.log('更换头像指令被触发:', url)
+                    console.log('更换头像指令被触�?', url)
                     handleChangeAvatar(url)
                 } else {
                     console.log('无效的头像URL:', url)
@@ -840,8 +827,7 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                 if (urlMatch) {
                     let url = urlMatch[1].trim()
                     console.log('从消息中提取到URL:', url)
-                    // 这里可以添加逻辑，比如询问用户是否要将此URL设置为头像
-                }
+                    // 这里可以添加逻辑，比如询问用户是否要将此URL设置为头�?                }
             }
 
             // 5. Family Card Status Logic
@@ -981,7 +967,7 @@ const toggleAutoRead = () => {
     // If global capability is OFF, turn it ON (and ensure autoRead is ON)
     if (!chatData.value.autoTTS) {
         chatStore.updateCharacter(chatData.value.id, { autoTTS: true, autoRead: true })
-        showToast('已开启自动朗读', 'success')
+        showToast('已开启自动朗�?, 'success')
         return
     }
 
@@ -993,9 +979,9 @@ const toggleAutoRead = () => {
     chatStore.updateCharacter(chatData.value.id, { autoRead: newState })
 
     if (newState) {
-        showToast('自动朗读已开启', 'success')
+        showToast('自动朗读已开�?, 'success')
     } else {
-        showToast('自动朗读已暂停', 'info')
+        showToast('自动朗读已暂�?, 'info')
         if (window.speechSynthesis) window.speechSynthesis.cancel()
     }
 }
@@ -1015,11 +1001,9 @@ const openStatusEditor = () => {
 
 // Nudge / Pat Logic
 const shakingAvatars = ref(new Set())
-const imgUploadInput = ref(null)
 let avatarClickTimer = null
 
-// 处理修改拍一拍文字
-const handleModifyPatText = (action, text) => {
+// 处理修改拍一拍文�?const handleModifyPatText = (action, text) => {
     if (!chatData.value) return
     chatStore.updateCharacter(chatData.value.id, {
         patAction: action,
@@ -1051,11 +1035,10 @@ const handleChangeAvatar = (url) => {
             }
         } catch (e) { }
         chatStore.updateCharacter(chatData.value.id, { avatar: finalUrl })
-        showToast('头像已更换', 'success')
+        showToast('头像已更�?, 'success')
     }
     img.onerror = () => {
-        // 图片加载失败，显示错误提示
-        console.error('头像图片加载失败:', url)
+        // 图片加载失败，显示错误提�?        console.error('头像图片加载失败:', url)
         showToast('头像图片加载失败，请尝试其他图片', 'error')
     }
     img.src = url
@@ -1075,10 +1058,10 @@ const handlePat = (msg) => {
     if (navigator.vibrate) navigator.vibrate(50)
 
     // 2. Logic Response
-    const targetName = msg.role === 'user' ? '我' : (chatData.value.name || '对方')
-    const sourceName = '我'
+    const targetName = msg.role === 'user' ? '�? : (chatData.value.name || '对方')
+    const sourceName = '�?
     const suffix = chatData.value.patSuffix || '的头'
-    const action = chatData.value.patAction || '拍了拍'
+    const action = chatData.value.patAction || '拍了�?
 
     chatStore.addMessage(chatData.value.id, {
         role: 'system',
@@ -1127,9 +1110,9 @@ const handleAvatarClick = (msg) => {
         if (msg.isSystem || msg.type === 'system') return;
 
         // Navigate to Character Info Card
-        // If user, go to user profile
-        const targetId = msg.role === 'user' ? 'user' : (msg.senderId || (!chatData.isGroup ? chatStore.currentChatId : null));
-        if (targetId) emit('show-profile', targetId);
+        // If user, go to user profile (using 'user' ID or whatever logic you prefer)
+        // Here we assume 'user' is a valid ID for the user profile, or we handle it.
+        emit('show-profile', msg.role === 'user' ? 'user' : chatStore.currentChatId);
 
         // Clear the timer reference
         avatarClickTimer = null
@@ -1204,7 +1187,7 @@ const handlePanelAction = (type) => {
             // Trigger AI to respond to call
             chatStore.addMessage(chatData.value.id, {
                 role: 'system',
-                content: `【收到来自 ${chatStore.userName || '用户'} 的语音通话邀请...】`,
+                content: `【收到来�?${chatStore.userName || '用户'} 的语音通话邀�?..】`,
                 hidden: true // Keep protocol hint out of chat UI
             })
             // Manually trigger the generation
@@ -1217,7 +1200,7 @@ const handlePanelAction = (type) => {
             // Trigger AI to respond to call
             chatStore.addMessage(chatData.value.id, {
                 role: 'system',
-                content: `【收到来自 ${chatStore.userName || '用户'} 的视频通话邀请...】`,
+                content: `【收到来�?${chatStore.userName || '用户'} 的视频通话邀�?..】`,
                 hidden: true // Keep protocol hint out of chat UI
             })
             // Manually trigger the generation
@@ -1244,7 +1227,7 @@ const handlePanelAction = (type) => {
 // Handle Dice Roll
 const handleDiceRoll = (diceCount, results, total) => {
     const diceEmojis = {
-        1: '⚀', 2: '⚁', 3: '⚂', 4: '⚃', 5: '⚄', 6: '⚅'
+        1: '⚀', 2: '�?, 3: '�?, 4: '�?, 5: '�?, 6: '�?
     }
 
     // 判断是否为大吉或豹子
@@ -1252,8 +1235,7 @@ const handleDiceRoll = (diceCount, results, total) => {
     const isJackpot = results.every(r => r === results[0])
     const isBigWin = total >= maxPossible * 0.8
 
-    // 根据分数确定标签和颜色
-    let badge = ''
+    // 根据分数确定标签和颜�?    let badge = ''
     let badgeColor = ''
     if (isJackpot) {
         badge = '豹子!'
@@ -1283,8 +1265,7 @@ const handleDiceRoll = (diceCount, results, total) => {
 
 // Handle Backpack Send Card
 const handleBackpackSendCard = (payload) => {
-    // 1. 发送消息
-    if (payload.type === 'gift') {
+    // 1. 发送消�?    if (payload.type === 'gift') {
         const giftContent = `[GIFT:${payload.giftName}:${payload.giftQuantity}:${payload.giftNote || ''}]`
         chatStore.addMessage(chatStore.currentChatId, {
             role: 'user',
@@ -1296,7 +1277,7 @@ const handleBackpackSendCard = (payload) => {
             giftNote: payload.giftNote,
             giftQuantity: payload.giftQuantity,
             status: 'pending',
-            senderName: settingsStore?.personalization?.userProfile?.name || '我'
+            senderName: settingsStore?.personalization?.userProfile?.name || '�?
         })
     } else {
         chatStore.addMessage(chatStore.currentChatId, {
@@ -1306,8 +1287,7 @@ const handleBackpackSendCard = (payload) => {
         })
     }
 
-    // 2. 从背包移除物品
-    backpackStore.removeItem(payload.itemId, 1)
+    // 2. 从背包移除物�?    backpackStore.removeItem(payload.itemId, 1)
 }
 
 // Handle Tarot Share
@@ -1359,9 +1339,8 @@ const generateSeeImage = async () => {
 
     seeImageLoading.value = true
     try {
-        console.log('开始生成图片:', seeImagePrompt.value)
-        // 模拟生成图片（不调用API）
-        // 这里我们只是模拟生成过程，实际项目中可以替换为真实的文生图API调用
+        console.log('开始生成图�?', seeImagePrompt.value)
+        // 模拟生成图片（不调用API�?        // 这里我们只是模拟生成过程，实际项目中可以替换为真实的文生图API调用
         await new Promise(resolve => setTimeout(resolve, 1000))
 
         // 将中文提示词转义成英文关键词
@@ -1369,15 +1348,15 @@ const generateSeeImage = async () => {
         let englishPrompt = prompt
         // 简单的中文关键词转英文（实际项目中可使用更复杂的翻译服务）
         const chineseToEnglish = {
-            '花': 'flower',
+            '�?: 'flower',
             '玫瑰': 'rose',
-            '山': 'mountain',
-            '水': 'water',
+            '�?: 'mountain',
+            '�?: 'water',
             '天空': 'sky',
-            '树': 'tree',
-            '人': 'person',
-            '狗': 'dog',
-            '猫': 'cat',
+            '�?: 'tree',
+            '�?: 'person',
+            '�?: 'dog',
+            '�?: 'cat',
             '太阳': 'sun',
             '月亮': 'moon',
             '星星': 'star'
@@ -1389,20 +1368,18 @@ const generateSeeImage = async () => {
             }
         }
 
-        // 将中文提示词翻译为英文
-        const translatedPrompt = await translateToEnglish(prompt)
-        console.log('中文提示词:', prompt)
-        console.log('翻译后的英文提示词:', translatedPrompt)
+        // 将中文提示词翻译为英�?        const translatedPrompt = await translateToEnglish(prompt)
+        console.log('中文提示�?', prompt)
+        console.log('翻译后的英文提示�?', translatedPrompt)
 
         // 使用真实的生图API生成图片
         const generatedImageUrl = await generateImage(translatedPrompt)
         console.log('生成的图片URL:', generatedImageUrl)
 
-        // 添加到历史记录
-        seeImageHistory.value.push(generatedImageUrl)
+        // 添加到历史记�?        seeImageHistory.value.push(generatedImageUrl)
         currentHistoryIndex.value = seeImageHistory.value.length - 1
         seeImageResult.value = generatedImageUrl
-        console.log('图片生成成功，历史记录长度:', seeImageHistory.value.length)
+        console.log('图片生成成功，历史记录长�?', seeImageHistory.value.length)
 
         showToast('图片生成成功', 'success')
     } catch (error) {
@@ -1420,23 +1397,20 @@ const sendSeeImage = () => {
         return
     }
 
-    // 添加图片消息到聊天界面
-    chatStore.addMessage(chatStore.currentChatId, {
+    // 添加图片消息到聊天界�?    chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'image',
-        content: `[图片: ${seeImagePrompt.value || '手绘图'}]`,
+        content: `[图片: ${seeImagePrompt.value || '手绘�?}]`,
         image: seeImageResult.value
     })
 
-    // 自动触发 AI 回复，让角色对图片做出评价
-    setTimeout(() => {
+    // 自动触发 AI 回复，让角色对图片做出评�?    setTimeout(() => {
         chatStore.sendMessageToAI(chatStore.currentChatId)
     }, 500)
 
     // 关闭模态框
     showSeeImageModal.value = false
-    // 清空状态
-    seeImagePrompt.value = ''
+    // 清空状�?    seeImagePrompt.value = ''
     seeImageResult.value = ''
     seeImageHistory.value = []
     currentHistoryIndex.value = -1
@@ -1482,8 +1456,7 @@ const touchEnd = () => {
 
 const closeSeeImageModal = () => {
     showSeeImageModal.value = false
-    // 清空状态
-    seeImagePrompt.value = ''
+    // 清空状�?    seeImagePrompt.value = ''
     seeImageResult.value = ''
     seeImageHistory.value = []
     currentHistoryIndex.value = -1
@@ -1500,7 +1473,7 @@ const confirmSendFamilyCard = () => {
     chatStore.addMessage(chatData.value.id, {
         role: 'user',
         type: 'text',
-        content: `[FAMILY_CARD:${familyCardAmount.value}:${familyCardNote.value || '亲属卡'}]`
+        content: `[FAMILY_CARD:${familyCardAmount.value}:${familyCardNote.value || '亲属�?}]`
     })
 
     // Close modal
@@ -1517,7 +1490,7 @@ const confirmSendFamilyCard = () => {
 // Handle applying for family card after user fills form
 const confirmApplyFamilyCard = () => {
     if (!familyCardApplyNote.value.trim()) {
-        showToast('请输入申请备注', 'error')
+        showToast('请输入申请备�?, 'error')
         return
     }
 
@@ -1551,12 +1524,11 @@ const coverImageUrl = ref('') // Remote URL
 const openSendDialog = (type) => {
     sendType.value = type
     sendAmount.value = type === 'redpacket' ? '8.88' : '520'
-    sendNote.value = type === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您'
+    sendNote.value = type === 'redpacket' ? '恭喜发财，大吉大�? : '转账给您'
     coverImage.value = null
     coverImageUrl.value = ''
 
-    // 强制单聊红包为1个普通红包
-    if (!chatData.value?.isGroup && type === 'redpacket') {
+    // 强制单聊红包�?个普通红�?    if (!chatData.value?.isGroup && type === 'redpacket') {
         sendCount.value = 1
         packetType.value = 'fixed'
     } else {
@@ -1569,7 +1541,7 @@ const openSendDialog = (type) => {
 }
 
 const confirmSend = () => {
-    if (!sendAmount.value) return showToast('请输入金额', 'warning')
+    if (!sendAmount.value) return showToast('请输入金�?, 'warning')
 
     const amount = parseFloat(sendAmount.value)
     if (isNaN(amount) || amount <= 0) return showToast('请输入有效的金额', 'warning')
@@ -1580,7 +1552,7 @@ const confirmSend = () => {
     }
 
     const isRP = sendType.value === 'redpacket'
-    const title = isRP ? '发红包' : '转账'
+    const title = isRP ? '发红�? : '转账'
 
     // Calculate actual total to deduct
     const actualTotalAmount = (isRP && packetType.value === 'fixed')
@@ -1593,17 +1565,17 @@ const confirmSend = () => {
 
     if (!success) {
         // Balance insufficient
-        return showToast(`支付失败：余额不足 (当前余额 ¥${walletStore.balance.toFixed(2)})`, 'error')
+        return showToast(`支付失败：余额不�?(当前余额 ¥${walletStore.balance.toFixed(2)})`, 'error')
     }
 
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: sendType.value,
-        content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (amount + '元')}`,
+        content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (amount + '�?)}`,
         amount: amount,
         count: isRP ? parseInt(sendCount.value) || 1 : 1,
         packetType: isRP ? packetType.value : null,
-        note: sendNote.value || (isRP ? '恭喜发财，大吉大利' : '转账给您'),
+        note: sendNote.value || (isRP ? '恭喜发财，大吉大�? : '转账给您'),
         coverImage: isRP ? (coverImageUrl.value || coverImage.value) : null,
         status: 'sent' // Initial status
     })
@@ -1616,7 +1588,7 @@ const confirmSend = () => {
 
 const applyCoverUrl = () => {
     if (!coverImageUrl.value) return
-    showToast('红包封面已设置 (URL)', 'success')
+    showToast('红包封面已设�?(URL)', 'success')
 }
 
 const triggerCoverUpload = () => {
@@ -1633,7 +1605,7 @@ const triggerCoverUpload = () => {
             chatStore.triggerPrompt('输入封面URL', '请输入图片的超链接地址', 'https://...', '', (url) => {
                 if (url) {
                     coverImageUrl.value = url
-                    showToast('红包封面已设置 (URL)', 'success')
+                    showToast('红包封面已设�?(URL)', 'success')
                 }
             })
         },
@@ -1648,17 +1620,16 @@ const handleCoverUpload = (event) => {
     compressImage(file, { maxWidth: 400, maxHeight: 400, quality: 0.7 })
         .then(base64 => {
             coverImage.value = base64
-            showToast('红包封面已设置', 'success')
+            showToast('红包封面已设�?, 'success')
         })
 }
 
 const handleGiftClick = (msg) => {
     if (!chatData.value) return
 
-    // 为弹窗添加发送者名称信息
-    const displayMsg = {
+    // 为弹窗添加发送者名称信�?    const displayMsg = {
         ...msg,
-        senderName: msg.senderName || (msg.role === 'user' ? '你' : chatData.value.name),
+        senderName: msg.senderName || (msg.role === 'user' ? '�? : chatData.value.name),
         _isSender: msg.role === 'user' || msg.senderId === 'user'
     }
 
@@ -1666,7 +1637,7 @@ const handleGiftClick = (msg) => {
         // Confirm claim logic (for AI gifts)
         const success = await chatStore.claimGift(chatData.value.id, msg.id, 'user')
         if (success) {
-            showToast('✅ 领取成功！已存入背包', 'success')
+            showToast('�?领取成功！已存入背包', 'success')
         }
     })
 }
@@ -1729,8 +1700,7 @@ const closePanels = () => {
 // TTS Helper - 按照气泡顺序朗读
 const ttsQueue = ref([]);
 const isSpeaking = ref(false);
-const spokenMsgIds = new Set(); // 已朗读的消息ID，避免重复朗读
-
+const spokenMsgIds = new Set(); // 已朗读的消息ID，避免重复朗�?
 // Sync with callStore for animations
 watch(isSpeaking, (val) => {
     if (callStore.status !== 'none') {
@@ -1773,7 +1743,7 @@ const speakOne = async (text, onEnd, interrupt = false) => {
 
     if (engine === 'doubao') {
         const doubao = settingsStore.voice.doubao;
-        // 如果没有配置 cookie，则尝试使用，但其实 volc 通道在某些环境下可能不需要 cookie
+        // 如果没有配置 cookie，则尝试使用，但其实 volc 通道在某些环境下可能不需�?cookie
         // 这里我们优先尝试使用代理访问火山接口
         try {
             const speaker = doubao.speaker || 'tts.other.BV008_streaming';
@@ -1802,8 +1772,7 @@ const speakOne = async (text, onEnd, interrupt = false) => {
                     console.warn('[TTS] Doubao/Volc returned no data, falling back to browser');
                 }
             } catch (jsonError) {
-                // 如果返回的是HTML而不是JSON，说明需要登录豆包
-                console.warn('[TTS] Doubao/Volc returned non-JSON response, falling back to browser');
+                // 如果返回的是HTML而不是JSON，说明需要登录豆�?                console.warn('[TTS] Doubao/Volc returned non-JSON response, falling back to browser');
             }
         } catch (e) {
             console.error('[TTS] Doubao/Volc failed:', e);
@@ -1933,7 +1902,7 @@ const getCleanSpeechText = (text) => {
     const statsTextRegex = /stats[:：]?\s*\{[\s\S]*?\}/gi;
     const statsCardRegex = /stats[:：]?\s*[\d.km\s]+心声卡片/gi;
     const drawErrorRegex = /\(绘画失败[:：].*?\)/gi;
-    const drawingRegex = /🎨\s*正在.*?(绘图|成图片).*/gi;
+    const drawingRegex = /🎨\s*正在.*?(绘图|成图�?.*/gi;
     const markdownHeadersRegex = /#+\s/g;
     const markdownFormattingRegex = /[*_~`]/g;
     const markdownLinksRegex = /\[(.*?)\]\(.*?\)/g;
@@ -1972,8 +1941,7 @@ const getCleanSpeechText = (text) => {
     // 9. Remove HTML tags
     clean = clean.replace(htmlTagsRegex, '');
 
-    // 8. Remove content in parentheses (CN/EN) - e.g. (laughs), （笑）
-    // Using non-greedy match for content inside
+    // 8. Remove content in parentheses (CN/EN) - e.g. (laughs), （笑�?    // Using non-greedy match for content inside
     clean = clean.replace(parenthesesRegex, '');
 
     // 9. Final Clean up
@@ -1999,12 +1967,12 @@ const effectTypes = [
     { id: 'bamboo', name: '🎋 听竹', color: '120, 160, 120', type: 'sway_fall' },
     { id: 'sakura', name: '🌸 落樱', color: '255, 200, 210', type: 'sway_fall' },
     { id: 'snow', name: '❄️ 寒雪', color: '220, 220, 230', type: 'sway_fall' },
-    { id: 'rain', name: '🌧️ 潇潇夜雨', color: '150, 180, 210', type: 'rain' },
-    { id: 'storm', name: '⚡ 深夜惊雷', color: '180, 200, 220', type: 'rain_storm' },
+    { id: 'rain', name: '🌧�?潇潇夜雨', color: '150, 180, 210', type: 'rain' },
+    { id: 'storm', name: '�?深夜惊雷', color: '180, 200, 220', type: 'rain_storm' },
     { id: 'fireworks', name: '🎆 线香花火', color: '255, 215, 0', type: 'burst' },
     { id: 'meteor', name: '🌠 星陨', color: '255, 255, 255', type: 'meteor' },
     { id: 'embers', name: '🔥 余烬', color: '255, 100, 50', type: 'float_up_fade' },
-    { id: 'gold', name: '✨ 流金', color: '212, 175, 55', type: 'flow_up' },
+    { id: 'gold', name: '�?流金', color: '212, 175, 55', type: 'flow_up' },
     { id: 'firefly', name: '🦋 流萤', color: '160, 255, 160', type: 'wander' }
 ];
 const currentEffect = ref(effectTypes[8]);
@@ -2045,14 +2013,14 @@ const parseInnerVoice = (text) => {
             if (target["心声"]) {
                 const inner = target["心声"]
                 return {
-                    clothes: getString(target["着装"] || target.outfit || inner.着装),
+                    clothes: getString(target["着�?] || target.outfit || inner.着�?,
                     scene: getString(target["环境"] || target.scene || inner.环境),
                     mind: getString(inner.想法 || inner.心情 || inner.content || inner.thought),
                     action: getString(inner.行为 || target["行为"] || target.action)
                 }
             }
             return {
-                clothes: getString(target["着装"] || target.clothes || target.outfit),
+                clothes: getString(target["着�?] || target.clothes || target.outfit),
                 scene: getString(target["环境"] || target.scene || target.environment),
                 mind: getString(target["心声"] || target.mind || target.thought || target.thoughts),
                 action: getString(target["行为"] || target.action || target.behavior)
@@ -2291,14 +2259,14 @@ const formatAncientTime = (timestamp) => {
     const isAncient = /([0-1][0-9][0-9][0-9])|乾隆|康熙|宣统|庆丰|大清/.test(chatData.value.virtualTime)
     if (!isAncient) return timeStr
 
-    const shichenList = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
+    const shichenList = ['�?, '�?, '�?, '�?, '�?, '�?, '�?, '�?, '�?, '�?, '�?, '�?]
     let scIdx = Math.floor(((hours + 1) % 24) / 2)
     const shichen = shichenList[scIdx]
 
     let minsIntoSc = ((hours % 2 === 0 ? 1 : 0) * 60 + minutes + 60) % 120
     let ke = Math.floor(minsIntoSc / 15) + 1
-    const keChinese = ['', '一', '二', '三', '四', '五', '六', '七', '八']
-    return `${shichen}时${keChinese[ke]}刻`
+    const keChinese = ['', '一', '�?, '�?, '�?, '�?, '�?, '�?, '�?]
+    return `${shichen}�?{keChinese[ke]}刻`
 }
 
 // [Deleted formatTimelineTime and handleVoiceClick - Moved to Component/Refactored]
@@ -2356,7 +2324,7 @@ const rejectPayment = () => {
         const typeStr = (msg.type === 'transfer' || msg.content.includes('转账')) ? '转账' : '红包'
         chatStore.addMessage(chat.id, {
             role: 'system',
-            content: `你拒收了${senderName}的${typeStr}`
+            content: `你拒收了${senderName}�?{typeStr}`
         })
         chatStore.saveChats()
     }
@@ -2377,7 +2345,7 @@ const openRedPacket = async () => {
             showResult.value = true
             resultAmount.value = result.item.amount
         } else if (result && result.empty) {
-            showToast('手慢了，红包派完了', 'info')
+            showToast('手慢了，红包派完�?, 'info')
             showResult.value = true
         } else {
             showToast('领取失败', 'error')
@@ -2407,8 +2375,7 @@ const handleVoiceClick = ({ msg, showTranscript }) => {
 
     // 2. Handle TTS based on transcript visibility
     if (showTranscript) {
-        // 展开时开始朗读
-        msg.isPlaying = true
+        // 展开时开始朗�?        msg.isPlaying = true
         const duration = (msg.duration || Math.ceil(ensureString(msg.content).length / 3) || 1) * 1000
 
         if (msg.role === 'ai') {
@@ -2433,8 +2400,7 @@ const handleVoiceClick = ({ msg, showTranscript }) => {
             showToast('暂不支持播放用户语音', 'info')
         }
     } else {
-        // 关闭时停止朗读
-        msg.isPlaying = false
+        // 关闭时停止朗�?        msg.isPlaying = false
         // 取消当前的TTS播放
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel()
@@ -2501,7 +2467,7 @@ const getImageSrc = (msg) => {
     // 3. Direct URL (including blob:)
     if (clean.startsWith('http') || clean.startsWith('blob:')) return clean
 
-    // 4. Extraction from tag [图片:URL] or [表情包:名称]
+    // 4. Extraction from tag [图片:URL] or [表情�?名称]
     const match = clean.match(/\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：](.*?)\]/i)
     if (match) {
         const content = match[1].trim()
@@ -2547,8 +2513,8 @@ const formatMessageContent = (msg) => {
         .replace(/\[CALL_START\][\s\S]*?\[CALL_END\]/gi, '') // Remove Call Blocks
         .replace(/\[CALL_START\]|\[CALL_END\]/gi, '') // Remove Stray Tags
         .replace(/\[(?:UPDATE_)?BIO:[^\]]+\]/gi, '') // Remove BIO Updates
-        .replace(/\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi, '') // Remove Moment Tags
-        .replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '') // Remove Music Tags
+        .replace(/\[MOMENT_SHARE:[^\]]+\]|\[分享朋友�?[^\]]+\]/gi, '') // Remove Moment Tags
+        .replace(/\[一起听�?[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '') // Remove Music Tags
         .replace(/\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi, '') // Remove Payment Logic Tags
         .replace(/\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi, '') // Remove Basic Call Triggers
         .replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
@@ -2584,7 +2550,7 @@ const formatMessageContent = (msg) => {
 
         const normalize = (s) => (s || '')
             .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-            .replace(/[。.，,！!？?\-\s\(\)（）]/g, '')
+            .replace(/[�?�?�?�?\-\s\(\)（）]/g, '')
             .toLowerCase()
             .trim();
 
@@ -2800,7 +2766,7 @@ const handleMenuAction = (action) => {
         case 'recall':
             if (idx !== -1) {
                 // Replace with system message
-                const senderName = msgs.value[idx].role === 'user' ? '你' : (chatData.value.name || '对方')
+                const senderName = msgs.value[idx].role === 'user' ? '�? : (chatData.value.name || '对方')
                 const recallMsg = {
                     ...msgs.value[idx],
                     type: 'system',
@@ -2836,7 +2802,7 @@ const showEmojiPicker = ref(false);
 
 
 const emojiList = [
-    '😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆', '😉', '😊', '😋', '😎', '😍', '😘', '🥰', '😗', '😙', '😚', '🙂', '🤗', '🤩', '🤔', '🤨', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '😌', '😛', '😜', '😝', '🤤', '😒', '😓', '😔', '😕', '🙃', '🤑', '😲', '☹️', '🙁', '😖', '😞', '😟', '😤', '😢', '😭', '😦', '😧', '​​​​​​😨', '😩', '🤯', '😬', '​​​​​​😰', '😱', '🥵', '🥶', '😳', '🤪', '😵', '😡', '😠', '🤬', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '😇', '🤠', '🤡', '🥳', '🥴', '🥺', '🤥', '🤫', '🤭', '🧐', '🤓'
+    '😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆', '😉', '😊', '😋', '😎', '😍', '😘', '🥰', '😗', '😙', '😚', '🙂', '🤗', '🤩', '🤔', '🤨', '😐', '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐', '😯', '😪', '😫', '😴', '😌', '😛', '😜', '😝', '🤤', '😒', '😓', '😔', '😕', '🙃', '🤑', '😲', '☹️', '🙁', '😖', '😞', '😟', '😤', '😢', '😭', '😦', '😧', '​​​​​​�?, '😩', '🤯', '😬', '​​​​​​�?, '😱', '🥵', '🥶', '😳', '🤪', '😵', '😡', '😠', '🤬', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '😇', '🤠', '🤡', '🥳', '🥴', '🥺', '🤥', '🤫', '🤭', '🧐', '🤓'
 ];
 
 const handleEmojiSelect = (emoji) => {
@@ -2848,7 +2814,7 @@ const handleStickerSelect = (sticker) => {
     chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'sticker',
-        content: `[表情包: ${sticker.name || '表情'}]`,
+        content: `[表情�? ${sticker.name || '表情'}]`,
         image: sticker.url
     });
     showEmojiPicker.value = false;
@@ -2928,7 +2894,7 @@ const handleClaimConfirm = (data) => {
         ownerId: fromCharId,
         ownerName: charName,
         amount: parseFloat(amount) || 0,
-        remark: cardName || '亲属卡',
+        remark: cardName || '亲属�?,
         theme: theme || 'pink',
         number: number
     })
@@ -2959,1656 +2925,4 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
     const charName = chatStore.chats[fromCharId]?.name || '亲属'
     claimModalRef.value?.open({ uuid, amount, note, fromCharId }, `${charName}的亲属卡`)
 }
-</script>
 
-<template>
-    <div v-if="!chatData" class="w-full h-full flex items-center justify-center bg-gray-100">
-        <div class="text-center">
-            <i class="fa-solid fa-spinner fa-spin text-4xl text-gray-400 mb-4"></i>
-            <p class="text-gray-500">加载中...</p>
-        </div>
-    </div>
-
-    <div v-else class="chat-window w-full h-full flex flex-col overflow-hidden relative"
-        :style="{ backgroundColor: chatData?.bgTheme === 'dark' ? '#000000' : 'transparent' }">
-        <!-- Global Toast Notifier -->
-        <Transition name="fade">
-            <div v-if="toastVisible"
-                class="absolute top-16 left-1/2 transform -translate-x-1/2 z-[200] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 min-w-[200px] justify-center backdrop-blur-md"
-                :class="{
-                    'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 text-white': toastType === 'info',
-                    'bg-gradient-to-r from-green-500/90 to-emerald-600/90 text-white': toastType === 'success',
-                    'bg-gradient-to-r from-red-500/90 to-pink-600/90 text-white': toastType === 'error'
-                }">
-                <i v-if="toastType === 'info'" class="fa-solid fa-circle-info italic"></i>
-                <i v-if="toastType === 'success'" class="fa-solid fa-circle-check"></i>
-                <i v-if="toastType === 'error'" class="fa-solid fa-circle-exclamation"></i>
-                <span class="text-xs font-medium tracking-wide">{{ toastMessage }}</span>
-            </div>
-        </Transition>
-
-        <!-- Main Chat Content (hidden when settings is open) -->
-        <div v-if="!showSettings" class="flex flex-col h-full">
-            <!-- Combined Background Layer -->
-            <div class="absolute inset-0 bg-cover bg-center z-[-1] transition-all duration-300 pointer-events-none"
-                :style="computedBgStyle"></div>
-
-            <!-- Header -->
-            <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500 backdrop-blur-md"
-                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-blue-300/40 border-blue-300/20'"
-                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.4)', borderColor: 'rgba(147, 197, 253, 0.2)' } : {}">
-                <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
-                    @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
-                    <i class="fa-solid fa-chevron-left text-black text-lg"></i>
-                </div>
-                <div class="flex-1 flex flex-col items-center justify-center z-10 overflow-hidden cursor-pointer mx-[70px] h-full"
-                    @click="openStatusEditor">
-                    <div class="w-full text-center font-bold text-[16px] truncate text-black leading-tight px-4">
-                        {{ chatData?.remark || chatData?.name }}
-                    </div>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-
-
-                        <!-- Call Status or Other Statuses -->
-                        <div v-if="callStore.status !== 'none'" class="flex items-center gap-1.5">
-                            <div class="w-1.5 h-1.5 rounded-full animate-pulse"
-                                :class="callStore.status === 'ended' ? 'bg-gray-400' : 'bg-[#00df6c]'"></div>
-                            <span class="text-[10px] truncate max-w-[150px] font-medium"
-                                :class="callStore.status === 'ended' ? 'text-gray-400' : 'text-green-600'">
-                                {{
-                                    callStore.status === 'dialing' ? '正在呼叫...' :
-                                        callStore.status === 'active' ? '正在通话...' :
-                                            callStore.status === 'ended' ? '通话结束' :
-                                                '正在通话'
-                                }}
-                            </span>
-                        </div>
-                        <template v-else>
-                            <div class="w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,223,108,0.5)]"
-                                v-if="!chatData?.isGroup" :class="chatData?.isOnline ? 'bg-[#00df6c]' : 'bg-gray-400'">
-                            </div>
-                            <span class="text-[10px] text-gray-500 truncate max-w-[170px] font-medium">
-                                <template v-if="chatData?.isGroup">
-                                    {{ (chatData?.groupProfile?.groupNo || '群聊') }} · {{ (chatData?.participants?.length
-                                        || 0) }}人
-                                </template>
-                                <template v-else>
-                                    {{ chatData?.statusText || '在线' }}
-                                </template>
-                            </span>
-                        </template>
-                    </div>
-                </div>
-                <div class="absolute right-2 flex items-center gap-1.5 text-black z-20">
-                    <!-- Auto TTS Button -->
-                    <div class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
-                        :class="{ 'opacity-30': !chatData?.autoTTS }" @click="toggleAutoRead"
-                        :title="chatData?.autoTTS ? (chatData?.autoRead ? '关闭自动朗读' : '开启自动朗读') : 'TTS功能未启用'">
-                        <i class="fa-solid"
-                            :class="chatData?.autoRead ? 'fa-volume-high text-green-600' : 'fa-volume-xmark text-gray-400'"></i>
-                    </div>
-
-                    <!-- Inner Voice / Group Announcement -->
-                    <div v-if="!chatData?.isGroup"
-                        class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
-                        @click="openInnerVoiceModal" title="心声">
-                        <i class="fa-solid fa-heart transition-all duration-300 text-pink-500 animate-heartbeat"></i>
-                    </div>
-                    <div v-else
-                        class="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5 relative"
-                        @click="openGroupSettings(true)" title="群公告">
-                        <i class="fa-solid fa-bullhorn text-amber-500"></i>
-                    </div>
-
-
-                    <!-- Activity Rank -->
-                    <div v-if="chatData?.isGroup"
-                        class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
-                        @click="handleShowRank(chatData.id)" title="群排行榜">
-                        <i class="fa-solid fa-ranking-star text-orange-400"></i>
-                    </div>
-
-                    <!-- World Loop Entry (GM Mode) -->
-                    <div v-if="loopData"
-                        class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 group"
-                        @click="openGMMenu">
-                        <i
-                            class="fa-solid fa-wand-magic-sparkles text-purple-600 transition-transform group-hover:rotate-12"></i>
-                    </div>
-
-                    <!-- Settings -->
-                    <div class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
-                        @click="openSettings">
-                        <i class="fa-solid fa-gear" :class="loopData ? 'text-purple-400' : 'text-gray-500'"></i>
-                    </div>
-
-
-                </div>
-            </div>
-
-
-            <!-- Messages Area -->
-
-            <!-- Messages Area -->
-            <div class="flex-1 overflow-y-auto px-4 pt-4 pb-10 flex flex-col gap-4 relative z-10" ref="msgContainer"
-                @click="closePanels">
-                <!-- Message Content Area -->
-
-                <!-- Friend Request Card -->
-                <div v-if="showFriendRequest" class="w-full flex justify-center py-4 z-10">
-                    <div
-                        class="bg-blue-50/80 backdrop-blur-md border border-white/40 p-5 w-[90%] max-w-[340px] rounded-xl shadow-lg">
-                        <div class="flex items-center gap-4 mb-4">
-                            <img :src="chatData.avatar"
-                                class="w-14 h-14 rounded-lg bg-gray-200 object-cover border border-white/50 shadow-sm">
-                            <div>
-                                <div class="font-bold text-lg text-gray-800">{{ chatData.name }}</div>
-                                <div class="text-xs text-gray-500 mt-1">请求添加你为朋友</div>
-                            </div>
-                        </div>
-                        <div class="text-sm text-gray-600 mb-6 bg-white/40 p-3 rounded-lg border border-white/20">
-                            我是{{ chatData.name }}
-                        </div>
-                        <div class="flex gap-3">
-                            <button
-                                class="flex-1 bg-white/60 hover:bg-white/80 text-gray-600 text-sm py-2.5 rounded-lg font-medium transition-colors border border-white/40"
-                                @click="handleIgnoreFriend">忽略</button>
-                            <button
-                                class="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm py-2.5 rounded-lg font-medium shadow-md active:scale-95 transition-transform"
-                                @click="handleAcceptFriend">同意</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Load More (Pagination) -->
-                <div v-if="hasMoreMessages" class="w-full flex justify-center py-3 z-10 animate-fade-in">
-                    <button @click="loadMoreMessages"
-                        class="group px-4 py-2 bg-gradient-to-r from-blue-500/10 to-purple-500/10 hover:from-blue-500/20 hover:to-purple-500/20 border border-blue-300/30 rounded-xl transition-all shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2">
-                        <i
-                            class="fa-solid fa-clock-rotate-left text-blue-500 group-hover:rotate-[-15deg] transition-transform"></i>
-                        <span
-                            class="text-sm font-medium bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                            加载更早的记录
-                        </span>
-                        <span class="text-xs text-gray-500">({{ hiddenMessageCount }}条未显示)</span>
-                    </button>
-                </div>
-
-                <div v-if="msgs.length === 0 && !showFriendRequest"
-                    class="text-center text-gray-400 text-xs py-4 flex flex-col items-center gap-2 z-10">
-                    <span>现在可以开始聊天了</span>
-                    <span class="text-[10px] text-gray-300">系统加密传输</span>
-                </div>
-
-
-                <!-- Message List -->
-                <ChatMessageItem v-for="(msg, index) in filteredDisplayMsgs" :key="msg.id" :id="'msg-' + msg.id"
-                    :msg="msg" :prevMsg="filteredDisplayMsgs[index - 1]" :chatData="chatData"
-                    :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
-                    :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
-                    @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
-                    @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
-                    @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
-
-
-                <!-- Typing Indicator -->
-                <div v-if="chatStore.isTyping" class="flex gap-2 w-full z-10 mb-2">
-                    <img :src="chatData?.avatar" class="w-10 h-10 rounded shadow-sm bg-white object-cover">
-                    <div class="chat-bubble-left px-4 py-3 rounded-lg flex items-center gap-1">
-                        <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                        <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
-                    </div>
-                </div>
-            </div>
-
-
-
-            <!-- Input Area (Extracted) -->
-            <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef" :currentQuote="currentQuote"
-                :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
-                :searchEnabled="chatData?.searchEnabled" :show-scroll-to-bottom="showScrollToBottom"
-                @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
-                @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
-                @toggle-search="() => chatStore.toggleSearch(chatData?.id)" @regenerate="regenerateLastMessage"
-                @cancel-quote="cancelQuote" @scroll-to-bottom="scrollToBottom(false)" />
-
-            <!-- Multi-select Action Bar (Bottom Overlay) -->
-            <div v-if="isMultiSelectMode"
-                class="h-[60px] bg-[#f7f7f7] border-t border-[#dcdcdc] flex items-center justify-between px-8 relative z-30 animate-fade-in-up">
-                <button @click="exitMultiSelectMode"
-                    class="flex flex-col items-center justify-center text-gray-600 hover:text-gray-800 transition-colors">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                    <span class="text-[10px] mt-0.5">取消</span>
-                </button>
-
-                <div class="flex gap-10">
-                    <button @click="selectToBottom"
-                        class="flex flex-col items-center justify-center text-gray-600 hover:text-[#07c160] transition-colors"
-                        :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
-                        <i class="fa-solid fa-list-check text-lg"></i>
-                        <span class="text-[10px] mt-0.5">勾选到这</span>
-                    </button>
-                    <button @click="favoriteSelectedMessages"
-                        class="flex flex-col items-center justify-center text-gray-600 hover:text-[#07c160] transition-colors"
-                        :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
-                        <i class="fa-regular fa-star text-lg"></i>
-                        <span class="text-[10px] mt-0.5">收藏</span>
-                    </button>
-                    <button @click="deleteSelectedMessages"
-                        class="flex flex-col items-center justify-center text-red-500 hover:text-red-600 transition-colors"
-                        :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
-                        <i class="fa-regular fa-trash-can text-lg"></i>
-                        <span class="text-[10px] mt-0.5">删除</span>
-                    </button>
-                </div>
-                <div class="w-8"></div> <!-- Spacer -->
-            </div>
-
-            <!-- Action Panel (Drawer) -->
-            <ChatActionPanel v-if="showActionPanel" :show="showActionPanel" :showCalls="!chatData?.isGroup"
-                :showVote="!!chatData?.isGroup" class="h-[200px] border-t border-[#dcdcdc] bg-[#f7f7f7] relative z-20"
-                @action="handlePanelAction" />
-
-            <!-- Emoji Picker -->
-            <EmojiPicker v-if="showEmojiPicker" @select-emoji="handleEmojiSelect" @select-sticker="handleStickerSelect"
-                class="relative z-30 shadow-2xl" />
-
-            <!-- Call Visualizer (Global Overlay) -->
-            <CallVisualizer v-if="callStore.status !== 'none'" />
-
-            <!-- Media Previews -->
-            <ImagePreview v-if="previewImage" :src="previewImage" @close="previewImage = null" />
-            <VideoPreview v-if="previewVideo" :src="previewVideo" @close="previewVideo = null" />
-
-            <!-- Hidden Input -->
-            <input type="file" ref="imgUploadInput" class="hidden" accept="image/*" @change="handleImgUpload">
-
-            <!-- Mission Scheduler Modal -->
-            <MissionSchedulerModal v-if="showMissionScheduler" @close="showMissionScheduler = false" />
-            <GroupVoteModal v-if="showVoteModal" :chatId="chatData.id" @close="showVoteModal = false" />
-            <GroupRankModal :visible="showRankModal" :chatId="rankChatId" @close="showRankModal = false" />
-
-        </div><!-- End of Main Chat Content -->
-
-        <!-- Settings Overlay -->
-        <ChatDetailSettings v-if="showSettings && !loopData" :chatData="chatData" @close="showSettings = false"
-            @show-profile="handleProfileNavigation" />
-
-        <!-- World Loop Settings (Themed Full Screen) -->
-        <WorldLoopSettings v-if="showSettings && loopData" :chatData="chatData" @close="showSettings = false"
-            @show-profile="handleProfileNavigation" />
-
-
-
-        <!-- Red Packet Modal (QQ Style) -->
-        <ChatRedPacketModal :visible="showRedPacketModal" :packet="currentRedPacket" :chatData="chatData"
-            :isOpening="isOpening" :showResult="showResult" :resultAmount="resultAmount" @close="closeModals"
-            @open="openRedPacket" @reject="rejectPayment" @view-wallet="navigateToWallet" />
-
-        <!-- Transfer Modal -->
-        <ChatTransferModal :visible="showTransferModal" :packet="currentRedPacket" :chatData="chatData"
-            @close="closeModals" @confirm="confirmTransfer" @reject="rejectPayment" />
-
-        <!-- Family Card Modals -->
-        <FamilyCardActionModal v-model:visible="showFamilyCardModal" @action="handleFamilyCardAction" />
-        <FamilyCardSendModal v-model:visible="showFamilyCardSendModal" :chatId="chatData?.id" @toast="showToast" />
-        <FamilyCardApplyModal v-model:visible="showFamilyCardApplyModal" :chatId="chatData?.id" @toast="showToast" />
-
-
-
-        <!-- Family Card Claim Modal -->
-        <FamilyCardClaimModal ref="familyCardModal" @confirm="handleClaimConfirm" />
-
-        <!-- Family Card Detail Modal -->
-        <FamilyCardDetailModal ref="familyDetailModal" :userName="chatData.userName || '我'" />
-
-        <!-- Gift Detail Modal -->
-        <GiftDetailModal ref="giftDetailModal" />
-        <!-- Group Announcement Modal -->
-        <GroupAnnouncementModal ref="groupAnnouncementModal" :chatData="chatData" />
-        <!-- World Loop GM Panel -->
-        <WorldLoopGMPanel v-if="showGMMenu" :loopId="chatData?.loopId" @close="showGMMenu = false" />
-
-        <!-- World Loop Offline Overlay (Visual Novel) -->
-        <WorldLoopOfflineOverlay :isVisible="loopData?.currentMode === 'offline'" :loopData="loopData"
-            :latestMessage="latestMessage" :isTyping="isTyping" @close="worldLoopStore.toggleMode(chatData?.loopId)"
-            @open-gm="showGMMenu = true" @toggle-mode="worldLoopStore.toggleMode(chatData?.loopId)" />
-
-        <!-- Inner Voice Modal (Mindscape) -->
-        <ChatInnerVoiceCard :visible="showInnerVoiceModal" :chatId="chatData?.id" :initialMsgId="currentInnerVoiceMsgId"
-            :chatData="chatData" @close="showInnerVoiceModal = false" />
-
-        <!-- Send Money Modal (Redesigned) -->
-        <div v-if="showSendModal"
-            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div class="bg-white w-[85%] max-w-[340px] rounded-3xl overflow-hidden shadow-2xl flex flex-col"
-                @click.stop>
-                <!-- Header with Gradient -->
-                <div :class="sendType === 'redpacket'
-                    ? 'bg-gradient-to-br from-red-500 via-red-600 to-orange-600'
-                    : 'bg-gradient-to-br from-orange-400 via-yellow-500 to-orange-600'"
-                    class="h-16 relative flex items-center justify-center shrink-0">
-                    <span class="font-bold text-white text-xl tracking-wide drop-shadow-md">
-                        {{ sendType === 'redpacket' ? '发红包' : '转账' }}
-                    </span>
-                    <div class="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center cursor-pointer rounded-full hover:bg-white/20 transition-colors"
-                        @click="showSendModal = false">
-                        <i class="fa-solid fa-xmark text-white text-xl drop-shadow"></i>
-                    </div>
-
-                    <!-- Decorative Elements -->
-                    <div v-if="sendType === 'redpacket'" class="absolute inset-0 overflow-hidden pointer-events-none">
-                        <div class="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
-                        <div class="absolute -bottom-6 -left-6 w-32 h-32 bg-yellow-300/20 rounded-full blur-3xl"></div>
-                    </div>
-                </div>
-
-                <div class="p-6 flex flex-col gap-5 bg-gradient-to-b from-white to-gray-50">
-                    <!-- Recipient Info (Transfer Mode) -->
-                    <div v-if="sendType === 'transfer'" class="flex flex-col items-center gap-3 -mt-2">
-                        <div class="relative">
-                            <img :src="chatData?.avatar"
-                                class="w-16 h-16 rounded-2xl bg-gray-200 object-cover shadow-lg ring-4 ring-white">
-                            <div
-                                class="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-orange-400 to-yellow-500 rounded-full flex items-center justify-center shadow-md">
-                                <i class="fa-solid fa-coins text-white text-xs"></i>
-                            </div>
-                        </div>
-                        <div class="text-gray-700 text-sm">转账给 <span class="font-bold text-gray-900">{{ chatData?.name
-                        }}</span></div>
-                    </div>
-
-                    <!-- Red Packet Icon (Red Packet Mode) -->
-                    <div v-if="sendType === 'redpacket'" class="flex flex-col items-center gap-4 -mt-2">
-                        <div class="relative group">
-                            <!-- Mini Red Packet Preview -->
-                            <div @click="triggerCoverUpload"
-                                class="w-24 h-32 bg-[#D04035] rounded-xl flex flex-col items-center shadow-2xl transform hover:scale-105 transition-all cursor-pointer relative overflow-hidden ring-4 ring-white/20">
-                                <!-- Top Arc -->
-                                <div v-if="!(coverImageUrl || coverImage)"
-                                    class="absolute -top-10 -left-[10%] w-[120%] h-20 bg-[#E35447] rounded-[50%] z-0 border-b border-white/10 shadow-sm">
-                                </div>
-
-                                <img v-if="coverImageUrl || coverImage" :src="coverImageUrl || coverImage"
-                                    class="w-full h-full object-cover z-0">
-
-                                <div class="z-10 mt-4 flex flex-col items-center">
-                                    <div
-                                        class="w-8 h-8 rounded-full border border-yellow-200/50 flex items-center justify-center bg-white/10 mb-1">
-                                        <i class="fa-solid fa-gift text-[#FFE2B1] text-lg"></i>
-                                    </div>
-                                    <span class="text-[#FFE2B1] text-[10px] font-bold opacity-80">红包预览</span>
-                                </div>
-
-                                <div v-if="!(coverImageUrl || coverImage)"
-                                    class="absolute bottom-6 w-10 h-10 bg-[#EBC88E] rounded-full border-2 border-[#E35447] flex items-center justify-center shadow-lg">
-                                    <span class="text-[#333] font-bold text-xs">開</span>
-                                </div>
-
-                                <div
-                                    class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center z-20">
-                                    <i class="fa-solid fa-cloud-arrow-up text-white text-xl mb-2"></i>
-                                    <span class="text-[10px] text-white font-black tracking-widest">更换本地封面</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- URL Input for Cover -->
-                        <div class="w-full max-w-[240px] flex gap-2">
-                            <div
-                                class="flex-1 bg-white/50 rounded-xl px-3 py-2 border border-gray-200 flex items-center gap-2">
-                                <i class="fa-solid fa-link text-gray-400 text-xs text-nowrap"></i>
-                                <input type="text" v-model="coverImageUrl" placeholder="或输入封面图 URL..."
-                                    class="w-full bg-transparent border-none outline-none text-xs text-gray-700">
-                            </div>
-                            <button v-if="coverImageUrl" @click="applyCoverUrl"
-                                class="bg-blue-500 text-white p-2 rounded-xl active:scale-95 transition-all">
-                                <i class="fa-solid fa-check text-xs"></i>
-                            </button>
-                        </div>
-
-                        <input type="file" id="cover-upload-input" class="hidden" accept="image/*"
-                            @change="handleCoverUpload">
-                    </div>
-
-                    <!-- Red Packet Type and Count (Red Packet Mode) -->
-                    <div v-if="sendType === 'redpacket' && chatData?.isGroup" class="flex flex-col gap-4">
-                        <div class="flex bg-gray-100 p-1 rounded-xl">
-                            <button @click="packetType = 'lucky'"
-                                class="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
-                                :class="packetType === 'lucky' ? 'bg-red-500 text-white shadow-md' : 'text-gray-500'">
-                                拼手气红包
-                            </button>
-                            <button @click="packetType = 'fixed'"
-                                class="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
-                                :class="packetType === 'fixed' ? 'bg-red-500 text-white shadow-md' : 'text-gray-500'">
-                                普通红包
-                            </button>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="text-xs font-medium text-gray-500 ml-1">红包个数</label>
-                            <div class="flex items-center gap-2 bg-white rounded-xl px-4 py-3 border-2 border-gray-100">
-                                <input type="number" v-model="sendCount" min="1" max="100"
-                                    class="flex-1 bg-transparent border-none outline-none text-lg font-bold text-gray-900">
-                                <span class="text-gray-400 text-sm">个</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Amount Input -->
-                    <div class="flex flex-col gap-3">
-                        <div class="text-gray-600 font-medium text-sm ml-1">
-                            {{ sendType === 'transfer' ? '转账金额' : (!chatData?.isGroup ? '单个金额' : (packetType === 'lucky'
-                                ? '总金额'
-                                : '单个金额')) }}
-                        </div>
-                        <div class="flex items-center gap-2 border-b-2 pb-2 pt-1 transition-colors min-h-[80px]"
-                            :class="sendAmount ? (sendType === 'redpacket' ? 'border-red-500' : 'border-orange-500') : 'border-gray-300'">
-                            <span class="text-gray-900 font-bold text-4xl">¥</span>
-                            <input type="text" inputmode="decimal" v-model="sendAmount" placeholder="0.00"
-                                class="flex-1 min-w-0 bg-transparent border-none outline-none text-5xl font-bold text-gray-900 placeholder-gray-300"
-                                style="font-family: 'SF Pro Display', -apple-system, sans-serif;">
-                        </div>
-                    </div>
-
-                    <!-- Note Input -->
-                    <div class="flex flex-col gap-2">
-                        <label class="text-xs font-medium ml-1"
-                            :class="sendType === 'redpacket' ? 'text-red-600' : 'text-orange-600'">
-                            {{ sendType === 'redpacket' ? '💌 寄语' : '📝 添加备注' }}
-                        </label>
-                        <input type="text" v-model="sendNote"
-                            :placeholder="sendType === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您'"
-                            class="w-full bg-white rounded-xl px-4 py-3 border-2 border-gray-200 text-sm outline-none placeholder-gray-400 focus:border-red-400 focus:ring-4 focus:ring-red-100 transition-all">
-                    </div>
-
-                    <button @click="confirmSend"
-                        class="w-full py-4 rounded-2xl font-bold text-lg shadow-lg transition-all transform active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                        :class="sendType === 'redpacket'
-                            ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
-                            : 'bg-gradient-to-r from-orange-400 to-yellow-500 hover:from-orange-500 hover:to-yellow-600 text-white'"
-                        :disabled="!sendAmount">
-                        <i class="fa-solid mr-2" :class="sendType === 'redpacket' ? 'fa-gift' : 'fa-paper-plane'"></i>
-                        {{ sendType === 'redpacket' ? '塞钱进红包' : '确认转账' }}
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Status Edit Modal -->
-        <StatusEditModal v-model:visible="showStatusModal" :chatData="chatData" @toast="showToast" />
-
-        <!-- Dice Modal -->
-        <DiceModal :show="showDiceModal" @close="showDiceModal = false" @roll="handleDiceRoll" />
-
-        <!-- Tarot Modal -->
-        <TarotModal :show="showTarotModal" @close="showTarotModal = false" @share="handleTarotShare"
-            @share-interpretation="handleTarotInterpretationShare" />
-
-        <!-- Backpack Modal -->
-        <BackpackModal ref="backpackModal" v-if="showBackpackModal" @close="showBackpackModal = false"
-            @send-card="handleBackpackSendCard" />
-
-        <!-- Modals -->
-        <ChatEditModal v-model="showEditModal" :targetMsgId="editTargetId" />
-        <ChatHistoryModal v-model="showHistoryModal" :targetMsgId="editTargetId" />
-        <MusicPlayer />
-
-        <!-- See Image (Text to Image) Modal -->
-        <div v-if="showSeeImageModal"
-            class="fixed inset-0 bg-gradient-to-br from-gray-900/80 to-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"
-            @click="closeSeeImageModal">
-            <div class="bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200"
-                @click.stop>
-                <!-- Header -->
-                <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white">
-                    <h3 class="font-bold text-xl text-gray-800">见图</h3>
-                    <button @click="closeSeeImageModal" class="text-gray-400 hover:text-gray-600 transition-colors">
-                        <i class="fa-solid fa-xmark text-xl"></i>
-                    </button>
-                </div>
-
-                <!-- Body -->
-                <div class="p-6">
-                    <!-- Prompt Input -->
-                    <div class="mb-5">
-                        <label class="block text-sm font-medium text-gray-600 mb-3">生图提示词</label>
-                        <textarea v-model="seeImagePrompt"
-                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none resize-none text-gray-800"
-                            rows="3" placeholder="请输入你想要生成的图片描述..."></textarea>
-                    </div>
-
-                    <!-- Generate Button -->
-                    <button @click="generateSeeImage"
-                        class="w-full bg-gradient-to-r from-blue-400 to-blue-500 text-white font-medium py-3 px-4 rounded-lg hover:from-blue-500 hover:to-blue-600 transition-all mb-5 shadow-sm hover:shadow-md"
-                        :disabled="seeImageLoading">
-                        <span v-if="seeImageLoading">
-                            <i class="fa-solid fa-spinner fa-spin mr-2"></i>生成中...
-                        </span>
-                        <span v-else>
-                            <i class="fa-solid fa-magic mr-2"></i>生成图片
-                        </span>
-                    </button>
-
-                    <!-- Image Preview (if generated) -->
-                    <div v-if="seeImageResult" class="mb-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <label class="block text-sm font-medium text-gray-600">预览</label>
-                            <div class="text-xs text-gray-400">
-                                {{ currentHistoryIndex + 1 }}/{{ seeImageHistory.length }}
-                            </div>
-                        </div>
-                        <div class="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white p-2"
-                            @touchstart="touchStart" @touchmove="touchMove" @touchend="touchEnd">
-                            <img :src="seeImageResult" class="w-full h-auto rounded">
-                        </div>
-                    </div>
-
-                    <!-- Image History Navigation -->
-                    <div v-if="seeImageHistory.length > 0" class="mb-5">
-                        <div class="flex items-center justify-center gap-3">
-                            <button @click="prevHistoryImage"
-                                class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors"
-                                :disabled="currentHistoryIndex <= 0">
-                                <i class="fa-solid fa-chevron-left"></i>
-                            </button>
-                            <button @click="regenerateSeeImage"
-                                class="flex-1 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg hover:from-gray-200 hover:to-gray-300 transition-all shadow-sm"
-                                :disabled="seeImageLoading">
-                                <i class="fa-solid fa-rotate-right mr-2"></i>重新生成
-                            </button>
-                            <button @click="nextHistoryImage"
-                                class="w-10 h-10 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center hover:bg-gray-300 transition-colors"
-                                :disabled="currentHistoryIndex >= seeImageHistory.length - 1">
-                                <i class="fa-solid fa-chevron-right"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Send Button -->
-                    <button @click="sendSeeImage"
-                        class="w-full bg-gradient-to-r from-green-400 to-green-500 text-white font-medium py-3 px-4 rounded-lg hover:from-green-500 hover:to-green-600 transition-all shadow-sm hover:shadow-md"
-                        :disabled="!seeImageResult || seeImageLoading">
-                        <i class="fa-solid fa-paper-plane mr-2"></i>发送到聊天
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Context Menu -->
-        <div v-if="showContextMenu" class="fixed inset-0 z-[100] flex items-center justify-center" @click="closeContextMenu"
-            @touchstart.stop="closeContextMenu">
-            <!-- 半透明背景遮罩 -->
-            <div class="absolute inset-0 bg-black/20"></div>
-            <!-- 居中显示的菜单 -->
-            <div class="relative bg-[#2b2b2b] text-white rounded-xl shadow-2xl py-2 w-[160px] border border-[#333] transition-opacity duration-200"
-                @click.stop @touchstart.stop>
-                <div class="flex flex-col select-none">
-                    <!-- Debug click -->
-                    <div class="ctx-item" @click.stop="handleMenuAction('edit')"
-                        @touchstart.stop.prevent="handleMenuAction('edit')"><i class="fa-solid fa-pen w-5"></i> 编辑</div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('history')"
-                        @touchstart.stop.prevent="handleMenuAction('history')"><i
-                            class="fa-solid fa-clock-rotate-left w-5"></i>
-                        编辑历史</div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('copy')"
-                        @touchstart.stop.prevent="handleMenuAction('copy')"><i class="fa-regular fa-copy w-5"></i> 复制
-                    </div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('quote')"
-                        @touchstart.stop.prevent="handleMenuAction('quote')"><i class="fa-solid fa-quote-left w-5"></i>
-                        引用</div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('recall')"
-                        @touchstart.stop.prevent="handleMenuAction('recall')"><i
-                            class="fa-solid fa-rotate-left w-5"></i> 撤回
-                    </div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('fav')"
-                        @touchstart.stop.prevent="handleMenuAction('fav')"><i class="fa-regular fa-star w-5"></i> 收藏
-                    </div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('listen')"
-                        @touchstart.stop.prevent="handleMenuAction('listen')"><i
-                            class="fa-solid fa-volume-high w-5"></i> 听音
-                    </div>
-                    <div class="ctx-divider my-1 border-t border-white/10"></div>
-                    <div class="ctx-item" @click.stop="handleMenuAction('multi')"
-                        @touchstart.stop.prevent="handleMenuAction('multi')"><i class="fa-solid fa-list-check w-5"></i>
-                        多选</div>
-                    <div class="ctx-item text-red-400" @click.stop="handleMenuAction('delete')"
-                        @touchstart.stop.prevent="handleMenuAction('delete')"><i class="fa-solid fa-trash w-5"></i> 删除
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</template>
-
-
-
-<style scoped>
-.ctx-item {
-    padding: 14px 20px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    font-size: 15px;
-    transition: background 0.15s;
-    color: #e0e0e0;
-}
-
-.ctx-item:active,
-.ctx-item:hover {
-    background: rgba(255, 255, 255, 0.15);
-}
-
-.ctx-item i {
-    text-align: center;
-    margin-right: 10px;
-    opacity: 0.9;
-}
-
-@keyframes spin-slow {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.animate-spin-slow {
-    animation: spin-slow 0.8s linear infinite;
-}
-
-.animate-fade-in {
-    animation: fadeIn 0.2s ease-out;
-}
-
-.animate-scale-in {
-    animation: scaleIn 0.3s ease-out cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-/* Markdown Styles in Chat Bubble */
-.chat-bubble-left :deep(p),
-.chat-bubble-right :deep(p) {
-    margin: 0;
-    line-height: 1.6;
-}
-
-.chat-bubble-left :deep(p + p),
-.chat-bubble-right :deep(p + p) {
-    margin-top: 0.5em;
-}
-
-.chat-bubble-left :deep(ul),
-.chat-bubble-right :deep(ul) {
-    list-style-type: disc;
-    padding-left: 1.5em;
-    margin: 0.5em 0;
-}
-
-.chat-bubble-left :deep(ol),
-.chat-bubble-right :deep(ol) {
-    list-style-type: decimal;
-    padding-left: 1.5em;
-    margin: 0.5em 0;
-}
-
-.chat-bubble-left :deep(li),
-.chat-bubble-right :deep(li) {
-    margin: 0.2em 0;
-}
-
-.chat-bubble-left :deep(code),
-.chat-bubble-right :deep(code) {
-    background: rgba(0, 0, 0, 0.1);
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 0.9em;
-}
-
-.chat-bubble-left :deep(pre),
-.chat-bubble-right :deep(pre) {
-    background: rgba(0, 0, 0, 0.05);
-    padding: 8px;
-    border-radius: 6px;
-    overflow-x: auto;
-    margin: 0.5em 0;
-}
-
-.chat-bubble-left :deep(pre code),
-.chat-bubble-right :deep(pre code) {
-    background: transparent;
-    padding: 0;
-}
-
-.chat-bubble-left :deep(a),
-.chat-bubble-right :deep(a) {
-    color: #0066cc;
-    text-decoration: underline;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
-}
-
-@keyframes scaleIn {
-    from {
-        transform: scale(0.8);
-        opacity: 0;
-    }
-
-    to {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-@keyframes heartbeat {
-    0% {
-        transform: scale(1);
-    }
-
-    14% {
-        transform: scale(1.1);
-    }
-
-    28% {
-        transform: scale(1);
-    }
-
-    42% {
-        transform: scale(1.1);
-    }
-
-    70% {
-        transform: scale(1);
-    }
-}
-
-.animate-heartbeat {
-    animation: heartbeat 1.5s infinite ease-in-out;
-}
-
-
-/* Inner Voice Card Styles */
-.inner-voice-card {
-    background: linear-gradient(135deg, rgba(30, 30, 30, 0.95), rgba(10, 10, 10, 0.98));
-    border: 1px solid rgba(255, 215, 0, 0.15);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(0, 0, 0, 0.5);
-    border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 6px;
-    width: 260px;
-    /* Constrained width */
-}
-
-/* --- Mindscape (Inner Voice) Modal CSS --- */
-
-.voice-modal-content {
-    width: 90%;
-    max-width: 380px;
-    max-height: 85vh;
-    height: auto;
-    /* Dark Radial Gradient + Noise Texture Overlay */
-    background: radial-gradient(circle at 50% 0%, #2a2520 0%, #0a0a0c 85%);
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.06'/%3E%3C/svg%3E"),
-        radial-gradient(circle at 50% 0%, #2a2520 0%, #0a0a0c 85%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 40px 80px rgba(0, 0, 0, 0.95), inset 0 0 40px rgba(0, 0, 0, 0.6);
-    border-radius: 20px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-}
-
-#voice-effect-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 0;
-    mix-blend-mode: screen;
-    /* Crucial for the glowing effect */
-}
-
-.voice-modal-header {
-    padding: 20px 24px;
-    z-index: 10;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(10, 10, 12, 0.8);
-}
-
-.header-title {
-    font-family: serif;
-    /* Fallback since we might not have 'Cormorant Garamond' */
-    font-size: 16px;
-    letter-spacing: 6px;
-    color: #e6dcc0;
-    text-transform: uppercase;
-}
-
-.voice-modal-header-btn {
-    background: transparent;
-    border: none;
-    color: #8c7e63;
-    font-size: 16px;
-    cursor: pointer;
-    transition: 0.3s;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.voice-modal-header-btn:hover {
-    color: #e6dcc0;
-    text-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
-}
-
-.voice-modal-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-.voice-header-group {
-    text-align: center;
-    margin-bottom: 5px;
-}
-
-.voice-char-avatar-box {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    margin: 0 auto 12px;
-    padding: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    outline: 1px solid rgba(212, 175, 55, 0.4);
-    outline-offset: 4px;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
-}
-
-.voice-char-name {
-    font-size: 24px;
-    color: #e6dcc0;
-    letter-spacing: 3px;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-    font-family: serif;
-}
-
-.voice-char-meta {
-    font-size: 12px;
-    color: #8c7e63;
-    letter-spacing: 2px;
-    margin-top: 6px;
-    font-style: italic;
-}
-
-.voice-card-inner {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
-    padding: 24px 20px;
-    text-align: center;
-    position: relative;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-}
-
-.voice-card-inner::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 1px;
-    height: 20px;
-    background: linear-gradient(to bottom, #d4af37, transparent);
-}
-
-.voice-label-center {
-    font-size: 11px;
-    color: #8c7e63;
-    letter-spacing: 4px;
-    margin-bottom: 12px;
-    display: block;
-}
-
-.voice-text-inner {
-    font-size: 15px;
-    color: #dcdcdc;
-    line-height: 1.9;
-    font-weight: 300;
-}
-
-.voice-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-}
-
-.voice-info-block {
-    position: relative;
-    padding-left: 10px;
-    border-left: 2px solid rgba(255, 255, 255, 0.05);
-}
-
-.voice-label {
-    font-size: 10px;
-    color: #8c7e63;
-    margin-bottom: 6px;
-    letter-spacing: 2px;
-}
-
-.voice-text-content {
-    font-size: 13px;
-    color: #a0a0a0;
-    line-height: 1.6;
-    text-align: justify;
-    font-weight: 300;
-}
-
-.voice-modal-footer {
-    padding: 16px 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(10, 10, 12, 0.8);
-    z-index: 10;
-    flex-shrink: 0;
-}
-
-.footer-count {
-    font-size: 10px;
-    color: #555;
-    letter-spacing: 2px;
-}
-
-.effect-badge {
-    font-size: 10px;
-    color: #8c7e63;
-    opacity: 0.8;
-    letter-spacing: 1px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 4px 8px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.3);
-    cursor: pointer;
-}
-
-.effect-badge:hover {
-    color: #e6dcc0;
-    border-color: #8c7e63;
-}
-
-
-.inner-voice-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.3), transparent);
-}
-
-.iv-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-}
-
-.iv-item {
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 4px;
-    padding: 4px 6px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.iv-label {
-    color: #888;
-    margin-bottom: 2px;
-    font-size: 10px;
-}
-
-.iv-value {
-    color: #e0e0e0;
-    font-family: 'Songti SC', serif;
-}
-
-/* Chat Bubbles - Black Gold for AI */
-.chat-bubble-left {
-    background: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
-    color: #f0e6d2 !important;
-    /* Champagne Gold Text */
-    border: 1px solid rgba(240, 230, 210, 0.3);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    font-family: "SimSun", "Songti SC", "Noto Serif SC", serif;
-}
-
-.chat-bubble-left::after {
-    border-color: transparent #1a1a1a transparent transparent;
-}
-
-/* Chat Bubbles - Dark Gray for User (Right) */
-.chat-bubble-right {
-    background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
-    color: #f3f4f6;
-    /* Off-white text */
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    font-family: "SimSun", "Songti SC", "Noto Serif SC", serif;
-}
-
-/* Pay Card Styles */
-.pay-card {
-    width: 245px;
-    background-color: white;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    user-select: none;
-    transition: opacity 0.2s;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.pay-card:active {
-    opacity: 0.9;
-}
-
-.pay-card.received,
-.pay-card.rejected {
-    opacity: 0.8;
-}
-
-/* Specific background styles handled in template or tailored here if possible, 
-   but since dynamic classes are used (bg-[#...]), we focus on layout. */
-
-.pay-top {
-    display: flex;
-    align-items: center;
-    padding: 16px 12px;
-    gap: 12px;
-}
-
-.pay-icon {
-    width: 38px;
-    height: 38px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 20px;
-    color: white;
-    /* The background color is set dynamically in the template */
-    border-radius: 50%;
-    /* Slightly lighter background for the icon circle to simulate the visual */
-    background-color: rgba(255, 255, 255, 0.2) !important;
-}
-
-.pay-info {
-    flex: 1;
-    color: white;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    overflow: hidden;
-}
-
-.pay-title {
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 1.2;
-    margin-bottom: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.pay-desc {
-    font-size: 12px;
-    opacity: 0.85;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.pay-bottom {
-    background-color: white;
-    padding: 4px 12px;
-    font-size: 11px;
-    color: #999;
-    border-top: 1px solid #f0f0f0;
-}
-
-/* Voice Message Styles */
-.voice-container {
-    display: flex;
-    align-items: center;
-}
-
-.voice-bubble {
-    min-height: 40px;
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-    min-width: 80px;
-}
-
-.voice-icon {
-    font-size: 16px;
-}
-
-.voice-duration {
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.voice-history-preview {
-    font-size: 12px;
-    color: #aaa;
-    line-height: 1.4;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-/* Mindscape Modal Styles */
-.voice-modal-content {
-    width: 90%;
-    max-width: 380px;
-    max-height: 85vh;
-    height: auto;
-    background: radial-gradient(circle at 50% 0%, #2a2520 0%, #0a0a0c 85%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 40px 80px rgba(0, 0, 0, 0.95), inset 0 0 40px rgba(0, 0, 0, 0.6);
-    border-radius: 20px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-    font-family: 'Noto Serif SC', serif;
-}
-
-.voice-modal-header {
-    padding: 20px 24px;
-    z-index: 10;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(10, 10, 12, 0.8);
-}
-
-.header-title {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 16px;
-    letter-spacing: 6px;
-    color: #e6dcc0;
-    text-transform: uppercase;
-}
-
-.voice-modal-header-btn {
-    background: transparent;
-    border: none;
-    color: #8c7e63;
-    font-size: 16px;
-    cursor: pointer;
-    transition: 0.3s;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.voice-modal-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-.voice-header-group {
-    text-align: center;
-    margin-bottom: 5px;
-}
-
-.voice-char-avatar-box {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    margin: 0 auto 12px;
-    padding: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    outline: 1px solid rgba(212, 175, 55, 0.4);
-    outline-offset: 4px;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
-}
-
-.voice-char-name {
-    font-size: 24px;
-    color: #e6dcc0;
-    letter-spacing: 3px;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-}
-
-.voice-char-meta {
-    font-size: 12px;
-    color: #8c7e63;
-    letter-spacing: 2px;
-    margin-top: 6px;
-    font-family: 'Cormorant Garamond', serif;
-    font-style: italic;
-}
-
-.voice-card-inner {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
-    padding: 24px 20px;
-    text-align: center;
-    position: relative;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-}
-
-.voice-card-inner::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 1px;
-    height: 20px;
-    background: linear-gradient(to bottom, #d4af37, transparent);
-}
-
-#voice-effect-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 1;
-    /* Boosted from 0 */
-    /* mix-blend-mode: screen; */
-    /* Temporarily disabled for visibility check */
-}
-
-.voice-label-center {
-    font-size: 11px;
-    color: #8c7e63;
-    letter-spacing: 4px;
-    margin-bottom: 12px;
-    display: block;
-}
-
-.voice-text-inner {
-    font-size: 15px;
-    color: #dcdcdc;
-    line-height: 1.9;
-    font-weight: 300;
-    white-space: pre-line;
-}
-
-.voice-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-}
-
-.voice-info-block {
-    position: relative;
-    padding-left: 10px;
-    border-left: 2px solid rgba(255, 255, 255, 0.05);
-}
-
-.voice-label {
-    font-size: 10px;
-    color: #8c7e63;
-    margin-bottom: 6px;
-    letter-spacing: 2px;
-}
-
-.voice-text-content {
-    font-size: 13px;
-    color: #a0a0a0;
-    line-height: 1.6;
-    text-align: justify;
-    font-weight: 300;
-    white-space: pre-line;
-}
-
-.voice-modal-footer {
-    padding: 16px 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: rgba(10, 10, 12, 0.8);
-    z-index: 10;
-    flex-shrink: 0;
-}
-
-.footer-count {
-    font-size: 10px;
-    color: #555;
-    letter-spacing: 2px;
-}
-
-.effect-badge {
-    font-size: 10px;
-    color: #8c7e63;
-    opacity: 0.8;
-    letter-spacing: 1px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 4px 8px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.3);
-    cursor: pointer;
-}
-
-
-/* History List Styles */
-.voice-history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding-bottom: 20px;
-}
-
-.voice-history-card {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-    padding: 12px 16px;
-    cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    position: relative;
-    overflow: hidden;
-}
-
-.voice-history-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 2px;
-    height: 100%;
-    background: #d4af37;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.voice-history-card:hover {
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateX(4px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.voice-history-card:hover::before {
-    opacity: 1;
-}
-
-.voice-history-time {
-    font-size: 10px;
-    color: #8c7e63;
-    margin-bottom: 6px;
-    letter-spacing: 1px;
-    font-family: inherit;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.voice-history-time::before {
-    content: '';
-    display: block;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: #8c7e63;
-    opacity: 0.5;
-}
-
-.voice-history-preview {
-    font-size: 13px;
-    color: #dcdcdc;
-    line-height: 1.5;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    font-weight: 300;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* Font */
-.font-songti {
-    font-family: "Songti SC", "SimSun", serif;
-}
-
-/* Voice Wave Animation - Improved Sound Wave Effect */
-.voice-wave {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    height: 16px;
-}
-
-.voice-wave .bar {
-    width: 3px;
-    border-radius: 2px;
-    background-color: currentColor;
-    /* 声纹颜色与气泡文字颜色一致 */
-    transition: height 0.2s, opacity 0.2s;
-    opacity: 0.8;
-}
-
-/* Static wave heights - More natural distribution */
-.voice-wave .bar1 {
-    height: 5px;
-    animation-delay: 0s;
-}
-
-.voice-wave .bar2 {
-    height: 12px;
-    animation-delay: 0.1s;
-}
-
-.voice-wave .bar3 {
-    height: 16px;
-    animation-delay: 0.2s;
-}
-
-.voice-wave .bar4 {
-    height: 9px;
-    animation-delay: 0.3s;
-}
-
-.voice-wave .bar5 {
-    height: 14px;
-    animation-delay: 0.4s;
-}
-
-/* Playing animation - More realistic sound wave effect */
-.voice-wave.playing .bar {
-    animation: voice-wave-anim 0.6s infinite ease-in-out;
-}
-
-@keyframes voice-wave-anim {
-
-    0%,
-    100% {
-        height: 5px;
-        opacity: 0.5;
-    }
-
-    10% {
-        height: 10px;
-        opacity: 0.7;
-    }
-
-    20% {
-        height: 16px;
-        opacity: 0.9;
-    }
-
-    30% {
-        height: 12px;
-        opacity: 0.8;
-    }
-
-    40% {
-        height: 8px;
-        opacity: 0.7;
-    }
-
-    50% {
-        height: 14px;
-        opacity: 1;
-    }
-
-    60% {
-        height: 6px;
-        opacity: 0.6;
-    }
-
-    70% {
-        height: 11px;
-        opacity: 0.8;
-    }
-
-    80% {
-        height: 7px;
-        opacity: 0.7;
-    }
-
-    90% {
-        height: 13px;
-        opacity: 0.9;
-    }
-}
-
-/* Enhanced playing effect */
-.voice-playing-effect {
-    box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
-    transform: scale(1.02);
-    transition: all 0.3s ease;
-}
-
-.voice-wave.wave-left {
-    flex-direction: row;
-}
-
-.voice-wave.wave-right {
-    flex-direction: row-reverse;
-}
-
-/* Dice Result Card Animations */
-@keyframes dice-in {
-    0% {
-        opacity: 0;
-        transform: scale(0.5) rotate(-10deg);
-    }
-
-    50% {
-        transform: scale(1.05) rotate(2deg);
-    }
-
-    100% {
-        opacity: 1;
-        transform: scale(1) rotate(0deg);
-    }
-}
-
-@keyframes dice-pop {
-    0% {
-        opacity: 0;
-        transform: scale(0) translateY(20px);
-    }
-
-    60% {
-        transform: scale(1.2) translateY(-5px);
-    }
-
-    100% {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-@keyframes twinkle {
-
-    0%,
-    100% {
-        opacity: 0.3;
-        transform: scale(1);
-    }
-
-    50% {
-        opacity: 1;
-        transform: scale(1.2);
-    }
-}
-
-.animate-dice-in {
-    animation: dice-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.dice-msg-dice {
-    animation: dice-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    opacity: 0;
-}
-
-.animate-twinkle {
-    animation: twinkle 1.5s ease-in-out infinite;
-}
-
-/* Toast Transitions */
-.fade-enter-active,
-.fade-leave-active {
-    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-    transform: translate(-50%, -20px);
-}
-
-.fade-enter-to,
-.fade-leave-from {
-    opacity: 1;
-    transform: translate(-50%, 0);
-}
-</style>
