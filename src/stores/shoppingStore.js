@@ -35,7 +35,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     const reviews = ref({}) // { productId: [ { user, content, rating, images, time } ] }
 
     // ============ Logistics Data ============
-    
+
     // 真实城市列表
     const realCities = [
         '北京', '上海', '广州', '深圳', '杭州', '南京', '武汉', '成都',
@@ -84,7 +84,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     const generateLocationName = (type, city) => {
         const types = locationTypes[type] || locationTypes.origin
         const randomType = types[Math.floor(Math.random() * types.length)]
-        
+
         if (type === 'origin') {
             return `${city}${randomType}`
         } else if (type === 'sorting') {
@@ -129,10 +129,10 @@ export const useShoppingStore = defineStore('shopping', () => {
                 '签收成功，感谢您的信任与支持'
             ]
         }
-        
+
         const descs = descriptions[status] || descriptions.picked
         const baseDesc = descs[Math.floor(Math.random() * descs.length)]
-        
+
         if (isHastened) {
             return `【极速达】${baseDesc}`
         }
@@ -286,15 +286,15 @@ export const useShoppingStore = defineStore('shopping', () => {
 
             console.log('开始生成评价，商品:', product.title)
             const result = await generateReply(
-                [{ role: 'user', content: prompt }], 
+                [{ role: 'user', content: prompt }],
                 { name: '评价助手', prompt: '专业生成电商评价' },
-                null, 
+                null,
                 { isSimpleTask: true }
             )
             let cleanContent = result.content.trim()
-            
+
             console.log('AI 原始返回:', cleanContent)
-            
+
             // 提取 JSON 数组
             const jsonMatch = cleanContent.match(/\[[\s\S]*\]/)
             if (!jsonMatch) {
@@ -302,9 +302,9 @@ export const useShoppingStore = defineStore('shopping', () => {
                 throw new Error('AI 返回的不是 JSON 数组')
             }
             cleanContent = jsonMatch[0]
-            
+
             console.log('提取的 JSON:', cleanContent)
-            
+
             const parsed = JSON.parse(cleanContent)
             console.log('解析后的评价:', parsed)
 
@@ -450,9 +450,9 @@ export const useShoppingStore = defineStore('shopping', () => {
             reviews.value = data.reviews || {}
             subscribedShops.value = data.subscribedShops || []
             useFantasyCities.value = data.useFantasyCities || false
-            
+
             // 检查是否有进行中的物流，如果有则启动定时器
-            const hasActiveLogistics = logistics.value.some(l => 
+            const hasActiveLogistics = logistics.value.some(l =>
                 l.status !== 'delivered' && l.status !== 'cancelled'
             )
             if (hasActiveLogistics) {
@@ -482,12 +482,12 @@ export const useShoppingStore = defineStore('shopping', () => {
     // 启动物流更新定时器
     const startLogisticsTimer = () => {
         if (logisticsTimer) return
-        
+
         // 每 10 秒检查一次物流状态
         logisticsTimer = setInterval(() => {
             updateAllLogistics()
         }, 10000)
-        
+
         console.log('[ShoppingStore] 物流自动更新定时器已启动')
     }
 
@@ -527,22 +527,26 @@ export const useShoppingStore = defineStore('shopping', () => {
     const checkLogisticsUpdate = (log, now) => {
         const lastUpdate = log.lastUpdate || now
         const timeDiff = now - lastUpdate
-        
+
         let updated = false
 
         // 根据当前状态决定更新逻辑
         switch (log.status) {
-            case 'picked':
+            case 'picked': {
                 // 已揽收 -> 运输中 (正常 6 小时，加速后 1 小时)
                 const toShippingTime = log.hastened ? 60 * 60 * 1000 : 60 * 60 * 6 * 1000
                 if (timeDiff > toShippingTime) {
                     log.status = 'shipping'
                     log.currentStep = 1
-                    
+
+                    // Sync order status
+                    const order = orders.value.find(o => o.id === log.orderId)
+                    if (order && order.status === 'paid') order.status = 'shipped'
+
                     // 使用第一个中转城市
                     const transitCity = log.transitCities[0]
                     const transitLocation = generateLocationName('sorting', transitCity)
-                    
+
                     log.timeline.unshift({
                         time: new Date().toISOString(),
                         status: '运输中',
@@ -553,17 +557,22 @@ export const useShoppingStore = defineStore('shopping', () => {
                     updated = true
                 }
                 break
+            }
 
-            case 'shipping':
+            case 'shipping': {
                 // 运输中 -> 派送中 (正常 12 小时，加速后 30 分钟)
                 const toDeliveringTime = log.hastened ? 30 * 60 * 1000 : 60 * 60 * 12 * 1000
                 if (timeDiff > toDeliveringTime) {
                     log.status = 'delivering'
                     log.currentStep = 2
-                    
+
+                    // Sync order status
+                    const order = orders.value.find(o => o.id === log.orderId)
+                    if (order) order.status = 'delivering'
+
                     // 目的地城市
                     const destLocation = generateLocationName('delivery', log.destCity)
-                    
+
                     log.timeline.unshift({
                         time: new Date().toISOString(),
                         status: '派送中',
@@ -574,19 +583,23 @@ export const useShoppingStore = defineStore('shopping', () => {
                     updated = true
                 }
                 break
+            }
 
-            case 'delivering':
+            case 'delivering': {
                 // 派送中 -> 待签收 (正常 2 小时，加速后 10 分钟)
                 const toDeliveredTime = log.hastened ? 10 * 60 * 1000 : 60 * 60 * 2 * 1000
                 if (timeDiff > toDeliveredTime) {
                     // 只更新物流状态为待签收，不自动签收
                     log.status = 'delivered'
                     log.currentStep = 3
-                    
-                    // 签收地址
+
+                    // Sync order status
                     const order = orders.value.find(o => o.id === log.orderId)
+                    if (order) order.status = 'delivered'
+
+                    // 签收地址
                     const signLocation = order?.address?.detail || `${log.destCity}收货地址`
-                    
+
                     log.timeline.unshift({
                         time: new Date().toISOString(),
                         status: '待签收',
@@ -594,11 +607,12 @@ export const useShoppingStore = defineStore('shopping', () => {
                         location: signLocation
                     })
                     log.currentLocation = signLocation
-                    
+
                     // 注意：不再自动确认收货，需要用户手动点击签收
                     updated = true
                 }
                 break
+            }
         }
 
         if (updated) {
@@ -706,7 +720,7 @@ export const useShoppingStore = defineStore('shopping', () => {
 
     const confirmReceipt = (orderId) => {
         const order = orders.value.find(o => o.id === orderId)
-        if (order) {
+        if (order && order.status !== 'completed') {
             // 将商品加入背包
             order.items.forEach(item => {
                 backpackStore.addItem({
@@ -740,19 +754,19 @@ export const useShoppingStore = defineStore('shopping', () => {
     const generateLogistics = (orderId) => {
         const now = new Date()
         const cities = getCurrentCities() // 获取当前城市列表
-        
+
         // 获取订单信息（包含收货地址）
         const order = orders.value.find(o => o.id === orderId)
         const addressRegion = order?.address?.region || ''
         const addressDetail = order?.address?.detail || ''
-        
+
         // 随机选择起点和终点城市
         const originCity = cities[Math.floor(Math.random() * cities.length)]
         let destCity = cities[Math.floor(Math.random() * cities.length)]
         while (destCity === originCity) {
             destCity = cities[Math.floor(Math.random() * cities.length)]
         }
-        
+
         // 生成中间经过的城市（2-4 个）
         const transitCount = Math.floor(Math.random() * 3) + 2
         const transitCities = []
@@ -766,7 +780,7 @@ export const useShoppingStore = defineStore('shopping', () => {
 
         // 生成随机路径坐标（不再固定从左下到右上）
         const path = []
-        
+
         // 随机生成起点坐标（四个角落随机）
         const originPositions = [
             { x: 15, y: 85 }, // 左下
@@ -776,7 +790,7 @@ export const useShoppingStore = defineStore('shopping', () => {
         ]
         const startPos = originPositions[Math.floor(Math.random() * originPositions.length)]
         path.push({ x: startPos.x, y: startPos.y, label: originCity, type: 'origin' })
-        
+
         // 随机生成中转站坐标（在地图中间区域随机分布）
         const actualTransitCount = Math.min(transitCities.length, 3)
         for (let i = 0; i < actualTransitCount; i++) {
@@ -784,11 +798,11 @@ export const useShoppingStore = defineStore('shopping', () => {
             const progress = (i + 1) / (transitCount + 1)
             const baseX = startPos.x + (85 - startPos.x) * progress
             const baseY = startPos.y + (15 - startPos.y) * progress
-            
+
             // 添加随机偏移（-15 到 +15）
             const offsetX = (Math.random() - 0.5) * 30
             const offsetY = (Math.random() - 0.5) * 30
-            
+
             path.push({
                 x: Math.max(10, Math.min(90, baseX + offsetX)),
                 y: Math.max(10, Math.min(90, baseY + offsetY)),
@@ -796,10 +810,10 @@ export const useShoppingStore = defineStore('shopping', () => {
                 type: 'transit'
             })
         }
-        
+
         // 保存收货地址信息
         const deliveryAddressLabel = addressRegion ? addressRegion.split(' ').slice(0, 2).join('') : ''
-        
+
         // 随机生成终点坐标（与起点相对的角落），标签直接用收货地址
         const destPositions = [
             { x: 85, y: 15 }, // 右上
@@ -812,7 +826,7 @@ export const useShoppingStore = defineStore('shopping', () => {
         // 终点标签直接使用收货地址，不再显示城市名
         const destLabel = deliveryAddressLabel || destCity
         path.push({ x: endPos.x, y: endPos.y, label: destLabel, type: 'dest' })
-        
+
         // 初始时间线只包含已揽收状态
         const timeline = []
         const originLocation = generateLocationName('origin', originCity)
@@ -822,7 +836,7 @@ export const useShoppingStore = defineStore('shopping', () => {
             desc: generateLogisticsDesc('picked', false),
             location: originLocation
         })
-        
+
         const log = {
             id: `log_${orderId}`,
             orderId,
@@ -843,10 +857,10 @@ export const useShoppingStore = defineStore('shopping', () => {
             estimatedDelivery: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString()
         }
         logistics.value.push(log)
-        
+
         // 启动物流定时器
         startLogisticsTimer()
-        
+
         saveStore()
     }
 
@@ -857,6 +871,10 @@ export const useShoppingStore = defineStore('shopping', () => {
             // 加速逻辑：直接变更状态到即将送达
             log.status = 'shipping'
             log.currentStep = 2
+
+            // Sync order status
+            const order = orders.value.find(o => o.id === log.orderId)
+            if (order) order.status = 'shipped'
             log.timeline.unshift({
                 time: new Date().toISOString(),
                 status: '加速中',

@@ -13,7 +13,7 @@
                     class="bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl p-4 mb-4 shadow-lg shadow-blue-500/20">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-[10px] font-bold opacity-80 uppercase tracking-widest">{{ logistics.company
-                            }}</span>
+                        }}</span>
                         <span class="text-[10px] bg-white/20 px-2 py-0.5 rounded-full backdrop-blur-sm">{{
                             getStatusText(logistics.status) }}</span>
                     </div>
@@ -25,31 +25,33 @@
                 </div>
 
                 <!-- 虚拟地图 -->
-                <div class="relative w-full h-56 bg-gradient-to-br from-slate-100 to-blue-50 rounded-2xl mb-4 overflow-hidden border border-blue-100 shadow-inner">
+                <div
+                    class="relative w-full h-56 bg-gradient-to-br from-slate-100 to-blue-50 rounded-2xl mb-4 overflow-hidden border border-blue-100 shadow-inner">
                     <svg v-if="logistics.path" class="w-full h-full" viewBox="0 0 100 100">
                         <defs>
                             <!-- 地图背景图案 -->
                             <pattern id="mapGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-                                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(59, 130, 246, 0.08)" stroke-width="0.5" />
+                                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(59, 130, 246, 0.08)"
+                                    stroke-width="0.5" />
                             </pattern>
-                            
+
                             <!-- 地形装饰 -->
                             <radialGradient id="terrainGrad">
                                 <stop offset="0%" stop-color="rgba(59, 130, 246, 0.05)" />
                                 <stop offset="100%" stop-color="rgba(59, 130, 246, 0.02)" />
                             </radialGradient>
-                            
+
                             <!-- 节点光晕 -->
                             <filter id="nodeGlow" x="-50%" y="-50%" width="200%" height="200%">
                                 <feGaussianBlur in="SourceGraphic" stdDeviation="2" />
                                 <feComposite in="SourceGraphic" operator="over" />
                             </filter>
                         </defs>
-                        
+
                         <!-- 背景层 -->
                         <rect width="100%" height="100%" fill="url(#mapGrid)" />
                         <rect width="100%" height="100%" fill="url(#terrainGrad)" />
-                        
+
                         <!-- 装饰性地形元素 -->
                         <circle cx="15" cy="25" r="8" fill="rgba(59, 130, 246, 0.03)" />
                         <circle cx="85" cy="75" r="12" fill="rgba(59, 130, 246, 0.03)" />
@@ -58,14 +60,14 @@
 
                         <!-- 绘制物流路径（带阴影） -->
                         <polyline :points="logistics.path?.map(p => `${p.x},${p.y}`).join(' ')" fill="none"
-                            stroke="rgba(59, 130, 246, 0.2)" stroke-width="4" stroke-dasharray="4" stroke-linecap="round" />
+                            stroke="rgba(59, 130, 246, 0.2)" stroke-width="4" stroke-dasharray="4"
+                            stroke-linecap="round" />
                         <polyline :points="logistics.path?.map(p => `${p.x},${p.y}`).join(' ')" fill="none"
                             stroke="#3b82f6" stroke-width="2" stroke-dasharray="4" stroke-linecap="round" />
 
                         <!-- 绘制节点标注（先画连接线） -->
                         <g v-for="(node, idx) in (logistics.path || [])" :key="'line-' + idx">
-                            <line v-if="idx < logistics.path.length - 1"
-                                :x1="node.x" :y1="node.y"
+                            <line v-if="idx < logistics.path.length - 1" :x1="node.x" :y1="node.y"
                                 :x2="logistics.path[idx + 1].x" :y2="logistics.path[idx + 1].y"
                                 stroke="rgba(59, 130, 246, 0.15)" stroke-width="0.5" stroke-dasharray="2" />
                         </g>
@@ -74,13 +76,13 @@
                         <g v-for="(node, idx) in (logistics.path || [])" :key="'node-' + idx">
                             <!-- 节点光晕（缩小） -->
                             <circle :cx="node.x" :cy="node.y" r="3" fill="rgba(59, 130, 246, 0.08)" />
-                            
+
                             <!-- 节点外圈（终点用橙色，其他用蓝色，都缩小） -->
-                            <circle v-if="node.type === 'dest'" 
-                                :cx="node.x" :cy="node.y" r="2" fill="#f59e0b" stroke="#d97706" stroke-width="1.5" />
-                            <circle v-else
-                                :cx="node.x" :cy="node.y" r="2" fill="white" stroke="#3b82f6" stroke-width="1.5" />
-                            
+                            <circle v-if="node.type === 'dest'" :cx="node.x" :cy="node.y" r="2" fill="#f59e0b"
+                                stroke="#d97706" stroke-width="1.5" />
+                            <circle v-else :cx="node.x" :cy="node.y" r="2" fill="white" stroke="#3b82f6"
+                                stroke-width="1.5" />
+
                             <!-- 节点标注框（智能防遮挡，缩小版） -->
                             <g>
                                 <!-- 计算标注位置：根据节点水平位置动态调整 -->
@@ -89,42 +91,45 @@
                                 <!-- 中间区域：居中显示 -->
                                 <g v-if="node.x < 20">
                                     <!-- 左侧节点：标注在右边 -->
-                                    <rect v-if="node.type === 'dest'" 
-                                        :x="node.x + 2.5" :y="node.y - 7" width="24" height="5" rx="0.8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.6" opacity="0.95" />
-                                    <rect v-else
-                                        :x="node.x + 2.5" :y="node.y - 7" width="18" height="5" rx="0.8" fill="white" stroke="#3b82f6" stroke-width="0.4" opacity="0.9" />
-                                    <text v-if="node.type === 'dest'" 
-                                        :x="node.x + 14.5" :y="node.y - 3.5" font-size="2.8" text-anchor="middle" fill="#92400e"
-                                        font-weight="bold" style="font-family: 'Microsoft YaHei', sans-serif">📍 {{ node.label }}</text>
-                                    <text v-else
-                                        :x="node.x + 11.5" :y="node.y - 3.5" font-size="2.6" text-anchor="middle" fill="#1e40af"
-                                        font-weight="bold" style="font-family: 'Microsoft YaHei', sans-serif">{{ node.label }}</text>
+                                    <rect v-if="node.type === 'dest'" :x="node.x + 2.5" :y="node.y - 7" width="24"
+                                        height="5" rx="0.8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.6"
+                                        opacity="0.95" />
+                                    <rect v-else :x="node.x + 2.5" :y="node.y - 7" width="18" height="5" rx="0.8"
+                                        fill="white" stroke="#3b82f6" stroke-width="0.4" opacity="0.9" />
+                                    <text v-if="node.type === 'dest'" :x="node.x + 14.5" :y="node.y - 3.5"
+                                        font-size="2.8" text-anchor="middle" fill="#92400e" font-weight="bold"
+                                        style="font-family: 'Microsoft YaHei', sans-serif">📍 {{ node.label }}</text>
+                                    <text v-else :x="node.x + 11.5" :y="node.y - 3.5" font-size="2.6"
+                                        text-anchor="middle" fill="#1e40af" font-weight="bold"
+                                        style="font-family: 'Microsoft YaHei', sans-serif">{{ node.label }}</text>
                                 </g>
                                 <g v-else-if="node.x > 80">
                                     <!-- 右侧节点：标注在左边 -->
-                                    <rect v-if="node.type === 'dest'" 
-                                        :x="node.x - 24.5" :y="node.y - 7" width="24" height="5" rx="0.8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.6" opacity="0.95" />
-                                    <rect v-else
-                                        :x="node.x - 19.5" :y="node.y - 7" width="18" height="5" rx="0.8" fill="white" stroke="#3b82f6" stroke-width="0.4" opacity="0.9" />
-                                    <text v-if="node.type === 'dest'" 
-                                        :x="node.x - 12.5" :y="node.y - 3.5" font-size="2.8" text-anchor="middle" fill="#92400e"
-                                        font-weight="bold" style="font-family: 'Microsoft YaHei', sans-serif">📍 {{ node.label }}</text>
-                                    <text v-else
-                                        :x="node.x - 10.5" :y="node.y - 3.5" font-size="2.6" text-anchor="middle" fill="#1e40af"
-                                        font-weight="bold" style="font-family: 'Microsoft YaHei', sans-serif">{{ node.label }}</text>
+                                    <rect v-if="node.type === 'dest'" :x="node.x - 24.5" :y="node.y - 7" width="24"
+                                        height="5" rx="0.8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.6"
+                                        opacity="0.95" />
+                                    <rect v-else :x="node.x - 19.5" :y="node.y - 7" width="18" height="5" rx="0.8"
+                                        fill="white" stroke="#3b82f6" stroke-width="0.4" opacity="0.9" />
+                                    <text v-if="node.type === 'dest'" :x="node.x - 12.5" :y="node.y - 3.5"
+                                        font-size="2.8" text-anchor="middle" fill="#92400e" font-weight="bold"
+                                        style="font-family: 'Microsoft YaHei', sans-serif">📍 {{ node.label }}</text>
+                                    <text v-else :x="node.x - 10.5" :y="node.y - 3.5" font-size="2.6"
+                                        text-anchor="middle" fill="#1e40af" font-weight="bold"
+                                        style="font-family: 'Microsoft YaHei', sans-serif">{{ node.label }}</text>
                                 </g>
                                 <g v-else>
                                     <!-- 中间节点：标注在上方居中 -->
-                                    <rect v-if="node.type === 'dest'" 
-                                        :x="node.x - 13" :y="node.y - 9" width="26" height="5" rx="0.8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.6" opacity="0.95" />
-                                    <rect v-else
-                                        :x="node.x - 10" :y="node.y - 9" width="20" height="5" rx="0.8" fill="white" stroke="#3b82f6" stroke-width="0.4" opacity="0.9" />
-                                    <text v-if="node.type === 'dest'" 
-                                        :x="node.x" :y="node.y - 5.5" font-size="2.8" text-anchor="middle" fill="#92400e"
-                                        font-weight="bold" style="font-family: 'Microsoft YaHei', sans-serif">📍 {{ node.label }}</text>
-                                    <text v-else
-                                        :x="node.x" :y="node.y - 5.5" font-size="2.6" text-anchor="middle" fill="#1e40af"
-                                        font-weight="bold" style="font-family: 'Microsoft YaHei', sans-serif">{{ node.label }}</text>
+                                    <rect v-if="node.type === 'dest'" :x="node.x - 13" :y="node.y - 9" width="26"
+                                        height="5" rx="0.8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.6"
+                                        opacity="0.95" />
+                                    <rect v-else :x="node.x - 10" :y="node.y - 9" width="20" height="5" rx="0.8"
+                                        fill="white" stroke="#3b82f6" stroke-width="0.4" opacity="0.9" />
+                                    <text v-if="node.type === 'dest'" :x="node.x" :y="node.y - 5.5" font-size="2.8"
+                                        text-anchor="middle" fill="#92400e" font-weight="bold"
+                                        style="font-family: 'Microsoft YaHei', sans-serif">📍 {{ node.label }}</text>
+                                    <text v-else :x="node.x" :y="node.y - 5.5" font-size="2.6" text-anchor="middle"
+                                        fill="#1e40af" font-weight="bold"
+                                        style="font-family: 'Microsoft YaHei', sans-serif">{{ node.label }}</text>
                                 </g>
                             </g>
                         </g>
@@ -134,7 +139,8 @@
                             <!-- 外圈脉冲 -->
                             <circle r="8" fill="rgba(59, 130, 246, 0.2)">
                                 <animate attributeName="r" values="6;10;6" dur="2s" repeatCount="indefinite" />
-                                <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite" />
+                                <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s"
+                                    repeatCount="indefinite" />
                             </circle>
                             <!-- 包裹图标背景 -->
                             <circle r="4" fill="#3b82f6" stroke="white" stroke-width="1.5" filter="url(#nodeGlow)" />
@@ -184,6 +190,17 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 确认收货按钮 (仅待签收时显示) -->
+            <div v-if="logistics.status === 'delivered' && !isOrderCompleted"
+                class="p-4 bg-white border-t sticky bottom-0 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] rounded-b-2xl">
+                <button @click="confirmReceipt"
+                    class="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl font-black shadow-lg shadow-orange-500/30 active:scale-95 transition-all animate-bounce-short flex items-center justify-center gap-3">
+                    <span class="text-xl">✍️</span>
+                    确认收货并存入背包
+                </button>
+                <p class="text-[10px] text-slate-400 text-center mt-3">签收后订单将标记为已完成，商品将存入您的背包</p>
+            </div>
         </div>
     </div>
 </template>
@@ -212,6 +229,16 @@ const getStatusText = (status) => {
 
 const hasten = () => {
     store.hastenLogistics(props.logistics.orderId)
+}
+
+const isOrderCompleted = computed(() => {
+    const order = store.orders.find(o => o.id === props.logistics.orderId)
+    return order?.status === 'completed'
+})
+
+const confirmReceipt = () => {
+    store.confirmReceipt(props.logistics.orderId)
+    emit('close')
 }
 
 const formatDate = (date) => {

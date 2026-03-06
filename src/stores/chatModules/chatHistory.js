@@ -69,7 +69,12 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
             // --- REPLICATED FROM OLD HTML (Transcript Mode) ---
             const transcript = targetMsgs.map(m => {
-                const roleName = m.role === 'ai' ? (chat.name || 'AI') : (chat.userName || '用户')
+                let roleName = ''
+                if (chat.isGroup) {
+                    roleName = m.senderName || (m.role === 'ai' ? chat.name : (chat.userName || '用户'))
+                } else {
+                    roleName = m.role === 'ai' ? (chat.name || 'AI') : (chat.userName || '用户')
+                }
                 let content = ""
                 if (typeof m.content === 'string') {
                     content = m.content
@@ -131,31 +136,37 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 throw new Error('AI returned empty response')
             }
 
+            // --- STALE REFERENCE FIX ---
+            // Re-targeting: Use the latest object from the store because the previous 'chat' 
+            // reference might have been replaced by a concurrent mutation (e.g. in addMessage).
+            const latestChat = chats.value[chatId]
+            if (!latestChat) return { success: false, error: 'Chat disappeared during summarization' }
+
             // Save the summary appropriately
-            chat.summary = response.content
+            latestChat.summary = response.content
 
             // Update indices after successful summary
             if (options.startIndex === undefined && options.endIndex === undefined) {
-                chat.lastSummaryIndex = nextIndex
-                chat.lastSummaryCount = chat.msgs.length // Sync checkCount
-                chat.lastSummaryTime = Date.now()
+                latestChat.lastSummaryIndex = nextIndex
+                latestChat.lastSummaryCount = latestChat.msgs.length // Sync checkCount
+                latestChat.lastSummaryTime = Date.now()
             }
 
             // Maintain Memory Array
-            if (!chat.memory) chat.memory = []
+            if (!latestChat.memory) latestChat.memory = []
 
             // Deduplicate: Compare last memory segment
-            const lastMem = chat.memory.length > 0 ? chat.memory[chat.memory.length - 1] : ''
+            const lastMem = latestChat.memory.length > 0 ? latestChat.memory[latestChat.memory.length - 1] : ''
             const newMem = `[记录 ${rangeDesc}]：${response.content}`
 
             if (lastMem !== newMem) {
-                chat.memory.push(newMem)
+                latestChat.memory.push(newMem)
 
                 // Limit memory count based on settings
-                const contextLimit = parseInt(chat.contextLimit) || 20
-                if (chat.memory.length > contextLimit) {
-                    const toRemove = chat.memory.length - contextLimit
-                    chat.memory.splice(0, toRemove)
+                const contextLimit = parseInt(latestChat.contextLimit) || 20
+                if (latestChat.memory.length > contextLimit) {
+                    const toRemove = latestChat.memory.length - contextLimit
+                    latestChat.memory.splice(0, toRemove)
                     console.log(`[AutoSummary] Pruned ${toRemove} old memories to respect limit ${contextLimit}`)
                 }
             } else {
@@ -195,7 +206,11 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
     function checkAutoSummary(chatId) {
         const chat = chats.value[chatId]
-        if (!chat || !chat.autoSummary) return
+        if (!chat) return
+
+        // Check if enabled (either globally or in group settings)
+        const isEnabled = chat.autoSummary || chat.groupSettings?.autoSummary
+        if (!isEnabled) return
 
         // Prevent concurrent execution (Fix Double Toast)
         if (chat.isSummarizing) return
@@ -203,14 +218,14 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
         const msgs = chat.msgs || []
         // Limit Priority: Chat-specific > Group Settings > Global Personalization > Default (300)
         let summaryLimit = parseInt(chat.summaryLimit) ||
-            (chat.isGroup ? (parseInt(chat.groupSettings?.summaryLimit) || parseInt(chat.groupSettings?.memory?.autoSummaryEvery)) : 0) ||
+            (chat.isGroup ? (parseInt(chat.groupSettings?.memory?.autoSummaryEvery) || parseInt(chat.groupSettings?.summaryLimit)) : 0) ||
             useSettingsStore().personalization?.summaryLimit ||
-            300;
+            50; // Default lowered from 300 to 50 for better UX
 
         // FIX: Use lastSummaryIndex as the single source of truth, not lastSummaryCount
         // lastSummaryIndex represents the actual index of last summarized message
         let lastIndex = chat.lastSummaryIndex || 0
-        
+
         // PROACTIVE FIX: If lastIndex exceeds current msgs length (e.g. deletion occurred), reset it
         if (lastIndex > msgs.length) {
             console.log('[AutoSummary] Index reset (deletion detected)', lastIndex, '->', msgs.length)

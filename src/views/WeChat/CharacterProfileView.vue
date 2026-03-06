@@ -168,7 +168,32 @@
       </div>
     </div>
 
-    <!-- Loading Overlay -->
+      <!-- NPC 专属操作按钮 -->
+      <div v-if="character.isNewNPC" class="mt-8 space-y-3 border-t border-gray-100 pt-6">
+        <button 
+          @click="addToFriends"
+          class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-green-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
+          <i class="fa-solid fa-user-plus"></i>
+          <span>添加为好友</span>
+        </button>
+        
+        <button 
+          @click="triggerAvatarUpload"
+          class="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
+          <i class="fa-solid fa-image"></i>
+          <span>上传自定义头像</span>
+        </button>
+        
+        <input 
+          ref="avatarFileInput" 
+          type="file" 
+          class="hidden" 
+          accept="image/*" 
+          @change="handleAvatarUpload" 
+        />
+      </div>
+
+      <!-- Loading Overlay -->
     <Transition name="fade">
       <div v-if="isAnalysisTyping"
         class="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
@@ -207,6 +232,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { compressImage } from '@/utils/imageUtils'
 
 const route = useRoute()
 const router = useRouter()
@@ -215,6 +241,7 @@ const settingsStore = useSettingsStore()
 
 const charId = route.params.charId
 const isAnalysisTyping = computed(() => !!chatStore.isProfileProcessing[charId])
+const avatarFileInput = ref(null)
 
 const character = computed(() => {
   if (charId === 'user') {
@@ -247,7 +274,10 @@ const character = computed(() => {
       }
     }
   }
-  return chatStore.chats[charId] || { name: '未知', avatar: '' }
+  const charData = chatStore.chats[charId]
+  console.log('[CharacterProfileView] charId:', charId)
+  console.log('[CharacterProfileView] chatStore.chats[charId]:', charData)
+  return charData || { name: '未知', avatar: '' }
 })
 
 // Bio Data from Store
@@ -282,6 +312,84 @@ const goToChat = () => {
   chatStore.currentChatId = charId
   chatStore.updateCharacter(charId, { inChatList: true })
   router.push('/wechat')
+}
+
+// NPC 专属功能：添加为好友
+const addToFriends = async () => {
+  try {
+    // 更新角色状态，标记为已在聊天列表
+    await chatStore.updateCharacter(charId, { 
+      inChatList: true,
+      isNewNPC: false // 移除新 NPC 标记
+    })
+    
+    // 确保 chat 对象存在
+    if (!chatStore.chats[charId]) {
+      chatStore.chats[charId] = {
+        id: charId,
+        name: character.value.name,
+        avatar: character.value.avatar,
+        isNPC: character.value.isNPC,
+        bio: character.value.bio || {},
+        messages: [],
+        inChatList: true
+      }
+    }
+    
+    chatStore.triggerToast(`已添加 ${character.value.name} 为好友`, 'success')
+    
+    // 延迟一下再跳转，让用户看到提示
+    setTimeout(() => {
+      router.push('/wechat')
+    }, 500)
+  } catch (error) {
+    console.error('添加好友失败:', error)
+    chatStore.triggerToast('添加好友失败', 'error')
+  }
+}
+
+// NPC 专属功能：触发头像上传
+const triggerAvatarUpload = () => {
+  if (avatarFileInput.value) {
+    avatarFileInput.value.click()
+  }
+}
+
+// NPC 专属功能：处理头像上传
+const handleAvatarUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  try {
+    // 压缩图片
+    const compressed = await compressImage(file, 0.7)
+    
+    // 转换为 base64
+    const base64 = await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target.result)
+      reader.readAsDataURL(compressed)
+    })
+    
+    // 更新角色头像
+    await chatStore.updateCharacter(charId, { avatar: base64 })
+    
+    // 同时更新 chatStore 中的聊天对象
+    if (chatStore.chats[charId]) {
+      chatStore.chats[charId].avatar = base64
+    }
+    
+    // 同时更新 character 对象
+    character.value.avatar = base64
+    
+    chatStore.triggerToast('头像已更新', 'success')
+    
+    // 清空 input，允许重复上传同一文件
+    event.target.value = ''
+  } catch (error) {
+    console.error('上传头像失败:', error)
+    chatStore.triggerToast('上传失败', 'error')
+  }
 }
 </script>
 

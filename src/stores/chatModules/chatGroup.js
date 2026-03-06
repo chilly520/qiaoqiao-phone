@@ -120,6 +120,8 @@ export const setupGroupLogic = (chats, createChat, addMessage, saveChats, getRan
             c.contextLimit = c.groupSettings.memory.contextMemoryCount
             c.proactiveChat = c.groupSettings.proactive.enabled
             c.proactiveInterval = c.groupSettings.proactive.intervalMinutes
+            c.autoSummary = !!c.groupSettings.autoSummary
+            c.summaryLimit = parseInt(c.groupSettings.memory.autoSummaryEvery) || 30
         }
     }
 

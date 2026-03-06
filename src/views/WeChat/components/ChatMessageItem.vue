@@ -170,15 +170,18 @@
                                 <!-- 装饰图案 -->
                                 <div class="absolute top-0 left-0 w-full h-full opacity-10">
                                     <div class="absolute top-2 left-2 w-8 h-8 border-2 border-white rounded-full"></div>
-                                    <div class="absolute bottom-2 right-2 w-12 h-12 border-2 border-white rounded-full"></div>
+                                    <div class="absolute bottom-2 right-2 w-12 h-12 border-2 border-white rounded-full">
+                                    </div>
                                 </div>
 
                                 <div class="relative z-10 flex items-center gap-3">
-                                    <div class="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+                                    <div
+                                        class="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
                                         <span class="text-3xl">📦</span>
                                     </div>
                                     <div class="flex-1 min-w-0">
-                                        <div class="text-white text-xs font-black uppercase tracking-widest opacity-80 mb-0.5">
+                                        <div
+                                            class="text-white text-xs font-black uppercase tracking-widest opacity-80 mb-0.5">
                                             订单分享
                                         </div>
                                         <div class="text-white text-sm font-bold truncate drop-shadow-sm">
@@ -191,7 +194,8 @@
                             <!-- 订单信息 -->
                             <div class="bg-white px-4 pb-4 pt-2">
                                 <div v-if="msg.orderData?.items?.[0]" class="flex items-center gap-3 mb-3">
-                                    <img :src="msg.orderData.items[0].image" class="w-16 h-16 rounded-xl object-cover bg-slate-100">
+                                    <img :src="msg.orderData.items[0].image"
+                                        class="w-16 h-16 rounded-xl object-cover bg-slate-100">
                                     <div class="flex-1 min-w-0">
                                         <h4 class="text-sm font-bold text-slate-800 line-clamp-2">
                                             {{ msg.orderData.items[0].title }}
@@ -200,7 +204,9 @@
                                     </div>
                                 </div>
                                 <div v-else class="flex items-center gap-3 mb-3">
-                                    <div class="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center text-3xl">📦</div>
+                                    <div
+                                        class="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center text-3xl">
+                                        📦</div>
                                     <div class="flex-1">
                                         <h4 class="text-sm font-bold text-slate-800">订单分享</h4>
                                         <p class="text-xs text-slate-400 mt-1">订单号：{{ msg.orderId }}</p>
@@ -208,12 +214,14 @@
                                 </div>
                                 <div class="flex items-center justify-between pt-3 border-t border-slate-100">
                                     <span class="text-xs text-slate-500">实付金额</span>
-                                    <span class="text-lg font-black text-orange-600">¥{{ msg.orderData?.total || '0' }}</span>
+                                    <span class="text-lg font-black text-orange-600">¥{{ msg.orderData?.total || '0'
+                                        }}</span>
                                 </div>
                             </div>
 
                             <!-- 物流信息 -->
-                            <div v-if="msg.orderData?.status" class="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3 border-t border-orange-100">
+                            <div v-if="msg.orderData?.status"
+                                class="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3 border-t border-orange-100">
                                 <div class="flex items-center gap-2 mb-2">
                                     <span class="text-lg">🚚</span>
                                     <span class="text-xs font-bold text-slate-700">物流状态</span>
@@ -228,7 +236,8 @@
                                     {{ getOrderLogisticsInfo(msg) }}
                                 </p>
                             </div>
-                            <div v-else class="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3 border-t border-orange-100">
+                            <div v-else
+                                class="bg-gradient-to-r from-orange-50 to-amber-50 px-4 py-3 border-t border-orange-100">
                                 <p class="text-[10px] text-slate-500 text-center">
                                     🔒 点击可查看订单详情和物流状态
                                 </p>
@@ -307,7 +316,8 @@
                                 <div class="flex-1 min-w-0">
                                     <div class="text-white text-sm font-medium truncate drop-shadow-sm">{{
                                         getPayTitle(msg) }}</div>
-                                    <div class="text-white/70 text-[10px] truncate">{{ getPayDesc(msg, chatData) }}</div>
+                                    <div class="text-white/70 text-[10px] truncate">{{ getPayDesc(msg, chatData) }}
+                                    </div>
                                 </div>
                             </div>
 
@@ -413,10 +423,10 @@
                                                     <div class="flex flex-col items-end shrink-0">
                                                         <span class="text-[12px] font-bold text-gray-600">{{
                                                             parsedVoteData.optionVoters[idx].length
-                                                            }}</span>
+                                                        }}</span>
                                                         <span class="text-[9px] text-gray-400 font-medium">{{
                                                             calculateVotePercent(parsedVoteData.optionVoters[idx].length)
-                                                            }}%</span>
+                                                        }}%</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -798,7 +808,7 @@
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
                                     <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                        }}
+                                    }}
                                     </div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
@@ -1377,9 +1387,10 @@ function getCleanContent(contentRaw, isCard = false) {
 
     clean = clean.trim();
     // Strip operational tags (claims, rejections, financial, and multi-media commands)
-    const opRegex = /\[(领取|拒收|退回|GIFT|礼物|DRAW|MUSIC|演奏|UPDATE_BIO|VOTE|CREATE_VOTE|RECEIVE_RED_PACKET|HTML卡片)[:：\-\s]?[^\]]*\]/gi;
+    const opRegex = /\[(领取 | 拒收 | 退回|GIFT|礼物|DRAW|MUSIC|演奏|UPDATE_BIO|VOTE|CREATE_VOTE|RECEIVE_RED_PACKET|HTML 卡片)[:：\-\s]?[^\]]*\]/gi;
     clean = clean.replace(opRegex, '').trim();
-    clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '').trim();
+    // 注意：不要删除表情包标签，因为这是 sticker 类型消息的正常显示格式
+    // clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '').trim();
 
     // Final clean
     // FINAL GUARD: If it's a card and the remaining text is minimal, hide the bubble
@@ -1576,6 +1587,8 @@ function isImageMsg(msg) {
             const isTagOnly = /^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i.test(clean)
             return isTagOnly
         }
+        // If sticker not found, return FALSE to show as text bubble
+        // This allows [表情包：xxx] to be displayed as text when sticker doesn't exist
     }
 
     return false

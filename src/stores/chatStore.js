@@ -668,9 +668,13 @@ export const useChatStore = defineStore('chat', () => {
         // 2. Type Auto-Detection (if not specified)
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-            // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            // Supports up to 5 segments: [Tag:Val1:Val2:Val3:Val4:Val5]
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
+            // First try strict full-line match
+            let tagMatch = detectionContent.match(/^[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
+
+            // If no full-line match, try inline match (for embedded tags like "1![表情包：xxx]")
+            if (!tagMatch) {
+                tagMatch = detectionContent.match(/[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
+            }
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
@@ -3259,6 +3263,15 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     const lastSeg = mergedSegments[lastIdx2];
                     const lastIsSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[|【|（|\()/i.test(lastSeg.trim());
 
+                    // Special case: Merge sticker/image tags with previous [FROM:xxx] tag
+                    const isStickerTag = /^\[\s*(?:表情包|表情-包|STICKER|IMAGE|图片)\s*[:：]/i.test(trimSeg);
+                    const isFromTag = /^\[\s*FROM\s*[:：]/i.test(lastSeg.trim());
+                    if (isStickerTag && isFromTag) {
+                        // Merge sticker tag with previous FROM tag
+                        mergedSegments[lastIdx2] = lastSeg.trim() + '\n' + trimSeg;
+                        continue;
+                    }
+
                     // Merge if the current segment is just punctuation or a very short word, AND the last was text
                     const isPunctuationOnly = /^[\p{P}\p{S}]+$/u.test(trimSeg);
                     if (!lastIsSpecial && (trimSeg.length < 2 || isPunctuationOnly)) {
@@ -3944,7 +3957,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         }
                     }
 
-                    if (type === 'card' || type === 'text' || type === 'redpacket' || type === 'transfer' || type === 'gift') {
+                    if (type === 'card' || type === 'text' || type === 'redpacket' || type === 'transfer' || type === 'gift' || type === 'sticker') {
                         // Payment processing...
                         let claimMatch;
                         while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
@@ -4013,6 +4026,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                                 forceCard: type === 'card',
                                 ...(currentGroupMeta || {})
                             };
+
+                            // Re-detect type for text messages (e.g., [表情包：xxx] after [FROM:xxx] removal)
+                            if (type === 'text' && typeof msgContent === 'string') {
+                                const stickerMatch = msgContent.match(/^\[\s*(?:表情包|表情-包|STICKER|IMAGE)\s*[:：]\s*([^\]]+)\]\s*$/i);
+                                if (stickerMatch) {
+                                    msgOptions.type = 'sticker';
+                                    console.log('[consumePendingSegments] Re-detected sticker:', msgContent);
+                                }
+                            }
+
                             // Debug: Log gift segments
                             if (type === 'gift') {
                                 console.log('[consumePendingSegments] Processing gift segment:', { type, content: msgContent, segment, msgOptions: { ...segment, role: 'ai', type: type === 'text' ? 'text' : type, content: msgContent } })

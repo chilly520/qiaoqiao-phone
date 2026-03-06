@@ -1075,10 +1075,10 @@ const handlePat = (msg) => {
     if (navigator.vibrate) navigator.vibrate(50)
 
     // 2. Logic Response
-    const targetName = msg.role === 'user' ? '我' : (chatData.value.name || '对方')
+    const targetName = msg.role === 'user' ? '我' : (msg.senderName || chatData.value?.name || '对方')
     const sourceName = '我'
-    const suffix = chatData.value.patSuffix || '的头'
-    const action = chatData.value.patAction || '拍了拍'
+    const suffix = chatData.value?.patSuffix || '的头'
+    const action = chatData.value?.patAction || '拍了拍'
 
     chatStore.addMessage(chatData.value.id, {
         role: 'system',
@@ -1126,9 +1126,66 @@ const handleAvatarClick = (msg) => {
         // If it's a friend request or system message, ignore
         if (msg.isSystem || msg.type === 'system') return;
 
+        console.log('[ChatWindow] Avatar clicked:', {
+            msgId: msg.id,
+            role: msg.role,
+            senderId: msg.senderId,
+            senderName: msg.senderName,
+            isGroup: chatData.value?.isGroup,
+            currentChatId: chatStore.currentChatId
+        })
+
         // Navigate to Character Info Card
         // If user, go to user profile
-        const targetId = msg.role === 'user' ? 'user' : (msg.senderId || (!chatData.isGroup ? chatStore.currentChatId : null));
+        let targetId = msg.role === 'user' ? 'user' : (msg.senderId || (!chatData.value?.isGroup ? chatStore.currentChatId : null));
+
+        console.log('[ChatWindow] Calculated targetId:', targetId)
+
+        // Special handling for AI NPCs in group chat
+        if (chatData.value?.isGroup && targetId && !chatStore.chats[targetId]) {
+            // Check if this is an AI NPC participant
+            const participant = chatData.value.participants?.find(p => p.id === targetId)
+            console.log('[ChatWindow] Clicked NPC:', {
+                targetId,
+                foundParticipant: participant,
+                isNPC: participant?.isNPC,
+                roleId: participant?.roleId,
+                hasBio: !!participant?.bio,
+                hasPersona: !!participant?.persona
+            })
+            if (participant && (participant.isNPC || participant.id.startsWith('p-')) && !participant.roleId) {
+                // Temporarily store NPC data for profile view
+                const npcBio = participant.bio || participant.persona || {}
+                console.log('[ChatWindow] NPC Bio data:', npcBio)
+                chatStore.chats[targetId] = {
+                    id: targetId,
+                    name: participant.name,
+                    avatar: participant.avatar,
+                    isNPC: true,
+                    isNewNPC: true,
+                    bio: {
+                        gender: npcBio.gender || npcBio.性别 || '未知',
+                        age: npcBio.age || npcBio.年龄 || '未知',
+                        mbti: npcBio.mbti || '未知',
+                        traits: Array.isArray(npcBio.traits) ? npcBio.traits : [],
+                        hobbies: Array.isArray(npcBio.hobbies) ? npcBio.hobbies : [],
+                        signature: npcBio.signature || npcBio.签名 || '',
+                        occupation: npcBio.occupation || '未知',
+                        style: npcBio.style || '未知',
+                        loveItems: npcBio.loveItems || [],
+                        idealType: npcBio.idealType || '',
+                        heartbeatMoment: npcBio.heartbeatMoment || ''
+                    },
+                    messages: [],
+                    inChatList: false
+                }
+                console.log('[ChatWindow] Stored temporary NPC data for profile:', targetId, chatStore.chats[targetId])
+            } else if (!participant) {
+                console.warn('[ChatWindow] Participant not found for targetId:', targetId)
+                console.log('[ChatWindow] Available participants:', chatData.value?.participants?.map(p => ({ id: p.id, name: p.name, isNPC: p.isNPC })))
+            }
+        }
+
         if (targetId) emit('show-profile', targetId);
 
         // Clear the timer reference
@@ -3538,8 +3595,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         </div>
 
         <!-- Context Menu -->
-        <div v-if="showContextMenu" class="fixed inset-0 z-[100] flex items-center justify-center" @click="closeContextMenu"
-            @touchstart.stop="closeContextMenu">
+        <div v-if="showContextMenu" class="fixed inset-0 z-[100] flex items-center justify-center"
+            @click="closeContextMenu" @touchstart.stop="closeContextMenu">
             <!-- 半透明背景遮罩 -->
             <div class="absolute inset-0 bg-black/20"></div>
             <!-- 居中显示的菜单 -->

@@ -65,6 +65,7 @@ const editingIndex = ref(-1)
 const editingContent = ref('')
 const isEditMode = ref(false)
 const selectedIndices = ref(new Set())
+const expandedBooks = ref([]) // IDs of expanded books
 
 const memoryThemes = [
   { id: 'diary', name: '日记风', icon: 'fa-book', activeGradient: 'from-amber-400 to-orange-500' },
@@ -744,6 +745,12 @@ function openMemberManage(pid) {
   state.showMemberManageModal = true
 }
 
+// 处理群成员点击 - 打开管理面板
+function handleMemberClick(participant) {
+  // 群设置中的成员头像点击，统一打开管理面板
+  openMemberManage(participant.id)
+}
+
 function handleSetNickname() {
   const target = manageTarget.value
   if (!target) return
@@ -794,10 +801,97 @@ function handleSetGender() {
   })
 }
 
+// 上传群成员头像
+function triggerMemberAvatarUpload(target) {
+  if (!target || target.id === 'user') return
+  
+  // 创建临时 file input
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    try {
+      // 压缩图片
+      const compressed = await compressImage(file, 0.7)
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (e) => resolve(e.target.result)
+        reader.readAsDataURL(compressed)
+      })
+      
+      // 更新参与者头像
+      const idx = form.participants.findIndex(p => p.id === target.id)
+      if (idx !== -1) {
+        form.participants[idx].avatar = base64
+        chatStore.triggerToast('头像已更新', 'success')
+      }
+    } catch (error) {
+      console.error('上传头像失败:', error)
+      chatStore.triggerToast('上传失败', 'error')
+    }
+  }
+  input.click()
+}
+
 function goToMoments(id) {
   if (!id) return
   router.push(`/moments/profile/${id}`)
   state.showMemberManageModal = false
+}
+
+// World Book Selection Functions
+const actualSelectedCount = computed(() => {
+  if (!form.worldBookLinks) return 0
+  const allEntryIds = new Set()
+  worldBookStore.books.forEach(book => {
+    if (book.entries) {
+      book.entries.forEach(e => allEntryIds.add(e.id))
+    }
+  })
+  return form.worldBookLinks.filter(id => allEntryIds.has(id)).length
+})
+
+const toggleWorldBook = (id) => {
+  if (!form.worldBookLinks) form.worldBookLinks = []
+
+  const idx = form.worldBookLinks.indexOf(id)
+  if (idx === -1) {
+    form.worldBookLinks.push(id)
+  } else {
+    form.worldBookLinks.splice(idx, 1)
+  }
+}
+
+const toggleBookExpand = (id) => {
+  const idx = expandedBooks.value.indexOf(id)
+  if (idx === -1) expandedBooks.value.push(id)
+  else expandedBooks.value.splice(idx, 1)
+}
+
+const selectAllBook = (book) => {
+  if (!book.entries) return
+  if (!form.worldBookLinks) form.worldBookLinks = []
+
+  // Check if fully selected
+  const allSelected = book.entries.every(e => form.worldBookLinks.includes(e.id))
+
+  if (allSelected) {
+    // Deselect all
+    book.entries.forEach(e => {
+      const idx = form.worldBookLinks.indexOf(e.id)
+      if (idx !== -1) form.worldBookLinks.splice(idx, 1)
+    })
+  } else {
+    // Select all
+    book.entries.forEach(e => {
+      if (!form.worldBookLinks.includes(e.id)) {
+        form.worldBookLinks.push(e.id)
+      }
+    })
+  }
 }
 
 async function saveAll() {
@@ -1124,7 +1218,7 @@ onMounted(() => {
               </div>
               <div
                 class="w-12 h-12 rounded-xl overflow-hidden bg-gray-200 cursor-pointer active:scale-95 transition-transform border border-white shadow-sm"
-                @click="openMemberManage(p.id)">
+                @click="handleMemberClick(p)">
                 <img :src="p.avatar" class="w-full h-full object-cover" />
               </div>
               <div class="text-[9px] mt-1.5 truncate w-full text-center text-gray-600 font-medium">{{ p.name }}</div>
@@ -1183,7 +1277,84 @@ onMounted(() => {
             <div class="text-[11px] text-gray-400 mb-1">群聊氛围设定 (给 AI 的 Prompt)</div>
             <textarea v-model="form.groupPrompt"
               class="w-full bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-sm outline-none resize-none h-24 focus:bg-white transition-all shadow-inner"
-              placeholder="例如：这是一个二次元讨论群，大家说话喜欢带(x)或者(划掉)，氛围很和谐..."></textarea>
+              placeholder="例如：这是一个二次元讨论群，大家说话喜欢带 (x) 或者 (划掉)，氛围很和谐..."></textarea>
+          </div>
+
+          <!-- Worldbook Selection -->
+          <div>
+            <h3 class="section-title text-sm font-bold mb-2" :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">关联世界书</h3>
+            <div class="glass-panel p-2 rounded-lg border max-h-48 overflow-y-auto"
+              :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10' : 'bg-white/50 border-white/20'">
+              <div v-if="worldBookStore.books.length === 0" class="text-xs text-center py-2"
+                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-500'">
+                暂无世界书，请在桌面 App 中创建
+              </div>
+              <div v-else class="space-y-2">
+                <div v-for="book in worldBookStore.books" :key="book.id"
+                  class="rounded-lg overflow-hidden border"
+                  :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white/40 border-white/20'">
+                  <!-- Book Header (Click to Expand) -->
+                  <div class="flex items-center justify-between p-2 cursor-pointer transition-colors"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-white/50'"
+                    @click="toggleBookExpand(book.id)">
+                    <div class="flex items-center gap-2">
+                      <i class="fa-solid fa-chevron-right text-xs text-gray-500 transition-transform duration-200"
+                        :class="expandedBooks.includes(book.id) ? 'rotate-90' : ''"></i>
+                      <div class="flex flex-col">
+                        <span class="text-sm font-bold"
+                          :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">{{
+                            book.name }}</span>
+                        <span class="text-[10px]"
+                          :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
+                          {{ book.entries?.length || 0 }} 条目
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- Helper: Select All -->
+                    <div class="flex items-center gap-2" @click.stop>
+                      <button class="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded"
+                        @click="selectAllBook(book)">全选</button>
+                    </div>
+                  </div>
+
+                  <!-- Entries List (Visible if Expanded) -->
+                  <div v-show="expandedBooks.includes(book.id)" class="p-2 space-y-1 border-t"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/10 border-white/5' : 'bg-white/30 border-white/10'">
+                    <div v-if="!book.entries || book.entries.length === 0"
+                      class="text-center text-[10px] text-gray-400 py-1">
+                      (空)
+                    </div>
+                    <div v-for="entry in book.entries" :key="entry.id"
+                      class="flex items-center justify-between p-1.5 rounded transition-colors pl-4"
+                      :class="settingsStore.personalization.theme === 'dark' ? 'hover:bg-white/10' : 'hover:bg-white/60'">
+                      <div class="flex flex-col overflow-hidden mr-2">
+                        <span class="text-xs font-medium truncate"
+                          :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-700'"
+                          :title="entry.name">{{ entry.name }}</span>
+                        <span class="text-[10px] truncate"
+                          :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
+                          {{ entry.keys && entry.keys.length ? `[${entry.keys.join(',')}]` : '[常驻]' }}
+                        </span>
+                      </div>
+
+                      <!-- Toggle Entry -->
+                      <div class="w-[32px] h-[18px] rounded-full relative cursor-pointer transition-colors duration-200 shrink-0"
+                        :class="form.worldBookLinks?.includes(entry.id) ? 'bg-emerald-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
+                        @click="toggleWorldBook(entry.id)">
+                        <div class="absolute top-[2px] bg-white w-[14px] h-[14px] rounded-full shadow-sm transition-transform duration-200"
+                          :class="form.worldBookLinks?.includes(entry.id) ? 'left-[16px]' : 'left-[2px]'">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="text-[10px] mt-1 px-1"
+              :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-400'">
+              已选 {{ actualSelectedCount }} 项。绑定后，相关设定将注入到群聊 AI 对话中。
+            </div>
           </div>
 
           <div>
@@ -1597,14 +1768,18 @@ onMounted(() => {
         class="bg-white w-[90%] max-w-[400px] p-6 rounded-3xl space-y-5 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto"
         @click.stop>
         <div class="flex flex-col items-center gap-4 pb-6 border-b border-gray-50">
-          <div class="relative">
+          <div class="relative group cursor-pointer" @click="triggerMemberAvatarUpload(manageTarget)">
             <img :src="manageTarget?.avatar"
-              class="w-20 h-20 rounded-2xl object-cover shadow-md border-4 border-white" />
+              class="w-20 h-20 rounded-2xl object-cover shadow-md border-4 border-white group-hover:opacity-75 transition-opacity" />
+            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <i class="fa-solid fa-camera text-white text-xl drop-shadow-lg"></i>
+            </div>
             <div v-if="manageTarget?.role === 'owner'"
               class="absolute -top-2 -right-2 bg-amber-400 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">
               群主</div>
           </div>
           <div class="text-center">
+            <div class="text-[11px] text-gray-400 mb-1">点击头像可更换</div>
             <div class="font-bold text-xl text-gray-900 flex items-center justify-center gap-2 flex-wrap">
               {{ manageTarget?.nickname || manageTarget?.name }}
               <span v-if="manageTarget?.customTitle"

@@ -1,9 +1,11 @@
 <template>
     <div class="flex-1 flex flex-col bg-gray-50 animate-fade-in overflow-hidden">
         <!-- 商品详情弹窗 -->
-        <div v-if="selectedProduct" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        <div v-if="selectedProduct"
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
             @click="selectedProduct = null">
-            <div class="bg-white rounded-3xl mx-4 max-w-sm w-full max-h-[80vh] overflow-hidden animate-scale-in" @click.stop>
+            <div class="bg-white rounded-3xl mx-4 max-w-sm w-full max-h-[80vh] overflow-hidden animate-scale-in"
+                @click.stop>
                 <!-- 商品图片 -->
                 <div class="relative">
                     <img :src="selectedProduct.image" class="w-full aspect-square object-cover bg-slate-100">
@@ -12,27 +14,27 @@
                         ✕
                     </button>
                 </div>
-                
+
                 <!-- 商品信息 -->
                 <div class="p-5 space-y-4">
                     <div>
                         <h3 class="text-lg font-bold text-slate-800 mb-2">{{ selectedProduct.title }}</h3>
                         <p class="text-sm text-slate-500 leading-relaxed">{{ selectedProduct.description }}</p>
                     </div>
-                    
+
                     <div class="flex items-center justify-between">
                         <span class="text-2xl font-black text-orange-600">¥{{ selectedProduct.price }}</span>
                         <span v-if="selectedProduct.originalPrice" class="text-sm text-slate-400 line-through">
                             ¥{{ selectedProduct.originalPrice }}
                         </span>
                     </div>
-                    
+
                     <div class="flex items-center gap-2 pt-3 border-t">
                         <span class="text-xs text-slate-400">店铺:</span>
                         <span class="text-xs font-bold text-slate-600">{{ selectedProduct.shop || '官方旗舰店' }}</span>
                     </div>
                 </div>
-                
+
                 <!-- 底部按钮 -->
                 <div class="p-4 pt-0 flex gap-3">
                     <button @click="addToCartFromOrder(selectedProduct)"
@@ -65,7 +67,8 @@
                 <p class="text-xs font-black uppercase tracking-widest">暂无相关订单</p>
             </div>
 
-            <div v-for="order in filteredOrders" :key="order.id" class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
+            <div v-for="order in filteredOrders" :key="order.id"
+                class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
                 <div class="flex justify-between items-center mb-3">
                     <div class="flex flex-col">
                         <span class="text-[10px] text-slate-400 font-mono">{{ order.id }}</span>
@@ -77,8 +80,7 @@
                 </div>
 
                 <div class="space-y-2 mb-3">
-                    <div v-for="item in order.items.slice(0, 2)" :key="item.cartId" 
-                        @click="showProductDetail(item)"
+                    <div v-for="item in order.items.slice(0, 2)" :key="item.cartId" @click="showProductDetail(item)"
                         class="flex gap-3 cursor-pointer active:scale-95 transition-transform">
                         <img :src="item.image" class="w-16 h-16 rounded-2xl object-cover bg-slate-100">
                         <div class="flex-1">
@@ -95,7 +97,8 @@
                     </span>
 
                     <div class="flex gap-2">
-                        <button v-if="['paid', 'shipped', 'shipping', 'delivering', 'delivered', 'completed'].includes(order.status)"
+                        <button
+                            v-if="['paid', 'shipped', 'shipping', 'delivering', 'delivered', 'completed'].includes(order.status)"
                             @click="$emit('track', order.id)"
                             class="px-4 py-1.5 border border-slate-200 text-slate-500 text-[10px] font-bold rounded-full hover:bg-slate-50">
                             查看物流
@@ -124,20 +127,24 @@
         </div>
 
         <!-- 分享卡片弹窗 -->
-        <div v-if="showShareCard" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        <div v-if="showShareCard"
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
             @click="showShareCard = false">
-            <div class="bg-white rounded-3xl mx-4 max-w-sm w-full overflow-hidden animate-scale-in shadow-2xl" @click.stop>
+            <div class="bg-white rounded-3xl mx-4 max-w-sm w-full overflow-hidden animate-scale-in shadow-2xl"
+                @click.stop>
                 <!-- 卡片头部渐变背景 -->
-                <div class="bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 p-6 text-white text-center relative overflow-hidden">
+                <div
+                    class="bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 p-6 text-white text-center relative overflow-hidden">
                     <!-- 装饰图案 -->
                     <div class="absolute top-0 left-0 w-full h-full opacity-10">
                         <div class="absolute top-2 left-2 w-8 h-8 border-2 border-white rounded-full"></div>
                         <div class="absolute bottom-2 right-2 w-12 h-12 border-2 border-white rounded-full"></div>
                         <div class="absolute top-1/2 left-1/4 w-6 h-6 border-2 border-white rounded-full"></div>
                     </div>
-                    
+
                     <div class="relative z-10">
-                        <div class="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-lg">
+                        <div
+                            class="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-lg">
                             📦
                         </div>
                         <h3 class="text-lg font-bold mb-1">订单分享</h3>
@@ -174,7 +181,7 @@
                             <span class="text-sm font-bold text-slate-700">物流信息</span>
                             <span :class="['text-xs font-bold ml-auto px-2 py-0.5 rounded-full',
                                 sharingOrder?.status === 'completed' ? 'bg-green-100 text-green-600' :
-                                'bg-orange-100 text-orange-600']">
+                                    'bg-orange-100 text-orange-600']">
                                 {{ getStatusText(sharingOrder?.status) }}
                             </span>
                         </div>
@@ -183,10 +190,10 @@
                                 <div class="w-2 h-2 rounded-full bg-green-500 mt-1.5 flex-none"></div>
                                 <div class="flex-1">
                                     <p class="text-xs text-slate-600">
-                                        {{ logistics.find(l => l.orderId === sharingOrder?.id)?.status || '已发货' }}
+                                        {{logistics.find(l => l.orderId === sharingOrder?.id)?.status || '已发货'}}
                                     </p>
                                     <p class="text-[10px] text-slate-400 mt-0.5">
-                                        {{ logistics.find(l => l.orderId === sharingOrder?.id)?.updateTime || '刚刚' }}
+                                        {{logistics.find(l => l.orderId === sharingOrder?.id)?.updateTime || '刚刚'}}
                                     </p>
                                 </div>
                             </div>
@@ -215,9 +222,11 @@
         </div>
 
         <!-- 好友选择器弹窗 -->
-        <div v-if="showFriendSelector" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        <div v-if="showFriendSelector"
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
             @click="showFriendSelector = false">
-            <div class="bg-white w-full max-w-sm mx-4 rounded-3xl max-h-[80vh] overflow-hidden animate-scale-in" @click.stop>
+            <div class="bg-white w-full max-w-sm mx-4 rounded-3xl max-h-[80vh] overflow-hidden animate-scale-in"
+                @click.stop>
                 <!-- 头部 -->
                 <div class="bg-gradient-to-br from-green-500 to-emerald-500 p-5 text-white text-center">
                     <h3 class="text-base font-bold mb-1">选择好友</h3>
@@ -235,15 +244,15 @@
 
                     <!-- 好友列表 -->
                     <div class="space-y-2">
-                        <div v-for="friend in filteredFriends" :key="friend.id"
-                            @click="selectFriend(friend)"
+                        <div v-for="friend in filteredFriends" :key="friend.id" @click="selectFriend(friend)"
                             class="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 active:bg-slate-100 cursor-pointer transition-colors">
                             <img :src="friend.avatar" class="w-12 h-12 rounded-2xl object-cover">
                             <div class="flex-1">
                                 <h4 class="text-sm font-bold text-slate-800">{{ friend.name }}</h4>
                                 <p class="text-xs text-slate-400 mt-0.5">{{ friend.nickname || '点击分享订单' }}</p>
                             </div>
-                            <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-sm">
+                            <div
+                                class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 text-sm">
                                 →
                             </div>
                         </div>
@@ -293,7 +302,7 @@ const allFriends = computed(() => {
 
 const filteredFriends = computed(() => {
     if (!searchFriend.value) return allFriends.value
-    return allFriends.value.filter(f => 
+    return allFriends.value.filter(f =>
         f.name.toLowerCase().includes(searchFriend.value.toLowerCase()) ||
         (f.nickname && f.nickname.toLowerCase().includes(searchFriend.value.toLowerCase()))
     )
@@ -306,7 +315,7 @@ const shareOrder = (order) => {
 
 const selectFriend = async (friend) => {
     console.log('分享订单数据:', sharingOrder.value)
-    
+
     // 创建订单卡片消息（用户视角发送）
     const orderCard = {
         role: 'user',
@@ -315,15 +324,15 @@ const selectFriend = async (friend) => {
         orderData: JSON.parse(JSON.stringify(sharingOrder.value)),
         timestamp: new Date().toISOString()
     }
-    
+
     console.log('发送的订单卡片:', orderCard)
-    
+
     try {
         await chatStore.addMessage(friend.id, orderCard)
     } catch (error) {
         console.error('发送订单卡片失败:', error)
     }
-    
+
     showFriendSelector.value = false
     showShareCard.value = false
 }
@@ -373,6 +382,9 @@ const tabs = [
 
 const filteredOrders = computed(() => {
     if (activeTab.value === 'all') return props.orders
+    if (activeTab.value === 'shipped') {
+        return props.orders.filter(o => ['shipped', 'shipping', 'delivering', 'delivered'].includes(o.status))
+    }
     return props.orders.filter(o => o.status === activeTab.value)
 })
 

@@ -663,7 +663,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                     if (m.type === 'gift' && m.giftId) {
                                         content = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
                                     }
-                                    // simple clean
+                                    // 群聊不需要心声，移除 INNER_VOICE 标签
                                     content = content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
                                     return `${sender}: ${content}`
                                 }).join('\n')
@@ -693,8 +693,28 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                         if (m.type === 'gift' && m.giftId) {
                                             content = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
                                         }
-                                        const cleanContent = String(content).replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim()
-                                        return `${sender}: ${cleanContent}`
+                                        // 【关键修改】保留心声内容作为上下文参考，让 AI 知道角色的衣着和所在地
+                                        const voiceMatch = String(content).match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
+                                        if (voiceMatch) {
+                                            try {
+                                                const voiceObj = JSON.parse(voiceMatch[1])
+                                                const statusText = voiceObj.status || voiceObj.状态 || ''
+                                                const outfitText = voiceObj.outfit || voiceObj.着装 || voiceObj.dress || ''
+                                                const locationText = voiceObj.location || voiceObj.地点 || ''
+                                                
+                                                const statusSummary = []
+                                                if (statusText) statusSummary.push(`状态：${statusText}`)
+                                                if (outfitText) statusSummary.push(`着装：${outfitText}`)
+                                                if (locationText) statusSummary.push(`位置：${locationText}`)
+                                                
+                                                if (statusSummary.length > 0) {
+                                                    content = `${content} [角色状态参考：${statusSummary.join('，')}]`
+                                                }
+                                            } catch (e) {
+                                                console.warn('[AI Service] Failed to parse inner voice for context:', e)
+                                            }
+                                        }
+                                        return `${sender}: ${content}`
                                     }).join('\n')
                                     memoryParts.push(`${title}\n${text}`)
                                 }
