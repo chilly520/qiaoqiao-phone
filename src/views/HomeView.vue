@@ -87,7 +87,7 @@ function openApp(appId) {
     // Store a flag to scroll to top after reload
     sessionStorage.setItem('justReloaded', 'true')
     location.reload()
-  } else if (['forum', 'calendar', 'shopping', 'eleme', 'live', 'douyin', 'browser', 'pomodoro'].includes(appId)) {
+  } else if (['forum', 'calendar', 'shopping', 'eleme', 'live', 'douyin', 'browser', 'pomodoro', 'couple'].includes(appId)) {
     // Placeholder navigation for new apps
     safeNavigate('/' + appId)
   }
@@ -542,7 +542,8 @@ onUnmounted(() => {
         <div class="col-span-4 h-1"></div>
 
         <!-- Couple Space App -->
-        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group">
+        <div class="col-span-1 flex flex-col items-center gap-2 cursor-pointer app-icon-wrapper group"
+          @click="openApp('couple')">
           <div id="icon-couple" :style="getIconStyle('couple')"
             class="w-[50px] h-[50px] flex items-center justify-center glass-icon group-active:scale-90 overflow-hidden">
             <svg v-if="!hasCustomIcon('couple')" width="30" height="30" viewBox="0 0 24 24" class="fill-relief"

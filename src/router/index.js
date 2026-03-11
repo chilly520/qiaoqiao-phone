@@ -207,6 +207,22 @@ const router = createRouter({
             path: '/search',
             name: 'search',
             component: () => import('../views/PhoneInspection/SearchView.vue')
+        },
+        // Couple Space
+        {
+            path: '/couple',
+            name: 'couple',
+            component: () => import('../views/LoveSpace/LoveSpaceApp.vue')
+        },
+        {
+            path: '/couple/diary',
+            name: 'couple-diary',
+            component: () => import('../views/LoveSpace/LoveDiary.vue')
+        },
+        {
+            path: '/couple/messages',
+            name: 'couple-messages',
+            component: () => import('../views/LoveSpace/LoveMessages.vue')
         }
     ]
 })

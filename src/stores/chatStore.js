@@ -8,6 +8,7 @@ import { useSettingsStore } from './settingsStore'
 import { useMusicStore } from './musicStore'
 import { useSchedulerStore } from './schedulerStore'
 import { useCallStore } from './callStore'
+import { useLoveSpaceStore } from './loveSpaceStore'
 import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from '../utils/ai/prompts'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
@@ -2245,6 +2246,15 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 const musicHint = `\n\n【当前正在一起听歌】\n你正和用户一起听：${song.song} - ${song.singer}。
 你可以对这首歌发表看法，或者在觉得氛围合适时，使用 <bgm>歌名 - 歌手</bgm> 格式切换下一首符合当前氛围的歌曲。`
                 charInfo.description += musicHint
+            }
+
+            // Couple Space Awareness
+            if (!chat.isGroup) {
+                const lsStore = useLoveSpaceStore()
+                const lsHint = lsStore.getSpaceContextPrompt(chatId)
+                if (lsHint) {
+                    charInfo.description += lsHint
+                }
             }
 
             // Scheduled Task Capability (Global Scheduler)

@@ -1440,6 +1440,27 @@ function handleForumCardClick() {
     router.push({ path: '/forum', query: { forum: forumId, post: postId } })
 }
 
+const isLoveSpaceInvite = computed(() => {
+    const c = ensureString(props.msg.content)
+    return c.startsWith('[LOVESPACE_INVITE:') && c.endsWith(']')
+})
+
+const parsedLoveSpaceInvite = computed(() => {
+    if (!isLoveSpaceInvite.value) return null
+    const c = ensureString(props.msg.content)
+    const inner = c.slice(1, -1) // remove []
+    const parts = inner.split(':')
+    if (parts.length >= 2) {
+        return { charId: parts[1] }
+    }
+    return null
+})
+
+function handleLoveSpaceInviteClick() {
+    if (!parsedLoveSpaceInvite.value) return
+    router.push({ path: '/couple', query: { char: parsedLoveSpaceInvite.value.charId } })
+}
+
 const weiboCardData = computed(() => {
     if (!isWeiboCard.value) return null
     try {
