@@ -64,10 +64,18 @@
           <span class="text-xs font-bold">{{ commentCount }}</span>
         </div>
       </div>
-      <button class="flex items-center gap-1.5 hover:text-teal-500 transition-colors cursor-pointer group/btn" @click.stop="$emit('share')">
-        <i class="fa-solid fa-share-nodes text-xs group-hover/btn:text-teal-500"></i>
-        <span class="text-xs font-bold">分享</span>
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- Delete Post Button (only for author) -->
+        <button v-if="showDelete" @click.stop="confirmDelete" 
+                class="flex items-center gap-1.5 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors group/btn" 
+                title="删除帖子">
+          <i class="fa-regular fa-trash-can text-xs"></i>
+        </button>
+        <button class="flex items-center gap-1.5 hover:text-teal-500 transition-colors cursor-pointer group/btn" @click.stop="$emit('share')">
+          <i class="fa-solid fa-share-nodes text-xs group-hover/btn:text-teal-500"></i>
+          <span class="text-xs font-bold">分享</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -87,10 +95,14 @@ const props = defineProps({
   isLiked: {
     type: Boolean,
     default: false
+  },
+  showDelete: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['share', 'toggle-like'])
+const emit = defineEmits(['share', 'toggle-like', 'delete'])
 
 function formatTime(ts) {
   const d = new Date(ts);
@@ -102,6 +114,12 @@ const previewContent = computed(() => {
   text = text.replace(/!\[.*?\]\((.*?)\)/g, '<span class="text-teal-500 text-xs font-bold tracking-widest ml-1 bg-teal-50 px-1 rounded"> [图片] </span>');
   return text;
 });
+
+function confirmDelete() {
+  if (confirm('确定要删除这个帖子吗？删除后无法恢复。')) {
+    emit('delete', props.post.id)
+  }
+}
 </script>
 
 <style scoped>

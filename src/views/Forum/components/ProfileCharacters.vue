@@ -20,22 +20,30 @@
         </p>
         
         <div class="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar bg-[#fcfdfd] p-2 rounded-[16px] border border-slate-100 shadow-inner">
-          <label v-for="c in chatList" :key="c.id" 
-                 class="flex items-center gap-3 p-2.5 bg-white border border-slate-100 rounded-[14px] hover:border-teal-200 cursor-pointer transition-all shadow-sm">
-            <div class="relative flex items-center justify-center">
-              <input type="checkbox" :value="c.id" v-model="forumStore.boundCharIds" 
-                     @change="forumStore.saveStore()" class="peer sr-only">
-              <div class="w-5 h-5 rounded flex items-center justify-center border-2 border-slate-200 
-                          peer-checked:bg-teal-400 peer-checked:border-teal-400 transition-colors">
-                <i class="fa-solid fa-check text-white text-[10px] opacity-0 peer-checked:opacity-100"></i>
-              </div>
+          <div v-for="c in chatList" :key="c.id" 
+               :class="['flex items-center gap-3 p-2.5 bg-white border rounded-[14px] transition-all shadow-sm cursor-pointer', 
+                         selectedChars.includes(c.id) ? 'border-teal-300 bg-teal-50/30' : 'border-slate-100 hover:border-teal-200']">
+            <div class="flex items-center justify-center">
+              <input type="checkbox" :value="c.id" v-model="selectedChars" 
+                     @change="updateBoundChars" 
+                     class="w-5 h-5 rounded border-2 border-slate-300 text-teal-500 focus:ring-teal-400 focus:ring-2 cursor-pointer">
             </div>
             <img :src="c.avatar || 'https://api.dicebear.com/7.x/notionists/svg?seed='+c.name" 
                  class="w-8 h-8 rounded-full border border-slate-100/50 shadow-sm object-cover">
             <div class="flex-1 min-w-0">
               <span class="text-[14px] font-bold text-slate-800 tracking-wide block truncate">{{c.name}}</span>
             </div>
-          </label>
+            <!-- Activity Level Selector (only for bound chars) -->
+            <select v-if="selectedChars.includes(c.id)" 
+                    v-model="charActivityMap[c.id]"
+                    @change="updateCharActivity(c.id, charActivityMap[c.id])"
+                    @click.stop
+                    class="text-xs bg-white border border-teal-300 rounded-full px-2.5 py-1.5 text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400 font-medium shadow-sm">
+              <option value="high">🔥 高活跃</option>
+              <option value="medium">💬 中活跃</option>
+              <option value="low">🌙 低活跃</option>
+            </select>
+          </div>
           <div v-if="chatList.length === 0" class="text-xs text-center text-slate-400 py-3">
             通讯录空空如也~
           </div>
@@ -46,7 +54,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useForumStore } from '@/stores/forumStore'
 import { useChatStore } from '@/stores/chatStore'
 
@@ -54,6 +62,38 @@ const forumStore = useForumStore()
 const chatStore = useChatStore()
 
 const chatList = computed(() => Object.values(chatStore.chats))
+
+// Local state for selected chars and activity levels
+const selectedChars = ref([...forumStore.boundCharIds])
+const charActivityMap = ref({})
+
+// Initialize activity map from chat store
+const initActivityMap = () => {
+  Object.values(chatStore.chats).forEach(char => {
+    if (forumStore.boundCharIds.includes(char.id)) {
+      charActivityMap.value[char.id] = char.forumActivity || 'medium'
+    }
+  })
+}
+
+// Initialize on mount
+initActivityMap()
+
+// Update bound chars when checkbox changes
+const updateBoundChars = () => {
+  forumStore.boundCharIds = [...selectedChars.value]
+  forumStore.saveStore()
+}
+
+// Update char activity in chat store
+const updateCharActivity = (charId, activity) => {
+  const chat = chatStore.chats[charId]
+  if (chat) {
+    chat.forumActivity = activity
+    chatStore.saveStore()
+    console.log(`✅ Updated ${chat.name} forum activity to ${activity}`)
+  }
+}
 </script>
 
 <style scoped>

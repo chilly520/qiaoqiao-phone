@@ -121,6 +121,12 @@
               <div class="flex items-center justify-between text-[11px] text-slate-400 mt-2 font-medium">
                 <span class="tracking-wide">{{ formatTime(comment.timestamp) }}</span>
                 <div class="flex items-center gap-2">
+                  <!-- Delete Comment (author or mod) -->
+                  <button v-if="canDeleteComment(comment)" @click="confirmDeleteComment(comment.id)" 
+                          class="hover:bg-red-50 hover:text-red-500 px-2 py-1 rounded-full text-slate-300 transition-colors opacity-40 group-hover:opacity-100 text-[10px]"
+                          title="删除评论">
+                    <i class="fa-regular fa-trash-can"></i>
+                  </button>
                   <!-- Mod: Ban user from comment -->
                   <button v-if="isMod && !comment.isMod && !comment.isAdmin" @click="$emit('ban-user', comment.authorName)" class="hover:bg-red-50 hover:text-red-500 px-2 py-1 rounded-full text-slate-300 transition-colors opacity-0 group-hover:opacity-100 text-[10px]">
                     <i class="fa-solid fa-user-slash"></i>
@@ -236,7 +242,7 @@ const props = defineProps({
   mentionUsers: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['close', 'generate', 'send', 'share', 'update:currentAltId', 'toggle-pin', 'toggle-featured', 'toggle-hot', 'toggle-ban', 'ban-user', 'toggle-like'])
+const emit = defineEmits(['close', 'generate', 'send', 'share', 'update:currentAltId', 'toggle-pin', 'toggle-featured', 'toggle-hot', 'toggle-ban', 'ban-user', 'toggle-like', 'delete-comment'])
 
 const newCommentContent = ref('')
 const replyInput = ref(null)
@@ -254,6 +260,17 @@ const currentAltIdLocal = computed({
 function formatTime(ts) {
   const d = new Date(ts);
   return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function canDeleteComment(comment) {
+  // Author can delete their own comments (any of their alts), mods can delete any comment
+  return props.alts.some(a => a.id === comment.authorId) || props.isMod
+}
+
+function confirmDeleteComment(commentId) {
+  if (confirm('确定要删除这条评论吗？')) {
+    emit('delete-comment', props.post.id, commentId)
+  }
 }
 
 function insertMention(name) {

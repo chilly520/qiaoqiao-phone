@@ -30,14 +30,14 @@
                @click="$emit('view-post', post)" 
                class="p-3 bg-blue-50/30 border border-blue-100 rounded-[16px] cursor-pointer hover:bg-blue-50 hover:shadow-md transition-all group">
             <div class="flex items-center gap-2.5 mb-1.5">
-              <img :src="post.avatar" class="w-8 h-8 rounded-full border border-blue-100 bg-white object-cover">
+              <img :src="currentAlt?.avatar" class="w-8 h-8 rounded-full border border-blue-100 bg-white object-cover">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5">
-                  <span class="text-[12px] font-bold text-slate-600 truncate">{{ post.authorName }}</span>
-                  <span class="text-[9px] text-blue-400 font-bold bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200">{{ post._forumName }}</span>
+                  <span class="text-[12px] font-bold text-slate-600 truncate">{{ currentAlt?.name }}</span>
+                  <span class="text-[9px] text-blue-400 font-bold bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-200">{{ getForumName(post.forumId) }}</span>
                 </div>
               </div>
-              <span class="text-[10px] text-slate-400">{{ formatTime(post.createdAt) }}</span>
+              <span class="text-[10px] text-slate-400">{{ formatTime(post.timestamp) }}</span>
             </div>
             <div class="text-[14px] font-bold text-slate-700 truncate group-hover:text-blue-600 transition-colors mb-2">{{ post.title }}</div>
             <div class="flex items-center gap-4 text-[11px] text-slate-400 font-medium">
@@ -47,11 +47,11 @@
               </span>
               <span class="flex items-center gap-1.5">
                 <i class="fa-solid fa-comment text-blue-400 text-[10px]"></i> 
-                {{ post.comments }}
+                {{ getCommentCount(post.id) }}
               </span>
               <span class="flex items-center gap-1.5">
                 <i class="fa-solid fa-eye text-slate-400 text-[10px]"></i> 
-                {{ post.views }}
+                {{ post.views || 0 }}
               </span>
             </div>
           </div>
@@ -88,8 +88,43 @@ const myPosts = computed(() => {
   const currentAltId = forumStore.currentAltId
   if (!currentAltId) return []
   
-  return forumStore.posts.filter(post => post.authorId === currentAltId)
+  const allPosts = []
+  // Gather posts from all forums
+  if (forumStore.posts) {
+    Object.values(forumStore.posts).forEach(forumPosts => {
+      if (Array.isArray(forumPosts)) {
+        forumPosts.forEach(post => {
+          if (post.authorId === currentAltId) {
+            allPosts.push(post)
+          }
+        })
+      }
+    })
+  }
+  
+  // Sort by timestamp (newest first)
+  return allPosts.sort((a, b) => b.timestamp - a.timestamp)
 })
+
+// 获取版块名称
+const getForumName = (forumId) => {
+  if (!forumStore.forums) return '未知版块'
+  const forum = forumStore.forums.find(f => f.id === forumId)
+  return forum ? forum.name : '未知版块'
+}
+
+// 获取评论数量
+const getCommentCount = (postId) => {
+  let count = 0
+  if (forumStore.comments) {
+    Object.values(forumStore.comments).forEach(forumComments => {
+      if (forumComments && forumComments[postId]) {
+        count += forumComments[postId].length
+      }
+    })
+  }
+  return count
+}
 
 function formatTime(dateStr) {
   if (!dateStr) return ''

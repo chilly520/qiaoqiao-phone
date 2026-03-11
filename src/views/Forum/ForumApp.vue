@@ -1,10 +1,10 @@
 <template>
   <div class="forum-app bg-[#f4f9f9] h-screen flex flex-col font-sans overflow-hidden">
     <!-- Header -->
-    <header class="flex-none bg-white/90 backdrop-blur-xl border-b border-teal-100/50 px-4 pt-10 pb-3 z-30 flex items-center justify-between shadow-sm sticky top-0 h-[84px]">
+    <header v-show="!profileSubPage" class="flex-none bg-white/90 backdrop-blur-xl border-b border-teal-100/50 px-4 pt-10 pb-3 z-30 flex items-center justify-between shadow-sm sticky top-0 h-[84px]">
       <div class="flex items-center gap-3">
-        <button @click="$router.push('/')" class="w-9 h-9 rounded-2xl bg-teal-50 hover:bg-teal-100 flex items-center justify-center text-lg active:scale-90 transition-all flex-none border border-teal-100/50 text-teal-600">
-          <i class="fa-solid fa-house"></i>
+        <button @click="handleBack" class="w-9 h-9 rounded-2xl bg-teal-50 hover:bg-teal-100 flex items-center justify-center text-lg active:scale-90 transition-all flex-none border border-teal-100/50 text-teal-600">
+          <i :class="currentTab === 'discover' ? 'fa-solid fa-house' : 'fa-solid fa-chevron-left'"></i>
         </button>
         <div class="flex flex-col">
           <h1 class="text-[17px] font-bold text-slate-800 line-clamp-1 flex items-center gap-1.5">
@@ -18,7 +18,7 @@
               <i class="fa-solid fa-address-card text-teal-500 text-sm"></i> 个人中心
             </template>
           </h1>
-          <span v-if="currentTab === 'forum' && forumStore.currentForum" class="text-[10px] text-slate-400 font-medium tracking-wide">共 {{ forumStore.currentPosts?.length || 0 }} 贴 • {{ forumStore.currentUser.name }}</span>
+          <span v-if="currentTab === 'forum' && forumStore.currentForum" class="text-[10px] text-slate-400 font-medium tracking-wide">共 {{ forumStore.currentPosts?.length || 0 }} 贴 • {{ forumStore.currentUser?.name || '未知' }}</span>
         </div>
       </div>
       <button v-if="currentTab === 'forum'" @click="openSettings" class="w-9 h-9 rounded-full hover:bg-teal-50 text-slate-400 hover:text-teal-600 transition-colors flex items-center justify-center">
@@ -128,9 +128,11 @@
               :post="post" 
               :comment-count="forumStore.getPostComments(forumStore.currentForumId, post.id).length"
               :is-liked="forumStore.isPostLiked(post.id)"
+              :show-delete="forumStore.alts.some(a => a.id === post.authorId) || forumStore.isUserStaff"
               @click="openPost(post)"
               @share="sharePostTarget = post"
               @toggle-like="forumStore.toggleLike($event)"
+              @delete="confirmDeletePost($event)"
             />
             
             <div class="py-6 flex flex-col items-center justify-center gap-2 text-slate-400/80">
@@ -157,10 +159,10 @@
          <!-- Profile Sub Pages -->
          <ProfileCharacters v-if="profileSubPage === 'characters'" @back="profileSubPage = null" />
          <ProfileAlts v-else-if="profileSubPage === 'alts'" @back="profileSubPage = null" @add-alt="isAddAltVisible = true" />
-         <ProfileLikes v-else-if="profileSubPage === 'likes'" @back="profileSubPage = null" @view-post="viewPostDetail" />
-         <ProfileMyPosts v-else-if="profileSubPage === 'myPosts'" @back="profileSubPage = null" @view-post="viewPostDetail" />
+         <ProfileLikes v-else-if="profileSubPage === 'likes'" @back="profileSubPage = null" @view-post="goToLikedPost" />
+         <ProfileMyPosts v-else-if="profileSubPage === 'myPosts'" @back="profileSubPage = null" @view-post="goToLikedPost" />
          <ProfileAdmin v-else-if="profileSubPage === 'admin'" @back="profileSubPage = null" 
-                       @apply-mod="handleApplyMod" @resign-mod="handleResignMod" @unban-user="handleBanUser" />
+                       @apply-mod="handleApplyMod" @resign-mod="handleResignMod" @unban-user="handleBanUser" @clear-all-posts="confirmClearAllPosts" />
                
          <!-- Profile Main Menu -->
          <template v-else>
@@ -203,7 +205,8 @@
                     
               <div v-if="forumStore.getMyLikedPosts.length > 0" class="flex flex-col gap-2 max-h-[300px] overflow-y-auto custom-scrollbar">
                 <div v-for="likedPost in forumStore.getMyLikedPosts.slice(0, 3)" :key="likedPost.id" 
-                     class="p-3 bg-rose-50/30 border border-rose-100 rounded-[16px] cursor-pointer hover:bg-rose-50 transition-colors group">
+                     @click="goToLikedPost(likedPost)"
+                     class="p-3 bg-rose-50/30 border border-rose-100 rounded-[16px] cursor-pointer hover:bg-rose-50 transition-all group">
                   <div class="flex items-center gap-2.5 mb-1.5">
                     <img :src="likedPost.avatar" class="w-7 h-7 rounded-full border border-rose-100 bg-white object-cover">
                     <span class="text-[12px] font-bold text-slate-600 flex-1 truncate">{{ likedPost.authorName }}</span>
@@ -245,10 +248,10 @@
                 <i class="fa-solid fa-shield-halved text-amber-500 text-sm"></i> 版务管理
               </h3>
               <p class="text-[11px] text-slate-400 mb-4 leading-relaxed font-medium">每个板块有独立的版主和管理员团队</p>
-              <div class="flex items-center justify-between">
+              <div v-if="currentModData" class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <img :src="currentModData.moderatorAvatar" class="w-8 h-8 rounded-full border-2 border-amber-200 shadow-sm">
-                  <span class="text-[13px] font-bold text-slate-600">{{ currentModData.moderatorName }}</span>
+                  <img :src="currentModData.moderatorAvatar || ''" class="w-8 h-8 rounded-full border-2 border-amber-200 shadow-sm">
+                  <span class="text-[13px] font-bold text-slate-600">{{ currentModData.moderatorName || 'NPC' }}</span>
                   <span class="px-2 py-1 bg-amber-100 text-amber-600 rounded-full text-[10px] font-black tracking-widest border border-amber-200">版主</span>
                 </div>
                 <i class="fa-solid fa-chevron-right text-slate-300"></i>
@@ -308,6 +311,7 @@
       @toggle-hot="(id) => forumStore.togglePostHot(id)"
       @toggle-ban="(id) => forumStore.togglePostBan(id)"
       @ban-user="handleBanUser"
+      @delete-comment="handleDeleteComment"
     />
 
     <!-- Add New Forum Modal -->
@@ -554,18 +558,6 @@ const currentModData = computed(() => {
   return forumStore.getModeratorData(forumStore.currentForumId)
 })
 
-const directionInput = ref('')
-const selectedPost = ref(null)
-
-const showSettings = ref(false)
-const showCustomPostModal = ref(false)
-const showMentionMenuNewPost = ref(false)
-const showNewForumModal = ref(false)
-const isAddAltVisible = ref(false)
-const sharePostTarget = ref(null)
-const mainScrollArea = ref(null)
-const showBackToTop = ref(false)
-
 const mentionUsers = computed(() => {
   const list = []
   const seen = new Set()
@@ -577,22 +569,28 @@ const mentionUsers = computed(() => {
   }
 
   // 1. Forum Staff
-  const modData = forumStore.getModeratorData(forumStore.currentForumId)
-  if (modData) {
-    add(modData.moderatorName, modData.moderatorAvatar, '版主', '版主')
-    if (modData.admins) {
-      modData.admins.forEach(a => add(a.name, a.avatar, '管理员', '管理'))
+  if (forumStore.currentForumId) {
+    const modData = forumStore.getModeratorData(forumStore.currentForumId)
+    if (modData) {
+      add(modData.moderatorName, modData.moderatorAvatar, '版主', '版主')
+      if (modData.admins) {
+        modData.admins.forEach(a => add(a.name, a.avatar, '管理员', '管理'))
+      }
     }
   }
 
   // 2. User Alts
-  forumStore.alts.forEach(a => add(a.name, a.avatar, a.role, '我'))
+  if (forumStore.alts) {
+    forumStore.alts.forEach(a => add(a.name, a.avatar, a.role, '我'))
+  }
 
   // 3. Bound Characters & Contacts
-  forumStore.boundCharIds.forEach(id => {
-    const char = chatStore.chats[id]
-    if (char) add(char.name, char.avatar, '绑定角色', '角色')
-  })
+  if (forumStore.boundCharIds) {
+    forumStore.boundCharIds.forEach(id => {
+      const char = chatStore.chats[id]
+      if (char) add(char.name, char.avatar, '绑定角色', '角色')
+    })
+  }
   
   // Also add other characters from chat list
   chatList.value.forEach(c => add(c.name, c.avatar, '通讯录好友', '好友'))
@@ -606,6 +604,19 @@ const mentionUsers = computed(() => {
 
   return list
 })
+
+const directionInput = ref('')
+const selectedPost = ref(null)
+const currentAltData = computed(() => forumStore.currentUser)
+
+const showSettings = ref(false)
+const showCustomPostModal = ref(false)
+const showMentionMenuNewPost = ref(false)
+const showNewForumModal = ref(false)
+const isAddAltVisible = ref(false)
+const sharePostTarget = ref(null)
+const mainScrollArea = ref(null)
+const showBackToTop = ref(false)
 
 // Custom toast & confirm state
 const toastMsg = ref('')
@@ -675,16 +686,6 @@ function formatTime(ts) {
   return `${d.getMonth()+1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function goToLikedPost(likedPost) {
-  // Switch to the forum and open the post
-  forumStore.currentForumId = likedPost._forumId
-  forumStore.saveStore()
-  currentTab.value = 'forum'
-  const post = forumStore.findPostById(likedPost._forumId, likedPost.id)
-  if (post) {
-    selectedPost.value = post
-  }
-}
 
 async function handleAutoDesc() {
   if (!newForumForm.name.trim()) return
@@ -759,6 +760,28 @@ function handleGenerate() {
 
 function openPost(post) {
   selectedPost.value = post
+}
+
+function goToLikedPost(likedPost) {
+  // If we have a forum ID, switch to it first
+  const fid = likedPost._forumId || likedPost.forumId;
+  if (fid) {
+    forumStore.currentForumId = fid;
+    forumStore.saveStore();
+  }
+  
+  // Switch to forum tab and clear any subpages
+  currentTab.value = 'forum';
+  profileSubPage.value = null;
+  
+  // Find the post in the store to ensure we have the latest version/context
+  const post = forumStore.findPostById(forumStore.currentForumId, likedPost.id);
+  if (post) {
+    selectedPost.value = post;
+  } else {
+    // Fallback if not found in current forum (should not happen with correct IDs)
+    selectedPost.value = likedPost;
+  }
 }
 
 function confirmShareToChat(chat) {
@@ -838,7 +861,39 @@ async function handleBanUser(userName) {
   const ok = await showConfirm(`确认封号用户"${userName}"吗？该用户将无法发帖回帖。`, '封号用户', true)
   if (ok) {
     forumStore.banUser(userName)
-    showToast(`已封号: ${userName}`, 'fa-solid fa-user-slash text-red-300')
+    showToast(`已封号：${userName}`, 'fa-solid fa-user-slash text-red-300')
+  }
+}
+
+function handleDeleteComment(postId, commentId) {
+  forumStore.deleteComment(postId, commentId)
+  showToast('已删除评论', 'fa-solid fa-trash-can text-slate-400')
+}
+
+function confirmDeletePost(postId) {
+  const ok = confirm('确定要删除这个帖子吗？删除后无法恢复。')
+  if (ok) {
+    forumStore.deletePost(postId)
+    showToast('已删除帖子', 'fa-solid fa-trash-can text-slate-400')
+    selectedPost.value = null
+  }
+}
+
+async function confirmClearAllPosts() {
+  const ok = await showConfirm('⚠️ 危险操作！确认要清空本版所有帖子和评论吗？此操作不可恢复！', '一键清空', true)
+  if (ok) {
+    forumStore.clearAllPosts()
+    showToast('已清空本版所有帖子', 'fa-solid fa-trash-can text-red-400')
+    profileSubPage.value = null
+  }
+}
+function handleBack() {
+  if (profileSubPage.value) {
+    profileSubPage.value = null
+  } else if (currentTab.value !== 'discover') {
+    currentTab.value = 'discover'
+  } else {
+    router.push('/')
   }
 }
 </script>

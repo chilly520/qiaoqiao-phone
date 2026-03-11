@@ -66,6 +66,15 @@
           </button>
         </div>
 
+        <!-- Danger Zone -->
+        <div v-if="forumStore.isUserStaff" class="border-t border-red-100 pt-4 mt-4">
+          <div class="text-[10px] font-bold text-red-400 tracking-widest mb-2 px-1">⚠️ 危险操作</div>
+          <button @click="$emit('clear-all-posts')"
+                  class="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-[16px] font-bold text-[13px] active:scale-95 transition-all tracking-wider flex items-center justify-center gap-2 border border-red-200">
+            <i class="fa-solid fa-trash-can"></i> 一键清空本版所有帖子
+          </button>
+        </div>
+
         <!-- Banned Users List -->
         <div v-if="currentModData.bannedUsers.length > 0">
           <div class="text-[11px] font-bold text-red-400 tracking-widest mb-2 px-1 flex items-center gap-1">
@@ -107,7 +116,7 @@ const currentModData = computed(() => {
   return forumStore.getModeratorData(forumStore.currentForumId)
 })
 
-defineEmits(['apply-mod', 'resign-mod', 'unban-user'])
+defineEmits(['apply-mod', 'resign-mod', 'unban-user', 'clear-all-posts'])
 </script>
 
 <style scoped>

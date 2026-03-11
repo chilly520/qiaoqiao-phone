@@ -78,12 +78,14 @@ export const useForumStore = defineStore('forum', () => {
     const adminNamePool = ['柠檬值日生', '草莓纠察队', '小鹿巡视员', '奶油驻场管', '拿铁秩序官', '樱花监管员', '布丁审核喵', '芋泥值班员']
 
     const getModeratorData = (forumId) => {
+        if (!forumId) return null
         if (!moderators.value[forumId]) {
             // Each forum gets its own unique NPC mod + 2 admins
             const seed = forumId.replace(/[^a-z0-9]/gi, '')
-            const modIdx = Math.abs(hashStr(forumId)) % modNamePool.length
-            const admin1Idx = Math.abs(hashStr(forumId + '_a1')) % adminNamePool.length
-            let admin2Idx = Math.abs(hashStr(forumId + '_a2')) % adminNamePool.length
+            const safeForumId = String(forumId)
+            const modIdx = Math.abs(hashStr(safeForumId)) % modNamePool.length
+            const admin1Idx = Math.abs(hashStr(safeForumId + '_a1')) % adminNamePool.length
+            let admin2Idx = Math.abs(hashStr(safeForumId + '_a2')) % adminNamePool.length
             if (admin2Idx === admin1Idx) admin2Idx = (admin2Idx + 1) % adminNamePool.length
 
             moderators.value[forumId] = {
@@ -98,7 +100,7 @@ export const useForumStore = defineStore('forum', () => {
             }
         }
         // Migrate old data without admins
-        if (!moderators.value[forumId].admins) {
+        if (moderators.value[forumId] && !moderators.value[forumId].admins) {
             const seed = forumId.replace(/[^a-z0-9]/gi, '')
             const admin1Idx = Math.abs(hashStr(forumId + '_a1')) % adminNamePool.length
             let admin2Idx = Math.abs(hashStr(forumId + '_a2')) % adminNamePool.length
@@ -124,13 +126,13 @@ export const useForumStore = defineStore('forum', () => {
     const isUserModerator = computed(() => {
         if (!currentForumId.value) return false
         const mod = getModeratorData(currentForumId.value)
-        return mod.moderatorAltId === currentAltId.value
+        return mod?.moderatorAltId === currentAltId.value
     })
 
     const isUserAdmin = computed(() => {
         if (!currentForumId.value) return false
         const mod = getModeratorData(currentForumId.value)
-        return mod.admins.some(a => a.altId === currentAltId.value)
+        return mod?.admins?.some(a => a.altId === currentAltId.value) || false
     })
 
     // User is mod or admin
@@ -139,7 +141,7 @@ export const useForumStore = defineStore('forum', () => {
     const isUserBanned = computed(() => {
         if (!currentForumId.value) return false
         const mod = getModeratorData(currentForumId.value)
-        return mod.bannedUsers.includes(currentUser.value?.name)
+        return mod?.bannedUsers?.includes(currentUser.value?.name) || false
     })
 
     // --- Actions ---
@@ -149,7 +151,6 @@ export const useForumStore = defineStore('forum', () => {
             if (saved) {
                 if (saved.forums && saved.forums.length > 0) {
                     forums.value = saved.forums;
-                    // Migrate old default name to new aesthetic
                     if(forums.value[0].id === 'f_default' && forums.value[0].name === '龙华三中表白墙') {
                         forums.value[0].name = '星愿社区中心';
                         forums.value[0].desc = '分享生活中的小确幸与心动瞬间。';
@@ -157,26 +158,15 @@ export const useForumStore = defineStore('forum', () => {
                 }
                 alts.value = saved.alts || alts.value
                 currentAltId.value = saved.currentAltId || currentAltId.value
-                
-                // Handle binding migration (string -> array)
-                if (saved.boundCharId) {
-                    boundCharIds.value = [saved.boundCharId]
-                } else {
-                    boundCharIds.value = saved.boundCharIds || []
-                }
-                
+                boundCharIds.value = saved.boundCharIds || (saved.boundCharId ? [saved.boundCharId] : [])
                 currentForumId.value = saved.currentForumId || forums.value[0]?.id
                 posts.value = saved.posts || {}
                 comments.value = saved.comments || {}
                 moderators.value = saved.moderators || {}
                 likedPosts.value = saved.likedPosts || {}
             } else {
-                // Try migrate from v1
                 const v1 = await localforage.getItem('forum_store_v1')
                 if (v1) {
-                   forums.value[0].name = '星愿社区中心' // Reset to new aesthetic
-                   forums.value[0].desc = v1.forumDesc || forums.value[0].desc
-                   forums.value[0].trendingTopics = v1.trendingTopics || forums.value[0].trendingTopics
                    alts.value = (v1.alts || alts.value).map(a => ({...a, isRealUser: !!a.isRealUser}))
                    currentAltId.value = v1.currentAltId || currentAltId.value
                    posts.value['f_default'] = v1.posts || []
@@ -185,7 +175,7 @@ export const useForumStore = defineStore('forum', () => {
                 }
             }
         } catch (e) {
-            console.error('Failed to load forum store:', e)
+            console.error('Forum store init failed:', e)
         }
     }
 
@@ -353,7 +343,7 @@ export const useForumStore = defineStore('forum', () => {
         const forumId = currentForumId.value
         if (!forumId) return false
         const mod = getModeratorData(forumId)
-        return mod.bannedUsers.includes(userName)
+        return mod?.bannedUsers?.includes(userName) || false
     }
 
     // --- Likes ---
@@ -400,7 +390,7 @@ export const useForumStore = defineStore('forum', () => {
         if (!forumName || isGeneratingDesc.value) return ''
         isGeneratingDesc.value = true
         try {
-            const prompt = `给一个名为"${forumName}"的女生向、小清新论坛板块写一段板块简介/背景设定（150字以内）。
+            const prompt = `给一个名为"${forumName}"的论坛板块写一段板块简介/背景设定。
 要求：语言活泼可爱、符合年轻女生社交平台的调性，不要太正式。直接输出纯文本简介，不要加引号或标题。`
             const char = { name: '论坛助手', prompt: '你是一个可爱的论坛简介生成器' }
             const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true, skipProcessing: true })
@@ -534,6 +524,20 @@ export const useForumStore = defineStore('forum', () => {
                   existingPosts.map(p => `- id:"${p.id}" 标题:"${p.title}" 作者:${p.authorName}${p.isPinned?' [已置顶]':''}${p.isFeatured?' [已加精]':''}${p.isHot?' [爆]':''}${p.isBanned?' [已封禁]':''}`).join('\n')
                 : ''
 
+            // Get real user names to exclude from generation
+            const realUserNames = alts.value.filter(a => a.isRealUser).map(u => u.name)
+            const boundChars = boundCharIds.value.map(id => {
+                const chatStore = useChatStore()
+                return chatStore.chats[id]
+            }).filter(Boolean)
+            
+            // Build activity level prompt for bound chars
+            const charActivityPrompt = boundChars.length > 0 ? boundChars.map(char => {
+                const activity = char.forumActivity || 'medium'
+                const activityDesc = activity === 'low' ? '低活跃，很少发言' : activity === 'high' ? '高活跃，经常发言' : '中等活跃度'
+                return `- ${char.name}: ${activityDesc}`
+            }).join('\n') : '无绑定角色'
+
             const prompt = `你是一个名为"${currentForum.value.name}"的拟真论坛服务器。
             版块简介与背景设定：${currentForum.value.desc}。
             ${getAIContext()}
@@ -542,6 +546,11 @@ export const useForumStore = defineStore('forum', () => {
             当前的话题/走向是：【${topic}】
             当前版主是"${mod.moderatorName}"，管理员是"${adminNames.join('"和"')}"。
             
+            【!!! 绝对禁令 !!!】
+            1. **禁止生成真人用户发言**：以下马甲账号是真人用户，AI 绝对不能生成他们的发言或评论：${realUserNames.join('、')}。这些账号只能由用户自己操作。
+            2. **禁止以用户视角发言**：所有标记为 isRealUser 的马甲都是真实用户，AI 只能生成 NPC 角色和绑定角色的发言。
+            3. **角色活跃度控制**：根据以下活跃度设定生成发言频率：\n${charActivityPrompt}
+            
             请生成 4 个相关的论坛帖子，每个帖子附带 6-10 条评论（包含对楼主或其他评论的楼中楼回复）。
             
             要求：
@@ -549,21 +558,22 @@ export const useForumStore = defineStore('forum', () => {
             2. 帖子类型要多样化（如避雷帖、求助贴、分享贴、情感树洞等）。
             3. 评论区应当有"楼中楼"互动（可以用 replyTo 字段指向被回复者的名字）。原帖"楼主"也可以在评论区出没。
             4. 遇到高光画面或需要配图的地方（如求衣服链接、放合照），请在文本里插入指令 \`[draw: 英文画面描述，如 aesthetic photorealistic, morning coffee]\`。
-            5. 【版主/管理执法】在4个帖子中，版主"${mod.moderatorName}"和管理员"${adminNames.join('"、"')}"可以执行以下操作：
-               - 至少1个帖子标记为"isFeatured":true（加精）
-               - 可选1个帖子标记为"isPinned":true（置顶）
-               - 可选1个帖子标记为"isHot":true（爆，代表超高讨论热度）
+            5. 【版主/管理执法】在 4 个帖子中，版主"${mod.moderatorName}"和管理员"${adminNames.join('"、"')}"可以执行以下操作：
+               - 至少 1 个帖子标记为"isFeatured":true（加精）
+               - 可选 1 个帖子标记为"isPinned":true（置顶）
+               - 可选 1 个帖子标记为"isHot":true（爆，代表超高讨论热度）
                - 如果某个帖子内容不当，可以标记"isBanned":true（封禁，评论区不可再回复）
                - 版主和管理员也可以在评论中出现，对帖子进行点评、警告或加鸡腿
                - 版主发言标记 "isMod": true，管理员发言标记 "isAdmin": true
             6. 【对已有帖子操作】如果你认为某些已有帖子值得加精/置顶/爆，请在返回数据中额外附带一个"modActions"数组，格式为：
-               [{"postId":"已有帖子id","action":"feature/pin/hot/ban/unban"}]
-            7. 【严格按照以下JSON格式输出，不要返回任何MD代码块和其他废话】：
+               [{"postId":"已有帖子 id","action":"feature/pin/hot/ban/unban"}]
+            7. 【旧帖子也要有新回复】偶尔让一些已有帖子（existingPosts）获得新的评论互动，增加社区活跃感。
+            8. 【严格按照以下 JSON 格式输出，不要返回任何 MD 代码块和其他废话】：
             {
               "posts": [
                 {
-                  "id": "短id",
-                  "authorName": "网友A",
+                  "id": "短 id",
+                  "authorName": "网友 A（${realUserNames.length > 0 ? '不能是' + realUserNames.join('或') : 'NPC 网友'}）",
                   "title": "帖子标题",
                   "content": "正文内容...",
                   "likes": 56,
@@ -572,10 +582,10 @@ export const useForumStore = defineStore('forum', () => {
                   "isHot": false,
                   "isBanned": false,
                   "comments": [
-                    { "id": "短id", "authorName": "网友B", "content": "普通的评论" },
-                    { "id": "短id", "authorName": "${mod.moderatorName}", "content": "版主加精了此帖！写得太好了", "isMod": true },
-                    { "id": "短id", "authorName": "${adminNames[0] || '管理员'}", "content": "管理员也来支持一下~", "isAdmin": true },
-                    { "id": "短id", "authorName": "网友C", "content": "楼中楼回复内容", "replyTo": "网友B" }
+                    { "id": "短 id", "authorName": "网友 B", "content": "普通的评论" },
+                    { "id": "短 id", "authorName": "${mod.moderatorName}", "content": "版主加精了此帖！写得太好了", "isMod": true },
+                    { "id": "短 id", "authorName": "${adminNames[0] || '管理员'}", "content": "管理员也来支持一下~", "isAdmin": true },
+                    { "id": "短 id", "authorName": "网友 C", "content": "楼中楼回复内容", "replyTo": "网友 B" }
                   ]
                 }
               ],
@@ -628,7 +638,10 @@ export const useForumStore = defineStore('forum', () => {
                 }
             }
 
-            for (const p of parsedPosts.reverse()) {
+            // Filter out any posts from real users (should never happen, but just in case)
+            const filteredPosts = parsedPosts.filter(p => !realUserNames.includes(p.authorName))
+            
+            for (const p of filteredPosts.reverse()) {
                 const newPost = {
                     id: p.id || 'p_' + Math.random().toString(36).substring(2, 9),
                     authorId: 'npc_' + Math.random().toString(36).substring(2, 9),
@@ -664,6 +677,9 @@ export const useForumStore = defineStore('forum', () => {
                 posts.value[forumId].unshift(newPost);
                 
                 const myComments = (p.comments || []).map(c => {
+                    // Skip comments from real users
+                    if (realUserNames.includes(c.authorName)) return null
+                    
                     // Determine avatar based on role
                     let avatar = `https://api.dicebear.com/7.x/lorelei/svg?seed=${c.authorName}`
                     let isChar = !!c.isChar
@@ -697,7 +713,7 @@ export const useForumStore = defineStore('forum', () => {
                         isChar,
                         charId
                     }
-                });
+                }).filter(Boolean); // Remove null entries (filtered real users)
 
                 comments.value[forumId][newPost.id] = myComments;
 
@@ -890,6 +906,44 @@ export const useForumStore = defineStore('forum', () => {
         comments.value[forumId][postId].push(newComment);
         saveStore();
     }
+
+    const deletePost = (postId) => {
+        const forumId = currentForumId.value;
+        if (!posts.value[forumId]) return
+        
+        const index = posts.value[forumId].findIndex(p => p.id === postId)
+        if (index !== -1) {
+            posts.value[forumId].splice(index, 1)
+            // Also delete associated comments
+            if (comments.value[forumId]) {
+                delete comments.value[forumId][postId]
+            }
+            saveStore()
+            logger.addLog('INFO', `删除了帖子 ${postId}`)
+        }
+    }
+
+    const deleteComment = (postId, commentId) => {
+        const forumId = currentForumId.value;
+        if (!comments.value[forumId] || !comments.value[forumId][postId]) return
+        
+        const index = comments.value[forumId][postId].findIndex(c => c.id === commentId)
+        if (index !== -1) {
+            comments.value[forumId][postId].splice(index, 1)
+            saveStore()
+            logger.addLog('INFO', `删除了评论 ${commentId}`)
+        }
+    }
+
+    const clearAllPosts = () => {
+        const forumId = currentForumId.value;
+        if (!forumId) return
+        
+        posts.value[forumId] = []
+        comments.value[forumId] = {}
+        saveStore()
+        logger.addLog('INFO', `清空了版块 ${forumId} 的所有帖子`)
+    }
     
     return {
         forums, alts, currentAltId, boundCharIds,
@@ -904,7 +958,7 @@ export const useForumStore = defineStore('forum', () => {
         generateTrendingTopics, generateForumDesc,
         createAlt, updateAlt, removeAlt,
         generatePosts, generateMoreComments,
-        sendPost, sendComment,
+        sendPost, sendComment, deletePost, deleteComment, clearAllPosts,
         applyModerator, resignModerator,
         togglePostPin, togglePostFeatured, togglePostHot, togglePostBan,
         banUser, unbanUser
