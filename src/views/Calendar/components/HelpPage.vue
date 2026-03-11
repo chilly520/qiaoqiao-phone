@@ -109,6 +109,8 @@ function goBack() {
   min-height: 100vh;
   background: linear-gradient(180deg, #fef9f6 0%, #fff5f7 100%);
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 头部导航 */

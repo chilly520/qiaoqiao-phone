@@ -90,6 +90,13 @@ class BatteryMonitor {
 
     onChange(callback) {
         this.callbacks.onChange.push(callback)
+        // 返回清理函数
+        return () => {
+            const index = this.callbacks.onChange.indexOf(callback)
+            if (index > -1) {
+                this.callbacks.onChange.splice(index, 1)
+            }
+        }
     }
 
     onLowBattery(callback) {

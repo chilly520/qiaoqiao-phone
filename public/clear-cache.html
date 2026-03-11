@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <title>Fix Cache</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+    <h1>正在清理缓存和 Service Worker...</h1>
+    <div id="status">请稍候...</div>
+    <script>
+        async function clearAll() {
+            const status = document.getElementById('status');
+            try {
+                // 1. Unregister all service workers
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                        await registration.unregister();
+                        console.log('Unregistered SW:', registration.scope);
+                    }
+                }
+
+                // 2. Clear all caches
+                if ('caches' in window) {
+                    const keys = await caches.keys();
+                    for (let key of keys) {
+                        await caches.delete(key);
+                        console.log('Deleted Cache:', key);
+                    }
+                }
+
+                // 3. Clear storage (optional but safe)
+                // localStorage.clear(); 
+                // sessionStorage.clear();
+
+                status.innerHTML = '<h2 style="color: green;">清理完成！</h2><p>请关闭此标签页，返回主页并按下 <b>Ctrl+F5</b> 刷新。</p><button onclick="window.location.href=\'/\'">返回主页</button>';
+            } catch (e) {
+                status.innerHTML = '<h2 style="color: red;">清理失败: ' + e.message + '</h2>';
+            }
+        }
+        clearAll();
+    </script>
+</body>
+
+</html>

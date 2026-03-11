@@ -266,11 +266,48 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         })
     }
 
+    async function claimFamilyCard(chatId, messageId, claimantId = 'user') {
+        const chat = chats.value[chatId];
+        if (!chat) return false;
+        const msg = chat.msgs.find(m => m.id === messageId);
+        if (!msg || msg.type !== 'family_card' || msg.isClaimed) return false;
+
+        msg.isClaimed = true;
+        msg.claimTime = Date.now();
+
+        let claimantName = '未知';
+        if (claimantId === 'user') {
+            claimantName = useSettingsStore().personalization?.userProfile?.name || '我';
+            if (typeof playSound === 'function') playSound('coins');
+        } else {
+            const p = chat.participants?.find(p => p.id === claimantId);
+            if (p) {
+                claimantName = p.name;
+            } else if (chat.id === claimantId) {
+                claimantName = chat.name;
+            }
+        }
+
+        const claimantStr = claimantId === 'user' ? '你' : claimantName;
+        const ownerName = msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '你') : chat.name);
+
+        // 添加已领取系统消息
+        addMessage(chatId, {
+            role: 'system',
+            content: `${claimantStr}已领取了${ownerName}的亲属卡`,
+            systemMsg: true
+        });
+
+        saveChats();
+        return true;
+    }
+
     return {
         _splitRedPacket,
         claimRedPacket,
         claimTransfer,
         claimGift,
+        claimFamilyCard,
         hasUnclaimedRP
     }
 }

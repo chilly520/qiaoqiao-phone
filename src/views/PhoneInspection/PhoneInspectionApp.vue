@@ -2,53 +2,63 @@
   <div class="phone-inspection-app">
     <!-- 状态栏 -->
     <StatusBar />
-    
+
     <!-- 主内容区 -->
     <transition name="fade" mode="out-in">
-      <!-- 加载中 -->
-      <div v-if="!currentChar || !phoneData" class="loading-screen">
-        <div class="spinner"></div>
-        <p>正在加载{{ currentChar?.name || '角色' }}的手机...</p>
+      <!-- Kawaii Loading State: Dreamy Synchronization -->
+      <div v-if="isLoading"
+        class="loading-container fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-[#F5F5FF]">
+        <div class="relative w-56 h-56 mb-12 flex items-center justify-center">
+          <!-- Dreamy Orbit -->
+          <div
+            class="absolute inset-0 rounded-full border-4 border-dashed border-pink-200 animate-spin-slow opacity-60">
+          </div>
+          <div
+            class="absolute inset-4 rounded-full border-2 border-dotted border-purple-200 animate-spin-reverse opacity-40">
+          </div>
+
+          <!-- Character Avatar with Pulse -->
+          <div
+            class="relative z-10 w-28 h-28 rounded-full border-4 border-white shadow-[0_10px_30px_rgba(255,182,193,0.4)] overflow-hidden animate-pulse-soft">
+            <img :src="currentChar?.avatar" class="w-full h-full object-cover">
+          </div>
+
+          <!-- Decorative Clouds -->
+          <div class="absolute -top-4 -right-2 text-4xl text-white opacity-80 animate-bounce-soft"><i
+              class="fa-solid fa-cloud"></i></div>
+          <div class="absolute -bottom-2 -left-4 text-3xl text-white opacity-60 animate-bounce-soft"
+            style="animation-delay: -1s"><i class="fa-solid fa-cloud"></i></div>
+        </div>
+
+        <div class="text-center px-10">
+          <h2 class="text-[#8F5E6E] font-black text-2xl tracking-widest mb-4 uppercase">正在连线 {{ charName }}
+          </h2>
+          <div
+            class="w-64 h-4 bg-white/60 rounded-full overflow-hidden border-2 border-white shadow-inner mx-auto mb-2">
+            <div class="h-full bg-gradient-to-r from-pink-300 to-purple-300 transition-all duration-300 rounded-full"
+              :style="{ width: `${progress}%` }"></div>
+          </div>
+          <p class="text-[#A66D7A] text-sm font-bold opacity-60 italic">正在偷偷建立数据桥接... {{ progress }}%</p>
+        </div>
       </div>
-      
+
       <!-- 密码弹窗 -->
-      <PasswordModal 
-        v-else-if="showPasswordModal"
-        :char-name="currentChar?.name"
-        :password-hint="phoneData?.password?.hint"
-        @verify="handleVerifyPassword"
-        @close="showPasswordModal = false"
-      />
-      
+      <PasswordModal v-else-if="showPasswordModal" :char-name="charName" :password-hint="phoneData?.password?.hint"
+        @verify="handleVerifyPassword" @close="showPasswordModal = false" />
+
       <!-- 桌面 -->
-      <PhoneDesktop
-        v-else-if="currentApp === 'desktop'"
-        :wallpaper="currentWallpaper"
-        @open-app="handleOpenApp"
-      />
-      
+      <PhoneDesktop v-else-if="currentApp === 'desktop'" :wallpaper="currentWallpaper" @open-app="handleOpenApp" />
+
       <!-- 应用视图 -->
-      <PhoneAppView
-        v-else
-        :app-id="currentApp"
-        :phone-data="phoneData"
-        @back="handleBackToDesktop"
-      />
+      <PhoneAppView v-else :app-id="currentApp" :phone-data="phoneData" @back="handleBackToDesktop" />
     </transition>
-    
+
     <!-- 碎碎念气泡 -->
-    <MutteringBubble 
-      v-if="mutteringQueue.length > 0 && hasPermission"
-      :queue="mutteringQueue"
-      :char-avatar="currentChar?.avatar"
-    />
-    
+    <MutteringBubble v-if="mutteringQueue.length > 0 && hasPermission" :queue="mutteringQueue"
+      :char-avatar="currentChar?.avatar" />
+
     <!-- 被发现遮罩 -->
-    <DiscoveredOverlay
-      v-if="isDiscovered"
-      :char-name="currentChar?.name"
-      :char-avatar="currentChar?.avatar"
-    />
+    <DiscoveredOverlay v-if="isDiscovered" :char-name="currentChar?.name" :char-avatar="currentChar?.avatar" />
   </div>
 </template>
 
@@ -77,6 +87,11 @@ const isDiscovered = computed(() => phoneInspection.isDiscovered)
 const currentWallpaper = computed(() => phoneInspection.currentWallpaper)
 const hasPermission = computed(() => phoneInspection.hasPermission)
 
+const charName = computed(() => {
+  const char = currentChar.value
+  return char?.name || char?.displayName || (char?.bio && char?.bio.name) || char?.remark || '未知角色'
+})
+
 // Methods
 function handleVerifyPassword(code) {
   const success = phoneInspection.verifyPassword(code)
@@ -100,7 +115,7 @@ onMounted(async () => {
   if (charId) {
     // 确保数据已加载
     await phoneInspection.startInspection(charId)
-    
+
     // 如果没有手机数据，生成一份
     if (!phoneInspection.phoneData) {
       await phoneInspection.generatePhoneData(charId)
@@ -166,7 +181,9 @@ watch(() => route.params.charId, (newCharId) => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-screen p {

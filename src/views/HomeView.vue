@@ -3,7 +3,10 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
+import { useCalendarStore } from '../stores/calendarStore'
 import { storeToRefs } from 'pinia'
+import PeriodWidget from '@/components/widgets/PeriodWidget.vue'
+import AnniversaryWidget from '@/components/widgets/AnniversaryWidget.vue'
 
 const router = useRouter()
 const store = useSettingsStore()
@@ -585,7 +588,17 @@ onUnmounted(() => {
           <span class="text-xs font-medium drop-shadow-sm tracking-wide text-white/90">浏览器</span>
         </div>
 
-        <!-- Custom Widget Card 1 - Square -->
+        <!-- Period Widget -->
+        <div class="col-span-2 h-[160px]">
+          <PeriodWidget />
+        </div>
+
+        <!-- Anniversary Widget -->
+        <div class="col-span-2 h-[160px]">
+          <AnniversaryWidget />
+        </div>
+
+        <!-- Custom Widget Card 1 - Polaroid Style -->
         <div
           class="col-span-2 glass-panel rounded-[24px] overflow-hidden relative aspect-square backdrop-blur-[32px] border border-white/10">
           <div id="widget-overlay-card1" v-if="!getCardBg('card1').backgroundImage"
@@ -598,7 +611,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Custom Widget Card 2 - Square -->
+        <!-- Custom Widget Card 2 - Polaroid Style -->
         <div
           class="col-span-2 glass-panel rounded-[24px] overflow-hidden relative aspect-square backdrop-blur-[32px] border border-white/10">
           <div id="widget-overlay-card2" v-if="!getCardBg('card2').backgroundImage"

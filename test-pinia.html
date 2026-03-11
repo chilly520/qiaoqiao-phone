@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pinia Test</title>
+</head>
+<body>
+    <div id="app">{{ message }}</div>
+    <script type="module">
+        import { createApp } from 'vue/dist/vue.esm-bundler.js'
+        import { createPinia } from 'pinia/dist/pinia.mjs'
+        
+        console.log('Vue loaded:', createApp)
+        console.log('Pinia loaded:', createPinia)
+        
+        const app = createApp({
+            data() {
+                return {
+                    message: 'Hello from Vue + Pinia!'
+                }
+            }
+        })
+        
+        const pinia = createPinia()
+        app.use(pinia)
+        app.mount('#app')
+    </script>
+</body>
+</html>

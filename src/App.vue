@@ -72,7 +72,6 @@ const batteryLevel = ref(100)
 const batteryCharging = ref(false)
 
 const batteryIcon = computed(() => {
-    if (batteryCharging.value) return 'fa-battery-bolt'
     if (batteryLevel.value > 80) return 'fa-battery-full'
     if (batteryLevel.value > 60) return 'fa-battery-three-quarters'
     if (batteryLevel.value > 40) return 'fa-battery-half'
@@ -130,10 +129,16 @@ const globalStyles = computed(() => {
 // Inject Custom CSS (Reactive)
 const customCss = computed(() => store.personalization.customCss)
 
+const isInspection = computed(() => ['search', 'phone-inspection'].includes(route.name))
+
 // Status Bar Style based on Route
 const statusBarStyle = computed(() => {
     const transparentRoutes = ['home']
     const wechatRoutes = ['wechat', 'moments', 'character-info']
+
+    if (isInspection.value) {
+        return { display: 'none' }
+    }
 
     if (transparentRoutes.includes(route.name)) {
         return {
@@ -360,8 +365,8 @@ const handleGlobalPromptCancel = () => {
         <!-- Dynamic Styles Block -->
         <component is="style" v-if="customCss">{{ customCss }}</component>
 
-        <!-- Wallpaper Layer (from original HTML) -->
-        <div id="wallpaper-layer" :style="wallpaperStyle"></div>
+        <!-- Wallpaper Layer (only show on home page) -->
+        <div id="wallpaper-layer" v-if="route.name === 'home'" :style="wallpaperStyle"></div>
 
         <!-- Global Status Bar -->
         <div class="h-[28px] w-full flex justify-between items-center px-5 z-[100] relative select-none shrink-0 transition-colors duration-300"
@@ -442,6 +447,7 @@ const handleGlobalPromptCancel = () => {
         <!-- Main Content Area -->
 
         <div class="flex-1 w-full overflow-hidden relative z-10 flex flex-col main-content"
+            :class="{ 'h-[100dvh] !mt-0 !basis-full': isInspection }"
             style="margin-top: 0; flex-basis: calc(100% - 28px);">
             <!-- 使用key强制组件重新渲染 -->
             <RouterView :key="routeKey" />
@@ -627,12 +633,12 @@ const handleGlobalPromptCancel = () => {
     width: 100%;
 }
 
-/* 仅桌面端(>=768px)居中显示为手机模拟器 */
+/* 仅桌面端 (>=768px) 居中显示为手机模拟器 */
 @media (min-width: 768px) {
 
     html,
     body {
-        background: #1a1a2e;
+        background: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 100%);
     }
 
     .app-root {

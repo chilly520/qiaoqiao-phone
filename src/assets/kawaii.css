@@ -130,6 +130,17 @@ textarea:focus {
     box-shadow: 0 2px 10px rgba(255, 182, 193, 0.3) !important;
 }
 
+/* 语音消息气泡特殊样式 */
+.chat-bubble-voice.chat-bubble-left {
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%) !important;
+    color: #374151 !important;
+}
+
+.chat-bubble-voice.chat-bubble-right {
+    background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+    color: #be185d !important;
+}
+
 /* 可爱的滚动条 */
 ::-webkit-scrollbar {
     width: 6px;

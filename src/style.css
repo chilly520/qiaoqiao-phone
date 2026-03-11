@@ -4,7 +4,7 @@
 
 /* CSS Variables from original HTML */
 :root {
-    --app-bg-color: #f0fdf4;
+    --app-bg-color: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 100%);
     --text-color: #166534;
     --glass-border: rgba(16, 185, 129, 0.3);
     --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(217, 249, 233, 0.8));

@@ -519,6 +519,41 @@
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                             <MomentShareCard :data="msg.content" />
                         </div>
+                        
+                        <!-- CASE: Forum Share Card -->
+                        <div v-else-if="parsedForumCard"
+                            class="max-w-[280px] bg-white rounded-2xl shadow-sm border border-teal-50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in group mt-1"
+                            @click="handleForumCardClick">
+                            <!-- Header -->
+                            <div class="px-4 py-2.5 bg-gradient-to-r from-teal-400 to-emerald-400 flex items-center justify-between">
+                                <div class="flex items-center gap-1.5 text-white shadow-sm">
+                                    <i class="fa-brands fa-pagelines text-[13px]"></i>
+                                    <span class="text-[11px] font-bold tracking-widest drop-shadow-sm">星愿社区分享</span>
+                                </div>
+                                <div class="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
+                                    <i class="fa-solid fa-seedling text-white text-[10px]"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- Content -->
+                            <div class="p-4 flex flex-col gap-2 relative overflow-hidden bg-[#f4f9f9]">
+                                <div class="absolute -right-4 -bottom-4 text-[60px] text-teal-500 opacity-5 pointer-events-none">
+                                    <i class="fa-solid fa-leaf"></i>
+                                </div>
+                                <div class="text-[14px] font-black text-slate-800 line-clamp-2 leading-snug group-hover:text-teal-600 transition-colors relative z-10 drop-shadow-sm">
+                                    {{ parsedForumCard.title }}
+                                </div>
+                                <div class="bg-white p-3 rounded-xl border border-teal-100/50 shadow-inner relative z-10">
+                                    <div class="text-[12px] text-slate-500 line-clamp-3 leading-relaxed break-words font-medium">
+                                        {{ parsedForumCard.preview }}
+                                    </div>
+                                </div>
+                                <div class="mt-1 pt-2 border-t border-teal-50 flex justify-between items-center text-[10px] text-teal-800/60 font-medium relative z-10">
+                                    <span>点击进入主页查看全部评论</span>
+                                    <i class="fa-solid fa-chevron-right text-[8px]"></i>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- CASE 6: Favorite Card (Shared Favorite) -->
                         <div v-else-if="isFavoriteCard"
@@ -587,12 +622,12 @@
                         <div v-else-if="msg.type === 'voice'" class="flex flex-col w-full"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                             <div class="flex items-center gap-2" :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
-                                <div class="h-10 rounded-lg flex items-center px-4 cursor-pointer relative shadow-sm min-w-[80px]"
+                                <div class="h-10 rounded-lg flex items-center px-4 cursor-pointer relative shadow-sm min-w-[80px] chat-bubble-voice"
                                     :class="[
-                                        msg.role === 'user' ? 'bg-[#2e2e2e] text-white flex-row-reverse' : 'bg-black text-[#e6dcc0]',
+                                        msg.role === 'user' ? 'chat-bubble-right flex-row-reverse' : 'chat-bubble-left',
                                         (msg.isPlaying || false) ? 'voice-playing-effect' : ''
                                     ]"
-                                    :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px' }"
+                                    :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px', fontSize: (chatData?.bubbleSize || 15) + 'px' }"
                                     @click="handleToggleVoice" @contextmenu.prevent="emitContextMenu">
 
                                     <!-- Wave Animation - Enhanced Sound Wave with 5 bars -->
@@ -606,7 +641,7 @@
                                     </div>
                                     <!-- Arrow - Hidden as per user request -->
                                     <div class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                        :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#2e2e2e]' : 'left-[-6px] border-r-[6px] border-r-black'"
+                                        :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px]' : 'left-[-6px] border-r-[6px]'"
                                         style="display: none;">
                                     </div>
                                     <span class="text-[10px] font-bold opacity-70"
@@ -787,8 +822,8 @@
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
 
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
-                            <!-- Show bubble if there's cleaned content. We no longer hide it if it's also an HTML card, to allow text + card messages. -->
-                            <div v-if="cleanedContent && !isImageMsg(msg)" @contextmenu.prevent="emitContextMenu"
+                            <!-- Show bubble if there's cleaned content and not a family card. -->
+                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -825,6 +860,157 @@
                                     :alt="ensureString(msg.content).substring(0, 20)"
                                     @click="previewImage(msg.image || getImageSrc(msg))" @error="handleImageError"
                                     referrerpolicy="no-referrer">
+                            </div>
+                            <!-- 3b. Family Card Layer -->
+                            <div v-if="isFamilyCard || isFamilyCardApply || isFamilyCardReject"
+                                class="mt-1 transition-all relative z-10 w-full max-w-[280px]"
+                                @contextmenu.prevent="emitContextMenu" @touchstart="startLongPress"
+                                @touchend="cancelLongPress" @touchmove="cancelLongPress" @mousedown="startLongPress"
+                                @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+
+                                <!-- Applying State (Black Gold Bank Card Theme) -->
+                                <div v-if="isFamilyCardApply"
+                                    class="relative overflow-hidden rounded-3xl shadow-lg transition-all active:scale-[0.98] cursor-pointer group bg-gradient-to-br from-gray-800 to-black border border-gray-700"
+                                    @click="handleFamilyCardClick">
+                                    <!-- Card Content -->
+                                    <div class="p-4 text-white relative z-10">
+                                        <div class="flex justify-between items-start mb-6">
+                                            <div class="flex items-center gap-2">
+                                                <div
+                                                    class="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center backdrop-blur-sm shadow-md">
+                                                    <i class="fa-solid fa-credit-card text-white text-[14px]"></i>
+                                                </div>
+                                                <span class="text-xs font-medium tracking-wide opacity-90 text-yellow-400">亲属卡申请</span>
+                                            </div>
+                                            <i class="fa-solid fa-wifi rotate-90 text-[10px] opacity-40"></i>
+                                        </div>
+
+                                        <div class="mb-6">
+                                            <p class="text-[10px] opacity-70 mb-1 uppercase tracking-widest text-yellow-300">申请留言</p>
+                                            <div class="flex items-baseline gap-1">
+                                                <span class="text-lg font-bold text-yellow-200">{{ getFamilyCardApplyNote() }}</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex justify-between items-end">
+                                            <div class="text-[10px] space-y-0.5">
+                                                <p class="opacity-60 uppercase tracking-tighter text-gray-400">申请人</p>
+                                                <p class="font-bold opacity-90 text-white">{{ chatData.userName || '用户' }}</p>
+                                            </div>
+                                            <div class="flex flex-col items-end gap-1">
+                                                <div v-if="msg.status === 'claimed' || msg.isClaimed"
+                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30">
+                                                    已赠送
+                                                </div>
+                                                <div v-else
+                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30 animate-pulse-subtle">
+                                                    等待回应
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Decorative Elements -->
+                                    <div
+                                        class="absolute top-[-20%] right-[-10%] w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl">
+                                    </div>
+                                    <div
+                                        class="absolute bottom-[-20%] left-[-10%] w-24 h-24 bg-black/10 rounded-full blur-xl">
+                                    </div>
+                                    <!-- Metal Shine Effect -->
+                                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <div class="absolute bottom-0 right-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <div class="absolute bottom-0 right-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <!-- Diagonal Shine -->
+                                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-transparent via-yellow-400/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                </div>
+
+                                <!-- Rejected State (Black Gold Theme) -->
+                                <div v-else-if="isFamilyCardReject"
+                                    class="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-xl p-4 opacity-70">
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-500 flex items-center justify-center shrink-0 shadow-md">
+                                            <i class="fa-solid fa-credit-card text-gray-300"></i>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="text-sm font-bold text-gray-300 truncate">亲属卡申请已拒绝</div>
+                                            <div class="text-xs text-gray-500 mt-0.5">{{ familyCardData?.text ||
+                                                '由于对方设定，申请未通过' }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Standard Card (Rich UI) -->
+                                <div v-else-if="familyCardData"
+                                    class="relative overflow-hidden rounded-3xl shadow-lg transition-all active:scale-[0.98] cursor-pointer group bg-gradient-to-br from-gray-800 to-black border border-gray-700 w-[280px]"
+                                    @click="handleFamilyCardClick">
+                                    <!-- Card Content -->
+                                    <div class="p-4 text-white relative z-10">
+                                        <div class="flex justify-between items-start mb-6">
+                                            <div class="flex items-center gap-2">
+                                                <div
+                                                    class="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center backdrop-blur-sm shadow-md">
+                                                    <i class="fa-solid fa-credit-card text-white text-[14px]"></i>
+                                                </div>
+                                                <span class="text-xs font-medium tracking-wide opacity-90 text-yellow-400">{{
+                                                    familyCardData.isReject ? '亲属卡' :
+                                                        (familyCardData.text || '亲属卡') }}</span>
+                                            </div>
+                                            <i class="fa-solid fa-wifi rotate-90 text-[10px] opacity-40"></i>
+                                        </div>
+
+                                        <div class="mb-6">
+                                            <p class="text-[10px] opacity-70 mb-1 uppercase tracking-widest text-yellow-300">Monthly
+                                                Limit
+                                            </p>
+                                            <div class="flex items-baseline gap-1">
+                                                <span class="text-xl font-bold text-yellow-200">¥</span>
+                                                <span class="text-3xl font-black tracking-tight text-yellow-100">{{
+                                                    familyCardData.amount
+                                                    }}</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex justify-between items-end">
+                                            <div class="text-[10px] space-y-0.5">
+                                                <p class="opacity-60 uppercase tracking-tighter text-gray-400">Card Holder</p>
+                                                <p class="font-bold opacity-90 text-white">{{ chatData.userName || 'Chilly' }}</p>
+                                            </div>
+                                            <div class="flex flex-col items-end gap-1">
+                                                <div v-if="msg.status === 'claimed' || msg.isClaimed"
+                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30">
+                                                    已赠送
+                                                </div>
+                                                <div v-else
+                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30 animate-pulse-subtle">
+                                                    立即领取
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Decorative Elements -->
+                                    <div
+                                        class="absolute top-[-20%] right-[-10%] w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl">
+                                    </div>
+                                    <div
+                                        class="absolute bottom-[-20%] left-[-10%] w-24 h-24 bg-black/10 rounded-full blur-xl">
+                                    </div>
+                                    <!-- Metal Shine Effect -->
+                                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <div class="absolute bottom-0 right-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <div class="absolute bottom-0 right-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
+                                    <!-- Diagonal Shine -->
+                                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-transparent via-yellow-400/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                </div>
+
+                                <!-- Text Fallback (Internal use) -->
+                                <div v-else class="text-[11px] opacity-50 italic px-2 py-1">[亲属卡数据异常]</div>
                             </div>
 
                             <!-- 3. HTML Card Layer -->
@@ -971,7 +1157,7 @@ const senderTitleClass = computed(() => {
 
 // Settings History Sync
 
-// Handle Family Card Click (Open Modal)
+// --- Family Card Actions ---
 const handleFamilyCardClick = () => {
     console.log('[Family Card Click]', {
         type: props.msg.type,
@@ -990,29 +1176,36 @@ const handleFamilyCardClick = () => {
     // 已领取/已生效的卡片 (无论是申请还是赠送) -> 打开详情弹窗
     if (props.msg.isClaimed || props.msg.status === 'claimed') {
         console.log('[Family Card] Opening detail modal for claimed card')
-        const card = walletStore.familyCards.find(c => c.ownerId === props.chatData.id)
+        // 优先使用消息中的text作为卡名
+        const cardName = props.msg.text || '亲属卡'
+        // 从walletStore中查找卡片，优先匹配卡名
+        const card = walletStore.familyCards.find(c => 
+            (c.ownerId === props.chatData.id || c.ownerName === props.chatData.name) && 
+            c.remark === cardName
+        ) || walletStore.familyCards.find(c => 
+            c.ownerId === props.chatData.id || c.ownerName === props.chatData.name
+        )
         if (card) {
-            familyDetailModal.value?.open({
-                cardName: card.remark || '亲属卡',
-                ownerName: card.ownerName || props.chatData.name,
-                number: card.number,
-                theme: card.theme,
-                amount: card.amount
-            })
+            // 确保卡名正确
+            const cardData = {
+                ...card,
+                cardName: card.remark || card.cardName || '亲属卡'
+            }
+            familyDetailModal.value?.open(cardData)
         } else {
             chatStore.triggerToast('未找到钱包中的卡片记录', 'warn')
         }
         return
     }
 
-    // 申请卡待确认点击 - 打开详情模态框（查看提交的申请）
+    // 申请卡片：打开申请详情模态框
     if (isFamilyCardApply.value) {
         console.log('[Family Card] Apply card clicked, opening view modal')
-        const { text } = familyCardData.value
+        const note = getFamilyCardApplyNote()
         familyCardModal.value?.open({
             uuid: props.msg.id,
             amount: 0,
-            note: text || '送我一张亲属卡好不好？',
+            note: note,
             fromCharId: props.chatData?.id,
             isApply: true,
             status: 'waiting'
@@ -1021,15 +1214,15 @@ const handleFamilyCardClick = () => {
     }
 
     // 未领取的普通卡：打开领取模态框
-    if (!isFamilyCardApply.value && !isFamilyCardReject.value && props.msg.role === 'ai') {
-        const { amount, text } = familyCardData.value
-        console.log('[Family Card] Opening claim modal', { amount, text })
+    if (!isFamilyCardReject.value) {
+        const data = familyCardData.value
+        console.log('[Family Card] Opening claim modal', data)
         familyCardModal.value?.open({
             uuid: props.msg.id,
-            amount: parseFloat(amount) || 0,
-            note: text || '拿去买糖吃~',
+            amount: parseFloat(data.amount) || 0,
+            note: data.text || '拿去买糖吃~',
             fromCharId: props.chatData?.id
-        }, text || '亲属卡')
+        }, data.text || '亲属卡')
     }
 }
 
@@ -1052,7 +1245,7 @@ const handleCardClaim = (data) => {
 
     // Add to wallet with user's customization
     walletStore.addFamilyCard({
-        ownerId: data.fromCharId,
+        ownerId: props.chatData?.id,
         ownerName: cardOwnerName,
         amount: data.amount,
         remark: data.cardName || '亲属卡',
@@ -1064,23 +1257,9 @@ const handleCardClaim = (data) => {
     chatStore.updateMessage(props.chatData.id, props.msg.id, {
         isClaimed: true,
         claimTime: Date.now(),
-        status: 'claimed'
+        status: 'claimed',
+        text: data.cardName || '亲属卡' // Update text to show user's card name
     })
-
-    // Update the original "Apply Card" message status if found in history
-    const msgs = chatStore.currentChat?.msgs || []
-    const applyMsg = [...msgs].reverse().find(m =>
-        m.role === 'user' &&
-        (typeof m.content === 'string' && m.content.includes('FAMILY_CARD_APPLY')) &&
-        m.timestamp < props.msg.timestamp
-    )
-
-    if (applyMsg) {
-        chatStore.updateMessage(props.chatData.id, applyMsg.id, {
-            status: 'claimed',
-            claimedCardName: data.cardName || '亲属卡'
-        })
-    }
 
     // Add a system notification message (Matching Red Packet logic)
     chatStore.addMessage(props.chatData.id, {
@@ -1090,6 +1269,8 @@ const handleCardClaim = (data) => {
 
     console.log(`[Family Card] Successfully claimed card from ${cardOwnerName}`)
 }
+
+
 
 function handleIframeMessage(event) {
     if (event.data && event.data.type === 'CHAT_SEND') {
@@ -1144,7 +1325,7 @@ const isValidMessage = computed(() => {
     }
 
     // 2. Card & Media Checks
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed') return true;
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed') return true;
     if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg)) return true
 
     // 3. Text Content Filtering
@@ -1182,20 +1363,23 @@ const isFamilyCard = computed(() => {
     if (props.msg.type === 'html') return false
 
     // Check for family card tags in text content
-    const content = ensureString(props.msg.content).toUpperCase()
-    // Only match proper [FAMILY_CARD] tags, not random strings containing the keyword
-    return /[\\]?\[\s*FAMILY_CARD/i.test(content)
+    const content = ensureString(props.msg.content)
+    // Only match proper [FAMILY_CARD] or [亲属卡] tags, not random strings containing the keyword
+    return /[\\]?\[\s*(?:FAMILY_CARD|亲属卡)/i.test(content)
 })
 
 const isFamilyCardApply = computed(() => {
     const content = ensureString(props.msg.content)
-    return /[\\]?\[\s*FAMILY_CARD_APPLY/i.test(content)
+    return props.msg.type === 'family_card_apply' || /[\\]?\[\s*(?:FAMILY_CARD_APPLY|申请亲属卡)/i.test(content)
 })
 
 const isFamilyCardReject = computed(() => {
+    // Priority: use message type (set by store)
+    if (props.msg.type === 'family_card_reject') return true
+    
     const c = ensureString(props.msg.content)
     // Regular check OR HTML JSON check
-    return /[\\]?\[\s*FAMILY_CARD_REJECT/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
+    return /[\\]?\[\s*(?:FAMILY_CARD_REJECT|拒绝亲属卡)/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
 })
 
 const isHtmlCard = computed(() => {
@@ -1228,6 +1412,33 @@ const shouldRenderCard = computed(() => {
 
 const isFavoriteCard = computed(() => props.msg.type === 'favorite_card')
 const isWeiboCard = computed(() => props.msg.type === 'weibo_card')
+
+const isForumCard = computed(() => {
+    const c = ensureString(props.msg.content)
+    return c.startsWith('[FORUM_CARD:') && c.endsWith(']')
+})
+
+const parsedForumCard = computed(() => {
+    if (!isForumCard.value) return null
+    const c = ensureString(props.msg.content)
+    const inner = c.slice(1, -1) // remove []
+    const parts = inner.split(':')
+    if (parts.length >= 5) { // [FORUM_CARD, forumId, postId, title, preview...]
+        return {
+            forumId: parts[1],
+            postId: parts[2],
+            title: parts[3],
+            preview: parts.slice(4).join(':') || '点击查看详情'
+        }
+    }
+    return null
+})
+
+function handleForumCardClick() {
+    if (!parsedForumCard.value) return
+    const { forumId, postId } = parsedForumCard.value
+    router.push({ path: '/forum', query: { forum: forumId, post: postId } })
+}
 
 const weiboCardData = computed(() => {
     if (!isWeiboCard.value) return null
@@ -1278,6 +1489,16 @@ const musicInfo = computed(() => {
 })
 
 const familyCardData = computed(() => {
+    // 优先使用消息对象中已设置的属性（由chatStore.js检测并设置）
+    if (props.msg.type === 'family_card' && (props.msg.amount || props.msg.text)) {
+        return {
+            amount: props.msg.amount || '5200',
+            text: props.msg.text || '送给你的亲属卡',
+            paymentId: props.msg.paymentId || null,
+            isReject: false
+        }
+    }
+
     const content = ensureString(props.msg.content)
 
     // Recovery for HTML JSON Garbage
@@ -1294,21 +1515,59 @@ const familyCardData = computed(() => {
 
     // 辅助正则：允许中文冒号，允许冒号周围有空格
     const colonRegex = '[:：]\\s*'
+    const tagRegex = '(?:FAMILY_CARD|亲属卡)'
+    const applyTagRegex = '(?:FAMILY_CARD_APPLY|申请亲属卡)'
 
-    // Pattern 1: 标准卡片 [FAMILY_CARD:金额:文案]
-    const match = cleanContent.match(new RegExp(`\\[FAMILY_CARD\\s*${colonRegex}([\\d\\.]+)\\s*${colonRegex}([\\s\\S]*?)\\]`, 'i'))
-    if (match) return { amount: match[1], text: match[2].trim(), isReject: false }
+    // 处理申请亲属卡（优先检查消息类型）
+    if (props.msg.type === 'family_card_apply') {
+        if (props.msg.note) {
+            return {
+                amount: '0',
+                text: props.msg.note,
+                isReject: false
+            }
+        }
+    }
 
-    // Pattern 2: 申请卡 [FAMILY_CARD_APPLY:文案]
-    const applyMatch = cleanContent.match(new RegExp(`\\[FAMILY_CARD_APPLY\\s*${colonRegex}([\\s\\S]*?)\\]`, 'i'))
-    if (applyMatch) return { amount: '0', text: applyMatch[1].trim(), isReject: false }
+    // 处理申请亲属卡（从消息内容中提取）
+    const applyMatch = cleanContent.match(new RegExp(`\\[${applyTagRegex}\\s*${colonRegex}([^\\]]*)\\]`, 'i'))
+    if (applyMatch) {
+        return {
+            amount: '0',
+            text: applyMatch[1]?.trim() || '申请亲属卡',
+            isReject: false
+        }
+    }
 
-    // Pattern 3: 拒绝卡 [FAMILY_CARD_REJECT:文案]
-    const rejectMatch = cleanContent.match(new RegExp(`\\[FAMILY_CARD_REJECT\\s*${colonRegex}([\\s\\S]*?)\\]`, 'i'))
-    if (rejectMatch) return { amount: '0', text: rejectMatch[1].trim(), isReject: true }
+    // Pattern 1: Standard format [FAMILY_CARD:amount:text:id] or [亲属卡:金额:名称:ID]
+    const standardMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}([^\\]:]+)${colonRegex}([^\\]:]+)(?:${colonRegex}([^\\]]+))?\\]`, 'i'))
+    if (standardMatch) {
+        return {
+            amount: standardMatch[1]?.trim() || '5200',
+            text: standardMatch[2]?.trim() || '送给你的亲属卡',
+            paymentId: standardMatch[3]?.trim() || null,
+            isReject: false
+        }
+    }
 
-    // Pattern 5: 异常鲁棒性处理 [FAMILY_CARD:备注] (没有金额的情况)
-    const noteOnlyMatch = cleanContent.match(new RegExp(`\\[FAMILY_CARD\\s*${colonRegex}([^\\d\\s][\\s\\S]*?)\\]`, 'i'))
+    // Pattern 2: Short format [FAMILY_CARD:amount:text] or [亲属卡:金额:名称]
+    const shortMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}([^\\]:]+)${colonRegex}([^\\]]+)\\]`, 'i'))
+    if (shortMatch) {
+        return {
+            amount: shortMatch[1]?.trim() || '5200',
+            text: shortMatch[2]?.trim() || '送给你的亲属卡',
+            isReject: false
+        }
+    }
+
+    // Pattern 3: Amount only format [FAMILY_CARD:amount] or [亲属卡:金额]
+    const amountOnlyMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}(\\d+)\\]`, 'i'))
+    if (amountOnlyMatch) {
+        return { amount: amountOnlyMatch[1].trim(), text: '送给你的亲属卡', isReject: false }
+    }
+
+    // Pattern 4: Note only format [FAMILY_CARD:note] or [亲属卡:备注] (non-numeric)
+    const noteOnlyMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}([^\\d\\s][^\\]]*)\\]`, 'i'))
     if (noteOnlyMatch) return { amount: '5200', text: noteOnlyMatch[1].trim(), isReject: false }
 
     // 兜底：虽然检测到了标签但没提取到内容，给一个默认值防止空白
@@ -1351,6 +1610,10 @@ function getCleanContent(contentRaw, isCard = false) {
     // Remove Vote tags
     clean = clean.replace(/\[VOTE:\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[CREATE_VOTE:\s*[^\]]+\]/gi, '');
+    
+    // Remove family card command tags
+    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
+    clean = clean.replace(/\[\s*(?:申请亲属卡|拒绝亲属卡)\s*[:：]?[^\]]*\]/gi, '');
 
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
@@ -1594,6 +1857,37 @@ function isImageMsg(msg) {
     return false
 }
 
+function getFamilyCardApplyNote() {
+    const content = ensureString(props.msg.content)
+    if (!content) return '申请亲属卡'
+    
+    // 优先从msg.note中获取（系统设置的值）
+    if (props.msg.note) {
+        return props.msg.note
+    }
+    
+    // 尝试从消息内容中提取申请留言
+    const applyMatch = content.match(/\[(?:FAMILY_CARD_APPLY|申请亲属卡)[:：]?\s*([^\]]*)\]/i)
+    if (applyMatch && applyMatch[1]) {
+        const note = applyMatch[1].trim()
+        return note || '申请亲属卡'
+    }
+    
+    // 尝试从familyCardData中获取
+    if (familyCardData.value && familyCardData.value.text) {
+        return familyCardData.value.text
+    }
+    
+    // 尝试从原始内容中直接提取，不经过cleanContent
+    const rawMatch = content.match(/(?:FAMILY_CARD_APPLY|申请亲属卡)[:：]?\s*([^\[\]]*)/i)
+    if (rawMatch && rawMatch[1]) {
+        const note = rawMatch[1].trim()
+        return note || '申请亲属卡'
+    }
+    
+    return '申请亲属卡'
+}
+
 function isSticker(msg) {
     if (!msg) return false
     const content = ensureString(msg.content)
@@ -1694,6 +1988,75 @@ function formatMessageContent(msg) {
     text = text.replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
         .replace(/Here is the original image:/gi, '') // Remove AI parroting
         .trim();
+    
+    // 1. Render dice_result type messages (system generated)
+    if (msg.type === 'dice_result') {
+        console.log('[Dice Debug Frontend] Rendering dice_result:', { diceCount: msg.diceCount, diceTotal: msg.diceTotal, diceResults: msg.diceResults });
+        const diceCount = msg.diceCount || 1;
+        const totalPoints = msg.diceTotal || 0;
+        
+        // Use FontAwesome dice icons: fa-dice-1 through fa-dice-6
+        const diceIcons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four', 'fa-dice-five', 'fa-dice-six'];
+        let diceDisplay = '';
+        // Use stored dice results or generate new ones
+        const diceResults = msg.diceResults || [];
+        for (let i = 0; i < diceCount; i++) {
+            const roll = diceResults[i] || (Math.floor(Math.random() * 6) + 1);
+            diceDisplay += `<i class="fa-solid ${diceIcons[roll - 1]} text-2xl mx-0.5 text-amber-500 animate-bounce"></i>`;
+        }
+        
+        const senderName = msg.senderName || '对方';
+        return `<div class="inline-flex flex-col items-center gap-3 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-5 py-4 my-2 select-none backdrop-blur-sm shadow-lg w-[280px] max-w-[90vw] min-h-[220px] justify-center">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-dice text-amber-500 text-[16px]"></i>
+                <span class="text-sm text-amber-700 font-bold">${senderName} 摇了 ${diceCount} 颗骰子</span>
+            </div>
+            <div class="flex items-center justify-center gap-2">
+                ${diceDisplay}
+            </div>
+            <div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-4 py-2">
+                <span class="text-sm text-amber-800 font-medium">合计点数</span>
+                <span class="text-xl font-bold text-amber-600">${totalPoints}</span>
+            </div>
+        </div>`;
+    }
+    
+    // 2. Render dice roll command directly (for AI sent [摇骰子] or [掷骰子])
+    // Flexible regex to capture various formats with spacing
+    if (msg.type === 'text') {
+        console.log('[Dice Debug Frontend] Checking text message for dice:', textRaw);
+        const diceMatch = textRaw.match(/[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]/i);
+        if (diceMatch) {
+            let diceCount = diceMatch[1] ? parseInt(diceMatch[1]) : 1;
+            // Limit to max 3 dice to match DiceModal UI
+            if (!diceCount || diceCount < 1) diceCount = 1;
+            if (diceCount > 3) diceCount = 3;
+            
+            // Use FontAwesome dice icons: fa-dice-1 through fa-dice-6
+            const diceIcons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four', 'fa-dice-five', 'fa-dice-six'];
+            let diceDisplay = '';
+            let totalPoints = 0;
+            for (let i = 0; i < diceCount; i++) {
+                const roll = Math.floor(Math.random() * 6) + 1;
+                totalPoints += roll;
+                diceDisplay += `<i class="fa-solid ${diceIcons[roll - 1]} text-2xl mx-0.5 text-amber-500 animate-bounce"></i>`;
+            }
+            
+            return `<div class="inline-flex flex-col items-center gap-3 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-5 py-4 my-2 select-none backdrop-blur-sm shadow-lg w-[280px] max-w-[90vw] min-h-[220px] justify-center">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-dice text-amber-500 text-[16px]"></i>
+                    <span class="text-sm text-amber-700 font-bold">对方摇了 ${diceCount} 颗骰子</span>
+                </div>
+                <div class="flex items-center justify-center gap-2">
+                    ${diceDisplay}
+                </div>
+                <div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-4 py-2">
+                    <span class="text-sm text-amber-800 font-medium">合计点数</span>
+                    <span class="text-xl font-bold text-amber-600">${totalPoints}</span>
+                </div>
+            </div>`;
+        }
+    }
 
     // 2. Render [DRAW:...] as loading indicator
     if (msg.isDrawing !== false && /\[DRAW:\s*[\s\S]*?\]/i.test(text)) {
@@ -1702,9 +2065,301 @@ function formatMessageContent(msg) {
             const truncated = promptText.length > 30 ? promptText.substring(0, 30) + '...' : promptText
             return `<div class="inline-flex items-center gap-2 bg-blue-50/10 border border-blue-400/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm overflow-hidden max-w-full">
                 <i class="fa-solid fa-spinner fa-spin text-blue-400"></i>
-                <span class="text-xs text-blue-200/80 whitespace-nowrap overflow-hidden text-ellipsis">AI 正在绘制: ${truncated}</span>
+                <span class="text-xs text-blue-200/80 whitespace-nowrap overflow-hidden text-ellipsis">AI 正在绘制：${truncated}</span>
             </div>`
         })
+    }
+    
+    // 3. Render [INNER_VOICE:...] as metadata badge
+    if (/\[INNER_VOICE\]/i.test(text)) {
+        text = text.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, (match, content) => {
+            try {
+                const data = typeof content === 'string' ? JSON.parse(content.trim()) : content;
+                const status = data.status || data.状态 || '思考中';
+                const outfit = data.着装 || data.outfit || '';
+                const scene = data.环境 || data.scene || '';
+                const action = data.行为 || data.action || '';
+                    
+                let displayText = '💭 ';
+                if (status) displayText += `${status} · `;
+                if (outfit) displayText += `${outfit}`;
+                if (scene) displayText += ` | ${scene}`;
+                if (action) displayText += ` | ${action}`;
+                    
+                return `<div class="inline-block bg-pink-50/20 border border-pink-200/30 rounded-lg px-2 py-1 my-1 select-none backdrop-blur-sm">
+                    <span class="text-[10px] text-pink-300 font-medium">${displayText.trim()}</span>
+                </div>`;
+            } catch (e) {
+                return '<div class="inline-block bg-pink-50/20 border border-pink-200/30 rounded-lg px-2 py-1 my-1 select-none backdrop-blur-sm"><span class="text-[10px] text-pink-300 font-medium">💭 心声数据</span></div>';
+            }
+        });
+    }
+    
+    // 4. Render [FAMILY_CARD:...] as card badge
+    if (/\[FAMILY_CARD(?:_APPLY)?:/i.test(text)) {
+        text = text.replace(/\[FAMILY_CARD(?:_APPLY)?:([\s\S]*?)\]/gi, (match, data) => {
+            const parts = data.split(':');
+            const amount = parts[0] || '0';
+            const note = parts[1] || '亲属卡';
+            return `<div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-50/20 to-yellow-50/20 border border-amber-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm shadow-sm">
+                <i class="fa-solid fa-credit-card text-amber-400 text-[10px]"></i>
+                <span class="text-[10px] text-amber-100 font-medium">¥${amount} · ${note}</span>
+            </div>`;
+        });
+    }
+    
+    // 5. Render [MUSIC:...] or [演奏：...] as music badge
+    if (/^\[(?:演奏|MUSIC)[:：]/i.test(text)) {
+        text = text.replace(/^\[(?:演奏|MUSIC)[:：]([\s\S]*?)\]/gi, (match, songInfo) => {
+            return `<div class="inline-flex items-center gap-1.5 bg-purple-50/20 border border-purple-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm">
+                <i class="fa-solid fa-music text-purple-400 text-[10px]"></i>
+                <span class="text-[10px] text-purple-200 font-medium">🎵 ${songInfo.trim()}</span>
+            </div>`;
+        });
+    }
+    
+    // 6. Render [GIFT:...] or [礼物：...] as gift badge
+    if (/^\[(?:GIFT|礼物)[:：]/i.test(text)) {
+        text = text.replace(/^\[(?:GIFT|礼物)[:：]([\s\S]*?)\]/gi, (match, giftInfo) => {
+            return `<div class="inline-flex items-center gap-1.5 bg-red-50/20 border border-red-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm shadow-sm">
+                <i class="fa-solid fa-gift text-red-400 text-[10px]"></i>
+                <span class="text-[10px] text-red-200 font-medium">🎁 ${giftInfo.trim()}</span>
+            </div>`;
+        });
+    }
+
+    // 7. Render [语音：...] or [VOICE:...] as voice badge
+    if (/^\[(?:语音|语音消息|VOICE)[:：]/i.test(text)) {
+        text = text.replace(/^\[(?:语音|语音消息|VOICE)[:：]([\s\S]*?)\]/gi, (match, voiceContent) => {
+            // Calculate approximate duration based on text length
+            const duration = Math.ceil(voiceContent.trim().length / 3) || 1;
+            return `<div class="inline-flex items-center gap-2 bg-slate-800/20 border border-slate-600/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm">
+                <i class="fa-solid fa-microphone text-slate-400 text-[12px]"></i>
+                <span class="text-[10px] text-slate-300 font-medium">语音 ${duration}"</span>
+                <i class="fa-solid fa-wave-square text-slate-500 text-[10px] opacity-60"></i>
+            </div>`;
+        });
+    }
+
+    // 8. Render [语音通话], [视频通话], [接听], [挂断], [拒绝] as call badges
+    const callCommands = {
+        '语音通话': { icon: 'fa-phone', color: 'green', label: '语音通话' },
+        '视频通话': { icon: 'fa-video', color: 'blue', label: '视频通话' },
+        '接听': { icon: 'fa-phone-arrow-down-left', color: 'green', label: '已接听' },
+        '挂断': { icon: 'fa-phone-arrow-up-right', color: 'red', label: '已挂断' },
+        '拒绝': { icon: 'fa-phone-slash', color: 'red', label: '已拒绝' }
+    };
+
+    Object.keys(callCommands).forEach(cmd => {
+        const regex = new RegExp(`\\[${cmd}\\]`, 'gi');
+        if (regex.test(text)) {
+            const config = callCommands[cmd];
+            const colorClasses = {
+                green: 'bg-green-50/20 border-green-300/30 text-green-400',
+                blue: 'bg-blue-50/20 border-blue-300/30 text-blue-400',
+                red: 'bg-red-50/20 border-red-300/30 text-red-400'
+            };
+            
+            text = text.replace(regex, () => {
+                return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm border">
+                    <i class="fa-solid ${config.icon} text-[12px]"></i>
+                    <span class="text-[10px] font-medium">${config.label}</span>
+                </div>`;
+            });
+        }
+    });
+
+    // 9. Render [NUDGE] as cute badge
+    if (/\[NUDGE(?:_SELF)?[:：]?[^\]]*\]/i.test(text)) {
+        text = text.replace(/\[NUDGE(?:_SELF)?[:：]?([^\]]*)\]/gi, (match, modifier) => {
+            const mod = modifier ? modifier.trim() : '';
+            let displayText = '👋 拍了拍';
+            if (mod) {
+                displayText += ` ${mod}`;
+            }
+            return `<div class="inline-flex items-center gap-2 bg-orange-50/20 border border-orange-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm animate-pulse">
+                <i class="fa-solid fa-hand-sparkles text-orange-400 text-[12px]"></i>
+                <span class="text-[10px] text-orange-200 font-medium">${displayText}</span>
+            </div>`;
+        });
+    }
+
+    // 10. Render [MOMENT] / [朋友圈] as moment badge
+    if (/\[(?:MOMENT|朋友圈)\]/i.test(text)) {
+        text = text.replace(/\[(?:MOMENT|朋友圈)\]/gi, () => {
+            return `<div class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50/20 to-cyan-50/20 border border-blue-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm">
+                <i class="fa-regular fa-image text-blue-400 text-[12px]"></i>
+                <span class="text-[10px] text-blue-200 font-medium">📸 朋友圈</span>
+            </div>`;
+        });
+    }
+
+    // 11. Render [定时:...] / [SCHEDULE:...] as task badge (REMOVED: User prefers raw text for now)
+    /*
+    if (/\[(?:定时|SCHEDULE)[:：]/i.test(text)) {
+        text = text.replace(/\[(?:定时|SCHEDULE)[:：]\s*([^\]]+)\]/gi, (match, inner) => {
+            const parts = inner.match(/^((?:\d{2,4}[-/]\d{1,2}[-/]\d{1,2}\s+)?\d{1,2}[:：]\d{2})\s+([\s\S]+)$/) || 
+                         inner.match(/^((?:\d{2,4}[-/]\d{1,2}[-/]\d{1,2}\s+)?\d{1,2}[:：]\d{2})[:：]\s*([\s\S]+)$/) ||
+                         inner.match(/^((?:\d{2,4}[-/]\d{1,2}[-/]\d{1,2}))\s+([\s\S]+)$/) ||
+                         inner.match(/^(.+?)\s+([\s\S]+)$/);
+
+            if (parts) {
+                const timeStr = parts[1].trim();
+                const taskContent = parts[2].trim();
+                return `<div class="inline-flex flex-col gap-1 bg-indigo-50/20 border border-indigo-400/30 rounded-xl px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm">
+                    <div class="flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock text-indigo-400 text-[10px]"></i>
+                        <span class="text-[10px] text-indigo-100 font-bold">设定提醒</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[12px] text-white font-medium leading-tight">${taskContent}</span>
+                        <span class="text-[9px] text-indigo-200/70 font-mono">${timeStr}</span>
+                    </div>
+                </div>`;
+            }
+            return match;
+        });
+    }
+    */
+
+    // 12. Render [LIKE], [COMMENT], [REPLY] as interaction badges
+    const interactionCommands = {
+        'LIKE': { icon: 'fa-heart', color: 'pink', label: '点赞' },
+        'COMMENT': { icon: 'fa-comment', color: 'blue', label: '评论' },
+        'REPLY': { icon: 'fa-reply', color: 'green', label: '回复' }
+    };
+
+    Object.keys(interactionCommands).forEach(cmd => {
+        const regex = new RegExp(`\\[${cmd}[:：][^\\]]+\\]`, 'gi');
+        if (regex.test(text)) {
+            const config = interactionCommands[cmd];
+            const colorClasses = {
+                pink: 'bg-pink-50/20 border-pink-300/30 text-pink-400',
+                blue: 'bg-blue-50/20 border-blue-300/30 text-blue-400',
+                green: 'bg-green-50/20 border-green-300/30 text-green-400'
+            };
+            
+            text = text.replace(regex, (match) => {
+                // Extract target info if present
+                const targetMatch = match.match(/\[${cmd}[:：]([^\\]]+)\\]/i);
+                const targetInfo = targetMatch ? ` ${targetMatch[1].trim()}` : '';
+                
+                return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm border">
+                    <i class="fa-solid ${config.icon} text-[10px]"></i>
+                    <span class="text-[10px] font-medium">${config.label}${targetInfo}</span>
+                </div>`;
+            });
+        }
+    });
+
+    // 12. Render [VOTE], [CREATE_VOTE], [END_VOTE] as vote badges
+    const voteCommands = {
+        'VOTE': { icon: 'fa-circle-check', color: 'purple', label: '投票' },
+        'CREATE_VOTE': { icon: 'fa-square-plus', color: 'indigo', label: '发起投票' },
+        'END_VOTE': { icon: 'fa-circle-xmark', color: 'gray', label: '结束投票' }
+    };
+
+    Object.keys(voteCommands).forEach(cmd => {
+        const regex = new RegExp(`\\[${cmd}[:：][^\\]]+\\]`, 'gi');
+        if (regex.test(text)) {
+            const config = voteCommands[cmd];
+            const colorClasses = {
+                purple: 'bg-purple-50/20 border-purple-300/30 text-purple-400',
+                indigo: 'bg-indigo-50/20 border-indigo-300/30 text-indigo-400',
+                gray: 'bg-gray-50/20 border-gray-300/30 text-gray-400'
+            };
+            
+            text = text.replace(regex, (match) => {
+                const targetMatch = match.match(/\[${cmd}[:：]([^\\]]+)\\]/i);
+                const targetInfo = targetMatch ? ` ${targetMatch[1].trim().substring(0, 20)}` : '';
+                
+                return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm border">
+                    <i class="fa-solid ${config.icon} text-[10px]"></i>
+                    <span class="text-[10px] font-medium">${config.label}${targetInfo}</span>
+                </div>`;
+            });
+        }
+    });
+
+    // 13. Render [RECALL] / [撤回] as recall badge
+    if (/\[(?:RECALL|撤回)(?:[:：][^\]]+)?\]/i.test(text)) {
+        text = text.replace(/\[(?:RECALL|撤回)(?:[:：]([^\]]+))?\]/gi, (match, keyword) => {
+            return `<div class="inline-flex items-center gap-2 bg-gray-50/20 border border-gray-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm">
+                <i class="fa-solid fa-rotate-left text-gray-400 text-[12px]"></i>
+                <span class="text-[10px] text-gray-300 font-medium">↩️ 撤回消息${keyword ? ` · ${keyword.trim()}` : ''}</span>
+            </div>`;
+        });
+    }
+
+    // 14. Render [SET_PAT] as pat settings badge
+    if (/\[SET_PAT[:：][^\]]+\]/i.test(text)) {
+        text = text.replace(/\[SET_PAT[:：]([^\]:]+)(?:[:：]([^\]]+))?\]/gi, (match, action, suffix) => {
+            const actionText = action.trim();
+            const suffixText = suffix ? suffix.trim() : '';
+            return `<div class="inline-flex items-center gap-2 bg-amber-50/20 border border-amber-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm">
+                <i class="fa-solid fa-pen-to-square text-amber-400 text-[12px]"></i>
+                <span class="text-[10px] text-amber-200 font-medium">✏️ 设置拍一拍：${actionText}${suffixText ? ` · ${suffixText}` : ''}</span>
+            </div>`;
+        });
+    }
+
+    // 15. Render [SET_AVATAR] / [更换头像] as avatar change badge
+    if (/\[(?:SET_AVATAR|更换头像)[:：][^\]]+\]/i.test(text)) {
+        text = text.replace(/\[(?:SET_AVATAR|更换头像)[:：]([^\]]+)\]/gi, (match, reason) => {
+            return `<div class="inline-flex items-center gap-2 bg-cyan-50/20 border border-cyan-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm">
+                <i class="fa-solid fa-user-pen text-cyan-400 text-[12px]"></i>
+                <span class="text-[10px] text-cyan-200 font-medium">🖼️ 更换头像</span>
+            </div>`;
+        });
+    }
+
+    // 16. Render [UPDATE_BIO] / [BIO:] as bio update badge
+    if (/\[(?:UPDATE_)?BIO[:：][^\]]+\]/i.test(text)) {
+        text = text.replace(/\[(?:UPDATE_)?BIO[:：]([^:]+):([^\]]+)\]/gi, (match, key, value) => {
+            const keyMap = {
+                'gender': '性别', '性别': '性别',
+                'age': '年龄', '年龄': '年龄',
+                'signature': '签名', '个性签名': '签名',
+                'occupation': '职业', '职业': '职业',
+                'status': '状态', '婚姻': '状态', '情感': '状态'
+            };
+            const displayKey = keyMap[key.trim().toLowerCase()] || key.trim();
+            return `<div class="inline-flex items-center gap-2 bg-emerald-50/20 border border-emerald-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm">
+                <i class="fa-solid fa-pen-line text-emerald-400 text-[10px]"></i>
+                <span class="text-[10px] text-emerald-200 font-medium">📝 更新${displayKey}</span>
+            </div>`;
+        });
+    }
+
+    // 17. Render [摇骰子] as dice result card
+    if (/\[摇骰子\]/i.test(text)) {
+        text = text.replace(/\[摇骰子\]\s*(.+?)\s*摇了\s*(\d+)\s*颗骰子 [，,]?\s*合计点数 [：:]?\s*(\d+)/gi, (match, who, count, total) => {
+            const whoName = who.trim() || '对方';
+            const diceCount = parseInt(count);
+            const totalPoints = parseInt(total);
+            
+            // Generate dice face emojis
+            const diceEmojis = ['⚀', '⚁', '', '⚃', '⚄', '⚅'];
+            let diceDisplay = '';
+            for (let i = 0; i < Math.min(diceCount, 6); i++) {
+                const randomFace = Math.floor(Math.random() * 6);
+                diceDisplay += `<span class="text-2xl mx-0.5 animate-bounce">${diceEmojis[randomFace]}</span>`;
+            }
+            
+            return `<div class="inline-flex flex-col items-center gap-2 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-4 py-3 my-2 select-none backdrop-blur-sm shadow-lg">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-dice text-amber-500 text-[14px]"></i>
+                    <span class="text-xs text-amber-700 font-bold">${whoName} 摇了 ${diceCount} 颗骰子</span>
+                </div>
+                <div class="flex items-center justify-center gap-1">
+                    ${diceDisplay}
+                </div>
+                <div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-3 py-1">
+                    <span class="text-xs text-amber-800 font-medium">合计点数</span>
+                    <span class="text-lg font-bold text-amber-600">${totalPoints}</span>
+                </div>
+            </div>`;
+        });
     }
 
     // 6. Handle bracketed text (Small font styling)
@@ -1768,29 +2423,45 @@ function formatMessageContent(msg) {
         html = text;
     }
 
-    // Replace [StickerName] or [表情包: StickerName]
+    // Replace [StickerName] or [表情包：StickerName]
+    // EXCLUDE all protocol commands (DRAW, INNER_VOICE, FAMILY_CARD, etc.)
     html = html.replace(/\[(.*?)\]/g, (match, name) => {
         let n = name.trim()
-
-        // Strip prefixes, but EXCLUDE DRAW commands
-        // If it starts with DRAW:, it is NOT a sticker.
-        if (n.toUpperCase().startsWith('DRAW:')) return match;
-
-        const prefixMatch = n.match(/^(?:表情包|表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
+    
+        // EXCLUDE all protocol commands - these should NOT be treated as stickers
+        const protocolCommands = [
+            'DRAW:', 'INNER', 'FAMILY_CARD', 'CARD', 'GIFT', 'MUSIC', '演奏',
+            '位置', '分享', '转账', '红包', 'SET_AVATAR', '更换头像', 'NUDGE',
+            '申请亲属卡', '拒绝亲属卡', '领取红包', 'RECEIVE_RED_PACKET',
+            'LIKE', 'COMMENT', 'REPLY', 'MOMENT', 'HTML 卡片', '图片', 'IMAGE',
+            '表情包', '表情', 'STICKER', 'VOTE', 'CREATE_VOTE', 'END_VOTE',
+            'RECALL', '撤回', 'SET_PAT', 'UPDATE_BIO', 'BIO', '摇骰子'
+        ];
+            
+        // Check if the content starts with any protocol command
+        const isProtocolCommand = protocolCommands.some(cmd => 
+            n.toUpperCase().startsWith(cmd.toUpperCase()) || n.startsWith(cmd)
+        );
+            
+        if (isProtocolCommand) {
+            return match; // Return as-is, don't treat as sticker
+        }
+    
+        const prefixMatch = n.match(/^(?:表情包 | 表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
         if (prefixMatch) {
             n = prefixMatch[1].trim();
         }
-
+    
         const found = findSticker(n);
         if (found) {
             return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
         }
-
+    
         // If it was a generated image URL directly in the tag, remove it
         if (n.startsWith('http') || n.includes('//')) {
             return '';
         }
-
+    
         // Fallback: If sticker not found, return the original match to render as text
         // This allows the user to see the hallucinated name and edit it.
         return match;
@@ -2290,43 +2961,14 @@ const scrollToVote = (refId) => {
     border-radius: 2px 12px 12px 12px;
 }
 
-/* Voice bubble styles for Wujin theme */
-/* For AI messages (left side) */
-.h-10.rounded-lg.flex.items-center.px-4.cursor-pointer.relative.shadow-sm.min-w-\[80px\]:not(.bg-\[\#2e2e2e\]) {
-    background: radial-gradient(circle at top left, #2a2520 0%, #0e0e10 100%) !important;
-    border: 1px solid rgba(212, 175, 55, 0.2) !important;
-    border-top: 1px solid rgba(212, 175, 55, 0.4) !important;
-    color: #e6dcc0 !important;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6) !important;
-    font-family: 'Noto Serif SC', serif !important;
-    font-weight: 300 !important;
-    letter-spacing: 0.5px !important;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
-    border-radius: 2px 12px 12px 12px !important;
+/* Voice bubble adjustments */
+.chat-bubble-voice {
+    transition: transform 0.2s ease, filter 0.2s ease;
 }
 
-/* For user messages (right side) */
-.h-10.rounded-lg.flex.items-center.px-4.cursor-pointer.relative.shadow-sm.min-w-\[80px\].bg-\[\#2e2e2e\] {
-    background: radial-gradient(circle at top right, #374151 0%, #1f2937 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
-    color: #e5e7eb !important;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4) !important;
-    font-family: 'Noto Serif SC', serif !important;
-    font-weight: 300 !important;
-    letter-spacing: 0.5px !important;
-    border-radius: 12px 2px 12px 12px !important;
-}
-
-/* Voice arrow styles */
-/* For AI messages (left side) */
-.absolute.top-3.w-0.h-0.border-y-\[6px\].border-y-transparent.border-r-\[6px\].border-r-black {
-    border-right-color: #0e0e10 !important;
-}
-
-/* For user messages (right side) */
-.absolute.top-3.w-0.h-0.border-y-\[6px\].border-y-transparent.border-l-\[6px\].border-l-\[\#2e2e2e\] {
-    border-left-color: #1f2937 !important;
+.chat-bubble-voice:active {
+    transform: scale(0.98);
+    filter: brightness(0.95);
 }
 
 .voice-wave {

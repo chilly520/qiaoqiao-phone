@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import * as localforage from 'localforage'
 import { useWalletStore } from './walletStore'
 import { useSettingsStore } from './settingsStore'
 import { useChatStore } from './chatStore'
@@ -195,7 +196,7 @@ export const useShoppingStore = defineStore('shopping', () => {
             1. 字段：id, title, description, price, originalPrice, category, shop, shopPersonality(店铺性格), tags, rating, sales, imagePrompt(英文，用于生图)。
             2. 【关键】价格多样性：必须包含 specs 数组，如 specs: [{ name: "标准版", price: 100 }, { name: "旗舰版", price: 180 }]。不同规格的价格不能相同。
             3. 评价注入：为生成的【每一个】商品生成 3-5 条真实评价，放在 reviews 字段里。评价内容要有生活气息，别老是夸，要有点真实的槽点。
-            4. imagePrompt 要求：详细描述商品的视觉特征，如材质、光影、构图等。
+            4. imagePrompt 要求：这是用于生成真实的商品展示图的提示词！必须强制指明：Highly realistic product photography, NO HUMANS, no people, no hands, object only, studio lighting, professional e-commerce shot, highly detailed, photorealistic。绝对不能生成人或穿着该物品的模特，只能生成物品本身！
             5. 店铺性格：不同店铺的店主性格要分化，描述商品时也要体现。
             6. 严格返回 JSON 数组格式。`
 
@@ -215,15 +216,13 @@ export const useShoppingStore = defineStore('shopping', () => {
                 // 通过在 chatStore 中注册 DRAW 指令处理器来实现
                 if (p.imagePrompt) {
                     try {
-                        // 创建一个临时的消息对象来触发 DRAW 指令
-                        const drawInstruction = `[DRAW: ${p.imagePrompt}]`
-                        // 直接调用 generateImage，但会通过 settingsStore.drawing 配置使用自定义 API
                         const { generateImage } = await import('../utils/aiService')
-                        p.image = await generateImage(p.imagePrompt, { width: 600, height: 600 });
+                        // Pass isProduct flag to enforce realism in generateImage logic
+                        p.image = await generateImage(p.imagePrompt, { width: 600, height: 600, isProduct: true });
                         console.log(`[Shopping] Generated image for product ${p.id} using custom drawing API`)
                     } catch (err) {
                         console.error(`[Shopping] Image generation failed for ${p.id}:`, err)
-                        p.image = `https://pollinations.ai/p/${encodeURIComponent(p.imagePrompt)}?width=600&height=600&seed=${Math.random()}`;
+                        p.image = `https://pollinations.ai/p/${encodeURIComponent(p.imagePrompt + ", professional product photography, object only, no humans")}?width=600&height=600&seed=${Math.random()}`;
                     }
                 }
 
@@ -433,23 +432,39 @@ export const useShoppingStore = defineStore('shopping', () => {
 
     // ============ Standard Actions ============
 
-    const initStore = () => {
-        const saved = localStorage.getItem('shopping_store_v2')
+    const initStore = async () => {
+        let saved = null;
+        try {
+            saved = await localforage.getItem('shopping_store_v2')
+            if (!saved) {
+                const legacy = localStorage.getItem('shopping_store_v2')
+                if (legacy) {
+                    saved = JSON.parse(legacy)
+                    console.log('[ShoppingStore] Recovered legacy data from localStorage')
+                }
+            }
+        } catch (e) {
+            console.error('[ShoppingStore] Failed to load from localforage:', e)
+            try {
+                const legacy = localStorage.getItem('shopping_store_v2')
+                if (legacy) saved = JSON.parse(legacy)
+            } catch(e2) {}
+        }
+
         if (saved) {
-            const data = JSON.parse(saved)
-            products.value = data.products || []
-            cart.value = data.cart || []
-            orders.value = data.orders || []
-            logistics.value = data.logistics || []
-            chatMessages.value = data.chatMessages || {}
-            addresses.value = data.addresses || addresses.value
-            favorites.value = data.favorites || []
-            footprints.value = data.footprints || []
-            coupons.value = data.coupons || coupons.value
-            points.value = data.points || 1250
-            reviews.value = data.reviews || {}
-            subscribedShops.value = data.subscribedShops || []
-            useFantasyCities.value = data.useFantasyCities || false
+            products.value = saved.products || []
+            cart.value = saved.cart || []
+            orders.value = saved.orders || []
+            logistics.value = saved.logistics || []
+            chatMessages.value = saved.chatMessages || {}
+            addresses.value = saved.addresses || addresses.value
+            favorites.value = saved.favorites || []
+            footprints.value = saved.footprints || []
+            coupons.value = saved.coupons || coupons.value
+            points.value = saved.points || 1250
+            reviews.value = saved.reviews || {}
+            subscribedShops.value = saved.subscribedShops || []
+            useFantasyCities.value = saved.useFantasyCities || false
 
             // 检查是否有进行中的物流，如果有则启动定时器
             const hasActiveLogistics = logistics.value.some(l =>
@@ -473,7 +488,17 @@ export const useShoppingStore = defineStore('shopping', () => {
             useFantasyCities: useFantasyCities.value, // 保存城市偏好
             lastUpdateTime: Date.now() // 保存最后更新时间
         }
-        localStorage.setItem('shopping_store_v2', JSON.stringify(data))
+        
+        // 异步保存到 IndexedDB 以支持大图片 (Base64) 存储
+        localforage.setItem('shopping_store_v2', JSON.parse(JSON.stringify(data))).catch(e => {
+            console.error('[ShoppingStore] Failed to save to localforage:', e)
+        })
+        
+        // 尝试备份核心信息到 localStorage，但不包含可能会爆掉配额的 products 数组，因为里面有大 Base64
+        try {
+            const lightData = { ...data, products: [] };
+            localStorage.setItem('shopping_store_v2', JSON.stringify(lightData));
+        } catch(e) {}
     }
 
     // 物流自动更新定时器

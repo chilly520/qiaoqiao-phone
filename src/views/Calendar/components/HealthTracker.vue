@@ -21,7 +21,7 @@
             <div class="status-desc">{{ getStatusDesc }}</div>
           </div>
         </div>
-        
+              
         <div class="period-stats">
           <div class="stat-box">
             <div class="stat-value">{{ calendarStore.periodData.cycles.length }}</div>
@@ -29,19 +29,24 @@
           </div>
           <div class="stat-box">
             <div class="stat-value">{{ calendarStore.periodData.averageCycle }}</div>
-            <div class="stat-label">平均周期(天)</div>
+            <div class="stat-label">平均周期 (天)</div>
           </div>
           <div class="stat-box">
             <div class="stat-value">{{ calendarStore.periodData.averageDuration }}</div>
-            <div class="stat-label">平均经期(天)</div>
+            <div class="stat-label">平均经期 (天)</div>
           </div>
         </div>
-        
+              
         <div class="next-prediction" v-if="nextPeriod">
           <div class="prediction-title">📅 下次预测</div>
           <div class="prediction-date">{{ nextPeriod.startDate }}</div>
           <div class="prediction-countdown">还有 {{ daysUntilNext }} 天</div>
         </div>
+              
+        <button class="action-btn-link statistics-btn" @click="goToStatistics">
+          <span>统计详情</span>
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
       </div>
     </div>
 
@@ -148,11 +153,13 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCalendarStore } from '../../../stores/calendarStore'
 import PeriodModal from './PeriodModal.vue'
 import MoodModal from './MoodModal.vue'
 import SleepModal from './SleepModal.vue'
 
+const router = useRouter()
 const calendarStore = useCalendarStore()
 
 const showPeriodModal = ref(false)
@@ -277,6 +284,10 @@ const waterEncourage = computed(() => {
 
 function recordWater() {
   calendarStore.recordWater(todayStr.value, 250)
+}
+
+function goToStatistics() {
+  router.push('/calendar/statistics')
 }
 
 // 保存方法
@@ -444,6 +455,59 @@ function saveSleep(data) {
   font-size: 14px;
   color: #ff6b9d;
   margin-top: 4px;
+}
+
+/* 统计详情按钮 */
+.statistics-btn {
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px 20px;
+  background: rgba(197, 201, 255, 0.2);
+  border: 1px solid rgba(197, 201, 255, 0.3);
+  border-radius: 12px;
+  font-size: 15px;
+  color: #8b7aa8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.3s ease;
+}
+
+.statistics-btn:hover {
+  background: rgba(197, 201, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.action-btn-link {
+  width: 100%;
+  padding: 12px 20px;
+  background: rgba(255, 183, 197, 0.1);
+  color: #ff6b9d;
+  border: 1px solid rgba(255, 183, 197, 0.3);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.action-btn-link:hover {
+  background: rgba(255, 183, 197, 0.2);
+  border-color: rgba(255, 183, 197, 0.5);
+}
+
+.action-btn-link i {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.btn-icon {
+  font-size: 18px;
 }
 
 /* 心情图表 */

@@ -89,7 +89,8 @@
             'has-events': day.events?.length > 0,
             'has-period': day.period?.type === 'period',
             'has-prediction': day.period?.type === 'prediction',
-            'has-ovulation': day.period?.type === 'ovulation'
+            'has-ovulation': day.period?.type === 'ovulation',
+            'in-period-range': isInPeriodRange(day.date)
           }" @click="selectDate(day.date)">
             <div class="day-number">{{ day.date.getDate() }}</div>
             <div class="day-lunar">
@@ -102,6 +103,9 @@
                 :style="{ backgroundColor: event.color || '#ff9eb5' }" />
             </div>
             <div v-if="day.mood" class="day-mood">{{ getMoodEmoji(day.mood.mood) }}</div>
+            
+            <!-- 经期范围高亮标记 -->
+            <div v-if="isInPeriodRange(day.date) && !day.period?.type" class="period-range-marker"></div>
           </div>
         </div>
 
@@ -343,6 +347,10 @@
               <span class="tool-icon">🌙</span>
               <span>记录经期</span>
             </button>
+            <button class="tool-btn" @click="showPeriodSettings = true">
+              <span class="tool-icon">⚙️</span>
+              <span>周期设置</span>
+            </button>
             <button class="tool-btn" @click="showMoodModal = true">
               <span class="tool-icon">😊</span>
               <span>记录心情</span>
@@ -402,6 +410,7 @@
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
     <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
     <ThemeSettingsModal v-if="showThemeSettings" @close="showThemeSettings = false" />
+    <PeriodSettingsModal v-if="showPeriodSettings" @close="showPeriodSettings = false" @save="handlePeriodSettingsSave" />
   </div>
 </template>
 
@@ -419,6 +428,7 @@ import SleepModal from './components/SleepModal.vue'
 import AISettingsModal from './components/AISettingsModal.vue'
 import QuickAddModal from './components/QuickAddModal.vue'
 import ThemeSettingsModal from './components/ThemeSettingsModal.vue'
+import PeriodSettingsModal from './components/PeriodSettingsModal.vue'
 
 const router = useRouter()
 const calendarStore = useCalendarStore()
@@ -435,6 +445,7 @@ const showSleepModal = ref(false)
 const showAISettings = ref(false)
 const showQuickAdd = ref(false)
 const showThemeSettings = ref(false)
+const showPeriodSettings = ref(false)
 
 const editingEvent = ref(null)
 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
@@ -593,6 +604,31 @@ function isAIActive(charId) {
   return chat && chat.isOnline
 }
 
+// 检查日期是否在经期范围内（根据设置的经期天数）
+function isInPeriodRange(date) {
+  const periodData = calendarStore.periodData
+  
+  // 检查实际的经期记录
+  for (const cycle of periodData.cycles) {
+    const start = new Date(cycle.startDate)
+    const end = new Date(cycle.endDate)
+    if (date >= start && date <= end) {
+      return true
+    }
+  }
+  
+  // 检查预测的经期
+  for (const pred of periodData.predictions) {
+    const start = new Date(pred.startDate)
+    const end = new Date(pred.endDate)
+    if (date >= start && date <= end) {
+      return true
+    }
+  }
+  
+  return false
+}
+
 function openEventModal() {
   editingEvent.value = null
   showEventModal.value = true
@@ -652,6 +688,10 @@ function saveSleep(data) {
 function recordWater() {
   calendarStore.recordWater(selectedDateStr.value, 250)
   alert('💧 已记录喝水 250ml！')
+}
+
+function handlePeriodSettingsSave(data) {
+  console.log('经期设置已保存:', data)
 }
 
 function handleQuickAdd(type) {
@@ -878,6 +918,21 @@ onMounted(() => {
 
 .day-cell.has-ovulation {
   background: linear-gradient(135deg, rgba(230, 230, 250, 0.3), rgba(240, 230, 255, 0.3));
+}
+
+.day-cell.in-period-range {
+  background: linear-gradient(135deg, rgba(255, 182, 193, 0.2), rgba(255, 218, 224, 0.2));
+  position: relative;
+}
+
+.period-range-marker {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #ffb7c5, #ff9eb5);
+  border-radius: 0 0 16px 16px;
 }
 
 .day-number {

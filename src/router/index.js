@@ -136,6 +136,11 @@ const router = createRouter({
             component: () => import('../views/Calendar/components/HelpPage.vue')
         },
         {
+            path: '/calendar/statistics',
+            name: 'calendar-statistics',
+            component: () => import('../views/Calendar/components/PeriodStatistics.vue')
+        },
+        {
             path: '/wechat/moments/detail/:id',
             name: 'moment-detail',
             component: () => import('../views/WeChat/MomentDetailView.vue')
@@ -185,6 +190,11 @@ const router = createRouter({
             path: '/share/order/:orderId',
             name: 'share-order',
             component: () => import('../views/Shopping/ShareOrder.vue')
+        },
+        {
+            path: '/forum',
+            name: 'forum',
+            component: () => import('../views/Forum/ForumApp.vue')
         },
         // Phone Inspection Routes
         {

@@ -108,6 +108,20 @@
             <span v-else-if="periodStatus.type === 'prediction'">📅 预计经期第 {{ periodStatus.day }} 天</span>
             <span v-else-if="periodStatus.type === 'ovulation'">🌸 排卵期</span>
           </div>
+          
+          <!-- 快速标记按钮 -->
+          <div v-if="!periodStatus || periodStatus.type !== 'period'" class="quick-mark-actions">
+            <button class="quick-btn start" @click="markPeriodStart(selectedDate)">
+              <span class="btn-icon">📍</span>
+              <span>标记开始</span>
+            </button>
+          </div>
+          <div v-else class="quick-mark-actions">
+            <button class="quick-btn end" @click="markPeriodEnd(selectedDate)">
+              <span class="btn-icon">✅</span>
+              <span>标记结束</span>
+            </button>
+          </div>
 
           <!-- 倒计时展示 -->
           <div v-if="topCountdowns.length > 0" class="countdown-widget">
@@ -186,6 +200,14 @@
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
     <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
     <ThemeSettingsModal v-if="showThemeSettings" :visible="showThemeSettings" @close="showThemeSettings = false" />
+    
+    <!-- 自定义确认弹窗 -->
+    <ConfirmModal 
+      v-model:visible="showConfirmModal" 
+      :title="confirmTitle" 
+      :message="confirmMessage" 
+      @confirm="handleConfirmAction" 
+      @cancel="handleCancelAction" />
   </div>
 </template>
 
@@ -206,6 +228,7 @@ import SleepModal from './components/SleepModal.vue'
 import AISettingsModal from './components/AISettingsModal.vue'
 import QuickAddModal from './components/QuickAddModal.vue'
 import ThemeSettingsModal from './components/ThemeSettingsModal.vue'
+import ConfirmModal from './components/ConfirmModal.vue'
 
 const router = useRouter()
 const calendarStore = useCalendarStore()
@@ -224,6 +247,12 @@ const showSleepModal = ref(false)
 const showAISettings = ref(false)
 const showQuickAdd = ref(false)
 const showThemeSettings = ref(false)
+
+// 确认弹窗状态
+const showConfirmModal = ref(false)
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+const confirmCallback = ref(null)
 
 const editingEvent = ref(null)
 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
@@ -309,8 +338,89 @@ function dismissReminder() {
   dismissedReminders.value = true
 }
 
+// 自定义确认弹窗
+function showConfirm(title, message, callback) {
+  confirmTitle.value = title
+  confirmMessage.value = message
+  confirmCallback.value = callback
+  showConfirmModal.value = true
+}
+
+function handleConfirmAction() {
+  if (confirmCallback.value) {
+    confirmCallback.value()
+  }
+  confirmCallback.value = null
+}
+
+function handleCancelAction() {
+  confirmCallback.value = null
+}
+
+// 自定义 Toast 提示
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div')
+  toast.className = `custom-toast ${type}`
+  toast.innerHTML = `
+    <i class="fa-solid fa-${type === 'success' ? 'circle-check' : type === 'error' ? 'circle-exclamation' : 'info-circle'}"></i>
+    <span>${message}</span>
+  `
+  
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: type === 'success' ? 'linear-gradient(135deg, #10b981, #059669)' : 
+                type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 
+                'linear-gradient(135deg, #3b82f6, #2563eb)',
+    color: 'white',
+    padding: '12px 24px',
+    borderRadius: '12px',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    zIndex: '10000',
+    animation: 'slideDown 0.3s ease'
+  })
+  
+  document.body.appendChild(toast)
+  
+  setTimeout(() => {
+    toast.style.animation = 'slideUp 0.3s ease'
+    setTimeout(() => toast.remove(), 300)
+  }, 3000)
+}
+
 function selectDate(date) {
-  calendarStore.selectDate(date)
+  // 检查点击的日期是否有经期记录
+  const dateStr = calendarStore.formatDateStr(date)
+  const periodStatus = calendarStore.getPeriodStatus(date)
+  
+  // 如果点击的是经期日期，弹出快速操作菜单
+  if (periodStatus?.type === 'period') {
+    showConfirm(
+      '标记经期结束',
+      `3 月${date.getDate()}日 是经期\n\n点击“确定”标记经期结束\n点击“取消”查看详情`,
+      () => {
+        // 标记结束
+        const cycles = calendarStore.periodData.cycles
+        if (cycles.length > 0) {
+          const lastCycle = cycles[cycles.length - 1]
+          if (!lastCycle.endDate || lastCycle.endDate === dateStr) {
+            calendarStore.recordPeriod(lastCycle.startDate, dateStr, lastCycle.symptoms || [])
+            showToast('已标记经期结束', 'success')
+          }
+        }
+      }
+    )
+  } else {
+    // 正常选择日期
+    calendarStore.selectDate(date)
+  }
 }
 
 function openEventModal() {
@@ -340,6 +450,51 @@ function saveEvent(event) {
 function savePeriod(data) {
   calendarStore.recordPeriod(data.startDate, data.endDate, data.symptoms)
   showPeriodModal.value = false
+}
+
+// 快速标记经期开始
+function markPeriodStart(date) {
+  const dateStr = calendarStore.formatDateStr(date)
+  const periodStatus = calendarStore.getPeriodStatus(date)
+  
+  if (periodStatus?.type === 'period') {
+    showToast('今天已经在经期中了', 'error')
+    return
+  }
+  
+  showConfirm(
+    '标记经期开始',
+    `确定要标记${date.getMonth() + 1}月${date.getDate()}日为经期开始吗？`,
+    () => {
+      showPeriodModal.value = true
+      // PeriodModal 会处理开始日期的设置
+    }
+  )
+}
+
+// 快速标记经期结束
+function markPeriodEnd(date) {
+  const dateStr = calendarStore.formatDateStr(date)
+  const cycles = calendarStore.periodData.cycles
+  
+  if (cycles.length === 0) {
+    showToast('还没有记录经期，请先标记开始', 'error')
+    return
+  }
+  
+  const lastCycle = cycles[cycles.length - 1]
+  if (!lastCycle.endDate || lastCycle.endDate === dateStr) {
+    showConfirm(
+      '标记经期结束',
+      `确定要标记${date.getMonth() + 1}月${date.getDate()}日为经期结束吗？`,
+      () => {
+        calendarStore.recordPeriod(lastCycle.startDate, dateStr, lastCycle.symptoms || [])
+        showToast('已标记经期结束', 'success')
+      }
+    )
+  } else {
+    showToast('当前没有进行中的经期', 'error')
+  }
 }
 
 function saveMood(data) {
@@ -503,6 +658,28 @@ onMounted(() => {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -20px);
   }
 }
 
@@ -716,6 +893,50 @@ onMounted(() => {
 .period-indicator.ovulation {
   background: linear-gradient(135deg, rgba(230, 230, 250, 0.3), rgba(240, 230, 255, 0.3));
   color: #8b7aa8;
+}
+
+/* 快速标记按钮 */
+.quick-mark-actions {
+  margin-bottom: 12px;
+}
+
+.quick-btn {
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.quick-btn.start {
+  background: linear-gradient(135deg, #ff6b9d, #ffb7c5);
+  color: white;
+}
+
+.quick-btn.start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(255, 107, 157, 0.3);
+}
+
+.quick-btn.end {
+  background: linear-gradient(135deg, #c5c9ff, #a8b8ff);
+  color: white;
+}
+
+.quick-btn.end:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(197, 201, 255, 0.3);
+}
+
+.btn-icon {
+  font-size: 16px;
 }
 
 .countdown-widget {

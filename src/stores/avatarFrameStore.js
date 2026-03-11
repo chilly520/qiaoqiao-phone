@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import defaultFrames from '@/assets/avatar-frames.json'
+import defaultFrames from '../assets/avatar-frames.json'
 
 export const useAvatarFrameStore = defineStore('avatarFrame', () => {
     // 头像框库

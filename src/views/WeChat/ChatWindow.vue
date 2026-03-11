@@ -211,6 +211,11 @@ const isMsgVisible = (msg) => {
     if (!msg) return false
     if (msg.hidden) return false
 
+    // Debug logging for family_card
+    if (msg.content && (msg.content.includes('亲属卡') || msg.content.includes('FAMILY_CARD'))) {
+        console.log('[isMsgVisible] Checking family_card message:', { type: msg.type, role: msg.role, content: msg.content?.substring(0, 50) })
+    }
+
     // 1. Always show special message types as long as they aren't explicitly hidden
     if (msg.type && msg.type !== 'text') return true
 

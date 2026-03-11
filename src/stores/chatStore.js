@@ -138,6 +138,34 @@ export const useChatStore = defineStore('chat', () => {
         toastEvent.value = { id: Date.now(), message, type }
     }
 
+    // Listen for scheduled task triggers from schedulerStore
+    if (typeof window !== 'undefined') {
+        window.addEventListener('qiaoqiao_task_triggered', (e) => {
+            const task = e.detail;
+            if (task && task.chatId) {
+                console.log('[ChatStore] Proactive Task trigger:', task.chatId);
+                
+                // Format current time in the specific Chinese format requested
+                const now = new Date();
+                const timeStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                
+                // Construct the specific prompt text requested by user
+                const promptText = `现在是${timeStr}，定时任务“${task.content}”的时间到了，快发消息${task.content}吧`;
+                
+                // 1. Add a system message so the user knows a task triggered (optional but helpful for context)
+                // addMessage(task.chatId, { role: 'system', content: `【定时提醒】${task.content}` });
+                
+                // 2. Proactively trigger AI with the hidden hint
+                sendMessageToAI(task.chatId, { 
+                    hiddenHint: promptText 
+                });
+                
+                // 3. Play notification sound
+                playSound('notification');
+            }
+        });
+    }
+
     function triggerConfirm(title, message, onConfirm, onCancel = null, confirmText = '确定', cancelText = '取消') {
         confirmEvent.value = { id: Date.now(), title, message, onConfirm, onCancel, confirmText, cancelText }
     }
@@ -1690,6 +1718,9 @@ export const useChatStore = defineStore('chat', () => {
                 // The actual logic for rejection is usually handled via status updates in the UI or store, 
                 // but playing the sound here provides immediate feedback.
             }
+
+            // 7. [定时:...] / 【定时：...】 operation is now handled robustly at the end of streaming
+            // to ensure it doesn't get missed due to regex overlaps or stripping.
         }
 
 
@@ -1955,11 +1986,11 @@ export const useChatStore = defineStore('chat', () => {
 
         // --- 时间感知逻辑 ---
         const now = Date.now()
-        // 查找 AI 的最后一条消息，以此计算时隔多久回复
-        const aiMessages = (chat.msgs || []).filter(m => m.role === 'ai')
-        const lastAiMsg = aiMessages.slice(-1)[0]
-        const lastAiTime = lastAiMsg ? lastAiMsg.timestamp : now
-        const diffMinutes = Math.floor((now - lastAiTime) / 1000 / 60)
+        // 查找用户的最后一条消息，以此计算时隔多久回复（而不是 AI 消息）
+        const userMessages = (chat.msgs || []).filter(m => m.role === 'user')
+        const lastUserMsg = userMessages.slice(-1)[0]
+        const lastUserTime = lastUserMsg ? lastUserMsg.timestamp : now
+        const diffMinutes = Math.floor((now - lastUserTime) / 1000 / 60)
 
         // 计算虚拟时间
         let currentVirtualTime = chat.virtualTime || ''
@@ -2215,6 +2246,15 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 你可以对这首歌发表看法，或者在觉得氛围合适时，使用 <bgm>歌名 - 歌手</bgm> 格式切换下一首符合当前氛围的歌曲。`
                 charInfo.description += musicHint
             }
+
+            // Scheduled Task Capability (Global Scheduler)
+            const schedulerHint = `\n\n【定时任务/提醒功能】
+你可以为用户设定定时任务或闹钟提醒。指令格式（另起一行）：
+[定时: YYYY-MM-DD HH:mm 任务内容]
+或者
+[定时: HH:mm 任务内容] （默认为今天或明天）
+示例：[定时: 2026-03-12 08:00 叫大小姐起床]`
+            charInfo.description += schedulerHint
 
             // Visual Perception Awareness for Calls
             if (isCallMode && callStore.type === 'video') {
@@ -2502,7 +2542,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
                 // FIX: Use Strictly Bounded Regex (Case Insensitive + Space Aware)
                 // Stop at closing tag, OR start of another command, OR end of file.
-                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi;
+                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
 
                 console.log('[ChatStore] Testing INNER_VOICE extraction...');
 
@@ -3055,6 +3095,27 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 });
 
 
+                // --- Handle Scheduled Tasks ---
+                const scheduleTagMatches = properlyOrderedContent.match(/[\[【](?:定时|SCHEDULE)[:：]\s*([^\]】]+)[\]】]/gi);
+                if (scheduleTagMatches) {
+                    scheduleTagMatches.forEach(tag => {
+                        const schedMatch = tag.match(/[\[【](?:定时|SCHEDULE)[:：]\s*([^\]】]+)[\]】]/i);
+                        if (schedMatch) {
+                            const inner = schedMatch[1].trim();
+                            const timeMatch = inner.match(/((?:\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+)?\d{1,2}[:：点]\s*\d{0,2}分?)/);
+                            if (timeMatch) {
+                                const timePart = timeMatch[1].trim();
+                                const contentPart = inner.replace(timeMatch[0], '').replace(/^[:：\s\-_]+/, '').replace(/[:：\s\-_]+$/, '').trim();
+                                const schedulerStore = useSchedulerStore();
+                                if (schedulerStore.addTask(chatId, timePart, contentPart)) {
+                                    console.log('[ChatStore] Scheduled task explicitly registered:', { timePart, contentPart });
+                                    triggerToast('⏰ 定时任务已录入系统', 'success');
+                                }
+                            }
+                        }
+                    });
+                }
+
                 // --- Improved Content Cleaning ---
                 // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
                 const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
@@ -3069,6 +3130,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     .replace(/\[COMMENT[:：].*?\]/gi, '')
                     .replace(/\[REPLY[:：].*?\]/gi, '')
                     .replace(/\[MUSIC:\s*.*?\]/gi, '') // Remove MUSIC command tags
+                    .replace(/[\[【](?:定时|SCHEDULE)[:：]\s*([^\]】]+)[\]】]/gi, '') // Remove Scheduled Task tags
                     // Aggressively clean AI's manual quote explanations like "引用来自 我 的消息..."
                     .replace(/[（\(]引用来自.*?[）\)]/gi, '')
                     .replace(/引用[^：:。^！]*[：:。^！]/gi, '')
@@ -3205,7 +3267,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 //   4. Multi-member [FROM:ID] tags for group ecology
                 // Standard Text: Apply splitting for special blocks
                 // V20: Robust Splitting (Parentheses fixed for start-of-string, aggressive newline priority)
-                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:(?=\s*\n\s*\[(?!\/))|$)|(?:[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】](?:[ \t]*[\[【]DRAW[:：\s][^\]】]*[\]】])?|[\[【]DRAW[:：\s][^\]】]*[\]】](?:[ \t]*[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】])?|[\[【][\s\S]*?[\]】])|(?<=^|[。！？!?…\n\r\s])([（\(][^）\)]*?[）\)])|([（\(][^）\)]*?[。！？!?…][^）\)]*?[）\)])(?!\s*[。！？!?…]))/gi;
+                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:(?=\s*\n\s*\[(?!\/))|$)|(?:[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】](?:[ \t]*[\[【]DRAW[:：\s][^\]】]*[\]】])?|[\[【]DRAW[:：\s][^\]】]*[\]】](?:[ \t]*[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】])?|[\[【](?:摇骰子 | 掷骰子)[:：\s][^\]】]*[\]】]|[\[【][\s\S]*?[\]】])|(?<=^|[。！？!?…\n\r\s])([（\(][^）\)]*?[）\)])|([（\(][^）\)]*?[。！？!?…][^）\)]*?[）\)])(?!\s*[。！？!?…]))/gi;
 
                 console.log('[Split V13] processedContent:', JSON.stringify(processedContent));
                 console.log('[Split V13] processedContent (first 500 chars):', processedContent.substring(0, 500));
@@ -3374,6 +3436,22 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         // We preserve them as text segments but mark them as hidden
                         // so they won't be displayed as protocol messages
                         finalSegments.push({ type: 'text', content: content.trim(), hidden: true });
+                        continue;
+                    } else if (/^[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]$/i.test(content.trim())) {
+                        // Dice Roll Command: [摇骰子：数量] or [掷骰子：数量]
+                        const diceMatch = content.trim().match(/^[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]$/i);
+                        let diceCount = diceMatch[1] ? parseInt(diceMatch[1], 10) : 1;
+                        if (!diceCount || diceCount < 1) diceCount = 1;
+                        if (diceCount > 3) diceCount = 3;
+                        const results = Array.from({ length: diceCount }, () => Math.floor(Math.random() * 6) + 1);
+                        finalSegments.push({
+                            type: 'dice_result',
+                            diceCount: diceCount,
+                            diceResults: results,
+                            diceTotal: results.reduce((a, b) => a + b, 0),
+                            content: content.trim()
+                        });
+                        console.log('[Split V13] Detected dice roll:', content.trim(), '->', diceCount, 'dice');
                         continue;
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
@@ -3619,6 +3697,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 localStorage.setItem('qiaoqiao_chats', JSON.stringify(serializableChats));
             } catch (innerE) {
                 console.error('[Storage] localStorage save failed:', innerE);
+                if (innerE.name === 'QuotaExceededError' || innerE.message.includes('quota')) {
+                    triggerToast('⚠️ 存储空间已满！部分聊天记录或设置可能无法永久保存，请清理旧聊天或更换无痕模式测试。', 'error')
+                }
                 vacuumStorage();
             }
             return false
@@ -3646,19 +3727,37 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             if (savedRequests) pendingRequests.value = savedRequests;
 
             // 2. Migration from old localStorage (Improved: attempt recovery if not yet marked as migrated)
-            const isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
+            let isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
+            
+            // EMERGENCY RECOVERY: If v2 is completely empty from primary storage,
+            // force check local backups. This saves users whose storage crashed due to quota.
+            if (!saved || Object.keys(saved).length === 0) {
+                isMigrated = false;
+            }
+
             if (!isMigrated) {
-                const legacy = localStorage.getItem('qiaoqiao_chats');
+                let legacy = localStorage.getItem('qiaoqiao_chats');
+                
+                // If standard legacy is missing, sometimes localforage saves raw to localStorage
+                // under its own prefix if IndexedDB is blocked (e.g., in some private modes).
+                if (!legacy) {
+                    legacy = localStorage.getItem('qiaoqiao-phone/chats/qiaoqiao_chats_v2');
+                }
+
                 if (legacy) {
-                    console.log('[Storage] Found legacy data. Performing migration/recovery...');
+                    console.log('[Storage] Found legacy/backup data. Performing migration/recovery...');
                     try {
                         const legacyData = JSON.parse(legacy);
-                        // MERGE logic: If we have existing data (like accidental demo data), 
-                        // we merge them, prioritizing legacy data for matching IDs to recover lost history.
+                        // MERGE logic: Recover lost history by merging
                         saved = { ...(saved || {}), ...legacyData };
-                        await localforage.setItem('qiaoqiao_chats_v2', saved);
-                        localStorage.setItem('qiaoqiao_migrated', 'true');
-                        console.log('[Storage] Migration/Recovery completed successfully.');
+                        
+                        try {
+                            await localforage.setItem('qiaoqiao_chats_v2', saved);
+                            localStorage.setItem('qiaoqiao_migrated', 'true');
+                            console.log('[Storage] Migration/Recovery completed successfully.');
+                        } catch (e) {
+                            console.error('[Storage] Could not write recovered data back to localforage (quota?):', e);
+                        }
                     } catch (err) {
                         console.error('[Storage] Legacy parse failed during recovery:', err);
                     }
@@ -3927,20 +4026,44 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     let msgAdded = null;
                     let msgContent = content;
 
-                    // Handle Speaker Switching [FROM:ID]
-                    if (type === 'text' && /^\[FROM:\s*(.*?)\s*\]/i.test(msgContent.trim())) {
-                        const fromMatch = msgContent.match(/^\[FROM:\s*(.*?)\s*\]/i);
-                        const speakerId = fromMatch[1].trim();
-                        msgContent = msgContent.substring(fromMatch[0].length).trim();
+                    // Handle Speaker Switching [FROM:ID] or AI hallucinatory name prefixes
+                    let speakerChanged = false;
+                    let parsedSpeakerId = null;
 
-                        const participant = (chat.participants || []).find(p => p.id === speakerId || p.name === speakerId);
+                    if (type === 'text') {
+                        // 1. Standard [FROM:ID]
+                        const fromMatch = msgContent.match(/^\[FROM:\s*(.*?)\s*\]/i);
+                        // 2. Hallucinated prefix like "[LV10 管理员] 傻狗: " or "傻狗: "
+                        const hallucinatedPrefixRegex = /^(?:\[.*?LV\d+.*?\]\s*)?(?:([^:：\n\[\]]+)[:：])\s*(.*)$/si;
+                        const prefixMatch = (!fromMatch) ? msgContent.trim().match(hallucinatedPrefixRegex) : null;
+
+                        if (fromMatch) {
+                            parsedSpeakerId = fromMatch[1].trim();
+                            msgContent = msgContent.substring(fromMatch[0].length).trim();
+                            speakerChanged = true;
+                        } else if (prefixMatch && prefixMatch[1]) {
+                            // Only match if the extracted name matches a participant
+                            const potentialName = prefixMatch[1].trim();
+                            const matchesParticipant = (chat.participants || []).some(p => p.id === potentialName || p.name === potentialName) || potentialName.toLowerCase() === 'user' || potentialName === useSettingsStore().personalization?.userProfile?.name;
+                            
+                            if (matchesParticipant) {
+                                parsedSpeakerId = potentialName;
+                                msgContent = prefixMatch[2] ? prefixMatch[2].trim() : '';
+                                speakerChanged = true;
+                                console.log('[Pump] Rescued hallucinated speaker prefix:', potentialName);
+                            }
+                        }
+                    }
+
+                    if (speakerChanged && parsedSpeakerId) {
+                        const participant = (chat.participants || []).find(p => p.id === parsedSpeakerId || p.name === parsedSpeakerId);
                         if (participant) {
                             currentGroupMeta = {
                                 senderId: participant.id,
                                 senderName: participant.name,
                                 senderAvatar: participant.avatar
                             };
-                        } else if (speakerId.toLowerCase() === 'user') {
+                        } else if (parsedSpeakerId.toLowerCase() === 'user' || parsedSpeakerId === useSettingsStore().personalization?.userProfile?.name) {
                             const userProfile = useSettingsStore().personalization?.userProfile;
                             currentGroupMeta = {
                                 senderId: 'user',
@@ -3957,7 +4080,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         }
                     }
 
-                    if (type === 'card' || type === 'text' || type === 'redpacket' || type === 'transfer' || type === 'gift' || type === 'sticker') {
+                    if (['card', 'text', 'redpacket', 'transfer', 'gift', 'sticker', 'dice_result', 'voice', 'music'].includes(type)) {
                         // Payment processing...
                         let claimMatch;
                         while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
@@ -4016,6 +4139,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             }
                         }
 
+                        // Scheduled Task Detection
+                        // (Removed from here because it is now robustly extracted at the end of stream before splitting)
+                        
                         if (msgContent) {
                             // Spread entire segment to preserve metadata (amount, note, count, etc.)
                             const msgOptions = {

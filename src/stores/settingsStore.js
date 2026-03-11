@@ -344,21 +344,22 @@ export const useSettingsStore = defineStore('settings', () => {
                 if (!hasWuJin) {
                     personalization.value.presets.unshift({
                         name: '乌金',
-                        theme: 'dark',
+                        theme: 'default', // Don't force dark theme, keep current theme
                         wallpaper: '/wallpaper_floral.jpg',
                         icons: {
                             app: 'wechat',
                             url: '',
                             map: {
+                                // Only configure icons that actually exist in /public/icons/
                                 wechat: '/icons/wechat.png',
-                                search: '/icons/search.png',
                                 weibo: '/icons/weibo.png',
                                 couple: '/icons/couple.png',
                                 games: '/icons/games.png',
                                 settings: '/icons/settings.png',
                                 worldbook: '/icons/worldbook.png',
                                 reset: '/icons/reset.png',
-                                syslog: '/icons/syslog.png'
+                                syslog: '/icons/syslog.png',
+                                search: '/icons/search.png'
                             }
                         },
                         widgets: {
@@ -488,7 +489,18 @@ export const useSettingsStore = defineStore('settings', () => {
         const preset = personalization.value.presets.find(p => p.name === name)
         if (preset) {
             const currentPresets = personalization.value.presets
+            const currentIconsMap = { ...personalization.value.icons.map }
+            
+            // Merge preset data while preserving existing icon mappings
             personalization.value = { ...preset.data, presets: currentPresets }
+            
+            // Merge icon mappings: start with current icons, then override with preset icons
+            personalization.value.icons.map = { ...currentIconsMap }
+            // Override only the icons that exist in preset
+            if (preset.data.icons?.map) {
+                Object.assign(personalization.value.icons.map, preset.data.icons.map)
+            }
+            
             saveToStorage()
             return true
         }

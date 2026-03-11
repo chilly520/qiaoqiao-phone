@@ -293,8 +293,8 @@ export const useCalendarStore = defineStore('calendar', () => {
   // 生理期数据
   const periodData = ref({
     cycles: [], // { startDate, endDate, duration }
-    averageCycle: 28,
-    averageDuration: 5,
+    averageCycle: 28, // 平均周期长度（间隔天数）
+    averageDuration: 5, // 平均经期天数
     lastPeriod: null,
     predictions: []
   })
@@ -636,6 +636,26 @@ export const useCalendarStore = defineStore('calendar', () => {
     events.value = events.value.filter(e => e.id !== id)
   }
 
+  // 生成生理期预测
+  function generatePeriodPredictions() {
+    if (!periodData.value.lastPeriod) return
+
+    const predictions = []
+    const lastStart = new Date(periodData.value.lastPeriod.startDate)
+
+    for (let i = 1; i <= 6; i++) {
+      const predStart = new Date(lastStart.getTime() + periodData.value.averageCycle * i * 86400000)
+      const predEnd = new Date(predStart.getTime() + (periodData.value.averageDuration - 1) * 86400000)
+      predictions.push({
+        startDate: formatDateStr(predStart),
+        endDate: formatDateStr(predEnd),
+        isPrediction: true
+      })
+    }
+
+    periodData.value.predictions = predictions
+  }
+
   // 记录生理期
   function recordPeriod(startDate, endDate, symptoms = []) {
     const cycle = {
@@ -663,27 +683,18 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
 
     // 生成预测
-    generatePeriodPredictions()
+    if (typeof generatePeriodPredictions === 'function') {
+      generatePeriodPredictions()
+    }
   }
 
-  // 生成生理期预测
-  function generatePeriodPredictions() {
-    if (!periodData.value.lastPeriod) return
-
-    const predictions = []
-    const lastStart = new Date(periodData.value.lastPeriod.startDate)
-
-    for (let i = 1; i <= 6; i++) {
-      const predStart = new Date(lastStart.getTime() + periodData.value.averageCycle * i * 86400000)
-      const predEnd = new Date(predStart.getTime() + (periodData.value.averageDuration - 1) * 86400000)
-      predictions.push({
-        startDate: formatDateStr(predStart),
-        endDate: formatDateStr(predEnd),
-        isPrediction: true
-      })
-    }
-
-    periodData.value.predictions = predictions
+  // 清除所有经期数据
+  function clearAllPeriodData() {
+    periodData.value.cycles = []
+    periodData.value.lastPeriod = null
+    periodData.value.averageCycle = 28
+    periodData.value.averageDuration = 5
+    periodData.value.predictions = []
   }
 
   // 记录心情
@@ -947,6 +958,18 @@ export const useCalendarStore = defineStore('calendar', () => {
     periodReminders.value = { ...periodReminders.value, ...settings }
   }
 
+  // 更新周期设置
+  function updatePeriodSettings({ averageCycle, averageDuration }) {
+    if (averageCycle !== undefined) {
+      periodData.value.averageCycle = averageCycle
+    }
+    if (averageDuration !== undefined) {
+      periodData.value.averageDuration = averageDuration
+    }
+    // 重新生成预测
+    generatePeriodPredictions()
+  }
+
   // 初始化
   loadData()
   if (periodData.value.cycles.length > 0) {
@@ -1008,6 +1031,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     sleepRecords,
     waterRecords,
     diaries,
+    anniversaries,
     aiAccessSettings,
     userProfile, // Exported
     weatherData,
@@ -1052,8 +1076,13 @@ export const useCalendarStore = defineStore('calendar', () => {
     setWeatherData,
     getPeriodReminders,
     updatePeriodReminderSettings,
+    updatePeriodSettings,
     formatDateStr,
     getEventsForDate,
-    getPeriodStatus
+    getPeriodStatus,
+    clearAllPeriodData,
+    generatePeriodPredictions,
+    addAnniversary,
+    deleteAnniversary
   }
 })

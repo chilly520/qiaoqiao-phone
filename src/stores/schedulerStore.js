@@ -32,32 +32,61 @@ export const useSchedulerStore = defineStore('scheduler', () => {
     }
 
     function saveTasks() {
-        localStorage.setItem('qiaoqiao_scheduled_tasks', JSON.stringify(tasks.value))
+        try {
+            localStorage.setItem('qiaoqiao_scheduled_tasks', JSON.stringify(tasks.value))
+        } catch (e) {
+            console.error('[Scheduler] Failed to save tasks to localStorage:', e);
+            // It's still in memory, so it works for the current session
+        }
     }
 
     function saveConfigs() {
-        localStorage.setItem('qiaoqiao_random_proactive_configs', JSON.stringify(randomConfigs.value))
+        try {
+            localStorage.setItem('qiaoqiao_random_proactive_configs', JSON.stringify(randomConfigs.value))
+        } catch (e) {
+            console.error('[Scheduler] Failed to save configs to localStorage:', e);
+        }
     }
 
     function addTask(chatId, timeStr, content) {
+        console.log('[Scheduler] Attempting to add task:', { chatId, timeStr, content });
+        
         // Parse timeStr (Expect YYYY-MM-DD HH:mm or just HH:mm for today)
         let targetDate;
-        if (timeStr.includes('-')) {
-            targetDate = new Date(timeStr.replace(/年|月/g, '-').replace(/日/g, ''))
+        // Clean up string
+        const cleanTimeStr = timeStr.trim().replace(/年|月/g, '-').replace(/日/g, '').replace(/\s+/g, ' ');
+        
+        if (cleanTimeStr.includes('-')) {
+            // Support "2026-03-13 06:00" or "2026-03-13"
+            // Use T replacement for better compatibility in and Date constructor
+            const isoStr = cleanTimeStr.replace(' ', 'T');
+            targetDate = new Date(isoStr);
+            // If it failed (maybe missing time), try as-is
+            if (isNaN(targetDate.getTime())) {
+                targetDate = new Date(cleanTimeStr);
+            }
         } else {
-            // Assume today, but if time already passed, assume tomorrow
+            // Assume today/tomorrow HH:mm
             const now = new Date()
-            const [hours, minutes] = timeStr.split(/:|点|分/).map(Number)
-            targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes || 0)
-            if (targetDate < now) {
-                targetDate.setDate(targetDate.getDate() + 1)
+            const timeParts = cleanTimeStr.match(/(\d{1,2})[:：点]\s*(\d{1,2})?/);
+            if (timeParts) {
+                const hours = parseInt(timeParts[1]);
+                const minutes = parseInt(timeParts[2] || 0);
+                targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes)
+                if (targetDate < now) {
+                    targetDate.setDate(targetDate.getDate() + 1)
+                }
+            } else {
+                targetDate = new Date(NaN);
             }
         }
 
         if (isNaN(targetDate.getTime())) {
-            console.error('Invalid date format:', timeStr)
+            console.error('[Scheduler] Invalid date format:', timeStr);
             return false
         }
+
+        console.log('[Scheduler] Task date parsed successfully:', targetDate.toLocaleString());
 
         const newTask = {
             id: Date.now() + Math.random().toString(36).substr(2, 5),
@@ -84,6 +113,35 @@ export const useSchedulerStore = defineStore('scheduler', () => {
             task.enabled = !task.enabled
             saveTasks()
         }
+    }
+
+    // Process tasks (Background check)
+    function checkDueTasks() {
+        const now = Date.now()
+        let changed = false
+        
+        tasks.value.forEach(task => {
+            if (task.enabled && !task.triggered && task.timestamp <= now) {
+                console.log('[Scheduler] Task triggered!', task);
+                task.triggered = true;
+                task.enabled = false;
+                changed = true;
+                
+                // Emit global event for other stores (like chatStore) to react
+                window.dispatchEvent(new CustomEvent('qiaoqiao_task_triggered', {
+                    detail: { ...task }
+                }));
+            }
+        })
+        
+        if (changed) saveTasks()
+    }
+
+    // Start background processor
+    let processTimer = null
+    function startProcessor() {
+        if (processTimer) clearInterval(processTimer)
+        processTimer = setInterval(checkDueTasks, 15000) // Every 15s
     }
 
     function setRandomConfig(chatId, { enabled, min, max }) {
@@ -115,6 +173,7 @@ export const useSchedulerStore = defineStore('scheduler', () => {
 
     // Init
     loadFromStorage()
+    startProcessor()
 
     return {
         tasks,

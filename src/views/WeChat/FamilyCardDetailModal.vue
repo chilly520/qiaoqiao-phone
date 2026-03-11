@@ -47,7 +47,7 @@
                         <div class="text-[13px] text-gray-600 leading-relaxed font-songti">
                             <span
                                 class="text-gray-400 font-sans text-xs block mb-2 uppercase font-bold tracking-tighter">Summary</span>
-                            {{ cardData.ownerName }} 送给 {{ userName }} 的「{{ cardData.cardName }}」已成功绑定并存入钱包。
+                            {{ cardData.ownerName }} 送给 {{ userName }} 的「{{ cardData.cardName || cardData.remark || '亲属卡' }}」已成功绑定并存入钱包。
                         </div>
                     </div>
 

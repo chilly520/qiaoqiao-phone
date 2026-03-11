@@ -1,0 +1,68 @@
+﻿node.exe : X [ERROR] "loader"
+ without extension only appli
+es when reading from stdin
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/
+node.exe" "C:\Program Files\n
+odejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: (X [ERRO  
+  R] "load...ding from std   
+ in:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+
+1 error
+node:child_process:964
+    throw err;
+    ^
+
+Error: Command failed: E:\CHI
+LLY\phone\qiaqiao-phone\node_
+modules\@esbuild\win32-x64\es
+build.exe src/stores/chatStor
+e.js --loader=js --bundle --p
+latform=browser --outfile=/tm
+p/check.js
+    at genericNodeError (node
+:internal/errors:998:15)
+    at wrappedFn (node:intern
+al/errors:543:14)
+    at checkExecSyncError (no
+de:child_process:925:11)
+    at Object.execFileSync (n
+ode:child_process:961:15)
+    at Object.<anonymous> (E:
+\CHILLY\phone\qiaqiao-phone\n
+ode_modules\esbuild\bin\esbui
+ld:219:28)
+    at Module._compile (node:
+internal/modules/cjs/loader:1
+760:14)
+    at Object..js (node:inter
+nal/modules/cjs/loader:1892:1
+0)
+    at Module.load (node:inte
+rnal/modules/cjs/loader:1480:
+32)
+    at Module._load (node:int
+ernal/modules/cjs/loader:1299
+:12)
+    at TracingChannel.traceSy
+nc (node:diagnostics_channel:
+328:14) {
+  status: 1,
+  signal: null,
+  output: [ null, null, null 
+],
+  pid: 36844,
+  stdout: null,
+  stderr: null
+}
+
+Node.js v25.2.1

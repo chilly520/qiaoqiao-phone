@@ -94,13 +94,19 @@
       <h3 class="section-title">数据管理</h3>
 
       <div class="menu-list">
+        <div class="menu-item" @click="showImportModal = true">
+          <span class="menu-icon">📥</span>
+          <span class="menu-text">导入数据</span>
+          <span class="menu-arrow">›</span>
+        </div>
+
         <div class="menu-item" @click="exportData">
           <span class="menu-icon">📤</span>
           <span class="menu-text">导出数据</span>
           <span class="menu-arrow">›</span>
         </div>
 
-        <div class="menu-item danger" @click="clearAllData">
+        <div class="menu-item danger" @click="showClearConfirmModal = true">
           <span class="menu-icon">🗑️</span>
           <span class="menu-text">清除所有数据</span>
           <span class="menu-arrow">›</span>
@@ -123,7 +129,8 @@
 
     <!-- 版本信息 -->
     <div class="version-info">
-      <p>花间日历 v1.0.1</p>
+      <p>花间日历 v1.0.2</p>
+      <p class="update-time">更新时间：2026 年 3 月 12 日 06:03:50</p>
       <p class="slogan">记录生活，珍藏时光</p>
     </div>
 
@@ -170,6 +177,61 @@
         </div>
       </div>
     </div>
+
+    <!-- 导入数据弹窗 -->
+    <div v-if="showImportModal" class="modal-overlay" @click="showImportModal = false">
+      <div class="modal-content" @click.stop>
+        <h3>📥 导入数据</h3>
+        <p class="modal-desc">请选择要导入的备份文件（.json 格式）</p>
+        
+        <div class="import-area" @click="triggerImportFile" @dragover.prevent @dragenter.prevent @drop.prevent="handleDrop">
+          <div class="import-icon">📁</div>
+          <div class="import-text">
+            <div class="import-title">点击选择文件或拖拽文件到此处</div>
+            <div class="import-hint">支持 .json 格式的备份文件</div>
+          </div>
+        </div>
+        
+        <input ref="importFileInput" type="file" accept=".json" @change="handleImportFile" style="display: none">
+        
+        <div v-if="importFileName" class="import-file-info">
+          <i class="fa-solid fa-file-circle-check"></i>
+          <span>{{ importFileName }}</span>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="cancel-btn" @click="showImportModal = false">取消</button>
+          <button class="save-btn" @click="confirmImport" :disabled="!importFile">
+            <i class="fa-solid fa-upload"></i>
+            导入数据
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 清除数据确认弹窗 -->
+    <div v-if="showClearConfirmModal" class="modal-overlay" @click="showClearConfirmModal = false">
+      <div class="modal-content" @click.stop>
+        <h3>🗑️ 清除所有数据</h3>
+        <p class="modal-desc danger">此操作将删除所有数据，且不可恢复！</p>
+        
+        <div class="warning-box">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <div>
+            <div class="warning-title">警告</div>
+            <div class="warning-text">清除后将无法恢复，请确保已导出备份</div>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button class="cancel-btn" @click="showClearConfirmModal = false">取消</button>
+          <button class="danger-btn" @click="clearAllData">
+            <i class="fa-solid fa-trash"></i>
+            确认清除
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -201,6 +263,15 @@ const fileInput = ref(null)
 // 昵称编辑
 const showNameEdit = ref(false)
 const tempName = ref('')
+
+// 导入数据
+const showImportModal = ref(false)
+const importFile = ref(null)
+const importFileName = ref('')
+const importFileInput = ref(null)
+
+// 清除数据确认
+const showClearConfirmModal = ref(false)
 
 const todayStr = computed(() => calendarStore.formatDateStr(new Date()))
 const countdownCount = computed(() => calendarStore.countdowns.length)
@@ -323,15 +394,110 @@ function exportData() {
   a.click()
   URL.revokeObjectURL(url)
 
-  alert('数据已导出！')
+  // 显示自定义提示
+  showToast('数据已导出！', 'success')
+}
+
+// 触发导入文件选择
+function triggerImportFile() {
+  importFileInput.value?.click()
+}
+
+// 处理文件拖拽
+function handleDrop(e) {
+  const file = e.dataTransfer.files[0]
+  if (file && file.type === 'application/json') {
+    importFile.value = file
+    importFileName.value = file.name
+  } else {
+    showToast('请选择 .json 格式的文件', 'error')
+  }
+}
+
+// 处理文件选择
+function handleImportFile(e) {
+  const file = e.target.files[0]
+  if (file) {
+    importFile.value = file
+    importFileName.value = file.name
+  }
+}
+
+// 确认导入
+function confirmImport() {
+  if (!importFile.value) return
+  
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result)
+      
+      // 导入数据到 store
+      if (data.events) calendarStore.events = data.events
+      if (data.periodData) calendarStore.periodData = data.periodData
+      if (data.moodRecords) calendarStore.moodRecords = data.moodRecords
+      if (data.countdowns) calendarStore.countdowns = data.countdowns
+      if (data.sleepRecords) calendarStore.sleepRecords = data.sleepRecords
+      if (data.waterRecords) calendarStore.waterRecords = data.waterRecords
+      if (data.diaries) calendarStore.diaries = data.diaries
+      if (data.userProfile) calendarStore.userProfile = data.userProfile
+      
+      showToast('数据导入成功！', 'success')
+      showImportModal.value = false
+      importFile.value = null
+      importFileName.value = ''
+    } catch (err) {
+      showToast('文件格式错误，无法导入', 'error')
+    }
+  }
+  reader.readAsText(importFile.value)
 }
 
 function clearAllData() {
-  if (confirm('确定要清除所有数据吗？此操作不可恢复！')) {
-    localStorage.removeItem('calendar_data')
-    localStorage.removeItem('calendar_user_profile')
-    location.reload()
-  }
+  localStorage.removeItem('calendar_data')
+  localStorage.removeItem('calendar_user_profile')
+  location.reload()
+}
+
+// 显示自定义提示
+function showToast(message, type = 'info') {
+  // 创建提示元素
+  const toast = document.createElement('div')
+  toast.className = `custom-toast ${type}`
+  toast.innerHTML = `
+    <i class="fa-solid fa-${type === 'success' ? 'circle-check' : type === 'error' ? 'circle-exclamation' : 'info-circle'}"></i>
+    <span>${message}</span>
+  `
+  
+  // 添加样式
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: type === 'success' ? 'linear-gradient(135deg, #10b981, #059669)' : 
+                type === 'error' ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 
+                'linear-gradient(135deg, #3b82f6, #2563eb)',
+    color: 'white',
+    padding: '12px 24px',
+    borderRadius: '12px',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    zIndex: '10000',
+    animation: 'slideDown 0.3s ease'
+  })
+  
+  document.body.appendChild(toast)
+  
+  // 3 秒后移除
+  setTimeout(() => {
+    toast.style.animation = 'slideUp 0.3s ease'
+    setTimeout(() => toast.remove(), 300)
+  }, 3000)
 }
 </script>
 
@@ -671,6 +837,13 @@ input:checked+.toggle-slider:before {
   font-size: 13px;
 }
 
+.version-info .update-time {
+  font-size: 11px;
+  color: #b8a8c8;
+  margin: 6px 0;
+  opacity: 0.7;
+}
+
 .version-info .slogan {
   font-size: 12px;
   margin-top: 4px;
@@ -708,6 +881,100 @@ input:checked+.toggle-slider:before {
   color: #5a5a7a;
   margin: 0 0 20px 0;
   text-align: center;
+}
+
+.modal-desc {
+  font-size: 14px;
+  color: #9a8fb8;
+  text-align: center;
+  margin: -10px 0 20px 0;
+}
+
+.modal-desc.danger {
+  color: #ff6b9d;
+}
+
+/* 导入区域 */
+.import-area {
+  border: 2px dashed rgba(139, 122, 168, 0.3);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: rgba(255, 183, 197, 0.05);
+}
+
+.import-area:hover {
+  border-color: rgba(139, 122, 168, 0.5);
+  background: rgba(255, 183, 197, 0.1);
+}
+
+.import-icon {
+  font-size: 32px;
+}
+
+.import-text {
+  flex: 1;
+}
+
+.import-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5a5a7a;
+  margin-bottom: 4px;
+}
+
+.import-hint {
+  font-size: 12px;
+  color: #9a8fb8;
+}
+
+.import-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  margin: 16px 0;
+  font-size: 14px;
+  color: #10b981;
+}
+
+.import-file-info i {
+  font-size: 18px;
+}
+
+/* 警告框 */
+.warning-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 12px;
+  margin: 20px 0;
+}
+
+.warning-box i {
+  font-size: 24px;
+  color: #ef4444;
+}
+
+.warning-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ef4444;
+  margin-bottom: 4px;
+}
+
+.warning-text {
+  font-size: 13px;
+  color: #dc2626;
+  line-height: 1.5;
 }
 
 /* 头像预览 */
@@ -816,5 +1083,39 @@ input:checked+.toggle-slider:before {
 .save-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.danger-btn {
+  border: none;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+}
+
+.danger-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+/* 自定义提示 */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
 }
 </style>
