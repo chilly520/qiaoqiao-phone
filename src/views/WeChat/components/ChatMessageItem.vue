@@ -97,7 +97,9 @@
                             :class="[
                                 msg.status === 'claimed' ? 'opacity-80 grayscale-[20%]' : 'hover:shadow-lg',
                                 msg.role === 'user' ? 'mr-1' : 'ml-1'
-                            ]" @click="$emit('click-gift', msg)" @contextmenu.prevent="emitContextMenu">
+                            ]" @click="$emit('click-gift', msg)" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                             <!-- Top Area -->
                             <div class="p-4 flex flex-col gap-3 transition-colors" :class="[
@@ -163,7 +165,9 @@
                             :class="[
                                 'bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 hover:shadow-lg',
                                 msg.role === 'user' ? 'mr-1' : 'ml-1'
-                            ]" @click="handleOrderCardClick(msg)" @contextmenu.prevent="emitContextMenu">
+                            ]" @click="handleOrderCardClick(msg)" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                             <!-- 头部 -->
                             <div class="p-4 flex flex-col gap-3 relative overflow-hidden">
@@ -250,7 +254,9 @@
                             :class="[
                                 'bg-gradient-to-br from-green-400 to-emerald-500 hover:shadow-lg',
                                 msg.role === 'user' ? 'mr-1' : 'ml-1'
-                            ]" @click="$emit('click-gift', msg)" @contextmenu.prevent="emitContextMenu">
+                            ]" @click="$emit('click-gift', msg)" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                             <!-- Top Area -->
                             <div class="p-4 flex flex-col gap-3">
@@ -303,7 +309,9 @@
                             :class="[
                                 (msg.isClaimed || msg.status === 'received' || msg.isRejected) ? 'opacity-80 grayscale-[20%]' : 'hover:shadow-lg',
                                 msg.role === 'user' ? 'mr-1' : 'ml-1'
-                            ]" @click="$emit('click-pay', msg)" @contextmenu.prevent="emitContextMenu">
+                            ]" @click="$emit('click-pay', msg)" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                             <!-- Top Area -->
                             <div class="p-3 flex items-center gap-3 transition-colors" :class="[
@@ -340,7 +348,9 @@
                         <div v-else-if="parsedVoteData" class="flex flex-col gap-2 w-full"
                             :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
                             <div class="w-full bg-white rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.08)] border border-gray-100/50 overflow-hidden animate-fade-in"
-                                @contextmenu.prevent="emitContextMenu">
+                                @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                                 <!-- Vote Header: Softer Cute Gradient -->
                                 <div class="p-5 bg-gradient-to-br from-[#62a5ff] to-[#7c83ff] text-white relative">
@@ -467,7 +477,9 @@
                         <div v-else-if="parsedVoteResult" class="flex flex-col gap-2 w-[280px]"
                             :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
                             <div class="w-full bg-[#fcfcfc] rounded-2xl border border-gray-100 p-4 shadow-sm animate-fade-in text-center relative overflow-hidden"
-                                @contextmenu.prevent="emitContextMenu">
+                                @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                                 <i
                                     class="fa-solid fa-flag-checkered absolute -top-1 -right-1 text-4xl text-gray-200 rotate-12 opacity-30"></i>
@@ -523,7 +535,9 @@
                         <!-- CASE: Forum Share Card -->
                         <div v-else-if="parsedForumCard"
                             class="max-w-[280px] bg-white rounded-2xl shadow-sm border border-teal-50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in group mt-1"
-                            @click="handleForumCardClick">
+                            @click="handleForumCardClick" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                             <!-- Header -->
                             <div class="px-4 py-2.5 bg-gradient-to-r from-teal-400 to-emerald-400 flex items-center justify-between">
                                 <div class="flex items-center gap-1.5 text-white shadow-sm">
@@ -558,7 +572,9 @@
                         <!-- CASE 6: Favorite Card (Shared Favorite) -->
                         <div v-else-if="isFavoriteCard"
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
-                            @click="$router.push('/favorites/' + favoriteCardData.favoriteId)">
+                            @click="$router.push('/favorites/' + favoriteCardData.favoriteId)" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                             <div class="p-4 flex flex-col gap-2">
                                 <div class="flex items-center gap-2 mb-1"
                                     :class="favoriteCardData.source === '通话记录' ? 'text-[#07c160]' : 'text-[#fabb05]'">
@@ -628,7 +644,9 @@
                                         (msg.isPlaying || false) ? 'voice-playing-effect' : ''
                                     ]"
                                     :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px', fontSize: (chatData?.bubbleSize || 15) + 'px' }"
-                                    @click="handleToggleVoice" @contextmenu.prevent="emitContextMenu">
+                                    @click="handleToggleVoice" @contextmenu.prevent="emitContextMenu"
+                                    @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                    @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                                     <!-- Wave Animation - Enhanced Sound Wave with 5 bars -->
                                     <div class="voice-wave"
@@ -664,7 +682,9 @@
                         <!-- CASE: Weibo Card -->
                         <div v-else-if="isWeiboCard && weiboCardData"
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
-                            @click="$router.push('/weibo')"> <!-- Simple nav for now -->
+                            @click="$router.push('/weibo')" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                             <div class="flex flex-col">
                                 <!-- Top: Content Snippet -->
                                 <div
@@ -700,7 +720,9 @@
                         <div v-else-if="msg.diceResults" class="flex flex-col gap-2 w-[280px]"
                             :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
                             <div class="w-full bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100 p-3 rounded-2xl shadow-sm border border-white/50 text-center relative overflow-hidden"
-                                @contextmenu.prevent="emitContextMenu">
+                                @contextmenu.prevent="emitContextMenu"
+                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
                                 <!-- 装饰星星 -->
                                 <div class="absolute top-2 left-2 text-yellow-400 text-xs animate-twinkle z-0">✨</div>
