@@ -839,6 +839,64 @@
                             </div>
                         </div>
 
+                        <!-- CASE: Love Space Invite Card -->
+                        <div v-else-if="isLoveSpaceInvite && parsedLoveSpaceInvite"
+                            class="max-w-[260px] bg-white rounded-2xl shadow-md border border-pink-50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in group mt-1"
+                            @click="handleLoveSpaceInviteClick" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <div class="px-4 py-3 bg-gradient-to-r from-pink-300 to-rose-300 flex items-center justify-between">
+                                <div class="flex items-center gap-2 text-white">
+                                    <i class="fa-solid fa-heart text-[14px] animate-pulse"></i>
+                                    <span class="text-[12px] font-bold tracking-widest drop-shadow-sm">情侣空间邀请</span>
+                                </div>
+                                <i class="fa-solid fa-envelope-open-heart text-white/80"></i>
+                            </div>
+                            <div class="p-4 bg-pink-50/30 flex flex-col gap-3">
+                                <p class="text-xs text-gray-700 font-medium leading-relaxed">邀请你开通专属情侣空间，开启双人甜蜜记录 ❤️</p>
+                                <div class="flex items-center justify-center p-2 bg-white rounded-xl border border-pink-100 text-pink-500 font-bold text-[10px] shadow-sm">
+                                    点击查看详情并开启
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CASE: Love Space Contract Card -->
+                        <div v-else-if="isLoveSpaceContract && parsedLoveSpaceContract"
+                            class="max-w-[280px] bg-white rounded-2xl shadow-lg border-[3px] border-pink-100/50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in mt-1 relative"
+                            @click="handleLoveSpaceInviteClick" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <div class="absolute -top-10 -right-10 w-32 h-32 bg-pink-100/30 rounded-full blur-2xl"></div>
+                            <div class="p-5 flex flex-col items-center gap-4 relative z-10">
+                                <div class="flex items-center gap-6">
+                                    <div class="relative">
+                                        <img :src="chatData.userAvatar" class="w-12 h-12 rounded-full border-2 border-white shadow-md object-cover">
+                                        <div class="absolute -right-1 -bottom-1 w-5 h-5 bg-pink-500 rounded-full flex items-center justify-center text-[10px] text-white shadow-sm ring-2 ring-white">
+                                            <i class="fa-solid fa-user"></i>
+                                        </div>
+                                    </div>
+                                    <div class="text-pink-300 animate-heart-beat">
+                                        <i class="fa-solid fa-heart-pulse text-2xl"></i>
+                                    </div>
+                                    <div class="relative">
+                                        <img :src="chatData.avatar" class="w-12 h-12 rounded-full border-2 border-white shadow-md object-cover">
+                                        <div class="absolute -right-1 -bottom-1 w-5 h-5 bg-rose-400 rounded-full flex items-center justify-center text-[10px] text-white shadow-sm ring-2 ring-white">
+                                            <i class="fa-solid fa-ghost"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-center">
+                                    <h5 class="text-sm font-black text-rose-500 mb-1 tracking-widest">专属契约生效</h5>
+                                    <p class="text-[10px] text-pink-400 font-bold">今天是我们相爱的第 {{ parsedLoveSpaceContract.days }} 天</p>
+                                </div>
+                                <div class="w-full h-px bg-gradient-to-r from-transparent via-pink-100 to-transparent"></div>
+                                <p class="text-[9px] text-gray-400 italic font-medium">"在浩瀚星辰中，遇见你是最美的奇迹"</p>
+                            </div>
+                            <div class="bg-gradient-to-r from-pink-400 to-rose-400 px-4 py-2 text-center" @click.stop="router.push('/couple')">
+                                <span class="text-[10px] font-black text-white tracking-[0.2em]">进入我们的甜甜空间</span>
+                            </div>
+                        </div>
+
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -1347,7 +1405,7 @@ const isValidMessage = computed(() => {
     }
 
     // 2. Card & Media Checks
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed') return true;
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed') return true;
     if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg)) return true
 
     // 3. Text Content Filtering
@@ -1479,9 +1537,28 @@ const parsedLoveSpaceInvite = computed(() => {
 })
 
 function handleLoveSpaceInviteClick() {
-    if (!parsedLoveSpaceInvite.value) return
-    router.push({ path: '/couple', query: { char: parsedLoveSpaceInvite.value.charId } })
+    if (isLoveSpaceInvite.value && parsedLoveSpaceInvite.value) {
+        router.push({ path: '/couple', query: { char: parsedLoveSpaceInvite.value.charId } })
+    } else if (isLoveSpaceContract.value) {
+        router.push('/couple')
+    }
 }
+
+const isLoveSpaceContract = computed(() => {
+    const c = ensureString(props.msg.content)
+    return c.startsWith('[LOVESPACE_CONTRACT:') && c.endsWith(']')
+})
+
+const parsedLoveSpaceContract = computed(() => {
+    if (!isLoveSpaceContract.value) return null
+    const c = ensureString(props.msg.content)
+    const inner = c.slice(1, -1) // remove []
+    const parts = inner.split(':')
+    if (parts.length >= 2) {
+        return { days: parts[1] }
+    }
+    return { days: '1' }
+})
 
 const weiboCardData = computed(() => {
     if (!isWeiboCard.value) return null
@@ -1657,6 +1734,9 @@ function getCleanContent(contentRaw, isCard = false) {
     // Remove family card command tags
     clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
     clean = clean.replace(/\[\s*(?:申请亲属卡|拒绝亲属卡)\s*[:：]?[^\]]*\]/gi, '');
+
+    // Remove Love Space tags
+    clean = clean.replace(/\[LOVESPACE_(?:INVITE|CONTRACT):[^\]]*\]/gi, '');
 
     // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');

@@ -3,6 +3,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from './stores/settingsStore'
 import { useChatStore } from './stores/chatStore'
+import { useLoveSpaceStore } from './stores/loveSpaceStore'
 import { batteryMonitor } from './utils/batteryMonitor'
 
 import { notificationService } from './utils/notificationService'
@@ -36,6 +37,9 @@ const unlockKeepAlive = () => {
 onMounted(() => {
     updateTime()
     timer = setInterval(updateTime, 1000)
+
+    // Load love space data
+    useLoveSpaceStore().loadFromStorage()
 
     // Initialize battery monitoring
     batteryMonitor.init().then((initialized) => {

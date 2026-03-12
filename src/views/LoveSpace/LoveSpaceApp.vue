@@ -19,6 +19,13 @@
       </div>
       <div class="love-days">
         <div class="days-count">💕 相恋第 {{ loveDays }} 天</div>
+        <div class="desktop-widget-toggle">
+          <label class="toggle-container">
+            <input type="checkbox" v-model="applyToDesktop">
+            <span class="checkmark"></span>
+            <span class="label-text">同步到桌面小组件</span>
+          </label>
+        </div>
         <div class="next-countdown" v-if="nextAnniversary">
           距离{{ nextAnniversary.name }}还有 {{ nextAnniversary.days }} 天
         </div>
@@ -186,14 +193,22 @@ const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
 
 // 状态
+// 状态
 const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg')
-const partnerAvatar = ref('')
-const loveDays = ref(0)
-const nextAnniversary = ref(null)
+const partnerAvatar = computed(() => loveSpaceStore.partner?.avatar || '/avatars/default.jpg')
+const loveDays = computed(() => loveSpaceStore.loveDays)
+const nextAnniversary = computed(() => loveSpaceStore.nextAnniversary)
 const showRoleModal = ref(false)
 const showInviteCard = ref(false)
 const selectedRole = ref(null)
 const currentModule = ref('')
+const applyToDesktop = computed({
+  get: () => loveSpaceStore.applyToDesktop,
+  set: (val) => {
+    loveSpaceStore.applyToDesktop = val
+    loveSpaceStore.saveToStorage()
+  }
+})
 
 // 可用角色列表（从微信通讯录获取）
 const availableRoles = computed(() => {
@@ -209,15 +224,10 @@ const availableRoles = computed(() => {
   }))
 })
 
-// 计算属性
-const loveSpaceData = computed(() => {
-  return JSON.parse(localStorage.getItem('loveSpace') || '{}')
-})
-
 // 方法
 function openModule(moduleName) {
   currentModule.value = moduleName
-  router.push(`/lovespace/${moduleName}`)
+  router.push(`/couple/${moduleName}`)
 }
 
 function selectRole(role) {
@@ -232,32 +242,40 @@ function closeRoleModal() {
 function confirmRole() {
   if (!selectedRole.value) return
   
-  // 保存角色选择
-  localStorage.setItem('loveSpacePartner', JSON.stringify(selectedRole.value))
+  // 保存角色选择到 store
+  loveSpaceStore.partner = {
+    id: selectedRole.value.id,
+    name: selectedRole.value.name,
+    avatar: selectedRole.value.avatar
+  }
   partnerAvatar.value = selectedRole.value.avatar
   
   // 关闭弹窗
   showRoleModal.value = false
   
-  // 显示邀请卡片
-  showInviteCard.value = true
-  
-  // TODO: 发送到微信聊天
+  // 发送到微信聊天并跳转
   sendInviteToChat()
 }
 
 function sendInviteToChat() {
-  // 在微信聊天中发送邀请卡片
-  const inviteMessage = {
-    type: 'love_space_invite',
-    content: {
-      role: selectedRole.value,
-      timestamp: new Date().toISOString()
-    }
-  }
-  
-  // TODO: 调用微信发送消息
-  console.log('发送邀请到微信:', inviteMessage)
+  const partnerMatch = availableRoles.value.find(r => r.id === selectedRole.value.id)
+  if (!partnerMatch) return
+
+  // 1. 发送带有特殊指令的消息
+  chatStore.addMessage(selectedRole.value.id, {
+    role: 'user',
+    content: `[LOVESPACE_INVITE:${selectedRole.value.id}]`,
+    skipAI: false // 让 AI 响应
+  });
+
+  // 2. 触发 AI 响应以模拟“对方也想开通”
+  chatStore.sendMessageToAI(selectedRole.value.id, {
+    hiddenHint: `用户向你发送了情侣空间开通邀请，你非常开心并期待，请你以惊喜、甜蜜的语气回应，并表示非常愿意。回复的内容中严禁包含任何 [LOVESPACE_INVITE] 标签，只需普通表白即可。`
+  });
+
+  // 3. 跳转到聊天窗口
+  chatStore.currentChatId = selectedRole.value.id;
+  router.push('/wechat');
 }
 
 function acceptInvite() {
@@ -313,17 +331,41 @@ function generateContent() {
   alert('✨ 正在施展魔法生成中...')
 }
 
-onMounted(() => {
-  // 检查是否已初始化
-  const spaceData = loveSpaceData.value
-  if (spaceData.initialized) {
-    partnerAvatar.value = spaceData.partner?.avatar || ''
+onMounted(async () => {
+  // 1. Ensure store is loaded from forage
+  await loveSpaceStore.loadFromStorage()
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const charIdFromUrl = urlParams.get('char');
+
+  // 2. Check if we are coming from a chat card to "ACCEPT/START"
+  if (charIdFromUrl && !loveSpaceStore.initialized) {
+    const partner = availableRoles.value.find(r => r.id === charIdFromUrl);
+    if (partner) {
+      loveSpaceStore.partner = partner;
+      await loveSpaceStore.initSpace();
+      
+      // Send a "Contract Reached" message to chat
+      chatStore.addMessage(charIdFromUrl, {
+        role: 'system',
+        content: `[LOVESPACE_CONTRACT:1]`,
+        skipAI: true
+      });
+      
+      // Clear URL params without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+
+  // 3. Regular status check
+  if (loveSpaceStore.initialized) {
+    partnerAvatar.value = loveSpaceStore.partner?.avatar || ''
     calculateLoveDays()
   } else {
     // 第一次打开，检查是否有可用角色
     if (availableRoles.value.length === 0) {
       // 没有角色，提示用户先添加好友
-      alert('💕 请先在微信通讯录中添加好友，然后再来开通情侣空间哦~')
+      chatStore.triggerToast('请先在微信通讯录中添加好友，然后再来开通哦~', 'warn')
       router.push('/wechat')
     } else {
       // 显示角色选择
@@ -418,8 +460,70 @@ onMounted(() => {
 }
 
 .next-countdown {
-  font-size: 12px;
+  font-size: 11px;
   color: #8b7aa8;
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 4px 12px;
+  border-radius: 20px;
+  display: inline-block;
+}
+
+/* 桌面组件开关 */
+.desktop-widget-toggle {
+  margin: 8px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: #a89bb9;
+}
+
+.toggle-container input {
+  display: none;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #ffb7c5;
+  border-radius: 4px;
+  position: relative;
+  transition: all 0.2s;
+  background: white;
+}
+
+.toggle-container input:checked + .checkmark {
+  background: #ff6b9d;
+  border-color: #ff6b9d;
+}
+
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 4.5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.toggle-container input:checked + .checkmark:after {
+  display: block;
+}
+
+.label-text {
+  font-weight: 500;
 }
 
 /* 功能网格 */

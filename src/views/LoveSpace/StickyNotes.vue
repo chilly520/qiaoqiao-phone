@@ -1,5 +1,5 @@
 <template>
-  <ModulePlaceholder title="交换日记" icon="📔" />
+  <ModulePlaceholder title="便利贴" icon="📝" />
 </template>
 <script setup>
 import ModulePlaceholder from './ModulePlaceholder.vue'

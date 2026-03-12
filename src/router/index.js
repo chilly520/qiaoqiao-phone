@@ -223,6 +223,46 @@ const router = createRouter({
             path: '/couple/messages',
             name: 'couple-messages',
             component: () => import('../views/LoveSpace/LoveMessages.vue')
+        },
+        {
+            path: '/couple/anniversary',
+            name: 'couple-anniversary',
+            component: () => import('../views/LoveSpace/LoveAnniversary.vue')
+        },
+        {
+            path: '/couple/footprint',
+            name: 'couple-footprint',
+            component: () => import('../views/LoveSpace/PartnerFootprint.vue')
+        },
+        {
+            path: '/couple/sticky',
+            name: 'couple-sticky',
+            component: () => import('../views/LoveSpace/StickyNotes.vue')
+        },
+        {
+            path: '/couple/letter',
+            name: 'couple-letter',
+            component: () => import('../views/LoveSpace/LoveLetter.vue')
+        },
+        {
+            path: '/couple/house',
+            name: 'couple-house',
+            component: () => import('../views/LoveSpace/LoveHouse.vue')
+        },
+        {
+            path: '/couple/question',
+            name: 'couple-question',
+            component: () => import('../views/LoveSpace/SoulQuestion.vue')
+        },
+        {
+            path: '/couple/album',
+            name: 'couple-album',
+            component: () => import('../views/LoveSpace/LoveAlbum.vue')
+        },
+        {
+            path: '/couple/gacha',
+            name: 'couple-gacha',
+            component: () => import('../views/LoveSpace/CoupleGacha.vue')
         }
     ]
 })
