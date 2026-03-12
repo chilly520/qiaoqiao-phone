@@ -171,7 +171,7 @@
            <button @click="showMentionMenu = !showMentionMenu" class="ml-1 w-8 h-8 rounded-full text-slate-300 hover:text-teal-500 hover:bg-teal-50 transition-colors flex items-center justify-center flex-none" :class="showMentionMenu ? 'text-teal-500 bg-teal-50' : ''">
              <i class="fa-solid fa-at text-sm"></i>
            </button>
-           <button class="ml-1 w-8 h-8 rounded-full text-slate-300 hover:text-teal-500 hover:bg-teal-50 transition-colors flex items-center justify-center flex-none">
+           <button @click="showEmojiPicker = !showEmojiPicker" class="ml-1 w-8 h-8 rounded-full text-slate-300 hover:text-teal-500 hover:bg-teal-50 transition-colors flex items-center justify-center flex-none" :class="showEmojiPicker ? 'text-teal-500 bg-teal-50' : ''">
              <i class="fa-regular fa-face-smile"></i>
            </button>
         </div>
@@ -223,12 +223,19 @@
     <button v-show="showBackToTop" @click="scrollToTop" class="fixed bottom-[110px] right-4 w-11 h-11 bg-white text-teal-500 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.15)] flex items-center justify-center border border-teal-50 hover:bg-teal-50 transition-all z-40 active:scale-90">
       <i class="fa-solid fa-arrow-up text-sm"></i>
     </button>
+
+    <!-- Emoji Picker Overlay -->
+    <div v-if="showEmojiPicker" class="fixed inset-x-0 bottom-[88px] z-50 animate-slide-up" @click.self="showEmojiPicker = false">
+      <EmojiPicker @select-emoji="handleEmojiSelect" @select-sticker="handleStickerSelect" />
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, nextTick, computed } from 'vue'
 import { marked } from 'marked'
+import EmojiPicker from '../../WeChat/EmojiPicker.vue'
+import { useStickerStore } from '@/stores/stickerStore'
 
 const props = defineProps({
   post: Object,
@@ -244,11 +251,13 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'generate', 'send', 'share', 'update:currentAltId', 'toggle-pin', 'toggle-featured', 'toggle-hot', 'toggle-ban', 'ban-user', 'toggle-like', 'delete-comment'])
 
+const stickerStore = useStickerStore()
 const newCommentContent = ref('')
 const replyInput = ref(null)
 const showAltMenu = ref(false)
 const showModMenu = ref(false)
 const showMentionMenu = ref(false)
+const showEmojiPicker = ref(false)
 const detailScrollArea = ref(null)
 const showBackToTop = ref(false)
 
@@ -282,9 +291,33 @@ function insertMention(name) {
   if (replyInput.value) replyInput.value.focus()
 }
 
+const handleEmojiSelect = (emoji) => {
+  newCommentContent.value += emoji
+  if (replyInput.value) replyInput.value.focus()
+}
+
+const handleStickerSelect = (sticker) => {
+  // Insert sticker tag into comment
+  newCommentContent.value += ` [表情包:${sticker.name}]`
+  if (replyInput.value) replyInput.value.focus()
+}
+
 function renderMarkdown(text) {
   if (!text) return ''
   let html = typeof marked.parse === 'function' ? marked.parse(text) : marked(text)
+  
+  // Render emoji tags [表情包：名称]
+  const stickerRegex = /\[表情包:([^\]]+)\]/g
+  html = html.replace(stickerRegex, (match, name) => {
+    // Try to find sticker in store
+    const sticker = stickerStore.stickers.find(s => s.name === name)
+    if (sticker) {
+      return `<img src="${sticker.url}" alt="${name}" class="inline-block w-16 h-16 object-contain align-middle mx-1" />`
+    }
+    // Fallback: show text
+    return `<span class="text-sm text-slate-400">[${name}]</span>`
+  })
+  
   html = html.replace(/<img /g, '<img class="rounded-2xl shadow-sm border border-slate-100 max-w-full my-3" ')
   return html
 }

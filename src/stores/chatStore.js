@@ -2251,7 +2251,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             // Couple Space Awareness
             if (!chat.isGroup) {
                 const lsStore = useLoveSpaceStore()
-                const lsHint = lsStore.getSpaceContextPrompt(chatId)
+                const lsHint = lsStore.generateSystemPrompt()
                 if (lsHint) {
                     charInfo.description += lsHint
                 }

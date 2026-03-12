@@ -2248,30 +2248,41 @@ const handleDrawCommandInChat = async (msgId, prompt) => {
 };
 
 const handleSendMessage = (payload) => {
-    const { type, content } = payload
-    const chatId = chatStore.currentChatId
+    try {
+        const { type, content } = payload
+        const chatId = chatStore.currentChatId
 
-    if (type === 'voice') {
-        chatStore.addMessage(chatId, {
-            role: 'user',
-            type: 'voice',
-            content: content,
-            duration: Math.ceil(content.length / 3) || 1,
-            quote: currentQuote.value
-        })
-    } else {
-        chatStore.addMessage(chatId, {
-            role: 'user',
-            content: content,
-            quote: currentQuote.value
-        })
+        if (!chatId) {
+            console.error('[ChatWindow] handleSendMessage: No currentChatId')
+            showToast('发送失败：聊天未初始化', 'error')
+            return
+        }
+
+        if (type === 'voice') {
+            chatStore.addMessage(chatId, {
+                role: 'user',
+                type: 'voice',
+                content: content,
+                duration: Math.ceil(content.length / 3) || 1,
+                quote: currentQuote.value
+            })
+        } else {
+            chatStore.addMessage(chatId, {
+                role: 'user',
+                content: content,
+                quote: currentQuote.value
+            })
+        }
+
+        currentQuote.value = null
+        // Use true for instant scroll when sending, providing immediate feedback
+        scrollToBottom(true)
+        // Double check after a short delay for any rendering shifts
+        setTimeout(() => scrollToBottom(false), 100)
+    } catch (error) {
+        console.error('[ChatWindow] handleSendMessage error:', error)
+        showToast('发送失败，请重试', 'error')
     }
-
-    currentQuote.value = null
-    // Use true for instant scroll when sending, providing immediate feedback
-    scrollToBottom(true)
-    // Double check after a short delay for any rendering shifts
-    setTimeout(() => scrollToBottom(false), 100)
 }
 
 
