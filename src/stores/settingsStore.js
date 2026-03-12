@@ -5,6 +5,13 @@ import { useChatStore } from './chatStore'
 import { useMomentsStore } from './momentsStore'
 import { useStickerStore } from './stickerStore'
 import { useWorldBookStore } from './worldBookStore'
+import localforage from 'localforage'
+
+// Configure localforage for settings
+const settingsDB = localforage.createInstance({
+    name: 'qiaoqiao-phone',
+    storeName: 'settings'
+});
 
 export const useSettingsStore = defineStore('settings', () => {
     // --- 1. Core API Configs ---
@@ -259,7 +266,9 @@ export const useSettingsStore = defineStore('settings', () => {
     })
 
     // --- 4. Persistence Helpers ---
-    function saveToStorage() {
+    const isInitialized = ref(false)
+
+    async function saveToStorage() {
         const data = {
             apiConfigs: apiConfigs.value,
             currentConfigIndex: currentConfigIndex.value,
@@ -270,28 +279,57 @@ export const useSettingsStore = defineStore('settings', () => {
             drawing: drawing.value
         }
         try {
+            // Save to IndexedDB (localforage)
             const json = JSON.stringify(data)
-            localStorage.setItem('qiaoqiao_settings', json)
-            console.log('[SettingsStore] Saved to localStorage. JSON length:', json.length)
-        } catch (e) {
-            console.error('[SettingsStore] Failed to save to localStorage:', e)
-            if (e.name === 'QuotaExceededError' || e.code === 22) {
-                const chatStore = useChatStore()
-                chatStore.triggerToast('存储空间已满！请尝试清理高分辨率背景或旧记录。', 'error')
+            await settingsDB.setItem('qiaoqiao_settings_v2', data)
+            console.log('[SettingsStore] Saved to localforage. Approx size:', json.length)
+            
+            // Sync fallback to localStorage if it's small enough (important for immediate sync stuff, but dangerous for space)
+            // if (json.length < 50000) {
+            //     localStorage.setItem('qiaoqiao_settings', json)
+            // } else {
+            //     // If too big for LS, we MUST clear it from LS to free up space
+            //     localStorage.removeItem('qiaoqiao_settings')
+            // }
+
+            // To fully resolve the user's issue, we gradually remove it from localStorage once migrated
+            if (isInitialized.value && localStorage.getItem('qiaoqiao_settings')) {
+                localStorage.removeItem('qiaoqiao_settings')
             }
+
+        } catch (e) {
+            console.error('[SettingsStore] Failed to save to localforage:', e)
+            // Fallback to localStorage for small data if needed
+            try {
+                const json = JSON.stringify(data)
+                if (json.length < 1024 * 500) { // 0.5MB limit for fallback
+                    localStorage.setItem('qiaoqiao_settings', json)
+                }
+            } catch (le) {}
         }
     }
 
-    function loadFromStorage() {
-        const saved = localStorage.getItem('qiaoqiao_settings')
-        if (!saved) {
-            console.log('[SettingsStore] No saved settings found in localStorage.')
-            return
-        }
-
+    async function loadFromStorage() {
         try {
-            const data = JSON.parse(saved)
-            console.log('[SettingsStore] Loading data from localStorage:', Object.keys(data))
+            // 1. Try localforage first
+            let data = await settingsDB.getItem('qiaoqiao_settings_v2')
+            
+            // 2. Migration from localStorage
+            if (!data) {
+                const saved = localStorage.getItem('qiaoqiao_settings')
+                if (saved) {
+                    data = JSON.parse(saved)
+                    console.log('[SettingsStore] Migrating from localStorage...')
+                }
+            }
+
+            if (!data) {
+                console.log('[SettingsStore] No saved settings found.')
+                isInitialized.value = true
+                return
+            }
+
+            console.log('[SettingsStore] Loading data:', Object.keys(data))
 
             if (data.apiConfigs) apiConfigs.value = data.apiConfigs
             if (data.currentConfigIndex !== undefined) currentConfigIndex.value = data.currentConfigIndex
@@ -415,8 +453,12 @@ export const useSettingsStore = defineStore('settings', () => {
                 drawing.value = { ...drawing.value, ...data.drawing }
             }
 
+            isInitialized.value = true
+            // Save back to ensure migration
+            saveToStorage()
         } catch (e) {
             console.error('[SettingsStore] Failed to load settings:', e)
+            isInitialized.value = true
         }
     }
 
@@ -748,6 +790,9 @@ export const useSettingsStore = defineStore('settings', () => {
         localStorage.clear()
         window.location.reload()
     }
+
+    // --- Initialization ---
+    loadFromStorage()
 
     return {
         apiConfigs, currentConfigIndex, currentConfig, apiConfig,

@@ -15,53 +15,66 @@ const goBack = () => {
 }
 
 // Stats
-const totalLimit = 5 * 1024 * 1024 // 5MB limit
+const totalLimit = ref(5 * 1024 * 1024) // Default 5MB for LocalStorage, but we will update with real quota
 const usedSpace = ref(0)
+const quotaMode = ref('ls') // 'ls' or 'system'
 const breakdown = ref({
     logs: 0,
     chats: 0,
     moments: 0,
     images: 0,
-    other: 0
+    other: 0,
+    system: 0 // IndexedDB / System storage
 })
 
 // Mock helper to estimate string size in bytes
 const getSize = (str) => str ? new Blob([str]).size : 0
 
-const calculateStorage = () => {
-    let total = 0
+const calculateStorage = async () => {
+    let lsTotal = 0
     let details = {
         logs: 0,
-        chats: 0, // Will include chatStore state if persisted, or we approximate from memory
+        chats: 0,
         moments: 0,
         images: 0,
-        other: 0
+        other: 0,
+        system: 0
     }
 
     // 1. Calculate LocalStorage usage
     for (let key in localStorage) {
         if (localStorage.hasOwnProperty(key)) {
             const size = getSize(localStorage[key]) + key.length
-            total += size
+            lsTotal += size
 
             // Categorize
             if (key === 'qiaoqiao_logs' || key.includes('log')) details.logs += size
-            else if (key.includes('chat') || key === 'qiaoqiao_chat_store') details.chats += size
+            else if (key.includes('chat') || key === 'qiaoqiao_chat_store' || key === 'qiaoqiao_chats') details.chats += size
             else if (key.includes('moment')) details.moments += size
             else if (key.includes('image') || key.includes('avatar')) details.images += size
             else details.other += size
         }
     }
 
-    // Checking in-memory if not fully persisted yet (User requested "Source code looks like this", implying original logic)
-    // We'll trust whatever is in LS + generic buckets for now to match visual.
-    // If chatStore is empty in LS, we might want to manually add it for display?
-    // Let's stick to strict LS for accuracy, but categorize strictly.
+    // 2. Try to get System Quota (IndexedDB usage)
+    if (navigator.storage && navigator.storage.estimate) {
+        try {
+            const estimate = await navigator.storage.estimate()
+            usedSpace.value = estimate.usage || lsTotal
+            totalLimit.value = estimate.quota || (500 * 1024 * 1024) // Default to 500MB if quota hidden
+            quotaMode.value = 'system'
+            details.system = Math.max(0, estimate.usage - lsTotal)
+        } catch (e) {
+            usedSpace.value = lsTotal
+            quotaMode.value = 'ls'
+        }
+    } else {
+        usedSpace.value = lsTotal
+        quotaMode.value = 'ls'
+    }
 
-    // Explicitly check for our known keys if they exist under 'other'
-    // 'qiaoqiao_settings' -> other/config
-
-    usedSpace.value = total
+    // Migration Clean-up: If qiaoqiao_settings exists in LS but it's large, we might have migrated it
+    // We already do this in settingsStore, but let's ensure breakdown is accurate
     breakdown.value = details
 }
 
@@ -77,7 +90,7 @@ const formatSize = (bytes) => {
 }
 
 const usedPercent = computed(() => {
-    return Math.min(((usedSpace.value / totalLimit) * 100), 100).toFixed(1)
+    return Math.min(((usedSpace.value / totalLimit.value) * 100), 100).toFixed(1)
 })
 
 // Actions
@@ -162,7 +175,7 @@ const reCompressBase64 = (base64, quality) => {
 }
 
 const cleanAllImages = () => {
-    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为[已清理]。\n此操作不可撤销！', () => {
+    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n此操作不可撤销！', () => {
         let count = 0
         let savedSize = 0
 
@@ -185,6 +198,119 @@ const cleanAllImages = () => {
         chatStore.saveChats()
         calculateStorage()
         chatStore.triggerToast(`清理完成！删除了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+    })
+}
+
+// 压缩 AI 生图（包括朋友圈、论坛、相册等）
+const compressAIImages = async () => {
+    chatStore.triggerConfirm('AI 图片压缩', '这将压缩所有 AI 生成的图片（朋友圈、论坛、相册等），可能略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
+        chatStore.triggerToast('正在压缩 AI 图片，请稍候...', 'info')
+        let count = 0
+        let savedSize = 0
+
+        try {
+            // 1. 压缩朋友圈图片
+            const momentsStore = await import('../../stores/momentsStore')
+            const momentsData = momentsStore.momentsData || momentsStore.default?.momentsData || {}
+            for (const charId in momentsData) {
+                const posts = momentsData[charId]?.posts || []
+                for (const post of posts) {
+                    if (post.images && Array.isArray(post.images)) {
+                        for (let i = 0; i < post.images.length; i++) {
+                            const imgUrl = post.images[i]
+                            if (imgUrl && typeof imgUrl === 'string' && (imgUrl.includes('pollinations') || imgUrl.startsWith('data:image'))) {
+                                try {
+                                    const compressed = await reCompressBase64FromUrl(imgUrl, compressQuality.value)
+                                    if (compressed && compressed.length < imgUrl.length) {
+                                        savedSize += (imgUrl.length - compressed.length)
+                                        post.images[i] = compressed
+                                        count++
+                                    }
+                                } catch (e) {
+                                    console.error('Moments image compression failed:', e)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. 压缩论坛帖子图片
+            const forumStore = await import('../../stores/forumStore')
+            const forumData = forumStore.forumData || forumStore.default?.forumData || {}
+            for (const forumKey in forumData) {
+                const posts = forumData[forumKey]?.posts || []
+                for (const post of posts) {
+                    if (post.image && typeof post.image === 'string' && (post.image.includes('pollinations') || post.image.startsWith('data:image'))) {
+                        try {
+                            const compressed = await reCompressBase64FromUrl(post.image, compressQuality.value)
+                            if (compressed && compressed.length < post.image.length) {
+                                savedSize += (post.image.length - compressed.length)
+                                post.image = compressed
+                                count++
+                            }
+                        } catch (e) {
+                            console.error('Forum image compression failed:', e)
+                        }
+                    }
+                }
+            }
+
+            // 3. 压缩相册照片（查手机）
+            const phoneInspectionStore = await import('../../stores/phoneInspectionStore')
+            const chats = chatStore.chats
+            for (const charId in chats) {
+                const char = chats[charId]
+                const photos = char.phoneData?.apps?.photos?.photos || []
+                for (const photo of photos) {
+                    if (photo.url && typeof photo.url === 'string' && (photo.url.includes('pollinations') || photo.url.startsWith('data:image'))) {
+                        try {
+                            const compressed = await reCompressBase64FromUrl(photo.url, compressQuality.value)
+                            if (compressed && compressed.length < photo.url.length) {
+                                savedSize += (photo.url.length - compressed.length)
+                                photo.url = compressed
+                                count++
+                            }
+                        } catch (e) {
+                            console.error('Photos app compression failed:', e)
+                        }
+                    }
+                }
+            }
+
+            // 保存所有更改（moments 和 forum 是自动持久化的）
+            await chatStore.saveChats()
+
+            calculateStorage()
+            chatStore.triggerToast(`压缩完成！处理了 ${count} 张 AI 图片，释放了 ${formatSize(savedSize)}`, 'success')
+        } catch (e) {
+            console.error('AI Image compression failed:', e)
+            chatStore.triggerToast('压缩失败，请重试', 'error')
+        }
+    })
+}
+
+// Helper: Compress from URL (fetch then compress)
+const reCompressBase64FromUrl = async (url, quality) => {
+    return new Promise((resolve, reject) => {
+        // If it's already base64
+        if (url.startsWith('data:image')) {
+            reCompressBase64(url, quality).then(resolve).catch(reject)
+            return
+        }
+        
+        // Fetch from URL
+        fetch(url)
+            .then(res => res.blob())
+            .then(blob => {
+                const reader = new FileReader()
+                reader.onload = () => {
+                    reCompressBase64(reader.result, quality).then(resolve).catch(reject)
+                }
+                reader.onerror = reject
+                reader.readAsDataURL(blob)
+            })
+            .catch(reject)
     })
 }
 
@@ -224,7 +350,7 @@ const clearChats = () => {
                     <div class="flex justify-between items-center mb-2">
                         <span class="text-sm font-medium text-gray-600">已用</span>
                         <span class="text-xs text-gray-500 font-bold">
-                            {{ formatSize(usedSpace) }} / ~5MB ({{ usedPercent }}%)
+                            {{ formatSize(usedSpace) }} / {{ formatSize(totalLimit) }} ({{ usedPercent }}%)
                         </span>
                     </div>
                     <!-- Bar -->
@@ -235,28 +361,31 @@ const clearChats = () => {
 
                     <!-- Breakdown List -->
                     <div class="space-y-4">
-                        <div class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
+                        <div v-if="breakdown.logs > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
                             <span class="text-gray-600">系统日志</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.logs) }}</span>
                         </div>
-                        <div class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
-                            <span class="text-gray-600">聊天记录</span>
-                            <span class="text-gray-400">{{ formatSize(breakdown.chats) }}</span>
+                        <div v-if="breakdown.chats > 0 || breakdown.system > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
+                            <span class="text-gray-600">聊天/生图缓存 (IndexedDB)</span>
+                            <span class="text-gray-400">{{ formatSize(breakdown.chats + breakdown.system) }}</span>
                         </div>
-                        <div class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
-                            <span class="text-gray-600">朋友圈</span>
+                        <div v-if="breakdown.moments > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
+                            <span class="text-gray-600">朋友圈数据</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.moments) }}</span>
                         </div>
-                        <div class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
-                            <span class="text-gray-600">图片/头像</span>
+                        <div v-if="breakdown.images > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
+                            <span class="text-gray-600">自定义图片</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.images) }}</span>
                         </div>
                         <div class="flex justify-between items-center text-sm pb-1">
-                            <span class="text-gray-600">其他配置</span>
+                            <span class="text-gray-600">页面配置/预设</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.other) }}</span>
                         </div>
                     </div>
                 </div>
+                <p class="mt-3 text-[10px] text-gray-400 px-1 leading-relaxed">
+                    * 数据已迁移至 IndexedDB 高容量存储，5MB 的 LocalStorage 限制已解除。当前浏览器为您分配的理论总空间为 {{ formatSize(totalLimit) }}。
+                </p>
             </div>
 
             <!-- Compression Section -->
@@ -287,6 +416,11 @@ const clearChats = () => {
                     <button @click="compressImages"
                         class="w-full bg-blue-400 text-white py-3 rounded-xl text-sm font-bold shadow-sm active:scale-95 transition flex items-center justify-center gap-2">
                         <i class="fa-solid fa-compress"></i> 开始压缩所有聊天图片
+                    </button>
+
+                    <button @click="compressAIImages"
+                        class="w-full mt-3 bg-purple-400 text-white py-3 rounded-xl text-sm font-bold shadow-sm active:scale-95 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 压缩所有 AI 生图 (朋友圈/论坛/相册)
                     </button>
                 </div>
             </div>

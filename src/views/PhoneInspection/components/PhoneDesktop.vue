@@ -63,7 +63,7 @@
           <div
             class="anniversary-widget mt-6 p-5 rounded-[28px] bg-white/80 backdrop-blur-md shadow-lg border-2 border-pink-100 flex flex-col items-center animate-pop-in">
             <div class="heart-icon text-pink-400 text-3xl mb-1 mt-1">
-              <i class="fa-solid fa-heart-pulse animate-pulse"></i>
+              <i :class="anniversaryData.isFuture ? 'fa-solid fa-gift' : 'fa-solid fa-heart-pulse'" class="animate-pulse"></i>
             </div>
             <div class="text-[#8F5E6E] font-black text-sm uppercase tracking-widest">{{ anniversaryData.title }}</div>
             <div class="flex items-baseline gap-1 mt-1 mb-1">
@@ -115,6 +115,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
+import { useCalendarStore } from '@/stores/calendarStore'
 import BatchGenerateModal from './BatchGenerateModal.vue'
 
 const props = defineProps({
@@ -128,6 +129,7 @@ const props = defineProps({
 })
 
 const phoneStore = usePhoneInspectionStore()
+const calendarStore = useCalendarStore()
 const emit = defineEmits(['open-app'])
 
 const currentTime = ref('')
@@ -155,14 +157,86 @@ const desktopFrames = computed(() => {
   }
   return frames
 })
-const anniversaryData = computed(() => phoneStore.phoneData?.anniversary || { title: '心动', date: '2026-01-01', unit: '天', desc: '遇见你真好' })
+// 从日历 store 获取最近的纪念日
+const nearestAnniversary = computed(() => {
+  const anniversaries = calendarStore.anniversaries || []
+  if (anniversaries.length === 0) return null
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  // 计算每个纪念日距离今天的天数
+  const anniversariesWithDays = anniversaries.map(anni => {
+    const anniDate = new Date(anni.date)
+    const thisYearDate = new Date(today.getFullYear(), anniDate.getMonth(), anniDate.getDate())
+    
+    let nextDate = thisYearDate
+    if (thisYearDate < today) {
+      nextDate = new Date(today.getFullYear() + 1, anniDate.getMonth(), anniDate.getDate())
+    }
+    
+    const daysUntil = Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24))
+    
+    // 计算已经过去的天数（如果是过去的纪念日）
+    const daysSince = Math.floor((today - anniDate) / (1000 * 60 * 60 * 24))
+    
+    return {
+      ...anni,
+      daysUntil,
+      daysSince: daysSince >= 0 ? daysSince : 0
+    }
+  })
+  
+  // 返回最近的纪念日（优先未来的，其次是过去的）
+  const future = anniversariesWithDays.filter(a => a.daysUntil >= 0).sort((a, b) => a.daysUntil - b.daysUntil)
+  const past = anniversariesWithDays.filter(a => a.daysUntil < 0).sort((a, b) => b.daysSince - a.daysSince)
+  
+  return future.length > 0 ? future[0] : past[0]
+})
+
+const anniversaryData = computed(() => {
+  if (!nearestAnniversary.value) {
+    return { title: '心动', date: '2026-01-01', unit: '天', desc: '遇见你真好' }
+  }
+  
+  const isFuture = nearestAnniversary.value.daysUntil > 0
+  
+  return {
+    title: nearestAnniversary.value.name || '纪念日',
+    date: nearestAnniversary.value.date,
+    unit: '天',
+    desc: getAnniversaryDesc(nearestAnniversary.value),
+    isFuture
+  }
+})
 
 const daysSince = computed(() => {
-  const start = new Date(anniversaryData.value.date)
-  const today = new Date()
-  const diff = today.getTime() - start.getTime()
-  return Math.floor(diff / (1000 * 60 * 60 * 24))
+  if (!nearestAnniversary.value) {
+    return 0
+  }
+  
+  // 如果是未来的纪念日，显示倒计时天数
+  if (nearestAnniversary.value.isFuture) {
+    return nearestAnniversary.value.daysUntil
+  }
+  
+  // 如果是过去的纪念日，显示已经过去的天数
+  return nearestAnniversary.value.daysSince || 0
 })
+
+function getAnniversaryDesc(anni) {
+  const typeMap = {
+    'birthday': '生日快乐！',
+    'anniversary': '特别的纪念日',
+    'travel': '旅行的回忆',
+    'graduation': '毕业纪念',
+    'wedding': '结婚纪念日',
+    'baby': '宝宝的成长',
+    'pet': '宠物的陪伴',
+    'other': '美好的日子'
+  }
+  return typeMap[anni.type] || '值得纪念的日子'
+}
 
 // App distribution
 const page1Apps = [

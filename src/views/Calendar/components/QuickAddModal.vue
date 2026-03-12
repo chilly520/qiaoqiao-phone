@@ -32,7 +32,7 @@
             <span class="item-desc">创建近期目标提醒</span>
           </button>
 
-          <button class="quick-item" @click="select('anniversary')">
+          <button class="quick-item" @click="() => { console.log('[DIRECT] Click anniversary'); emit('add', 'anniversary'); console.log('[DIRECT] Emit done') }">
             <span class="item-icon">🌸</span>
             <span class="item-label">纪念日</span>
             <span class="item-desc">记录每年重要日子</span>
@@ -63,7 +63,11 @@ function close() {
 }
 
 function select(type) {
+  console.log('[QuickAddModal] select function called with type:', type)
+  console.log('[QuickAddModal] emit instance:', emit)
+  console.log('[QuickAddModal] About to emit add event with:', type)
   emit('add', type)
+  console.log('[QuickAddModal] Emit completed')
 }
 </script>
 

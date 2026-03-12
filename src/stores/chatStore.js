@@ -1987,23 +1987,24 @@ export const useChatStore = defineStore('chat', () => {
 
         // --- 时间感知逻辑 ---
         const now = Date.now()
-        // 查找用户的最后一条消息，以此计算时隔多久回复（而不是 AI 消息）
-        const userMessages = (chat.msgs || []).filter(m => m.role === 'user')
-        const lastUserMsg = userMessages.slice(-1)[0]
-        const lastUserTime = lastUserMsg ? lastUserMsg.timestamp : now
-        const diffMinutes = Math.floor((now - lastUserTime) / 1000 / 60)
-
+        // 查找双方最后一条成功发送的消息（排除系统错误消息），计算时隔多久互动
+        // 注意：只计算 user 和 ai 角色，不计算 system 类型的错误提示
+        const validMessages = (chat.msgs || []).filter(m => m.role === 'user' || m.role === 'ai')
+        const lastInteractionMsg = validMessages.slice(-1)[0]
+        const lastInteractionTime = lastInteractionMsg ? lastInteractionMsg.timestamp : now
+        const diffMinutes = Math.floor((now - lastInteractionTime) / 1000 / 60)
+        
         // 计算虚拟时间
         let currentVirtualTime = chat.virtualTime || ''
         // Default to TRUE if undefined, ensuring time is always passed unless explicitly disabled
         const isTimeAware = chat.timeAware !== false
-
+        
         if (isTimeAware) {
             if (chat.timeSyncMode === 'manual' && chat.virtualTime && chat.virtualTimeLastSync) {
                 const elapsedMs = now - chat.virtualTimeLastSync
                 currentVirtualTime = `${chat.virtualTime} (自对话刷新已过去 ${Math.floor(elapsedMs / 1000 / 60)} 分钟)`
             } else {
-                // Force strict clear format: YYYY年MM月DD日 HH:mm:ss 星期X
+                // Force strict clear format: YYYY 年 MM 月 DD 日 HH:mm:ss 星期 X
                 // Match the style used in Inner Voice examples for better AI alignment
                 const d = new Date()
                 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
@@ -2154,11 +2155,26 @@ export const useChatStore = defineStore('chat', () => {
                 mergedContext.push({ role: 'user', content: `[系统要求] ${options.hiddenHint}` });
             }
         }
-        else if (diffMinutes >= 1) {
+                
+        // 时间感知提示：始终显示时间和互动间隔（即使只有几秒）
+        if (isTimeAware && !options.hiddenHint) {
             const last = mergedContext[mergedContext.length - 1];
+            let timeStr = '';
+            if (diffMinutes <= 0) {
+                // 不到 1 分钟，显示秒数
+                const diffSeconds = Math.floor((now - lastInteractionTime) / 1000);
+                timeStr = diffSeconds <= 5 ? '刚刚' : `${diffSeconds}秒`;
+            } else {
+                // 超过 1 分钟，显示分钟或小时
+                timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
+            }
+                    
+            const timeHint = ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。记得心声格式标签 [INNER_VOICE]】`;
+                    
             if (last && last.role === 'user') {
-                const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
-                last.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。记得心声格式标签[INNER_VOICE]】`;
+                last.content += timeHint;
+            } else {
+                mergedContext.push({ role: 'user', content: timeHint });
             }
         }
 
@@ -3504,16 +3520,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             // Typing status is handled by consumePendingSegments now, but we clear on error
             delete abortControllers[chatId];
             if (e.name === 'AbortError' || e.message === 'Aborted') return;
-            useLoggerStore().addLog('ERROR', 'AI响应处理失败', e.message);
+            useLoggerStore().addLog('ERROR', 'AI 响应处理失败', e.message);
             if (!(e.name === 'QuotaExceededError' || e.code === 22)) {
-                addMessage(chatId, { role: 'system', content: `请求失败: ${e.message}` });
+                addMessage(chatId, { role: 'system', content: `请求失败：${e.message}` });
             }
+            // CRITICAL FIX: Don't clear typingStatus here, let consumePendingSegments handle it
+            // Otherwise, pendingSegments will be stuck and not processed
+            return;
         } finally {
-            // Only clear typing if no segments are stuck
-            const chat = chats.value[chatId];
-            if (!chat?.pendingSegments || chat.pendingSegments.length === 0) {
-                typingStatus.value[chatId] = false;
-            }
+            // REMOVED: Don't clear typingStatus here, it will cause message pump to stop
+            // The typingStatus should ONLY be cleared in consumePendingSegments finally block
             callStore.isSpeaking = false;
             delete abortControllers[chatId];
         }

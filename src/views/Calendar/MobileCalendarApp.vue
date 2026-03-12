@@ -85,6 +85,10 @@
               <span v-for="(event, idx) in day.events.slice(0, 3)" :key="idx" class="dot"
                 :style="{ backgroundColor: event.color || '#ff9eb5' }" />
             </div>
+            <div v-if="day.anniversaries?.length" class="anniversary-dots">
+              <span v-for="(anniversary, idx) in day.anniversaries.slice(0, 3)" :key="idx" class="dot anniversary-dot"
+                :style="{ backgroundColor: anniversary.color || '#ffb6c1' }" title="{{ anniversary.title }}" />
+            </div>
           </div>
         </div>
 
@@ -122,19 +126,6 @@
               <span>标记结束</span>
             </button>
           </div>
-
-          <!-- 倒计时展示 -->
-          <div v-if="topCountdowns.length > 0" class="countdown-widget">
-            <div v-for="cd in topCountdowns" :key="cd.id" class="cd-item"
-              :style="{ backgroundColor: (cd.color || '#ff9eb5') + '20', color: cd.color || '#ff6b9d' }">
-              <span class="cd-icon">⏳</span>
-              <span class="cd-title">{{ cd.title }}</span>
-              <span class="cd-days-text font-bold">
-                {{ cd.daysLeft === 0 ? '就是今天' : `还有 ${cd.daysLeft} 天` }}
-              </span>
-            </div>
-          </div>
-
           <!-- 今日日程 -->
           <div class="day-events">
             <div class="section-title">
@@ -148,6 +139,24 @@
               <span class="event-title">{{ event.title }}</span>
             </div>
           </div>
+        </div>
+
+        <!-- 首页倒计时展示 - 下拉刷新感 -->
+        <div v-if="topCountdowns.length > 0" class="countdown-home-list" @click="showCountdownManager = true">
+           <div class="list-title">
+             <span>⏳ 倒计时 & 纪念日</span>
+             <span class="manage-link">管理 ›</span>
+           </div>
+           <div class="cd-rows">
+             <div v-for="cd in topCountdowns" :key="cd.id" class="cd-row"
+               :style="{ backgroundColor: (cd.color || '#ff9eb5') + '10' }">
+               <span class="cd-icon" :style="{ color: cd.color || '#ff6b9d' }">⏳</span>
+               <span class="cd-name">{{ cd.title }}</span>
+               <span class="cd-day-val" :style="{ color: cd.color || '#ff6b9d' }">
+                 {{ cd.daysLeft === 0 ? '今天' : cd.daysLeft + '天' }}
+               </span>
+             </div>
+           </div>
         </div>
       </div>
 
@@ -194,11 +203,12 @@
     <MoodModal v-if="showMoodModal" :date="selectedDateStr" :existing="selectedMood" @close="showMoodModal = false"
       @save="saveMood" />
     <CountdownModal v-if="showCountdownModal" @close="showCountdownModal = false" @save="saveCountdown" />
+    <CountdownModal v-if="showAnniversaryModal" title="创建纪念日" type="anniversary" @close="showAnniversaryModal = false" @save="saveAnniversary" />
     <DiaryModal v-if="showDiaryModal" :date="selectedDateStr" :existing="selectedDiary" @close="showDiaryModal = false"
       @save="saveDiary" />
     <SleepModal v-if="showSleepModal" :date="selectedDateStr" @close="showSleepModal = false" @save="saveSleep" />
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
-    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
+    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="(type) => { console.log('[MobileCalendarApp] Received add event with type:', type); handleQuickAdd(type) }" />
     <ThemeSettingsModal v-if="showThemeSettings" :visible="showThemeSettings" @close="showThemeSettings = false" />
     
     <!-- 自定义确认弹窗 -->
@@ -208,6 +218,8 @@
       :message="confirmMessage" 
       @confirm="handleConfirmAction" 
       @cancel="handleCancelAction" />
+
+    <CountdownManagerModal v-if="showCountdownManager" @close="showCountdownManager = false" />
   </div>
 </template>
 
@@ -229,6 +241,7 @@ import AISettingsModal from './components/AISettingsModal.vue'
 import QuickAddModal from './components/QuickAddModal.vue'
 import ThemeSettingsModal from './components/ThemeSettingsModal.vue'
 import ConfirmModal from './components/ConfirmModal.vue'
+import CountdownManagerModal from './components/CountdownManagerModal.vue'
 
 const router = useRouter()
 const calendarStore = useCalendarStore()
@@ -242,11 +255,13 @@ const showEventModal = ref(false)
 const showPeriodModal = ref(false)
 const showMoodModal = ref(false)
 const showCountdownModal = ref(false)
+const showAnniversaryModal = ref(false)
 const showDiaryModal = ref(false)
 const showSleepModal = ref(false)
 const showAISettings = ref(false)
 const showQuickAdd = ref(false)
 const showThemeSettings = ref(false)
+const showCountdownManager = ref(false)
 
 // 确认弹窗状态
 const showConfirmModal = ref(false)
@@ -310,15 +325,19 @@ function getDaysLeft(targetDateStr, isRecurring) {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
 }
 const topCountdowns = computed(() => {
-  if (!calendarStore.countdowns?.length) return []
-  return [...calendarStore.countdowns]
+  const all = [
+    ...(calendarStore.countdowns || []),
+    ...(calendarStore.anniversaries || [])
+  ]
+  if (all.length === 0) return []
+  return [...all]
     .map(c => ({
       ...c,
       daysLeft: getDaysLeft(c.targetDate, c.isRecurring)
     }))
     .filter(c => c.daysLeft >= 0)
     .sort((a, b) => a.daysLeft - b.daysLeft)
-    .slice(0, 2)
+    .slice(0, 3) // 显示前3个
 })
 
 // 方法
@@ -507,6 +526,11 @@ function saveCountdown(data) {
   showCountdownModal.value = false
 }
 
+function saveAnniversary(data) {
+  calendarStore.addAnniversary(data)
+  showAnniversaryModal.value = false
+}
+
 function saveDiary(data) {
   calendarStore.saveDiary(selectedDateStr.value, data.content, data.tags)
   showDiaryModal.value = false
@@ -523,8 +547,14 @@ function handleQuickAdd(type) {
   else if (type === 'period') showPeriodModal.value = true
   else if (type === 'mood') showMoodModal.value = true
   else if (type === 'countdown') showCountdownModal.value = true
+  else if (type === 'anniversary') showAnniversaryModal.value = true
   else if (type === 'diary') showDiaryModal.value = true
   else if (type === 'sleep') showSleepModal.value = true
+}
+
+function deleteCountdown(id) {
+    calendarStore.countdowns = (calendarStore.countdowns || []).filter(c => c.id !== id)
+    calendarStore.anniversaries = (calendarStore.anniversaries || []).filter(a => a.id !== id)
 }
 
 onMounted(() => {
@@ -832,6 +862,23 @@ onMounted(() => {
   width: 4px;
   height: 4px;
   border-radius: 50%;
+}
+
+.anniversary-dots {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+  padding-bottom: 2px;
+}
+
+.anniversary-dots .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+
+.anniversary-dots .anniversary-dot {
+  background-color: #ffb6c1 !important;
 }
 
 /* 选中日期卡片 */
@@ -1158,6 +1205,74 @@ onMounted(() => {
 
 .dark-mode .add-mini {
   background: linear-gradient(135deg, #8b5cf6, #ec4899);
+}
+
+.countdown-home-list {
+  margin: 16px;
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.list-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.list-title span:first-child {
+  font-weight: 600;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.manage-link {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.cd-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cd-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  gap: 10px;
+}
+
+.cd-icon {
+  font-size: 14px;
+}
+
+.cd-name {
+  flex: 1;
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.cd-day-val {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.cd-day-val small {
+  font-size: 10px;
+  margin-left: 1px;
+}
+
+.dark-mode .countdown-home-list {
+  background: #1f2937;
+}
+.dark-mode .cd-name {
+  color: #f9fafb;
 }
 </style>
 

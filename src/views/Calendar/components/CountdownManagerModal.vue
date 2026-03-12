@@ -7,7 +7,7 @@
             </div>
 
             <div class="modal-body p-4">
-                <div v-if="countdowns.length === 0" class="empty-state">
+                <div v-if="countdownList.length === 0" class="empty-state">
                     <div class="empty-icon">⏳</div>
                     <p>暂无倒计时/纪念日记录</p>
                 </div>
@@ -71,10 +71,15 @@ const calendarStore = useCalendarStore()
 
 const showCreate = ref(false)
 
-const countdowns = computed(() => calendarStore.countdowns || [])
+const countdownList = computed(() => {
+    return [
+        ...(calendarStore.countdowns || []),
+        ...(calendarStore.anniversaries || [])
+    ]
+})
 
 const sortedCountdowns = computed(() => {
-    return [...countdowns.value].sort((a, b) => {
+    return [...countdownList.value].sort((a, b) => {
         return getDaysLeft(a.targetDate, a.isRecurring) - getDaysLeft(b.targetDate, b.isRecurring)
     })
 })
@@ -99,10 +104,10 @@ function getDaysLeft(targetDateStr, isRecurring) {
 }
 
 function deleteCountdown(id) {
-    if (confirm('确定要删除这个倒计时吗？')) {
-        calendarStore.countdowns = calendarStore.countdowns.filter(c => c.id !== id)
-        // 持久化保存
-        if (calendarStore.saveToStorage) calendarStore.saveToStorage() // 或者手动存
+    if (confirm('确定要删除这个项目吗？')) {
+        calendarStore.countdowns = (calendarStore.countdowns || []).filter(c => c.id !== id)
+        calendarStore.anniversaries = (calendarStore.anniversaries || []).filter(a => a.id !== id)
+        // Store watch will handle saveData()
     }
 }
 

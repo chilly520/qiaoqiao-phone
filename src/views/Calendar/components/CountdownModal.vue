@@ -51,6 +51,13 @@
 
         <div class="form-group">
           <label class="toggle-label">
+            <input v-model="form.showOnWidget" type="checkbox" />
+            <span>应用到桌面小组件</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="toggle-label">
             <input v-model="form.aiNotify" type="checkbox" />
             <span>让AI角色提醒我</span>
           </label>
@@ -99,6 +106,7 @@ const form = ref({
   isRecurring: props.type === 'anniversary' || props.type === 'birthday',
   color: '#ff9eb5',
   note: '',
+  showOnWidget: true,
   aiNotify: false,
   aiChars: []
 })

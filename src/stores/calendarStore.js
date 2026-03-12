@@ -407,11 +407,12 @@ export const useCalendarStore = defineStore('calendar', () => {
   }
 
   // Watch for changes and auto-save (Use a getter for the array to ensure better reactivity)
-  watch(() => [
-    events.value, periodData.value, moodRecords.value, countdowns.value,
-    recurringTasks.value, sleepRecords.value, waterRecords.value,
-    diaries.value, anniversaries.value, aiAccessSettings.value,
-    periodReminders.value, userProfile.value
+  // Watch for changes and auto-save
+  watch([
+    events, periodData, moodRecords, countdowns,
+    recurringTasks, sleepRecords, waterRecords,
+    diaries, anniversaries, aiAccessSettings,
+    periodReminders, userProfile
   ], () => {
     saveData()
   }, { deep: true })
@@ -495,7 +496,8 @@ export const useCalendarStore = defineStore('calendar', () => {
         festival: getFestival(date),
         events: getEventsForDate(dateStr),
         period: getPeriodStatus(date),
-        mood: getMoodForDate(dateStr)
+        mood: getMoodForDate(dateStr),
+        anniversaries: getAnniversariesForDate(dateStr)
       })
     }
 
@@ -525,6 +527,22 @@ export const useCalendarStore = defineStore('calendar', () => {
       if (a.allDay && !b.allDay) return -1
       if (!a.allDay && b.allDay) return 1
       return (a.startTime || '').localeCompare(b.startTime || '')
+    })
+  }
+
+  // 获取指定日期的纪念日
+  function getAnniversariesForDate(dateStr) {
+    return anniversaries.value.filter(a => {
+      if (!a.targetDate) return false
+      const anniversaryDate = a.targetDate.split('T')[0]
+      if (anniversaryDate === dateStr) return true
+      // 如果是每年重复的纪念日，检查月和日
+      if (a.isRecurring) {
+        const target = new Date(a.targetDate)
+        const current = new Date(dateStr)
+        return target.getMonth() === current.getMonth() && target.getDate() === current.getDate()
+      }
+      return false
     })
   }
 
@@ -620,6 +638,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       createdAt: new Date().toISOString()
     }
     events.value.push(newEvent)
+    saveData()
     return newEvent
   }
 
@@ -634,6 +653,7 @@ export const useCalendarStore = defineStore('calendar', () => {
   // 删除事件
   function deleteEvent(id) {
     events.value = events.value.filter(e => e.id !== id)
+    saveData()
   }
 
   // 生成生理期预测
@@ -716,6 +736,7 @@ export const useCalendarStore = defineStore('calendar', () => {
       createdAt: new Date().toISOString()
     }
     countdowns.value.push(countdown)
+    saveData()
     return countdown
   }
 
@@ -1083,6 +1104,8 @@ export const useCalendarStore = defineStore('calendar', () => {
     clearAllPeriodData,
     generatePeriodPredictions,
     addAnniversary,
-    deleteAnniversary
+    deleteAnniversary,
+    saveData,
+    getAnniversariesForDate
   }
 })

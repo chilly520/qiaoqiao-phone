@@ -71,29 +71,40 @@ function loadAnniversaries() {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
-  const allAnniversaries = calendarStore.anniversaries || []
+  // 合并周年纪念和倒计时
+  const allItems = [
+    ...(calendarStore.anniversaries || []),
+    ...(calendarStore.countdowns || [])
+  ]
   
-  // Filter future anniversaries and calculate days until
-  const futureAnniversaries = allAnniversaries
-    .map(anni => {
-      const anniDate = new Date(anni.date)
-      const thisYearDate = new Date(today.getFullYear(), anniDate.getMonth(), anniDate.getDate())
+  // 过滤出勾选了“显示在小组件”的项目
+  const widgetItems = allItems.filter(item => item.showOnWidget !== false)
+  
+  const processedItems = widgetItems
+    .map(item => {
+      const targetStr = item.targetDate || item.date
+      const itemDate = new Date(targetStr)
+      let nextDate = new Date(itemDate)
       
-      let nextDate = thisYearDate
-      if (thisYearDate < today) {
-        nextDate = new Date(today.getFullYear() + 1, anniDate.getMonth(), anniDate.getDate())
+      if (item.isRecurring) {
+        nextDate.setFullYear(today.getFullYear())
+        if (nextDate < today) {
+          nextDate.setFullYear(today.getFullYear() + 1)
+        }
       }
       
       return {
-        ...anni,
+        ...item,
+        name: item.title || item.name,
+        date: targetStr,
         nextDate: nextDate,
         daysUntil: Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24))
       }
     })
-    .filter(anni => anni.daysUntil >= 0)
+    .filter(item => item.daysUntil >= 0)
     .sort((a, b) => a.daysUntil - b.daysUntil)
   
-  anniversaries.value = futureAnniversaries.slice(0, 5)
+  anniversaries.value = processedItems.slice(0, 5)
 }
 
 function getDaysUntil(dateStr) {

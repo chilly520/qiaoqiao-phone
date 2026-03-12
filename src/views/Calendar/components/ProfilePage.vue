@@ -274,7 +274,7 @@ const importFileInput = ref(null)
 const showClearConfirmModal = ref(false)
 
 const todayStr = computed(() => calendarStore.formatDateStr(new Date()))
-const countdownCount = computed(() => calendarStore.countdowns.length)
+const countdownCount = computed(() => (calendarStore.countdowns?.length || 0) + (calendarStore.anniversaries?.length || 0))
 
 // 提醒设置
 const reminderSettings = ref({

@@ -408,7 +408,7 @@
       @save="saveDiary" />
     <SleepModal v-if="showSleepModal" :date="selectedDateStr" @close="showSleepModal = false" @save="saveSleep" />
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
-    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
+    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="(type) => { console.log('[CalendarApp] Received add event with type:', type); handleQuickAdd(type) }" />
     <ThemeSettingsModal v-if="showThemeSettings" @close="showThemeSettings = false" />
     <PeriodSettingsModal v-if="showPeriodSettings" @close="showPeriodSettings = false" @save="handlePeriodSettingsSave" />
   </div>
@@ -665,13 +665,11 @@ function saveMood(data) {
 
 function saveCountdown(data) {
   calendarStore.addCountdown(data)
-  calendarStore.saveData()
   showCountdownModal.value = false
 }
 
 function saveAnniversary(data) {
   calendarStore.addAnniversary(data)
-  calendarStore.saveData()
   showAnniversaryModal.value = false
 }
 
@@ -695,12 +693,26 @@ function handlePeriodSettingsSave(data) {
 }
 
 function handleQuickAdd(type) {
+  console.log('[CalendarApp] handleQuickAdd called with type:', type)
+  // 先关闭所有其他弹窗
   showQuickAdd.value = false
+  showCountdownModal.value = false
+  showAnniversaryModal.value = false
+  showEventModal.value = false
+  showPeriodModal.value = false
+  showMoodModal.value = false
+  showDiaryModal.value = false
+  showSleepModal.value = false
+  
+  // 然后打开目标弹窗
   if (type === 'event') openEventModal()
   else if (type === 'period') showPeriodModal.value = true
   else if (type === 'mood') showMoodModal.value = true
   else if (type === 'countdown') showCountdownModal.value = true
-  else if (type === 'anniversary') showAnniversaryModal.value = true
+  else if (type === 'anniversary') {
+    console.log('[CalendarApp] Setting showAnniversaryModal to true')
+    showAnniversaryModal.value = true
+  }
   else if (type === 'diary') showDiaryModal.value = true
   else if (type === 'sleep') showSleepModal.value = true
 }
