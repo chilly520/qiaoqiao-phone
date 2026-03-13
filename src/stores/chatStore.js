@@ -1996,14 +1996,14 @@ export const useChatStore = defineStore('chat', () => {
         const lastMsg = (chat.msgs || []).slice(-1)[0]
         if (lastMsg && lastMsg.type === 'moment_card' && !options.force) {
             console.log('[ChatStore] Silent sharing active. AI will not reply to moment_card until next user message.')
-            isTyping.value = false // Ensure typing indicator is off
+            typingStatus.value[chatId] = false // Ensure typing indicator is off for this SPECIFIC chat
             return
         }
 
         // --- Skip AI for flagged messages (e.g., auto-shared game results) ---
         if (lastMsg && lastMsg.skipAI) {
             console.log('[ChatStore] skipAI flag detected. AI will not reply to this message.')
-            isTyping.value = false
+            typingStatus.value[chatId] = false
             return
         }
 

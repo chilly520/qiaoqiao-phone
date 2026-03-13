@@ -777,13 +777,18 @@ onMounted(async () => {
     backpackStore.initStore()
 
     // NEW: Kickstart message consumption for the current chat if segments are pending
-    if (chatData.value?.id) {
-        // Restore typing status if there are pending segments
-        const chat = chatData.value
-        if (chat.pendingSegments && chat.pendingSegments.length > 0) {
-            chatStore.typingStatus[chat.id] = true
-        }
-        chatStore.consumePendingSegments(chatData.value.id);
+    if (chatStore.currentChatId) {
+        nextTick(() => {
+            const chat = chatStore.chats[chatStore.currentChatId];
+            if (chat && chat.pendingSegments && chat.pendingSegments.length > 0) {
+                console.log('[ChatWindow] Restoring typing status for', chat.id);
+                chatStore.typingStatus[chat.id] = true;
+                chatStore.consumePendingSegments(chat.id);
+            } else if (chatStore.currentChatId) {
+                // Always try to kickstart pump just in case something is stuck
+                chatStore.consumePendingSegments(chatStore.currentChatId);
+            }
+        });
     }
 
     // 2. Add event listeners
