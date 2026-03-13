@@ -89,7 +89,18 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
             targetUrl = `${targetUrl}${sep}key=${apiKey}`;
             if (!targetUrl.includes(':generateContent')) targetUrl = targetUrl.replace(/\/v1beta\/.*/, '') + `/v1beta/models/${model}:generateContent?key=${apiKey}`;
         } else {
-            // OpenAI Compatible Format (works for OpenAI, Claude, Grok, and Gemini-Proxies like OneAPI/NewAPI)
+            // OpenAI Compatible Format
+            // Ensure endpoint has /chat/completions if it's a proxy
+            if (targetUrl && !targetUrl.includes('/chat/completions')) {
+                if (targetUrl.endsWith('/v1')) {
+                    targetUrl = `${targetUrl}/chat/completions`
+                } else if (targetUrl.endsWith('/v1/')) {
+                    targetUrl = `${targetUrl}chat/completions`
+                } else {
+                    targetUrl = targetUrl.endsWith('/') ? `${targetUrl}chat/completions` : `${targetUrl}/chat/completions`
+                }
+            }
+
             headers['Authorization'] = `Bearer ${apiKey}`;
             body = {
                 model: model,
@@ -97,7 +108,7 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
                     role: 'user',
                     content: [
                         { type: 'text', text: `请为"${name}"的头像提供简短中文描述（15字内）。格式：[DESC: 内容]` },
-                        { type: 'image_url', image_url: { url: b64 } } // Use b64 here as we need the image data
+                        { type: 'image_url', image_url: { url: b64 } }
                     ]
                 }],
                 max_tokens: 100
@@ -1323,28 +1334,34 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             let fullContent = "";
             let done = false;
 
-            while (!done) {
-                const { value, done: readerDone } = await reader.read();
-                done = readerDone;
-                if (value) {
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split("\n");
-                    for (const line of lines) {
-                        if (line.startsWith("data: ")) {
-                            const dataStr = line.replace(/^data: /, "").trim();
-                            if (dataStr === "[DONE]") break;
-                            try {
-                                const json = JSON.parse(dataStr);
-                                const delta = json.choices?.[0]?.delta?.content || "";
-                                if (delta) {
-                                    fullContent += delta;
-                                    if (options.onChunk) options.onChunk(delta, fullContent);
-                                }
-                            } catch (e) { /* ignore partial json */ }
+            try {
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    if (value) {
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split("\n");
+                        for (const line of lines) {
+                            if (line.startsWith("data: ")) {
+                                const dataStr = line.replace(/^data: /, "").trim();
+                                if (dataStr === "[DONE]") break;
+                                try {
+                                    const json = JSON.parse(dataStr);
+                                    const delta = json.choices?.[0]?.delta?.content || "";
+                                    if (delta) {
+                                        fullContent += delta;
+                                        if (options.onChunk) options.onChunk(delta, fullContent);
+                                    }
+                                } catch (e) { /* ignore partial json */ }
+                            }
                         }
                     }
                 }
+            } catch (streamError) {
+                console.warn('[Stream Error] Connection interrupted, using partial content:', fullContent);
+                // Continue with whatever we got
             }
+            
             // Create a mock data object for the rest of the parsing pipeline
             data = {
                 choices: [{
