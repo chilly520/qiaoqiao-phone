@@ -3559,8 +3559,14 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 chat.lastSpeakerMeta = groupSpeakerMeta ? { ...groupSpeakerMeta } : null;
                 saveChats();
 
+                console.log('[AI Response] Saved pendingSegments:', finalSegments.length, 'segments');
+                console.log('[AI Response] currentChatId:', chatId);
+                console.log('[AI Response] typingStatus before consume:', typingStatus.value[chatId]);
+
                 // Start consumption but handle typingStatus in the call
                 await consumePendingSegments(chatId);
+                
+                console.log('[AI Response] consumePendingSegments completed');
             }
         } catch (e) {
             // Cleanup on error
@@ -4056,10 +4062,19 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
     const isPumpProcessing = ref({});
 
     async function consumePendingSegments(chatId) {
-        if (isPumpProcessing.value[chatId]) return;
+        console.log('[Pump] consumePendingSegments called for', chatId);
+        
+        if (isPumpProcessing.value[chatId]) {
+            console.log('[Pump] Already processing for', chatId, 'returning');
+            return;
+        }
 
         const chat = chats.value[chatId];
+        console.log('[Pump] Chat object:', chat ? 'exists' : 'NOT FOUND');
+        console.log('[Pump] pendingSegments:', chat?.pendingSegments?.length || 0);
+        
         if (!chat || !chat.pendingSegments || chat.pendingSegments.length === 0) {
+            console.log('[Pump] No pending segments, returning');
             // DO NOT clear typingStatus here. 
             // The AI task itself will clear it when the stream finishes.
             // Aggressively clearing it here kills background indicator logic and background pumps.
