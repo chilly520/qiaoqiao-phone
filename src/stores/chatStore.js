@@ -2354,20 +2354,17 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             // During incoming/dialing, use normal prompt so AI can choose [接听] or [拒绝]
             // Track if we are in a call to handle message shadowing/hiding
 
-            // Streaming handler for calls
-            let hasAddedCallLine = false;
-            const onChunk = isCallMode ? (delta, full) => {
-                // For calls, we might want to update the last transcript line if streaming
-                // But for now we forced stream: false below for stability
-            } : null;
+            // Streaming handler
+            let accumulatedContent = "";
+            const onChunk = (delta, full) => {
+                accumulatedContent = full;
+            };
 
-            // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
-            // as partial JSON is harder to parse reliably for voice.
             const result = await generateReply(context, charInfo, signal, {
                 ...aiOptions,
-                isCall: isCallMode, // Use call prompt for any active call state (dialing, incoming, active)
-                stream: isCallMode ? false : true, // Enable streaming for chat
-                onChunk: isCallMode ? onChunk : null
+                isCall: isCallMode,
+                stream: true,
+                onChunk: onChunk
             })
 
             // Clear controller on success
@@ -3566,21 +3563,22 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 await consumePendingSegments(chatId);
             }
         } catch (e) {
-            // Typing status is handled by consumePendingSegments now, but we clear on error
+            // Cleanup on error
             delete abortControllers[chatId];
             if (e.name === 'AbortError' || e.message === 'Aborted') return;
             useLoggerStore().addLog('ERROR', 'AI 响应处理失败', e.message);
             if (!(e.name === 'QuotaExceededError' || e.code === 22)) {
                 addMessage(chatId, { role: 'system', content: `请求失败：${e.message}` });
             }
-            // CRITICAL FIX: Don't clear typingStatus here, let consumePendingSegments handle it
-            // Otherwise, pendingSegments will be stuck and not processed
             return;
         } finally {
-            // REMOVED: Don't clear typingStatus here, it will cause message pump to stop
-            // The typingStatus should ONLY be cleared in consumePendingSegments finally block
+            // CRITICAL FIX: The typingStatus should be cleared ONLY when the entire 
+            // sendMessageToAI task (including consumption) is finished or aborted.
+            typingStatus.value[chatId] = false;
             callStore.isSpeaking = false;
-            delete abortControllers[chatId];
+            // REMOVED: delete abortControllers[chatId];
+            // Keep abortController to prevent stream from being interrupted on page navigation
+            // It will be replaced when the next AI request starts
         }
     }
 
@@ -4062,7 +4060,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
         const chat = chats.value[chatId];
         if (!chat || !chat.pendingSegments || chat.pendingSegments.length === 0) {
-            typingStatus.value[chatId] = false;
+            // DO NOT clear typingStatus here. 
+            // The AI task itself will clear it when the stream finishes.
+            // Aggressively clearing it here kills background indicator logic and background pumps.
             return;
         }
 
@@ -4292,7 +4292,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             }
         } finally {
             isPumpProcessing.value[chatId] = false;
-            typingStatus.value[chatId] = false;
+            // REMOVED: typingStatus.value[chatId] = false;
+            // The typingStatus should now be managed by the AI task (sendMessageToAI) 
+            // to prevent indicator flickering or premature disappearance.
             saveChats();
             console.log('[Pump] Finished consumption for', chatId);
         }
