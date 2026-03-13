@@ -776,31 +776,27 @@ onMounted(async () => {
     await worldLoopStore.initStore()
     backpackStore.initStore()
 
-    // CRITICAL FIX: Check if AI just finished generating when returning to chat
+    // CRITICAL FIX: Force restore typing status and consume pending segments
     if (chatStore.currentChatId) {
         nextTick(() => {
             const chat = chatStore.chats[chatStore.currentChatId];
             if (!chat) return;
             
-            // Case 1: Has pending segments (streaming in progress)
-            if (chat.pendingSegments && chat.pendingSegments.length > 0) {
-                console.log('[ChatWindow] Found pending segments, restoring typing status');
+            console.log('[ChatWindow] onMounted, checking chat state for', chat.id);
+            console.log('[ChatWindow] pendingSegments:', chat.pendingSegments?.length || 0);
+            console.log('[ChatWindow] typingStatus:', chatStore.typingStatus[chat.id]);
+            console.log('[ChatWindow] lastMsg:', chat.msgs[chat.msgs.length - 1]);
+            
+            // ALWAYS restore typing status if there are pending segments OR if AI just finished
+            const hasPendingSegments = chat.pendingSegments && chat.pendingSegments.length > 0;
+            const lastMsg = chat.msgs[chat.msgs.length - 1];
+            const aiJustFinished = lastMsg && lastMsg.role === 'ai' && Date.now() - lastMsg.timestamp < 30000; // 30 seconds
+            
+            if (hasPendingSegments || aiJustFinished) {
+                console.log('[ChatWindow] Restoring typing status and consuming segments');
                 chatStore.typingStatus[chat.id] = true;
                 chatStore.consumePendingSegments(chat.id);
-                return;
             }
-            
-            // Case 2: AI just finished but user left before seeing it
-            // Check if last message is from AI and was created within last 10 seconds
-            const lastMsg = chat.msgs[chat.msgs.length - 1];
-            if (lastMsg && lastMsg.role === 'ai' && Date.now() - lastMsg.timestamp < 10000) {
-                console.log('[ChatWindow] AI just finished, scrolling to latest message');
-                scrollToBottom(true);
-                return;
-            }
-            
-            // Case 3: Always try to kickstart pump just in case something is stuck
-            chatStore.consumePendingSegments(chatStore.currentChatId);
         });
     }
 
@@ -823,7 +819,12 @@ onMounted(async () => {
     const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible' && chatStore.currentChatId) {
             console.log('[ChatWindow] App became visible, checking pump status...');
-            chatStore.consumePendingSegments(chatStore.currentChatId);
+            const chat = chatStore.chats[chatStore.currentChatId];
+            if (chat && (chat.pendingSegments?.length > 0 || 
+                (chat.msgs[chat.msgs.length - 1]?.role === 'ai' && Date.now() - chat.msgs[chat.msgs.length - 1].timestamp < 30000))) {
+                chatStore.typingStatus[chatStore.currentChatId] = true;
+                chatStore.consumePendingSegments(chatStore.currentChatId);
+            }
         }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
