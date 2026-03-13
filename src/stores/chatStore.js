@@ -9,6 +9,7 @@ import { useMusicStore } from './musicStore'
 import { useSchedulerStore } from './schedulerStore'
 import { useCallStore } from './callStore'
 import { useLoveSpaceStore } from './loveSpaceStore'
+import { useAITaskStore } from './aiTaskStore'
 import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from '../utils/ai/prompts'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
@@ -2370,9 +2371,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 onChunk: isCallMode ? onChunk : null
             })
 
-
-            // Clear controller on success
-            delete abortControllers[chatId]
+            // CRITICAL FIX: Do NOT delete abortController immediately!
+            // The stream may still be processing. Let it complete naturally.
+            // We'll clean it up after the stream is fully consumed.
+            // delete abortControllers[chatId]  // REMOVED - moved to finally block after segment consumption
 
             if (result.error) {
                 // Ignore abort errors which happen on hangup
@@ -3581,7 +3583,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             // REMOVED: Don't clear typingStatus here, it will cause message pump to stop
             // The typingStatus should ONLY be cleared in consumePendingSegments finally block
             callStore.isSpeaking = false;
-            delete abortControllers[chatId];
+            // CRITICAL FIX: Do NOT delete abortController here!
+            // The stream needs to continue even if user switches pages.
+            // It will be cleaned up on next sendMessageToAI call or on explicit stop
+            // delete abortControllers[chatId];  // REMOVED
         }
     }
 
