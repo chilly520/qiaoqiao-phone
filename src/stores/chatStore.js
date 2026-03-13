@@ -2364,17 +2364,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
             // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
             // as partial JSON is harder to parse reliably for voice.
+            // ALSO DISABLE streaming for regular chat to prevent page refresh from breaking the stream
             const result = await generateReply(context, charInfo, signal, {
                 ...aiOptions,
                 isCall: isCallMode, // Use call prompt for any active call state (dialing, incoming, active)
-                stream: isCallMode ? false : undefined, // Force non-streaming for calls
+                stream: false, // Always disable streaming to prevent data loss on page refresh
                 onChunk: isCallMode ? onChunk : null
             })
 
-            // CRITICAL FIX: Do NOT delete abortController immediately!
-            // The stream may still be processing. Let it complete naturally.
-            // We'll clean it up after the stream is fully consumed.
-            // delete abortControllers[chatId]  // REMOVED - moved to finally block after segment consumption
+            // Clear controller on success
+            delete abortControllers[chatId]
 
             if (result.error) {
                 // Ignore abort errors which happen on hangup
@@ -3583,10 +3582,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             // REMOVED: Don't clear typingStatus here, it will cause message pump to stop
             // The typingStatus should ONLY be cleared in consumePendingSegments finally block
             callStore.isSpeaking = false;
-            // CRITICAL FIX: Do NOT delete abortController here!
-            // The stream needs to continue even if user switches pages.
-            // It will be cleaned up on next sendMessageToAI call or on explicit stop
-            // delete abortControllers[chatId];  // REMOVED
+            delete abortControllers[chatId];
         }
     }
 
