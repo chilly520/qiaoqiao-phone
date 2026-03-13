@@ -778,6 +778,11 @@ onMounted(async () => {
 
     // NEW: Kickstart message consumption for the current chat if segments are pending
     if (chatData.value?.id) {
+        // Restore typing status if there are pending segments
+        const chat = chatData.value
+        if (chat.pendingSegments && chat.pendingSegments.length > 0) {
+            chatStore.typingStatus[chat.id] = true
+        }
         chatStore.consumePendingSegments(chatData.value.id);
     }
 

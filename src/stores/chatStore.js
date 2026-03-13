@@ -2363,11 +2363,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
             // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
             // as partial JSON is harder to parse reliably for voice.
-            // ALSO DISABLE streaming for regular chat to prevent page refresh from breaking the stream
             const result = await generateReply(context, charInfo, signal, {
                 ...aiOptions,
                 isCall: isCallMode, // Use call prompt for any active call state (dialing, incoming, active)
-                stream: false, // Always disable streaming to prevent data loss on page refresh
+                stream: isCallMode ? false : true, // Enable streaming for chat
                 onChunk: isCallMode ? onChunk : null
             })
 
