@@ -1314,6 +1314,7 @@ const handleImport = async (e) => {
                                             }) : '' }}</span>
                                     </div>
                                     <div class="text-xs truncate flex items-center gap-1">
+                                        <span v-if="chatStore.typingStatus[chat.id]" class="text-green-500 font-bold shrink-0 animate-pulse">[对方正在输入...]</span>
                                         <template v-if="chat.lastMsg">
                                             <span :class="{
                                                 'text-[#ff8f00] font-bold': (chat.lastMsg?.role !== 'user' && (chat.lastMsg?.type === 'redpacket' || chat.lastMsg?.content?.includes('[红包]') || chat.lastMsg?.type === 'transfer' || chat.lastMsg?.content?.includes('[转账]') || chat.lastMsg?.content?.includes('公告') || chat.lastMsg?.content?.includes('@'))),
