@@ -776,18 +776,31 @@ onMounted(async () => {
     await worldLoopStore.initStore()
     backpackStore.initStore()
 
-    // NEW: Kickstart message consumption for the current chat if segments are pending
+    // CRITICAL FIX: Check if AI just finished generating when returning to chat
     if (chatStore.currentChatId) {
         nextTick(() => {
             const chat = chatStore.chats[chatStore.currentChatId];
-            if (chat && chat.pendingSegments && chat.pendingSegments.length > 0) {
-                console.log('[ChatWindow] Restoring typing status for', chat.id);
+            if (!chat) return;
+            
+            // Case 1: Has pending segments (streaming in progress)
+            if (chat.pendingSegments && chat.pendingSegments.length > 0) {
+                console.log('[ChatWindow] Found pending segments, restoring typing status');
                 chatStore.typingStatus[chat.id] = true;
                 chatStore.consumePendingSegments(chat.id);
-            } else if (chatStore.currentChatId) {
-                // Always try to kickstart pump just in case something is stuck
-                chatStore.consumePendingSegments(chatStore.currentChatId);
+                return;
             }
+            
+            // Case 2: AI just finished but user left before seeing it
+            // Check if last message is from AI and was created within last 10 seconds
+            const lastMsg = chat.msgs[chat.msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'ai' && Date.now() - lastMsg.timestamp < 10000) {
+                console.log('[ChatWindow] AI just finished, scrolling to latest message');
+                scrollToBottom(true);
+                return;
+            }
+            
+            // Case 3: Always try to kickstart pump just in case something is stuck
+            chatStore.consumePendingSegments(chatStore.currentChatId);
         });
     }
 
@@ -805,6 +818,20 @@ onMounted(async () => {
             scrollToBottom(true)
         }
     }, 100)
+
+    // Ensure pump is running when returning to app
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && chatStore.currentChatId) {
+            console.log('[ChatWindow] App became visible, checking pump status...');
+            chatStore.consumePendingSegments(chatStore.currentChatId);
+        }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Cleanup on unmount
+    onUnmounted(() => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+    });
 })
 
 onUnmounted(() => {
