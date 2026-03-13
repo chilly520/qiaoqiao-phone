@@ -1300,6 +1300,8 @@ const handlePanelAction = (type) => {
     } else if (type === 'backpack') {
         showBackpackModal.value = true
         showActionPanel.value = false
+    } else if (type === 'lovespace') {
+        router.push('/couple')
     }
 }
 

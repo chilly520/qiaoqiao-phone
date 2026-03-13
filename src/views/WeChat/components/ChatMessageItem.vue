@@ -532,6 +532,62 @@
                             <MomentShareCard :data="msg.content" />
                         </div>
                         
+                        <!-- CASE: Generic Card (from [CARD] tag) -->
+                        <div v-else-if="msg.type === 'card'"
+                            class="max-w-[280px] rounded-2xl shadow-md overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in mt-1"
+                            :class="[
+                                msg.role === 'user' ? 'mr-1' : 'ml-1',
+                                isHtmlCardType ? 'bg-transparent border-0' : 'bg-white border-2 border-amber-300/50'
+                            ]"
+                            @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            
+                            <!-- HTML Card Type (Render raw HTML) -->
+                            <div v-if="isHtmlCardType && cardData?.html" 
+                                class="w-full"
+                                @click.stop>
+                                <iframe 
+                                    :srcdoc="cardData.html" 
+                                    class="w-full rounded-2xl shadow-md"
+                                    :style="{ height: 'auto', minHeight: '300px', border: 'none', overflow: 'hidden' }"
+                                    frameborder="0"
+                                    scrolling="no">
+                                </iframe>
+                            </div>
+                            
+                            <!-- Simple Card Type (Title + Content) -->
+                            <div v-else
+                                class="bg-white rounded-2xl overflow-hidden">
+                                <!-- Header -->
+                                <div class="px-4 py-2.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 flex items-center justify-between relative overflow-hidden">
+                                    <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer"></div>
+                                    <div class="flex items-center gap-1.5 text-white shadow-sm relative z-10">
+                                        <i class="fa-solid fa-star text-[13px]"></i>
+                                        <span class="text-[11px] font-bold tracking-widest drop-shadow-sm">{{ getCardTitle(msg.content) }}</span>
+                                    </div>
+                                    <div class="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center relative z-10">
+                                        <i class="fa-solid fa-gift text-white text-[10px]"></i>
+                                    </div>
+                                </div>
+                                
+                                <!-- Content -->
+                                <div class="p-4 flex flex-col gap-2 relative overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50">
+                                    <div class="absolute -right-4 -bottom-4 text-[60px] text-amber-200 opacity-20 pointer-events-none">
+                                        <i class="fa-solid fa-star"></i>
+                                    </div>
+                                    <div class="text-[15px] font-black text-slate-800 line-clamp-2 leading-snug drop-shadow-sm">
+                                        {{ getCardTitle(msg.content) }}
+                                    </div>
+                                    <div class="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-amber-100 shadow-inner">
+                                        <div class="text-[13px] text-slate-700 leading-relaxed line-clamp-4">
+                                            {{ getCardContent(msg.content) }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- CASE: Forum Share Card -->
                         <div v-else-if="parsedForumCard"
                             class="max-w-[280px] bg-white rounded-2xl shadow-sm border border-teal-50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in group mt-1"
@@ -841,59 +897,112 @@
 
                         <!-- CASE: Love Space Invite Card -->
                         <div v-else-if="isLoveSpaceInvite && parsedLoveSpaceInvite"
-                            class="max-w-[260px] bg-white rounded-2xl shadow-md border border-pink-50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in group mt-1"
+                            class="max-w-[280px] bg-white rounded-2xl shadow-xl border border-pink-100/50 overflow-hidden cursor-pointer active:scale-95 transition-all duration-300 select-none animate-fade-in group mt-1"
                             @click="handleLoveSpaceInviteClick" @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                            <div class="px-4 py-3 bg-gradient-to-r from-pink-300 to-rose-300 flex items-center justify-between">
-                                <div class="flex items-center gap-2 text-white">
-                                    <i class="fa-solid fa-heart text-[14px] animate-pulse"></i>
-                                    <span class="text-[12px] font-bold tracking-widest drop-shadow-sm">情侣空间邀请</span>
+                            <div class="px-5 py-4 bg-gradient-to-br from-pink-400 via-rose-400 to-rose-500 relative overflow-hidden">
+                                <div class="absolute -right-4 -top-4 w-20 h-20 bg-white/10 rounded-full blur-xl animate-pulse"></div>
+                                <div class="flex items-center gap-3 text-white relative z-10">
+                                    <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm shadow-inner">
+                                        <i class="fa-solid fa-heart text-[18px] animate-beat text-rose-100"></i>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-[14px] font-black tracking-widest text-white uppercase drop-shadow-md">情侣空间邀请</span>
+                                        <span class="text-[9px] text-pink-50 font-medium opacity-80 letter-spacing-1">Invitation Link</span>
+                                    </div>
                                 </div>
-                                <i class="fa-solid fa-envelope-open-heart text-white/80"></i>
                             </div>
-                            <div class="p-4 bg-pink-50/30 flex flex-col gap-3">
-                                <p class="text-xs text-gray-700 font-medium leading-relaxed">邀请你开通专属情侣空间，开启双人甜蜜记录 ❤️</p>
-                                <div class="flex items-center justify-center p-2 bg-white rounded-xl border border-pink-100 text-pink-500 font-bold text-[10px] shadow-sm">
-                                    点击查看详情并开启
+                            <div class="p-5 bg-gradient-to-b from-white to-pink-50 flex flex-col gap-4">
+                                <div class="flex items-center gap-3">
+                                   <div class="w-1 h-8 bg-pink-300 rounded-full"></div>
+                                   <p class="text-[13px] text-gray-700 font-bold leading-tight line-clamp-2">"我想和你开启一段专属的甜蜜旅程，记录我们的点点滴滴..."</p>
+                                </div>
+                                <div class="flex items-center justify-between px-4 py-2 bg-rose-500/10 rounded-full border border-rose-200 text-rose-600 font-black text-[11px] shadow-sm hover:bg-rose-500 hover:text-white transition-colors duration-300">
+                                    <span>点击进入并同意</span>
+                                    <i class="fa-solid fa-chevron-right text-[9px] animate-bounce-x"></i>
                                 </div>
                             </div>
                         </div>
 
                         <!-- CASE: Love Space Contract Card -->
                         <div v-else-if="isLoveSpaceContract && parsedLoveSpaceContract"
-                            class="max-w-[280px] bg-white rounded-2xl shadow-lg border-[3px] border-pink-100/50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in mt-1 relative"
+                            class="max-w-[300px] bg-white rounded-2xl shadow-2xl border-[4px] border-double border-pink-100/80 overflow-hidden cursor-pointer active:scale-95 transition-all duration-500 select-none animate-scale-in mt-1 relative"
                             @click="handleLoveSpaceInviteClick" @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                            <div class="absolute -top-10 -right-10 w-32 h-32 bg-pink-100/30 rounded-full blur-2xl"></div>
-                            <div class="p-5 flex flex-col items-center gap-4 relative z-10">
-                                <div class="flex items-center gap-6">
-                                    <div class="relative">
-                                        <img :src="chatData.userAvatar" class="w-12 h-12 rounded-full border-2 border-white shadow-md object-cover">
-                                        <div class="absolute -right-1 -bottom-1 w-5 h-5 bg-pink-500 rounded-full flex items-center justify-center text-[10px] text-white shadow-sm ring-2 ring-white">
-                                            <i class="fa-solid fa-user"></i>
+                            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-pink-50/50 via-transparent to-transparent pointer-events-none"></div>
+                            <div class="p-6 flex flex-col items-center gap-5 relative z-10">
+                                <div class="relative flex items-center justify-center w-full py-2">
+                                    <div class="absolute w-[80%] h-px bg-gradient-to-r from-transparent via-pink-200 to-transparent"></div>
+                                    <div class="bg-white px-4 relative z-10 transform scale-110">
+                                        <i class="fa-solid fa-crown text-pink-300 text-sm"></i>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-center gap-5">
+                                    <div class="relative group">
+                                        <div class="absolute inset-0 bg-pink-400 rounded-full blur group-hover:blur-md transition-all"></div>
+                                        <img :src="chatData.userAvatar" class="w-14 h-14 rounded-full border-2 border-white relative z-10 object-cover">
+                                        <div class="absolute -right-1 -bottom-1 w-6 h-6 bg-pink-500 rounded-full flex items-center justify-center text-[10px] text-white shadow-lg ring-2 ring-white z-20">
+                                            <i class="fa-solid fa-check"></i>
                                         </div>
                                     </div>
-                                    <div class="text-pink-300 animate-heart-beat">
-                                        <i class="fa-solid fa-heart-pulse text-2xl"></i>
+                                    <div class="text-pink-400 animate-heart-beat-fast flex flex-col items-center">
+                                        <i class="fa-solid fa-heart-pulse text-3xl drop-shadow-sm"></i>
+                                        <span class="text-[8px] font-black mt-1 opacity-50 uppercase tracking-tighter">Connected</span>
                                     </div>
-                                    <div class="relative">
-                                        <img :src="chatData.avatar" class="w-12 h-12 rounded-full border-2 border-white shadow-md object-cover">
-                                        <div class="absolute -right-1 -bottom-1 w-5 h-5 bg-rose-400 rounded-full flex items-center justify-center text-[10px] text-white shadow-sm ring-2 ring-white">
-                                            <i class="fa-solid fa-ghost"></i>
+                                    <div class="relative group">
+                                        <div class="absolute inset-0 bg-rose-300 rounded-full blur group-hover:blur-md transition-all"></div>
+                                        <img :src="chatData.avatar" class="w-14 h-14 rounded-full border-2 border-white relative z-10 object-cover">
+                                        <div class="absolute -right-1 -bottom-1 w-6 h-6 bg-rose-400 rounded-full flex items-center justify-center text-[10px] text-white shadow-lg ring-2 ring-white z-20">
+                                            <i class="fa-solid fa-check"></i>
                                         </div>
                                     </div>
                                 </div>
+
                                 <div class="text-center">
-                                    <h5 class="text-sm font-black text-rose-500 mb-1 tracking-widest">专属契约生效</h5>
-                                    <p class="text-[10px] text-pink-400 font-bold">今天是我们相爱的第 {{ parsedLoveSpaceContract.days }} 天</p>
+                                    <h5 class="text-[16px] font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-rose-500 mb-1 tracking-[0.2em]">专属契约正式达成</h5>
+                                    <div class="inline-block px-3 py-0.5 bg-pink-100/50 rounded-full">
+                                        <p class="text-[11px] text-pink-500 font-bold">相恋第 {{ parsedLoveSpaceContract.days }} 天</p>
+                                    </div>
                                 </div>
-                                <div class="w-full h-px bg-gradient-to-r from-transparent via-pink-100 to-transparent"></div>
-                                <p class="text-[9px] text-gray-400 italic font-medium">"在浩瀚星辰中，遇见你是最美的奇迹"</p>
+                                
+                                <blockquote class="text-[10px] text-gray-400 italic font-medium text-center border-l-2 border-pink-100 pl-3 py-1">
+                                    "此契约见证：所有的温柔都将为你留存"
+                                </blockquote>
                             </div>
-                            <div class="bg-gradient-to-r from-pink-400 to-rose-400 px-4 py-2 text-center" @click.stop="router.push('/couple')">
-                                <span class="text-[10px] font-black text-white tracking-[0.2em]">进入我们的甜甜空间</span>
+                            <div class="bg-gradient-to-r from-pink-500 to-rose-500 px-4 py-3 text-center active:brightness-90 transition-all shadow-inner" @click.stop="router.push('/couple')">
+                                <span class="text-[11px] font-black text-white tracking-[0.3em] drop-shadow-sm">立即进入空间</span>
+                            </div>
+                        </div>
+
+                        <!-- CASE: Love Space Reject Card -->
+                        <div v-else-if="isLoveSpaceReject && parsedLoveSpaceReject"
+                            class="max-w-[280px] bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl shadow-lg border border-gray-200 overflow-hidden cursor-default select-none animate-fade-in mt-1 opacity-75">
+                            <div class="px-4 py-3 bg-gradient-to-br from-gray-400 to-gray-500 relative overflow-hidden">
+                                <div class="absolute -right-3 -top-3 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
+                                <div class="flex items-center gap-3 text-white relative z-10">
+                                    <div class="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                                        <i class="fa-solid fa-heart-crack text-[16px] text-gray-200"></i>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-[13px] font-bold text-white">情侣空间邀请已失效</span>
+                                        <span class="text-[8px] text-gray-200">Invitation Expired</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-4 bg-white">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-1 h-6 bg-gray-300 rounded-full shrink-0 mt-0.5"></div>
+                                    <p class="text-[12px] text-gray-600 leading-relaxed italic">
+                                        "对方暂时拒绝了你的邀请，也许现在还不是最好的时机..."
+                                    </p>
+                                </div>
+                                <div class="mt-3 pt-3 border-t border-gray-100 flex items-center justify-center gap-2 text-gray-400">
+                                    <i class="fa-solid fa-hourglass-end text-[10px]"></i>
+                                    <span class="text-[9px] font-medium">邀请已失效，可以继续聊天增进感情</span>
+                                </div>
                             </div>
                         </div>
 
@@ -1405,7 +1514,7 @@ const isValidMessage = computed(() => {
     }
 
     // 2. Card & Media Checks
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed') return true;
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card') return true;
     if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg)) return true
 
     // 3. Text Content Filtering
@@ -1463,30 +1572,22 @@ const isFamilyCardReject = computed(() => {
 })
 
 const isHtmlCard = computed(() => {
-    // 1. Explicit type or flag
-    if (props.msg.type === 'html' || props.msg.forceCard) return true
-
-    // 2. Detect JSON wrapper or [CARD] tag in content
-    const c = ensureString(props.msg.content).trim()
-    // Robust [CARD] check
-    if (/\[\s*CARD\s*\]/i.test(c)) return true
-    if (c === '[HTML卡片]') return true
-
-    // Robust JSON check: "type": "html" OR "html": "..."
-    if ((c.includes('"type"') && c.includes('"html"')) || (c.includes('"html"') && c.includes('{') && c.includes('}'))) return true
-
-    // 3. Raw HTML tags (if it starts with div/style and has closing tag or significant length)
-    if (c.includes('<div') || c.includes('<html') || c.includes('<style')) {
-        if (c.includes('</') || (c.includes('style=') && c.length > 50)) return true
-    }
-
+    if (props.msg.type === 'html') return true
+    const c = ensureString(props.msg.content)
+    if (c.includes('[CARD]')) return true
+    // Also support escaped quotes in detection
+    if ((c.includes('"type"') && c.includes('"html"')) || 
+        (c.includes('\\"type\\"') && c.includes('\\"html\\"')) ||
+        (c.includes('"html"') && c.includes('{') && c.includes('}')) ||
+        (c.includes('\\"html\\"') && c.includes('{') && c.includes('}'))) return true
     return false
 })
 
 const isHtmlContentCard = computed(() => isHtmlCard.value)
 const shouldRenderCard = computed(() => {
-    // Render the card if flagged OR if we have valid HTML content
+    // Render the card if flagged OR if we have valid HTML content OR if it's a card type
     if (props.msg.forceCard) return hasHtmlContent.value;
+    if (props.msg.type === 'card') return true;  // Always render [CARD] messages
     return (props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value
 })
 
@@ -1521,17 +1622,24 @@ function handleForumCardClick() {
 }
 
 const isLoveSpaceInvite = computed(() => {
-    const c = ensureString(props.msg.content)
-    return c.startsWith('[LOVESPACE_INVITE:') && c.endsWith(']')
+    return ensureString(props.msg.content).includes('[LOVESPACE_INVITE:')
 })
 
 const parsedLoveSpaceInvite = computed(() => {
     if (!isLoveSpaceInvite.value) return null
-    const c = ensureString(props.msg.content)
-    const inner = c.slice(1, -1) // remove []
+    const c = ensureString(props.msg.content).trim()
+    const tag = '[LOVESPACE_INVITE:'
+    const startIndex = c.indexOf(tag)
+    if (startIndex === -1) return null
+    
+    // Extract everything from after the tag until the last ]
+    const afterTag = c.slice(startIndex + tag.length)
+    const lastBracketIndex = afterTag.lastIndexOf(']')
+    const inner = lastBracketIndex !== -1 ? afterTag.slice(0, lastBracketIndex) : afterTag
+    
     const parts = inner.split(':')
-    if (parts.length >= 2) {
-        return { charId: parts[1] }
+    if (parts.length >= 1 && parts[0].trim()) {
+        return { charId: parts[0].trim() }
     }
     return null
 })
@@ -1545,19 +1653,49 @@ function handleLoveSpaceInviteClick() {
 }
 
 const isLoveSpaceContract = computed(() => {
-    const c = ensureString(props.msg.content)
-    return c.startsWith('[LOVESPACE_CONTRACT:') && c.endsWith(']')
+    return ensureString(props.msg.content).includes('[LOVESPACE_CONTRACT:')
 })
 
 const parsedLoveSpaceContract = computed(() => {
     if (!isLoveSpaceContract.value) return null
-    const c = ensureString(props.msg.content)
-    const inner = c.slice(1, -1) // remove []
+    const c = ensureString(props.msg.content).trim()
+    const tag = '[LOVESPACE_CONTRACT:'
+    const startIndex = c.indexOf(tag)
+    if (startIndex === -1) return { days: '1' }
+    
+    // Extract everything from after the tag until the last ]
+    const afterTag = c.slice(startIndex + tag.length)
+    const lastBracketIndex = afterTag.lastIndexOf(']')
+    const inner = lastBracketIndex !== -1 ? afterTag.slice(0, lastBracketIndex) : afterTag
+    
     const parts = inner.split(':')
-    if (parts.length >= 2) {
-        return { days: parts[1] }
+    if (parts.length >= 1 && parts[0].trim()) {
+        return { days: parts[0].trim() }
     }
     return { days: '1' }
+})
+
+const isLoveSpaceReject = computed(() => {
+    return ensureString(props.msg.content).includes('[LOVESPACE_REJECT:')
+})
+
+const parsedLoveSpaceReject = computed(() => {
+    if (!isLoveSpaceReject.value) return null
+    const c = ensureString(props.msg.content).trim()
+    const tag = '[LOVESPACE_REJECT:'
+    const startIndex = c.indexOf(tag)
+    if (startIndex === -1) return { charId: '' }
+    
+    // Extract everything from after the tag until the last ]
+    const afterTag = c.slice(startIndex + tag.length)
+    const lastBracketIndex = afterTag.lastIndexOf(']')
+    const inner = lastBracketIndex !== -1 ? afterTag.slice(0, lastBracketIndex) : afterTag
+    
+    const parts = inner.split(':')
+    if (parts.length >= 1 && parts[0].trim()) {
+        return { charId: parts[0].trim() }
+    }
+    return { charId: '' }
 })
 
 const weiboCardData = computed(() => {
@@ -1579,6 +1717,79 @@ const favoriteCardData = computed(() => {
         return null
     }
 })
+
+const cardData = computed(() => {
+    if (props.msg.type !== 'card') return null
+    try {
+        const content = ensureString(props.msg.content)
+        console.log('[ChatMessageItem] Card message received:', { 
+            type: props.msg.type, 
+            content: content,
+            contentLength: content.length 
+        })
+        
+        // Try multiple extraction patterns
+        let jsonStr = null
+        
+        // Pattern 1: [CARD]{...} or [CARD] {...}
+        const match1 = content.match(/\[CARD\]\s*([\{][\s\S]*[\}])/i)
+        if (match1) {
+            jsonStr = match1[1].trim()
+            console.log('[ChatMessageItem] Pattern 1 matched: [CARD]{...}')
+        }
+        // Pattern 2: Just JSON object (no tag)
+        else if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+            jsonStr = content.trim()
+            console.log('[ChatMessageItem] Pattern 2 matched: naked JSON')
+        }
+        // Pattern 3: Extract JSON from anywhere in text
+        else {
+            const jsonMatch = content.match(/\{[\s\S]*"(?:title|content|type|html)"[\s\S]*\}/)
+            if (jsonMatch) {
+                jsonStr = jsonMatch[0]
+                console.log('[ChatMessageItem] Pattern 3 matched: extracted JSON from text')
+            }
+        }
+        
+        if (!jsonStr) {
+            console.warn('[ChatMessageItem] No JSON pattern found in card content')
+            return null
+        }
+        
+        // Clean up common JSON formatting issues
+        jsonStr = jsonStr.replace(/\n/g, ' ').replace(/\s+/g, ' ')
+        
+        const parsed = JSON.parse(jsonStr)
+        console.log('[ChatMessageItem] Card parsed successfully:', parsed)
+        return parsed
+    } catch (e) {
+        console.error('[ChatMessageItem] Card parse error:', e.message, '\nContent:', props.msg.content)
+        return null
+    }
+})
+
+// Check if card contains HTML content
+const isHtmlCardType = computed(() => {
+    return cardData.value?.type === 'html' || !!cardData.value?.html
+})
+
+const getCardTitle = (content) => {
+    const data = typeof content === 'string' ? cardData.value : content
+    if (!data) return '特别卡片'
+    // If it's an HTML card, try to extract title from HTML or use default
+    if (data.type === 'html') {
+        return data.title || data.name || '特别卡片'
+    }
+    return data.title || data.name || '特别卡片'
+}
+
+const getCardContent = (content) => {
+    const data = typeof content === 'string' ? cardData.value : content
+    if (!data) return ''
+    // If it's an HTML card, don't show content in text format
+    if (data.type === 'html') return ''
+    return data.content || data.desc || data.description || data.text || ''
+}
 
 const musicInfo = computed(() => {
     if (props.msg.type !== 'music') return ''
@@ -1806,44 +2017,59 @@ function getPureHtml(content) {
             .replace(/\\r/g, '\r')
             .replace(/\\t/g, '\t')
             .replace(/\\"/g, '"')
-            .replace(/\\'/g, "'")
             .replace(/\\\\/g, '\\');
     }
 
+    // Pass 0: Handle "Leaked" string-escaped JSON (e.g. \"{\\\"type\\\":\\\"html\\\",...}\")
+    if (trimmed.startsWith('\\"') && trimmed.endsWith('\\"')) {
+        try {
+            const unescapedOnce = trimmed.substring(2, trimmed.length - 2).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            if (unescapedOnce.includes('"html"')) {
+                const parsed = JSON.parse(unescapedOnce);
+                if (parsed.html || parsed.content) return unescapeContent(parsed.html || parsed.content);
+            }
+        } catch (e) {}
+    }
+
     // 1. Unified Favorites Store Logic: Aggressive JSON cleanup
-    // Favor standard-like JSON first (stripping whitespace/newlines)
     try {
         let jsonStr = trimmed;
         if (jsonStr.includes('[CARD]')) {
             jsonStr = jsonStr.replace(/\[CARD\][\s\S]*?(\{|<)/i, '$1').trim();
-            // If it ends with [/CARD], remove it too
             jsonStr = jsonStr.replace(/\[\/CARD\]/gi, '').trim();
         }
 
-        // Remove markdown backticks if present
+        // Remove markdown backticks
         jsonStr = jsonStr.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();
 
-        // Cleaning newlines that typically break JSON.parse in technical responses
-        const cleanedJson = jsonStr.replace(/[\r\n]/g, '');
+        // Cleaning newlines that typically break JSON.parse
+        let cleanedJson = jsonStr.replace(/[\r\n]/g, '');
+        
+        // Handle double-escaped JSON
+        if (cleanedJson.includes('\\"')) {
+            try {
+                const unescaped = cleanedJson.replace(/\\"/g, '"');
+                const parsed = JSON.parse(unescaped);
+                if (parsed.type === 'html' || parsed.html) {
+                    return unescapeContent(parsed.html || parsed.content);
+                }
+            } catch (e) { }
+        }
+
         const parsed = JSON.parse(cleanedJson);
         if (parsed.type === 'html' || parsed.html) {
             return unescapeContent(parsed.html || parsed.content);
         }
-    } catch (e) {
-        // Standard JSON failed, move to regex recovery
-    }
+    } catch (e) { }
 
-    // 2. Favorites Regex Logic: Greedy match until the last quote before closing }
-    // This handles unescaped quotes inside the HTML content
+    // 2. Regex Recovery: Greedy but bounded match
     if (trimmed.includes('"type":') || trimmed.includes('"html":')) {
-        const htmlMatch = str.match(/"html"\s*:\s*(["'])([\s\S]*)\1\s*\}/);
+        const htmlMatch = str.match(/"html"\s* : \s*(["'])([\s\S]*?)\1\s*(?:,|\}|\]|\n)/);
         if (htmlMatch) {
             const rawStr = htmlMatch[2];
             try {
-                // Try to parse just the string part to handle escapes
                 return JSON.parse(`"${rawStr}"`);
             } catch (e) {
-                // Final fallback: return the raw greedy match (tolerant browsers)
                 return unescapeContent(rawStr);
             }
         }
@@ -2364,7 +2590,7 @@ function formatMessageContent(msg) {
             
             text = text.replace(regex, (match) => {
                 // Extract target info if present
-                const targetMatch = match.match(/\[${cmd}[:：]([^\\]]+)\\]/i);
+                const targetMatch = match.match(new RegExp(`\\[${cmd}[:：]([^\\]]+)\\]`, 'i'));
                 const targetInfo = targetMatch ? ` ${targetMatch[1].trim()}` : '';
                 
                 return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm border">
@@ -2393,7 +2619,7 @@ function formatMessageContent(msg) {
             };
             
             text = text.replace(regex, (match) => {
-                const targetMatch = match.match(/\[${cmd}[:：]([^\\]]+)\\]/i);
+                const targetMatch = match.match(new RegExp(`\\[${cmd}[:：]([^\\]]+)\\]`, 'i'));
                 const targetInfo = targetMatch ? ` ${targetMatch[1].trim().substring(0, 20)}` : '';
                 
                 return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm border">
@@ -2558,12 +2784,13 @@ function formatMessageContent(msg) {
             '申请亲属卡', '拒绝亲属卡', '领取红包', 'RECEIVE_RED_PACKET',
             'LIKE', 'COMMENT', 'REPLY', 'MOMENT', 'HTML 卡片', '图片', 'IMAGE',
             '表情包', '表情', 'STICKER', 'VOTE', 'CREATE_VOTE', 'END_VOTE',
-            'RECALL', '撤回', 'SET_PAT', 'UPDATE_BIO', 'BIO', '摇骰子'
+            'RECALL', '撤回', 'SET_PAT', 'UPDATE_BIO', 'BIO', '摇骰子',
+            'LOVESPACE_INVITE', 'LOVESPACE_CONTRACT', 'LOVESPACE_REJECT', 'LS_JSON'
         ];
             
         // Check if the content starts with any protocol command
         const isProtocolCommand = protocolCommands.some(cmd => 
-            n.toUpperCase().startsWith(cmd.toUpperCase()) || n.startsWith(cmd)
+            n.toUpperCase().includes(cmd.toUpperCase())
         );
             
         if (isProtocolCommand) {
@@ -3477,6 +3704,19 @@ const scrollToVote = (refId) => {
     50% {
         transform: translateY(-3px);
     }
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-shimmer {
+    animation: shimmer 3s infinite linear;
 }
 
 /* Custom scrollbar for tarot interpretation */

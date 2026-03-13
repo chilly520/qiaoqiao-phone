@@ -469,8 +469,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     // 获取所有可用表情包 (全局 + 当前角色)
     const globalStickers = stickerStore.getStickers('global')
     // Attempt to get ID from char object (Chat object)
-    const charId = char.id || char.uuid
-    const charStickers = charId ? stickerStore.getStickers(charId) : []
+    const charId = char.id || char.uuid || char.charId
+    const charStickers = charId ? stickerStore.getStickers(charId, char.emojis || []) : []
 
     // Merge valid stickers and filter empty names
     const availableStickers = [
@@ -1666,7 +1666,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             return matchCount >= 2
         }
 
-        if (ivJsonStr && !isCallProtocol) {
+        const isCommandTask = options.isCommandTask || options.isSimpleTask
+
+        if (ivJsonStr && !isCallProtocol && !isCommandTask) {
             try {
                 // 清理JSON里的干扰字符
                 const cleanJson = ivJsonStr
@@ -1689,10 +1691,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
         }
 
-        // --------------------------
         // 终极兜底：解析失败/没找到JSON，强制生成符合格式的心声
         // --------------------------
-        if (!innerVoice && !isCallProtocol) {
+        if (!innerVoice && !isCallProtocol && !isCommandTask) {
             console.warn('[AI Service] 未找到有效心声，生成兜底内容')
             const now = new Date()
             innerVoice = {
@@ -2138,7 +2139,7 @@ export async function generateBatchMomentsWithInteractions(options) {
 
         // 获取表情包信息 (增加名称匹配引导)
         const emojiList = c.emojis && c.emojis.length > 0
-            ? `\n   可用表情包(必须精确匹配引号内的名称，如 [表情包:名字]): ${c.emojis.map(e => `"${e.name}"`).join(', ')}`
+            ? `\n   可用表情包 (必须精确匹配引号内的名称，格式：[表情包：名字]):\n     ${c.emojis.map(e => `"${e.name}"`).join(',\n     ')}`
             : ''
 
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
@@ -2316,11 +2317,21 @@ ${"```"}
             const prompts = moment.imagePrompts || (moment.imagePrompt ? [moment.imagePrompt] : [])
             const descriptions = moment.imageDescriptions || (moment.imageDescription ? [moment.imageDescription] : [])
 
+            console.log('[BatchMoments] 图片提示词:', prompts)
+            console.log('[BatchMoments] 图片描述:', descriptions)
+
             if (prompts.length > 0) {
                 const finalPrompts = prompts.slice(0, 9)
-                const results = await Promise.all(finalPrompts.map(p => generateImage(p).catch(() => null)))
+                console.log('[BatchMoments] 准备生成', finalPrompts.length, '张图片')
+                const results = await Promise.all(finalPrompts.map(p => generateImage(p).catch((e) => {
+                    console.error('[BatchMoments] 单张图片生成失败:', p, e)
+                    return null
+                })))
                 processed.images = results.filter(Boolean)
                 processed.imageDescriptions = descriptions.slice(0, processed.images.length)
+                console.log('[BatchMoments] 实际生成图片数:', processed.images.length)
+            } else {
+                console.log('[BatchMoments] AI 未返回图片提示词，跳过图片生成')
             }
 
             // Sanitization

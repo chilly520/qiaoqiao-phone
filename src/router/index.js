@@ -237,12 +237,22 @@ const router = createRouter({
         {
             path: '/couple/sticky',
             name: 'couple-sticky',
-            component: () => import('../views/LoveSpace/StickyNotes.vue')
+            component: () => import('../views/LoveSpace/LoveSticky.vue')
+        },
+        {
+            path: '/couple/mailbox',
+            name: 'couple-mailbox',
+            component: () => import('../views/LoveSpace/LoveLetter.vue')
         },
         {
             path: '/couple/letter',
             name: 'couple-letter',
             component: () => import('../views/LoveSpace/LoveLetter.vue')
+        },
+        {
+            path: '/couple/letter/:id',
+            name: 'couple-letter-detail',
+            component: () => import('../views/LoveSpace/LetterDetail.vue')
         },
         {
             path: '/couple/house',
@@ -252,7 +262,7 @@ const router = createRouter({
         {
             path: '/couple/question',
             name: 'couple-question',
-            component: () => import('../views/LoveSpace/SoulQuestion.vue')
+            component: () => import('../views/LoveSpace/LoveQuestion.vue')
         },
         {
             path: '/couple/album',

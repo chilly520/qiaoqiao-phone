@@ -721,11 +721,16 @@ export const useMomentsStore = defineStore('moments', () => {
 
             const lastMsgs = (chat.msgs || []).slice(-15).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
 
-            // Get last 3 personal moments for this character
+            // Get last 3 personal moments for this character (including images)
             const personalHistory = moments.value
                 .filter(m => m.authorId === id)
                 .slice(-3)
-                .map(m => m.content)
+                .map(m => {
+                    const imagesInfo = m.images && m.images.length > 0 
+                        ? ` [配图:${m.images.length}张]` 
+                        : ''
+                    return m.content + imagesInfo
+                })
                 .join(' || ')
 
             // Get character stickers

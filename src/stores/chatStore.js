@@ -12,6 +12,7 @@ import { useLoveSpaceStore } from './loveSpaceStore'
 import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from '../utils/ai/prompts'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
+import { LOVE_SPACE_CHAT_CAPABILITY_HINT } from '../utils/ai/prompts_love'
 import localforage from 'localforage'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
 import { setupGroupLogic } from './chatModules/chatGroup'
@@ -698,11 +699,11 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
             // First try strict full-line match
-            let tagMatch = detectionContent.match(/^[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
+            let tagMatch = detectionContent.match(/^[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物|CARD)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
 
             // If no full-line match, try inline match (for embedded tags like "1![表情包：xxx]")
             if (!tagMatch) {
-                tagMatch = detectionContent.match(/[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
+                tagMatch = detectionContent.match(/[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物|CARD)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
             }
 
             if (tagMatch) {
@@ -779,6 +780,10 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.type = 'file'
                 } else if (tagType === 'LOCATION') {
                     newMsg.type = 'location'
+                } else if (tagType === 'CARD') {
+                    newMsg.type = 'card'
+                    // Keep the full content for ChatMessageItem to parse
+                    // Format: [CARD]{ "title": "xxx", "content": "xxx" }
                 } else if (tagType === 'FAMILY_CARD' || tagType === 'FAMILY_CARD_APPLY' || tagType === 'FAMILY_CARD_REJECT') {
                     newMsg.type = 'family_card'
                 } else if (tagType === 'GIFT' || tagType === '礼物' || tagType === 'DRAW') {
@@ -864,7 +869,7 @@ export const useChatStore = defineStore('chat', () => {
                             const newGroup = createGroupChat({
                                 name,
                                 participants,
-                                ownerId: newMsg.charId || newMsg.roleId || 'user'
+                                ownerId: newMsg.senderId || 'user'
                             })
                             if (avatar && avatar.startsWith('http')) {
                                 updateGroupProfile(newGroup.id, { avatar })
@@ -1429,6 +1434,21 @@ export const useChatStore = defineStore('chat', () => {
                 callStore.endCall()
             }
 
+            // --- Love Space Instruction Integration ---
+            if (content.includes('[LS_JSON:')) {
+                try {
+                    const { useLoveSpaceStore } = await import('./loveSpaceStore')
+                    const loveSpaceStore = useLoveSpaceStore()
+                    // 确保处于对应角色的空间
+                    if (loveSpaceStore.currentPartnerId !== chat.id) {
+                        await loveSpaceStore.selectSpace(chat.id)
+                    }
+                    await loveSpaceStore.executeSpaceCommands(content, chat.name, null)
+                } catch (e) {
+                    console.error('[ChatStore] LoveSpace command execution failed:', e)
+                }
+            }
+
             // Priority 2: Check for Call Protocol Block (Strict or Fuzzy)
             const hasJsonLike = content.includes('{') && (content.includes('"speech"') || content.includes('"status"') || content.includes('"action"') || content.includes('"行为"') || content.includes('"心声"'));
 
@@ -1538,7 +1558,12 @@ export const useChatStore = defineStore('chat', () => {
                 /\[(?:礼物|礼物卡片):[^\]]+\]/gi,
                 /\[DRAW:[^\]]+\]/gi,
                 /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
-                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
+                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi,
+                /\[LS_JSON:[\s\S]*?\]/gi,
+                /\[LOVESPACE_INVITE:[^\]]+\]/gi,
+                /\[LOVESPACE_CONTRACT:[^\]]+\]/gi,
+                /\[LOVESPACE_REJECT:[^\]]+\]/gi
+                // Note: CARD tag is NOT in protocolTags to preserve [CARD]{...} format for frontend parsing
             ];
             try {
                 protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
@@ -1549,16 +1574,15 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // Don't hide special display types - they are rendered as cards even if text content is stripped
-            const persistentTypes = ['gift', 'gift_claimed', 'sticker', 'image', 'voice', 'music', 'redpacket', 'transfer', 'family_card', 'moment_card', 'dice_result', 'tarot_card', 'html', 'vote'];
-            if (isEmptyDisplay && content.trim().length > 0 && !persistentTypes.includes(newMsg.type) && !content.includes('[GIFT:')) {
+            const persistentTypes = ['gift', 'gift_claimed', 'sticker', 'image', 'voice', 'music', 'redpacket', 'transfer', 'family_card', 'moment_card', 'dice_result', 'tarot_card', 'html', 'vote', 'card'];
+            if (isEmptyDisplay && content.trim().length > 0 && !persistentTypes.includes(newMsg.type) && !content.includes('[GIFT:') && !content.includes('[LOVESPACE_INVITE:') && !content.includes('[LOVESPACE_CONTRACT:') && !content.includes('[LOVESPACE_REJECT:')) {
                 // If it's ONLY tags, hide it from the UI but PRESERVE the content for AI context
                 newMsg.hidden = true;
             } else if (!newMsg.hidden && typeof newMsg.content === 'string') {
-                // If it HAS text, clean ONLY known strictly internal protocol tags for the bubble display
-                // We keep JSON-like content if it might be an HTML card, as ChatMessageItem will clean it during render
-                const strictlyInternalTags = protocolTags.filter(p => !p.source?.includes('html') && !p.source?.includes('speech'));
-                strictlyInternalTags.forEach(p => { newMsg.content = newMsg.content.replace(p, ''); });
-                newMsg.content = newMsg.content.trim();
+                // If it HAS text, clean strictly internal blocks (like Inner Voice)
+                // BUT: DO NOT strip card tags or protocol tags that ChatMessageItem needs (like LS_JSON, CONTRACT)
+                const stripRegex = /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]|\[LS_JSON:[\s\S]*?\]|\[TIMESTAMP:[^\]]+\]/gi;
+                newMsg.content = newMsg.content.replace(stripRegex, '').trim();
             }
         }
 
@@ -2194,6 +2218,7 @@ export const useChatStore = defineStore('chat', () => {
             let momentsAwareness = '' // Placeholder for moments context
 
             const charInfo = {
+                id: chatId,
                 name: chat.name || '角色',
                 gender: chat.gender || '无',
                 description: (chat.prompt || '') + momentsAwareness,
@@ -2267,9 +2292,11 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             // Couple Space Awareness
             if (!chat.isGroup) {
                 const lsStore = useLoveSpaceStore()
-                const lsHint = lsStore.generateSystemPrompt()
+                const lsHint = lsStore.generateSystemPrompt(chatId)
                 if (lsHint) {
                     charInfo.description += lsHint
+                    // Inject capability hint so AI knows it can use [LS_...] tags in chat
+                    charInfo.description += "\n\n" + LOVE_SPACE_CHAT_CAPABILITY_HINT(chat.name, chat.userName)
                 }
             }
 
@@ -2357,6 +2384,8 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 return
             }
 
+
+            // Split into bubbles (Visual Level Splitting)
             // 3. 添加 AI 回复 (拆分消息 - Data Level Splitting)
             if (result.content || (result.choices && result.choices[0]?.message?.content)) {
                 // 处理完整的OpenAI响应格式
@@ -2370,6 +2399,12 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
                     fullContent = fullContent.replace(nameRegex, '').trim();
+                }
+
+                // --- Post-process: Handle Couple Space (LS_) Commands from Chat ---
+                if (!chat.isGroup && fullContent.includes('[LS_')) {
+                    const lsStore = useLoveSpaceStore()
+                    lsStore.executeSpaceCommands(fullContent, chat.name)
                 }
 
                 // Expect: [FROM:participantId] or [来自:名称] at the very beginning.
@@ -3214,6 +3249,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
                 // Pass 3: Extraction using robust brace matcher (The Protectors)
                 // Aggressively match anything starting with [CARD]{ or just { "any_key":
+                // FIX: Specifically identify [LS_JSON: and [INNER_VOICE and block them from being treated as naked cards
                 const cardStartRegex = /(?:\[\s*CARD\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*:\s*)/gi;
                 let cardMatch;
                 const cardPositions = [];
@@ -3222,6 +3258,15 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     let startPos = cardMatch.index;
                     let jsonStart = cardMatch.index + cardMatch[0].indexOf('{');
                     let isNaked = !cardMatch[0].trim().toUpperCase().startsWith('[');
+
+                    // Check if this "naked" card is actually inside a protocol tag [LS_JSON: ...]
+                    if (isNaked && startPos > 0) {
+                        const segmentBefore = cleanContent.substring(0, startPos).trim();
+                        if (segmentBefore.toUpperCase().endsWith('[LS_JSON:') || segmentBefore.toUpperCase().endsWith('[INNER_VOICE]')) {
+                            // This is part of a protocol tag, not a naked HTML card. Skip extraction here.
+                            continue;
+                        }
+                    }
 
                     let braceCount = 1;
                     let endPos = jsonStart + 1;
@@ -3248,8 +3293,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
                         const fullCard = cleanContent.substring(startPos, totalEnd);
 
-                        // NEW: Avoid matching Inner Voice metadata as "Naked Cards"
-                        const isInnerVoiceMetadata = isNaked && (
+                        // NEW: Avoid matching Inner Voice or LS_JSON metadata as "Naked Cards"
+                        const isProtocolMetadata = isNaked && (
+                            fullCard.includes('"anniversary"') ||
+                            fullCard.includes('"commands"') ||
                             fullCard.includes('"stats"') ||
                             fullCard.includes('"mood"') ||
                             fullCard.includes('"spirit"') ||
@@ -3260,7 +3307,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             fullCard.includes('"thoughts"')
                         );
 
-                        if (!isInnerVoiceMetadata) {
+                        if (!isProtocolMetadata) {
                             cardPositions.push({ start: startPos, end: totalEnd, content: fullCard, isNaked });
                         }
                         cardStartRegex.lastIndex = totalEnd;
@@ -3293,7 +3340,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 //   4. Multi-member [FROM:ID] tags for group ecology
                 // Standard Text: Apply splitting for special blocks
                 // V20: Robust Splitting (Parentheses fixed for start-of-string, aggressive newline priority)
-                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:(?=\s*\n\s*\[(?!\/))|$)|(?:[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】](?:[ \t]*[\[【]DRAW[:：\s][^\]】]*[\]】])?|[\[【]DRAW[:：\s][^\]】]*[\]】](?:[ \t]*[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】])?|[\[【](?:摇骰子 | 掷骰子)[:：\s][^\]】]*[\]】]|[\[【][\s\S]*?[\]】])|(?<=^|[。！？!?…\n\r\s])([（\(][^）\)]*?[）\)])|([（\(][^）\)]*?[。！？!?…][^）\)]*?[）\)])(?!\s*[。！？!?…]))/gi;
+                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:(?=\s*\n\s*\[(?!\/))|$)|\[\s*LS_JSON[:：][\s\S]*?\}\s*\]|(?:[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】](?:[ \t]*[\[【]DRAW[:：\s][^\]】]*[\]】])?|[\[【]DRAW[:：\s][^\]】]*[\]】](?:[ \t]*[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】])?|[\[【](?:摇骰子 | 掷骰子)[:：\s][^\]】]*[\]】]|[\[【][\s\S]*?[\]】])|(?<=^|[。！？!?…\n\r\s])([（\(][^）\)]*?[）\)])|([（\(][^）\)]*?[。！？!?…][^）\)]*?[）\)])(?!\s*[。！？!?…]))/gi;
 
                 console.log('[Split V13] processedContent:', JSON.stringify(processedContent));
                 console.log('[Split V13] processedContent (first 500 chars):', processedContent.substring(0, 500));
@@ -3386,6 +3433,9 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         const index = parseInt(placeholderMatch[1]);
                         content = cardBlocks[cardBlocks.length - 1 - index];
                         finalSegments.push({ type: 'card', content });
+                    } else if (/^\[\s*(?:INNER[\s-_]*VOICE|LS_JSON)\s*[:：\]]/i.test(content.trim())) {
+                        // EXPLICIT HIDE: Ensure Love Space Protocol blocks and Inner Voice are hidden
+                        finalSegments.push({ type: 'text', content: content.trim(), hidden: true });
                     } else if (/^\[\s*(?:表情包|表情-包|STICKER|IMAGE)\s*[:：][^\]]*?\]\s*$/.test(content.trim())) {
                         console.log('[Split V13] Detected sticker:', content.trim());
                         // Keep full content (tag) so frontend can parse it with regex
@@ -3457,10 +3507,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         finalSegments.push({ type: 'image', content: content.trim() });
                     } else if (/^\[(?:演奏|MUSIC)[:：]/i.test(content.trim())) {
                         finalSegments.push({ type: 'music', content: content.trim() });
-                    } else if (/^\[\s*INNER[\s-_]*VOICE\s*\]/i.test(content.trim())) {
-                        // INNER_VOICE blocks are metadata.
+                    } else if (/^\[\s*INNER[\s-_]*VOICE\s*\]/i.test(content.trim()) || /^\[\s*LS_JSON\s*[:：]/i.test(content.trim())) {
+                        // INNER_VOICE and LS_JSON blocks are metadata.
                         // We preserve them as text segments but mark them as hidden
-                        // so they won't be displayed as protocol messages
+                        // so they won't be displayed as protocol messages in bubbles.
                         finalSegments.push({ type: 'text', content: content.trim(), hidden: true });
                         continue;
                     } else if (/^[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]$/i.test(content.trim())) {

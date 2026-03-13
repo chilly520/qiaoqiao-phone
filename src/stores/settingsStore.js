@@ -279,14 +279,14 @@ export const useSettingsStore = defineStore('settings', () => {
             drawing: drawing.value
         }
         try {
-            // Save to IndexedDB (localforage)
-            const json = JSON.stringify(data)
-            await settingsDB.setItem('qiaoqiao_settings_v2', data)
-            console.log('[SettingsStore] Saved to localforage. Approx size:', json.length)
+            // DEEP CLONE to avoid Proxy DataCloneError
+            const cleanData = JSON.parse(JSON.stringify(data))
             
-            // Sync fallback to localStorage if it's small enough (important for immediate sync stuff, but dangerous for space)
-            // if (json.length < 50000) {
-            //     localStorage.setItem('qiaoqiao_settings', json)
+            // Save to IndexedDB (localforage)
+            await settingsDB.setItem('qiaoqiao_settings_v2', cleanData)
+            console.log('[SettingsStore] Saved to localforage. Cleaned size:', JSON.stringify(cleanData).length)
+            
+            // Success - check if we need to remove from LS
             // } else {
             //     // If too big for LS, we MUST clear it from LS to free up space
             //     localStorage.removeItem('qiaoqiao_settings')

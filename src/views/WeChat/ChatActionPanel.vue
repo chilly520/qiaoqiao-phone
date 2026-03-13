@@ -28,6 +28,15 @@
         <span class="text-xs text-[#888]">背包</span>
       </div>
 
+      <!-- Couple Space -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'lovespace')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-heart-pulse text-2xl text-[#ec4899]"></i>
+        </div>
+        <span class="text-xs text-[#888]">情侣空间</span>
+      </div>
+
       <!-- Red Packet -->
       <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'redpacket')">
         <div

@@ -226,10 +226,10 @@ const renderCommentContent = (comment) => {
     if (!comment || !comment.content) return ''
     let content = comment.content
 
-    // Escape HTML
-    const div = document.createElement('div')
-    div.textContent = content
-    content = div.innerHTML
+    // escape logic removed to support HTML rendering
+    // const div = document.createElement('div')
+    // div.textContent = content
+    // content = div.innerHTML
 
     // 1. Handle Hashtags FIRST (#Topic ) - prevent collision with hex colors in span tags
     content = content.replace(/#([^\s#]+)(\s|$)/g, (match, topic, spacer) => {
@@ -290,10 +290,10 @@ const parsedContent = computed(() => {
     if (!rawContent) return ''
 
     let content = rawContent
-    // Escape HTML first
-    const div = document.createElement('div')
-    div.textContent = content
-    content = div.innerHTML
+    // escape logic removed to support HTML rendering
+    // const div = document.createElement('div')
+    // div.textContent = content
+    // content = div.innerHTML
 
     // 1. Handle raw template literals that AI often leaks (e.g. ${user.name})
     if (content.includes('${user.name}')) {
@@ -637,8 +637,8 @@ const navigateToAuthor = () => {
                 <div v-for="(img, idx) in (props.moment?.images || [])" :key="idx"
                     class="bg-gray-50 rounded-sm overflow-hidden flex items-center justify-center border border-gray-100 cursor-zoom-in active:scale-[0.98] transition-all relative z-10"
                     :class="(props.moment?.images || []).length === 1 ? '' : 'aspect-square'"
-                    @click.stop="handleImagePreview(idx)">
-                    <img :src="img" class="w-full h-full object-cover pointer-events-none">
+                    @click="handleImagePreview(idx)">
+                    <img :src="img" class="w-full h-full object-cover">
                 </div>
             </div>
 

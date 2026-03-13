@@ -631,6 +631,9 @@ const handleGlobalPromptCancel = () => {
     animation: toastPop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+/* Google Fonts for Love Space */
+@import url('https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&family=Long+Cang&family=Ma+Shan+Zheng&display=swap');
+
 /* 全屏自适应 - 所有手机/平板全屏显示 */
 .app-root {
     max-width: 100%;
@@ -639,7 +642,6 @@ const handleGlobalPromptCancel = () => {
 
 /* 仅桌面端 (>=768px) 居中显示为手机模拟器 */
 @media (min-width: 768px) {
-
     html,
     body {
         background: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 100%);

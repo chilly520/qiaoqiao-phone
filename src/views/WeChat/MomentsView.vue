@@ -1624,44 +1624,42 @@ onMounted(() => {
                 <button class="text-sm text-gray-500 font-medium" @click="showMentionModal = false">取消</button>
             </div>
         </div>
+    </div>
 
-        <!-- Fullscreen Image Preview Overlay (Teleported to Body for absolute top-level display) -->
-        <Teleport to="body">
-            <div v-if="showImagePreview"
-                class="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center pt-10"
-                @click="closePreview">
-                <!-- Close btn -->
-                <div class="absolute top-10 right-6 text-white text-3xl z-[100000] p-4 cursor-pointer"
-                    @click.stop="closePreview">
-                    <i class="fa-solid fa-xmark drop-shadow-lg"></i>
-                </div>
-
-                <!-- Main Image -->
-                <div class="flex-1 w-full flex items-center justify-center p-2 relative">
-                    <!-- Nav buttons if multiple -->
-                    <div v-if="previewImages.length > 1"
-                        class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
-                        @click.stop="prevPreview">
-                        <i class="fa-solid fa-chevron-left text-xl"></i>
-                    </div>
-                    <div v-if="previewImages.length > 1"
-                        class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
-                        @click.stop="nextPreview">
-                        <i class="fa-solid fa-chevron-right text-xl"></i>
-                    </div>
-
-                    <img :src="previewImages[previewIndex]"
-                        class="max-w-full max-h-[90vh] object-contain shadow-2xl transition-all duration-300"
-                        @click.stop>
-                </div>
-
-                <!-- Footer / Counter -->
-                <div v-if="previewImages.length > 1"
-                    class="h-20 flex flex-col items-center text-white/80 text-lg font-bold">
-                    <span>{{ previewIndex + 1 }} / {{ previewImages.length }}</span>
-                </div>
+    <!-- Fullscreen Image Preview Overlay (移到最外层避免 overflow 限制) -->
+    <div v-if="showImagePreview"
+        class="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center pt-10"
+        @click="closePreview">
+        <!-- Close btn -->
+        <div class="absolute top-10 right-6 text-white text-3xl z-[100000] p-4 cursor-pointer"
+            @click.stop="closePreview">
+            <i class="fa-solid fa-xmark drop-shadow-lg"></i>
+        </div>
+    
+        <!-- Main Image -->
+        <div class="flex-1 w-full flex items-center justify-center p-2 relative">
+            <!-- Nav buttons if multiple -->
+            <div v-if="previewImages.length > 1"
+                class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
+                @click.stop="prevPreview">
+                <i class="fa-solid fa-chevron-left text-xl"></i>
             </div>
-        </Teleport>
+            <div v-if="previewImages.length > 1"
+                class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
+                @click.stop="nextPreview">
+                <i class="fa-solid fa-chevron-right text-xl"></i>
+            </div>
+    
+            <img :src="previewImages[previewIndex]"
+                class="max-w-full max-h-[90vh] object-contain shadow-2xl transition-all duration-300"
+                @click.stop />
+        </div>
+    
+        <!-- Footer / Counter -->
+        <div v-if="previewImages.length > 1"
+            class="h-20 flex flex-col items-center text-white/80 text-lg font-bold">
+            <span>{{ previewIndex + 1 }} / {{ previewImages.length }}</span>
+        </div>
     </div>
 </template>
 

@@ -112,23 +112,43 @@ const compressImages = async () => {
         for (const chatId in chats) {
             const msgs = chats[chatId].msgs || []
             for (const msg of msgs) {
-                // Check for image content
-                const imgMatch = msg.content && typeof msg.content === 'string' && msg.content.match(/^\[图片:(data:image\/[^;]+;base64,[^\]]+)\]$/)
+                if (msg.content && typeof msg.content === 'string') {
+                    // Match all [图片:...] tags
+                    const imgRegex = /\[图片:([^\]]+)\]/g
+                    let match
+                    let newContent = msg.content
+                    let msgModified = false
 
-                if (imgMatch) {
-                    try {
-                        const originalBase64 = imgMatch[1]
-                        // Re-compress using a helper (we'll inline a simple one or use utils if available)
-                        // Using simple canvas re-draw here for "retroactive" compression
-                        const newBase64 = await reCompressBase64(originalBase64, compressQuality.value)
+                    // Reset regex index for safety
+                    imgRegex.lastIndex = 0
 
-                        if (newBase64.length < originalBase64.length) {
-                            savedSize += (originalBase64.length - newBase64.length)
-                            msg.content = `[图片:${newBase64}]`
-                            count++
+                    // In-place collection of matches to avoid indexing issues during replacement
+                    const foundImages = []
+                    while ((match = imgRegex.exec(msg.content)) !== null) {
+                        foundImages.push({ full: match[0], url: match[1] })
+                    }
+
+                    for (const imgInfo of foundImages) {
+                        const originalUrl = imgInfo.url
+                        // Handle both Base64 and remote URLs
+                        if (originalUrl.startsWith('data:image') || originalUrl.includes('pollinations') || originalUrl.includes('image')) {
+                            try {
+                                const newBase64 = await reCompressBase64FromUrl(originalUrl, compressQuality.value)
+                                if (newBase64 && newBase64.length < originalUrl.length) {
+                                    savedSize += (originalUrl.length - newBase64.length)
+                                    // Use split/join for safe global replace of this specific string
+                                    newContent = newContent.split(imgInfo.full).join(`[图片:${newBase64}]`)
+                                    msgModified = true
+                                    count++
+                                }
+                            } catch (e) {
+                                console.error('Compression failed for img in msg', msg.id, e)
+                            }
                         }
-                    } catch (e) {
-                        console.error('Compression failed for msg', msg.id, e)
+                    }
+
+                    if (msgModified) {
+                        msg.content = newContent
                     }
                 }
             }
@@ -203,32 +223,29 @@ const cleanAllImages = () => {
 
 // 压缩 AI 生图（包括朋友圈、论坛、相册等）
 const compressAIImages = async () => {
-    chatStore.triggerConfirm('AI 图片压缩', '这将压缩所有 AI 生成的图片（朋友圈、论坛、相册等），可能略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
+    chatStore.triggerConfirm('AI 图片压缩', '这将压缩所有 AI 生成的图片（朋友圈、论坛、相册、情侣空间等），可能略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
         chatStore.triggerToast('正在压缩 AI 图片，请稍候...', 'info')
         let count = 0
         let savedSize = 0
 
         try {
             // 1. 压缩朋友圈图片
-            const momentsStore = await import('../../stores/momentsStore')
-            const momentsData = momentsStore.momentsData || momentsStore.default?.momentsData || {}
-            for (const charId in momentsData) {
-                const posts = momentsData[charId]?.posts || []
-                for (const post of posts) {
-                    if (post.images && Array.isArray(post.images)) {
-                        for (let i = 0; i < post.images.length; i++) {
-                            const imgUrl = post.images[i]
-                            if (imgUrl && typeof imgUrl === 'string' && (imgUrl.includes('pollinations') || imgUrl.startsWith('data:image'))) {
-                                try {
-                                    const compressed = await reCompressBase64FromUrl(imgUrl, compressQuality.value)
-                                    if (compressed && compressed.length < imgUrl.length) {
-                                        savedSize += (imgUrl.length - compressed.length)
-                                        post.images[i] = compressed
-                                        count++
-                                    }
-                                } catch (e) {
-                                    console.error('Moments image compression failed:', e)
+            const momentsStore = (await import('../../stores/momentsStore')).useMomentsStore()
+            const allMoments = momentsStore.moments || []
+            for (const moment of allMoments) {
+                if (moment.images && Array.isArray(moment.images)) {
+                    for (let i = 0; i < moment.images.length; i++) {
+                        const imgUrl = moment.images[i]
+                        if (imgUrl && typeof imgUrl === 'string' && (imgUrl.includes('pollinations') || imgUrl.startsWith('data:image'))) {
+                            try {
+                                const compressed = await reCompressBase64FromUrl(imgUrl, compressQuality.value)
+                                if (compressed && compressed.length < imgUrl.length) {
+                                    savedSize += (imgUrl.length - compressed.length)
+                                    moment.images[i] = compressed
+                                    count++
                                 }
+                            } catch (e) {
+                                console.error('Moments image compression failed:', e)
                             }
                         }
                     }
@@ -236,8 +253,8 @@ const compressAIImages = async () => {
             }
 
             // 2. 压缩论坛帖子图片
-            const forumStore = await import('../../stores/forumStore')
-            const forumData = forumStore.forumData || forumStore.default?.forumData || {}
+            const forumStore = (await import('../../stores/forumStore')).useForumStore()
+            const forumData = forumStore.forumData || {}
             for (const forumKey in forumData) {
                 const posts = forumData[forumKey]?.posts || []
                 for (const post of posts) {
@@ -256,8 +273,8 @@ const compressAIImages = async () => {
                 }
             }
 
-            // 3. 压缩相册照片（查手机）
-            const phoneInspectionStore = await import('../../stores/phoneInspectionStore')
+            // 3. 压缩相册照片（查手机 & 情侣空间）
+            // 查手机
             const chats = chatStore.chats
             for (const charId in chats) {
                 const char = chats[charId]
@@ -278,8 +295,37 @@ const compressAIImages = async () => {
                 }
             }
 
-            // 保存所有更改（moments 和 forum 是自动持久化的）
+            // 情侣空间
+            const loveSpaceStore = (await import('../../stores/loveSpaceStore')).useLoveSpaceStore()
+            const spaces = loveSpaceStore.spaces || {}
+            for (const sId in spaces) {
+                const space = spaces[sId]
+                // Album
+                const album = space.album || []
+                for (const photo of album) {
+                    const imgUrl = photo.url || photo.imageUrl || photo.image
+                    if (imgUrl && typeof imgUrl === 'string' && (imgUrl.includes('pollinations') || imgUrl.startsWith('data:image'))) {
+                        try {
+                            const compressed = await reCompressBase64FromUrl(imgUrl, compressQuality.value)
+                            if (compressed && compressed.length < imgUrl.length) {
+                                savedSize += (imgUrl.length - compressed.length)
+                                if (photo.url) photo.url = compressed
+                                else if (photo.imageUrl) photo.imageUrl = compressed
+                                else photo.image = compressed
+                                count++
+                            }
+                        } catch (e) {
+                            console.error('LoveSpace album compression failed:', e)
+                        }
+                    }
+                }
+                // Footprints (if any images in future)
+                // Letters (if any images in future)
+            }
+
+            // 写入持久化
             await chatStore.saveChats()
+            if (loveSpaceStore.saveToStorage) await loveSpaceStore.saveToStorage()
 
             calculateStorage()
             chatStore.triggerToast(`压缩完成！处理了 ${count} 张 AI 图片，释放了 ${formatSize(savedSize)}`, 'success')
