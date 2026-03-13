@@ -1575,7 +1575,7 @@ export const useChatStore = defineStore('chat', () => {
 
             // Don't hide special display types - they are rendered as cards even if text content is stripped
             const persistentTypes = ['gift', 'gift_claimed', 'sticker', 'image', 'voice', 'music', 'redpacket', 'transfer', 'family_card', 'moment_card', 'dice_result', 'tarot_card', 'html', 'vote', 'card'];
-            if (isEmptyDisplay && content.trim().length > 0 && !persistentTypes.includes(newMsg.type) && !content.includes('[GIFT:') && !content.includes('[LOVESPACE_INVITE:') && !content.includes('[LOVESPACE_CONTRACT:') && !content.includes('[LOVESPACE_REJECT:')) {
+            if (isEmptyDisplay && content.trim().length > 0 && !persistentTypes.includes(newMsg.type) && !content.includes('[GIFT:') && !content.includes('[LOVESPACE_INVITE:') && !content.includes('[LOVESPACE_CONTRACT:') && !content.includes('[LOVESPACE_REJECT:') && !content.includes('[CARD]')) {
                 // If it's ONLY tags, hide it from the UI but PRESERVE the content for AI context
                 newMsg.hidden = true;
             } else if (!newMsg.hidden && typeof newMsg.content === 'string') {
