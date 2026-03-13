@@ -229,7 +229,32 @@ const compressAIImages = async () => {
         let savedSize = 0
 
         try {
-            // 1. 压缩朋友圈图片
+            // 1. 压缩聊天中的 AI 生图（最主要占用空间）
+            const chats = chatStore.chats
+            for (const chatId in chats) {
+                const msgs = chats[chatId].msgs || []
+                for (const msg of msgs) {
+                    // 处理 AI 生成的图片（包括 URL 和 base64 格式）
+                    if (msg.image && typeof msg.image === 'string' && (msg.image.startsWith('http') || msg.image.startsWith('data:image'))) {
+                        try {
+                            const compressed = await reCompressBase64FromUrl(msg.image, compressQuality.value)
+                            if (compressed && compressed.length > 0 && compressed.length < msg.image.length) {
+                                savedSize += (msg.image.length - compressed.length)
+                                msg.image = compressed
+                                count++
+                            } else if (compressed && compressed.length >= msg.image.length) {
+                                // 压缩后更大或相同，不保存
+                                console.log('Image compression skipped (no size reduction)')
+                            }
+                            // If compressed is null, skip silently
+                        } catch (e) {
+                            console.warn('Chat AI image compression error:', e.message)
+                        }
+                    }
+                }
+            }
+
+            // 2. 压缩朋友圈图片
             const momentsStore = (await import('../../stores/momentsStore')).useMomentsStore()
             const allMoments = momentsStore.moments || []
             for (const moment of allMoments) {
@@ -252,7 +277,7 @@ const compressAIImages = async () => {
                 }
             }
 
-            // 2. 压缩论坛帖子图片
+            // 3. 压缩论坛帖子图片
             const forumStore = (await import('../../stores/forumStore')).useForumStore()
             const forumData = forumStore.forumData || {}
             for (const forumKey in forumData) {
@@ -273,9 +298,8 @@ const compressAIImages = async () => {
                 }
             }
 
-            // 3. 压缩相册照片（查手机 & 情侣空间）
+            // 4. 压缩相册照片（查手机 & 情侣空间）
             // 查手机
-            const chats = chatStore.chats
             for (const charId in chats) {
                 const char = chats[charId]
                 const photos = char.phoneData?.apps?.photos?.photos || []
@@ -338,26 +362,34 @@ const compressAIImages = async () => {
 
 // Helper: Compress from URL (fetch then compress)
 const reCompressBase64FromUrl = async (url, quality) => {
-    return new Promise((resolve, reject) => {
-        // If it's already base64
-        if (url.startsWith('data:image')) {
-            reCompressBase64(url, quality).then(resolve).catch(reject)
-            return
+    // If it's already base64, compress directly
+    if (url.startsWith('data:image')) {
+        return await reCompressBase64(url, quality)
+    }
+    
+    // For remote URLs, try to fetch but allow failure
+    try {
+        const response = await fetch(url)
+        if (!response.ok) {
+            console.log(`Fetch failed for ${url}: ${response.status}`)
+            return null // Return null to skip
         }
         
-        // Fetch from URL
-        fetch(url)
-            .then(res => res.blob())
-            .then(blob => {
-                const reader = new FileReader()
-                reader.onload = () => {
-                    reCompressBase64(reader.result, quality).then(resolve).catch(reject)
-                }
-                reader.onerror = reject
-                reader.readAsDataURL(blob)
-            })
-            .catch(reject)
-    })
+        const blob = await response.blob()
+        const reader = new FileReader()
+        return new Promise((resolve) => {
+            reader.onload = () => {
+                reCompressBase64(reader.result, quality)
+                    .then(resolve)
+                    .catch(() => resolve(null)) // Fail gracefully
+            }
+            reader.onerror = () => resolve(null)
+            reader.readAsDataURL(blob)
+        })
+    } catch (e) {
+        console.log(`Image fetch skipped: ${e.message}`)
+        return null // Skip on network error
+    }
 }
 
 const clearLogs = () => {

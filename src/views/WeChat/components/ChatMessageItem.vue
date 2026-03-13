@@ -547,13 +547,7 @@
                             <div v-if="isHtmlCardType && cardData?.html" 
                                 class="w-full"
                                 @click.stop>
-                                <iframe 
-                                    :srcdoc="cardData.html" 
-                                    class="w-full rounded-2xl shadow-md"
-                                    :style="{ height: 'auto', minHeight: '300px', border: 'none', overflow: 'hidden' }"
-                                    frameborder="0"
-                                    scrolling="no">
-                                </iframe>
+                                <div class="w-full" v-html="cardData.html"></div>
                             </div>
                             
                             <!-- Simple Card Type (Title + Content) -->
@@ -1262,7 +1256,7 @@ const props = defineProps({
     isMultiSelectMode: Boolean,
     isSelected: Boolean,
     shakingAvatars: {
-        type: Object, // Set behaves like object in props passing usually
+        type: Object,
         default: () => new Set()
     }
 })
