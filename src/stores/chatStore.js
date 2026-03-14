@@ -223,11 +223,19 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processBioUpdate(processedContent, chatId);
                 
                 // Intercept Couple Space commands [LS_JSON: ...]
-                if (processedContent.includes('[LS_JSON:')) {
+                const lsJsonRegex = /[\\[【]\s*LS_JSON[:：]?\s*(\{[\s\S]*?\})(?:\s*[\]】])?/gi;
+                if (lsJsonRegex.test(processedContent)) {
                     console.log('[ChatStore] Couple Space LS_JSON detected, processing...');
+                    
+                    // Capture original content for execution (because executeSpaceCommands handles multiple blocks)
+                    const originalForExecution = processedContent;
+                    
+                    // Strip the JSON blocks from display content to prevent "JSON in chat bubbles"
+                    processedContent = processedContent.replace(lsJsonRegex, '').trim();
+                    
                     import('./loveSpaceStore').then(m => {
                         const loveSpaceStore = m.useLoveSpaceStore();
-                        loveSpaceStore.executeSpaceCommands(processedContent, chat.name)
+                        loveSpaceStore.executeSpaceCommands(originalForExecution, chat.name)
                             .then(() => console.log('[ChatStore] LS_JSON commands executed successfully'))
                             .catch(err => console.error('[ChatStore] LS_JSON execution failed', err));
                     }).catch(err => console.error('[ChatStore] Failed to load loveSpaceStore for command parsing', err));
@@ -889,8 +897,8 @@ export const useChatStore = defineStore('chat', () => {
                 /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
                 /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
                 /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
-                /\[LS_JSON:[\s\S]*?\]/gi,
-                /\[LOVESPACE_CONTRACT:[^\]]+\]|\[LOVESPACE_REJECT:[^\]]+\]|\[LOVESPACE_INVITE:[^\]]+\]/gi,
+                /[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, 
+                /[\\[【]\s*LOVESPACE_(?:CONTRACT|REJECT|INVITE)[:：]?\s*[^\]】]*[\]】]/gi,
                 /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
                 /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
                 /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
@@ -979,6 +987,18 @@ export const useChatStore = defineStore('chat', () => {
         if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
             const match = content.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
             const cardName = match ? match[2] : '亲属卡'
+            const amount = match ? parseFloat(match[1]) : 0
+            
+            // Add to wallet immediately
+            const walletStore = useWalletStore()
+            walletStore.addFamilyCard({
+                ownerId: chatId,
+                ownerName: charName,
+                amount: amount,
+                remark: cardName,
+                bindTime: Date.now()
+            })
+            
             setTimeout(() => {
                 addMessage(chatId, { role: 'system', content: `${charName}向您发送了亲属卡「${cardName}」，点击领取` })
             }, 100)
