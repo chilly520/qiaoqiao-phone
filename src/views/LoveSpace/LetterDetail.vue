@@ -21,7 +21,7 @@
           <h3 class="paper-title font-handwritten">{{ letter.title }}</h3>
           <div class="body-text font-handwritten">{{ letter.content }}</div>
           <div class="paper-footer">
-            <p class="sign font-handwritten">—— 写信人：{{ letter.author === 'user' ? '我' : (loveSpaceStore.partner?.name || 'TA') }}</p>
+            <p class="sign font-handwritten">—— 写信人：{{ letter.author === 'user' ? currentUserName : (loveSpaceStore.partner?.name || 'TA') }}</p>
             <p class="date">{{ formatFullDate(letter.createdAt) }}</p>
             <p class="author-badge" v-if="letter.author === 'character'">
               <i class="fa-solid fa-crown"></i> {{ loveSpaceStore.partner?.name || 'TA' }} 的亲笔信
@@ -72,10 +72,14 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useChatStore } from '@/stores/chatStore'
 
 const route = useRoute()
 const router = useRouter()
 const loveSpaceStore = useLoveSpaceStore()
+const settingsStore = useSettingsStore()
+const chatStore = useChatStore()
 const letterId = parseInt(route.params.id)
 
 // 自定义弹窗状态
@@ -134,6 +138,15 @@ const letterPaperIndex = computed(() => {
   return index
 })
 
+// 获取当前用户名称（从对应角色的“我的人设”获取）
+const currentUserName = computed(() => {
+  const partnerId = loveSpaceStore.currentPartnerId
+  if (partnerId && chatStore.chats[partnerId]) {
+    return chatStore.chats[partnerId].userName || settingsStore.personalization?.userProfile?.name || '我'
+  }
+  return settingsStore.personalization?.userProfile?.name || '我'
+})
+
 const newComment = ref('')
 
 function formatFullDate(dateStr) {
@@ -160,7 +173,7 @@ async function addComment() {
   
   await loveSpaceStore.addLetterComment(letter.value.id, {
     authorId: 'user',
-    authorName: '我',
+    authorName: currentUserName.value,
     text: newComment.value
   })
   
@@ -653,6 +666,7 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .comment-input-area button:hover {
@@ -772,6 +786,7 @@ h2 {
     width: 36px;
     height: 36px;
     font-size: 14px;
+    flex-shrink: 0;
   }
 }
 </style>

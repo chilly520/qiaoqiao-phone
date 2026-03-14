@@ -29,35 +29,35 @@
             <div class="bookmark"></div>
             <div class="note-content">
               <span>{{ note.content }}</span>
-              <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? currentUserName : note.author }}</span>
+              <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
             </div>
           </div>
         </template>
 
-        <template v-else-if="note.styleClass === 's-red-scallop'">
+        <template v-if="note.styleClass === 's-red-scallop'">
           <div class="inner scallop-inner">
             <div class="note-content">
               <span>{{ note.content }}</span>
-              <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? currentUserName : note.author }}</span>
+              <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
             </div>
           </div>
         </template>
         
-        <template v-else-if="note.styleClass === 's-red-apple'">
+        <template v-if="note.styleClass === 's-red-apple'">
           <div class="apple-shape">
             <div class="apple-stem"></div>
             <div class="apple-core"></div>
           </div>
           <div class="note-content apple-text">
             <span>{{ note.content }}</span>
-            <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? currentUserName : note.author }}</span>
+            <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
           </div>
         </template>
 
         <template v-else>
           <div class="note-content">
             <span>{{ note.content }}</span>
-            <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? currentUserName : note.author }}</span>
+            <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
           </div>
         </template>
         
@@ -127,12 +127,17 @@ async function saveSticky() {
   showAddModal.value = false
 }
 
-// 获取当前用户名称
+// 修复后的当前用户名称，从 settingsStore 获取
+import { useSettingsStore } from '@/stores/settingsStore'
+const settingsStore = useSettingsStore()
+// 修复后的当前用户名称，从 chatStore 获取对应角色的“我的人设”名字
 const currentUserName = computed(() => {
   const partnerId = loveSpaceStore.currentPartnerId
-  if (!partnerId) return '我'
-  const chat = chatStore.chats[partnerId]
-  return chat?.name || '我'
+  if (partnerId && chatStore.chats[partnerId]) {
+    // 优先使用该聊天绑定的“我的人设”中的名字
+    return chatStore.chats[partnerId].userName || settingsStore.personalization?.userProfile?.name || '我'
+  }
+  return settingsStore.personalization?.userProfile?.name || '我'
 })
 
 // 20 种样式库

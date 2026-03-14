@@ -28,7 +28,7 @@
         </button>
         <div class="note-content" v-html="note.content"></div>
         <div class="note-footer">
-          <img :src="getAvatar(note.author)" class="author-avatar">
+          <span class="note-author">{{ getAuthorName(note.author) }}</span>
           <span class="note-date">{{ formatDetailedDate(note.createdAt) }}</span>
         </div>
       </div>
@@ -96,9 +96,11 @@ const colors = [
   '#e0f7fa'   // 冰川蓝
 ];
 
-function getAvatar(author) {
-  if (author === 'user') return settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg'
-  return loveSpaceStore.partner?.avatar || '/avatars/default.jpg'
+function getAuthorName(author) {
+  if (author === 'user') {
+    return settingsStore.personalization.userProfile.name || '我'
+  }
+  return loveSpaceStore.partner?.name || 'TA'
 }
 
 function formatDetailedDate(dateStr) {
@@ -113,10 +115,11 @@ async function deleteSticky(id) {
 async function saveSticky() {
   if (!newContent.value.trim()) return
 
+  const userName = settingsStore.personalization.userProfile.name || 'user'
   await loveSpaceStore.addSticky({
     content: newContent.value,
     color: selectedColor.value,
-    author: 'user',
+    author: userName,
     rotation: Math.random() * 10 - 5 // 随机旋转 -5 到 5 度
   })
 
@@ -362,19 +365,19 @@ h2 {
 .note-footer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 2px solid rgba(255, 107, 157, 0.15);
 }
 
-.author-avatar {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid white;
-  object-fit: cover;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+.note-author {
+  font-size: 12px;
+  color: #ff6b9d;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0.3px;
 }
 
 .note-date {
