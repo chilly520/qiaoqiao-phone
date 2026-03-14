@@ -8,17 +8,9 @@ import { useSettingsStore } from './settingsStore'
 import { useMusicStore } from './musicStore'
 import { useSchedulerStore } from './schedulerStore'
 import { useCallStore } from './callStore'
-import { useLoveSpaceStore } from './loveSpaceStore'
-import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from '../utils/ai/prompts'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
-import { LOVE_SPACE_CHAT_CAPABILITY_HINT } from '../utils/ai/prompts_love'
 import localforage from 'localforage'
-import { setupFinancialLogic } from './chatModules/chatFinancial'
-import { setupGroupLogic } from './chatModules/chatGroup'
-import { setupHistoryLogic } from './chatModules/chatHistory'
-import { setupProactiveLogic } from './chatModules/chatProactive'
-import { setupVoteLogic } from './chatModules/chatVote'
 
 // Configure localforage
 localforage.config({
@@ -46,7 +38,6 @@ export const useChatStore = defineStore('chat', () => {
     const currentChatId = ref(null)
     const typingStatus = ref({}) // { chatId: boolean }
     const isProfileProcessing = ref({}) // track if a specific character's archive is being analyzed
-    const pendingRequests = ref([]) // { id, type: 'group_invite'|'friend_request', fromId, fromName, fromAvatar, targetId, targetName, targetAvatar, timestamp }
     const isTyping = computed({
         get: () => !!typingStatus.value[currentChatId.value],
         set: (val) => {
@@ -66,64 +57,6 @@ export const useChatStore = defineStore('chat', () => {
     const messagePageSize = ref(50) // 每页显示50条消息
     const loadedMessageCounts = ref({}) // { chatId: 加载的消息数 }
 
-    // Sound Helpers
-    const playSound = (type) => {
-        const sounds = {
-            notification: '/sounds/wechat/notification.mp3',
-            coins: '/sounds/wechat/coins.mp3'
-        }
-        const url = sounds[type]
-        if (url) {
-            const audio = new Audio(url)
-            audio.play().catch(e => console.warn('Sound play failed:', e))
-        }
-    }
-
-    // MODULE EXTRACTS
-    const { _splitRedPacket, claimRedPacket, claimTransfer, claimGift, hasUnclaimedRP } = setupFinancialLogic(chats, addMessage, saveChats, playSound)
-
-    const _extractJsonFromText = (text) => {
-        if (!text) return null
-        const s = String(text).trim()
-        const fenceMatch = s.match(/```json\s*([\s\S]*?)```/i) || s.match(/```\s*([\s\S]*?)```/i)
-        const raw = (fenceMatch ? fenceMatch[1].trim() : s).trim()
-        const arrStart = raw.indexOf('[')
-        const arrEnd = raw.lastIndexOf(']')
-        if (arrStart !== -1 && arrEnd > arrStart) return raw.substring(arrStart, arrEnd + 1)
-        const objStart = raw.indexOf('{')
-        const objEnd = raw.lastIndexOf('}')
-        if (objStart !== -1 && objEnd > objStart) return raw.substring(objStart, objEnd + 1)
-        return null
-    }
-
-    const { _deriveGroupNoFromChatId, _ensureGroupDefaults, createGroupChat, updateGroupProfile, updateGroupSettings, updateGroupParticipants, generateGroupMembers, transferGroupOwner, setParticipantRole, setParticipantTitle, muteParticipant, exitGroup, dissolveGroup } = setupGroupLogic(chats, createChat, addMessage, saveChats, getRandomAvatar, sendMessageToAI, _extractJsonFromText)
-    const { summarizeHistory, checkAutoSummary, analyzeCharacterArchive, searchHistory, toggleSearch } = setupHistoryLogic(chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats)
-    const { startProactiveLoop, checkProactive } = setupProactiveLogic(chats, currentChatId, typingStatus, sendMessageToAI)
-    const { createVote, castVote, endVote } = setupVoteLogic(chats, addMessage, updateMessage, saveChats)
-
-    // Initialize module loops
-    startProactiveLoop()
-
-    // Auto-end votes timer
-    setInterval(() => {
-        Object.values(chats.value).forEach(chat => {
-            if (!chat.msgs) return
-            chat.msgs.forEach(msg => {
-                if (msg.type === 'vote') {
-                    try {
-                        const v = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content
-                        if (v && v.deadline && !v.isEnded && Date.now() > v.deadline) {
-                            endVote(chat.id, msg.id)
-                        }
-                    } catch (e) {
-                        // ignore malformed vote data
-                    }
-                }
-            })
-        })
-    }, 30000) // Check every 30 seconds
-
-
     // AI Control
     const abortControllers = {} // { chatId: AbortController }
     let currentAbortController = null; // Still keep for extreme backward compat if needed, but not used by main logic now
@@ -138,34 +71,6 @@ export const useChatStore = defineStore('chat', () => {
 
     function triggerToast(message, type = 'info') {
         toastEvent.value = { id: Date.now(), message, type }
-    }
-
-    // Listen for scheduled task triggers from schedulerStore
-    if (typeof window !== 'undefined') {
-        window.addEventListener('qiaoqiao_task_triggered', (e) => {
-            const task = e.detail;
-            if (task && task.chatId) {
-                console.log('[ChatStore] Proactive Task trigger:', task.chatId);
-                
-                // Format current time in the specific Chinese format requested
-                const now = new Date();
-                const timeStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-                
-                // Construct the specific prompt text requested by user
-                const promptText = `现在是${timeStr}，定时任务“${task.content}”的时间到了，快发消息${task.content}吧`;
-                
-                // 1. Add a system message so the user knows a task triggered (optional but helpful for context)
-                // addMessage(task.chatId, { role: 'system', content: `【定时提醒】${task.content}` });
-                
-                // 2. Proactively trigger AI with the hidden hint
-                sendMessageToAI(task.chatId, { 
-                    hiddenHint: promptText 
-                });
-                
-                // 3. Play notification sound
-                playSound('notification');
-            }
-        });
     }
 
     function triggerConfirm(title, message, onConfirm, onCancel = null, confirmText = '确定', cancelText = '取消') {
@@ -188,13 +93,6 @@ export const useChatStore = defineStore('chat', () => {
         if (typingStatus.value[id]) {
             typingStatus.value[id] = false
             console.log(`[ChatStore] AI Generation for ${id} stopped.`)
-
-            // Also clear pending segments if stopped by user
-            if (chats.value[id]) {
-                chats.value[id].pendingSegments = [];
-                saveChats();
-            }
-
             if (!silent) {
                 triggerToast('已中断生成', 'info')
             }
@@ -219,12 +117,7 @@ export const useChatStore = defineStore('chat', () => {
                 unreadCount: chat.unreadCount || 0,
                 lastMsg: (chat.msgs || []).slice(-1)[0] || null
             }
-        }).filter(c => {
-            // Filter out items not in chat list and dissolved groups
-            if (c.inChatList === false) return false
-            if (c.isDissolved) return false
-            return true
-        }).sort((a, b) => {
+        }).filter(c => c.inChatList !== false).sort((a, b) => {
             // Sort by Pinned First
             if (a.isPinned && !b.isPinned) return -1
             if (!a.isPinned && b.isPinned) return 1
@@ -240,36 +133,10 @@ export const useChatStore = defineStore('chat', () => {
         return Object.keys(chats.value).map(key => ({
             id: key,
             ...chats.value[key]
-        })).filter(c => {
-            // Filter out dissolved groups and items explicitly removed from chat list
-            if (c.isDissolved) return false
-            if (c.inChatList === false) return false
-            return true
-        }).sort((a, b) => {
+        })).sort((a, b) => {
             // Sort contacts alphabetically or by pinyin
             return (a.name || '').localeCompare(b.name || '', 'zh-CN')
         })
-    })
-
-    const groupNpcs = computed(() => {
-        const npcs = []
-        Object.values(chats.value).forEach(chat => {
-            if (chat.isGroup && Array.isArray(chat.participants)) {
-                chat.participants.forEach(p => {
-                    // Treat as NPC if explicitly marked, or if they are not 'user' and not a standalone character
-                    if (p.isNPC || (p.id !== 'user' && !chats.value[p.id])) {
-                        // Mark it on the object so it behaves structurally like an NPC
-                        p.isNPC = true;
-                        npcs.push({
-                            ...p,
-                            groupId: chat.id,
-                            groupName: chat.name
-                        })
-                    }
-                })
-            }
-        })
-        return npcs
     })
 
     const currentChat = computed(() => {
@@ -286,41 +153,31 @@ export const useChatStore = defineStore('chat', () => {
         }
     })
 
-    function getRandomDicebearAvatar() {
-        const styles = ['notionists', 'avataaars', 'bottts', 'adventurer', 'open-peeps']
-        const style = styles[Math.floor(Math.random() * styles.length)]
-        const seed = Math.random().toString(36).substring(7)
-        return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`
-    }
-
     // Actions
     function createChat(name, options = {}) {
         const chatId = options.id || 'c-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
 
         if (!chats.value[chatId]) {
             const newChat = {
-                ...options,
                 id: chatId,
                 name,
                 avatar: options.avatar || getRandomAvatar(),
-                userAvatar: options.userAvatar || (useSettingsStore().personalization?.userProfile?.avatar) || `https://api.dicebear.com/7.x/open-peeps/svg?seed=Me&face=smile,cute`,
-                remark: options.remark || '',
+                userAvatar: options.userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=Me`,
+                remark: '',
                 prompt: options.prompt || '你是一个友好的人。',
-                msgs: options.msgs || [],
-                isPinned: options.isPinned || false,
-                unreadCount: options.unreadCount || 0,
-                inChatList: options.inChatList !== false,
+                msgs: [],
+                isPinned: false,
+                unreadCount: 0,
+                inChatList: true,
                 tags: options.tags || [],
                 // Settings with defaults
-                activeChat: options.activeChat || false,
-                autoSummary: options.autoSummary || false,
-                autoTTS: options.autoTTS || false,
-                showInnerVoice: options.showInnerVoice !== false,
+                activeChat: false,
+                autoSummary: false,
+                autoTTS: false,
+                showInnerVoice: true,
                 // Group Chat / World Loop Extensions
                 isGroup: options.isGroup || false,
                 participants: options.participants || [],
-                groupProfile: options.groupProfile || null,
-                groupSettings: options.groupSettings || null,
                 loopId: options.loopId || null,
                 systemRole: options.systemRole || null,
                 // Bio / Profile logic
@@ -328,11 +185,9 @@ export const useChatStore = defineStore('chat', () => {
                     gender: options.gender || '未知',
                     age: options.age || '未知',
                     hobbies: [],
-                    routine: { awake: '未知', busy: '未知', deep: '未知' },
-                    ...options.bio
+                    routine: { awake: '未知', busy: '未知', deep: '未知' }
                 },
-                pendingSegments: options.pendingSegments || [],
-                lastSpeakerMeta: options.lastSpeakerMeta || null
+                ...options
             }
             chats.value[chatId] = newChat
             saveChats()
@@ -341,141 +196,9 @@ export const useChatStore = defineStore('chat', () => {
         return chats.value[chatId]
     }
 
-
-
-
-
-
-
-
-
-    function processTaskCommands(content, chatId) {
-        if (!content || typeof content !== 'string') return content;
-        // [MISSION: taskId: status]
-        const missionRegex = /\[MISSION\s*:\s*([^:]+)\s*:\s*([^\]]+)\]/gi;
-        let match;
-        const missions = [];
-        while ((match = missionRegex.exec(content)) !== null) {
-            missions.push({ id: match[1].trim(), status: match[2].trim() });
-        }
-
-        if (missions.length > 0) {
-            const settingsStore = useSettingsStore();
-            missions.forEach(m => {
-                console.log(`[AICmd] Processing Mission: ${m.id} Status: ${m.status}`);
-                // Handle mission status updates if needed
-            });
-            return content.replace(missionRegex, '').trim();
-        }
-        return content;
-    }
-
-    function processBioUpdate(content, chatId) {
-        if (!content || typeof content !== 'string') return content;
-        // [BIO: key: value]
-        const bioRegex = /\[BIO\s*:\s*([^:]+)\s*:\s*([^\]]+)\]/gi;
-        let match;
-        const updates = {};
-        while ((match = bioRegex.exec(content)) !== null) {
-            const key = match[1].trim();
-            const val = match[2].trim();
-            updates[key] = val;
-        }
-
-        if (Object.keys(updates).length > 0) {
-            const chat = chats.value[chatId];
-            if (chat) {
-                if (!chat.bio) chat.bio = {};
-                Object.entries(updates).forEach(([k, v]) => {
-                    chat.bio[k] = v;
-                });
-                saveChats();
-            }
-            return content.replace(bioRegex, '').trim();
-        }
-        return content;
-    }
-
-    function calculateMemberLevel(activity) {
-        // Simple formula: floor(sqrt(activity / 2)) + 1, max 100
-        return Math.min(100, Math.floor(Math.sqrt((activity || 0) / 2)) + 1)
-    }
-
-    function getMemberTitle(chatId, participantId) {
-        const chat = chats.value[chatId]
-        if (!chat || !chat.isGroup || !chat.groupSettings) return ''
-
-        let activity = 0
-        let customTitle = ''
-        let role = 'member'
-        if (participantId === 'user') {
-            activity = chat.groupSettings.myActivity || 0
-            customTitle = chat.groupSettings.myCustomTitle || ''
-            role = chat.groupSettings.myRole || 'member'
-        } else {
-            const p = chat.participants.find(p => p.id === participantId)
-            if (p) {
-                activity = p.activity || 0
-                customTitle = p.customTitle || ''
-                role = p.role || 'member'
-            }
-        }
-
-        const lv = calculateMemberLevel(activity)
-        let baseTitle = ''
-
-        if (role === 'owner') baseTitle = customTitle || '群主'
-        else if (role === 'admin') baseTitle = customTitle || '管理员'
-        else {
-            if (customTitle) baseTitle = customTitle
-            else {
-                const titles = chat.groupSettings.levelTitles || ['潜水', '冒泡', '吐槽', '活跃', '话痨', '传说']
-                let tierIdx = 0
-                if (lv >= 81) tierIdx = 5
-                else if (lv >= 51) tierIdx = 4
-                else if (lv >= 31) tierIdx = 3
-                else if (lv >= 16) tierIdx = 2
-                else if (lv >= 6) tierIdx = 1
-                baseTitle = titles[tierIdx]
-            }
-        }
-
-        return `LV${lv} ${baseTitle}`
-    }
-
     async function addMessage(chatId, msg) {
         const chat = chats.value[chatId]
         if (!chat) return false
-
-        // Update Activity for Group Members
-        if (chat.isGroup && chat.groupSettings) {
-            // Daily Reset Check
-            const now = new Date();
-            const todayStr = now.toDateString();
-            const lastResetStr = chat.groupSettings.lastDailyReset ? new Date(chat.groupSettings.lastDailyReset).toDateString() : '';
-
-            if (todayStr !== lastResetStr) {
-                chat.groupSettings.myDailyActivity = 0;
-                if (Array.isArray(chat.participants)) {
-                    chat.participants.forEach(p => {
-                        p.dailyActivity = 0;
-                    });
-                }
-                chat.groupSettings.lastDailyReset = now.getTime();
-            }
-
-            const sId = msg.role === 'user' ? 'user' : (msg.senderId || chatId);
-            if (sId === 'user') {
-                chat.groupSettings.myActivity = (chat.groupSettings.myActivity || 0) + 1;
-                chat.groupSettings.myDailyActivity = (chat.groupSettings.myDailyActivity || 0) + 1;
-            } else {
-                const p = chat.participants.find(p => p.id === sId);
-                if (p) {
-                    p.activity = (p.activity || 0) + 1;
-                    p.dailyActivity = (p.dailyActivity || 0) + 1;
-                }
-            }
-        }
 
         // Robust Migration: Ensure bio structure exists and is reactive
         if (!chat.bio) {
@@ -493,10 +216,7 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         // Parse special tags (Mission: Priority)
-        // Skip special processing for system messages to avoid loops
-        if (msg.systemMsg) {
-            console.log('[ChatStore] System message detected, skipping special processing');
-        } else if (msg.role === 'ai') {
+        if (msg.role === 'ai') {
             let processedContent = msg.content;
             if (typeof processedContent === 'string') {
                 processedContent = processTaskCommands(processedContent, chatId);
@@ -537,24 +257,17 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         // 1. Initialize message object
-        // Debug: Log all messages
-        console.log('[addMessage] Called with:', { chatId, msgType: msg?.type, msgRole: msg?.role, msgContent: msg?.content?.substring(0, 50) })
-        // Debug: Log gift messages
-        if (msg.type === 'gift' || (typeof msg.content === 'string' && msg.content.includes('[GIFT:'))) {
-            console.log('[addMessage] Initializing gift message:', { type: msg.type, content: msg.content, giftName: msg.giftName })
-        }
         const newMsg = {
-            id: msg.id || crypto.randomUUID(),
+            id: msg.id || ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)),
             timestamp: msg.timestamp || Date.now(),
             role: msg.role,
             type: msg.type || 'text',
             content: msg.content || '',
             // World Loop Extensions
             senderId: msg.senderId || (msg.role === 'user' ? 'user' : chatId),
-            senderName: msg.senderName || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '我') : (chat.isGroup ? (chat.participants.find(p => p.id === msg.senderId)?.name || chat.name) : chat.name)),
-            senderAvatar: msg.senderAvatar || (msg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.avatar || '') : (chat.isGroup ? (chat.participants.find(p => p.id === msg.senderId)?.avatar || chat.avatar) : chat.avatar)),
+            senderName: msg.senderName || (msg.role === 'user' ? '我' : (chat.isGroup ? (msg.senderName || chat.name) : chat.name)),
+            senderAvatar: msg.senderAvatar || (msg.role === 'user' ? '' : (chat.isGroup ? (msg.senderAvatar || chat.avatar) : chat.avatar)),
             image: msg.image || null,
-            coverImage: msg.coverImage || null,
             sticker: msg.sticker || null,
             html: msg.html || null,
             forceCard: msg.forceCard || false,
@@ -568,34 +281,8 @@ export const useChatStore = defineStore('chat', () => {
             duration: msg.duration || 0,
             quote: msg.quote || null,
             paymentId: msg.paymentId || null, // Initialize paymentId
-            hidden: msg.hidden || false, // Detection for visualizer-only messages
-            skipAI: msg.skipAI || false, // Skip AI response for this message
-            // DICE fields
-            diceResults: msg.diceResults || null,
-            diceTotal: msg.diceTotal || null,
-            diceCount: msg.diceCount || null,
-            // TAROT fields
-            tarotCards: msg.tarotCards || null,
-            tarotQuestion: msg.tarotQuestion || null,
-            tarotSpread: msg.tarotSpread || null,
-            tarotInterpretation: msg.tarotInterpretation || null,
-            // GIFT fields
-            giftId: msg.giftId || null,
-            giftName: msg.giftName || '',
-            giftQuantity: msg.giftQuantity || 1,
-            giftNote: msg.giftNote || '',
-            giftImage: msg.giftImage || '',
-            drawPrompt: msg.drawPrompt || '',
-            // ORDER SHARE fields
-            orderId: msg.orderId || null,
-            orderData: msg.orderData || null
+            hidden: msg.hidden || false // Detection for visualizer-only messages
         }
-        // Debug: Log newMsg for gift messages
-        if (newMsg.type === 'gift') {
-            console.log('[addMessage] newMsg initialized:', { id: newMsg.id, type: newMsg.type, giftName: newMsg.giftName, giftId: newMsg.giftId })
-        }
-        // Debug: Log all newMsg
-        console.log('[addMessage] newMsg created:', { id: newMsg.id, type: newMsg.type, role: newMsg.role, content: newMsg.content?.substring(0, 50) })
 
         // 1.0 STRICT CONTENT FILTER: Reject "undefined", "null", or empty content
         if (newMsg.type === 'text' && (!newMsg.content || newMsg.content === 'undefined' || newMsg.content === 'null' || newMsg.content.trim() === '')) {
@@ -608,53 +295,7 @@ export const useChatStore = defineStore('chat', () => {
             newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
         }
 
-        // 1.2 Initialize payment specific fields
-        if (newMsg.type === 'redpacket') {
-            newMsg.count = msg.count || 1
-            newMsg.remainingCount = msg.remainingCount !== undefined ? msg.remainingCount : newMsg.count
-            newMsg.claims = msg.claims || []
-            newMsg.packetType = msg.packetType || 'lucky' // 'lucky' or 'fixed'
-            newMsg.amounts = msg.amounts || []
-
-            // Critical: Initialize the distribution amounts if not present
-            if (!newMsg.amounts || newMsg.amounts.length === 0) {
-                const total = parseFloat(newMsg.amount) || 0
-                const count = parseInt(newMsg.count) || 1
-                if (newMsg.packetType === 'lucky' && count > 1) {
-                    newMsg.amounts = _splitRedPacket(total, count)
-                } else {
-                    newMsg.amounts = Array(count).fill(total)
-                }
-                console.log(`[RP_INIT] ID=${newMsg.id} Total=${total} Count=${count} Amounts=`, newMsg.amounts)
-            }
-        } else if (newMsg.type === 'transfer') {
-            newMsg.isClaimed = msg.isClaimed || false
-            newMsg.targetId = msg.targetId || null
-        } else if (newMsg.type === 'gift') {
-            newMsg.status = msg.status || 'pending'
-            newMsg.giftId = msg.giftId || null
-            newMsg.giftName = msg.giftName || ''
-            newMsg.giftQuantity = msg.giftQuantity || 1
-            newMsg.giftNote = msg.giftNote || ''
-            newMsg.giftImage = msg.giftImage || ''
-            newMsg.senderName = msg.senderName || ''
-            newMsg.claimedBy = msg.claimedBy || null
-            newMsg.claimTime = msg.claimTime || null
-        } else if (newMsg.type === 'gift_claimed') {
-            newMsg.giftId = msg.giftId || null
-            newMsg.giftName = msg.giftName || ''
-            newMsg.giftQuantity = msg.giftQuantity || 1
-            newMsg.giftNote = msg.giftNote || ''
-            newMsg.giftImage = msg.giftImage || ''
-            newMsg.originalSender = msg.originalSender || ''
-            newMsg.claimantName = msg.claimantName || ''
-            newMsg.claimantAvatar = msg.claimantAvatar || ''
-            newMsg.claimTime = msg.claimTime || null
-            newMsg.senderName = msg.senderName || ''
-            newMsg.content = msg.content || `[礼物已领取] ${msg.giftName || '礼物'}`
-        }
-
-        // 1.3 Rewrite content to canonical format [类型:金额:备注:ID] for AI context
+        // 1.2 Rewrite content to canonical format [类型:金额:备注:ID] for AI context
         if (newMsg.type === 'redpacket' && newMsg.paymentId) {
             newMsg.content = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
         } else if (newMsg.type === 'transfer' && newMsg.paymentId) {
@@ -698,70 +339,25 @@ export const useChatStore = defineStore('chat', () => {
         // 2. Type Auto-Detection (if not specified)
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
-            // First try strict full-line match
-            let tagMatch = detectionContent.match(/^[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物|CARD)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
-
-            // If no full-line match, try inline match (for embedded tags like "1![表情包：xxx]")
-            if (!tagMatch) {
-                tagMatch = detectionContent.match(/[\[【](发红包 | 红包 | 转账 | 图片 | 表情包 |DRAW|语音 | 演奏 |MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|GIFT|礼物|CARD)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
-            }
+            // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
-                const val1 = (tagMatch[2] || '').trim()
+                const val1 = tagMatch[2].trim()
                 const val2 = (tagMatch[3] || '').trim()
-                const val3 = (tagMatch[4] || '').trim()
-                const val4 = (tagMatch[5] || '').trim()
-                const val5 = (tagMatch[6] || '').trim()
 
                 if (/^(发红包|红包)$/.test(tagType)) {
                     newMsg.type = 'redpacket'
-                    const amount = parseFloat(val1) || 0
-                    const val2Num = parseInt(val2)
-
-                    if (!isNaN(val2Num) && val2Num > 0) {
-                        // Multi-param format: [红包:金额:数量:备注:类型]
-                        newMsg.amount = amount
-                        newMsg.count = val2Num
-                        newMsg.remainingCount = val2Num
-                        newMsg.note = val3 || '恭喜发财'
-
-                        // Smart default for packetType in group chats
-                        let defaultType = (chat.isGroup && val2Num > 1) ? 'lucky' : 'fixed'
-                        newMsg.packetType = (val4 === 'fixed' || val4 === '固定') ? 'fixed' :
-                            (val4 === 'lucky' || val4 === '拼手气') ? 'lucky' : defaultType
-                        // Simple format: [红包:金额:备注]
-                        newMsg.amount = amount
-
-                        let defaultCount = 1
-                        if (chat.isGroup && Array.isArray(chat.participants)) {
-                            defaultCount = Math.max(1, chat.participants.length - 1)
-                        }
-                        const finalCount = defaultCount > 10 ? 10 : defaultCount
-
-                        newMsg.count = finalCount
-                        newMsg.remainingCount = finalCount
-                        newMsg.note = val2 || '恭喜发财'
-                        newMsg.packetType = finalCount > 1 ? 'lucky' : 'fixed'
-                    }
-
+                    newMsg.amount = parseFloat(val1) || 0
+                    newMsg.note = val2 || '恭喜发财，大吉大利'
                     newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                    // Rewrite content with details for AI context
+                    // Rewrite content with ID for AI context
                     newMsg.content = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
                 } else if (tagType === '转账') {
                     newMsg.type = 'transfer'
-                    // Support both [转账:amount:note] and [转账:targetId:amount:note]
-                    const firstIsNumber = /^[0-9]/.test(val1)
-                    if (firstIsNumber) {
-                        // Format: [转账:amount:note]
-                        newMsg.amount = parseFloat(val1) || 0
-                        newMsg.note = val2 || '转账给您'
-                    } else {
-                        // Format: [转账:targetId:amount:note]
-                        newMsg.targetId = val1
-                        newMsg.amount = parseFloat(val2) || 0
-                        newMsg.note = val3 || '转账给您'
-                    }
+                    newMsg.amount = parseFloat(val1) || 0
+                    newMsg.note = val2 || '转账给您'
                     newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                     newMsg.content = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
                 } else if (tagType === '图片' || tagType === 'DRAW') {
@@ -780,137 +376,11 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.type = 'file'
                 } else if (tagType === 'LOCATION') {
                     newMsg.type = 'location'
-                } else if (tagType === 'CARD') {
-                    newMsg.type = 'card'
-                    // Keep the full content for ChatMessageItem to parse
-                    // Format: [CARD]{ "title": "xxx", "content": "xxx" }
-                } else if (tagType === 'FAMILY_CARD' || tagType === 'FAMILY_CARD_APPLY' || tagType === 'FAMILY_CARD_REJECT') {
+                } else if (tagType.includes('FAMILY_CARD')) {
                     newMsg.type = 'family_card'
-                } else if (tagType === 'GIFT' || tagType === '礼物' || tagType === 'DRAW') {
-                    if (tagType === 'GIFT' || tagType === '礼物') {
-                        newMsg.type = 'gift';
-                        newMsg.giftName = val1;
-                        newMsg.giftQuantity = parseInt(val2) || 1;
-                        newMsg.giftNote = val3 || '';
-                        newMsg.giftId = newMsg.role === 'user' ? ('GIFT-U-' + Date.now()) : ('GIFT-AI-' + Date.now());
-                        newMsg.status = 'pending';
-                        newMsg.senderName = newMsg.role === 'user' ? (useSettingsStore().personalization?.userProfile?.name || '我') : chat.name;
-                        newMsg.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png';
-                        // Check for sticker image
-                        const foundSticker = useStickerStore()?.getStickers('global')?.find(s => s.name.includes(val1));
-                        if (foundSticker) newMsg.giftImage = foundSticker.url;
-                        newMsg.content = `[礼物] ${val1}`;
-                    } else {
-                        newMsg.type = 'image';
-                    }
-                }
-            } else if (newMsg.role === 'ai') {
-                // 2.1c Robust Gift Search (anywhere in message)
-                const detectionContent = newMsg.content;
-                const giftAnywhere = detectionContent.match(/[\[【](GIFT|礼物)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i);
-                if (giftAnywhere) {
-                    newMsg.type = 'gift';
-                    newMsg.giftName = giftAnywhere[2].trim();
-                    newMsg.giftQuantity = parseInt(giftAnywhere[3]) || 1;
-                    newMsg.giftNote = giftAnywhere[4]?.trim() || '';
-                    newMsg.giftId = 'GIFT-AI-' + Date.now();
-                    newMsg.status = 'pending';
-                    newMsg.giftImage = 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png';
-                    const foundSticker = useStickerStore()?.getStickers('global')?.find(s => s.name.includes(newMsg.giftName));
-                    if (foundSticker) newMsg.giftImage = foundSticker.url;
-                    newMsg.content = `[礼物] ${newMsg.giftName}`;
-                }
-
-                // If draw is mixed in, capture it as a prompt for the gift or a separate image
-                const drawAnywhere = detectionContent.match(/[\[【]DRAW\s*[:：]\s*([^\]】]+)[\]】]/i);
-                if (drawAnywhere) {
-                    newMsg.drawPrompt = drawAnywhere[1].trim();
-                    if (!newMsg.type || newMsg.type === 'text') newMsg.type = 'image';
                 }
             } else {
-                // 2.1b Dice Roll interception (AI randomly generated by system)
-                const diceMatch = detectionContent.match(/^[\[【]摇骰子(?:[:：]\s*(\d+))?[\]】]$/i);
-                if (diceMatch) {
-                    newMsg.type = 'dice_result';
-                    newMsg.content = '[摇骰子]';
-                    let count = parseInt(diceMatch[1], 10) || 1;
-                    if (count < 1) count = 1;
-                    // Max 9 dice
-                    if (count > 9) count = 9;
-                    newMsg.diceCount = count;
-                    newMsg.diceResults = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
-                    newMsg.diceTotal = newMsg.diceResults.reduce((a, b) => a + b, 0);
-                }
-
-                // 2.2 Group Management Commands (NEW)
-                const groupCmdMatch = detectionContent.match(/^[\[【](创建群聊|设置管理员|修改头衔|修改群名|邀请成员|设置群昵称)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^:：\]】]+))?(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
-                if (groupCmdMatch) {
-                    const cmd = groupCmdMatch[1]
-                    const val1 = groupCmdMatch[2]?.trim()
-                    const val2 = groupCmdMatch[3]?.trim()
-                    const val3 = groupCmdMatch[4]?.trim()
-
-                    if (cmd === '创建群聊') {
-                        // [创建群聊:群名:头像:成员ID列表]
-                        const name = val1
-                        const avatar = val2
-                        const ids = (val3 || '').split(/[,，]/).map(i => i.trim()).filter(i => i)
-                        if (name && ids.length > 0) {
-                            const participants = ids.map(id => {
-                                const contact = chats.value[id]
-                                return {
-                                    id: id,
-                                    name: contact?.name || '未知',
-                                    avatar: contact?.avatar || getRandomAvatar(),
-                                    role: 'member'
-                                }
-                            }).filter(p => p.id !== 'user')
-
-                            const newGroup = createGroupChat({
-                                name,
-                                participants,
-                                ownerId: newMsg.senderId || 'user'
-                            })
-                            if (avatar && avatar.startsWith('http')) {
-                                updateGroupProfile(newGroup.id, { avatar })
-                            }
-                            newMsg.type = 'system'
-                            newMsg.content = `[系统] 已成功创建群聊 "${name}"`
-                            triggerToast('群聊创建成功', 'success')
-                        }
-                    } else if (cmd === '修改群名' && currentChat.value?.isGroup) {
-                        updateGroupProfile(chatId, { groupName: val1 })
-                        newMsg.type = 'system'
-                        newMsg.content = `[系统] 群名已修改为 "${val1}"`
-                        triggerToast('群名已修改', 'success')
-                    } else if (cmd === '邀请成员' && currentChat.value?.isGroup) {
-                        const ids = val1.split(/[,，]/).map(i => i.trim()).filter(i => i)
-                        const toAdd = ids.map(id => {
-                            const contact = chats.value[id]
-                            return { id, name: contact?.name || '未知', avatar: contact?.avatar || getRandomAvatar(), role: 'member' }
-                        })
-                        updateGroupParticipants(chatId, [...(currentChat.value.participants || []), ...toAdd])
-                        triggerToast('已邀请新成员', 'success')
-                        newMsg.type = 'system'
-                        newMsg.content = `[系统] 已邀请 ${toAdd.length} 名新成员`
-                    } else if (cmd === '设置管理员' && currentChat.value?.isGroup) {
-                        const targetId = val1
-                        const isSet = val2 === 'true'
-                        setParticipantRole(chatId, targetId, isSet ? 'admin' : 'member')
-                        triggerToast(isSet ? '已设为管理员' : '已取消管理员', 'info')
-                        newMsg.type = 'system'
-                        newMsg.content = `[系统] 已将角色 ${targetId} ${isSet ? '设为' : '取消'}管理员`
-                    } else if (cmd === '修改头衔' && currentChat.value?.isGroup) {
-                        const targetId = val1
-                        const title = val2
-                        setParticipantTitle(chatId, targetId, title)
-                        triggerToast('群头衔已更新', 'info')
-                        newMsg.type = 'system'
-                        newMsg.content = `[系统] 已将 ${targetId} 的头衔修改为 "${title}"`
-                    }
-                }
-
-                // 2.1 Fallback: Loose Parsing for User Inputs
+                // 2.1 Fallback: Loose Parsing for User Inputs like "[转账] 520元" or "[红包] 恭喜发财"
                 const looseMatch = detectionContent.match(/^[\[【](发红包|红包|转账)[\]】]\s*(.*)/i);
                 if (looseMatch) {
                     const tagType = looseMatch[1];
@@ -939,93 +409,85 @@ export const useChatStore = defineStore('chat', () => {
             }
         }
 
-        // 3. Robust AI Payment/Gift Handling (ID-based)
-        if (newMsg.role === 'ai' || newMsg.role === 'assistant') {
-            // Handle AI claiming by ID: [领取红包:ID], [领取转账:ID], [领取礼物:ID], [领取亲属卡:ID]
-            const claimRegex = /\[领取(红包|转账|礼物|亲属卡):([^\]]+)\]/g;
+        // 3. Robust AI Payment Handling (ID-based)
+        if (newMsg.role === 'ai') {
+            // Handle AI claiming by ID: [领取红包:PAY-xxx] or [领取转账:PAY-xxx] or [领取亲属卡:PAY-xxx]
+            const claimRegex = /\[领取(红包|转账|亲属卡):([^\]]+)\]/g;
             let claimMatch;
-            const claimedItems = [];
+            const claimedPayments = [];
             while ((claimMatch = claimRegex.exec(newMsg.content)) !== null) {
-                const itemType = claimMatch[1];
-                const itemId = claimMatch[2].trim();
-                const targetMsg = chat.msgs.find(m => m.paymentId === itemId || m.giftId === itemId || m.id === itemId);
-
-                if (targetMsg && !targetMsg.isRejected) {
-                    if (itemType === '礼物') {
-                        if (targetMsg.status === 'pending') {
-                            await claimGift(chatId, targetMsg.id, newMsg.senderId);
-                            claimedItems.push(itemType);
-                        }
-                    } else if (itemType === '转账' || itemType === '亲属卡') {
-                        if (!targetMsg.isClaimed) {
-                            targetMsg.isClaimed = true;
-                            targetMsg.claimTime = Date.now();
-                            targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
-                            claimedItems.push(itemType);
-                        }
-                    }
+                const paymentType = claimMatch[1];
+                const paymentId = claimMatch[2].trim();
+                const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
+                if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
+                    targetMsg.isClaimed = true;
+                    targetMsg.claimTime = Date.now();
+                    targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
+                    console.log(`[ChatStore] AI claimed ${paymentType} ${paymentId}`);
+                    claimedPayments.push(paymentType);
                 }
             }
 
-            // Handle AI rejecting by ID
-            const rejectRegex = /\[(拒收|退回)(红包|转账|礼物|亲属卡):([^\]]+)\]/g;
+            // Handle AI rejecting by ID: Support all variations
+            // [拒收红包], [退回红包], [拒收转账], [退回转账], [拒收亲属卡], [退回亲属卡]
+            const rejectRegex = /\[(拒收|退回)(红包|转账|亲属卡):([^\]]+)\]/g;
             let rejectMatch;
-            const rejectedItems = [];
+            const rejectedPayments = [];
             while ((rejectMatch = rejectRegex.exec(newMsg.content)) !== null) {
-                const itemType = rejectMatch[2];
-                const action = rejectMatch[1];
-                const itemId = rejectMatch[3].trim();
-                const targetMsg = chat.msgs.find(m => m.paymentId === itemId || m.giftId === itemId || m.id === itemId);
-
+                const paymentType = rejectMatch[2];
+                const paymentId = rejectMatch[3].trim(); // Note: group 3 now, not 2
+                const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
                 if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
                     targetMsg.isRejected = true;
                     targetMsg.rejectTime = Date.now();
-                    rejectedItems.push(itemType);
-                    if (itemType === '礼物') targetMsg.status = 'rejected';
+                    console.log(`[ChatStore/addMessage] AI rejected ${paymentType} ${paymentId}`);
+                    rejectedPayments.push(paymentType);
                 }
             }
 
-            // Clean operation tags and check if message should be hidden
-            const originalContent = newMsg.content;
+            // Clean operation tags from content
             newMsg.content = newMsg.content
-                .replace(/\[领取(红包|转账|礼物|亲属卡):[^\]]+\]/g, '')
-                .replace(/\[(拒收|退回)(红包|转账|礼物|亲属卡):[^\]]+\]/g, '')
+                .replace(/\[领取(红包|转账|亲属卡):[^\]]+\]/g, '')
+                .replace(/\[(拒收|退回)(红包|转账|亲属卡):[^\]]+\]/g, '')
                 .trim();
 
-            if (!newMsg.content && (claimedItems.length > 0 || rejectedItems.length > 0)) {
-                newMsg.hidden = true;
-            }
+            if (!newMsg.content && (claimMatch || rejectMatch)) return saveChats(); // Pure operation
 
-            // Add system messages
-            if (claimedItems.length > 0 || rejectedItems.length > 0) {
+            // Add system messages for claims/rejects (AFTER AI's message is added)
+            if (claimedPayments.length > 0 || rejectedPayments.length > 0) {
+                // We'll add these after pushing newMsg
                 newMsg._pendingSystemMessages = [];
-                claimedItems.forEach(type => {
-                    if (type !== '礼物') { // Gift system msg is added by claimGift
-                        newMsg._pendingSystemMessages.push({
-                            id: crypto.randomUUID(), role: 'system', type: 'text',
-                            content: `${chat.name}领取了${chat.userName || '你'}的${type}`,
-                            timestamp: Date.now() + 50
-                        });
-                    }
+                claimedPayments.forEach(type => {
+                    newMsg._pendingSystemMessages.push({
+                        id: crypto.randomUUID(),
+                        role: 'system',
+                        type: 'text',
+                        content: `${chat.name}领取了${chat.userName || '你'}的${type}`,
+                        timestamp: Date.now() + 50
+                    });
+                    // For family cards, add additional notification about activation
                     if (type === '亲属卡') {
                         newMsg._pendingSystemMessages.push({
-                            id: crypto.randomUUID(), role: 'system', type: 'text',
+                            id: crypto.randomUUID(),
+                            role: 'system',
+                            type: 'text',
                             content: `${chat.name}领取的亲属卡已生效`,
                             timestamp: Date.now() + 150
                         });
                     }
                 });
-                rejectedItems.forEach(type => {
-                    const actionName = rejectedItems[0] === '退回' ? '退回' : '拒收';
+                rejectedPayments.forEach(type => {
                     newMsg._pendingSystemMessages.push({
-                        id: crypto.randomUUID(), role: 'system', type: 'text',
-                        content: `${chat.name}已${actionName}了${chat.userName || '你'}的${type}`,
-                        timestamp: Date.now() + 50
+                        id: crypto.randomUUID(),
+                        role: 'system',
+                        type: 'text',
+                        content: `${chat.name}拒收了${chat.userName || '你'}的${type}`,
+                        timestamp: Date.now() + 100
                     });
                 });
             }
-        }
 
+        }
 
         // 3.1 BIO (Personal Archive) Updates - Runs for both User and AI
         if (newMsg.content.includes('[UPDATE_BIO:') || newMsg.content.includes('[BIO:')) {
@@ -1134,12 +596,12 @@ export const useChatStore = defineStore('chat', () => {
 
 
         // 3.2 Moment Share Parsing (AI Only)
-        if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE') || newMsg.content.includes('[分享朋友圈'))) {
-            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈)(?::\s*([\s\S]*?))?\]/i;
+        if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
+            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]*?)\]/i;
             const match = newMsg.content.match(shareRegex);
 
             if (match) {
-                let shareContent = (match[1] || '').trim();
+                let shareContent = match[1].trim();
                 let momentData = null;
 
                 try {
@@ -1159,7 +621,7 @@ export const useChatStore = defineStore('chat', () => {
                     // Improving UX: logic to fetch image if possible? 
                     momentData = {
                         id: crypto.randomUUID(), // Stub ID
-                        text: shareContent || '分享了一条朋友圈',
+                        text: shareContent,
                         author: chat.name,
                         image: chat.avatar // Fallback image
                     };
@@ -1169,12 +631,6 @@ export const useChatStore = defineStore('chat', () => {
                 if (!momentData.id) momentData.id = crypto.randomUUID();
                 if (!momentData.author) momentData.author = chat.name;
                 if (!momentData.avatar) momentData.avatar = chat.avatar;
-
-                // Save original text content for display
-                const originalText = newMsg.content.replace(shareRegex, '').trim();
-                if (originalText) {
-                    momentData.originalText = originalText;
-                }
 
                 // Convert to Card Message
                 newMsg.type = 'moment_card';
@@ -1203,85 +659,6 @@ export const useChatStore = defineStore('chat', () => {
                         });
                         triggerToast(`收到来自 ${targetName} 的私聊消息`, 'info');
                     }, 1500);
-                }
-            }
-
-            // 3.3 Group Command Parsing (AI or User with tags)
-            if (typeof newMsg.content === 'string' && (newMsg.content.includes('[创建群聊') || newMsg.content.includes('[CREATE_GROUP'))) {
-                const createGroupRegex = /\[(?:创建群聊|CREATE_GROUP)\s*[:：]\s*([^:：\]]+)\s*[:：]\s*([^:：\]]*)\s*[:：]?\s*([^\]]*?)\]/gi;
-                let cgMatch;
-                while ((cgMatch = createGroupRegex.exec(newMsg.content)) !== null) {
-                    const groupName = cgMatch[1].trim();
-                    const groupAvatar = cgMatch[2].trim();
-                    const membersStr = cgMatch[3] || '';
-
-                    // Parse members
-                    const memberNames = membersStr.split(/[，,]+/).map(s => s.trim()).filter(s => s);
-                    const participants = [];
-
-                    // Add the creator
-                    participants.push({
-                        id: 'me',
-                        name: settingsStore.personalization?.userProfile?.name || '我',
-                        role: 'owner',
-                        nickname: settingsStore.personalization?.userProfile?.name || '我'
-                    });
-
-                    if (newMsg.role === 'ai') {
-                        participants.push({
-                            id: chat.id,
-                            name: chat.name,
-                            role: 'admin',
-                            nickname: chat.name
-                        });
-                    }
-
-                    memberNames.forEach(name => {
-                        const found = Object.values(chats.value).find(c => c.name === name);
-                        if (found && found.id !== chat.id) {
-                            participants.push({
-                                id: found.id,
-                                name: found.name,
-                                role: 'member',
-                                nickname: found.name
-                            });
-                        }
-                    });
-
-                    // Execute creation
-                    const newChat = createGroupChat(groupName, participants);
-                    if (groupAvatar) {
-                        updateGroupProfile(newChat.id, { avatar: groupAvatar });
-                    }
-                    addMessage(newChat.id, {
-                        role: 'system',
-                        content: `${newMsg.role === 'ai' ? chat.name : '你'} 创建了群聊`,
-                        type: 'system'
-                    });
-                }
-            }
-
-            // 3.4 Group Management Commands (AI Only, must be in a group chat)
-            if (newMsg.role === 'ai' && chat.isGroup) {
-                const setAdminRegex = /\[(?:设置管理员|SET_ADMIN)\s*[:：]\s*([^\]]+)\]/gi;
-                let adminMatch;
-                while ((adminMatch = setAdminRegex.exec(newMsg.content)) !== null) {
-                    const targetName = adminMatch[1].trim();
-                    const target = chat.participants.find(p => p.name === targetName || p.nickname === targetName);
-                    if (target) {
-                        setParticipantRole(chat.id, target.id, 'admin');
-                    }
-                }
-
-                const setTitleRegex = /\[(?:设置头衔|SET_TITLE)\s*[:：]\s*([^:：\]]+)\s*[:：]\s*([^\]]+)\]/gi;
-                let titleMatch;
-                while ((titleMatch = setTitleRegex.exec(newMsg.content)) !== null) {
-                    const targetName = titleMatch[1].trim();
-                    const newTitle = titleMatch[2].trim();
-                    const target = chat.participants.find(p => p.name === targetName || p.nickname === targetName);
-                    if (target) {
-                        setParticipantTitle(chat.id, target.id, newTitle);
-                    }
                 }
             }
 
@@ -1323,7 +700,6 @@ export const useChatStore = defineStore('chat', () => {
                 }, 3000);
             }
         }
-
 
         // [MOVED UP] 7. Call Logic (Control & Content Interception)
         // Must be done BEFORE adding to chat history to prevent pollution
@@ -1434,21 +810,6 @@ export const useChatStore = defineStore('chat', () => {
                 callStore.endCall()
             }
 
-            // --- Love Space Instruction Integration ---
-            if (content.includes('[LS_JSON:')) {
-                try {
-                    const { useLoveSpaceStore } = await import('./loveSpaceStore')
-                    const loveSpaceStore = useLoveSpaceStore()
-                    // 确保处于对应角色的空间
-                    if (loveSpaceStore.currentPartnerId !== chat.id) {
-                        await loveSpaceStore.selectSpace(chat.id)
-                    }
-                    await loveSpaceStore.executeSpaceCommands(content, chat.name, null)
-                } catch (e) {
-                    console.error('[ChatStore] LoveSpace command execution failed:', e)
-                }
-            }
-
             // Priority 2: Check for Call Protocol Block (Strict or Fuzzy)
             const hasJsonLike = content.includes('{') && (content.includes('"speech"') || content.includes('"status"') || content.includes('"action"') || content.includes('"行为"') || content.includes('"心声"'));
 
@@ -1457,7 +818,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Ensure we are in active state if we receive protocol data
                 // This allows auto-accepting when AI starts talking during dialing
-                if (callStore.status === 'dialing') {
+                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
                     console.log('[ChatStore] Auto-accepting established call due to protocol data');
                     callStore.acceptCall();
                 }
@@ -1502,94 +863,45 @@ export const useChatStore = defineStore('chat', () => {
             // FIX: Do NOT hide normal text messages even if call is active. Only hide Protocol.
             // This prevents "Missing Message" bugs if call state desyncs.
             if (isCallActive && content && !content.includes('[CALL_START]')) {
-                // Tag stripping patterns for checking if bubble will be empty
-                const protocolTags = [
-                    /\{[\s\S]*?("speech"|"status"|"action"|"转发"|"心声"|"行为")[\s\S]*?\}/gi,
-                    /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
-                    /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
-                    /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
-                    /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
-                    /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
-                    /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
-                    /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
-                    /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
-                ];
-
-                let displayTest = content;
-                let isEmptyDisplay = false;
-                try {
-                    protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
-                    isEmptyDisplay = displayTest.trim().length === 0;
-                } catch (e) {
-                    console.error('[ChatStore] Error processing display test:', e);
-                    isEmptyDisplay = true;
-                }
-
                 // EXCLUSION: Don't add if it's strictly a protocol tag that got through display test
                 if (!isEmptyDisplay) {
                     const cleanText = displayTest;
-                    // For calls, ensure we don't have redundant name prefixes inside the bubble content 
-                    // if it was already split or hallucinated by AI
-                    const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'i');
-                    const finalCleanText = cleanText.replace(nameRegex, '').trim();
-
-                    if (finalCleanText) {
-                        // DISABLED: No longer adding split segments to call transcript to support 'Large Bubble' mode
-                        // callStore.addTranscriptLine('ai', finalCleanText);
-                    }
+                    callStore.addTranscriptLine('ai', cleanText);
                 }
             }
 
             // --- Final context & Hiding Check ---
             // Tag stripping patterns for checking if bubble will be empty
-            let displayTest = content;
-            let isEmptyDisplay = false;
             const protocolTags = [
-                /\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi,
+                /\{[\s\S]*?("speech"|"status"|"action"|"转发"|"心声"|"行为")[\s\S]*?\}/gi,
                 /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
                 /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
                 /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
                 /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
-                /\[一起听歌:[^\]]+\]|\[停止听歌\]|\[MUSIC:[^\]]+\]|\[演奏:[^\]]+\]|<bgm>[\s\S]*?<\/bgm>/gi,
-                /\[领取(?:红包|转账|礼物|亲属卡):[^\]]+\]/gi,
-                /\[(?:拒收|退回)(?:红包|转账|礼物|亲属卡):[^\]]+\]/gi,
-                /\[GIFT:[^\]]+\]/gi,
-                /\[(?:礼物|礼物卡片):[^\]]+\]/gi,
-                /\[DRAW:[^\]]+\]/gi,
+                /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
+                /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
                 /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
-                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi,
-                /\[LS_JSON:[\s\S]*?\]/gi,
-                /\[LOVESPACE_INVITE:[^\]]+\]/gi,
-                /\[LOVESPACE_CONTRACT:[^\]]+\]/gi,
-                /\[LOVESPACE_REJECT:[^\]]+\]/gi
-                // Note: CARD tag is NOT in protocolTags to preserve [CARD]{...} format for frontend parsing
+                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
             ];
-            try {
-                protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
-                isEmptyDisplay = displayTest.trim().length === 0;
-            } catch (e) {
-                console.error('[ChatStore] Error processing final display test:', e);
-                isEmptyDisplay = true;
-            }
 
-            // Don't hide special display types - they are rendered as cards even if text content is stripped
-            const persistentTypes = ['gift', 'gift_claimed', 'sticker', 'image', 'voice', 'music', 'redpacket', 'transfer', 'family_card', 'moment_card', 'dice_result', 'tarot_card', 'html', 'vote', 'card'];
-            if (isEmptyDisplay && content.trim().length > 0 && !persistentTypes.includes(newMsg.type) && !content.includes('[GIFT:') && !content.includes('[LOVESPACE_INVITE:') && !content.includes('[LOVESPACE_CONTRACT:') && !content.includes('[LOVESPACE_REJECT:') && !content.includes('[CARD]')) {
+            let displayTest = content;
+            protocolTags.forEach(p => { displayTest = displayTest.replace(p, ''); });
+            const isEmptyDisplay = displayTest.trim().length === 0;
+
+            if (isEmptyDisplay && content.trim().length > 0) {
                 // If it's ONLY tags, hide it from the UI but PRESERVE the content for AI context
                 newMsg.hidden = true;
             } else if (!newMsg.hidden && typeof newMsg.content === 'string') {
-                // If it HAS text, clean strictly internal blocks (like Inner Voice)
-                // BUT: DO NOT strip card tags or protocol tags that ChatMessageItem needs (like LS_JSON, CONTRACT)
-                const stripRegex = /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]|\[LS_JSON:[\s\S]*?\]|\[TIMESTAMP:[^\]]+\]/gi;
-                newMsg.content = newMsg.content.replace(stripRegex, '').trim();
+                // If it HAS text, clean ONLY known strictly internal protocol tags for the bubble display
+                // We keep JSON-like content if it might be an HTML card, as ChatMessageItem will clean it during render
+                const strictlyInternalTags = protocolTags.filter(p => !p.source?.includes('html') && !p.source?.includes('speech'));
+                strictlyInternalTags.forEach(p => { newMsg.content = newMsg.content.replace(p, ''); });
+                newMsg.content = newMsg.content.trim();
             }
         }
 
-
-
-        // 10. Final filter (Reject truly empty messages, except for special types)
-        if ((!newMsg.content || newMsg.content.length === 0) && newMsg.type === 'text') {
+        // Filter out empty messages
+        if (!newMsg.content || newMsg.content.length === 0) {
             return null;
         }
 
@@ -1605,166 +917,14 @@ export const useChatStore = defineStore('chat', () => {
             }
         }
 
-        // Handle special message types based on content (Financial & Gift Commands)
-        if (newMsg.role === 'user' && typeof newMsg.content === 'string') {
-            const content = newMsg.content.trim();
-
-            // 1. Red Packet
-            const rpMatch = content.match(/^\[红包\s*[:：]\s*(lucky|fixed|手气|固定)?\s*[:：]?\s*([0-9.]+)\s*[:：]\s*(\d+)\s*[:：]?\s*(.*?)\]$/i);
-            if (rpMatch) {
-                const typeRaw = (rpMatch[1] || 'lucky').toLowerCase();
-                const isLucky = typeRaw.includes('lucky') || typeRaw.includes('手气');
-                const amount = parseFloat(rpMatch[2]) || 1.0;
-                const count = parseInt(rpMatch[3]) || 1;
-                const note = rpMatch[4] || '恭喜发财，大吉大利';
-
-                const walletStore = useWalletStore();
-                if (walletStore.decreaseBalance(amount, `发送红包: ${note}`)) {
-                    newMsg.type = 'redpacket';
-                    newMsg.amount = amount;
-                    newMsg.note = note;
-                    newMsg.packetType = isLucky ? 'lucky' : 'fixed';
-                    newMsg.totalAmount = amount;
-                    newMsg.count = count;
-                    newMsg.remainingCount = count;
-                    newMsg.claims = [];
-                    newMsg.amounts = isLucky ? _splitRedPacket(amount, count) : Array(count).fill(Math.floor((amount / count) * 100) / 100);
-                } else {
-                    triggerToast('余额不足，无法发送红包', 'error');
-                    return false;
-                }
-            }
-            // 2. Transfer
-            const tfMatch = content.match(/^\[(转账|TRANSFER)\s*[:：]\s*([^:：\s\]]+)\s*[:：]\s*([0-9.]+)\s*[:：]?\s*(.*?)\]$/i);
-            if (tfMatch) {
-                const targetId = tfMatch[2].trim();
-                const amount = parseFloat(tfMatch[3]) || 0.01;
-                const note = tfMatch[4] || '转账给您';
-
-                const walletStore = useWalletStore();
-                if (walletStore.decreaseBalance(amount, `转账: ${note}`)) {
-                    newMsg.type = 'transfer';
-                    newMsg.targetId = targetId;
-                    newMsg.amount = amount;
-                    newMsg.note = note;
-                    newMsg.isClaimed = false;
-                } else {
-                    triggerToast('余额不足，无法转账', 'error');
-                    return false;
-                }
-            }
-
-        }
-
-
-
-        // --- AI/ASSISTANT COMMANDS HANDLING ---
-        if ((newMsg.role === 'assistant' || newMsg.role === 'ai') && typeof newMsg.content === 'string') {
-            const content = newMsg.content.trim();
-
-            // 2. [演奏:乐器:乐谱] or [MUSIC:...]
-            const musicMatch = content.match(/\[(?:演奏|MUSIC)\s*[:：]\s*([^\]]+)\]/i);
-            if (musicMatch) {
-                newMsg.type = 'music';
-                // We keep the bracketed content for ChatWindow side-effect watchers (e.g. music player)
-                // ChatMessageItem handles the display of the music card.
-            }
-
-            // 3. [领取/拒收/退回] operations
-            const claimMatch = content.match(/\[领取礼物\s*[:：]\s*([^\]]+)\]/);
-            if (claimMatch) {
-                const targetId = claimMatch[1].trim();
-                console.log('[领取礼物] 尝试查找 ID:', targetId);
-                const targetMsg = chat.msgs.find(m => {
-                    const match = m.giftId === targetId || m.id === targetId;
-                    if (m.type === 'gift') {
-                        console.log('[礼物消息]', { id: m.id, giftId: m.giftId, match });
-                    }
-                    return match;
-                });
-                console.log('[领取礼物] 查找结果:', targetMsg ? '找到' : '未找到');
-                if (targetMsg && targetMsg.status === 'pending') {
-                    console.log('[领取礼物] 执行领取，senderId:', newMsg.senderId);
-                    await claimGift(chatId, targetMsg.id, newMsg.senderId);
-                }
-            }
-
-            const rpClaim = content.match(/\[领取红包\s*[:：]\s*([^\]]+)\]/);
-            if (rpClaim) {
-                console.log('[ChatStore] AI claiming red packet:', rpClaim[1]);
-                playSound('coins');
-                claimRedPacket(chatId, rpClaim[1].trim(), newMsg.senderId);
-            }
-
-            const tfClaim = content.match(/\[领取转账\s*[:：]\s*([^\]]+)\]/);
-            if (tfClaim) {
-                console.log('[ChatStore] AI claiming transfer:', tfClaim[1]);
-                playSound('coins');
-                claimTransfer(chatId, tfClaim[1].trim(), newMsg.senderId);
-            }
-
-            // 4. [撤回:消息ID] operation
-            const recallMatch = content.match(/\[撤回\s*[:：]\s*([^\]]+)\]/);
-            if (recallMatch) {
-                const targetId = recallMatch[1].trim();
-                console.log('[撤回消息] 尝试撤回 ID:', targetId);
-                const targetMsg = chat.msgs.find(m => m.id === targetId);
-                if (targetMsg) {
-                    // 检查是否是AI自己发送的消息
-                    if (targetMsg.role === 'ai' || targetMsg.role === 'assistant') {
-                        deleteMessage(chatId, targetId);
-                        console.log('[撤回消息] 成功撤回 ID:', targetId);
-                    } else {
-                        console.log('[撤回消息] 无法撤回非AI发送的消息:', targetId);
-                    }
-                } else {
-                    console.log('[撤回消息] 未找到消息 ID:', targetId);
-                }
-            }
-
-            // 5. [NUDGE:动作描述] operation
-            const nudgeMatch = content.match(/\[NUDGE\s*[:：]\s*([^\]]+)\]/);
-            if (nudgeMatch) {
-                const action = nudgeMatch[1].trim();
-                console.log('[拍一拍] 执行动作:', action);
-                // 触发拍一拍效果
-                triggerPatEffect(chatId, 'user');
-                // 添加系统消息
-                chatStore.addMessage(chatId, {
-                    role: 'system',
-                    content: `"${chat.name}" ${action}`
-                });
-            }
-            // 6. [拒收/退回] operations
-            const rejectMatch = content.match(/\[(拒收|退回)(红包|转账)\s*[:：]\s*([^\]]+)\]/);
-            if (rejectMatch) {
-                console.log('[ChatStore] AI rejecting/returning message:', rejectMatch[3]);
-                playSound('notification');
-                // The actual logic for rejection is usually handled via status updates in the UI or store, 
-                // but playing the sound here provides immediate feedback.
-            }
-
-            // 7. [定时:...] / 【定时：...】 operation is now handled robustly at the end of streaming
-            // to ensure it doesn't get missed due to regex overlaps or stripping.
-        }
-
-
         // 4. Persistence
         if (!chat.msgs) chat.msgs = []
-        // Debug: Log gift messages
-        if (newMsg.type === 'gift') {
-            console.log('[addMessage] Adding gift message to chat.msgs:', { id: newMsg.id, type: newMsg.type, giftName: newMsg.giftName, content: newMsg.content, chatMsgsLength: chat.msgs.length })
-        }
         chat.msgs.push(newMsg)
-        // Debug: Log after push
-        if (newMsg.type === 'gift') {
-            console.log('[addMessage] Gift message added, new chat.msgs length:', chat.msgs.length)
-        }
 
-        // 4.1 Insert pending system messages
+        // 4.1 Insert pending system messages (if any)
         if (newMsg._pendingSystemMessages && newMsg._pendingSystemMessages.length > 0) {
             chat.msgs.push(...newMsg._pendingSystemMessages)
-            delete newMsg._pendingSystemMessages
+            delete newMsg._pendingSystemMessages // Clean up
         }
 
         if (!chat.inChatList) chat.inChatList = true
@@ -1772,75 +932,140 @@ export const useChatStore = defineStore('chat', () => {
             chat.unreadCount = (chat.unreadCount || 0) + 1
         }
 
+        // Trigger Global Notification (Only for AI or other users, not self)
         if (newMsg.role !== 'user') {
             const contentStr = String(newMsg.content || '');
             const isToxic = contentStr.includes('display:') || contentStr.includes('border-radius') || contentStr.trim().startsWith('{');
-            if (!isToxic && contentStr.trim().length > 0) {
-                // Play notification sound only for red packets and transfers
-                if (newMsg.type === 'redpacket' || newMsg.type === 'transfer') {
-                    console.log('[ChatStore] Playing notification sound for financial message');
-                    playSound('notification');
-                }
 
+            if (!isToxic && contentStr.trim().length > 0) {
+                // App internal notification event
                 notificationEvent.value = {
                     id: Date.now(),
                     chatId: chatId,
                     name: chat.name,
                     avatar: chat.avatar,
-                    content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'gift' ? '[礼物]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]'))),
+                    content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
                     timestamp: Date.now()
                 }
             }
         }
 
-        // Auto-generate system messages
-        const msgContent = typeof newMsg.content === 'string' ? newMsg.content : ''
+
+        // Auto-generate system messages for family cards
+        content = typeof newMsg.content === 'string' ? newMsg.content : ''
         const userName = chat.userName || '用户'
         const charName = chat.name || '对方'
 
-        if (msgContent.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
-            setTimeout(() => addMessage(chatId, { role: 'system', content: `${userName}正在向${charName}申请绑定亲属卡` }), 100)
+        if (content.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
+            setTimeout(() => {
+                addMessage(chatId, { role: 'system', content: `${userName}正在向${charName}申请绑定亲属卡` })
+            }, 100)
         }
-        if (msgContent.includes('[FAMILY_CARD:') && !msgContent.includes('APPLY') && !msgContent.includes('REJECT') && newMsg.role === 'ai') {
-            const match = msgContent.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
-            setTimeout(() => addMessage(chatId, { role: 'system', content: `${charName}向您发送了亲属卡「${match ? match[2] : '亲属卡'}」，点击领取` }), 100)
+
+        if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
+            const match = content.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
+            const cardName = match ? match[2] : '亲属卡'
+            setTimeout(() => {
+                addMessage(chatId, { role: 'system', content: `${charName}向您发送了亲属卡「${cardName}」，点击领取` })
+            }, 100)
         }
-        if (msgContent.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
-            setTimeout(() => addMessage(chatId, { role: 'system', content: `${charName}已拒绝${userName}的亲属卡申请` }), 100)
+
+        if (content.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
+            setTimeout(() => {
+                addMessage(chatId, { role: 'system', content: `${charName}已拒绝${userName}的亲属卡申请` })
+            }, 100)
         }
+
 
         checkAutoSummary(chatId)
-
-        // REACIVITY FIX: Replace the whole object to trigger computed updates (displayedMsgs, currentChat etc.)
-        chats.value[chatId] = { ...chat };
-
-        // 5. Gift Image Async Generation
-        if (newMsg.type === 'gift' && newMsg.role === 'ai') {
-            const rawContent = typeof msg.content === 'string' ? msg.content : '';
-            const drawPrompt = newMsg.drawPrompt || rawContent.match(/[\[【]DRAW\s*[:：]\s*([^\]】]+)[\]】]/i)?.[1]?.trim();
-            if (drawPrompt) {
-                (async () => {
-                    try {
-                        console.log('[ChatStore] Generating custom gift image for:', drawPrompt);
-                        const imageUrl = await generateImage(drawPrompt);
-                        if (imageUrl) {
-                            updateMessage(chatId, newMsg.id, { giftImage: imageUrl });
-                        }
-                    } catch (e) {
-                        console.error('[ChatStore] Gift image generation failed:', e);
-                    }
-                })();
-            }
-        }
-
         saveChats()
         return newMsg
     }
 
+    async function analyzeCharacterArchive(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat) return;
 
+        const settingsStore = useSettingsStore();
+        const userProfile = settingsStore.personalization.userProfile;
 
+        // No toast or system message here as requested by user - let the UI spinner handle it
+        typingStatus.value[chatId] = true;
+        isProfileProcessing.value[chatId] = true;
 
-    async function updateCharacter(chatId, updates) {
+        try {
+            // Source Data Collection - As requested by user
+            const charPrompt = chat.prompt || '暂无详细设定';
+            const userPersona = chat.userPersona || userProfile.persona || '无';
+            const userContext = `姓名：${userProfile.name} | 性别：${userProfile.gender || '未知'} | 个性：${userProfile.signature || ''} | 针对性设定：${userPersona}`;
+
+            // Full Memory Bank (Latest Summary + Historical Summaries)
+            const latestSummary = chat.summary || '';
+            const historicalMemories = (chat.memory || []).join('\n');
+            const fullMemoryLibrary = [latestSummary, historicalMemories].filter(s => s.trim()).join('\n\n') || '尚未建立持久记忆';
+
+            // Custom Context Limit from Chat Settings
+            const contextLimit = parseInt(chat.contextLimit) || 30;
+            const contextMsgs = chat.msgs.slice(-contextLimit)
+                .filter(m => m.role !== 'system')
+                .map(m => `${m.role === 'user' ? userProfile.name : chat.name}: ${m.content}`)
+                .join('\n');
+
+            const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称“我”的视角补齐你自己的「灵魂档案」(Personal Profile)。
+档案内容必须完全符合你的性格、语气和对 ${userProfile.name} 的情感底色。不要以分析师的口吻说话。
+
+【输出规范】
+你必须且只能使用 [BIO:键:值] 格式输出以下字段，不要输出任何开场白或解释。
+禁止任何 HTML/CSS 标签。严禁使用占位符，必须替换为具体的描述。
+
+请生成并整理以下信息：
+1. **基础规格**：
+   [BIO:性别:值] [BIO:年龄:值] [BIO:生日:值] [BIO:星座:值] 
+   [BIO:人格:4位字母MBTI代码] [BIO:身高:值] [BIO:体重:值] [BIO:身材:描述] 
+   [BIO:职业:描述] [BIO:婚姻:描述(如: 独身主义、暗恋中等)] 
+
+2. **私人感官**：
+   [BIO:个性签名:最符合你气质的一句话(20字内)]
+   [BIO:气味:你的体味或常用香水描述] [BIO:风格:穿搭或行事风格] 
+   [BIO:理想型:你喜欢的类型描述] [BIO:心动时刻:曾让你心跳加速的瞬间或场景] 
+
+3. **兴趣与特质**：
+   [BIO:爱好:爱好1, 爱好2, 爱好3] 
+   [BIO:特质:性格标签1, 标签2, 标签3] 
+
+4. **生活节律**：
+   [BIO:Routine_awake:早上起床后的状态或第一件事] 
+   [BIO:Routine_busy:忙碌工作/学习时的样子] 
+   [BIO:Routine_deep:深夜独处时的思绪或习惯] 
+
+5. **灵魂羁绊 (Soul Ties)**：
+   [BIO:SoulBond_实际标签:你与 ${userProfile.name} 的深层情感纽带简述] 
+
+6. **爱之物 (Items of Love)**：
+   [BIO:LoveItem_1_物品名:英文生图Prompt (描述该物品，包含意境、质感、电影级光影)] 
+   [BIO:LoveItem_2_物品名:英文生图Prompt] 
+   [BIO:LoveItem_3_物品名:英文生图Prompt]
+
+【源数据库】
+1. 角色设定 (${chat.name}): ${charPrompt}
+2. 用户背景 (${userProfile.name}): ${userContext}
+3. 记忆库摘要: ${fullMemoryLibrary}
+4. 对话片段 (参考语气): \n${contextMsgs}`;
+
+            const response = await generateReply([{ role: 'system', content: systemInstructions }], chat);
+            if (response && response.content) {
+                addMessage(chatId, { role: 'ai', content: response.content });
+            }
+            triggerToast('个人档案更新成功', 'success');
+        } catch (e) {
+            console.error('Bio analysis failed:', e);
+            triggerToast('解析失败，请检查网络', 'error');
+        } finally {
+            typingStatus.value[chatId] = false;
+            isProfileProcessing.value[chatId] = false;
+        }
+    }
+    function updateCharacter(chatId, updates) {
         const chat = chats.value[chatId]
         if (!chat) return false
 
@@ -1856,7 +1081,7 @@ export const useChatStore = defineStore('chat', () => {
             checkAutoSummary(chatId)
         }
 
-        await saveChats()
+        saveChats()
         return true
     }
 
@@ -1871,12 +1096,345 @@ export const useChatStore = defineStore('chat', () => {
         return stats.totalContext
     }
 
+    // Auto Summary Logic
+    // Auto Summary Logic
+    function checkAutoSummary(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat || !chat.autoSummary) return
 
+        // Prevent concurrent execution (Fix Double Toast)
+        if (chat.isSummarizing) return
+
+        const msgs = chat.msgs || []
+        const summaryLimit = parseInt(chat.summaryLimit) || 50
+
+        // Use lastSummaryCount (total messages at last summary) for better diff
+        let lastCount = chat.lastSummaryCount || 0
+
+        // PROACTIVE FIX: If lastCount exceeds current msgs length (e.g. deletion occurred), we must clamp it to avoid negative backlog
+        // This ensures the counter resets to current length, so new messages immediately start accumulating towards limit
+        if (lastCount > msgs.length) {
+            console.log('[AutoSummary] Clamping lastCount (deletion detected)', lastCount, '->', msgs.length)
+            chat.lastSummaryCount = msgs.length
+            chat.lastSummaryIndex = Math.min(chat.lastSummaryIndex || 0, msgs.length)
+            lastCount = msgs.length
+            // Don't saveChats() here to avoid I/O loop, it will save when summary triggers or next message adds
+        }
+
+        const backlog = msgs.length - lastCount
+
+        // Check if new messages (since last summary) exceed limit
+        if (backlog >= summaryLimit) {
+            console.log(`[AutoSummary] Triggered for ${chat.name}. New msgs (backlog): ${backlog}, Limit: ${summaryLimit}`)
+            useLoggerStore().info(`触发自动总结: ${chat.name}`, { backlog, limit: summaryLimit })
+            summarizeHistory(chatId, { silent: true })
+        }
+    }
+
+    async function summarizeHistory(chatId, options = {}) {
+        const chat = chats.value[chatId]
+        if (!chat) return { success: false, error: 'Chat not found' }
+
+        // Double check lock
+        if (chat.isSummarizing) return { success: false, error: 'Summarization already in progress' }
+        chat.isSummarizing = true
+
+        if (!options.silent) {
+            triggerToast('正在分析上下文...', 'info')
+        }
+
+        // Determine range
+        let targetMsgs = []
+        let rangeDesc = ''
+        let nextIndex = chat.lastSummaryIndex || 0
+
+        try {
+            if (options.startIndex !== undefined && options.endIndex !== undefined) {
+                // Manual Range
+                if (options.startIndex < 0) options.startIndex = 0
+                if (options.endIndex > chat.msgs.length) options.endIndex = chat.msgs.length
+
+                targetMsgs = chat.msgs.slice(options.startIndex, options.endIndex)
+                rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
+                // We don't advance auto index for manual summary
+            } else {
+                // Auto Mode: Chunked Catch-Up
+                const lastIndex = chat.lastSummaryIndex || 0
+                const currentTotal = chat.msgs.length
+
+                // FIX: Reset index if it exceeds current message count (Corruption/Truncation recovery)
+                if (lastIndex > currentTotal) {
+                    console.warn(`[Summarize] Index mismatch detected (Index: ${lastIndex}, Total: ${currentTotal}). Resetting to 0.`);
+                    chat.lastSummaryIndex = 0;
+                    // Recursive retry with fresh state
+                    return summarizeHistory(chatId, options);
+                }
+                const summaryLimit = parseInt(chat.summaryLimit) || 50
+                const backlog = currentTotal - lastIndex
+
+
+                // Process up to summaryLimit messages at a time
+                let endIndex = currentTotal
+                if (backlog > summaryLimit + 10) {
+                    endIndex = parseInt(lastIndex) + summaryLimit // Force Int
+                    rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
+                    console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${currentTotal - endIndex})`)
+                } else {
+                    rangeDesc = `自动增量`
+                }
+
+                console.log('[Summarize DEBUG]', { lastIndex, endIndex, currentTotal, msgsLen: chat.msgs.length, typeofLast: typeof lastIndex })
+                targetMsgs = chat.msgs.slice(lastIndex, endIndex)
+
+
+                if (targetMsgs.length === 0) {
+                    throw new Error('No new messages to summarize')
+                }
+
+                nextIndex = endIndex
+            }
+
+            // --- REPLICATED FROM OLD HTML (Transcript Mode) ---
+            const transcript = targetMsgs.map(m => {
+                const roleName = m.role === 'ai' ? (chat.name || 'AI') : (chat.userName || '用户')
+                let content = ""
+                if (typeof m.content === 'string') {
+                    content = m.content
+                } else if (Array.isArray(m.content)) {
+                    content = m.content.map(p => p.text || '').join('\n')
+                } else {
+                    content = String(m.content || '')
+                }
+
+                // Clean up internal tags for the transcript
+                content = content.replace(/\[Image Reference ID:.*?\]/g, '[图片]')
+
+                // Handle special types
+                if (m.type === 'image') content = '[图片]'
+                if (m.type === 'voice') content = '[语音]'
+                if (m.type === 'redpacket') content = '[红包]'
+                if (m.type === 'transfer') content = '[转账]'
+                if (m.type === 'moment_card') content = '[分享了朋友圈]'
+
+                return `${roleName}: ${content}`
+            }).filter(line => line.trim().length > 0).join('\n')
+
+            if (!transcript.trim()) {
+                throw new Error('Empty context (selected messages contain no valid text)')
+            }
+
+            const prompt = chat.summaryPrompt || '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。'
+
+            // Pack into a single User message with the Instruction at the end (Best for LLMs)
+            const summaryContext = [
+                {
+                    role: 'user',
+                    content: `【对话记录】\n${transcript}\n\n【总结要求】\n${prompt}`
+                }
+            ]
+
+            let summaryContent = ''
+            const systemHelper = '你是一个专业的对话总结助手。请阅读上方记录，并严格按照总结要求输出内容。直接输出总结，不要包含任何旁白。'
+
+            // Log for context review tab (Matches standard chat log format)
+            useLoggerStore().addLog('AI', '网络请求 (生成总结)', {
+                provider: 'summarize-helper',
+                endpoint: 'Internal -> AI Service',
+                payload: {
+                    model: 'Summarize Mode',
+                    messages: [
+                        { role: 'system', content: systemHelper },
+                        ...summaryContext
+                    ],
+                    prompt: prompt
+                }
+            })
+
+            summaryContent = await generateSummary(summaryContext, systemHelper)
+
+            if (!summaryContent || summaryContent.startsWith('总结生成失败')) {
+                throw new Error(summaryContent || 'AI returned empty content')
+            }
+
+            // Save to Memory
+            if (!chat.memory) chat.memory = []
+
+            const newMemoryItem = {
+                id: Date.now(),
+                timestamp: Date.now(),
+                range: rangeDesc,
+                content: summaryContent
+            }
+
+            // Update memory list (non-mutating for better reactivity)
+            chat.memory = [newMemoryItem, ...chat.memory]
+
+            // Also update the latest summary field for AI context
+            chat.summary = summaryContent
+
+            triggerToast('总结已生成并存入记忆库', 'info')
+
+            // Advance the summary pointers if we just summarized a range that covers new ground
+            const currentMaxIndex = chat.lastSummaryIndex || 0
+            const summarizedEndIndex = options.endIndex !== undefined ? options.endIndex : nextIndex
+
+            if (summarizedEndIndex > currentMaxIndex) {
+                console.log(`[Summarize] Advancing pointers: ${currentMaxIndex} -> ${summarizedEndIndex}`)
+                chat.lastSummaryIndex = summarizedEndIndex
+                chat.lastSummaryCount = summarizedEndIndex // Sync progress tracker
+            }
+
+            // RECURSION CHECK: If we are in auto mode (no manual range) and still have a backlog, trigger next batch
+            if (options.startIndex === undefined) {
+                const summaryLimit = parseInt(chat.summaryLimit) || 50
+                const remainingBacklog = chat.msgs.length - summarizedEndIndex
+
+                if (remainingBacklog >= summaryLimit) {
+                    console.log(`[Summarize] Backlog still exists (${remainingBacklog} msgs). Scheduling next chunk...`)
+                    setTimeout(() => checkAutoSummary(chatId), 1500)
+                }
+            }
+
+            saveChats()
+            return { success: true }
+
+        } catch (e) {
+            console.error('Summary Generation Failed or Aborted', e)
+            triggerToast('总结失败: ' + e.message, 'error')
+            return { success: false, error: e.message }
+        } finally {
+            // Always release lock
+            chat.isSummarizing = false
+        }
+    }
 
     // --- Proactive Chat Logic ---
     let proactiveWorker = null
 
+    function startProactiveLoop() {
+        // 1. Cleanup old worker
+        if (proactiveWorker) {
+            proactiveWorker.terminate()
+            proactiveWorker = null
+        }
 
+        // 2. Create Web Worker for background-resilient timing
+        const workerScript = `
+            self.onmessage = function(e) {
+                if (e.data === 'start') {
+                    setInterval(() => {
+                        self.postMessage('tick');
+                    }, 60000); // Check every minute
+                }
+            };
+        `;
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        proactiveWorker = new Worker(URL.createObjectURL(blob));
+
+        proactiveWorker.onmessage = (e) => {
+            if (e.data === 'tick') {
+                const logger = useLoggerStore()
+                // Only log one tick every 30 mins to avoid noise in the log
+                const now = new Date()
+                if (now.getMinutes() % 30 === 0) {
+                    logger.sys('[Proactive] Worker heartbeat: scanning all chats...')
+                }
+
+                Object.keys(chats.value).forEach(chatId => {
+                    checkProactive(chatId)
+                })
+            }
+        }
+
+        // Start the worker
+        proactiveWorker.postMessage('start');
+
+        // 3. Visibility API Compensation (Check immediately when user returns)
+        if (typeof document !== 'undefined') {
+            let lastForegroundTime = Date.now()
+            document.addEventListener('visibilitychange', () => {
+                const logger = useLoggerStore()
+                if (document.visibilityState === 'visible') {
+                    // Avoid double triggers within 2 seconds
+                    if (Date.now() - lastForegroundTime < 2000) return
+                    lastForegroundTime = Date.now()
+
+                    logger.sys('[Proactive] App in foreground, checking missed triggers...')
+                    Object.keys(chats.value).forEach(chatId => {
+                        checkProactive(chatId)
+                    })
+                }
+            });
+        }
+    }
+
+    async function checkProactive(chatId) {
+        const callStore = useCallStore()
+        const logger = useLoggerStore()
+        const chat = chats.value[chatId]
+        if (!chat) return
+
+        const now = Date.now()
+        const lastMsg = (chat.msgs || []).slice(-1)[0]
+        const lastMsgTime = lastMsg ? lastMsg.timestamp : now
+        const diffMinutes = (now - lastMsgTime) / 1000 / 60
+
+        if (typingStatus.value[chatId] || callStore.status !== 'none') return
+
+        // 1. Proactive Chat / Call (While user is in the current chat but idle)
+        if (chat.proactiveChat && currentChatId.value === chatId) {
+            const pInterval = parseInt(chat.proactiveInterval) || 30
+            if (diffMinutes >= pInterval) {
+                const rand = Math.random()
+                logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
+                if (rand < 0.2) {
+                    const callType = Math.random() > 0.5 ? 'video' : 'voice'
+                    sendMessageToAI(chatId, {
+                        hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                        isProactiveCall: true
+                    })
+                } else {
+                    sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没说话了，给用户发条简短的消息。可以带上表情包。）` })
+                }
+            }
+        }
+
+        // 2. Active Chat (Check-in while user is elsewhere or app in background)
+        if (chat.activeChat && currentChatId.value !== chatId) {
+            const aInterval = parseInt(chat.activeInterval) || 120
+            if (diffMinutes >= aInterval) {
+                if (!chat._lastActiveTriggeredTime || (now - chat._lastActiveTriggeredTime > aInterval * 60000)) {
+                    chat._lastActiveTriggeredTime = now
+                    logger.sys(`[Proactive] Triggering check-in message for ${chat.name}`)
+                    const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
+                    const callChance = Math.random() < 0.15
+                    const hint = callChance
+                        ? `（现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
+                        : `（现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
+                    sendMessageToAI(chatId, { hiddenHint: hint })
+                }
+            }
+        }
+
+        // 3. Scheduler Task
+        const schedulerStore = useSchedulerStore()
+        const dueTasks = schedulerStore.tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp <= now)
+        if (dueTasks.length > 0) {
+            dueTasks.forEach(task => {
+                logger.sys(`[Proactive] Executing scheduler task: ${task.content}`)
+                schedulerStore.removeTask(task.id)
+                sendMessageToAI(chatId, { hiddenHint: `（系统：执行定时任务：${task.content}。请根据当前人设发送消息通知用户。）` })
+            })
+        }
+
+        // 4. Random Proactive
+        const randomConfig = schedulerStore.randomConfigs[chatId]
+        if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
+            logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
+            schedulerStore.updateNextRandomTrigger(chatId)
+            sendMessageToAI(chatId, { hiddenHint: `（随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。）` })
+        }
+    }
 
     // Initialize proactive loop
     startProactiveLoop()
@@ -1892,7 +1450,13 @@ export const useChatStore = defineStore('chat', () => {
 
 
 
-
+    function toggleSearch(chatId) {
+        const chat = chats.value[chatId]
+        if (!chat) return
+        chat.searchEnabled = !chat.searchEnabled
+        saveChats()
+        triggerToast(chat.searchEnabled ? '🌐 已开启联网模式' : '📴 已关闭联网模式', 'info')
+    }
 
 
 
@@ -1916,28 +1480,6 @@ export const useChatStore = defineStore('chat', () => {
         const newMsg = {
             ...oldMsg,
             ...(typeof updates === 'string' ? { content: updates } : updates)
-        }
-
-        // Check if content contains GIFT command and update type accordingly
-        if (typeof newMsg.content === 'string') {
-            const content = newMsg.content.trim()
-            const giftMatch = content.match(/\[GIFT\s*[:：]\s*([^:：\]]+)(?:\s*[:：]?\s*(\d*))?(?:\s*[:：]?\s*([^\]]*))?\]/i)
-            if (giftMatch) {
-                console.log('[ChatStore updateMessage] Detected GIFT command, updating type to gift')
-                const name = giftMatch[1].trim()
-                const qty = parseInt(giftMatch[2]) || 1
-                const note = giftMatch[3]?.trim() || ''
-
-                newMsg.type = 'gift'
-                newMsg.giftId = newMsg.giftId || ('GIFT-U-' + Date.now())
-                newMsg.giftName = name
-                newMsg.giftQuantity = qty
-                newMsg.giftNote = note
-                newMsg.status = 'pending'
-                newMsg.senderName = newMsg.senderName || useSettingsStore().personalization?.userProfile?.name || '我'
-                newMsg.giftImage = newMsg.giftImage || 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png'
-                newMsg.content = `[礼物] ${name}`
-            }
         }
 
         console.log('[ChatStore] Old message:', oldMsg)
@@ -1981,10 +1523,7 @@ export const useChatStore = defineStore('chat', () => {
         const momentsStore = useMomentsStore()
         const callStore = useCallStore()
         const chat = chats.value[chatId]
-        if (!chat || chat.isExited || chat.isDissolved) {
-            typingStatus.value[chatId] = false
-            return
-        }
+        if (!chat) return
 
         // Pass searchEnabled to AI service options
         const aiOptions = {
@@ -1996,14 +1535,7 @@ export const useChatStore = defineStore('chat', () => {
         const lastMsg = (chat.msgs || []).slice(-1)[0]
         if (lastMsg && lastMsg.type === 'moment_card' && !options.force) {
             console.log('[ChatStore] Silent sharing active. AI will not reply to moment_card until next user message.')
-            typingStatus.value[chatId] = false // Ensure typing indicator is off for this SPECIFIC chat
-            return
-        }
-
-        // --- Skip AI for flagged messages (e.g., auto-shared game results) ---
-        if (lastMsg && lastMsg.skipAI) {
-            console.log('[ChatStore] skipAI flag detected. AI will not reply to this message.')
-            typingStatus.value[chatId] = false
+            isTyping.value = false // Ensure typing indicator is off
             return
         }
 
@@ -2011,24 +1543,23 @@ export const useChatStore = defineStore('chat', () => {
 
         // --- 时间感知逻辑 ---
         const now = Date.now()
-        // 查找双方最后一条成功发送的消息（排除系统错误消息），计算时隔多久互动
-        // 注意：只计算 user 和 ai 角色，不计算 system 类型的错误提示
-        const validMessages = (chat.msgs || []).filter(m => m.role === 'user' || m.role === 'ai')
-        const lastInteractionMsg = validMessages.slice(-1)[0]
-        const lastInteractionTime = lastInteractionMsg ? lastInteractionMsg.timestamp : now
-        const diffMinutes = Math.floor((now - lastInteractionTime) / 1000 / 60)
-        
+        // 查找 AI 的最后一条消息，以此计算时隔多久回复
+        const aiMessages = (chat.msgs || []).filter(m => m.role === 'ai')
+        const lastAiMsg = aiMessages.slice(-1)[0]
+        const lastAiTime = lastAiMsg ? lastAiMsg.timestamp : now
+        const diffMinutes = Math.floor((now - lastAiTime) / 1000 / 60)
+
         // 计算虚拟时间
         let currentVirtualTime = chat.virtualTime || ''
         // Default to TRUE if undefined, ensuring time is always passed unless explicitly disabled
         const isTimeAware = chat.timeAware !== false
-        
+
         if (isTimeAware) {
             if (chat.timeSyncMode === 'manual' && chat.virtualTime && chat.virtualTimeLastSync) {
                 const elapsedMs = now - chat.virtualTimeLastSync
                 currentVirtualTime = `${chat.virtualTime} (自对话刷新已过去 ${Math.floor(elapsedMs / 1000 / 60)} 分钟)`
             } else {
-                // Force strict clear format: YYYY 年 MM 月 DD 日 HH:mm:ss 星期 X
+                // Force strict clear format: YYYY年MM月DD日 HH:mm:ss 星期X
                 // Match the style used in Inner Voice examples for better AI alignment
                 const d = new Date()
                 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
@@ -2038,15 +1569,7 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. 准备上下文：根据设置动态截取消息历史
         const contextLimit = chat.contextLimit || 20
-        const isCallMode = callStore.status !== 'none' && callStore.status !== 'ended'
-        const isCallActive = callStore.status === 'active'
-        const rawContext = (chat.msgs || []).slice(-contextLimit).filter(m => {
-            // 过滤掉通话相关的系统消息和收藏卡片，避免上下文混乱
-            if (m.type === 'system' && (m.content.includes('通话') || m.content.includes('占线') || m.content.includes('拒绝') || m.content.includes('取消'))) return false
-            if (m.type === 'favorite_card' && m.content.includes('通话记录')) return false
-            if (m.hidden && !isCallMode && !m.content?.includes('INNER_VOICE')) return false // 通话模式下保留hidden消息，非通话模式仅保留心声消息
-            return true
-        }).map(m => {
+        const rawContext = (chat.msgs || []).slice(-contextLimit).map(m => {
             let content = ""
             if (typeof m.content === 'string') {
                 content = m.content
@@ -2071,21 +1594,6 @@ export const useChatStore = defineStore('chat', () => {
                 } catch (e) { content = '[收藏内容]' }
             } else if (m.type === 'voice') {
                 content = `[语音消息:${content}]`
-            } else if (m.type === 'dice_result') {
-                const sName = m.senderName || (m.role === 'user' ? '我' : (chat.name || '对方'))
-                content = `[摇骰子] ${sName}摇了${m.diceCount || 1}颗骰子，合计点数：${m.diceTotal}`
-            } else if (m.type === 'vote') {
-                try {
-                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
-                    const opts = (data.options || []).map((o, i) => `${i + 1}. ${o}`).join(', ');
-                    content = `[群投票] 标题："${data.title}", 选项：${opts}, ${data.isMultiple ? '多选' : '单选'}, ID: ${data.id}`;
-                } catch (e) {
-                    content = '[群投票]';
-                }
-            } else if (m.type === 'gift') {
-                // 礼物消息包含 ID，方便 AI 领取
-                const giftId = m.giftId || m.id || '未知';
-                content = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${giftId})`;
             }
 
             if (m.role === 'ai') {
@@ -2103,18 +1611,9 @@ export const useChatStore = defineStore('chat', () => {
                 content = `（引用来自 ${quoteAuthor} 的消息: "${m.quote.content}"）\n${content}`
             }
 
-            let finalContent = content
-            if (chat.isGroup) {
-                const sId = m.senderId || (m.role === 'user' ? 'user' : chatId);
-                const title = getMemberTitle(chatId, sId);
-                const sName = m.role === 'user' ? '我' : (m.senderName || chat.name);
-                finalContent = `[${title}] ${sName}: ${content}`
-            }
-
             return {
-                id: m.id,
                 role: m.role === 'ai' ? 'assistant' : 'user',
-                content: finalContent,
+                content: content,
                 image: m.image
             }
         })
@@ -2128,11 +1627,8 @@ export const useChatStore = defineStore('chat', () => {
                 if (typeof last.content === 'string' && typeof m.content === 'string') {
                     last.content += `\n\n${m.content}`;
                 }
-                // 图视觉信息合并 (AI Vision 注入)，保留最后一条消息的id
-                if (m.image) {
-                    last.image = m.image;
-                    last.id = m.id;  // 保留最新的消息ID，以便图片引用
-                }
+                // 图视觉信息合并 (AI Vision 注入)
+                if (m.image) last.image = m.image;
             } else {
                 mergedContext.push(m);
             }
@@ -2143,8 +1639,11 @@ export const useChatStore = defineStore('chat', () => {
         if (callStatus === 'dialing' || callStatus === 'incoming') {
             const userName = chat.userName || '用户'
             const callType = callStore.type === 'video' ? '视频' : '语音'
-            const callHint = `【${userName}对你发起${callType}通话，接听请输入语音通话格式，拒绝请输入[挂断通话]，按照正常正文格式回复。】
+            const callHint = callStatus === 'incoming'
+                ? `【系统提示：${userName}正在呼叫你（${callType}通话）。请立即做出选择：
 
+**选项1：接听**
+回复格式：
 [接听]
 [CALL_START]
 {
@@ -2153,7 +1652,13 @@ export const useChatStore = defineStore('chat', () => {
   "status": "你的心情状态",
   "hangup": false
 }
-[CALL_END]`
+[CALL_END]
+
+**选项2：拒绝**
+回复：[拒绝] 并说明理由
+
+注意：如果接听，必须严格按照上述 JSON 格式输出，不要使用 INNER_VOICE 或其他标签。】`
+                : `【系统提示：你正在呼叫${userName}（${callType}通话），等待对方响应...】`
 
             console.log(`[ChatStore] Injecting call hint for status: ${callStatus}`);
 
@@ -2179,33 +1684,18 @@ export const useChatStore = defineStore('chat', () => {
                 mergedContext.push({ role: 'user', content: `[系统要求] ${options.hiddenHint}` });
             }
         }
-                
-        // 时间感知提示：始终显示时间和互动间隔（即使只有几秒）
-        if (isTimeAware && !options.hiddenHint) {
+        else if (diffMinutes >= 1) {
             const last = mergedContext[mergedContext.length - 1];
-            let timeStr = '';
-            if (diffMinutes <= 0) {
-                // 不到 1 分钟，显示秒数
-                const diffSeconds = Math.floor((now - lastInteractionTime) / 1000);
-                timeStr = diffSeconds <= 5 ? '刚刚' : `${diffSeconds}秒`;
-            } else {
-                // 超过 1 分钟，显示分钟或小时
-                timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
-            }
-                    
-            const timeHint = ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。记得心声格式标签 [INNER_VOICE]】`;
-                    
             if (last && last.role === 'user') {
-                last.content += timeHint;
-            } else {
-                mergedContext.push({ role: 'user', content: timeHint });
+                const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
+                last.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。】`;
             }
         }
 
 
         const context = mergedContext;
 
-        // Group context injection moved to prompts.js
+
         // 3. 调用 AI
         try {
             // Stop any previous generation for THIS specific chat
@@ -2218,7 +1708,6 @@ export const useChatStore = defineStore('chat', () => {
             let momentsAwareness = '' // Placeholder for moments context
 
             const charInfo = {
-                id: chatId,
                 name: chat.name || '角色',
                 gender: chat.gender || '无',
                 description: (chat.prompt || '') + momentsAwareness,
@@ -2233,52 +1722,16 @@ export const useChatStore = defineStore('chat', () => {
                 emojis: chat.emojis,
                 virtualTime: currentVirtualTime,
                 canDraw: true,
-                searchEnabled: aiOptions.searchEnabled,
-                isGroup: chat.isGroup,
-                groupSettings: chat.groupSettings,
-                participants: chat.participants
+                searchEnabled: aiOptions.searchEnabled
             }
 
-            // Group: make persona consistent with group settings
-            if (chat.isGroup) {
-                const gs = chat.groupSettings || {}
-                if (gs.myPersona !== undefined) charInfo.userPersona = gs.myPersona || ''
-                if (Array.isArray(gs.worldBookLinks)) charInfo.worldBookLinks = gs.worldBookLinks
-                const participants = Array.isArray(chat.participants) ? chat.participants : []
-                const rosterShort = participants.slice(0, 30).map(p => `- ${p.id}: ${p.name}（${String(p.prompt || '').slice(0, 80)}）`).join('\n')
-                const groupPrompt = gs.groupPrompt || ''
-                charInfo.description = `【群聊】你现在在一个微信群聊中，群名：${chat.name || ''}。
-【群聊氛围/规则】${groupPrompt || '（无）'}
-【成员】
-${rosterShort || '（暂无成员）'}
-
-请严格遵守：每次回复只代表 1 位成员发言，且必须以 [FROM:成员id] 开头。`
-            }
-
-            // Group Vote Awareness & Capability
-            const activeVotes = (chat.msgs || []).filter(m => m.type === 'vote' && !m.isRecall)
-            let voteHint = ''
-            if (activeVotes.length > 0) {
-                let latestVote = null
-                try {
-                    const lastVoteMsg = activeVotes[activeVotes.length - 1]
-                    latestVote = typeof lastVoteMsg.content === 'string' ? JSON.parse(lastVoteMsg.content) : lastVoteMsg.content
-                } catch (e) { /* ignore parse error */ }
-                if (latestVote && latestVote.title && !latestVote.isEnded) {
-                    const optionsText = (latestVote.options || []).map((opt, i) => `${i + 1}.${typeof opt === 'string' ? opt : opt.text}`).join(', ')
-                    voteHint = `\n\n【投票进行中】\n当前有一个主题为“${latestVote.title}”的投票。
-选项：${optionsText}
-${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonymous ? '（匿名）' : '（实名）'}
-作为角色，你可以根据性格参与投票。
-参与投票指令（另起一行）：[VOTE: ${latestVote.title} : 选项序号]
-如果是多选：[VOTE: ${latestVote.title} : 1, 2]`
-                }
-            }
-
-            const createVoteHint = `\n\n【发起投票功能】\n你可以发起新投票。指令（另起一行）：
-[CREATE_VOTE: 标题 : 选项1, 选项2 : 多选true/false : 匿名true/false]`
-
-            charInfo.description += voteHint + createVoteHint
+            // Inject Drawing Capability Hint globally if not explicitly disabled
+            const drawingHint = `\n\n【生图功能激活】\n你可以通过指令 [DRAW: 英文提示词] 直接在聊天中发送图片给用户。
+例如：你想给用户发张自拍，可以说：“等等，我给你发张自拍 [DRAW: a cute anime girl taking a selfie, looking at camera]”
+请注意：
+1. 提示词必须是英文。
+2. 只有在真正需要发图时才使用该指令。`
+            charInfo.description += drawingHint
 
             // Music Awareness (Listen Together)
             const musicStore = useMusicStore()
@@ -2287,52 +1740,6 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 const musicHint = `\n\n【当前正在一起听歌】\n你正和用户一起听：${song.song} - ${song.singer}。
 你可以对这首歌发表看法，或者在觉得氛围合适时，使用 <bgm>歌名 - 歌手</bgm> 格式切换下一首符合当前氛围的歌曲。`
                 charInfo.description += musicHint
-            }
-
-            // Couple Space Awareness
-            if (!chat.isGroup) {
-                const lsStore = useLoveSpaceStore()
-                const lsHint = lsStore.generateSystemPrompt(chatId)
-                if (lsHint) {
-                    charInfo.description += lsHint
-                    // Inject capability hint so AI knows it can use [LS_...] tags in chat
-                    charInfo.description += "\n\n" + LOVE_SPACE_CHAT_CAPABILITY_HINT(chat.name, chat.userName)
-                }
-            }
-
-            // Scheduled Task Capability (Global Scheduler)
-            const schedulerHint = `\n\n【定时任务/提醒功能】
-你可以为用户设定定时任务或闹钟提醒。指令格式（另起一行）：
-[定时: YYYY-MM-DD HH:mm 任务内容]
-或者
-[定时: HH:mm 任务内容] （默认为今天或明天）
-示例：[定时: 2026-03-12 08:00 叫大小姐起床]`
-            charInfo.description += schedulerHint
-
-            // Visual Perception Awareness for Calls
-            if (isCallMode && callStore.type === 'video') {
-                let visualHint = '\n\n【视觉感知状态】\n';
-
-                // Rule 1: Camera Awareness
-                if (!callStore.isCameraOff) {
-                    visualHint += `用户已开启摄像头。你现在可以“看”到用户。请通过视觉交流（如评论用户的表情、背景、穿着或动作）来增强真实感。你可以直接描述你看到的画面（例如：看到用户在笑，或者看到用户在卧室里）。\n`;
-                } else {
-                    visualHint += `用户的摄像头目前已关闭。你无法看到用户，请依赖用户在括号 () 或 [] 中描述的动作来了解其状态。\n`;
-                }
-
-                // Rule 2: Virtual Avatar / Drawing Mode
-                if (callStore.virtualAvatarMode === 0) {
-                    // "None" mode -> DRAW mode
-                    visualHint += `目前你处于“实景视频”模式，但由于带宽限制，你的视频流是静态的。为了制造动态感，请在每轮回复的末尾使用 [DRAW: 英文提示词] 指令生成一张你在当前视频通话场景下的神态或环境图（例如你在卧室靠墙通话、你在街边举着手机等）。每轮必发一张图。\n`;
-                } else if (callStore.virtualAvatarMode === 1) {
-                    // "Both" virtual mode
-                    visualHint += `目前你正以虚拟形象（Avatar）与用户交流，用户也在使用虚拟形象。如果你观察到用户开启了摄像头，请特别关注用户的视觉反馈，因为用户的动作会通过视觉模型影响其虚拟形象。\n`;
-                } else if (callStore.virtualAvatarMode === 2) {
-                    // "AI Only" virtual mode
-                    visualHint += `目前你正以虚拟形象（Avatar）与用户交流。如果你观察到用户开启了摄像头，请特别关注用户的视觉反馈。\n`;
-                }
-
-                charInfo.description += visualHint;
             }
 
             // Log the context being sent to AI for debugging
@@ -2352,20 +1759,28 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
             // Use Call System Prompt ONLY when call is active (not during incoming/dialing)
             // During incoming/dialing, use normal prompt so AI can choose [接听] or [拒绝]
+            const isCallActive = callStore.status === 'active'
+            const isCallContext = isCallActive // Only use call prompt when actually in call
+
             // Track if we are in a call to handle message shadowing/hiding
+            const isCallMode = callStore.status !== 'none';
 
-            // Streaming handler
-            let accumulatedContent = "";
-            const onChunk = (delta, full) => {
-                accumulatedContent = full;
-            };
+            // Streaming handler for calls
+            let hasAddedCallLine = false;
+            const onChunk = isCallActive ? (delta, full) => {
+                // ... (existing chunk logic) ...
+            } : null;
 
+            // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
+            // as partial JSON is harder to parse reliably for voice.
             const result = await generateReply(context, charInfo, signal, {
                 ...aiOptions,
-                isCall: isCallMode,
-                stream: true,
-                onChunk: onChunk
+                isCall: isCallContext, // Only use call prompt when status is 'active'
+                stream: isCallContext ? false : undefined, // Force non-streaming for calls
+                onChunk: isCallActive ? onChunk : null
             })
+
+
 
             // Clear controller on success
             delete abortControllers[chatId]
@@ -2380,141 +1795,129 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 return
             }
 
-
-            // Split into bubbles (Visual Level Splitting)
             // 3. 添加 AI 回复 (拆分消息 - Data Level Splitting)
-            if (result.content || (result.choices && result.choices[0]?.message?.content)) {
-                // 处理完整的OpenAI响应格式
+            if (result.content) {
                 let fullContent = result.content;
-                if (!fullContent && result.choices && result.choices[0]?.message?.content) {
-                    fullContent = result.choices[0].message.content;
-                }
 
                 // --- Pre-process: Strip Character Name Prefixes (防止剧本格式) ---
+                // Regex matches names like "乔笙: ", "乔笙：", "乔笙 " at start of lines or message
                 if (chat.name) {
                     const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
                     fullContent = fullContent.replace(nameRegex, '').trim();
                 }
 
-                // --- Post-process: Handle Couple Space (LS_) Commands from Chat ---
-                if (!chat.isGroup && fullContent.includes('[LS_')) {
-                    const lsStore = useLoveSpaceStore()
-                    lsStore.executeSpaceCommands(fullContent, chat.name)
-                }
-
-                // Expect: [FROM:participantId] or [来自:名称] at the very beginning.
-                // We only extract the first tag for initial speaker, but keep all tags for segment processing
-                let groupSpeakerMeta = null
-                if (chat.isGroup) {
-                    const s = String(fullContent || '').trim()
-                    // Support [FROM:...] and [来自:...] anywhere
-                    const m = s.match(/\[(?:FROM|来自)\s*[:：]\s*([^\]]+)\]/i)
-                    if (m) {
-                        const fromKey = String(m[1] || '').trim()
-                        // Only remove the first [FROM:xxx] tag, keep others for segment processing
-                        fullContent = s.replace(/^\s*\[(?:FROM|来自)\s*[:：]\s*([^\]]+)\]\s*/i, '').trim()
-                        const participants = Array.isArray(chat.participants) ? chat.participants : []
-                        const p = participants.find(p => String(p.id) === fromKey || String(p.name) === fromKey)
-                        if (p) {
-                            groupSpeakerMeta = { senderId: p.id, senderName: p.name, senderAvatar: p.avatar || chat.avatar }
-                        } else {
-                            groupSpeakerMeta = { senderId: fromKey, senderName: fromKey, senderAvatar: chat.avatar }
-                        }
-                    } else {
-                        // SMART FALLBACK: If no tag, but there's only one AI participant, attribute to them
-                        const participants = Array.isArray(chat.participants) ? chat.participants : []
-                        const aiParticipants = participants.filter(p => p.id !== 'user' && !p.id.startsWith('group_'))
-                        if (aiParticipants.length === 1) {
-                            const p = aiParticipants[0]
-                            groupSpeakerMeta = { senderId: p.id, senderName: p.name, senderAvatar: p.avatar || chat.avatar }
-                            console.log(`[GroupChat] Auto-attributing message to only available AI: ${p.name}`)
-                        }
-                    }
-                }
-
-                // Flag to prevent duplicate TTS playback
-                let hasPlayedTTS = false;
-
-                // --- Handle Call Mode Post-Processing (Includes Dialing/Incoming/Active) ---
-                if (isCallMode) {
-                    // Protocol Detection
-                    const callMatch = fullContent.match(/\[CALL_START\][\s\S]*?(\{[\s\S]*?\})[\s\S]*?\[CALL_END\]/i);
-                    const hasJsonLike = fullContent.includes('{') && (fullContent.includes('"speech"') || fullContent.includes('"status"'));
-
-                    if (callMatch || hasJsonLike) {
-                        try {
-                            let callData = null;
-                            if (callMatch) {
-                                callData = JSON.parse(callMatch[1].trim());
-                            } else {
-                                // Fallback: find the JSON block directly
-                                const jsonMatches = fullContent.match(/\{[\s\S]*?\}/g);
-                                if (jsonMatches) {
-                                    callData = JSON.parse(jsonMatches[jsonMatches.length - 1]);
-                                }
-                            }
-
-                            if (callData) {
-                                // Auto-accept if we were dialing/incoming and received a protocol response
-                                if (callStore.status === 'dialing' || callStore.status === 'incoming') {
-                                    if (fullContent.includes('[接听]') || callData.speech) {
-                                        console.log('[ChatStore] Auto-accepting call due to protocol response');
-                                        callStore.acceptCall();
-                                    }
-                                }
-
-                                if (callData.speech) {
-                                    // RESTORED: One large bubble for the call transcript
-                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
-                                    hasAddedCallLine = true;
-
-                                    // TTS logic
-                                    if (callStore.isSpeakerOn && window.speechSynthesis && !hasPlayedTTS) {
-                                        window.speechSynthesis.cancel();
-                                        const ttsText = callData.speech.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').replace(/\[[\s\S]*?\]/g, '').trim();
-                                        if (ttsText) {
-                                            const utterance = new SpeechSynthesisUtterance(ttsText);
-                                            utterance.lang = 'zh-CN';
-                                            window.speechSynthesis.speak(utterance);
-                                            hasPlayedTTS = true;
-                                        }
-                                    }
-
-                                    // Replace the protocol block with speech for the background, 
-                                    // so other tags (like DRAW) outside the block are preserved.
-                                    if (callMatch) {
-                                        let replacement = callData.speech;
-                                        if (callData.action) replacement += ` (${callData.action})`;
-                                        fullContent = fullContent.replace(callMatch[0], replacement).trim();
-                                    } else {
-                                        // Fallback if we found JSON but not the whole tag block
-                                        fullContent = callData.speech;
-                                        if (callData.action) fullContent += ` (${callData.action})`;
-                                    }
-                                }
-
-                                if (callData.hangup) {
-                                    callStore.endCall();
-                                }
-
-                                if (callData.status) {
-                                    callStore.updateStatus(callData.status);
-                                }
-
-                                // If it was a protocol message, we don't necessarily want it to go through the normal splitting logic
-                                // if it's meant ONLY for the call visualizer.
-                                // However, we let the existing hidden logic handle it.
-                            }
-                        } catch (e) {
-                            console.error('[ChatStore] Failed to parse call JSON:', e);
-                        }
-                    } else if (fullContent.includes('[接听]') || fullContent.includes('[接受通话]')) {
-                        console.log('[ChatStore] AI accepted the call (simple tag)');
+                // --- Handle Call Signal Interception ([接听] / [拒绝]) ---
+                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
+                    if (fullContent.includes('[接听]')) {
+                        console.log('[ChatStore] AI accepted the call');
                         callStore.acceptCall();
+
+                        // 直接解析通话 JSON，不再触发第二次 AI 调用
+                        const callMatch = fullContent.match(/\[CALL_START\]\s*(\{[\s\S]*?\})\s*\[CALL_END\]/i);
+                        if (callMatch) {
+                            try {
+                                const jsonStr = callMatch[1].trim();
+                                const callData = JSON.parse(jsonStr);
+
+                                // 添加到通话记录
+                                if (callData.speech) {
+                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
+
+                                    // 播放语音
+                                    if (window.speechSynthesis && callData.speech) {
+                                        const utterance = new SpeechSynthesisUtterance(callData.speech);
+                                        utterance.lang = 'zh-CN';
+                                        utterance.rate = 1.0;
+                                        window.speechSynthesis.speak(utterance);
+                                    }
+                                }
+
+                                return; // 不添加消息到聊天记录
+                            } catch (e) {
+                                console.error('[ChatStore] Failed to parse call JSON:', e);
+                            }
+                        }
+
+                        // 如果没有找到 JSON 或解析失败，不显示消息
+                        return;
                     } else if (fullContent.includes('[拒绝]') || fullContent.includes('[拒接]')) {
                         console.log('[ChatStore] AI rejected the call');
                         callStore.rejectCall();
+                        // 拒绝消息正常显示
+                    }
+                }
+
+                // --- Handle Call Mode Post-Processing ---
+                // Strict Check: Call must currently be active to play audio/process JSON
+                const isActuallyActive = (callStore.status === 'active' || isCallActive) && callStore.status !== 'ended' && callStore.status !== 'none';
+                if (isActuallyActive) {
+                    callStore.isSpeaking = false;
+                    // Extract final speech/action from the JSON
+                    const finalMatch = fullContent.match(/\[CALL_START\]\s*(\{[\s\S]*?\}|[\s\S]*?)\s*\[CALL_END\]/i);
+                    if (finalMatch) {
+                        try {
+                            const jsonStr = finalMatch[1].trim();
+                            const callData = JSON.parse(jsonStr);
+                            if (callData.speech) {
+                                // MANDATORY: If we are in active call, the "speech" is what we want to record in chat.
+                                // We replace the fullContent so nothing else (narrations) is saved/displayed.
+                                fullContent = callData.speech;
+                                if (callData.action) fullContent += ` (${callData.action})`;
+
+                                if (!hasAddedCallLine) {
+                                    callStore.addTranscriptLine('ai', callData.speech, callData.action || '');
+                                } else {
+                                    callStore.updateLastTranscriptLine(callData.speech);
+                                    const lastLine = callStore.transcript[callStore.transcript.length - 1];
+                                    if (lastLine) lastLine.action = callData.action || '';
+                                }
+
+                                // TTS logic: Strip bracketed content for speech only
+                                if (callStore.isSpeakerOn && window.speechSynthesis) {
+                                    window.speechSynthesis.cancel(); // Prevent stacking
+                                    const ttsText = callData.speech.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').trim();
+                                    if (ttsText) {
+                                        const utterance = new SpeechSynthesisUtterance(ttsText);
+                                        utterance.lang = 'zh-CN';
+                                        window.speechSynthesis.speak(utterance);
+                                    }
+                                }
+                            }
+                            if (callData.hangup) {
+                                callStore.endCall();
+                            }
+                        } catch (e) {
+                            console.warn('[ChatStore] Failed to parse final call JSON', e);
+                        }
+                    } else {
+                        // FALLBACK: If tags [CALL_START] are missing, but it LOOKS like JSON, try to extract speech field
+                        let speechText = '';
+                        const speechMatch = fullContent.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                        if (speechMatch && speechMatch[1]) {
+                            // Correctly handle escaped characters in the regex match
+                            speechText = speechMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+                        } else {
+                            // Remove [INNER_VOICE] and other tags
+                            let clean = fullContent.replace(/\[INNER[-_ ]?VOICE\][\s\S]*?\[\/INNER[-_ ]?VOICE\]/gi, '');
+                            clean = clean.replace(/\[MOMENT\][\s\S]*?\[\/MOMENT\]/gi, '');
+                            clean = clean.replace(/\[[\s\S]*?\]/g, '');
+                            speechText = clean.trim();
+                        }
+
+                        if (speechText) {
+                            fullContent = speechText;
+                            callStore.addTranscriptLine('ai', speechText);
+                            if (callStore.isSpeakerOn && window.speechSynthesis) {
+                                window.speechSynthesis.cancel(); // Prevent stacking
+                                const ttsText = speechText.replace(/\([\s\S]*?\)/g, '').replace(/（[\s\S]*?）/g, '').trim();
+                                if (ttsText) {
+                                    const utterance = new SpeechSynthesisUtterance(ttsText);
+                                    utterance.lang = 'zh-CN';
+                                    window.speechSynthesis.speak(utterance);
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -2599,26 +2002,19 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 // Use GLOBAL replace to ensure no stray InnerVoice tags remain in cleanContent
                 // FIX: Use Strictly Bounded Regex (Case Insensitive + Space Aware)
                 // Stop at closing tag, OR start of another command, OR end of file.
-                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
-
-                console.log('[ChatStore] Testing INNER_VOICE extraction...');
+                // NOTE: We do NOT use Lookahead for Newline+Bracket as strict delimiter here, to allow AI to continue comfortably.
+                // The explicit closing tag is preferred, but we must stop if we see another major system tag.
+                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)/gi;
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
                 let innerVoiceBlock = allVoiceMatches.length > 0 ? allVoiceMatches[0][0] : '';
-                if (chat.isGroup) {
-                    innerVoiceBlock = ''; // Destroy it if it somehow leaked
-                }
 
                 // Pure Dialogue extraction
                 let pureDialogue = fullContent.replace(innerVoiceRegex, '').trim();
 
-                console.log('[ChatStore] fullContent:', fullContent.substring(0, 500));
-                console.log('[ChatStore] pureDialogue:', pureDialogue.substring(0, 500));
-                console.log('[ChatStore] innerVoiceBlock:', innerVoiceBlock.substring(0, 200));
-
                 // Failsafe: If regex failed but AI Service successfully parsed Inner Voice, OR if we can find a JSON block manually
-                if (!innerVoiceBlock && !chat.isGroup) {
+                if (!innerVoiceBlock) {
                     if (result.innerVoice) {
                         // Case A: AI Service already parsed it (reliable)
                         try {
@@ -2771,78 +2167,6 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     triggerPatEffect(chatId, target);
                 }
 
-                // --- Handle [VOTE:] AI Casting Choice (ONLY for Group Chats) ---
-                const voteRegex = /\[(?:VOTE|投票):\s*([^:\]]+?)\s*:\s*([^\]]+)\]/i
-                const voteMatch = properlyOrderedContent.match(voteRegex)
-                if (voteMatch && chat.isGroup) {
-                    const voteTitle = voteMatch[1].trim()
-                    // AI tends to send 1-indexed option numbers
-                    const optionIndexes = voteMatch[2].split(/[,，]/).map(s => parseInt(s.trim()) - 1).filter(n => !isNaN(n))
-
-                    let parsedVoteData = null;
-                    const voteMsg = (chat.msgs || []).findLast(m => {
-                        if (m.isRecall) return false;
-                        if (m.type === 'vote') {
-                            try {
-                                const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
-                                // Match exactly or as part of content if JSON parse fails
-                                if (data.title === voteTitle || (ensureString(m.content).includes(voteTitle) && !data.isEnded)) {
-                                    parsedVoteData = data;
-                                    return true;
-                                }
-                            } catch (e) { return false; }
-                        }
-                        return false;
-                    })
-
-                    if (voteMsg && parsedVoteData) {
-                        const speakerId = groupSpeakerMeta?.senderId || chatId
-                        const validIndices = optionIndexes.filter(idx => idx >= 0 && idx < (parsedVoteData.options?.length || 0))
-
-                        if (validIndices.length > 0) {
-                            castVote(chatId, voteMsg.id, speakerId, validIndices)
-                            console.log(`[Vote] AI (${speakerId}) voted in "${parsedVoteData.title}" for indices:`, validIndices)
-                        }
-                    } else {
-                        console.warn(`[Vote] Could not find active vote with title equivalent to: "${voteTitle}"`)
-                    }
-                }
-
-                // --- Handle [CREATE_VOTE:] Command (ONLY for Group Chats) ---
-                const createVoteRegex = /\[(?:CREATE_VOTE|发起投票)[\s:：]+(.+?)[\s:：]+([^\]:]+?)[\s:：]+(true|false|是|否)[\s:：]+(true|false|是|否)\]/i
-                const createVoteMatch = properlyOrderedContent.match(createVoteRegex)
-                if (createVoteMatch && chat.isGroup) {
-                    const title = createVoteMatch[1].trim()
-                    const optionsArr = createVoteMatch[2].split(/[,，]/).map(s => s.trim()).filter(Boolean)
-                    const isMultiple = ['true', '是'].includes(createVoteMatch[3].toLowerCase())
-                    const isAnonymous = ['true', '是'].includes(createVoteMatch[4].toLowerCase())
-                    const speakerId = groupSpeakerMeta?.senderId || chatId
-                    const speakerName = groupSpeakerMeta?.senderName || chat.name
-
-                    createVote(chatId, {
-                        role: 'ai',
-                        title,
-                        options: optionsArr,
-                        isMultiple,
-                        isAnonymous,
-                        creatorId: speakerId,
-                        creatorName: speakerName,
-                        senderId: speakerId,
-                        senderName: speakerName,
-                        senderAvatar: groupSpeakerMeta?.senderAvatar || ''
-                    })
-                    console.log(`[Vote] AI (${speakerId}) created vote in group:`, title)
-                }
-
-                // --- Handle [END_VOTE:] Command (ONLY for Group Chats) ---
-                const endVoteRegex = /\[(?:END_VOTE|结束投票):\s*(v-[^\]]+)\]/i
-                const endVoteMatch = properlyOrderedContent.match(endVoteRegex)
-                if (endVoteMatch && chat.isGroup) {
-                    const voteIdToClose = endVoteMatch[1].trim()
-                    endVote(chatId, voteIdToClose)
-                    console.log(`[Vote] AI closed vote in group:`, voteIdToClose)
-                }
-
                 // --- Handle [RECALL] / [撤回] Command ---
                 const recallRegex = /\[(?:RECALL|撤回)(?::(.+?))?\]/i
                 const recallMatch = properlyOrderedContent.match(recallRegex)
@@ -2877,106 +2201,63 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 }
 
 
-                // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support + Balanced JSON) ---
+                // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
                 // const momentsStore = useMomentsStore() // Already declared at top of function
 
-                // Use balanced brace matching to extract JSON from [MOMENT] tag, avoiding regex issues with [ in JSON arrays
-                const momentTagRegex = /\[(?:MOMENT|朋友圈)\]/i;
-                const momentTagMatch = properlyOrderedContent.match(momentTagRegex);
-                let momentFullMatch = null; // Store full match text for cleanContent removal
-                if (momentTagMatch) {
+                // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
+                const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
+                const momentMatch = properlyOrderedContent.match(momentRegex);
+                if (momentMatch) {
                     try {
-                        const afterTag = properlyOrderedContent.substring(momentTagMatch.index + momentTagMatch[0].length);
-                        // Find the JSON object using balanced brace matching
-                        const jsonStart = afterTag.indexOf('{');
-                        if (jsonStart !== -1) {
-                            let balance = 0;
-                            let inString = false;
-                            let isEscaped = false;
-                            let jsonEnd = -1;
-                            for (let ci = jsonStart; ci < afterTag.length; ci++) {
-                                const ch = afterTag[ci];
-                                if (isEscaped) { isEscaped = false; continue; }
-                                if (ch === '\\') { isEscaped = true; continue; }
-                                if (ch === '"') { inString = !inString; continue; }
-                                if (!inString) {
-                                    if (ch === '{') balance++;
-                                    else if (ch === '}') {
-                                        balance--;
-                                        if (balance === 0) { jsonEnd = ci + 1; break; }
-                                    }
+                        let jsonStr = momentMatch[1].trim()
+                        // ESCAPE FIX: Handle AI's tendency to escape quotes in JSON
+                        jsonStr = jsonStr.replace(/\\"/g, '"');
+
+                        // If it's not a full JSON but looks like it starts with {, try to close it if missing
+                        if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
+
+                        let momentData = JSON.parse(jsonStr)
+
+                        // Mapping Chinese Keys to English (Safety Net)
+                        const content = momentData.content || momentData.内容
+                        const interactions = momentData.interactions || momentData.互动 || []
+                        const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片
+
+                        if (momentData && (content || momentData.html)) {
+                            const newMoment = {
+                                authorId: chatId,
+                                content: content,
+                                html: momentData.html, // Add HTML support
+                                images: [],
+                                imageDescriptions: [],
+                                interactions: interactions.map(i => ({
+                                    type: i.type || (i.类型 === '点赞' ? 'like' : (i.类型 === '评论' ? 'comment' : (i.类型 === '回复' ? 'reply' : i.类型))),
+                                    author: i.author || i.作者 || i.名字,
+                                    text: i.text || i.内容 || i.文本 || i.content,
+                                    replyTo: i.replyTo || i.回复对象 || i.回复
+                                }))
+                            }
+
+                            if (imagePrompt) {
+                                // If it's already a URL (AI might pass existing URL), use it
+                                if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
+                                    newMoment.images.push(imagePrompt)
+                                } else {
+                                    const imageUrl = await generateImage(String(imagePrompt))
+                                    newMoment.images.push(imageUrl)
                                 }
                             }
 
-                            if (jsonEnd !== -1) {
-                                let jsonStr = afterTag.substring(jsonStart, jsonEnd).trim();
-                                // ESCAPE FIX: Handle AI's tendency to escape quotes in JSON
-                                jsonStr = jsonStr.replace(/\\"/g, '"');
-                                // Store the full matched text (from [MOMENT] to end of JSON) for removal
-                                const closingTag = afterTag.substring(jsonEnd).match(/^\s*\[\/(?:MOMENT|朋友圈)\]/i);
-                                const matchEnd = momentTagMatch.index + momentTagMatch[0].length + jsonEnd + (closingTag ? closingTag[0].length : 0);
-                                momentFullMatch = properlyOrderedContent.substring(momentTagMatch.index, matchEnd);
+                            const momentResult = momentsStore.addMoment(newMoment);
 
-                                let momentData = JSON.parse(jsonStr);
-
-                                // Mapping Chinese Keys to English (Safety Net)
-                                const content = momentData.content || momentData.内容;
-                                const interactions = momentData.interactions || momentData.互动 || [];
-                                const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片;
-                                // Support "images" array (URLs directly from AI)
-                                const imagesArray = momentData.images || momentData.图片列表 || [];
-
-                                if (momentData && (content || momentData.html)) {
-                                    const newMoment = {
-                                        authorId: chatId,
-                                        content: content,
-                                        html: momentData.html,
-                                        images: [],
-                                        imageDescriptions: momentData.imageDescriptions || [],
-                                        location: momentData.location || momentData.地点 || '',
-                                        interactions: interactions.map(i => ({
-                                            type: i.type || (i.类型 === '点赞' ? 'like' : (i.类型 === '评论' ? 'comment' : (i.类型 === '回复' ? 'reply' : i.类型))),
-                                            author: i.author || i.作者 || i.名字,
-                                            text: i.text || i.内容 || i.文本 || i.content,
-                                            replyTo: i.replyTo || i.回复对象 || i.回复
-                                        }))
-                                    };
-
-                                    // Handle images: support both "images" array (direct URLs) and "imagePrompt" (generation)
-                                    if (Array.isArray(imagesArray) && imagesArray.length > 0) {
-                                        for (const img of imagesArray) {
-                                            if (typeof img === 'string' && (img.startsWith('http') || img.startsWith('data:'))) {
-                                                newMoment.images.push(img);
-                                            } else if (typeof img === 'string' && img.trim()) {
-                                                try {
-                                                    const imgUrl = await generateImage(img);
-                                                    newMoment.images.push(imgUrl);
-                                                } catch (e) { console.warn('[MOMENT] Image gen failed for:', img); }
-                                            }
-                                        }
-                                    } else if (imagePrompt) {
-                                        if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
-                                            newMoment.images.push(imagePrompt);
-                                        } else {
-                                            try {
-                                                const imageUrl = await generateImage(String(imagePrompt));
-                                                newMoment.images.push(imageUrl);
-                                            } catch (e) { console.warn('[MOMENT] Image gen failed'); }
-                                        }
-                                    }
-
-                                    const momentResult = momentsStore.addMoment(newMoment);
-
-                                    addMessage(chatId, {
-                                        type: 'system',
-                                        content: `"${chat.name}" 发布了一条朋友圈`,
-                                        _momentReferenceId: momentResult.id
-                                    });
-                                }
-                            }
+                            addMessage(chatId, {
+                                type: 'system',
+                                content: `"${chat.name}" 发布了一条朋友圈`,
+                                _momentReferenceId: momentResult.id  // Store reference for follow-up
+                            });
                         }
                     } catch (e) {
-                        console.error('[ChatStore] Failed to parse [MOMENT]', e);
+                        console.error('[ChatStore] Failed to parse [MOMENT]', e)
                     }
                 }
 
@@ -3042,9 +2323,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                 }
 
                 // --- Handle [SET_AVATAR] Command ---
-                // Support both [SET_AVATAR:...] and [更换头像:...] formats
-                const setAvatarRegex = /\[(?:SET_AVATAR|更换头像)[:：]\s*(.+?)\s*\]/gi
+                const setAvatarRegex = /\[SET_AVATAR[:：]\s*(.+?)\s*\]/gi  // Use GLOBAL flag to handle multiple occurrences
                 let avatarMatch;
+                // Loop to find the last valid avatar command (or first? let's stick to first for now but consume all)
+                // Actually, let's just use the first valid one we find
                 const firstAvatarMatch = setAvatarRegex.exec(properlyOrderedContent);
 
                 if (firstAvatarMatch) {
@@ -3057,15 +2339,12 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                             const reversed = [...chat.msgs].reverse();
                             const imgMsg = reversed.find(m => {
                                 // Check message type image OR text with [图片:...]
-                                if (m.type === 'image' && m.image && (m.image.startsWith('http') || m.image.startsWith('data:image'))) return true;
                                 if (m.type === 'image' && m.content && (m.content.startsWith('http') || m.content.startsWith('data:image'))) return true;
                                 if (typeof m.content === 'string' && /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i.test(m.content)) return true;
                                 return false;
                             });
                             if (imgMsg) {
-                                // Priority: image property for type='image' messages
-                                if (imgMsg.type === 'image' && imgMsg.image) return imgMsg.image;
-                                if (imgMsg.type === 'image' && imgMsg.content) return imgMsg.content;
+                                if (imgMsg.type === 'image') return imgMsg.content;
                                 const match = imgMsg.content.match(/\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i);
                                 return match ? match[1] : null;
                             }
@@ -3097,22 +2376,14 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                                 newAvatarUrl = findLastImage();
                             } else {
                                 const targetMsg = chat.msgs.find(m => m.id === possibleId || (m.id && possibleId.includes(m.id)));
-                                console.log(`[ChatStore] Looking for image ID: "${possibleId}"`);
-                                console.log(`[ChatStore] Available message IDs:`, chat.msgs.map(m => ({ id: m.id, type: m.type, hasImage: !!m.image })));
                                 if (targetMsg) {
-                                    console.log(`[ChatStore] Found target message:`, { type: targetMsg.type, image: targetMsg.image ? `${targetMsg.image.substring(0, 50)}...` : 'none' });
-                                    // For image type messages, use the 'image' property which contains base64
-                                    if (targetMsg.type === 'image' && targetMsg.image && (targetMsg.image.startsWith('http') || targetMsg.image.startsWith('data:image'))) {
-                                        newAvatarUrl = targetMsg.image;
-                                    } else if (targetMsg.type === 'image' && targetMsg.content && (targetMsg.content.startsWith('http') || targetMsg.content.startsWith('data:image'))) {
-                                        // Fallback for legacy format where image was in content
+                                    if (targetMsg.type === 'image' && targetMsg.content && (targetMsg.content.startsWith('http') || targetMsg.content.startsWith('data:image'))) {
                                         newAvatarUrl = targetMsg.content;
                                     } else {
                                         const embeddedMatch = targetMsg.content?.match(/\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i);
                                         if (embeddedMatch) newAvatarUrl = embeddedMatch[1];
                                     }
                                 } else {
-                                    console.warn(`[ChatStore] Target message not found for ID: "${possibleId}"`);
                                     // ID not found, fallback to most recent image if input is short/ambiguous
                                     if (rawContent.length < 50) newAvatarUrl = findLastImage();
                                 }
@@ -3141,45 +2412,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
                 // --- Handle Payment Operations (ID-based) ---
                 const claimRegex = /\[领取(红包|转账):([^\]]+)\]/g;
-                (properlyOrderedContent.match(claimRegex) || []).forEach(m => {
-                    console.log('[ChatStore] AI claiming financial message:', m);
-                    playSound('coins');
-                });
                 const rejectRegex = /\[(拒收|退回)(红包|转账):([^\]]+)\]/g;
-                (properlyOrderedContent.match(rejectRegex) || []).forEach(m => {
-                    console.log('[ChatStore] AI rejecting/returning financial message:', m);
-                    playSound('notification');
-                });
-
-
-                // --- Handle Scheduled Tasks ---
-                const scheduleTagMatches = properlyOrderedContent.match(/[\[【](?:定时|SCHEDULE)[:：]\s*([^\]】]+)[\]】]/gi);
-                if (scheduleTagMatches) {
-                    scheduleTagMatches.forEach(tag => {
-                        const schedMatch = tag.match(/[\[【](?:定时|SCHEDULE)[:：]\s*([^\]】]+)[\]】]/i);
-                        if (schedMatch) {
-                            const inner = schedMatch[1].trim();
-                            const timeMatch = inner.match(/((?:\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+)?\d{1,2}[:：点]\s*\d{0,2}分?)/);
-                            if (timeMatch) {
-                                const timePart = timeMatch[1].trim();
-                                const contentPart = inner.replace(timeMatch[0], '').replace(/^[:：\s\-_]+/, '').replace(/[:：\s\-_]+$/, '').trim();
-                                const schedulerStore = useSchedulerStore();
-                                if (schedulerStore.addTask(chatId, timePart, contentPart)) {
-                                    console.log('[ChatStore] Scheduled task explicitly registered:', { timePart, contentPart });
-                                    triggerToast('⏰ 定时任务已录入系统', 'success');
-                                }
-                            }
-                        }
-                    });
-                }
 
                 // --- Improved Content Cleaning ---
                 // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
-                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
                 let cleanContent = properlyOrderedContent
                     // .replace(cleanVoiceRegex, '') // KEEP INNER_VOICE for History/Card to read!
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
+                    .replace(momentRegex, '')
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
@@ -3187,36 +2429,20 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     .replace(/\[COMMENT[:：].*?\]/gi, '')
                     .replace(/\[REPLY[:：].*?\]/gi, '')
                     .replace(/\[MUSIC:\s*.*?\]/gi, '') // Remove MUSIC command tags
-                    .replace(/[\[【](?:定时|SCHEDULE)[:：]\s*([^\]】]+)[\]】]/gi, '') // Remove Scheduled Task tags
                     // Aggressively clean AI's manual quote explanations like "引用来自 我 的消息..."
                     .replace(/[（\(]引用来自.*?[）\)]/gi, '')
                     .replace(/引用[^：:。^！]*[：:。^！]/gi, '')
                     .trim();
-
-                // Remove the exact MOMENT block captured by balanced brace matching
-                if (momentFullMatch) {
-                    cleanContent = cleanContent.replace(momentFullMatch, '').trim();
-                }
-                // Fallback: also remove any remaining [MOMENT]...[/MOMENT] tags that might have been missed
-                cleanContent = cleanContent.replace(/\[(?:MOMENT|朋友圈)\][\s\S]*?\[\/(?:MOMENT|朋友圈)\]/gi, '').trim();
 
                 // Clean AI Hallucinations & Residual Tags & TOXIC CSS
                 cleanContent = cleanContent
                     .replace(/\[Image Reference ID:.*?\]/gi, '')
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
-                    .replace(/\[(?:SET_AVATAR|更换头像)[:：]\s*(.+?)\s*\]/gi, '')
-                    .replace(/\[\/?(MOMENT|REPLY|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
+                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
                     // Strip system context hints parrotted by AI
                     .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE)消息[\]\)]?/gi, '')
                     .replace(/\[(?:图片消息|语音消息)\]/gi, '')
-                    // Clean double brackets
-                    .replace(/\[\[/g, '[')
-                    .replace(/\]\]/g, ']')
-                    .replace(/\(\(/g, '(')
-                    .replace(/\)\)/g, ')')
-                    .replace(/（（/g, '（')
-                    .replace(/））/g, '）')
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
@@ -3245,7 +2471,6 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
 
                 // Pass 3: Extraction using robust brace matcher (The Protectors)
                 // Aggressively match anything starting with [CARD]{ or just { "any_key":
-                // FIX: Specifically identify [LS_JSON: and [INNER_VOICE and block them from being treated as naked cards
                 const cardStartRegex = /(?:\[\s*CARD\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*:\s*)/gi;
                 let cardMatch;
                 const cardPositions = [];
@@ -3254,15 +2479,6 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     let startPos = cardMatch.index;
                     let jsonStart = cardMatch.index + cardMatch[0].indexOf('{');
                     let isNaked = !cardMatch[0].trim().toUpperCase().startsWith('[');
-
-                    // Check if this "naked" card is actually inside a protocol tag [LS_JSON: ...]
-                    if (isNaked && startPos > 0) {
-                        const segmentBefore = cleanContent.substring(0, startPos).trim();
-                        if (segmentBefore.toUpperCase().endsWith('[LS_JSON:') || segmentBefore.toUpperCase().endsWith('[INNER_VOICE]')) {
-                            // This is part of a protocol tag, not a naked HTML card. Skip extraction here.
-                            continue;
-                        }
-                    }
 
                     let braceCount = 1;
                     let endPos = jsonStart + 1;
@@ -3288,24 +2504,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         if (closingTagMatch) totalEnd += closingTagMatch[0].length;
 
                         const fullCard = cleanContent.substring(startPos, totalEnd);
-
-                        // NEW: Avoid matching Inner Voice or LS_JSON metadata as "Naked Cards"
-                        const isProtocolMetadata = isNaked && (
-                            fullCard.includes('"anniversary"') ||
-                            fullCard.includes('"commands"') ||
-                            fullCard.includes('"stats"') ||
-                            fullCard.includes('"mood"') ||
-                            fullCard.includes('"spirit"') ||
-                            fullCard.includes('"mind"') ||
-                            fullCard.includes('"outfit"') ||
-                            fullCard.includes('"scene"') ||
-                            fullCard.includes('"action"') ||
-                            fullCard.includes('"thoughts"')
-                        );
-
-                        if (!isProtocolMetadata) {
-                            cardPositions.push({ start: startPos, end: totalEnd, content: fullCard, isNaked });
-                        }
+                        cardPositions.push({ start: startPos, end: totalEnd, content: fullCard, isNaked });
                         cardStartRegex.lastIndex = totalEnd;
                     }
                 }
@@ -3332,92 +2531,39 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // --- Improved Splitting Logic (V13 - Aggressive Splitting) ---
-                //   4. Multi-member [FROM:ID] tags for group ecology
-                // Standard Text: Apply splitting for special blocks
-                // V20: Robust Splitting (Parentheses fixed for start-of-string, aggressive newline priority)
-                const specialBlockRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:(?=\s*\n\s*\[(?!\/))|$)|\[\s*LS_JSON[:：][\s\S]*?\}\s*\]|(?:[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】](?:[ \t]*[\[【]DRAW[:：\s][^\]】]*[\]】])?|[\[【]DRAW[:：\s][^\]】]*[\]】](?:[ \t]*[\[【](?:GIFT|礼物)[:：\s][^\]】]*[\]】])?|[\[【](?:摇骰子 | 掷骰子)[:：\s][^\]】]*[\]】]|[\[【][\s\S]*?[\]】])|(?<=^|[。！？!?…\n\r\s])([（\(][^）\)]*?[）\)])|([（\(][^）\)]*?[。！？!?…][^）\)]*?[）\)])(?!\s*[。！？!?…]))/gi;
+                // --- Improved Splitting Logic (V11 - Balanced Aware) ---
+                // We split by punctuation but keep segments meaningful.
+                // Avoid capturing nested parentheses in the split pattern itself if possible
 
-                console.log('[Split V13] processedContent:', JSON.stringify(processedContent));
-                console.log('[Split V13] processedContent (first 500 chars):', processedContent.substring(0, 500));
+                // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：]?.*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const rawParts = processedContent.split(splitRegex);
+
+                useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
 
                 let rawSegments = [];
-                let lastIdx = 0;
-                let specialMatch;
+                let currentRawSegment = "";
 
-                while ((specialMatch = specialBlockRegex.exec(processedContent)) !== null) {
-                    if (specialMatch.index > lastIdx) {
-                        const textBefore = processedContent.substring(lastIdx, specialMatch.index);
-                        if (textBefore.trim()) rawSegments.push(textBefore);
-                    }
-                    rawSegments.push(specialMatch[0]);
-                    lastIdx = specialMatch.index + specialMatch[0].length;
-                }
-                if (lastIdx < processedContent.length) {
-                    const remaining = processedContent.substring(lastIdx);
-                    if (remaining.trim()) rawSegments.push(remaining);
-                }
+                for (let i = 0; i < rawParts.length; i++) {
+                    const part = rawParts[i];
+                    if (part === undefined) continue;
 
-                // Step 2: Split each non-special segment by ANY newline
-                let expandedSegments = [];
-                for (const seg of rawSegments) {
-                    const sTrim = seg.trim();
-                    // Identify if this is a "Protected" special block (CARD or INNER_VOICE or Commands)
-                    const isProtectedBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[|【)/i.test(sTrim);
-                    const isParentheses = /^[（\(]/.test(sTrim);
+                    const trimmedPart = part.trim();
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
+                    const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
-                    // Priority: If it contains newlines and is NOT a protected system block, split it regardless of brackets
-                    if (seg.includes('\n') && !isProtectedBlock) {
-                        const paragraphs = seg.split(/\r?\n/).map(p => p.trim()).filter(p => p);
-                        expandedSegments.push(...paragraphs);
-                    } else if (isProtectedBlock || isParentheses) {
-                        expandedSegments.push(seg);
+                    if (isSpecial) {
+                        if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }
+                        rawSegments.push(part);
+                    } else if (isPunctuation) {
+                        currentRawSegment += part;
+                        rawSegments.push(currentRawSegment);
+                        currentRawSegment = "";
                     } else {
-                        const paragraphs = seg.split(/\r?\n/).map(p => p.trim()).filter(p => p);
-                        expandedSegments.push(...paragraphs);
+                        currentRawSegment += part;
                     }
                 }
-
-                // Step 3: Merge extremely short disconnected fragments (like stray punctuation)
-                let mergedSegments = [];
-                for (let i = 0; i < expandedSegments.length; i++) {
-                    const seg = expandedSegments[i];
-                    const trimSeg = seg.trim();
-                    const isSpecialBlock = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[|【|（|\()/i.test(trimSeg);
-
-                    if (isSpecialBlock || mergedSegments.length === 0) {
-                        mergedSegments.push(seg);
-                        continue;
-                    }
-
-                    const lastIdx2 = mergedSegments.length - 1;
-                    const lastSeg = mergedSegments[lastIdx2];
-                    const lastIsSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[|【|（|\()/i.test(lastSeg.trim());
-
-                    // Special case: Merge sticker/image tags with previous [FROM:xxx] tag
-                    const isStickerTag = /^\[\s*(?:表情包|表情-包|STICKER|IMAGE|图片)\s*[:：]/i.test(trimSeg);
-                    const isFromTag = /^\[\s*FROM\s*[:：]/i.test(lastSeg.trim());
-                    if (isStickerTag && isFromTag) {
-                        // Merge sticker tag with previous FROM tag
-                        mergedSegments[lastIdx2] = lastSeg.trim() + '\n' + trimSeg;
-                        continue;
-                    }
-
-                    // Merge if the current segment is just punctuation or a very short word, AND the last was text
-                    const isPunctuationOnly = /^[\p{P}\p{S}]+$/u.test(trimSeg);
-                    if (!lastIsSpecial && (trimSeg.length < 2 || isPunctuationOnly)) {
-                        mergedSegments[lastIdx2] = lastSeg + " " + trimSeg;
-                        continue;
-                    }
-
-                    mergedSegments.push(seg);
-                }
-                rawSegments = mergedSegments;
-
-                useLoggerStore().debug(`[Split V13] Final segments: ${rawSegments.length}`);
-                console.log('[Split V13] Raw segments:', rawSegments);
-                console.log('[Split V13] Expanded segments:', expandedSegments);
-                console.log('[Split V13] Merged segments:', mergedSegments);
+                if (currentRawSegment) rawSegments.push(currentRawSegment);
 
                 // --- Restoring Card Blocks and Filtering Content ---
                 let finalSegments = [];
@@ -3429,11 +2575,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         const index = parseInt(placeholderMatch[1]);
                         content = cardBlocks[cardBlocks.length - 1 - index];
                         finalSegments.push({ type: 'card', content });
-                    } else if (/^\[\s*(?:INNER[\s-_]*VOICE|LS_JSON)\s*[:：\]]/i.test(content.trim())) {
-                        // EXPLICIT HIDE: Ensure Love Space Protocol blocks and Inner Voice are hidden
-                        finalSegments.push({ type: 'text', content: content.trim(), hidden: true });
-                    } else if (/^\[\s*(?:表情包|表情-包|STICKER|IMAGE)\s*[:：][^\]]*?\]\s*$/.test(content.trim())) {
-                        console.log('[Split V13] Detected sticker:', content.trim());
+                    } else if (/^\[(?:表情包|表情-包)[:：].*?\]$/.test(content.trim())) {
                         // Keep full content (tag) so frontend can parse it with regex
                         finalSegments.push({ type: 'sticker', content: content.trim() });
                     } else if (content.startsWith('[语音通话]') || content.startsWith('[通话]')) {
@@ -3445,86 +2587,10 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                         let voiceContent = content.replace(/^\[语音(消息)?[:：]?\s*/, '').replace(/\]$/, '');
                         finalSegments.push({ type: 'voice', content: voiceContent.trim() });
                     } else if (content.startsWith('[图片')) {
-                        // Support both [图片:URL] and [图片消息]
-                        let imgUrl = content.replace(/^\[图片[:：]?\s*/, '').replace(/\]$/, '').trim();
-                        if (imgUrl && (imgUrl.startsWith('http') || imgUrl.startsWith('data:'))) {
-                            finalSegments.push({ type: 'image', image: imgUrl, content: '[图片]' });
-                        } else {
-                            finalSegments.push({ type: 'text', content: '[图片]' });
-                        }
-                    } else if (content.startsWith('[红包') || content.startsWith('[发红包')) {
-                        // Robust multi-parameter support for [红包:amount:count:type:note] 
-                        const parts = content.replace(/[\[\]]/g, '').split(/[:：]/);
-                        if (parts.length >= 2) {
-                            finalSegments.push({
-                                type: 'redpacket',
-                                amount: parseFloat(parts[1]) || 0,
-                                count: parts[2] ? parseInt(parts[2]) : undefined,
-                                packetType: parts[3],
-                                note: parts[4],
-                                content: content.trim()
-                            });
-                        } else {
-                            finalSegments.push({ type: 'text', content: content.trim() });
-                        }
-                    } else if (content.startsWith('[转账')) {
-                        const parts = content.replace(/[\[\]]/g, '').split(/[:：]/);
-                        if (parts.length >= 2) {
-                            finalSegments.push({
-                                type: 'transfer',
-                                amount: parseFloat(parts[1]) || 0,
-                                note: parts[2],
-                                paymentId: parts[3],
-                                content: content.trim()
-                            });
-                        } else {
-                            finalSegments.push({ type: 'text', content: content.trim() });
-                        }
-                    } else if (content.startsWith('[GIFT:') || content.startsWith('[礼物:')) {
-                        // Gift handling: [GIFT:name:quantity:note] or [礼物:name:quantity:note]
-                        const parts = content.replace(/[\[\]]/g, '').split(/[:：]/);
-                        const drawMatch = content.match(/\[DRAW[:：\s]([^\]]+)\]/i);
-                        if (parts.length >= 2) {
-                            finalSegments.push({
-                                type: 'gift',
-                                giftId: 'GIFT-AI-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-                                giftName: parts[1]?.trim() || '礼物',
-                                giftQuantity: parts[2] ? parseInt(parts[2]) || 1 : 1,
-                                giftNote: parts[3]?.trim() || '',
-                                giftImage: 'https://cdn-icons-png.flaticon.com/512/3081/3081840.png',
-                                drawPrompt: drawMatch ? drawMatch[1].trim() : '',
-                                status: 'pending',
-                                content: content.trim()
-                            });
-                        } else {
-                            finalSegments.push({ type: 'text', content: content.trim() });
-                        }
+                        // AI sometimes outputs [图片] or [图片消息]
+                        finalSegments.push({ type: 'text', content: '[图片]' }); // Handled as image msg by type: 'text' + content: '[图片]'
                     } else if (content.startsWith('[DRAW:')) {
-                        finalSegments.push({ type: 'image', content: content.trim() });
-                    } else if (/^\[(?:演奏|MUSIC)[:：]/i.test(content.trim())) {
-                        finalSegments.push({ type: 'music', content: content.trim() });
-                    } else if (/^\[\s*INNER[\s-_]*VOICE\s*\]/i.test(content.trim()) || /^\[\s*LS_JSON\s*[:：]/i.test(content.trim())) {
-                        // INNER_VOICE and LS_JSON blocks are metadata.
-                        // We preserve them as text segments but mark them as hidden
-                        // so they won't be displayed as protocol messages in bubbles.
-                        finalSegments.push({ type: 'text', content: content.trim(), hidden: true });
-                        continue;
-                    } else if (/^[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]$/i.test(content.trim())) {
-                        // Dice Roll Command: [摇骰子：数量] or [掷骰子：数量]
-                        const diceMatch = content.trim().match(/^[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]$/i);
-                        let diceCount = diceMatch[1] ? parseInt(diceMatch[1], 10) : 1;
-                        if (!diceCount || diceCount < 1) diceCount = 1;
-                        if (diceCount > 3) diceCount = 3;
-                        const results = Array.from({ length: diceCount }, () => Math.floor(Math.random() * 6) + 1);
-                        finalSegments.push({
-                            type: 'dice_result',
-                            diceCount: diceCount,
-                            diceResults: results,
-                            diceTotal: results.reduce((a, b) => a + b, 0),
-                            content: content.trim()
-                        });
-                        console.log('[Split V13] Detected dice roll:', content.trim(), '->', diceCount, 'dice');
-                        continue;
+                        finalSegments.push({ type: 'draw', content: content.trim() });
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'];
@@ -3554,70 +2620,189 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     }
                 }
 
-                // --- 4. Persistent Delivery ---
-                chat.pendingSegments = finalSegments;
-                chat.lastSpeakerMeta = groupSpeakerMeta ? { ...groupSpeakerMeta } : null;
-                saveChats();
+                // --- 4. Sequential Delivery ---
+                for (let i = 0; i < finalSegments.length; i++) {
+                    if (!typingStatus.value[chatId]) break;
 
-                console.log('[AI Response] Saved pendingSegments:', finalSegments.length, 'segments');
-                console.log('[AI Response] currentChatId:', chatId);
-                console.log('[AI Response] typingStatus before consume:', typingStatus.value[chatId]);
+                    const { type, content } = finalSegments[i];
+                    let msgAdded = null;
+                    let msgContent = content;
 
-                // Start consumption but handle typingStatus in the call
-                await consumePendingSegments(chatId);
-                
-                console.log('[AI Response] consumePendingSegments completed');
+                    if (type === 'card' || type === 'text') {
+                        // Process Payment Tags
+                        let pendingSystemMsgs = [];
+                        let claimMatch;
+                        while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
+                            const paymentId = claimMatch[2].trim();
+                            const targetMsg = chat.msgs.find(m => m.paymentId === paymentId);
+                            if (targetMsg && !targetMsg.isClaimed && !targetMsg.isRejected) {
+                                targetMsg.isClaimed = true;
+                                targetMsg.claimTime = Date.now();
+                                targetMsg.claimedBy = { name: chat.name, avatar: chat.avatar };
+                                pendingSystemMsgs.push(`${chat.name}领取了你的${claimMatch[1]}`);
+                            }
+                        }
+                        // (Add similar logic for reject if needed)
+
+                        msgContent = msgContent.replace(/\[领取(红包|转账):[^\]]+\]/g, '').replace(/\[(退回|拒收)(红包|转账):[^\]]+\]/g, '').trim();
+                        if (!msgContent && pendingSystemMsgs.length === 0) continue;
+
+                        if (type === 'card' || msgContent.match(/\[\s*CARD\s*\]/i) || msgContent.trim().startsWith('{')) {
+                            // HTML Card Delivery
+                            let processedHtml = msgContent.replace(/\[\s*\/?[CARD\s]*\]/gi, '').trim();
+                            if (processedHtml.includes('\\"')) processedHtml = processedHtml.replace(/\\"/g, '"');
+                            if (!processedHtml.trim().startsWith('{') && (processedHtml.includes('"type":') || processedHtml.includes('"html":'))) processedHtml = '{' + processedHtml + '}';
+
+                            let extractedHtml = processedHtml;
+                            try {
+                                const parsed = JSON.parse(processedHtml);
+                                if (parsed.html) extractedHtml = parsed.html;
+                            } catch (e) { /* Fallback to raw */ }
+
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
+                        } else {
+                            // Text Message Delivery
+                            const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
+                            let msgType = 'text', amount = null, note = null;
+                            if (rpMatch) {
+                                msgType = rpMatch[1] === '红包' ? 'redpacket' : 'transfer';
+                                amount = parseFloat(rpMatch[2]) || 1.0;
+                                note = rpMatch[3];
+                            } else if (msgContent.includes('[FAMILY_CARD')) {
+                                msgType = 'family_card';
+                            } else if (msgContent.includes('[演奏') || msgContent.includes('[MUSIC')) {
+                                const musicMatch = msgContent.match(/\[(演奏|MUSIC)\s*[:：]\s*(.*?)\s*(?:[:：]\s*(.*?))?\]/i);
+                                if (musicMatch) {
+                                    msgType = 'music';
+                                    const inst = musicMatch[2].trim();
+                                    const score = musicMatch[3] ? musicMatch[3].trim() : '';
+                                    msgContent = score ? `${inst}: ${score}` : inst;
+                                }
+                            }
+
+                            if (i === 0 && innerVoiceBlock) msgContent += '\n' + innerVoiceBlock;
+
+                            msgAdded = addMessage(chatId, {
+                                role: 'ai',
+                                type: msgType,
+                                content: msgContent,
+                                amount,
+                                note,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode
+                            });
+                        }
+
+                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt }));
+
+                    } else if (type === 'sticker') {
+                        // Ensure sticker content is just the name/filename if needed, or keeping full tag if components handle it
+                        // The store usually expects just the name or url depending on implementation. 
+                        // Based on ChatMessageItem, type 'sticker' usually expects content to be the sticker name or url.
+                        // We stripped the brackets in the segmenting phase above.
+                        msgAdded = addMessage(chatId, {
+                            role: 'ai',
+                            type: 'sticker',
+                            content,
+                            quote: i === 0 ? aiQuote : null,
+                            hidden: isCallMode
+                        });
+                    } else if (type === 'voice') {
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1 });
+                    } else if (type === 'draw') {
+                        const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
+                        if (drawMatch) {
+                            // 1. Add a temporary "Generating" placeholder (System message or special type)
+                            // OR add the image message immediately with a "loading" state if supported.
+                            // For now, we will add a text message with the command HIDDEN (or temporary text) then replace it.
+
+                            // User request: "绘画指令没隐藏". So we should NOT show the [DRAW:...] text.
+                            // We create a placeholder message that says "正在绘图..."
+                            msgAdded = await addMessage(chatId, {
+                                role: 'ai',
+                                type: 'text',
+                                content: '🎨 正在根据灵感绘图...',
+                                quote: i === 0 ? aiQuote : null
+                            });
+
+                            // Safe ID retrieval - Now safe because we awaited addMessage
+                            const targetMsgId = msgAdded?.id;
+
+                            if (!targetMsgId) {
+                                console.error('[ChatStore] Failed to get ID for placeholder message (addMessage failed?). Aborting image update.');
+                            } else {
+                                (async () => {
+                                    try {
+                                        const imageUrl = await generateImage(drawMatch[1].trim());
+
+                                        // Replace the placeholder with the actual image
+                                        updateMessage(chatId, targetMsgId, {
+                                            type: 'image', // Change type to image
+                                            content: `[图片:${imageUrl}]`, // Standard format
+                                            image: imageUrl // Ensure direct link for Gallery
+                                        });
+                                    } catch (err) {
+                                        updateMessage(chatId, targetMsgId, {
+                                            type: 'text',
+                                            content: `(绘画失败: ${err.message})`
+                                        });
+                                    }
+                                })();
+                            }
+                        }
+                    } else if (type === 'call') {
+                        // AI主动发起通话
+                        const callType = content === 'video' ? 'video' : 'voice';
+                        callStore.receiveCall(chat, callType);
+                    }
+
+                    // Sequential Delay
+                    const delay = Math.min(2000, Math.max(600, (content?.length || 10) * 80));
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+
+                // --- Send FAMILY_CARD messages separately (hallucination cleanup) ---
+                if (familyCardMatches.length > 0) {
+                    for (const cardTag of familyCardMatches) {
+                        if (!isTyping.value) break;
+                        addMessage(chatId, { role: 'ai', content: cardTag, type: 'text' });
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                    }
+                }
             }
         } catch (e) {
-            // Cleanup on error
+            typingStatus.value[chatId] = false;
             delete abortControllers[chatId];
             if (e.name === 'AbortError' || e.message === 'Aborted') return;
-            useLoggerStore().addLog('ERROR', 'AI 响应处理失败', e.message);
+            useLoggerStore().addLog('ERROR', 'AI响应处理失败', e.message);
             if (!(e.name === 'QuotaExceededError' || e.code === 22)) {
-                addMessage(chatId, { role: 'system', content: `请求失败：${e.message}` });
+                addMessage(chatId, { role: 'system', content: `请求失败: ${e.message}` });
             }
-            return;
         } finally {
-            // CRITICAL FIX: The typingStatus should be cleared ONLY when the entire 
-            // sendMessageToAI task (including consumption) is finished or aborted.
             typingStatus.value[chatId] = false;
             callStore.isSpeaking = false;
-            // REMOVED: delete abortControllers[chatId];
-            // Keep abortController to prevent stream from being interrupted on page navigation
-            // It will be replaced when the next AI request starts
+            delete abortControllers[chatId];
         }
-    }
-
-
-
-    function getTokenCount(chatId) {
-        const stats = getTokenBreakdown(chatId)
-        return stats.totalContext
     }
 
     // 初始化测试数据
     function initDemoData() {
-        // 林深 - 使用用户喜欢的随机猫猫头
-        createChat('林深', {
-            id: 'char_linshen',
-            avatar: getRandomAvatar(), // 使用猫猫头
+        const avatarLinShen = getRandomAvatar()
+        createChat('林深', avatarLinShen, {
             prompt: "你是Chilly的男朋友，名字叫林深。你性格温柔体贴，成熟稳重，深爱着Chilly。你会无微不至地关心她，秒回她的消息，生病时会很紧张。说话语气宠溺，偶尔会叫她'宝宝'或'傻瓜'。",
             userName: "Chilly"
-        })
+        }, 'char_linshen')
         addMessage('char_linshen', { role: 'ai', content: '宝宝，今天过得怎么样？有没有想我？' })
 
-        // 测试酱 - 使用用户喜欢的随机猫猫头
-        createChat('测试酱', {
-            id: 'char_tester',
-            avatar: getRandomAvatar(), // 使用猫猫头
+        const avatarTest = getRandomAvatar()
+        createChat('测试酱', avatarTest, {
             prompt: "你是'测试酱'，这个'小手机系统'的专属测试员兼私人助手。你的主人是'Chilly'（女），她是这个系统的首席设计师，也是你唯一的主人。你性格活泼、听话，对主人的指令绝对服从，并且对主人充满崇拜。你的工作是协助主人测试系统的各项功能，无论主人提出什么奇怪的测试要求（如测试表情包、测试红包、测试甚至骂人），你都会开心配合。你的语气要像个可爱的女仆或忠诚的小跟班，经常叫主人'大小姐'或'主人'。",
             userName: "Chilly",
             activeChat: true,
             activeInterval: 120,
-        })
+        }, 'char_tester')
         addMessage('char_tester', { role: 'ai', content: '大小姐，您的专属测试员——测试酱已就位！请随时吩咐我测试任何功能哦！(｀・ω・´)' })
     }
-
 
     function clearAllChats() {
         Object.keys(chats.value).forEach(key => {
@@ -3627,27 +2812,17 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
     }
 
 
-    async function clearHistory(chatId, options = {}) {
+    function clearHistory(chatId, options = {}) {
         if (chats.value[chatId]) {
-            // Merge into a new object to trigger reactivity
-            // Only clear messages and optionally memory, but keep the chat in the list
-            chats.value[chatId] = {
-                ...chats.value[chatId],
-                msgs: []
-            }
-
-            // Re-assign the whole chats object to ensure top-level reactivity
-            chats.value = { ...chats.value }
+            chats.value[chatId].msgs = []
+            // Keep in chat list so user can continue chatting
+            // chats.value[chatId].inChatList = false 
 
             if (options.includeMemory) {
-                chats.value[chatId] = {
-                    ...chats.value[chatId],
-                    memory: [],
-                    summary: ''
-                }
-                chats.value = { ...chats.value }
+                chats.value[chatId].memory = []
+                chats.value[chatId].summary = ''
             }
-            await saveChats()
+            saveChats()
         }
     }
 
@@ -3702,11 +2877,6 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         }
     }
 
-
-
-
-
-
     function pinChat(chatId) {
         if (chats.value[chatId]) {
             chats.value[chatId].isPinned = !chats.value[chatId].isPinned
@@ -3730,8 +2900,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         }
     }
 
-    // Core save implementation — optimized
-    async function _saveChatsCore() {
+    async function saveChats() {
         if (!isLoaded.value) {
             console.warn('[Storage] saveChats ignored: data not yet loaded from DB.');
             return false;
@@ -3740,12 +2909,6 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         // LAST LINE OF DEFENSE: Filter JSON fragments before saving
         Object.values(chats.value).forEach(chat => {
             if (chat.msgs && Array.isArray(chat.msgs)) {
-                // Only keep recent messages to reduce storage size
-                const maxMessages = 2000; // Increase to 2000 to avoid losing history
-                if (chat.msgs && chat.msgs.length > maxMessages) {
-                    chat.msgs = chat.msgs.slice(-maxMessages);
-                }
-
                 chat.msgs = chat.msgs.filter(m => {
                     if (!m.content || typeof m.content !== 'string') return true;
                     const trimmed = m.content.trim();
@@ -3758,13 +2921,8 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         });
 
         try {
-            // Create a serializable copy of the data
-            const serializableChats = JSON.parse(JSON.stringify(chats.value));
-            const serializableRequests = JSON.parse(JSON.stringify(pendingRequests.value));
-
             // Use IndexedDB for large data
-            await localforage.setItem('qiaoqiao_chats_v2', serializableChats);
-            await localforage.setItem('qiaoqiao_pending_requests', serializableRequests);
+            await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
             // Small marker in localStorage to trigger 'storage' events for cross-tab sync if needed
             localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
             return true
@@ -3772,71 +2930,33 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
             console.error('[Storage] localforage save failed:', e);
             // Fallback for extreme cases
             try {
-                const serializableChats = JSON.parse(JSON.stringify(chats.value));
-                localStorage.setItem('qiaoqiao_chats', JSON.stringify(serializableChats));
+                localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value));
             } catch (innerE) {
-                console.error('[Storage] localStorage save failed:', innerE);
-                if (innerE.name === 'QuotaExceededError' || innerE.message.includes('quota')) {
-                    triggerToast('⚠️ 存储空间已满！部分聊天记录或设置可能无法永久保存，请清理旧聊天或更换无痕模式测试。', 'error')
-                }
                 vacuumStorage();
             }
             return false
         }
     }
 
-    // Debounced saveChats — prevents UI freeze from rapid sequential saves
-    // During AI message delivery, 3-5 addMessage calls fire in quick succession,
-    // each previously doing a full deep-clone + IndexedDB write. Now batched.
-    let _saveTimer = null;
-    function saveChats() {
-        if (_saveTimer) clearTimeout(_saveTimer);
-        _saveTimer = null;
-        _saveTimer = setTimeout(() => {
-            _saveTimer = null;
-            _saveChatsCore();
-        }, 500); // Reduced delay for better reliability (was 1500ms)
-    }
-
     async function loadChats() {
         try {
             // 1. Try modern IndexedDB first
             let saved = await localforage.getItem('qiaoqiao_chats_v2');
-            let savedRequests = await localforage.getItem('qiaoqiao_pending_requests');
-            if (savedRequests) pendingRequests.value = savedRequests;
 
             // 2. Migration from old localStorage (Improved: attempt recovery if not yet marked as migrated)
-            let isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
-            
-            // EMERGENCY RECOVERY: If v2 is completely empty from primary storage,
-            // force check local backups. This saves users whose storage crashed due to quota.
-            if (!saved || Object.keys(saved).length === 0) {
-                isMigrated = false;
-            }
-
+            const isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
             if (!isMigrated) {
-                let legacy = localStorage.getItem('qiaoqiao_chats');
-                
-                // If standard legacy is missing, sometimes localforage saves raw to localStorage
-                // under its own prefix if IndexedDB is blocked (e.g., in some private modes).
-                if (!legacy) {
-                    legacy = localStorage.getItem('qiaoqiao-phone/chats/qiaoqiao_chats_v2');
-                }
-
+                const legacy = localStorage.getItem('qiaoqiao_chats');
                 if (legacy) {
-                    console.log('[Storage] Found legacy/backup data. Performing migration/recovery...');
+                    console.log('[Storage] Found legacy data. Performing migration/recovery...');
                     try {
                         const legacyData = JSON.parse(legacy);
-                        // MERGE logic: Recover lost history by merging
+                        // MERGE logic: If we have existing data (like accidental demo data), 
+                        // we merge them, prioritizing legacy data for matching IDs to recover lost history.
                         saved = { ...(saved || {}), ...legacyData };
-                        
-                        try {
-                            await localforage.setItem('qiaoqiao_chats_v2', saved);
-                            localStorage.setItem('qiaoqiao_migrated', 'true');
-                            console.log('[Storage] Migration/Recovery completed successfully.');
-                        } catch (e) {
-                            console.error('[Storage] Could not write recovered data back to localforage (quota?):', e);
-                        }
+                        await localforage.setItem('qiaoqiao_chats_v2', saved);
+                        localStorage.setItem('qiaoqiao_migrated', 'true');
+                        console.log('[Storage] Migration/Recovery completed successfully.');
                     } catch (err) {
                         console.error('[Storage] Legacy parse failed during recovery:', err);
                     }
@@ -3873,27 +2993,7 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
                     if (c.autoSummary === undefined) c.autoSummary = false;
                     if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0;
                     c.isSummarizing = false;
-
-                    // Group defaults / migration
-                    // NOTE: Use chat.id when available, otherwise derive from key later
-                    if (c.isGroup === undefined) c.isGroup = false
-                    if (!Array.isArray(c.participants)) c.participants = []
-                    if (c.isGroup) {
-                        // Ensure ID is present for helpers
-                        const cid = c.id || null
-                        if (cid && chats.value[cid] === c) {
-                            // already indexed by id
-                            _ensureGroupDefaults(cid)
-                        }
-                    }
                 });
-
-                // Second pass: ensure group defaults with actual keys (covers legacy data where c.id missing)
-                Object.entries(chats.value).forEach(([key, c]) => {
-                    if (!c) return
-                    if (!c.id) c.id = key
-                    if (c.isGroup) _ensureGroupDefaults(c.id)
-                })
             }
         } catch (e) {
             console.error('[Storage] Load failed:', e);
@@ -3903,31 +3003,16 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
     const isLoaded = ref(false)
 
     // INITIALIZATION: Load data then check for empty state
-    // CRITICAL: We only initialize demo data if load successfully returned empty,
-    // NOT if the load itself failed (which would overwrite real data with demo data).
     loadChats().then(() => {
         isLoaded.value = true
-        const isFirstRun = localStorage.getItem('qiaoqiao_first_run') !== 'false';
-        if (Object.keys(chats.value).length === 0 && isFirstRun) {
-            console.log('[Storage] Fresh install detected, initializing demo data...')
+        if (Object.keys(chats.value).length === 0) {
+            console.log('[Storage] Empty state detected, initializing demo data...')
             initDemoData();
-            localStorage.setItem('qiaoqiao_first_run', 'false');
             saveChats();
-        } else if (Object.keys(chats.value).length > 0) {
-            localStorage.setItem('qiaoqiao_first_run', 'false');
-
-            // Resume any interrupted AI responses
-            Object.keys(chats.value).forEach(chatId => {
-                const chat = chats.value[chatId];
-                if (chat.pendingSegments && chat.pendingSegments.length > 0) {
-                    console.log(`[Storage] Resuming interrupted typing for ${chatId}`);
-                    consumePendingSegments(chatId);
-                }
-            });
         }
     }).catch(err => {
-        console.error('[Storage] Crucial load failure - NOT overwriting with demo data:', err)
-        isLoaded.value = true // Mark as loaded but data might be missing; user should refresh
+        console.error('[Storage] Crucial load failure:', err)
+        isLoaded.value = true // Still mark as loaded to allow UI recovery
     });
 
     function addSystemMessage(content) {
@@ -4009,337 +3094,23 @@ ${latestVote.isMultiple ? '（多选）' : '（单选）'} ${latestVote.isAnonym
         return generateContextPreview(chatId, chats.value[chatId])
     }
 
-
-
-
-    function addPendingRequest(request) {
-        pendingRequests.value.push({
-            id: 'req_' + Date.now(),
-            timestamp: Date.now(),
-            ...request
-        })
-        saveChats()
-    }
-
-    function acceptPendingRequest(requestId) {
-        const idx = pendingRequests.value.findIndex(r => r.id === requestId)
-        if (idx === -1) return
-        const req = pendingRequests.value[idx]
-
-        if (req.type === 'group_invite') {
-            // Join group
-            if (!chats.value[req.targetId]) {
-                const settingsStore = useSettingsStore()
-                createGroupChat({
-                    id: req.targetId,
-                    name: req.targetName || '新群聊',
-                    ownerId: req.fromId, // the inviter is owner for now
-                    participants: [
-                        { id: req.fromId, name: req.fromName, avatar: req.fromAvatar || getRandomAvatar(), role: 'owner' }
-                    ]
-                })
-            }
-            updateCharacter(req.targetId, { inChatList: true, isGroup: true })
-            triggerToast('已加入群聊', 'success')
-        } else if (req.type === 'friend_request') {
-            // Become friends
-            if (!chats.value[req.fromId]) {
-                createChat(req.fromName, {
-                    id: req.fromId,
-                    avatar: req.fromAvatar || getRandomAvatar(),
-                    inChatList: true
-                })
-            } else {
-                updateCharacter(req.fromId, { inChatList: true })
-            }
-            triggerToast('已通过好友申请', 'success')
-        }
-
-        pendingRequests.value.splice(idx, 1)
-        saveChats()
-    }
-
-    const isPumpProcessing = ref({});
-
-    async function consumePendingSegments(chatId) {
-        console.log('[Pump] consumePendingSegments called for', chatId);
-        
-        if (isPumpProcessing.value[chatId]) {
-            console.log('[Pump] Already processing for', chatId, 'returning');
-            return;
-        }
-
-        const chat = chats.value[chatId];
-        console.log('[Pump] Chat object:', chat ? 'exists' : 'NOT FOUND');
-        console.log('[Pump] pendingSegments:', chat?.pendingSegments?.length || 0);
-        
-        if (!chat || !chat.pendingSegments || chat.pendingSegments.length === 0) {
-            console.log('[Pump] No pending segments, returning');
-            // DO NOT clear typingStatus here. 
-            // The AI task itself will clear it when the stream finishes.
-            // Aggressively clearing it here kills background indicator logic and background pumps.
-            return;
-        }
-
-        try {
-            isPumpProcessing.value[chatId] = true;
-            typingStatus.value[chatId] = true;
-
-            const chat = chats.value[chatId];
-            let currentGroupMeta = chat.lastSpeakerMeta ? { ...chat.lastSpeakerMeta } : null;
-
-            // Define regexes needed inside the loop (scope safety)
-            const claimRegex = /\[领取(红包|转账)[:：]\s*(\w+)\]/gi;
-            const rejectRegex = /\[(拒收|退回)(红包|转账)[:：]\s*(\w+)\]/gi;
-
-            while (chat.pendingSegments.length > 0) {
-                if (!typingStatus.value[chatId]) {
-                    console.log('[Pump] Typing status cleared outside, breaking loop for', chatId);
-                    break;
-                }
-
-                try {
-                    const segment = chat.pendingSegments[0];
-                    if (!segment) {
-                        chat.pendingSegments.shift();
-                        continue;
-                    }
-
-                    const { type, content } = segment;
-                    if (!content || content.trim().length === 0) {
-                        chat.pendingSegments.shift();
-                        continue;
-                    }
-
-                    console.log(`[Pump] Processing segment (${type}):`, content.substring(0, 30));
-
-                    let msgAdded = null;
-                    let msgContent = content;
-
-                    // Handle Speaker Switching [FROM:ID] or AI hallucinatory name prefixes
-                    let speakerChanged = false;
-                    let parsedSpeakerId = null;
-
-                    if (type === 'text') {
-                        // 1. Standard [FROM:ID]
-                        const fromMatch = msgContent.match(/^\[FROM:\s*(.*?)\s*\]/i);
-                        // 2. Hallucinated prefix like "[LV10 管理员] 傻狗: " or "傻狗: "
-                        const hallucinatedPrefixRegex = /^(?:\[.*?LV\d+.*?\]\s*)?(?:([^:：\n\[\]]+)[:：])\s*(.*)$/si;
-                        const prefixMatch = (!fromMatch) ? msgContent.trim().match(hallucinatedPrefixRegex) : null;
-
-                        if (fromMatch) {
-                            parsedSpeakerId = fromMatch[1].trim();
-                            msgContent = msgContent.substring(fromMatch[0].length).trim();
-                            speakerChanged = true;
-                        } else if (prefixMatch && prefixMatch[1]) {
-                            // Only match if the extracted name matches a participant
-                            const potentialName = prefixMatch[1].trim();
-                            const matchesParticipant = (chat.participants || []).some(p => p.id === potentialName || p.name === potentialName) || potentialName.toLowerCase() === 'user' || potentialName === useSettingsStore().personalization?.userProfile?.name;
-                            
-                            if (matchesParticipant) {
-                                parsedSpeakerId = potentialName;
-                                msgContent = prefixMatch[2] ? prefixMatch[2].trim() : '';
-                                speakerChanged = true;
-                                console.log('[Pump] Rescued hallucinated speaker prefix:', potentialName);
-                            }
-                        }
-                    }
-
-                    if (speakerChanged && parsedSpeakerId) {
-                        const participant = (chat.participants || []).find(p => p.id === parsedSpeakerId || p.name === parsedSpeakerId);
-                        if (participant) {
-                            currentGroupMeta = {
-                                senderId: participant.id,
-                                senderName: participant.name,
-                                senderAvatar: participant.avatar
-                            };
-                        } else if (parsedSpeakerId.toLowerCase() === 'user' || parsedSpeakerId === useSettingsStore().personalization?.userProfile?.name) {
-                            const userProfile = useSettingsStore().personalization?.userProfile;
-                            currentGroupMeta = {
-                                senderId: 'user',
-                                senderName: userProfile?.name || '我',
-                                senderAvatar: userProfile?.avatar
-                            };
-                        }
-                        chat.lastSpeakerMeta = currentGroupMeta;
-
-                        if (!msgContent) {
-                            chat.pendingSegments.shift();
-                            saveChats();
-                            continue;
-                        }
-                    }
-
-                    if (['card', 'text', 'redpacket', 'transfer', 'gift', 'sticker', 'dice_result', 'voice', 'music'].includes(type)) {
-                        // Payment processing...
-                        let claimMatch;
-                        while ((claimMatch = claimRegex.exec(msgContent)) !== null) {
-                            const pType = claimMatch[1];
-                            const targetId = claimMatch[2].trim();
-                            const targetMsg = chat.msgs.find(m => m.id === targetId || m.paymentId === targetId);
-                            if (targetMsg) {
-                                const claimantId = currentGroupMeta?.senderId || 'ai';
-                                if (pType === '红包') claimRedPacket(chatId, targetMsg.id, claimantId);
-                                else claimTransfer(chatId, targetMsg.id, claimantId);
-                            }
-                        }
-                        let rejectMatch;
-                        while ((rejectMatch = rejectRegex.exec(msgContent)) !== null) {
-                            const pType = rejectMatch[2];
-                            const targetId = rejectMatch[3].trim();
-                            const targetMsg = chat.msgs.find(m => m.id === targetId || m.paymentId === targetId);
-                            if (targetMsg && pType === '转账' && !targetMsg.isClaimed && !targetMsg.isRejected) {
-                                targetMsg.isRejected = true;
-                                targetMsg.rejectTime = Date.now();
-                                addMessage(chatId, { role: 'system', content: `${currentGroupMeta?.senderName || chat.name}已拒收了你的转账` });
-                            }
-                        }
-
-                        msgContent = msgContent.replace(/\[领取(红包|转账):[^\]]+\]/g, '').replace(/\[(退回|拒收|拒收)(红包|转账):[^\]]+\]/g, '').trim();
-                        if (!msgContent) {
-                            chat.pendingSegments.shift();
-                            saveChats();
-                            continue;
-                        }
-
-                        // AI Commands (Recall, Reply, etc.)
-                        const recallMatch = msgContent.match(/\[撤回\s*[:：]\s*(\w+)\]/i);
-                        if (recallMatch) {
-                            const targetId = recallMatch[1];
-                            setTimeout(() => deleteMessage(chatId, targetId), 500);
-                            chat.pendingSegments.shift();
-                            saveChats();
-                            continue;
-                        }
-
-                        const replyMatch = msgContent.match(/\[回复\s*[:：]\s*(\w+)\s*[:：]\s*(.*)\]/s);
-                        if (replyMatch) {
-                            const targetId = replyMatch[1];
-                            const actualText = replyMatch[2].trim();
-                            const targetMsg = chat.msgs.find(m => m.id === targetId);
-                            if (targetMsg) {
-                                await addMessage(chatId, {
-                                    role: 'ai',
-                                    type: 'text',
-                                    content: actualText,
-                                    quote: { id: targetMsg.id, role: targetMsg.role, content: targetMsg.content },
-                                    ...(currentGroupMeta || {})
-                                });
-                                msgContent = '';
-                            }
-                        }
-
-                        // Scheduled Task Detection
-                        // (Removed from here because it is now robustly extracted at the end of stream before splitting)
-                        
-                        if (msgContent) {
-                            // Spread entire segment to preserve metadata (amount, note, count, etc.)
-                            const msgOptions = {
-                                ...segment, // Preserves amount, note, count, paymentId if present
-                                role: 'ai',
-                                type: type === 'text' ? 'text' : type,
-                                content: msgContent,
-                                forceCard: type === 'card',
-                                ...(currentGroupMeta || {})
-                            };
-
-                            // Re-detect type for text messages (e.g., [表情包：xxx] after [FROM:xxx] removal)
-                            if (type === 'text' && typeof msgContent === 'string') {
-                                const stickerMatch = msgContent.match(/^\[\s*(?:表情包|表情-包|STICKER|IMAGE)\s*[:：]\s*([^\]]+)\]\s*$/i);
-                                if (stickerMatch) {
-                                    msgOptions.type = 'sticker';
-                                    console.log('[consumePendingSegments] Re-detected sticker:', msgContent);
-                                }
-                            }
-
-                            // Debug: Log gift segments
-                            if (type === 'gift') {
-                                console.log('[consumePendingSegments] Processing gift segment:', { type, content: msgContent, segment, msgOptions: { ...segment, role: 'ai', type: type === 'text' ? 'text' : type, content: msgContent } })
-                            }
-                            console.log('[consumePendingSegments] Calling addMessage with:', msgOptions)
-                            const result = await addMessage(chatId, msgOptions);
-                            console.log('[consumePendingSegments] addMessage returned:', result)
-                        }
-                    } else if (type === 'image') {
-                        const drawMatch = content.match(/\[DRAW:\s*(.*?)\s*\]/i);
-                        if (drawMatch) {
-                            msgAdded = await addMessage(chatId, {
-                                role: 'ai',
-                                type: 'text',
-                                content: '(正在构思图画...)',
-                                isDrawing: true,
-                                ...(currentGroupMeta || {})
-                            });
-
-                            const targetMsgId = msgAdded?.id;
-                            if (targetMsgId) {
-                                (async () => {
-                                    try {
-                                        const imageUrl = await generateImage(drawMatch[1].trim());
-                                        updateMessage(chatId, targetMsgId, {
-                                            type: 'image',
-                                            content: `[图片:${imageUrl}]`,
-                                            image: imageUrl
-                                        });
-                                    } catch (err) {
-                                        updateMessage(chatId, targetMsgId, { type: 'text', content: `(绘画失败: ${err.message})` });
-                                    }
-                                })();
-                            }
-                        }
-                    } else if (type === 'call') {
-                        const callType = content === 'video' ? 'video' : 'voice';
-                        callStore.receiveCall(chat, callType);
-                    }
-
-                    // Remove processed segment and save progress
-                    chat.pendingSegments.shift();
-                    saveChats();
-
-                    // Sequential Delay
-                    const delay = Math.min(2200, Math.max(700, (content?.length || 10) * 80));
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } catch (err) {
-                    console.error('[consumePendingSegments] Error processing segment:', err);
-                    chat.pendingSegments.shift(); // Skip broken segment
-                    saveChats();
-                }
-            }
-        } finally {
-            isPumpProcessing.value[chatId] = false;
-            // REMOVED: typingStatus.value[chatId] = false;
-            // The typingStatus should now be managed by the AI task (sendMessageToAI) 
-            // to prevent indicator flickering or premature disappearance.
-            saveChats();
-            console.log('[Pump] Finished consumption for', chatId);
-        }
-    }
-
-    function rejectPendingRequest(requestId) {
-        const idx = pendingRequests.value.findIndex(r => r.id === requestId)
-        if (idx !== -1) {
-            pendingRequests.value.splice(idx, 1)
+    function toggleSearch(chatId) {
+        if (chats.value[chatId]) {
+            chats.value[chatId].searchEnabled = !chats.value[chatId].searchEnabled
             saveChats()
+            triggerToast(chats.value[chatId].searchEnabled ? '联网搜索模式已开启' : '联网搜索模式已关闭', 'info')
         }
     }
 
     return {
-        notificationEvent, patEvent, toastEvent, promptEvent, confirmEvent, triggerToast, triggerPatEffect,
+        notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
-        deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats, searchHistory,
+        deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
-        sendMessageToAI, consumePendingSegments, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
+        sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm, triggerPrompt,
-        isProfileProcessing, pendingRequests, addPendingRequest, acceptPendingRequest, rejectPendingRequest,
-        createGroupChat, updateGroupProfile, updateGroupSettings, updateGroupParticipants,
-        generateGroupMembers, groupNpcs,
-        transferGroupOwner, setParticipantRole, setParticipantTitle, muteParticipant,
-        exitGroup, dissolveGroup,
-        claimRedPacket, claimTransfer, claimGift, hasUnclaimedRP,
-        createVote, castVote, endVote,
-        calculateMemberLevel, getMemberTitle
+        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
+        isProfileProcessing
     }
 })
-
