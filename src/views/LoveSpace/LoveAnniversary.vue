@@ -105,7 +105,7 @@ const newName = ref('')
 const newDate = ref('')
 
 const sortedAnniversaries = computed(() => {
-  return [...anniversaries.value].sort((a, b) => new Date(a.date) - new Date(b.date))
+  return [...anniversaries.value].sort((a, b) => new Date(b.date) - new Date(a.date))
 })
 
 function formatDate(dateStr) {
