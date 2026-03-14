@@ -430,16 +430,57 @@ function getContactAvatar(id) {
 }
 
 // --- Content Cleaning Logic (Beautification) ---
-function getCleanContent(content) {
-    if (!content || typeof content !== 'string') return content;
-    let clean = content;
-    // Remove all JSON blocks
-    clean = clean.replace(/\{[\s\S]*?\}/g, '');
-    // Remove all instruction tags
-    clean = clean.replace(/\[\s*INNER[-_ ]VOICE\s*\][\s\S]*?\[\/\s*INNER[-_ ]VOICE\s*\]/gi, '');
-    clean = clean.replace(/\[(GIFT|礼物|CARD|HTML|DASHBOARD|UPDATE|FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|红包|转账)[:：\-\s]?[^\]]*\]/gi, '');
-    clean = clean.replace(/\[(领取|拒收|通过|申请)[:：\-\s]?[^\]]*\]/gi, '');
-    clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '');
+function getCleanContent(contentRaw) {
+    if (!contentRaw || typeof contentRaw !== 'string') return contentRaw;
+    let clean = contentRaw;
+
+    // 1. Remove large protocol blocks
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); 
+
+    // Existing protocol tags
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间)[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
+    clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
+    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
+    clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
+    clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
+    clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
+    
+    // 2. AGGRESSIVE: Remove style blocks and CSS fragments
+    clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
+    clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');
+    
+    // Broad CSS property/value match: property: value;
+    clean = clean.replace(/[a-z0-9-]+\s*:\s*[^;{}]+(?=[;\}]|\n|$)/gi, (match) => {
+        const lower = match.toLowerCase();
+        const keywords = ['background', 'color', 'font', 'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom', 'display', 'position', 'opacity', 'z-index', 'overflow', 'transform', 'animation', 'mask', 'transition', 'cursor', 'box-shadow', 'text-shadow', 'flex', 'grid', 'justify', 'align', 'gap', 'radial', 'linear', 'gradient', 'rgba', 'rgb', 'hsl'];
+        if (keywords.some(k => lower.includes(k)) || lower.includes('%') || lower.includes('px') || lower.includes('rem') || lower.includes('#')) {
+            return '';
+        }
+        return match;
+    });
+
+    // 3. Remove JSON metadata blocks (心声, 着装, status, etc.)
+    clean = clean.replace(/\{[\s\n]*"(?:type|html|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
+    
+    // Loose JSON properties fallback
+    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value|emotion|energy|spirit|hangup|speech)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
+    
+    // ULTRA AGGRESSIVE: Cleanup remaining code-like fragments
+    clean = clean.replace(/[\}\{"]+/g, (match) => {
+        const trimmed = match.trim();
+        if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) return '';
+        return match;
+    });
+    
+    // Strip HTML leftovers
+    clean = clean.replace(/<[^>]+>/g, '');
+    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
+
     return clean.trim();
 }
 

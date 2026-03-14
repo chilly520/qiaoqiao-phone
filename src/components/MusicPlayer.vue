@@ -101,6 +101,42 @@ const handleProgressClick = (e) => {
     }
 }
 
+// ✅ 包装音乐操作，添加系统提示
+const handlePlayPause = () => {
+    const wasPlaying = musicStore.isPlaying
+    musicStore.togglePlay()
+    
+    // 添加系统提示
+    const chatId = chatStore.currentChatId
+    chatStore.addMessage(chatId, {
+        role: 'system',
+        type: 'system',
+        content: `【系统提示】${wasPlaying ? '暂停了播放' : '开始播放音乐'}`
+    })
+}
+
+const handlePrev = () => {
+    musicStore.prev()
+    // 添加系统提示
+    const chatId = chatStore.currentChatId
+    chatStore.addMessage(chatId, {
+        role: 'system',
+        type: 'system',
+        content: `【系统提示】切换到了上一首歌曲`
+    })
+}
+
+const handleNext = () => {
+    musicStore.next()
+    // 添加系统提示
+    const chatId = chatStore.currentChatId
+    chatStore.addMessage(chatId, {
+        role: 'system',
+        type: 'system',
+        content: `【系统提示】切换到了下一首歌曲`
+    })
+}
+
 const openSearch = () => {
     isSearching.value = false
     hasSearched.value = false
@@ -131,13 +167,22 @@ const addSearchResult = async (song) => {
     const fullSong = await musicStore.getSongUrl(song)
     if (fullSong) {
         musicStore.addSong(fullSong)
+        
+        // ✅ 添加系统提示：用户添加歌曲
+        const chatId = chatStore.currentChatId
+        chatStore.addMessage(chatId, {
+            role: 'system',
+            type: 'system',
+            content: `【系统提示】你加入了歌曲《${fullSong.song}》到播放列表`
+        })
+        
         showSearchModal.value = false
         // Auto play if it's the only song or just added
         if (musicStore.playlist.length === 1 || !musicStore.isPlaying) {
             musicStore.loadSong(musicStore.playlist.length - 1)
         }
     } else {
-        chatStore.triggerToast('无法获取播放链接 (可能需要VIP)', 'warning')
+        chatStore.triggerToast('无法获取播放链接 (可能需要 VIP)', 'warning')
     }
 }
 
@@ -152,6 +197,15 @@ const importUrlSong = () => {
         cover: 'https://via.placeholder.com/150'
     }
     musicStore.addSong(song)
+    
+    // ✅ 添加系统提示：用户导入歌曲
+    const chatId = chatStore.currentChatId
+    chatStore.addMessage(chatId, {
+        role: 'system',
+        type: 'system',
+        content: `【系统提示】你导入了歌曲《${song.song}》到播放列表`
+    })
+    
     urlImportInput.value = ''
     chatStore.triggerToast('已导入链接', 'success')
     if (musicStore.playlist.length === 1) musicStore.loadSong(0)
@@ -265,11 +319,11 @@ const handleImageError = (e) => {
 
             <!-- Controls -->
             <div class="controls">
-                <button class="control-btn" @click="musicStore.prev"><i class="fa-solid fa-backward-step"></i></button>
-                <button class="control-btn play-pause" @click="musicStore.togglePlay">
+                <button class="control-btn" @click="handlePrev"><i class="fa-solid fa-backward-step"></i></button>
+                <button class="control-btn play-pause" @click="handlePlayPause">
                     <i class="fa-solid" :class="isPlaying ? 'fa-circle-pause' : 'fa-circle-play'"></i>
                 </button>
-                <button class="control-btn" @click="musicStore.next"><i class="fa-solid fa-forward-step"></i></button>
+                <button class="control-btn" @click="handleNext"><i class="fa-solid fa-forward-step"></i></button>
             </div>
 
             <!-- Toolbar -->

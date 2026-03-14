@@ -348,7 +348,7 @@ const nextAnniversary = computed(() => loveSpaceStore.nextAnniversary)
 const showRoleModal = ref(false)
 const showDateEditor = ref(false)
 const tempStartDate = ref('')
-const isMagicGenerating = ref(false)
+const isMagicGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 const selectedRole = ref(null) // 用户选择的角色
 const showConfirmation = ref(false) // 是否显示确认步骤
 
@@ -684,25 +684,12 @@ function handleLocalCancel() {
 
 async function generateContent() {
   if (isMagicGenerating.value) return
-  isMagicGenerating.value = true
   chatStore.triggerToast('正在为你凝聚恋爱魔法... ✨', 'info')
   
-  // Safety timeout: 180 seconds (Longer for image generation)
-  const timeout = setTimeout(() => {
-    if (isMagicGenerating.value) {
-      console.warn('[LoveSpaceApp] Magic generation timed out');
-      isMagicGenerating.value = false;
-      chatStore.triggerToast('魔法可能迷路了，请检查网络或重试', 'warning');
-    }
-  }, 180000);
-
   try {
     await loveSpaceStore.generateMagicContent()
   } catch (err) {
     console.error('[LoveSpaceApp] generateContent error:', err);
-  } finally {
-    clearTimeout(timeout);
-    isMagicGenerating.value = false
   }
 }
 

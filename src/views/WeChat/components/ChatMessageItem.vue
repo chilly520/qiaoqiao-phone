@@ -670,8 +670,10 @@
                         <div v-else-if="msg.type === 'music'" class="flex flex-col w-full"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                             <div class="voice-container">
-                                <div class="voice-bubble music-bubble"
-                                    style="width: 140px; flex: none; background-color: #fce7f3; border-color: #fbcfe8; color: #be185d;"
+                                <!-- ✅ 修复：语音气泡样式遵循全局 bubbleCss 规则 -->
+                                <div class="voice-bubble music-bubble chat-bubble-voice"
+                                    :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
+                                    :style="getVoiceBubbleStyle()"
                                     @click="handlePlayMusic">
                                     <div class="voice-icon">
                                         <i class="fa-solid fa-music"
@@ -1025,9 +1027,7 @@
                                 <!-- Quote -->
                                 <div v-if="msg.quote"
                                     class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
-                                    <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方')
-                                    }}
-                                    </div>
+                                    <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方') }}</div>
                                     <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
                                 </div>
 
@@ -1035,6 +1035,7 @@
                                 <span v-html="formattedContent"></span>
                             </div>
 
+                            <!-- 2. Image Layer -->
                             <div v-if="isImageMsg(msg) || msg.image" class="msg-image bg-transparent"
                                 @contextmenu.prevent="emitContextMenu">
                                 <img :src="msg.image || getImageSrc(msg)"
@@ -1044,152 +1045,127 @@
                                     @click="previewImage(msg.image || getImageSrc(msg))" @error="handleImageError"
                                     referrerpolicy="no-referrer">
                             </div>
-                            <!-- 3b. Family Card Layer -->
+
+                            <!-- 3. Family Card Layer (Premium Black Gold Edition) -->
                             <div v-if="isFamilyCard || isFamilyCardApply || isFamilyCardReject"
                                 class="mt-1 transition-all relative z-10 w-full max-w-[280px]"
                                 @contextmenu.prevent="emitContextMenu" @touchstart="startLongPress"
                                 @touchend="cancelLongPress" @touchmove="cancelLongPress" @mousedown="startLongPress"
                                 @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
 
-                                <!-- Applying State (Black Gold Bank Card Theme) -->
+                                <!-- State A: Applying (HOLDER View) -->
                                 <div v-if="isFamilyCardApply"
-                                    class="relative overflow-hidden rounded-3xl shadow-lg transition-all active:scale-[0.98] cursor-pointer group bg-gradient-to-br from-gray-800 to-black border border-gray-700"
+                                    class="relative overflow-hidden rounded-[18px] shadow-2xl transition-all active:scale-[0.98] cursor-pointer group bg-gradient-to-br from-[#1a1a1a] via-[#333333] to-[#000000] border border-[#d4af37]/40 w-[260px] h-[155px]"
                                     @click="handleFamilyCardClick">
-                                    <!-- Card Content -->
-                                    <div class="p-4 text-white relative z-10">
-                                        <div class="flex justify-between items-start mb-6">
+                                    <!-- Metallic Texture Overlay -->
+                                    <div class="absolute inset-0 opacity-[0.1] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/brushed-alum.png')]"></div>
+                                    <div class="absolute inset-0 bg-gradient-to-tr from-[#d4af37]/5 via-transparent to-white/10"></div>
+                                    
+                                    <div class="p-4 h-full flex flex-col justify-between text-white relative z-10">
+                                        <div class="flex justify-between items-start">
                                             <div class="flex items-center gap-2">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center backdrop-blur-sm shadow-md">
-                                                    <i class="fa-solid fa-credit-card text-white text-[14px]"></i>
+                                                <div class="w-8 h-6 rounded bg-gradient-to-br from-[#d4af37] via-[#f1d592] to-[#b8860b] flex items-center justify-center shadow-md relative overflow-hidden">
+                                                    <div class="absolute inset-0 opacity-30 bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]"></div>
+                                                    <i class="fa-solid fa-microchip text-black/70 text-[10px] relative z-10"></i>
                                                 </div>
-                                                <span class="text-xs font-medium tracking-wide opacity-90 text-yellow-400">亲属卡申请</span>
+                                                <span class="text-[11px] font-black tracking-[0.1em] text-transparent bg-clip-text bg-gradient-to-r from-[#f1d592] to-[#b8860b]">亲属卡申请</span>
                                             </div>
-                                            <i class="fa-solid fa-wifi rotate-90 text-[10px] opacity-40"></i>
-                                        </div>
-
-                                        <div class="mb-6">
-                                            <p class="text-[10px] opacity-70 mb-1 uppercase tracking-widest text-yellow-300">申请留言</p>
-                                            <div class="flex items-baseline gap-1">
-                                                <span class="text-lg font-bold text-yellow-200">{{ getFamilyCardApplyNote() }}</span>
+                                            <div class="flex flex-col items-end">
+                                                <span class="text-[8px] font-bold text-[#d4af37] opacity-60 tracking-widest">VIP PASS</span>
+                                                <div class="h-0.5 w-6 bg-gradient-to-r from-[#d4af37] to-transparent mt-0.5"></div>
                                             </div>
                                         </div>
 
-                                        <div class="flex justify-between items-end">
-                                            <div class="text-[10px] space-y-0.5">
-                                                <p class="opacity-60 uppercase tracking-tighter text-gray-400">申请人</p>
-                                                <p class="font-bold opacity-90 text-white">{{ chatData.userName || '用户' }}</p>
+                                        <div class="mt-3 px-3 py-2 bg-black/30 rounded-lg border border-white/5 backdrop-blur-md">
+                                            <p class="text-[8px] text-[#d4af37] opacity-50 mb-1 font-bold uppercase tracking-widest">Memo / 申请备注</p>
+                                            <h3 class="text-[12px] font-medium text-gray-200 tracking-wide line-clamp-1">「{{ getFamilyCardApplyNote() }}」</h3>
+                                        </div>
+
+                                        <div class="flex justify-between items-end mt-2">
+                                            <div class="space-y-1">
+                                                <div class="flex gap-1.5 opacity-30">
+                                                    <div v-for="i in 3" :key="i" class="flex gap-1">
+                                                        <span v-for="j in 4" :key="j" class="w-1 h-1 bg-white rounded-full"></span>
+                                                    </div>
+                                                </div>
+                                                <p class="text-[9px] font-mono tracking-[0.2em] text-[#d4af37] opacity-80">{{ chatData.userName || 'HOLDER' }}</p>
                                             </div>
-                                            <div class="flex flex-col items-end gap-1">
+                                            
+                                            <div class="flex flex-col items-end gap-1.5">
                                                 <div v-if="msg.status === 'claimed' || msg.isClaimed"
-                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30">
-                                                    已赠送
+                                                    class="px-3 py-1 bg-[#07c16020] text-[#07c160] rounded-full text-[9px] font-black border border-[#07c16040] flex items-center gap-1 shadow-[0_0_15px_rgba(7,193,96,0.1)]">
+                                                    <i class="fa-solid fa-circle-check text-[10px]"></i> 已成功领取
                                                 </div>
                                                 <div v-else
-                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30 animate-pulse-subtle">
-                                                    等待回应
+                                                    class="px-3 py-1 bg-[#d4af37]/20 text-[#f1d592] rounded-full text-[9px] font-black border border-[#d4af37]/30 backdrop-blur-sm animate-pulse-subtle flex items-center gap-1">
+                                                    <i class="fa-solid fa-clock-rotate-left text-[9px]"></i> 等待赠送中
                                                 </div>
-
                                             </div>
                                         </div>
                                     </div>
-
-                                    <!-- Decorative Elements -->
-                                    <div
-                                        class="absolute top-[-20%] right-[-10%] w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl">
-                                    </div>
-                                    <div
-                                        class="absolute bottom-[-20%] left-[-10%] w-24 h-24 bg-black/10 rounded-full blur-xl">
-                                    </div>
-                                    <!-- Metal Shine Effect -->
-                                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <div class="absolute bottom-0 right-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <div class="absolute bottom-0 right-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <!-- Diagonal Shine -->
-                                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-transparent via-yellow-400/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                    <!-- Decorative corner glow -->
+                                    <div class="absolute -bottom-12 -left-12 w-24 h-24 bg-[#d4af37]/5 rounded-full blur-[30px]"></div>
                                 </div>
 
-                                <!-- Rejected State (Black Gold Theme) -->
+                                <!-- State B: Rejected (Disabled View) -->
                                 <div v-else-if="isFamilyCardReject"
-                                    class="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-xl p-4 opacity-70">
-                                    <div class="flex items-center gap-3">
-                                        <div
-                                            class="w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-500 flex items-center justify-center shrink-0 shadow-md">
-                                            <i class="fa-solid fa-credit-card text-gray-300"></i>
+                                    class="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-4 opacity-70 w-full max-w-[260px] h-[80px] flex items-center shadow-lg">
+                                    <div class="flex items-center gap-4 w-full">
+                                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
+                                            <i class="fa-solid fa-credit-card text-gray-400 text-lg"></i>
                                         </div>
                                         <div class="flex-1 min-w-0">
-                                            <div class="text-sm font-bold text-gray-300 truncate">亲属卡申请已拒绝</div>
-                                            <div class="text-xs text-gray-500 mt-0.5">{{ familyCardData?.text ||
-                                                '由于对方设定，申请未通过' }}</div>
+                                            <div class="text-[13px] font-black text-gray-300 uppercase tracking-wider">Application Rejected</div>
+                                            <div class="text-[11px] text-gray-500 mt-0.5 truncate italic">{{ familyCardData?.text || '对方暂时未通过您的申请' }}</div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <!-- Standard Card (Rich UI) -->
+                                <!-- State C: Received/Valid (RECIPIENT View) -->
                                 <div v-else-if="familyCardData"
-                                    class="relative overflow-hidden rounded-3xl shadow-lg transition-all active:scale-[0.98] cursor-pointer group bg-gradient-to-br from-gray-800 to-black border border-gray-700 w-[280px]"
+                                    class="relative overflow-hidden rounded-[18px] shadow-2xl transition-all active:scale-[0.98] cursor-pointer group bg-gradient-to-br from-[#121212] via-[#2a2a2a] to-[#000000] border border-[#d4af37]/60 w-[260px] h-[155px]"
                                     @click="handleFamilyCardClick">
-                                    <!-- Card Content -->
-                                    <div class="p-4 text-white relative z-10">
-                                        <div class="flex justify-between items-start mb-6">
+                                    <!-- Metallic Texture Overlay -->
+                                    <div class="absolute inset-0 opacity-[0.1] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/brushed-alum.png')]"></div>
+                                    <div class="absolute inset-0 bg-gradient-to-tr from-[#d4af37]/10 via-transparent to-white/5"></div>
+                                    
+                                    <div class="p-4 h-full flex flex-col justify-between text-white relative z-10">
+                                        <div class="flex justify-between items-start">
                                             <div class="flex items-center gap-2">
-                                                <div
-                                                    class="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center backdrop-blur-sm shadow-md">
-                                                    <i class="fa-solid fa-credit-card text-white text-[14px]"></i>
+                                                <div class="w-8 h-6 rounded bg-gradient-to-br from-[#d4af37] via-[#f1d592] to-[#b8860b] flex items-center justify-center shadow-lg relative overflow-hidden">
+                                                    <div class="absolute inset-0 opacity-30 bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]"></div>
+                                                    <i class="fa-solid fa-microchip text-black/70 text-[10px] relative z-10"></i>
                                                 </div>
-                                                <span class="text-xs font-medium tracking-wide opacity-90 text-yellow-400">{{
-                                                    familyCardData.isReject ? '亲属卡' :
-                                                        (familyCardData.text || '亲属卡') }}</span>
+                                                <span class="text-[11px] font-black tracking-[0.1em] text-transparent bg-clip-text bg-gradient-to-r from-[#f1d592] to-[#b8860b]">{{ familyCardData.text || '专属亲属卡' }}</span>
                                             </div>
-                                            <i class="fa-solid fa-wifi rotate-90 text-[10px] opacity-40"></i>
-                                        </div>
-
-                                        <div class="mb-6">
-                                            <p class="text-[10px] opacity-70 mb-1 uppercase tracking-widest text-yellow-300">Monthly
-                                                Limit
-                                            </p>
-                                            <div class="flex items-baseline gap-1">
-                                                <span class="text-xl font-bold text-yellow-200">¥</span>
-                                                <span class="text-3xl font-black tracking-tight text-yellow-100">{{
-                                                    familyCardData.amount
-                                                    }}</span>
+                                            <div class="flex items-center gap-1.5">
+                                                <div class="w-5 h-5 rounded-full bg-[#eb001b]/80 flex items-center justify-center border border-white/10 -mr-2 shadow-sm"></div>
+                                                <div class="w-5 h-5 rounded-full bg-[#f79e1b]/80 flex items-center justify-center border border-white/10 shadow-sm"></div>
                                             </div>
                                         </div>
 
-                                        <div class="flex justify-between items-end">
-                                            <div class="text-[10px] space-y-0.5">
-                                                <p class="opacity-60 uppercase tracking-tighter text-gray-400">Card Holder</p>
-                                                <p class="font-bold opacity-90 text-white">{{ chatData.userName || 'Chilly' }}</p>
+                                        <div class="mt-2 text-center">
+                                            <div class="text-[9px] font-black text-[#d4af37] opacity-60 uppercase tracking-[0.3em] mb-1">Monthly Allowance / 月额度</div>
+                                            <div class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-b from-[#f1d592] via-[#d4af37] to-[#b8860b] drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] tracking-tighter">
+                                                ¥{{ familyCardData.amount || '0' }}
                                             </div>
-                                            <div class="flex flex-col items-end gap-1">
-                                                <div v-if="msg.status === 'claimed' || msg.isClaimed"
-                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30">
-                                                    已赠送
-                                                </div>
-                                                <div v-else
-                                                    class="px-3 py-1 bg-yellow-500/20 text-yellow-300 rounded-full text-[10px] font-bold border border-yellow-500/30 animate-pulse-subtle">
-                                                    立即领取
-                                                </div>
+                                        </div>
 
+                                        <div class="flex justify-between items-end mt-auto">
+                                            <div class="space-y-1">
+                                                <div class="flex gap-1.5 font-mono text-white/40 text-[10px] tracking-widest">
+                                                    <span>****</span> <span>****</span> <span>****</span> <span class="text-[#d4af37] font-bold">{{ String(familyCardData.number || '8888').slice(-4) }}</span>
+                                                </div>
+                                                <p class="text-[9px] font-mono tracking-[0.1em] text-[#d4af37] opacity-70 uppercase">{{ familyCardData.ownerName || 'HOLDER' }}</p>
+                                            </div>
+                                            <!-- UnionPay stylized logo -->
+                                            <div class="flex items-center bg-white/5 px-2 py-1 rounded border border-white/10 italic font-black text-[8px] text-[#f1d592] tracking-tighter shadow-inner">
+                                                <span class="text-rose-500">Union</span><span class="ml-0.5">Pay</span>
                                             </div>
                                         </div>
                                     </div>
-
-                                    <!-- Decorative Elements -->
-                                    <div
-                                        class="absolute top-[-20%] right-[-10%] w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl">
-                                    </div>
-                                    <div
-                                        class="absolute bottom-[-20%] left-[-10%] w-24 h-24 bg-black/10 rounded-full blur-xl">
-                                    </div>
-                                    <!-- Metal Shine Effect -->
-                                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <div class="absolute bottom-0 right-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <div class="absolute bottom-0 right-0 w-1 h-full bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent"></div>
-                                    <!-- Diagonal Shine -->
-                                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-transparent via-yellow-400/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                    <!-- Shine effect -->
+                                    <div class="absolute top-[-100%] left-[-100%] w-[300%] h-[300%] bg-gradient-to-tr from-transparent via-white/5 to-transparent rotate-45 pointer-events-none group-hover:translate-x-[50%] group-hover:translate-y-[50%] transition-transform duration-1000"></div>
                                 </div>
 
                                 <!-- Text Fallback (Internal use) -->
@@ -1496,10 +1472,8 @@ const hasHtmlContent = computed(() => {
 })
 
 const isValidMessage = computed(() => {
-    // Debug: Log gift messages
-    if (props.msg.type === 'gift') {
-        console.log('[ChatMessageItem] Checking gift message:', { id: props.msg.id, type: props.msg.type, giftName: props.msg.giftName })
-    }
+    // 0. Explicit hidden flag from store
+    if (props.msg.hidden) return false
 
     // 1. If it's a system message, it must have content
     if (props.msg.role === 'system') {
@@ -1616,7 +1590,7 @@ function handleForumCardClick() {
 }
 
 const isLoveSpaceInvite = computed(() => {
-    return ensureString(props.msg.content).includes('[LOVESPACE_INVITE:')
+    return /[\\[【]\s*LOVESPACE_INVITE[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
 const parsedLoveSpaceInvite = computed(() => {
@@ -1647,7 +1621,7 @@ function handleLoveSpaceInviteClick() {
 }
 
 const isLoveSpaceContract = computed(() => {
-    return ensureString(props.msg.content).includes('[LOVESPACE_CONTRACT:')
+    return /[\\[【]\s*LOVESPACE_CONTRACT[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
 const parsedLoveSpaceContract = computed(() => {
@@ -1670,7 +1644,7 @@ const parsedLoveSpaceContract = computed(() => {
 })
 
 const isLoveSpaceReject = computed(() => {
-    return ensureString(props.msg.content).includes('[LOVESPACE_REJECT:')
+    return /[\\[【]\s*LOVESPACE_REJECT[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
 const parsedLoveSpaceReject = computed(() => {
@@ -1814,7 +1788,6 @@ const musicInfo = computed(() => {
 })
 
 const familyCardData = computed(() => {
-    // 优先使用消息对象中已设置的属性（由chatStore.js检测并设置）
     if (props.msg.type === 'family_card' && (props.msg.amount || props.msg.text)) {
         return {
             amount: props.msg.amount || '5200',
@@ -1827,44 +1800,38 @@ const familyCardData = computed(() => {
     const content = ensureString(props.msg.content)
 
     // Recovery for HTML JSON Garbage
-    // Check if it's an HTML card acting as a logic carrier (e.g. Reject)
     if ((props.msg.type === 'html' && props.msg.role === 'ai') || (content.includes('"html"') && content.includes('拒绝'))) {
         if (content.includes('拒绝') || content.includes('reject')) {
             return { amount: '0', text: '对方拒绝了您的申请', isReject: true }
         }
-        // If it's just a generic HTML card, don't force it to be a family card unless explicit
     }
 
-    // 预处理：有时候AI会把卡片放在代码块里，或者转义，先简单清理一下转义符
     const cleanContent = content.replace(/\\\[/g, '[').replace(/\\\]/g, ']')
-
-    // 辅助正则：允许中文冒号，允许冒号周围有空格
     const colonRegex = '[:：]\\s*'
     const tagRegex = '(?:FAMILY_CARD|亲属卡)'
     const applyTagRegex = '(?:FAMILY_CARD_APPLY|申请亲属卡)'
 
-    // 处理申请亲属卡（优先检查消息类型）
     if (props.msg.type === 'family_card_apply') {
         if (props.msg.note) {
             return {
                 amount: '0',
                 text: props.msg.note,
+                paymentId: props.msg.paymentId || null,
                 isReject: false
             }
         }
     }
 
-    // 处理申请亲属卡（从消息内容中提取）
-    const applyMatch = cleanContent.match(new RegExp(`\\[${applyTagRegex}\\s*${colonRegex}([^\\]]*)\\]`, 'i'))
+    const applyMatch = cleanContent.match(new RegExp(`\\[${applyTagRegex}\\s*${colonRegex}([^\\]:]+)(?:${colonRegex}([^\\]]+))?\\]`, 'i'))
     if (applyMatch) {
         return {
             amount: '0',
             text: applyMatch[1]?.trim() || '申请亲属卡',
+            paymentId: applyMatch[2]?.trim() || null,
             isReject: false
         }
     }
 
-    // Pattern 1: Standard format [FAMILY_CARD:amount:text:id] or [亲属卡:金额:名称:ID]
     const standardMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}([^\\]:]+)${colonRegex}([^\\]:]+)(?:${colonRegex}([^\\]]+))?\\]`, 'i'))
     if (standardMatch) {
         return {
@@ -1875,7 +1842,6 @@ const familyCardData = computed(() => {
         }
     }
 
-    // Pattern 2: Short format [FAMILY_CARD:amount:text] or [亲属卡:金额:名称]
     const shortMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}([^\\]:]+)${colonRegex}([^\\]]+)\\]`, 'i'))
     if (shortMatch) {
         return {
@@ -1885,152 +1851,84 @@ const familyCardData = computed(() => {
         }
     }
 
-    // Pattern 3: Amount only format [FAMILY_CARD:amount] or [亲属卡:金额]
     const amountOnlyMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}(\\d+)\\]`, 'i'))
     if (amountOnlyMatch) {
         return { amount: amountOnlyMatch[1].trim(), text: '送给你的亲属卡', isReject: false }
     }
 
-    // Pattern 4: Note only format [FAMILY_CARD:note] or [亲属卡:备注] (non-numeric)
     const noteOnlyMatch = cleanContent.match(new RegExp(`\\[${tagRegex}\\s*${colonRegex}([^\\d\\s][^\\]]*)\\]`, 'i'))
     if (noteOnlyMatch) return { amount: '5200', text: noteOnlyMatch[1].trim(), isReject: false }
 
-    // 兜底：虽然检测到了标签但没提取到内容，给一个默认值防止空白
-    return { amount: '5200', text: '送给你的亲属卡', isReject: false }
+    if (isFamilyCard.value) return { amount: '5200', text: '送给你的亲属卡', isReject: false }
+    return null
 })
 
 const getUserName = computed(() => {
     return props.chatData.userName || '用户'
 })
 
-
 function getCleanContent(contentRaw, isCard = false) {
     if (!contentRaw) return '';
     const content = ensureString(contentRaw);
 
-    // If it's a card and it's ONLY the card code, just hide the bubble immediately
     if (isCard && !content.includes('\n') && content.trim().startsWith('<') && content.trim().endsWith('>')) {
         return '';
     }
 
-    // EARLY FILTER: JSON Fragment Detection
-    const trimmed = content.trim();
     let clean = content;
-
-    // Removal of strictly internal protocol tags
-    // Refined: Priority match full blocks, then handle unclosed, then scrub stray closing tags
+    
+    // ✅ 修复：移除【系统提示】前缀的显示，只在后台日志中使用
+    clean = clean.replace(/^\s*【系统提示】\s*/g, '');
+    
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
-    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); // Scrub stray closing tags
-    
-    // AGGRESSIVE: Remove any remaining [INNER_VOICE] fragments and JSON content
-    // This catches cases where the JSON structure is broken or incomplete
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); 
+    clean = clean.replace(/\[\s *INNER[-_ ]?VOICE\s*\]/gi, '');
     clean = clean.replace(/\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '');
 
-    // Remove Moment Interaction tags from display bubble
-    clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
-    clean = clean.replace(/\[COMMENT[:：]\s*[^\]]+\]/gi, '');
-    clean = clean.replace(/\[REPLY[:：]\s*[^\]]+\]/gi, '');
-
-    // Remove TIMESTAMP tags (hidden from user, only for AI)
-    clean = clean.replace(/\s*\[TIMESTAMP:\d{2}\/\d{2} \d{2}:\d{2}\]/gi, '');
-    clean = clean.replace(/\s*\[TIMESTAMP:[^\]]+\]/gi, '');
-
-    // Remove Vote tags
-    clean = clean.replace(/\[VOTE:\s*[^\]]+\]/gi, '');
-    clean = clean.replace(/\[CREATE_VOTE:\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间)[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
+    clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
+    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
+    clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
+    clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
+    clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
     
-    // Remove family card command tags
-    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
-    clean = clean.replace(/\[\s*(?:申请亲属卡|拒绝亲属卡)\s*[:：]?[^\]]*\]/gi, '');
-
-    // Remove Love Space tags
-    clean = clean.replace(/\[LOVESPACE_(?:INVITE|CONTRACT):[^\]]*\]/gi, '');
-
-    // Remove [CARD] ... [/CARD] blocks entirely from the text bubble
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
-
-    // Remove JSON metadata blocks (心声, 着装, status, etc.)
-    clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
-
-    // AGGRESSIVE: Remove loose JSON properties (e.g. spirit: {...}, "mood": {...}) that might be missing enclosing braces
-    // Match anywhere in the string, not just at line start
-    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
-    
-    // EXTRA AGGRESSIVE: Remove any remaining JSON-like properties anywhere in text
-    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
-        
-    // ULTRA AGGRESSIVE: Remove any remaining loose braces and quotes that look like broken JSON
-    // This catches fragments like: } " { 
-    if (clean.match(/[\}\{"]\s*[\}\{"]/)) {
-        // If we see multiple braces/quotes in sequence, likely broken JSON - remove all of them
-        clean = clean.replace(/[\}\{"]+/g, (match) => {
-            // Only remove if it looks like isolated JSON fragments (not part of normal text)
-            const trimmed = match.trim();
-            if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) {
-                return '';
-            }
-            return match;
-        });
-    }
-    
-    // Remove CSS transform/animation code fragments
-    clean = clean.replace(/\d+%\s*transform:\s*scale\([^)]+\)/gi, '');
-    clean = clean.replace(/transform:\s*scale\([^)]+\)/gi, '');
-    
-    // FINAL CLEANUP: Remove any remaining isolated punctuation that looks like JSON fragments
-    // This catches: ; ;  or  , ,  or single braces/quotes
-    clean = clean.replace(/^[\s;:,{}"]+|[\s;:,{}"]+$/g, '');
-    
-    // Remove lines that only contain punctuation (likely JSON remnants)
-    clean = clean.replace(/^[\s]*[;:,{}"\]]+[\s]*$/gm, '');
-
-    // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
-    if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {
-        clean = clean.replace(/\[\s*CARD\s*\][\s\S]*?(?:\[\/\s*CARD\s*\]|$)/gi, '');
-        clean = clean.replace(/```[\s\S]*?```/gi, '');
-        clean = clean.replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '');
-        clean = clean.replace(/\{[\s\n]*"(?:type|心声|status|thoughts|mood|state|behavior|action|mind|outfit|scene|transform|stats|spirit|speech|hangup)"[\s\S]*?\}/gi, '');
-        clean = clean.replace(/(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[^{}]*\{[^{}]*\}[^{}]*\}|(?:\s|^)(?:@keyframes|to|from|[\#\.]?[a-zA-Z0-9\-\_\: \~\+\>\*\#\[\]\=\^]+)\s*\{[\s\S]*?\}/gi, '');
-        clean = clean.replace(/(?:\s|^)\d+%\s*\{[\s\S]*?\}/gi, '');
-
-        const f = clean.indexOf('<');
-        const l = clean.lastIndexOf('>');
-        if (f !== -1 && l > f) {
-            const sub = clean.substring(f, l + 1);
-            if (sub.includes('<div') || sub.includes('<style') || sub.includes('style=')) {
-                clean = clean.substring(0, f) + clean.substring(l + 1);
-            }
-        }
-    }
-
-    // Fallback: Remove remaining tags and technical remnants
     clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
-    clean = clean.replace(/<[^>]+>/g, '');
-    clean = clean.replace(/&[a-z0-9#]+;/gi, ''); // HTML entities
-
-    clean = clean.trim();
-    // Strip operational tags (claims, rejections, financial, and multi-media commands)
-    const opRegex = /\[(领取 | 拒收 | 退回|GIFT|礼物|DRAW|MUSIC|演奏|UPDATE_BIO|VOTE|CREATE_VOTE|RECEIVE_RED_PACKET|HTML 卡片)[:：\-\s]?[^\]]*\]/gi;
-    clean = clean.replace(opRegex, '').trim();
-    // 注意：不要删除表情包标签，因为这是 sticker 类型消息的正常显示格式
-    // clean = clean.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '').trim();
-
-    // Final clean
-    // FINAL GUARD: If it's a card and the remaining text is minimal, hide the bubble
-    if (isCard && (clean.length < 150)) {
-        const hasNaturalLanguage = /[\u4e00-\u9fa5]/.test(clean) || (/[a-zA-Z]/.test(clean) && clean.split(' ').length > 2);
-        if (!hasNaturalLanguage || clean.length < 5) {
+    clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
+    clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');
+    
+    clean = clean.replace(/[a-z0-9-]+\s*:\s*[^;{}]+(?=[;\}]|\n|$)/gi, (match) => {
+        const lower = match.toLowerCase();
+        const keywords = ['background', 'color', 'font', 'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom', 'display', 'position', 'opacity', 'z-index', 'overflow', 'transform', 'animation', 'mask', 'transition', 'cursor', 'box-shadow', 'text-shadow', 'flex', 'grid', 'justify', 'align', 'gap', 'radial', 'linear', 'gradient', 'rgba', 'rgb', 'hsl'];
+        if (keywords.some(k => lower.includes(k)) || lower.includes('%') || lower.includes('px') || lower.includes('rem') || lower.includes('#')) {
             return '';
         }
-    }
+        return match;
+    });
 
-    // FINAL GUARD: Filter all zero-width characters and re-trim
+    clean = clean.replace(/(?:\d+%\s+)+\d+%/g, '');
+    clean = clean.replace(/(?:rgba?|hsla?)\([^\)]+\)/gi, '');
+    clean = clean.replace(/#[0-9a-f]{3,8}/gi, '');
+
+    clean = clean.replace(/\{[\s\n]*"(?:type|html|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
+    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value|emotion|energy|spirit|hangup|speech)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
+    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind|emotion|energy|spirit)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
+        
+    clean = clean.replace(/[\}\{"]+/g, (match) => {
+        const trimmed = match.trim();
+        if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) return '';
+        return match;
+    });
+    
+    clean = clean.replace(/<[^>]+>/g, '');
     clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
 
     return clean.trim();
 }
+
 
 function getPureHtml(content) {
     if (!content) return ''
@@ -2158,6 +2056,22 @@ const computedBubbleStyle = computed(() => {
         return parseBubbleCss(styleStr)
     }
     return parseBubbleCss(raw)
+})
+
+// ✅ 修复：语音/音乐气泡样式计算函数
+const getVoiceBubbleStyle = computed(() => {
+    // 如果是音乐类型，返回自定义样式（但会被 CSS 覆盖）
+    if (props.msg.type === 'music') {
+        // 基础样式 + 全局 bubbleCss
+        const baseStyle = {
+            width: '140px',
+            flex: 'none'
+        }
+        // 合并全局气泡样式
+        return { ...baseStyle, ...computedBubbleStyle.value }
+    }
+    // 语音类型直接返回全局样式
+    return computedBubbleStyle.value
 })
 
 const shouldShowArrow = computed(() => {
@@ -3347,6 +3261,19 @@ const scrollToVote = (refId) => {
 .chat-bubble-voice:active {
     transform: scale(0.98);
     filter: brightness(0.95);
+}
+
+/* ✅ 修复：音乐气泡默认样式（会被全局 bubbleCss 覆盖） */
+.voice-bubble.music-bubble.chat-bubble-left {
+    background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+    border-color: #fbcfe8 !important;
+    color: #be185d !important;
+}
+
+.voice-bubble.music-bubble.chat-bubble-right {
+    background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+    border-color: #fbcfe8 !important;
+    color: #be185d !important;
 }
 
 .voice-wave {

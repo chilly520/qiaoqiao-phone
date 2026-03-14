@@ -92,69 +92,73 @@ const callStore = useCallStore()
 const worldLoopStore = useWorldLoopStore()
 const backpackStore = useBackpackStore()
 
-const getCleanContent = (contentRaw) => {
+const getCleanContent = (contentRaw, isCard = false) => {
     if (!contentRaw) return '';
     const content = ensureString(contentRaw);
 
     // CRITICAL: Performance shortcut for massive image/base64 data
-    if (content.length > 300) {
-        // If it's a data URL or blob, it's definitely an image, don't regex it
+    if (content.length > 500) {
         if (content.includes('data:image/') || content.includes('blob:')) return '';
-        // If it's just long text, still skip heavy regex if no voice marker
-        if (!content.includes('[INNER_VOICE]') && !content.includes('"type"')) return content.trim();
     }
 
-    // Precompile regex patterns for better performance
-    const voiceBlockRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi;
-    const voiceUnclosedRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi;
-    const voiceClosingRegex = /\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi;
-    const protocolTagsRegex = /\[(?:LIKE|COMMENT|REPLY|VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈)[:：]\s*[^\]]+\]/gi;
-    const jsonBlocksRegex = /\{[\s\n]*"(?:着装|环境|status|心声|心心声|行为|mind|outfit|scene|action|thoughts|mood|state|stats|spirit)"[\s\S]*?\}/gi;
-    const systemTagRegex = /\[System:[\s\S]+?\]/gi;
-    const claimTagsRegex = /\[(领取红包|RECEIVE_RED_PACKET)\]/gi;
-    const avatarChangeRegex = /\[(?:更换头像|SET_AVATAR)[:：]\s*[^\]]*\]/gi;
-    const zeroWidthRegex = /[\u200b\u200c\u200d\ufeff]/g;
+    let clean = content;
 
-    // Remove Inner Voice block (Standard)
-    let clean = content.replace(voiceBlockRegex, '');
-    clean = clean.replace(voiceUnclosedRegex, '');
-    clean = clean.replace(voiceClosingRegex, ''); // Scrub stray closing tags
+    // 1. Remove large protocol blocks
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); 
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '');
 
-    // Removal of strictly internal protocol tags
-    clean = clean.replace(protocolTagsRegex, '');
-
-    // Remove Naked JSON blocks (Fallback) - Only if they contain specific Inner Voice keys
-    clean = clean.replace(jsonBlocksRegex, '');
-
-    // NEW: Remove HTML Card JSON blocks (Greedy & Robust)
-    if (clean.includes('"type"') && clean.includes('"html"')) {
-        // Find first { and last } to remove the entire block
-        // This prevents regex from stopping early on } inside CSS or HTML content
-        const start = clean.indexOf('{');
-        const end = clean.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
-            // Double check it's likely the card
-            const snippet = clean.substring(start, end + 1);
-            if (snippet.includes('"type"') && snippet.includes('"html"')) {
-                clean = clean.substring(0, start) + clean.substring(end + 1);
-            }
-        } else {
-            // Fallback regex if structure is complex
-            clean = clean.replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*\}\s*\}?/gi, '');
+    // Existing protocol tags
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间)[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
+    clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
+    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
+    clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
+    clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
+    clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
+    
+    // 2. AGGRESSIVE: Remove style blocks and CSS fragments
+    clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
+    clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');
+    
+    // Broad CSS property/value match: property: value;
+    clean = clean.replace(/[a-z0-9-]+\s*:\s*[^;{}]+(?=[;\}]|\n|$)/gi, (match) => {
+        const lower = match.toLowerCase();
+        const keywords = ['background', 'color', 'font', 'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom', 'display', 'position', 'opacity', 'z-index', 'overflow', 'transform', 'animation', 'mask', 'transition', 'cursor', 'box-shadow', 'text-shadow', 'flex', 'grid', 'justify', 'align', 'gap', 'radial', 'linear', 'gradient', 'rgba', 'rgb', 'hsl'];
+        if (keywords.some(k => lower.includes(k)) || lower.includes('%') || lower.includes('px') || lower.includes('rem') || lower.includes('#')) {
+            return '';
         }
-    }
+        return match;
+    });
 
-    clean = clean.replace(systemTagRegex, '');
-    clean = clean.trim();
-    // Remove Claim Tags
-    clean = clean.replace(claimTagsRegex, '').trim();
-    // Remove Avatar Change Commands
-    clean = clean.replace(avatarChangeRegex, '').trim();
+    // Strip isolated common CSS values (like 50% 100%)
+    clean = clean.replace(/(?:\d+%\s+)+\d+%/g, '');
+    clean = clean.replace(/(?:rgba?|hsla?)\([^\)]+\)/gi, '');
+    clean = clean.replace(/#[0-9a-f]{3,8}/gi, '');
 
-    // Filter out zero-width characters
-    clean = clean.replace(zeroWidthRegex, '');
+    // 3. Remove JSON metadata blocks (心声, 着装, status, etc.)
+    clean = clean.replace(/\{[\s\n]*"(?:type|html|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
+    
+    // Loose JSON properties fallback
+    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value|emotion|energy|spirit|hangup|speech)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
+    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind|emotion|energy|spirit)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
+        
+    // ULTRA AGGRESSIVE: Cleanup remaining code-like fragments
+    clean = clean.replace(/[\}\{"]+/g, (match) => {
+        const trimmed = match.trim();
+        if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) return '';
+        return match;
+    });
+    
+    // Strip HTML leftovers
+    clean = clean.replace(/<[^>]+>/g, '');
+    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
 
-    return clean;
+    return clean.trim();
 }
 
 const isImageMsg = (msg) => {
@@ -709,19 +713,58 @@ const processMusicCommand = async (text) => {
 
     console.log('Music Command:', action, parts.slice(1))
 
+    // ✅ 修复：不显示原始指令文本，改为插入系统提示消息
+    const chatName = chatData.value.name || '对方'
+    
     if (action === 'open') {
-        if (!musicStore.playerVisible) musicStore.togglePlayer()
+        if (!musicStore.playerVisible) {
+            musicStore.togglePlayer()
+            addMessage(chatId, {
+                role: 'system',
+                type: 'system',
+                content: `【系统提示】${chatName} 开启了音乐播放器`
+            })
+        }
     } else if (action === 'close') {
-        if (musicStore.playerVisible) musicStore.togglePlayer()
+        if (musicStore.playerVisible) {
+            musicStore.togglePlayer()
+            addMessage(chatId, {
+                role: 'system',
+                type: 'system',
+                content: `【系统提示】${chatName} 关闭了音乐播放器`
+            })
+        }
     } else if (action === 'play') {
         musicStore.play()
-        if (!musicStore.playerVisible) musicStore.togglePlayer()
+        if (!musicStore.playerVisible) {
+            musicStore.togglePlayer()
+            addMessage(chatId, {
+                role: 'system',
+                type: 'system',
+                content: `【系统提示】${chatName} 开始播放音乐`
+            })
+        }
     } else if (action === 'pause') {
         musicStore.pause()
+        addMessage(chatId, {
+            role: 'system',
+            type: 'system',
+            content: `【系统提示】${chatName} 暂停了播放`
+        })
     } else if (action === 'next') {
         musicStore.next()
+        addMessage(chatId, {
+            role: 'system',
+            type: 'system',
+            content: `【系统提示】${chatName} 切换了歌曲`
+        })
     } else if (action === 'prev') {
         musicStore.prev()
+        addMessage(chatId, {
+            role: 'system',
+            type: 'system',
+            content: `【系统提示】${chatName} 切换到了上一首歌曲`
+        })
     } else if (action === 'search') {
         const query = parts.slice(1).join(' ')
         if (query) {
@@ -732,6 +775,17 @@ const processMusicCommand = async (text) => {
                     musicStore.addSong(fullSong)
                     musicStore.loadSong(musicStore.playlist.length - 1)
                     if (!musicStore.playerVisible) musicStore.togglePlayer()
+                    
+                    // 提取歌曲信息
+                    const songInfo = query.includes('-') 
+                        ? query.split('-')[1].trim() 
+                        : query
+                    
+                    addMessage(chatId, {
+                        role: 'system',
+                        type: 'system',
+                        content: `【系统提示】${chatName} 分享了歌曲《${songInfo}》，邀请你一起聆听`
+                    })
                 }
             }
         }
@@ -1621,11 +1675,13 @@ const confirmSendFamilyCard = () => {
         return
     }
 
+    const paymentId = `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     // Send family card message
     chatStore.addMessage(chatData.value.id, {
         role: 'user',
         type: 'text',
-        content: `[FAMILY_CARD:${familyCardAmount.value}:${familyCardNote.value || '亲属卡'}]`
+        content: `[FAMILY_CARD:${familyCardAmount.value}:${familyCardNote.value || '亲属卡'}:${paymentId}]`
     })
 
     // Close modal
@@ -1634,9 +1690,6 @@ const confirmSendFamilyCard = () => {
     // Clear form fields
     familyCardAmount.value = '5200'
     familyCardNote.value = '我的钱就是你的钱'
-
-    // DO NOT auto-call API - remove the timeout generateAIResponse call
-    // User requested that card is just mounted on message without auto API call
 }
 
 // Handle applying for family card after user fills form
@@ -1646,11 +1699,13 @@ const confirmApplyFamilyCard = () => {
         return
     }
 
+    const paymentId = `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     // Send family card apply message
     chatStore.addMessage(chatData.value.id, {
         role: 'user',
         type: 'text',
-        content: `[FAMILY_CARD_APPLY:${familyCardApplyNote.value}]`
+        content: `[FAMILY_CARD_APPLY:${familyCardApplyNote.value}:${paymentId}]`
     })
 
     // Close modal
@@ -1658,9 +1713,6 @@ const confirmApplyFamilyCard = () => {
 
     // Clear form fields
     familyCardApplyNote.value = '送我一张亲属卡好不好？以后你来管家~'
-
-    // DO NOT auto-call API - remove the timeout generateAIResponse call
-    // User requested that card is just mounted on message without auto API call
 }
 
 // --- Send Modal Logic ---
@@ -3040,6 +3092,14 @@ const handleToggleMusic = () => {
             musicStore.startTogether({
                 name: chatData.value.name,
                 avatar: chatData.value.avatar
+            })
+            
+            // ✅ 添加系统提示：开启一起听歌
+            const chatId = chatStore.currentChatId
+            chatStore.addMessage(chatId, {
+                role: 'system',
+                type: 'system',
+                content: `【系统提示】你发起了"一起听歌"模式，正在和 ${chatData.value.name} 一起听歌`
             })
         }
     }

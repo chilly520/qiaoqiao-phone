@@ -110,6 +110,24 @@
                         </div>
                     </div>
 
+                    <!-- Heart Rate Display -->
+                    <div class="heart-rate-container" :class="getHeartRateClass(currentHeartRate)">
+                        <div class="heart-rate-header">
+                            <span class="heart-rate-label">HEART RATE 心率</span>
+                            <span class="heart-rate-value">{{ currentHeartRate }}<span class="heart-rate-unit">bpm</span></span>
+                        </div>
+                        <div class="heart-rate-bar">
+                            <div class="heart-rate-grid"></div>
+                            <div class="heart-rate-ecg-line"></div>
+                            <div class="heart-rate-wave">
+                                <svg viewBox="0 0 800 60" preserveAspectRatio="none">
+                                    <path :d="getECGPath(currentHeartRate)" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="heart-rate-status">{{ getHeartRateStatus(currentHeartRate) }}</div>
+                    </div>
+
                     <!-- Realistic Connection-Style Location -->
                     <div class="location-card premium-mode">
                         <div class="stats-label mb-3">CONNECTION 实时测距</div>
@@ -394,6 +412,9 @@ const currentVoiceContent = computed(() => {
     if (!currentVoice.value) return {}
     return parseVoiceData(currentVoice.value.content) || {}
 })
+const currentHeartRate = computed(() => {
+    return currentVoiceContent.value.stats?.heartRate || 75
+})
 
 const sortedHistory = computed(() => {
     return historyList.value.map((item, index) => {
@@ -530,6 +551,97 @@ const getStatLabel = (key, val) => {
     return defaults[key] || key.toUpperCase()
 }
 
+// Heart Rate Helpers
+const getHeartRateClass = (hr) => {
+    if (!hr) return 'hr-normal'
+    if (hr < 60) return 'hr-low'
+    if (hr >= 60 && hr < 70) return 'hr-rest'
+    if (hr >= 70 && hr < 90) return 'hr-normal'
+    if (hr >= 90 && hr < 120) return 'hr-excited'
+    return 'hr-extreme'
+}
+
+const getHeartRateStatus = (hr) => {
+    if (!hr) return '正常'
+    if (hr < 60) return '过低'
+    if (hr >= 60 && hr < 70) return '静息'
+    if (hr >= 70 && hr < 90) return '正常'
+    if (hr >= 90 && hr < 120) return '兴奋'
+    return '剧烈'
+}
+
+const getHeartRateAnimation = (hr) => {
+    if (!hr) return 2
+    // 心率越低动画越慢，心率越高动画越快
+    // 60bpm = 2s, 120bpm = 0.5s
+    const duration = 2 - ((hr - 60) / 60) * 1.5
+    return Math.max(0.5, Math.min(2, duration))
+}
+
+// ECG Wave Generator
+const getECGPath = (hr) => {
+    if (!hr) hr = 75
+    
+    // 心率影响波形密度：心率越高，波形越密集
+    const waveDensity = Math.max(0.5, hr / 75)
+    
+    // 生成心电图路径：P 波 -QRS 波群-T 波
+    const pathParts = []
+    const width = 800
+    const height = 60
+    const centerY = height / 2
+    
+    // 生成 2 个完整的心动周期（为了循环平滑）
+    const beats = 2
+    const beatWidth = width / beats
+    
+    for (let b = 0; b < beats; b++) {
+        const startX = b * beatWidth
+        
+        // 起始点（等电位线）- 第一个周期用 M，后续用 L
+        let currentX = startX
+        pathParts.push(`${b === 0 ? 'M' : 'L'} ${currentX} ${centerY}`)
+        
+        // P 波（心房收缩）- 小幅度上升
+        const p1 = startX + beatWidth * 0.1
+        const p2 = startX + beatWidth * 0.15
+        pathParts.push(`Q ${p1} ${centerY - 8} ${p2} ${centerY}`)
+        
+        // P-R 段
+        const pr = startX + beatWidth * 0.2
+        pathParts.push(`L ${pr} ${centerY}`)
+        
+        // QRS 波群
+        // Q 波 - 小幅下降
+        const q = startX + beatWidth * 0.25
+        pathParts.push(`L ${q} ${centerY + 5}`)
+        
+        // R 波 - 急剧上升（最高峰）
+        const r = startX + beatWidth * 0.3
+        const rHeight = 25 + Math.random() * 5  // 添加轻微随机变化
+        pathParts.push(`L ${r} ${centerY - rHeight}`)
+        
+        // S 波 - 急剧下降
+        const s = startX + beatWidth * 0.35
+        pathParts.push(`L ${s} ${centerY + 8}`)
+        
+        // S-T 段
+        const st = startX + beatWidth * 0.45
+        pathParts.push(`L ${st} ${centerY}`)
+        
+        // T 波（心室复极化）- 中等幅度上升
+        const t1 = startX + beatWidth * 0.55
+        const t2 = startX + beatWidth * 0.65
+        pathParts.push(`Q ${t1} ${centerY - 12} ${t2} ${centerY}`)
+        
+        // 等电位线
+        const end = startX + beatWidth
+        pathParts.push(`L ${end} ${centerY}`)
+    }
+    
+    return pathParts.join(' ')
+}
+
 const calculateTravelTime = (distStr) => {
     if (!distStr) return 5
     // 解析距离字符串，支持m和km单位
@@ -601,32 +713,35 @@ let animationFrameId = null
 let width = 0, height = 0
 
 class Particle {
-    constructor(typeOverride, startX, startY) { this.init(typeOverride, startX, startY) }
-    init(typeOverride, startX, startY) {
+    constructor(typeOverride, startX, startY, heartRate = 75) { this.init(typeOverride, startX, startY, heartRate) }
+    init(typeOverride, startX, startY, heartRate = 75) {
         const effect = currentEffect.value
+        // 心率影响动画速度：心率越高，速度越快
+        const speedMultiplier = Math.max(0.5, heartRate / 75)
+        
         if (typeOverride === 'burst') {
             this.isBurst = true; this.x = startX; this.y = startY; this.prevX = this.x; this.prevY = this.y
-            const angle = Math.random() * Math.PI * 2; const speed = Math.random() * 1.5 + 0.5
+            const angle = Math.random() * Math.PI * 2; const speed = (Math.random() * 1.5 + 0.5) * speedMultiplier
             this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed
-            this.gravity = 0.03; this.drag = 0.96; this.alpha = 1; this.decay = Math.random() * 0.01 + 0.005; this.size = Math.random() * 1.5 + 0.5
+            this.gravity = 0.03 * speedMultiplier; this.drag = 0.96; this.alpha = 1; this.decay = Math.random() * 0.01 + 0.005; this.size = Math.random() * 1.5 + 0.5
             return
         }
         this.isBurst = false; this.x = Math.random() * width; this.alpha = Math.random() * 0.5 + 0.2
         if (effect.type === 'sway_fall') {
-            this.y = -10; this.vy = Math.random() * 0.5 + 0.3; this.vx = 0; this.size = Math.random() * 4 + 2
-            this.sway = Math.random() * Math.PI * 2; this.swaySpeed = Math.random() * 0.02 + 0.01
-            this.rotation = Math.random() * 360; this.rotSpeed = Math.random() - 0.5
+            this.y = -10; this.vy = (Math.random() * 0.5 + 0.3) * speedMultiplier; this.vx = 0; this.size = Math.random() * 4 + 2
+            this.sway = Math.random() * Math.PI * 2; this.swaySpeed = (Math.random() * 0.02 + 0.01) * speedMultiplier
+            this.rotation = Math.random() * 360; this.rotSpeed = (Math.random() - 0.5) * speedMultiplier
         } else if (effect.type === 'rain' || effect.type === 'rain_storm') {
-            this.y = Math.random() * height; this.vx = -0.5; this.vy = Math.random() * 10 + 15
+            this.y = Math.random() * height; this.vx = -0.5 * speedMultiplier; this.vy = (Math.random() * 10 + 15) * speedMultiplier
             this.size = Math.random() * 20 + 10; this.alpha = 0.2
         } else if (effect.type === 'meteor') {
-            this.x = Math.random() * width * 1.5 - width * 0.25; this.y = -100; this.vx = -4 - Math.random() * 4; this.vy = 4 + Math.random() * 4
+            this.x = Math.random() * width * 1.5 - width * 0.25; this.y = -100; this.vx = (-4 - Math.random() * 4) * speedMultiplier; this.vy = (4 + Math.random() * 4) * speedMultiplier
             this.size = Math.random() * 30 + 20; this.alpha = 0; this.delay = Math.random() * 100
         } else if (effect.type === 'float_up_fade' || effect.type === 'flow_up') {
-            this.y = height + 10; this.vx = Math.random() * 0.5 - 0.25; this.vy = -(Math.random() * 1 + 0.5); this.size = Math.random() * 2 + 1
-            if (effect.type === 'float_up_fade') { this.alpha = 1; this.decay = 0.01 }
+            this.y = height + 10; this.vx = (Math.random() * 0.5 - 0.25) * speedMultiplier; this.vy = -(Math.random() * 1 + 0.5) * speedMultiplier; this.size = Math.random() * 2 + 1
+            if (effect.type === 'float_up_fade') { this.alpha = 1; this.decay = 0.01 * speedMultiplier }
         } else {
-            this.y = Math.random() * height; this.vx = Math.random() - 0.5; this.vy = Math.random() - 0.5; this.size = 2
+            this.y = Math.random() * height; this.vx = (Math.random() - 0.5) * speedMultiplier; this.vy = (Math.random() - 0.5) * speedMultiplier; this.size = 2
         }
         this.prevX = this.x; this.prevY = this.y
     }
@@ -672,9 +787,10 @@ class Particle {
 }
 
 const initParticles = () => {
+    const heartRate = currentHeartRate.value || 75
     if (currentEffect.value.type !== 'burst') {
         let count = 40; if (currentEffect.value.type.includes('rain')) count = 100; if (currentEffect.value.type === 'meteor') count = 5
-        for (let i = 0; i < count; i++) particles.push(new Particle())
+        for (let i = 0; i < count; i++) particles.push(new Particle(null, null, null, heartRate))
     }
 }
 
@@ -690,6 +806,7 @@ const drawLightning = () => {
 
 let lastLaunch = 0
 const startAnimation = () => {
+    const heartRate = currentHeartRate.value || 75
     const loop = (timestamp) => {
         if (!props.visible || !voiceCtx || !voiceCanvas.value) return
         voiceCtx.fillStyle = 'rgba(0, 0, 0, 0.2)'; voiceCtx.fillRect(0, 0, width, height); voiceCtx.globalCompositeOperation = 'lighter'
@@ -697,7 +814,7 @@ const startAnimation = () => {
         if (currentEffect.value.type === 'burst') {
             if (timestamp - lastLaunch > Math.random() * 2000 + 1500) {
                 const x = Math.random() * width * 0.6 + width * 0.2; const y = Math.random() * height * 0.4 + height * 0.1
-                for (let i = 0; i < 50; i++) particles.push(new Particle('burst', x, y)); lastLaunch = timestamp
+                for (let i = 0; i < 50; i++) particles.push(new Particle('burst', x, y, heartRate)); lastLaunch = timestamp
             }
         }
         for (let i = particles.length - 1; i >= 0; i--) {
@@ -904,6 +1021,221 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 
 .bar-fill.mood {
     background: linear-gradient(to right, #615a4b, #8c7e63);
+}
+
+/* Heart Rate Display */
+.heart-rate-container {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 16px;
+    border-radius: 12px;
+    border-left: 1px solid rgba(212, 175, 55, 0.3);
+    margin-top: 16px;
+    transition: all 0.3s ease;
+}
+
+.heart-rate-container.hr-rest {
+    border-left-color: #d4af37;
+    background: rgba(212, 175, 55, 0.05);
+}
+
+.heart-rate-container.hr-normal {
+    border-left-color: #d4af37;
+    background: rgba(212, 175, 55, 0.03);
+}
+
+.heart-rate-container.hr-excited {
+    border-left-color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.05);
+}
+
+.heart-rate-container.hr-extreme {
+    border-left-color: #ff0000;
+    background: rgba(255, 0, 0, 0.08);
+    animation: extremePulse 0.5s infinite;
+}
+
+.heart-rate-container.hr-low {
+    border-left-color: #666;
+    background: rgba(102, 102, 102, 0.05);
+}
+
+.heart-rate-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+}
+
+.heart-rate-label {
+    font-size: 10px;
+    color: #8c7e63;
+    letter-spacing: 2px;
+    font-family: 'Cormorant Garamond', serif;
+    text-transform: uppercase;
+}
+
+.heart-rate-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #e6e6e6;
+    font-family: 'Cormorant Garamond', serif;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.heart-rate-unit {
+    font-size: 12px;
+    color: #8c7e63;
+    font-weight: 400;
+}
+
+.heart-rate-bar {
+    height: 60px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    position: relative;
+    border: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.heart-rate-grid {
+    position: absolute;
+    inset: 0;
+    background-image: 
+        linear-gradient(rgba(212, 175, 55, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(212, 175, 55, 0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+    animation: gridScroll 3s linear infinite;
+}
+
+@keyframes gridScroll {
+    0% {
+        background-position: 0 0;
+    }
+    100% {
+        background-position: 20px 20px;
+    }
+}
+
+.heart-rate-ecg-line {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 2px;
+    background: rgba(212, 175, 55, 0.3);
+    transform: translateY(-50%);
+}
+
+.heart-rate-wave {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+.heart-rate-wave svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 200%;
+    animation: waveScroll 2s linear infinite;
+}
+
+.heart-rate-wave svg path {
+    fill: none;
+    stroke: #d4af37;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 4px rgba(212, 175, 55, 0.6));
+}
+
+.heart-rate-container.hr-rest .heart-rate-wave svg path {
+    stroke: #d4af37;
+    filter: drop-shadow(0 0 6px rgba(212, 175, 55, 0.8));
+}
+
+.heart-rate-container.hr-normal .heart-rate-wave svg path {
+    stroke: #e8c858;
+    filter: drop-shadow(0 0 5px rgba(232, 200, 88, 0.7));
+}
+
+.heart-rate-container.hr-excited .heart-rate-wave svg path {
+    stroke: #ff6b6b;
+    filter: drop-shadow(0 0 8px rgba(255, 107, 107, 0.9));
+    animation-duration: 1s;
+}
+
+.heart-rate-container.hr-extreme .heart-rate-wave svg path {
+    stroke: #ff0000;
+    filter: drop-shadow(0 0 10px rgba(255, 0, 0, 1));
+    animation-duration: 0.5s;
+}
+
+.heart-rate-container.hr-low .heart-rate-wave svg path {
+    stroke: #888;
+    filter: drop-shadow(0 0 3px rgba(136, 136, 136, 0.5));
+    animation-duration: 4s;
+}
+
+@keyframes waveScroll {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-50%);
+    }
+}
+
+.heart-rate-status {
+    font-size: 11px;
+    color: #d4af37;
+    text-align: right;
+    letter-spacing: 1px;
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.heart-rate-container.hr-rest .heart-rate-status {
+    color: #d4af37;
+}
+
+.heart-rate-container.hr-normal .heart-rate-status {
+    color: #e8c858;
+}
+
+.heart-rate-container.hr-excited .heart-rate-status {
+    color: #ff6b6b;
+}
+
+.heart-rate-container.hr-extreme .heart-rate-status {
+    color: #ff0000;
+}
+
+.heart-rate-container.hr-low .heart-rate-status {
+    color: #888;
+}
+
+@keyframes extremePulse {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+        border-left-color: rgba(255, 0, 0, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+        border-left-color: rgba(255, 0, 0, 1);
+    }
+}
+
+@keyframes extremePulse {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+    }
 }
 
 .location-card.premium-mode {

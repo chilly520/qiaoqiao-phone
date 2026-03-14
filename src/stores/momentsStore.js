@@ -1000,6 +1000,9 @@ export const useMomentsStore = defineStore('moments', () => {
                 if (options.includeSocial) {
                     if (profileData.signature) updates.statusText = profileData.signature
                     if (profileData.backgroundUrl) updates.momentsBackground = profileData.backgroundUrl
+                    else if (options.includeSocial) {
+                        console.log('[Profile Gen] Background image failed, skipping background update')
+                    }
                 }
 
                 if (options.includeArchive && profileData.bioFields) {

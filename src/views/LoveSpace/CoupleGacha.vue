@@ -158,7 +158,8 @@ async function handleGacha() {
       name: reward.name,
       desc: reward.desc,
       icon: reward.icon,
-      isAiGenerated: false  // 明确标记为普通扭蛋
+      isAiGenerated: false, // 明确标记为普通扭蛋
+      sourceId: reward.id    // 关键修复：传入源 ID 用于标记消耗
     })
   }, 1200)
 }

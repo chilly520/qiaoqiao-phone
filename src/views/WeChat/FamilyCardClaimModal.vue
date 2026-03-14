@@ -3,75 +3,91 @@
        class="fixed inset-0 bg-black/60 z-[170] flex flex-col items-center justify-center p-4 animate-fade-in"
        @click.self="close">
        
-      <div class="bg-white w-[300px] rounded-2xl overflow-hidden shadow-2xl animate-scale-up">
-          <!-- Header -->
-          <div class="h-32 relative text-white flex flex-col items-center justify-center p-4 overflow-hidden" 
-               :class="currentThemeClass">
-              <div class="absolute inset-0 bg-black/10"></div>
-              <!-- Decor -->
-              <div class="absolute -right-4 -top-4 w-20 h-20 bg-white/20 rounded-full blur-xl"></div>
+      <div class="bg-[#0f0f0f] w-[320px] rounded-[24px] overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.8)] border border-[#d4af37]/30 animate-scale-up">
+          <!-- Header (Black Gold Style) -->
+          <div class="h-40 relative text-white flex flex-col items-center justify-center p-4 overflow-hidden bg-gradient-to-br from-[#1c1c1c] via-[#2d2d2d] to-[#010101]">
+              <!-- Metal Texture -->
+              <div class="absolute inset-0 opacity-[0.1] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/brushed-alum.png')]"></div>
+              <!-- Metallic Shine -->
+              <div class="absolute inset-0 bg-gradient-to-tr from-[#d4af37]/15 via-transparent to-white/10"></div>
               
               <div class="relative z-10 flex flex-col items-center">
-                  <div class="flex items-center gap-2 mb-2">
-                      <i class="fa-solid fa-gift text-lg"></i>
-                      <span class="font-bold">{{ pendingData.isApply ? '亲属卡申请' : '领取亲属卡' }}</span>
+                  <div class="w-10 h-7 rounded bg-gradient-to-br from-[#d4af37] via-[#f1d592] to-[#b8860b] flex items-center justify-center shadow-lg relative overflow-hidden mb-4">
+                      <div class="absolute inset-0 opacity-30 bg-[repeating-linear-gradient(0deg,transparent,transparent_1px,#000_1px,#000_2px)]"></div>
+                      <i class="fa-solid fa-microchip text-black/70 text-sm relative z-10"></i>
                   </div>
-                  <div v-if="!pendingData.isApply" class="text-3xl font-mono font-bold tracking-tighter">¥{{ pendingData.amount }}</div>
-                  <div v-else class="text-lg font-medium opacity-90">等待回应...</div>
+                  <div class="flex items-center gap-2 mb-2">
+                       <div class="h-px w-4 bg-[#d4af37]/40"></div>
+                       <span class="text-[10px] font-black tracking-[0.3em] text-[#f1d592] uppercase">{{ pendingData.isApply ? 'Credit Request' : 'Family Grant' }}</span>
+                       <div class="h-px w-4 bg-[#d4af37]/40"></div>
+                  </div>
+                  <div v-if="!pendingData.isApply" class="text-4xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-[#f1d592] via-[#d4af37] to-[#b8860b] drop-shadow-lg">¥{{ pendingData.amount }}</div>
+                  <div v-else class="text-lg font-bold text-gray-400 italic tracking-[0.1em] opacity-60">Authentication...</div>
+              </div>
+
+              <!-- Logo -->
+              <div class="absolute bottom-3 right-4 flex items-center bg-white/5 px-2 py-0.5 rounded border border-white/5 italic font-black text-[6px] text-[#f1d592] opacity-30">
+                  <span class="text-rose-500">Union</span>Pay
               </div>
           </div>
           
           <!-- Content -->
-          <div class="p-5 space-y-4">
-              <!-- Note -->
-              <div class="text-xs text-gray-500 text-center bg-gray-50 p-2 rounded-lg italic border border-gray-100">
-                  "{{ pendingData.note || '拿去买糖吃~' }}"
+          <div class="p-6 bg-[#0a0a0a] space-y-6">
+              <!-- Note (Premium Quote Style) -->
+              <div class="relative px-5 py-4 bg-white/5 rounded-2xl border border-white/10 italic text-gray-300 text-xs text-center shadow-inner">
+                  <i class="fa-solid fa-quote-left absolute top-3 left-3 text-[10px] opacity-20 text-[#d4af37]"></i>
+                  <span class="relative z-10">"{{ pendingData.note || '拿去买糖吃~' }}"</span>
+                  <i class="fa-solid fa-quote-right absolute bottom-3 right-3 text-[10px] opacity-20 text-[#d4af37]"></i>
               </div>
               
-              <!-- Settings (Only for claim) -->
-              <div v-if="!pendingData.isApply" class="space-y-3">
-                  <div>
-                      <label class="text-xs font-bold text-gray-400 block mb-1">卡片名称</label>
-                      <input v-model="form.cardName" type="text" class="w-full bg-gray-100 border-none rounded-lg p-2 text-sm focus:ring-2 focus:ring-pink-300 transition-all font-medium text-gray-700">
+              <!-- Settings -->
+              <div v-if="!pendingData.isApply" class="space-y-5">
+                  <div class="relative group">
+                      <label class="text-[9px] font-black text-[#d4af37] px-1 uppercase tracking-widest block mb-2 opacity-60">Card Designation / 卡片名称</label>
+                      <input v-model="form.cardName" type="text" class="w-full bg-black border border-white/10 rounded-xl p-4 text-sm focus:border-[#d4af37]/50 focus:ring-2 focus:ring-[#d4af37]/5 transition-all font-bold text-white placeholder-gray-700 outline-none shadow-inner">
+                  </div>
+                  
+                  <div class="relative">
+                      <label class="text-[9px] font-black text-[#d4af37] px-1 uppercase tracking-widest block mb-2 opacity-60">Account Number / 虚拟卡号</label>
+                      <div class="flex items-center bg-black border border-white/10 rounded-xl p-4 shadow-inner">
+                          <input v-model="form.number" type="text" placeholder="Default: 8888-****" class="w-full bg-transparent text-sm font-mono text-gray-400 outline-none">
+                          <i class="fa-solid fa-lock text-[#d4af37]/30 text-[10px]"></i>
+                      </div>
                   </div>
                   
                   <div>
-                      <label class="text-xs font-bold text-gray-400 block mb-1">卡号 (选填)</label>
-                      <input v-model="form.number" type="text" placeholder="留空自动生成" class="w-full bg-gray-100 border-none rounded-lg p-2 text-sm focus:ring-2 focus:ring-pink-300 transition-all font-mono">
-                  </div>
-                  
-                  <div>
-                      <label class="text-xs font-bold text-gray-400 block mb-1">卡面主题</label>
-                      <div class="flex gap-2 overflow-x-auto py-1 scrollbar-hide">
+                      <label class="text-[9px] font-black text-[#d4af37] px-1 uppercase tracking-widest block mb-2 opacity-60">Signature Color / 磨砂质感</label>
+                      <div class="flex gap-3 overflow-x-auto py-1 px-1 scrollbar-hide">
                           <div v-for="t in themeOptions" :key="t.value" 
                                @click="form.theme = t.value"
-                               class="w-8 h-8 rounded-full shrink-0 cursor-pointer ring-2 ring-offset-1 transition-all"
-                               :class="[t.class, form.theme === t.value ? 'ring-gray-400 scale-110' : 'ring-transparent opacity-70 hover:opacity-100 hover:scale-105']"
-                               :title="t.label">
+                               class="w-8 h-8 rounded-full shrink-0 cursor-pointer ring-2 ring-offset-2 ring-offset-[#0a0a0a] transition-all relative overflow-hidden flex items-center justify-center shadow-lg"
+                               :class="[t.class, form.theme === t.value ? 'ring-[#d4af37] scale-110' : 'ring-transparent opacity-40 hover:opacity-100']">
+                               <i v-if="form.theme === t.value" class="fa-solid fa-check text-[10px] text-white mix-blend-difference"></i>
                           </div>
                       </div>
                   </div>
               </div>
 
-              <!-- Waiting Status (Only for Apply) -->
-              <div v-else class="py-4 text-center">
-                  <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 animate-pulse">
-                      <i class="fa-solid fa-hourglass-half text-gray-400 text-2xl"></i>
+              <!-- Waiting Status -->
+              <div v-else class="py-10 text-center">
+                  <div class="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 border border-white/10 relative">
+                       <div class="absolute inset-0 rounded-full border-2 border-[#d4af37]/30 animate-ping"></div>
+                       <i class="fa-solid fa-microchip text-[#d4af37] text-4xl opacity-40"></i>
                   </div>
-                  <div class="text-gray-500 font-medium">已发送申请，等待对方确认</div>
-                  <div class="text-xs text-gray-400 mt-1">对方同意后即可在此领取</div>
+                  <div class="text-white font-black text-sm tracking-widest uppercase">Encryption Active</div>
+                  <div class="text-[11px] text-gray-500 mt-2 tracking-wide leading-relaxed">申请已成功发送，正在等待持卡人进行安全权限校验...</div>
               </div>
               
               <!-- Actions -->
               <div class="pt-2 flex gap-3">
-                  <button v-if="!pendingData.isApply" class="flex-1 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-xl border border-transparent hover:bg-gray-200 transition-all active:scale-95" @click="close">
-                      取消
+                  <button v-if="!pendingData.isApply" class="flex-1 bg-white/5 text-gray-500 font-black py-4 rounded-xl border border-white/10 hover:bg-white/10 transition-all active:scale-95 text-[10px] uppercase tracking-widest" @click="close">
+                      Decline
                   </button>
-                  <button v-if="!pendingData.isApply" class="flex-1 bg-[#ff9a9e] text-white font-bold py-2.5 rounded-xl border border-transparent hover:brightness-105 transition-all shadow-md shadow-pink-200 active:scale-95" @click="handleConfirm">
-                      确认领取
+                  <button v-if="!pendingData.isApply" class="flex-1 bg-gradient-to-r from-[#d4af37] via-[#f1d592] to-[#b8860b] text-black font-black py-4 rounded-xl shadow-[0_15px_35px_rgba(212,175,55,0.3)] transition-all hover:brightness-110 active:scale-95 text-[10px] uppercase tracking-widest border-t border-white/30" @click="handleConfirm">
+                      Authorize & Claim
                   </button>
-                  <button v-else class="w-full bg-gray-100 text-gray-600 font-bold py-2.5 rounded-xl border border-transparent hover:bg-gray-200 transition-all active:scale-95" @click="close">
-                      关闭
+                  <button v-else class="w-full bg-white/5 text-gray-500 font-black py-4 rounded-xl border border-white/10 hover:bg-white/10 transition-all active:scale-95 text-[10px] uppercase tracking-widest" @click="close">
+                      Dismiss
                   </button>
               </div>
           </div>
@@ -90,19 +106,19 @@ const emit = defineEmits(['confirm'])
 
 const visible = ref(false)
 const pendingData = ref({}) // { uuid, amount, note, fromCharId }
-const form = ref({ cardName: '', number: '', theme: 'pink' })
+const form = ref({ cardName: '', number: '', theme: 'black' })
 
 const themeOptions = [
+  { value: 'black', class: 'bg-gradient-to-br from-gray-700 to-black', label: '黑金卡' },
   { value: 'pink', class: 'bg-gradient-to-br from-[#ff9a9e] to-[#fecfef]', label: '粉色浪漫' },
   { value: 'red', class: 'bg-gradient-to-br from-red-500 to-pink-600', label: '新年红' },
   { value: 'blue', class: 'bg-gradient-to-br from-blue-500 to-cyan-500', label: '深海蓝' },
   { value: 'gold', class: 'bg-gradient-to-br from-yellow-500 via-orange-400 to-yellow-600', label: '至尊金' },
-  { value: 'black', class: 'bg-gradient-to-br from-gray-700 to-black', label: '黑金卡' },
   { value: 'purple', class: 'bg-gradient-to-br from-purple-500 to-indigo-600', label: '紫韵' },
 ]
 
 const currentThemeClass = computed(() => {
-  return themeOptions.find(t => t.value === form.value.theme)?.class || 'bg-gradient-to-br from-[#ff9a9e] to-[#fecfef]'
+  return themeOptions.find(t => t.value === form.value.theme)?.class || 'bg-gradient-to-br from-gray-700 to-black'
 })
 
 const open = (data, defaultName) => {
@@ -110,7 +126,7 @@ const open = (data, defaultName) => {
   form.value = {
       cardName: defaultName || '亲属卡',
       number: '',
-      theme: 'pink'
+      theme: 'black'
   }
   visible.value = true
 }

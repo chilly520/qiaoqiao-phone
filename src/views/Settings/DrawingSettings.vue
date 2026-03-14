@@ -11,7 +11,7 @@ const drawingConfig = ref({ ...settingsStore.drawing })
 const showApiKey = ref(false)
 
 const providers = [
-    { id: 'pollinations', name: 'Pollinations.ai', desc: '支持匿名(免费)或积分制(Flux)' },
+    { id: 'pollinations', name: 'Pollinations.ai', desc: '支持匿名 (免费) 或积分制 (Flux)' },
     { id: 'siliconflow', name: 'SiliconFlow', desc: '国内极速大模型网关 推荐' },
     { id: 'flux-api', name: 'Flux-API', desc: '通用 Flux 接口' }
 ]
@@ -137,8 +137,12 @@ const testGenerate = async () => {
                         v-model="drawingConfig.model" 
                         type="text" 
                         class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="例如: flux, flux-schnell, dall-e-3"
+                        placeholder="例如：flux, flux-schnell, dall-e-3"
                     >
+                    <p v-if="drawingConfig.provider === 'siliconflow'" class="text-[10px] text-gray-400 ml-1 mt-1">
+                        <i class="fa-solid fa-info-circle mr-0.5"></i>
+                        推荐模型：<span class="font-mono text-blue-500">FLUX.1-schnell</span> (免费快)、<span class="font-mono text-purple-500">FLUX.1-dev</span> (高质量) 或 <span class="font-mono text-green-500">Kwai-Kolors/Kolors</span> (快手免费)
+                    </p>
                 </div>
             </div>
         </section>
@@ -147,6 +151,40 @@ const testGenerate = async () => {
         <section class="space-y-3 pb-10">
             <h3 class="text-sm font-bold text-gray-400 px-1 uppercase tracking-wider">功能测试</h3>
             <div class="bg-white rounded-2xl p-4 border border-gray-100 space-y-4">
+                <!-- SiliconFlow 额度提示 -->
+                <div v-if="drawingConfig.provider === 'siliconflow'" class="bg-amber-50 border border-amber-100 rounded-xl p-3 space-y-2">
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-circle-info text-amber-500 text-sm mt-0.5"></i>
+                        <div class="text-[10px] text-amber-800 leading-relaxed">
+                            <p class="font-bold mb-1">💰 免费额度说明</p>
+                            <ul class="list-disc list-inside space-y-0.5 text-amber-700">
+                                <li><span class="font-bold">每日额度：</span>100 万 tokens（每日凌晨刷新）</li>
+                                <li><span class="font-bold">生图消耗：</span>约 2-5 万 tokens/张</li>
+                                <li><span class="font-bold">理论生成：</span>20-50 张/天</li>
+                            </ul>
+                            <p class="mt-2 font-bold text-amber-900">✨ 推荐模型：</p>
+                            <ul class="list-disc list-inside space-y-0.5 text-amber-700">
+                                <li><span class="font-mono text-blue-600">FLUX.1-schnell</span> - 速度快，适合日常使用</li>
+                                <li><span class="font-mono text-purple-600">FLUX.1-dev</span> - 高质量，适合精美图片</li>
+                                <li><span class="font-mono text-green-600">Kwai-Kolors/Kolors</span> - 快手开源，完全免费 ⭐</li>
+                            </ul>
+                            <div class="mt-2 bg-white/60 rounded-lg p-2 border border-amber-200">
+                                <p class="text-[9px] text-amber-900 font-bold mb-1">🎨 Kwai-Kolors 特色：</p>
+                                <ul class="list-disc list-inside space-y-0.5 text-[9px] text-amber-700">
+                                    <li>完全免费，不消耗每日 tokens 额度</li>
+                                    <li>中文理解能力强，适合国风/人像</li>
+                                    <li>支持高分辨率输出</li>
+                                    <li>响应速度较快（通常 20-40 秒）</li>
+                                </ul>
+                            </div>
+                            <p class="mt-2 text-amber-700">
+                                <i class="fa-solid fa-lightbulb mr-0.5"></i>
+                                💡 提示：访问 SiliconFlow 官网 → 账户中心 → 用量明细 可查看详细使用记录
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="flex gap-3 items-center">
                     <input 
                         v-model="testPrompt" 
@@ -168,7 +206,7 @@ const testGenerate = async () => {
                 <div v-if="testResultUrl || isTesting" class="aspect-square w-full rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden border border-dashed border-gray-200">
                     <div v-if="isTesting" class="flex flex-col items-center gap-3">
                          <i class="fa-solid fa-spinner fa-spin text-xl text-gray-300"></i>
-                         <span class="text-[10px] text-gray-400">正在调用接口，请稍候...</span>
+                         <span class="text-[10px] text-gray-400">正在调用接口，请稍候...（免费模型可能需要 30-60 秒）</span>
                     </div>
                     <img 
                         v-else 

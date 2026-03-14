@@ -130,17 +130,17 @@ const newComment = ref('')
 const showUploadModal = ref(false)
 const uploadDesc = ref('')
 const pendingPhotoUrl = ref('')
-const isGenerating = ref(false)
+const isGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 
 async function generateMagic() {
   if (isGenerating.value) return
-  isGenerating.value = true
   try {
+    chatStore.triggerToast('正在施放相册魔法... ✨', 'info')
     await loveSpaceStore.generateSingleFeature('album')
   } catch (e) {
     console.error('Magic generation failed', e)
+    chatStore.triggerToast('施放魔法失败了', 'error')
   }
-  isGenerating.value = false
 }
 
 const album = computed(() => loveSpaceStore.album || [])

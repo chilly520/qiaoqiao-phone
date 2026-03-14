@@ -40,47 +40,47 @@
     </div>
 
     <div class="scroll-container" ref="scrollContainer">
-
-    <!-- 今日状态 -->
-    <div class="today-status" v-if="latestFootprint">
-      <div class="status-card">
-        <div class="status-icon">🕒</div>
-        <div class="status-text">
-          <p class="time">最后活跃: {{ formatTime(latestFootprint.createdAt) }}</p>
-          <p class="content">在 <b>{{ latestFootprint.location || '地球某处' }}</b> {{ latestFootprint.content }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 足迹流 -->
-    <div class="footprint-timeline">
-      <div v-if="footprints.length === 0" class="empty-state">
-        <div class="empty-icon">📍</div>
-        <p>{{ partnerName }} 还没有留下足迹呢...</p>
-        <button @click="generateFootprint" class="init-btn">召唤足迹</button>
-      </div>
-
-      <div v-for="(group, dateKey) in groupedFootprints" :key="dateKey" class="date-group">
-        <div class="date-header">
-          <span class="day-label">{{ formatDateLabel(dateKey) }}</span>
-          <span class="weekday">{{ getWeekday(dateKey) }}</span>
-        </div>
-        
-        <div v-for="(item, index) in group" :key="item.id" class="timeline-item">
-          <div class="timeline-left">
-            <span class="time">{{ getClock(item.createdAt) }}</span>
-            <div class="line" v-if="index !== group.length - 1 || Object.keys(groupedFootprints).indexOf(date) !== Object.keys(groupedFootprints).length - 1"></div>
+      <!-- 今日状态 -->
+      <div class="today-status" v-if="latestFootprint">
+        <div class="status-card">
+          <div class="status-icon">🕒</div>
+          <div class="status-text">
+            <p class="time">最后活跃: {{ formatTime(latestFootprint.createdAt) }}</p>
+            <p class="content">在 <b>{{ latestFootprint.location || '地球某处' }}</b> {{ latestFootprint.content }}</p>
           </div>
-          <div class="timeline-dot"></div>
-          <div class="timeline-content">
-            <div class="footprint-card">
-              <button class="delete-btn-tiny" @click="deleteFootprint(item.id)">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-              <p class="text">{{ item.content }}</p>
-              <div class="footprint-footer" v-if="item.location">
-                <i class="fa-solid fa-location-dot"></i>
-                <span>{{ item.location }}</span>
+        </div>
+      </div>
+
+      <!-- 足迹流 -->
+      <div class="footprint-timeline">
+        <div v-if="footprints.length === 0" class="empty-state">
+          <div class="empty-icon">📍</div>
+          <p>{{ partnerName }} 还没有留下足迹呢...</p>
+          <button @click="generateFootprint" class="init-btn">召唤足迹</button>
+        </div>
+
+        <div v-for="(group, dateKey) in groupedFootprints" :key="dateKey" class="date-group">
+          <div class="date-header">
+            <span class="day-label">{{ formatDateLabel(dateKey) }}</span>
+            <span class="weekday">{{ getWeekday(dateKey) }}</span>
+          </div>
+          
+          <div v-for="(item, index) in group" :key="item.id" class="timeline-item">
+            <div class="timeline-left">
+              <span class="time">{{ getClock(item.createdAt) }}</span>
+              <div class="line" v-if="index !== group.length - 1 || Object.keys(groupedFootprints).indexOf(dateKey) !== Object.keys(groupedFootprints).length - 1"></div>
+            </div>
+            <div class="timeline-dot"></div>
+            <div class="timeline-content">
+              <div class="footprint-card">
+                <button class="delete-btn-tiny" @click="deleteFootprint(item.id)">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+                <p class="text">{{ item.content }}</p>
+                <div class="footprint-footer" v-if="item.location">
+                  <i class="fa-solid fa-location-dot"></i>
+                  <span>{{ item.location }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -88,20 +88,21 @@
       </div>
     </div>
   </div>
-</div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useChatStore } from '@/stores/chatStore'
 
 const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
+const chatStore = useChatStore()
 
 const footprints = computed(() => loveSpaceStore.footprints || [])
 const partnerName = computed(() => loveSpaceStore.partner?.name || 'TA')
-const isGenerating = ref(false)
+const isGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 const scrollContainer = ref(null)
 
 const selectedDate = ref(new Date().toISOString().split('T')[0])
@@ -143,9 +144,9 @@ const calendarDays = computed(() => {
   for (let i = 1; i <= lastDay; i++) {
     const date = new Date(d.getFullYear(), d.getMonth(), i)
     days.push({ 
-      day: i, 
-      dateStr: date.toISOString().split('T')[0],
-      isCurrentMonth: true 
+       day: i, 
+       dateStr: date.toISOString().split('T')[0],
+       isCurrentMonth: true 
     })
   }
   
@@ -191,9 +192,6 @@ const groupedFootprints = computed(() => {
 
   if (filtered.length > 0) {
     groups[selectedDate.value] = filtered
-  } else {
-    // 如果选中的日期没足迹，展示全部但高亮选中的日期头？或者维持原样
-    // 这里用户说“切换别的日期没直接跳转，显示那个日期空白”，说明他们想按天看
   }
   
   return groups
@@ -231,16 +229,14 @@ async function deleteFootprint(id) {
 }
 
 async function generateFootprint() {
-  isGenerating.value = true
+  if (isGenerating.value) return
   try {
+    chatStore.triggerToast('正在施放足迹魔法... ✨', 'info')
     await loveSpaceStore.generateSingleFeature('footprint')
   } catch (e) {
     console.error('Generate footprint failed', e)
-    if (chatStore && chatStore.triggerToast) {
-      chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
-    }
+    chatStore.triggerToast('召唤足迹失败，稍后再试吧', 'error')
   }
-  isGenerating.value = false
 }
 </script>
 

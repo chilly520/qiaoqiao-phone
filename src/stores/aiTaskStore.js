@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
-import { generateReply, generateImage } from '../../utils/aiService'
+import { generateImage } from '../utils/aiService'
 import { useLoggerStore } from './loggerStore'
 
 /**
@@ -83,15 +83,19 @@ export const useAITaskStore = defineStore('aiTasks', () => {
             // 任务失败处理
             const task = activeTasks.get(taskId)
             if (task) {
-                if (error.name === 'AbortError') {
+                // ✅ 区分中止错误（页面切换/用户取消）和真实错误
+                if (error.name === 'AbortError' || 
+                    error.message?.includes('aborted') || 
+                    error.message?.includes('signal is aborted')) {
                     task.status = TaskStatus.ABORTED
+                    console.log(`[AITaskStore] Task ${taskId} was aborted (component unmounted or user cancelled)`);
                 } else {
                     task.status = TaskStatus.FAILED
                     task.error = error.message
                     logger?.addLog('ERROR', `AI 任务 ${taskId} 失败`, error.message)
                 }
 
-                // 回调
+                // 回调 - 只在非中止错误时调用 onError
                 if (onError && error.name !== 'AbortError') onError(error)
             }
         } finally {

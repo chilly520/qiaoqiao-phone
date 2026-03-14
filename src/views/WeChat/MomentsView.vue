@@ -322,7 +322,7 @@ const handleGenerateProfile = async (charId) => {
     if (!charId) return
 
     isGenerating.value = true
-    chatStore.triggerToast('正在为TA生成专属朋友圈主页...', 'info')
+    chatStore.triggerToast('正在为 TA 生成专属朋友圈主页...', 'info')
 
     try {
         await momentsStore.generateAndApplyCharacterProfile(charId, {
@@ -330,9 +330,42 @@ const handleGenerateProfile = async (charId) => {
             includeSocial: true,
             includeArchive: false // 关键：朋友圈主页重刷时不触动灵魂档案
         })
-        chatStore.triggerToast('主页社交信息已更新！', 'success')
+        
+        // 检查是否成功更新
+        const char = chatStore.chats[charId]
+        const hasSignature = char && char.statusText
+        const hasBackground = char && char.momentsBackground
+        const hasMoments = momentsStore.moments.some(m => m.authorId === charId)
+        
+        let successMsg = '主页已更新！'
+        const details = []
+        if (hasSignature) details.push('签名')
+        if (hasBackground) details.push('背景')
+        if (hasMoments) details.push('动态')
+        
+        if (details.length > 0) {
+            successMsg += `\n✅ ${details.join('、')}生成成功`
+        } else {
+            successMsg += '\n⚠️ 部分图片生成失败，但文字内容已更新'
+        }
+        
+        chatStore.triggerToast(successMsg, 'success')
     } catch (e) {
-        chatStore.triggerToast('生成失败: ' + e.message, 'error')
+        console.error('[MomentsView] Profile generation failed:', e)
+        
+        // 友好的错误提示
+        let errorMsg = '生成失败'
+        if (e.message.includes('超时')) {
+            errorMsg = '⏱️ 请求超时，请检查网络后重试'
+        } else if (e.message.includes('密钥') || e.message.includes('401')) {
+            errorMsg = '🔑 API 密钥问题，请检查设置中的密钥配置'
+        } else if (e.message.includes('人机验证') || e.message.includes('403')) {
+            errorMsg = '🤖 被 API 服务商风控，建议更换密钥或提供商'
+        } else {
+            errorMsg = '生成失败：' + e.message
+        }
+        
+        chatStore.triggerToast(errorMsg, 'error')
     } finally {
         isGenerating.value = false
     }

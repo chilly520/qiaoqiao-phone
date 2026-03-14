@@ -500,7 +500,7 @@ const upcomingCountdowns = computed(() => {
   return calendarStore.countdowns
     .map(c => {
       const target = new Date(c.targetDate)
-      const diff = Math.ceil((target - today) / 86400000)
+      const diff = isNaN(target.getTime()) ? 0 : Math.ceil((target - today) / 86400000)
       return {
         ...c,
         days: diff,
@@ -513,15 +513,23 @@ const upcomingCountdowns = computed(() => {
 })
 
 function getAnniversaryDays(targetDate) {
-  const today = new Date()
-  const target = new Date(targetDate)
-  const thisYearTarget = new Date(today.getFullYear(), target.getMonth(), target.getDate())
+  if (!targetDate) return 'NaN'
+  try {
+    const today = new Date()
+    const target = new Date(targetDate)
+    
+    if (isNaN(target.getTime())) return 'NaN'
+    
+    const thisYearTarget = new Date(today.getFullYear(), target.getMonth(), target.getDate())
 
-  if (thisYearTarget < today) {
-    thisYearTarget.setFullYear(today.getFullYear() + 1)
+    if (thisYearTarget < today) {
+      thisYearTarget.setFullYear(today.getFullYear() + 1)
+    }
+
+    return Math.ceil((thisYearTarget - today) / 86400000)
+  } catch (e) {
+    return 'NaN'
   }
-
-  return Math.ceil((thisYearTarget - today) / 86400000)
 }
 
 const aiBoundChars = computed(() => {

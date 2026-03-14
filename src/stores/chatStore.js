@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
+import { useAITaskStore } from './aiTaskStore'
 import { useLoggerStore } from './loggerStore'
 import { useWorldBookStore } from './worldBookStore'
 import { useMomentsStore } from './momentsStore'
@@ -223,22 +224,83 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processBioUpdate(processedContent, chatId);
                 
                 // Intercept Couple Space commands [LS_JSON: ...]
-                const lsJsonRegex = /[\\[【]\s*LS_JSON[:：]?\s*(\{[\s\S]*?\})(?:\s*[\]】])?/gi;
-                if (lsJsonRegex.test(processedContent)) {
-                    console.log('[ChatStore] Couple Space LS_JSON detected, processing...');
+                // Robust extraction using balanced brace matching
+                const startMarkerRegex = /[\\[【]\s*LS_JSON[:：]?\s*/gi;
+                let match;
+                let foundBlocks = [];
+                
+                // Manual loop to find and extract blocks
+                // We use a fresh copy for matching lastIndex
+                const searchRegex = new RegExp(startMarkerRegex.source, startMarkerRegex.flags);
+                while ((match = searchRegex.exec(processedContent)) !== null) {
+                    const startIdx = match.index;
+                    const markerText = match[0];
+                    const contentStart = startIdx + markerText.length;
                     
-                    // Capture original content for execution (because executeSpaceCommands handles multiple blocks)
+                    const firstBrace = processedContent.indexOf('{', contentStart);
+                    if (firstBrace !== -1) {
+                        let braceCount = 0;
+                        let inString = false;
+                        let isEscaped = false;
+                        let jsonEndIdx = -1;
+                        
+                        for (let i = firstBrace; i < processedContent.length; i++) {
+                            const char = processedContent[i];
+                            if (isEscaped) { isEscaped = false; continue; }
+                            if (char === '\\') { isEscaped = true; continue; }
+                            if (char === '"') { inString = !inString; continue; }
+                            if (!inString) {
+                                if (char === '{') braceCount++;
+                                else if (char === '}') {
+                                    braceCount--;
+                                    if (braceCount === 0) {
+                                        jsonEndIdx = i;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (jsonEndIdx !== -1) {
+                            // Find optional closing bracket ]
+                            let blockEndIdx = jsonEndIdx + 1;
+                            const remaining = processedContent.substring(jsonEndIdx + 1, jsonEndIdx + 10);
+                            const closeMatch = remaining.match(/^\s*[\]】]/);
+                            if (closeMatch) {
+                                blockEndIdx = jsonEndIdx + 1 + closeMatch[0].length;
+                            }
+                            
+                            foundBlocks.push({
+                                start: startIdx,
+                                end: blockEndIdx,
+                                content: processedContent.substring(startIdx, blockEndIdx)
+                            });
+                            // Advance regex
+                            searchRegex.lastIndex = blockEndIdx;
+                        }
+                    }
+                }
+                
+                if (foundBlocks.length > 0) {
+                    console.log(`[ChatStore] Detected ${foundBlocks.length} Couple Space commands, processing...`);
+                    
+                    // Capture original for execution (before stripping)
                     const originalForExecution = processedContent;
                     
-                    // Strip the JSON blocks from display content to prevent "JSON in chat bubbles"
-                    processedContent = processedContent.replace(lsJsonRegex, '').trim();
+                    // Strip blocks from display content (backwards to keep indices intact)
+                    for (let i = foundBlocks.length - 1; i >= 0; i--) {
+                        const block = foundBlocks[i];
+                        processedContent = processedContent.substring(0, block.start) + processedContent.substring(block.end);
+                    }
+                    processedContent = processedContent.trim();
                     
+                    // Execute commands in background
                     import('./loveSpaceStore').then(m => {
                         const loveSpaceStore = m.useLoveSpaceStore();
-                        loveSpaceStore.executeSpaceCommands(originalForExecution, chat.name)
+                        loveSpaceStore.executeSpaceCommands(originalForExecution, chat.name, null, chatId)
                             .then(() => console.log('[ChatStore] LS_JSON commands executed successfully'))
                             .catch(err => console.error('[ChatStore] LS_JSON execution failed', err));
-                    }).catch(err => console.error('[ChatStore] Failed to load loveSpaceStore for command parsing', err));
+                    }).catch(err => console.error('[ChatStore] Failed to load loveSpaceStore', err));
                 }
                 
                 msg.content = processedContent;
@@ -360,12 +422,13 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\s*[:：]\s*([^:：\]】]+)(?:\s*[:：]\s*([^\]】]+))?[\]】]$/i)
+            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
-                const val1 = tagMatch[2].trim()
+                const val1 = (tagMatch[2] || '').trim()
                 const val2 = (tagMatch[3] || '').trim()
+                const val3 = (tagMatch[4] || '').trim()
 
                 if (/^(发红包|红包)$/.test(tagType)) {
                     newMsg.type = 'redpacket'
@@ -396,12 +459,24 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.type = 'file'
                 } else if (tagType === 'LOCATION') {
                     newMsg.type = 'location'
-                } else if (tagType.includes('FAMILY_CARD')) {
+                } else if (tagType.toUpperCase() === 'FAMILY_CARD_APPLY' || tagType === '申请亲属卡') {
+                    newMsg.type = 'family_card_apply'
+                    newMsg.paymentId = val2 || `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                    newMsg.note = val1 || '申请亲属卡'
+                    newMsg.content = `[申请亲属卡:${newMsg.note}:${newMsg.paymentId}]`
+                } else if (tagType.toUpperCase() === 'FAMILY_CARD_REJECT' || tagType === '拒绝亲属卡') {
+                    newMsg.type = 'family_card_reject'
+                    newMsg.paymentId = val1 || ''
+                } else if (tagType.toUpperCase() === 'FAMILY_CARD' || tagType === '赠送亲属卡' || tagType === '亲属卡') {
                     newMsg.type = 'family_card'
+                    newMsg.amount = parseFloat(val1) || 0
+                    newMsg.note = val2 || '我的钱就是你的钱'
+                    newMsg.paymentId = val3 || `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                    newMsg.content = `[亲属卡:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
                 }
             } else {
                 // 2.1 Fallback: Loose Parsing for User Inputs like "[转账] 520元" or "[红包] 恭喜发财"
-                const looseMatch = detectionContent.match(/^[\[【](发红包|红包|转账)[\]】]\s*(.*)/i);
+                const looseMatch = detectionContent.match(/^[\[【](发红包|红包|转账|亲属卡|申请亲属卡)[\]】]\s*(.*)/i);
                 if (looseMatch) {
                     const tagType = looseMatch[1];
                     const rawText = looseMatch[2].trim();
@@ -416,15 +491,28 @@ export const useChatStore = defineStore('chat', () => {
                         // Remove amount and common currency suffixes from note
                         note = rawText.replace(amountMatch[0], '').replace(/(元|块|CNY)/gi, '').trim();
                     }
-                    if (!note) note = tagType === '转账' ? '转账给您' : '恭喜发财';
 
-                    newMsg.type = (tagType === '发红包' || tagType === '红包') ? 'redpacket' : 'transfer';
-                    newMsg.amount = amount;
-                    newMsg.note = note;
-                    newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-                    // Rewrite content with ID
-                    const typeLabel = newMsg.type === 'redpacket' ? '红包' : '转账';
-                    newMsg.content = `[${typeLabel}:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`;
+                    if (tagType === '申请亲属卡') {
+                        newMsg.type = 'family_card_apply';
+                        newMsg.note = rawText || '申请亲属卡';
+                        newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                        newMsg.content = `[申请亲属卡:${newMsg.note}:${newMsg.paymentId}]`;
+                    } else if (tagType === '亲属卡') {
+                        newMsg.type = 'family_card';
+                        newMsg.amount = amount;
+                        newMsg.note = note || '我的钱就是你的钱';
+                        newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                        newMsg.content = `[亲属卡:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`;
+                    } else {
+                        if (!note) note = tagType === '转账' ? '转账给您' : '恭喜发财';
+                        newMsg.type = (tagType === '发红包' || tagType === '红包') ? 'redpacket' : 'transfer';
+                        newMsg.amount = amount;
+                        newMsg.note = note;
+                        newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                        // Rewrite content with ID
+                        const typeLabel = newMsg.type === 'redpacket' ? '红包' : '转账';
+                        newMsg.content = `[${typeLabel}:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`;
+                    }
                 }
             }
         }
@@ -985,9 +1073,26 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
-            const match = content.match(/\[FAMILY_CARD:(\d+):([^\]]+)\]/)
-            const cardName = match ? match[2] : '亲属卡'
+            const match = content.match(/\[FAMILY_CARD[:：](\d+)[:：]([^\]:]+)(?:[:：]([^\]]+))?\]/i)
+            const cardName = match ? match[2].trim() : '亲属卡'
             const amount = match ? parseFloat(match[1]) : 0
+            const paymentId = match && match[3] ? match[3].trim() : null
+            
+            // Set message type and data for proper rendering
+            newMsg.type = 'family_card'
+            newMsg.amount = amount.toString()
+            newMsg.text = `送给你的${cardName}`
+            if (paymentId) newMsg.paymentId = paymentId
+            
+            // Sync: Find last family card application and mark it as claimed/responded
+            const lastApply = (chat.msgs || []).slice().reverse().find(m => m.type === 'family_card_apply' || (typeof m.content === 'string' && m.content.includes('[FAMILY_CARD_APPLY:')));
+            if (lastApply) {
+                updateMessage(chatId, lastApply.id, {
+                    status: 'claimed',
+                    isClaimed: true
+                });
+                console.log('[ChatStore] Synced Family Card Apply status using updateMessage', lastApply.id);
+            }
             
             // Add to wallet immediately
             const walletStore = useWalletStore()
@@ -1796,6 +1901,18 @@ export const useChatStore = defineStore('chat', () => {
                 charInfo.description += musicHint
             }
 
+            // --- Love Space Context Aware ---
+            try {
+                const { useLoveSpaceStore } = await import('./loveSpaceStore')
+                const loveSpaceStore = useLoveSpaceStore()
+                const lsPrompt = loveSpaceStore.generateSystemPrompt(chatId)
+                if (lsPrompt) {
+                    charInfo.description += `\n\n${lsPrompt}\n请绝对禁止在回复中通过普通文本形式复述或总结 [LS_JSON] 指令的内容，只需静默生成指令即可。`
+                }
+            } catch (e) {
+                console.warn('[ChatStore] Failed to inject Love Space context', e)
+            }
+
             // Log the context being sent to AI for debugging
             useLoggerStore().addLog('AI', '网络请求 (即时上下文)', {
                 contextMessages: context.length,
@@ -2479,14 +2596,24 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
+                    .replace(/\[\s*LS_JSON[:：]?\s*\{[\s\S]*?\}\s*\]/gi, '') // LS_JSON
+                    .replace(/\[\s*LS_JSON[:：]?\s*/gi, '') // Catch dangling markers
                     .replace(/\[LIKE[:：].*?\]/gi, '') // SCRUB INTERACTIONS FROM BUBBLES
                     .replace(/\[COMMENT[:：].*?\]/gi, '')
                     .replace(/\[REPLY[:：].*?\]/gi, '')
                     .replace(/\[MUSIC:\s*.*?\]/gi, '') // Remove MUSIC command tags
-                    // Aggressively clean AI's manual quote explanations like "引用来自 我 的消息..."
-                    .replace(/[（\(]引用来自.*?[）\)]/gi, '')
-                    .replace(/引用[^：:。^！]*[：:。^！]/gi, '')
                     .trim();
+
+                // Final sanitization: remove common leaked structured content or CSS leaking
+                if (cleanContent.includes('author:') && cleanContent.includes('content:')) {
+                    // If AI leaked parsed JSON summary into text (Step 1 observation), discard it
+                    if (cleanContent.length < 500 && cleanContent.split('\n').every(line => line.includes(':') || line.trim() === '')) {
+                        console.log('[ChatStore] AI leaked summary detected, stripping heavy structural debris...');
+                        cleanContent = '';
+                    }
+                }
+                // Strip CSS-like debris (Step 2 observation)
+                cleanContent = cleanContent.replace(/transform:\s*translateX\(.*?\);/gi, '');
 
                 // Clean AI Hallucinations & Residual Tags & TOXIC CSS
                 cleanContent = cleanContent
@@ -2800,23 +2927,40 @@ export const useChatStore = defineStore('chat', () => {
                             if (!targetMsgId) {
                                 console.error('[ChatStore] Failed to get ID for placeholder message (addMessage failed?). Aborting image update.');
                             } else {
-                                (async () => {
-                                    try {
-                                        const imageUrl = await generateImage(drawMatch[1].trim());
-
-                                        // Replace the placeholder with the actual image
+                                // ✅ 使用全局 AI 任务 Store 管理绘画请求（不受组件生命周期影响）
+                                const aiTaskStore = useAITaskStore()
+                                const drawTaskId = `draw_${chatId}_${targetMsgId}_${Date.now()}`
+                                                            
+                                // 创建全局绘画任务
+                                aiTaskStore.createStreamingTask({
+                                    taskId: drawTaskId,
+                                    apiFunc: generateImage,
+                                    args: [drawMatch[1].trim()],
+                                    onComplete: (imageUrl) => {
+                                        // 任务成功：更新消息为图片
+                                        console.log('[Draw] Global task completed:', imageUrl);
                                         updateMessage(chatId, targetMsgId, {
-                                            type: 'image', // Change type to image
-                                            content: `[图片:${imageUrl}]`, // Standard format
-                                            image: imageUrl // Ensure direct link for Gallery
+                                            type: 'image',
+                                            content: `[图片:${imageUrl}]`,
+                                            image: imageUrl
                                         });
-                                    } catch (err) {
+                                    },
+                                    onError: (err) => {
+                                        // 任务失败：显示错误信息
+                                        console.error('[Draw] Global task failed:', err);
                                         updateMessage(chatId, targetMsgId, {
                                             type: 'text',
-                                            content: `(绘画失败: ${err.message})`
+                                            content: `(绘画失败：${err.message})`
                                         });
                                     }
-                                })();
+                                }).catch(err => {
+                                    // 任务启动失败
+                                    console.error('[Draw] Failed to create global task:', err);
+                                    updateMessage(chatId, targetMsgId, {
+                                        type: 'text',
+                                        content: `(绘画失败：${err.message})`
+                                    });
+                                });
                             }
                         }
                     } else if (type === 'call') {

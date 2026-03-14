@@ -326,7 +326,16 @@ export function generateContextPreview(chatId, char) {
     const locationContext = char.locationSync
         ? weatherService.getLocationContextText()
         : ''
+        
+    // 读取用户位置：优先读取角色独立位置，其次读取全局位置
     const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
+    console.log('[AI Service] 用户位置数据源检查:', {
+        'char.userLocation': char.userLocation,
+        'char.bio?.location': char.bio?.location,
+        'settingsStore.weather?.userLocation': settingsStore.weather?.userLocation,
+        '最终 userLoc': userLoc
+    })
+        
     let locationName = '未知';
     // 兼容字符串格式的位置和对象格式的位置
     if (typeof userLoc === 'string' && userLoc.trim()) {
@@ -334,9 +343,12 @@ export function generateContextPreview(chatId, char) {
     } else if (typeof userLoc === 'object' && userLoc !== null) {
         locationName = userLoc?.name?.trim() || '未知';
     }
+        
+    console.log('[AI Service] 解析后的位置名称:', locationName)
+        
     // 严谨校验坐标有效性
     const hasValidCoords = typeof userLoc === 'object' && userLoc !== null && userLoc?.coords?.lat != null && userLoc?.coords?.lng != null;
-    const coordsText = hasValidCoords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '';
+    const coordsText = hasValidCoords ? ` (坐标：${userLoc.coords.lat}, ${userLoc.coords.lng})` : '';
     // 最终文本
     const userLocText = `\n【用户位置】${locationName}${coordsText}`;
     const batteryInfo = batteryMonitor.getBatteryInfo()
@@ -742,11 +754,20 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
 
         const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
+        console.log('[AI Service - 通话模式] 用户位置数据源检查:', {
+            'char.userLocation': char.userLocation,
+            'char.bio?.location': char.bio?.location,
+            'settingsStore.weather?.userLocation': settingsStore.weather?.userLocation,
+            '最终 userLoc': userLoc
+        })
+                
         let locName = '未知'
         if (typeof userLoc === 'string' && userLoc.trim()) locName = userLoc.trim()
         else if (userLoc && typeof userLoc === 'object') locName = userLoc.name?.trim() || '未知'
-
-        const userLocText = `\n【用户位置】${locName}` + (userLoc.coords ? ` (坐标: ${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
+                
+        console.log('[AI Service - 通话模式] 解析后的位置名称:', locName)
+        
+        const userLocText = `\n【用户位置】${locName}` + (userLoc.coords ? ` (坐标：${userLoc.coords.lat}, ${userLoc.coords.lng})` : '')
 
         // Battery Context
         const batteryInfo = batteryMonitor.getBatteryInfo()
@@ -2096,8 +2117,8 @@ ${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)
 1. 语言自然、生活化，不要像 AI。
 2. 如果有图片提示词，**必须**是关于场景、物品或角色的描述。
 3. 如果涉及到人物形象，系统将强制使用“日漫/少女漫”风格。
-4. 【严禁】不要生成任何代表用户的互动内容（点赞或评论）。
-5. **重要强调**：必须包含虚拟NPC的互动，且数量不少于总互动的30%。
+4. **🚫 严禁扮演用户**：**绝对禁止**生成任何以用户身份（${options.userProfile?.name || '用户'}）发布的点赞或评论。用户的行为只能由真实用户自己操作，AI 只能生成 NPC 角色的互动。
+5. **重要强调**：必须包含虚拟 NPC 的互动，且数量不少于总互动的 30%。
 ${customPrompt ? `\n【用户自定义指令】\n${customPrompt}` : ''}
 ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
 
@@ -2164,27 +2185,35 @@ export async function generateBatchMomentsWithInteractions(options) {
     const { characters, worldContext, customPrompt, userProfile, historicalMoments = [], count = 3 } = options
 
     // 1. Build character list with recent chat snippets for context
+    // ✅ 优化：表情包改为全局统一声明，避免在每个角色后重复浪费 token
+    const allEmojis = new Set()
+       
     const charList = characters.map((c, idx) => {
         const bio = localStorage.getItem(`char_bio_${c.id}`) || ''
         const bioText = bio ? `\n   个人简介/详细背景：${bio}` : ''
-
+   
         // 获取该角色对应的用户设定（如果有）
         const userSpecificName = c.userName || userProfile?.name || '用户'
         const userSpecificPersona = c.userPersona ? `\n   【用户（${userSpecificName}）在此角色剧本中的身份/设定】：${c.userPersona}` : ''
-
+   
         const chatText = c.recentChats ? `\n   最近 15 条聊天碎片：${c.recentChats.substring(0, 1000)}` : ''
-        const personalHistoryText = c.personalHistory ? `\n   TA最近发过：${c.personalHistory}` : ''
-
-        // 获取表情包信息 (增加名称匹配引导)
-        const emojiList = c.emojis && c.emojis.length > 0
-            ? `\n   可用表情包 (必须精确匹配引号内的名称，格式：[表情包：名字]):\n     ${c.emojis.map(e => `"${e.name}"`).join(',\n     ')}`
-            : ''
-
+        const personalHistoryText = c.personalHistory ? `\n   TA 最近发过：${c.personalHistory}` : ''
+   
+        // ✅ 收集所有表情包（去重），不再在每个角色后重复
+        if (c.emojis && c.emojis.length > 0) {
+            c.emojis.forEach(e => allEmojis.add(e.name))
+        }
+   
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
-   核心人设：${c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}${emojiList}
+   核心人设：${c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}
    --- 
-   当前与用户关系：${c.name} 称呼用户为“${userSpecificName}”${chatText}${personalHistoryText}`
+   当前与用户关系：${c.name} 称呼用户为"${userSpecificName}"${chatText}${personalHistoryText}`
     }).join('\n\n')
+       
+    // ✅ 全局统一声明表情包列表（节省 token）
+    const globalEmojiList = allEmojis.size > 0
+        ? `\n\n【通用表情包池】（所有角色都可使用，格式：[表情包：名字]）\n${Array.from(allEmojis).map(name => `  - "${name}"`).join('\n')}`
+        : ''
 
     const now = new Date()
     const weekDays = ['日', '一', '二', '三', '四', '五', '六']
@@ -2220,6 +2249,7 @@ ${commentsStr || '   (暂无评论)'}`
 
 【备选发帖角色】
 ${charList}
+${globalEmojiList}
 
 ${worldBookText}
 
@@ -2234,12 +2264,13 @@ ${"```"}json
 {
     "newMoments": [
         {
-            "authorId": "选中的角色ID (如: char_123)",
-            "content": "发帖内容 (自然生活化，可包含 [表情包:名字] 和 @提及)",
+            "authorId": "选中的角色 ID (如：char_123)",
+            "content": "发帖文字内容 (自然生活化，可包含 [表情包：名字] 和 @提及)",
+            "html": "可选：自定义 HTML 卡片内容（完整的 HTML 字符串，包含内联样式）",
             "mentions": ["提及的角色姓名"],
             "location": "地点",
-            "imagePrompts": ["英文生图提示词1", "英文生图提示词2"],
-            "imageDescriptions": ["中文图片描述1", "中文图片描述2"],
+            "imagePrompts": ["英文生图提示词 1", "英文生图提示词 2"],
+            "imageDescriptions": ["中文图片描述 1", "中文图片描述 2"],
             "interactions": [
                 { "type": "comment", "authorId": "互动者角色ID (如果是备选角色)", "authorName": "角色姓名 (如果是备选角色) 或 虚构NPC名", "content": "评论内容", "isVirtual": false },
                 { "type": "like", "authorId": "虚拟NPC角色ID", "authorName": "虚拟NPC名字", "isVirtual": true }
@@ -2263,12 +2294,14 @@ ${"```"}
 2. **回复逻辑**：如果旧动态下有用户的评论，对应的动态作者角色必须进行回复。
 3. **提及与召唤**：鼓励在评论中使用 @${userProfile?.name || '用户'} 来吸引注意。
 4. **强制数量准则**：每生成一条新的动态，【必须】为其生成 3-8 条评论回复等互动信息以及 3-8 个点赞信息，两者缺一不可。
+5. **🚫 严禁扮演用户**：**绝对禁止**生成任何以用户身份（${userProfile?.name || '用户'}）发布的动态、评论或点赞。用户的行为只能由真实用户自己操作，AI 只能生成 NPC 角色的互动。
 
 【生成细节指南】
 1. **多图配比**：根据动态内容决定图片数量（常见配图数为 0, 1, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。
 2. **图文契合**：每一张图片的 imagePrompts 都要与 content 紧密相关且风格统一。
-3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包:名称]。**必须确保名称与提供的列表完全一致**。
-4. **@-提及**：在 content 或评论中合适的位置使用 @名字。`
+3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包：名称]。**必须确保名称与提供的列表完全一致**。
+4. **@-提及**：在 content 或评论中合适的位置使用 @名字。
+5. **🚫 用户身份禁令**：再次强调，**严禁**在 newMoments 或 ecosystemUpdates 中生成任何 authorName 为"${userProfile?.name || '用户'}"的互动。所有互动必须来自 NPC 角色或虚构的第三方人物。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2344,6 +2377,7 @@ ${"```"}
             const processed = {
                 authorId: authorId,
                 content: moment.content,
+                html: moment.html || null,  // ✅ 修复：支持 HTML 卡片内容
                 location: moment.location || '',
                 images: [],
                 imageDescriptions: [],
@@ -2567,11 +2601,17 @@ async function _generateImageInternal(prompt, options = {}) {
 
             // DOUBLE LAYER AUTH: Some Pollinations gateways prefer query param, others prefer header. 
             // We use both for pk_ keys to maximize success.
+            // Timeout controller to prevent queue hang
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 45000) 
+
             const response = await fetch(url, {
+                signal: controller.signal,
                 headers: {
                     'Authorization': `Bearer ${apiKey}`
                 }
             })
+            clearTimeout(timeoutId)
 
             if (!response.ok) {
                 const errText = await response.text()
@@ -2617,9 +2657,15 @@ async function _generateImageInternal(prompt, options = {}) {
         } catch (e) {
             console.error('[AI Image] Pollinations Final Failure:', e)
             useLoggerStore().addLog('ERROR', '图片生成失败 (Pollinations)', e.message)
+                    
+            // Special handling for AbortError (timeout/network issues)
+            if (e.name === 'AbortError' || e.message.includes('aborted')) {
+                throw new Error('请求超时，可能是网络不稳定或 API 服务响应过慢。请检查网络连接后重试。')
+            }
+                    
             // CRITICAL: Stop falling back to anonymous image.pollinations.ai because it returns the "WE HAVE MOVED" placeholder.
             // We want the user to see the AUTH error so they can fix their key.
-            throw new Error(`绘制失败: ${e.message}`)
+            throw new Error(`绘制失败：${e.message}`)
         }
     }
 
@@ -2627,8 +2673,20 @@ async function _generateImageInternal(prompt, options = {}) {
         // SiliconFlow / Flux-API (requires API Key)
         try {
             const baseUrl = provider === 'siliconflow' ? 'https://api.siliconflow.cn/v1' : 'https://api.flux-api.example/v1'
+            // Timeout controller: 免费模型响应较慢，延长至 90 秒
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 90000) // 90 秒超时
+
+            console.log('[AI Image] Requesting SiliconFlow:', {
+                provider,
+                model: model || 'flux-v1',
+                prompt: enhancedPrompt.substring(0, 50) + '...',
+                timeout: '90s'
+            })
+
             const response = await fetch(`${baseUrl}/images/generations`, {
                 method: 'POST',
+                signal: controller.signal,
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
@@ -2641,13 +2699,30 @@ async function _generateImageInternal(prompt, options = {}) {
                     height: height
                 })
             })
+            clearTimeout(timeoutId)
 
             if (!response.ok) {
                 const err = await response.text()
+                console.error('[AI Image] SiliconFlow API error:', {
+                    status: response.status,
+                    error: err
+                })
+                
+                // 更友好的错误提示
+                if (response.status === 401) {
+                    throw new Error('API 密钥无效或已过期，请检查设置中的密钥配置')
+                } else if (response.status === 402) {
+                    throw new Error('账户余额不足，请充值或更换模型')
+                } else if (response.status === 429) {
+                    throw new Error('请求过于频繁，请稍后再试')
+                } else if (err.includes('quota') || err.includes('balance')) {
+                    throw new Error('账户余额不足，请检查 SiliconFlow 账户额度')
+                }
                 throw new Error(err)
             }
 
             const data = await response.json()
+            console.log('[AI Image] SiliconFlow response:', data)
             const imageUrl = data.images?.[0]?.url || data.data?.[0]?.url || `https://via.placeholder.com/1024?text=GenerationFailed`
             useLoggerStore().addLog('AI', `图片生成成功 (${provider})`, {
                 provider,
@@ -2657,6 +2732,12 @@ async function _generateImageInternal(prompt, options = {}) {
         } catch (e) {
             console.error('Drawing API failed:', e)
             useLoggerStore().addLog('ERROR', `图片生成失败 (${provider})`, e.message)
+            
+            // Special handling for AbortError
+            if (e.name === 'AbortError' || e.message.includes('aborted')) {
+                throw new Error('请求超时（90 秒），免费模型响应较慢，请检查网络或稍后重试')
+            }
+            
             throw e
         }
     }
@@ -2958,14 +3039,28 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
 
         let backgroundUrl = null
         if (includeSocial && data.backgroundPrompt) {
-            try { backgroundUrl = await generateImage(data.backgroundPrompt) } catch (e) { }
+            try { 
+                console.log('[Profile Gen] Generating background image...')
+                backgroundUrl = await generateImage(data.backgroundPrompt) 
+            } catch (e) { 
+                console.warn('[Profile Gen] Background image generation failed:', e.message)
+                // 不中断整个流程，只是没有背景图
+            }
         }
 
         const processedMoments = []
         if (includeMoments && data.pinnedMoments) {
             for (const mData of data.pinnedMoments.slice(0, 3)) {
                 let imgUrl = null
-                if (mData.imagePrompt) try { imgUrl = await generateImage(mData.imagePrompt) } catch (e) { }
+                if (mData.imagePrompt) {
+                    try { 
+                        console.log('[Profile Gen] Generating moment image...')
+                        imgUrl = await generateImage(mData.imagePrompt) 
+                    } catch (e) { 
+                        console.warn('[Profile Gen] Moment image generation failed:', e.message)
+                        // 不中断整个流程，只是没有配图
+                    }
+                }
                 processedMoments.push({
                     content: mData.content,
                     mentions: mData.mentions || [],

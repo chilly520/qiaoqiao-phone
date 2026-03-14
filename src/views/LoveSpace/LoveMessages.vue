@@ -68,9 +68,11 @@
 import { ref, computed } from 'vue'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useChatStore } from '@/stores/chatStore'
 
 const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
+const chatStore = useChatStore()
 
 const messages = computed(() => loveSpaceStore.messages || [])
 const sortedMessages = computed(() => [...messages.value].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)))
@@ -78,7 +80,13 @@ const showAddModal = ref(false)
 const newMessage = ref('')
 
 const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg')
-const userName = computed(() => settingsStore.personalization.userProfile.name || '用户')
+const userName = computed(() => {
+  const partnerId = loveSpaceStore.currentPartnerId
+  if (partnerId && chatStore.chats[partnerId]) {
+    return chatStore.chats[partnerId].userName || settingsStore.personalization?.userProfile?.name || '用户'
+  }
+  return settingsStore.personalization.userProfile.name || '用户'
+})
 
 function getAvatar(msg) {
   if (msg.senderId === 'user') return userAvatar.value
@@ -108,20 +116,16 @@ function prepareReply(msg) {
   showAddModal.value = true
 }
 
-const isGenerating = ref(false)
+const isGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 
 async function generateMagic() {
   if (isGenerating.value) return
-  isGenerating.value = true
   try {
+    chatStore.triggerToast('正在施放留言板魔法... ✨', 'info')
     await loveSpaceStore.generateSingleFeature('message')
   } catch (e) {
     console.error('Magic generation failed', e)
-    if (chatStore && chatStore.triggerToast) {
-      chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
-    }
   }
-  isGenerating.value = false
 }
 
 async function sendNewMessage() {

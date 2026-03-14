@@ -744,6 +744,8 @@ h2 {
     font-size: 17px;
     line-height: 1.8;
     min-height: 200px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
   }
   
   .paper-footer {

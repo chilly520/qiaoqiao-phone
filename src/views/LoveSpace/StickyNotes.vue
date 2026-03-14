@@ -29,7 +29,7 @@
             <div class="bookmark"></div>
             <div class="note-content">
               <span>{{ note.content }}</span>
-              <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
+              <span class="note-signature" v-if="note.author">——{{ getAuthorName(note.author) }}</span>
             </div>
           </div>
         </template>
@@ -38,7 +38,7 @@
           <div class="inner scallop-inner">
             <div class="note-content">
               <span>{{ note.content }}</span>
-              <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
+              <span class="note-signature" v-if="note.author">——{{ getAuthorName(note.author) }}</span>
             </div>
           </div>
         </template>
@@ -50,7 +50,7 @@
           </div>
           <div class="note-content apple-text">
             <span>{{ note.content }}</span>
-            <span class="note-signature" v-if="note.author">——{{ note.author === 'partner' ? (loveSpaceStore.partner?.name || 'TA') : currentUserName }}</span>
+            <span class="note-signature" v-if="note.author">——{{ getAuthorName(note.author) }}</span>
           </div>
         </template>
 
@@ -102,19 +102,18 @@ import { useChatStore } from '@/stores/chatStore'
 const loveSpaceStore = useLoveSpaceStore()
 const chatStore = useChatStore()
 
-const isGenerating = ref(false)
+const isGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 const showAddModal = ref(false)
 const newContent = ref('')
 
 async function generateMagic() {
   if (isGenerating.value) return
-  isGenerating.value = true
   try {
+    chatStore.triggerToast('正在施放便利贴魔法... ✨', 'info')
     await loveSpaceStore.generateSingleFeature('sticky')
   } catch (e) {
     console.error('Magic generation failed', e)
   }
-  isGenerating.value = false
 }
 
 async function saveSticky() {
@@ -134,11 +133,16 @@ const settingsStore = useSettingsStore()
 const currentUserName = computed(() => {
   const partnerId = loveSpaceStore.currentPartnerId
   if (partnerId && chatStore.chats[partnerId]) {
-    // 优先使用该聊天绑定的“我的人设”中的名字
     return chatStore.chats[partnerId].userName || settingsStore.personalization?.userProfile?.name || '我'
   }
   return settingsStore.personalization?.userProfile?.name || '我'
 })
+
+function getAuthorName(author) {
+  if (!author) return ''
+  if (author === 'user' || author === 'me') return currentUserName.value
+  return loveSpaceStore.partner?.name || 'TA'
+}
 
 // 20 种样式库
 const availableStyles = [

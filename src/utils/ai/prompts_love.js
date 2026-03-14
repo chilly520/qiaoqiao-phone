@@ -131,9 +131,10 @@ export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceH
 }]
 
 【输出要求】
-1. 只输出 [LS_JSON: ...]。
+1. 只输出 [LS_JSON: ...]，严禁输出任何 [LS_JSON] 标签以外的普通文本内容（禁止复述、禁止总结、保持静默生成）。
 2. 内容要充满爱意，不许敷衍。
 3. 必须参考聊天记录，兑现承诺。
+4. 内部 JSON 协议是给系统读的，用户看不到，所以绝对禁止在回复中把 JSON 内容再写一遍给用户看。
 
 【最近对话参考】
 ${history.map(m => `${m.role === 'assistant' ? charName : userName}: ${m.content}`).join('\n')}
