@@ -1,5 +1,21 @@
 <template>
   <div class="love-space-app">
+    <!-- 本地确认弹窗 -->
+    <div v-if="showLocalConfirm" class="local-confirm-overlay" @click.self="handleLocalCancel">
+      <div class="local-confirm-modal">
+        <h3 class="local-confirm-title">{{ localConfirmData.title }}</h3>
+        <p class="local-confirm-message">{{ localConfirmData.message }}</p>
+        <div class="local-confirm-buttons">
+          <button @click="handleLocalCancel" class="local-confirm-btn cancel">
+            {{ localConfirmData.cancelText }}
+          </button>
+          <button @click="handleLocalConfirm" class="local-confirm-btn confirm">
+            {{ localConfirmData.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 1. 角色列表选择器 (Selector Mode) -->
     <div v-if="!loveSpaceStore.currentPartnerId" class="space-selector-view animate-fade-in">
       <div class="selector-header">
@@ -79,9 +95,75 @@
                 <span>相识日期:</span>
                 <input type="date" v-model="tempStartDate" @change="updateLoveDate" class="date-input">
               </div>
+              
+              <!-- 功能勾选区域 -->
               <div class="editor-row mt-4">
-                <button @click="resetCurrentSpace" class="force-reset-btn">
-                  <i class="fa-solid fa-trash-can"></i> 解除绑定并清空空间
+                <div class="reset-options">
+                  <div class="option-title">选择要清空的功能:</div>
+                  <div class="checkbox-grid">
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.diary">
+                      <span>📔 交换日记</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.messages">
+                      <span>💬 留言互动</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.footprints">
+                      <span>👣 今日足迹</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.questions">
+                      <span>🤔 灵魂提问</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.letters">
+                      <span>💌 情书信件</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.gacha">
+                      <span>🎁 扭蛋记录</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.album">
+                      <span>🖼️ 情侣相册</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.anniversaries">
+                      <span> 纪念日</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.house">
+                      <span>🏠 两人小屋</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.stickies">
+                      <span>📝 便利贴</span>
+                    </label>
+                    <label class="checkbox-item">
+                      <input type="checkbox" v-model="resetOptions.schedules">
+                      <span>📆 角色日程</span>
+                    </label>
+                  </div>
+                  <div class="select-all-row">
+                    <label class="checkbox-item select-all">
+                      <input type="checkbox" v-model="selectAll" @change="toggleSelectAll">
+                      <span>全选/全不选</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="editor-row mt-4">
+                <button @click="handleResetClick" class="force-reset-btn" :disabled="!hasSelection">
+                  <i class="fa-solid fa-trash-can"></i> 清空选中功能
+                </button>
+              </div>
+              
+              <div class="editor-row mt-2">
+                <button @click="resetCurrentSpace" class="danger-reset-btn">
+                  <i class="fa-solid fa-triangle-exclamation"></i> 解除绑定并清空空间
                 </button>
               </div>
             </div>
@@ -159,6 +241,10 @@
           <div class="func-card" @click="openModule('gacha')">
             <div class="func-icon" style="background: linear-gradient(135deg, #fbc2eb, #a6c1ee);">🎰</div>
             <div class="func-name">扭蛋机</div>
+          </div>
+          <div class="func-card" @click="openModule('schedule')">
+            <div class="func-icon" style="background: linear-gradient(135deg, #a18cd1, #fbc2eb);">📅</div>
+            <div class="func-name">日程表</div>
           </div>
         </div>
       </div>
@@ -266,6 +352,41 @@ const isMagicGenerating = ref(false)
 const selectedRole = ref(null) // 用户选择的角色
 const showConfirmation = ref(false) // 是否显示确认步骤
 
+// 清空功能选项
+const resetOptions = ref({
+  diary: false,
+  messages: false,
+  footprints: false,
+  questions: false,
+  letters: false,
+  gacha: false,
+  album: false,
+  anniversaries: false,
+  house: false,
+  stickies: false,
+  schedules: false
+})
+
+const selectAll = ref(false)
+
+// 全选/全不选
+function toggleSelectAll() {
+  const value = selectAll.value
+  Object.keys(resetOptions.value).forEach(key => {
+    resetOptions.value[key] = value
+  })
+}
+
+// 检查是否有选中的功能
+const hasSelection = computed(() => {
+  const values = Object.values(resetOptions.value)
+  const result = values.some(v => v === true)
+  console.log('[hasSelection] resetOptions:', resetOptions.value)
+  console.log('[hasSelection] values:', values)
+  console.log('[hasSelection] some result:', result)
+  return result
+})
+
 const applyToDesktop = computed({
   get: () => loveSpaceStore.applyToDesktop,
   set: (val) => {
@@ -275,6 +396,10 @@ const applyToDesktop = computed({
     }
   }
 })
+
+// 本地 ConfirmModal 状态
+const showLocalConfirm = ref(false)
+const localConfirmData = ref(null)
 
 const availableRoles = computed(() => {
   const contacts = chatStore.contactList || []
@@ -317,7 +442,8 @@ function openModule(moduleName) {
     return
   }
 
-  const routeName = `couple-${moduleName}`
+  // 特殊处理：写信模块使用 mailbox 路由
+  const routeName = moduleName === 'letter' ? 'couple-mailbox' : `couple-${moduleName}`
   
   // Verify if route exists to prevent "打不开" (not opening) issues
   const hasRoute = router.hasRoute(routeName)
@@ -425,15 +551,186 @@ async function resetCurrentSpace() {
   )
 }
 
+// 清空选中的功能
+async function resetSelected() {
+  console.log('[resetSelected] Function called')
+  console.log('[resetSelected] hasSelection.value:', hasSelection.value)
+  
+  if (!hasSelection.value) {
+    console.log('[resetSelected] No selection, showing toast')
+    chatStore.triggerToast('请先选择要清空的功能', 'warning')
+    return
+  }
+  
+  console.log('[resetSelected] Showing confirm dialog')
+  
+  // 使用本地 ConfirmModal
+  showLocalConfirmModal(
+    '清空选中功能',
+    '确定要清空选中的功能吗？此操作不可撤销。',
+    async () => {
+      console.log('[resetSelected] User confirmed')
+      const space = loveSpaceStore.currentSpace
+      console.log('[resetSelected] Current space:', space)
+      
+      if (!space) {
+        console.log('[resetSelected] No space found')
+        chatStore.triggerToast('当前没有激活的空间', 'error')
+        return
+      }
+      
+      console.log('[ResetSelected] Starting reset with options:', resetOptions.value)
+      
+      // 根据勾选清空对应功能
+      if (resetOptions.value.diary) {
+        console.log('[ResetSelected] Clearing diary, was:', space.diary?.length)
+        space.diary = []
+      }
+      if (resetOptions.value.messages) {
+        console.log('[ResetSelected] Clearing messages, was:', space.messages?.length)
+        space.messages = []
+      }
+      if (resetOptions.value.footprints) {
+        console.log('[ResetSelected] Clearing footprints, was:', space.footprints?.length)
+        space.footprints = []
+      }
+      if (resetOptions.value.questions) {
+        console.log('[ResetSelected] Clearing questions, was:', space.questions?.length)
+        space.questions = []
+      }
+      if (resetOptions.value.letters) {
+        console.log('[ResetSelected] Clearing letters, was:', space.letters?.length)
+        space.letters = []
+      }
+      if (resetOptions.value.gacha) {
+        console.log('[ResetSelected] Clearing gacha, was:', space.gachaHistory?.length)
+        space.gachaHistory = []
+      }
+      if (resetOptions.value.album) {
+        console.log('[ResetSelected] Clearing album, was:', space.album?.length)
+        space.album = []
+      }
+      if (resetOptions.value.anniversaries) {
+        console.log('[ResetSelected] Clearing anniversaries, was:', space.anniversaries?.length)
+        space.anniversaries = []
+      }
+      if (resetOptions.value.house) {
+        console.log('[ResetSelected] Clearing house, was:', space.house)
+        space.house = {}
+      }
+      if (resetOptions.value.stickies) {
+        console.log('[ResetSelected] Clearing stickies, was:', space.stickies?.length)
+        space.stickies = []
+      }
+      if (resetOptions.value.schedules) {
+        console.log('[ResetSelected] Clearing schedules, was:', space.schedules?.length)
+        space.schedules = []
+      }
+      
+      console.log('[ResetSelected] Saving to storage...')
+      await loveSpaceStore.saveToStorage()
+      console.log('[ResetSelected] Save completed')
+      
+      // 重置选项
+      Object.keys(resetOptions.value).forEach(key => {
+        resetOptions.value[key] = false
+      })
+      selectAll.value = false
+      
+      chatStore.triggerToast('选中功能已清空', 'success')
+    },
+    () => {
+      // onCancel 回调
+      console.log('[resetSelected] User cancelled')
+    },
+    '确定清空',
+    '我再想想'
+  )
+}
+
+// 处理重置按钮点击
+function handleResetClick() {
+  console.log('[handleResetClick] hasSelection.value:', hasSelection.value)
+  console.log('[handleResetClick] resetOptions:', resetOptions.value)
+  resetSelected()
+}
+
+// 本地 ConfirmModal 处理方法
+function showLocalConfirmModal(title, message, onConfirm, onCancel = null, confirmText = '确定', cancelText = '取消') {
+  localConfirmData.value = {
+    title,
+    message,
+    onConfirm,
+    onCancel,
+    confirmText,
+    cancelText
+  }
+  showLocalConfirm.value = true
+}
+
+function handleLocalConfirm() {
+  if (localConfirmData.value?.onConfirm) {
+    localConfirmData.value.onConfirm()
+  }
+  showLocalConfirm.value = false
+}
+
+function handleLocalCancel() {
+  if (localConfirmData.value?.onCancel) {
+    localConfirmData.value.onCancel()
+  }
+  showLocalConfirm.value = false
+}
+
 async function generateContent() {
   if (isMagicGenerating.value) return
   isMagicGenerating.value = true
   chatStore.triggerToast('正在为你凝聚恋爱魔法... ✨', 'info')
+  
+  // Safety timeout: 180 seconds (Longer for image generation)
+  const timeout = setTimeout(() => {
+    if (isMagicGenerating.value) {
+      console.warn('[LoveSpaceApp] Magic generation timed out');
+      isMagicGenerating.value = false;
+      chatStore.triggerToast('魔法可能迷路了，请检查网络或重试', 'warning');
+    }
+  }, 180000);
+
   try {
     await loveSpaceStore.generateMagicContent()
+  } catch (err) {
+    console.error('[LoveSpaceApp] generateContent error:', err);
   } finally {
+    clearTimeout(timeout);
     isMagicGenerating.value = false
   }
+}
+
+// 单独生成某个功能
+async function generateSingleFeature(featureType) {
+  try {
+    await loveSpaceStore.generateSingleFeature(featureType)
+  } catch (err) {
+    console.error(`[LoveSpaceApp] generateSingleFeature ${featureType} error:`, err)
+    chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
+  }
+}
+
+function getFeatureName(type) {
+  const names = {
+    'diary': '交换日记',
+    'message': '甜蜜留言',
+    'footprint': '今日足迹',
+    'question': '灵魂提问',
+    'letter': '情书',
+    'gacha': '扭蛋奖励',
+    'album': '相册',
+    'anniversary': '纪念日',
+    'house': '两人小屋',
+    'sticky': '便利贴',
+    'schedule': '角色日程'
+  }
+  return names[type] || '功能'
 }
 
 onMounted(async () => {
@@ -737,10 +1034,42 @@ watch(() => loveSpaceStore.currentPartnerId, (newId) => {
   box-shadow: 0 4px 15px rgba(255, 182, 193, 0.1);
   cursor: pointer;
   transition: transform 0.2s;
+  position: relative;
 }
 .func-card:active { transform: translateY(2px); background: #fffafb; }
 .func-icon { width: 48px; height: 48px; border-radius: 14px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
-.func-name { font-size: 12px; font-weight: 700; color: #5a5a7a; }
+.func-name { font-size: 13px; font-weight: 700; color: #5a5a7a; }
+
+/* 功能卡片上的魔法棒按钮 */
+.func-magic-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffecd2, #fcb69f);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #ff6b9d;
+  box-shadow: 0 2px 8px rgba(255,107,157,0.2);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+.func-magic-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(255,107,157,0.3);
+}
+.func-magic-btn:active {
+  transform: scale(0.95);
+}
+.func-magic-btn i {
+  pointer-events: none;
+}
 
 .magic-generate {
   position: fixed;
@@ -854,6 +1183,78 @@ watch(() => loveSpaceStore.currentPartnerId, (newId) => {
 .modal-btn.primary { background: #ff6b9d; color: white; box-shadow: 0 4px 15px rgba(255, 107, 157, 0.3); }
 .modal-btn.secondary { background: #f5f5f5; color: #a89bb9; }
 
+/* 本地 ConfirmModal 样式 */
+.local-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+  animation: fade-in 0.2s ease-out;
+}
+
+.local-confirm-modal {
+  background: white;
+  width: 100%;
+  max-width: 320px;
+  border-radius: 28px;
+  padding: 30px 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.local-confirm-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #ff6b9d;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.local-confirm-message {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 24px;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.local-confirm-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.local-confirm-btn {
+  flex: 1;
+  padding: 14px;
+  border-radius: 24px;
+  border: none;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.local-confirm-btn.cancel {
+  background: #f5f5f5;
+  color: #a89bb9;
+}
+
+.local-confirm-btn.confirm {
+  background: #ff6b9d;
+  color: white;
+  box-shadow: 0 4px 15px rgba(255, 107, 157, 0.3);
+}
+
+.local-confirm-btn:active {
+  transform: scale(0.95);
+}
+
 /* 动画 */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes heartbeat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
@@ -876,6 +1277,20 @@ watch(() => loveSpaceStore.currentPartnerId, (newId) => {
 }
 .editor-header { font-size: 13px; font-weight: 800; text-align: left; margin-bottom: 15px; color: #8b7aa8; border-bottom: 1px solid #fefefe; }
 .editor-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.editor-row.mt-4 { margin-top: 16px; }
+.editor-row.mt-2 { margin-top: 8px; }
 .date-input { border: 1.5px solid #ffecf0; border-radius: 8px; padding: 6px 12px; color: #ff6b9d; font-family: inherit; font-size: 12px; background: #fffafa; }
 .force-reset-btn { width: 100%; margin-top: 15px; padding: 12px; background: #fff1f0; border: 1px solid #ffa39e; color: #ff4d4f; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.force-reset-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.danger-reset-btn { width: 100%; margin-top: 8px; padding: 12px; background: #ff4d4f; border: none; color: white; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+/* 功能勾选区域 */
+.reset-options { width: 100%; }
+.option-title { font-size: 12px; font-weight: 700; color: #666; margin-bottom: 12px; }
+.checkbox-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+.checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; padding: 6px 8px; border-radius: 6px; background: #fafafa; transition: background 0.2s; }
+.checkbox-item:hover { background: #f0f0f0; }
+.checkbox-item input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; accent-color: #ff6b9d; }
+.select-all-row { display: flex; justify-content: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e0e0; }
+.select-all { font-weight: 700; color: #ff6b9d; }
 </style>

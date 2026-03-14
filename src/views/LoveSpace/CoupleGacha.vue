@@ -7,7 +7,7 @@
       <h2>情侣扭蛋机</h2>
       <div class="gacha-tokens">
         <i class="fa-solid fa-wand-sparkles"></i>
-        <span>无限抽取已开启</span>
+        <span>× {{ gachaPoolCount }}</span>
       </div>
     </div>
 
@@ -32,8 +32,8 @@
 
     <!-- 扭蛋说明 -->
     <div class="gacha-info">
-      <h3>每日甜蜜扭蛋</h3>
-      <p>每天可免费抽取一次，获得随机的甜蜜奖励或任务哦~</p>
+      <h3>情侣扭蛋机</h3>
+      <p>转动把手，获取专属甜蜜惊喜~</p>
       
       <button class="roll-btn" @click="handleGacha" :disabled="isRolling">
         {{ isRolling ? '扭动中...' : '开始扭蛋' }}
@@ -90,6 +90,7 @@ import { useChatStore } from '@/stores/chatStore'
 
 const loveSpaceStore = useLoveSpaceStore()
 const backpackStore = useBackpackStore()
+const chatStore = useChatStore()
 
 const isRolling = ref(false)
 const showResultBall = ref(false)
@@ -99,18 +100,17 @@ const showHistory = ref(false)
 
 const gachaHistory = computed(() => loveSpaceStore.gachaHistory || [])
 
+// 扭蛋机里的蛋数量 (AI 生成的)
+const gachaPoolCount = computed(() => {
+  const history = gachaHistory.value
+  // 统计 AI 生成的蛋 (有 AI 标记的)
+  return history.filter(item => item.isAiGenerated).length
+})
+
 async function deleteHistory(id) {
   loveSpaceStore.currentSpace.gachaHistory = loveSpaceStore.currentSpace.gachaHistory.filter(h => h.id !== id)
   await loveSpaceStore.saveToStorage()
 }
-
-const rewards = [
-  { name: '亲亲卡', desc: '凭借此卡可以获得一个香吻', icon: 'fa-solid fa-kiss-wink-heart', color: '#ff7eb3', category: 'gift' },
-  { name: '抱抱券', desc: '随时随地申请一个大大的拥抱', icon: 'fa-solid fa-face-grin-hearts', color: '#ffb7c5', category: 'gift' },
-  { name: '电影点播位', desc: '获得下一次看电影的挑片权', icon: 'fa-solid fa-film', color: '#fbc2eb', category: 'other' },
-  { name: '神秘惊喜', desc: '对方需在今天为你准备一个小礼物', icon: 'fa-solid fa-gift', color: '#ffd1ff', category: 'gift' },
-  { name: '真心话特权', desc: '向对方提一个必须真心回答的问题', icon: 'fa-solid fa-comment-heart', color: '#a18cd1', category: 'other' }
-]
 
 function getRandomStyle(i) {
   const colors = ['#ff9a9e', '#fecfef', '#a8edea', '#fed6e3', '#fbc2eb', '#a6c1ee']
@@ -125,6 +125,12 @@ function getRandomStyle(i) {
 async function handleGacha() {
   if (isRolling.value) return
   
+  // 检查扭蛋机是否为空 (没有 AI 生成的蛋)
+  if (gachaPoolCount.value === 0) {
+    chatStore.triggerToast('扭蛋机已空，请使用右上角魔法棒生成~', 'info')
+    return
+  }
+  
   isRolling.value = true
   showResultBall.value = false
   
@@ -133,25 +139,34 @@ async function handleGacha() {
     isRolling.value = false
     showResultBall.value = true
     
-    // 选出随机奖励
-    const randomIdx = Math.floor(Math.random() * rewards.length)
-    const reward = rewards[randomIdx]
+    // 从 AI 生成的蛋中随机选择一个
+    const aiGachaItems = gachaHistory.value.filter(item => item.isAiGenerated)
+    if (aiGachaItems.length === 0) {
+      chatStore.triggerToast('扭蛋机已空', 'info')
+      isRolling.value = false
+      return
+    }
+    
+    const randomIdx = Math.floor(Math.random() * aiGachaItems.length)
+    const reward = aiGachaItems[randomIdx]
     
     result.value = reward
-    resultColor.value = reward.color
+    resultColor.value = reward.color || '#ff6b9d'
     
-    // 保存到 Store (历史记录)
+    // 保存到 Store (历史记录) - 普通扭蛋不标记 isAiGenerated
     await loveSpaceStore.rollGacha({
       name: reward.name,
       desc: reward.desc,
-      icon: reward.icon
+      icon: reward.icon,
+      isAiGenerated: false  // 明确标记为普通扭蛋
     })
   }, 1200)
 }
 
 // 模拟 AI 生成扭蛋内容
 async function generateAiGacha() {
-  await loveSpaceStore.generateMagicContent()
+  // 直接使用 Store 的 generateSingleFeature 方法
+  await loveSpaceStore.generateSingleFeature('gacha')
 }
 
 function claimReward() {
@@ -567,5 +582,174 @@ h2 {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .couple-gacha {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .gacha-tokens {
+    font-size: 11px;
+    padding: 3px 10px;
+  }
+  
+  .gacha-machine-container {
+    padding: 24px 0;
+  }
+  
+  .machine-wrapper {
+    width: 160px;
+    height: 240px;
+  }
+  
+  .machine-glass {
+    height: 144px;
+    border-width: 6px;
+  }
+  
+  .capsule {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .machine-body {
+    height: 96px;
+    padding-top: 12px;
+  }
+  
+  .handle {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .handle-bar {
+    width: 8px;
+    height: 24px;
+  }
+  
+  .exit {
+    width: 50px;
+    height: 60px;
+  }
+  
+  .result-ball {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .machine-stand {
+    width: 100px;
+    height: 12px;
+  }
+  
+  .gacha-info {
+    padding: 16px;
+  }
+  
+  h3 {
+    font-size: 16px;
+  }
+  
+  .gacha-info p {
+    font-size: 12px;
+  }
+  
+  .roll-btn {
+    font-size: 14px;
+    padding: 10px 24px;
+  }
+  
+  .history-link {
+    font-size: 12px;
+  }
+  
+  .magic-btn-floating {
+    bottom: 90px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+  
+  .result-overlay .result-card {
+    width: 90%;
+    max-width: 320px;
+    padding: 20px;
+  }
+  
+  .result-header {
+    font-size: 18px;
+  }
+  
+  .result-icon i {
+    font-size: 40px;
+  }
+  
+  .result-name {
+    font-size: 18px;
+  }
+  
+  .result-desc {
+    font-size: 12px;
+  }
+  
+  .claim-btn {
+    font-size: 14px;
+    padding: 10px;
+  }
+  
+  .modal-overlay .history-modal {
+    width: 95%;
+    max-width: none;
+    padding: 20px;
+  }
+  
+  .history-modal h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .history-list {
+    max-height: 250px;
+    margin-bottom: 16px;
+  }
+  
+  .history-item {
+    font-size: 13px;
+    padding: 10px;
+  }
+  
+  .history-name {
+    font-size: 13px;
+  }
+  
+  .history-date {
+    font-size: 10px;
+  }
+  
+  .h-delete {
+    font-size: 14px;
+    padding: 4px;
+  }
+  
+  .close-history-btn {
+    padding: 10px;
+    font-size: 13px;
+  }
 }
 </style>

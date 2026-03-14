@@ -150,7 +150,14 @@ const answeredQuestions = computed(() => {
 
 async function generateNewQuestion() {
   isGenerating.value = true
-  await loveSpaceStore.generateMagicContent()
+  try {
+    await loveSpaceStore.generateSingleFeature('question')
+  } catch (e) {
+    console.error('Generate question failed', e)
+    if (chatStore && chatStore.triggerToast) {
+      chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
+    }
+  }
   isGenerating.value = false
 }
 
@@ -516,5 +523,147 @@ h2 { font-size: 18px; color: #5a5a7a; margin: 0; }
 .box-icon {
   font-size: 40px;
   margin-bottom: 15px;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .love-question {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn, .action-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .scroll-container {
+    padding: 0;
+  }
+  
+  .question-body {
+    padding: 12px;
+  }
+  
+  .active-question-card {
+    padding: 20px;
+  }
+  
+  .question-text h2 {
+    font-size: 18px;
+  }
+  
+  .quote {
+    font-size: 24px;
+  }
+  
+  .answer-row {
+    padding: 12px;
+  }
+  
+  .answer-content {
+    font-size: 14px;
+  }
+  
+  .interaction-hint {
+    font-size: 10px;
+  }
+  
+  .answer-input {
+    height: 80px;
+    padding: 12px;
+    font-size: 13px;
+  }
+  
+  .submit-btn {
+    padding: 12px;
+    font-size: 14px;
+  }
+  
+  .waiting-box {
+    padding: 16px;
+    font-size: 12px;
+  }
+  
+  .empty-state-section {
+    padding: 24px 16px;
+  }
+  
+  .propose-box {
+    padding: 30px 16px;
+  }
+  
+  .box-icon {
+    font-size: 32px;
+  }
+  
+  .propose-box h3 {
+    font-size: 16px;
+  }
+  
+  .propose-box p {
+    font-size: 12px;
+  }
+  
+  .history-list {
+    padding: 0 12px 24px;
+  }
+  
+  .history-title {
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  
+  .history-card {
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .h-text {
+    font-size: 14px;
+  }
+  
+  .h-status {
+    font-size: 11px;
+  }
+  
+  .h-delete {
+    font-size: 16px;
+    padding: 4px;
+  }
+  
+  /* 弹窗适配 */
+  .modal-overlay .modal-content {
+    padding: 20px;
+    width: 95%;
+  }
+  
+  .modal-content h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .propose-input {
+    height: 100px;
+    padding: 12px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  
+  .modal-actions {
+    gap: 10px;
+  }
+  
+  .cancel-btn, .submit-propose-btn {
+    padding: 10px;
+    font-size: 13px;
+  }
 }
 </style>

@@ -61,7 +61,10 @@ class BackgroundManager {
             this.isActive = true;
             this.log('Silent audio loop is active (maintaining JS thread).', 'info');
         } catch (e) {
-            this.log('Audio play failed (browser policy?): ' + e.message, 'error');
+            // Only log error if not actively paused by logic
+            if (e.name !== 'AbortError') {
+                this.log('Audio play failed (waiting for user gesture): ' + e.message, 'info');
+            }
             this.isActive = false;
         }
     }
@@ -71,9 +74,10 @@ class BackgroundManager {
      */
     async requestWakeLock() {
         if ('wakeLock' in navigator) {
+            if (this.wakeLock) return; // Already have it
+
             // 只有当页面可见时才尝试获取Wake Lock
             if (document.visibilityState !== 'visible') {
-                this.log('Skipping Wake Lock request: page is not visible', 'info');
                 return;
             }
             
@@ -82,14 +86,15 @@ class BackgroundManager {
                 this.log('Screen Wake Lock acquired.', 'info');
 
                 this.wakeLock.addEventListener('release', () => {
+                    this.wakeLock = null;
                     this.log('Wake Lock was released.', 'sys');
                     // Try to re-request if released involuntarily
                     if (document.visibilityState === 'visible') {
-                        this.requestWakeLock();
+                        setTimeout(() => this.requestWakeLock(), 1000);
                     }
                 });
             } catch (err) {
-                this.log(`Wake Lock failed: ${err.name} - ${err.message}`, 'info');
+                // Ignore silent failures
             }
         }
     }
@@ -103,16 +108,12 @@ class BackgroundManager {
                 this.log('App returned to foreground. Re-syncing keepers...', 'sys');
                 this.playAudio();
                 this.requestWakeLock();
-                this.startCheckInterval(); // Restart check interval when app is visible
             } else {
                 this.log('App entered background. Audio loop maintaining execution.', 'sys');
                 // Ensure audio is playing before fully backgrounding
-                if (this.audio && this.audio.paused) {
+                if (this.audio) {
                     this.playAudio();
                 }
-                // Keep check interval running in background
-                // Some browsers may throttle it, but we'll let it run
-                this.log('Background check interval continuing in background mode', 'info');
             }
         });
     }
@@ -122,9 +123,10 @@ class BackgroundManager {
      */
     enable() {
         this.init();
-        if (this.audio && (this.audio.paused || this.audio.ended)) {
+        if (this.audio) {
             this.playAudio();
         }
+        this.requestWakeLock();
     }
 
     /**
@@ -135,10 +137,15 @@ class BackgroundManager {
 
         this.checkInterval = setInterval(async () => {
             try {
-                // Only run checks if the app is active
-                if (!this.isActive) return;
+                // Heartbeat: Try to ensure audio is playing
+                if (this.audio && this.audio.paused) {
+                    this.playAudio();
+                }
 
-                this.log('Running background check for proactive messages...', 'info');
+                // If audio failed and hasn't recovered, isActive might be false
+                // But we still try to run checks if possible
+                
+                this.log('Running background heartbeat...', 'info');
                 
                 // Try to import and use chatStore
                 try {
@@ -147,8 +154,10 @@ class BackgroundManager {
                     const chatStore = useChatStore();
                     
                     // Check for all chats
-                    if (chatStore.chats && chatStore.chats.value) {
-                        Object.keys(chatStore.chats.value).forEach(chatId => {
+                    // Pinia stores unwrap refs, so .value is not needed on the store instance
+                    const chats = chatStore.chats;
+                    if (chats) {
+                        Object.keys(chats).forEach(chatId => {
                             chatStore.checkProactive(chatId);
                         });
                     }
@@ -159,9 +168,9 @@ class BackgroundManager {
             } catch (error) {
                 this.log(`Error in background check: ${error.message}`, 'error');
             }
-        }, this.checkIntervalTime);
+        }, 20000); // 20秒检查一次，更频繁的保活
 
-        this.log(`Background check interval started (${this.checkIntervalTime / 1000}s)`, 'info');
+        this.log('Background check interval started (20s)', 'info');
     }
 
     /**

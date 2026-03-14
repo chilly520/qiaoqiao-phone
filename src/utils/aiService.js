@@ -468,6 +468,7 @@ export function generateContextPreview(chatId, char) {
 
 // Renamed original generateReply to _generateReplyInternal
 async function _generateReplyInternal(messages, char, signal, options = {}) {
+    const { isCommandTask, isSimpleTask, isCall } = options
     // Debug: Print message IDs
     console.log('[aiService] Incoming messages:');
     (messages || []).forEach((m, idx) => {
@@ -623,11 +624,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     const isProactiveCall = options.isProactiveCall
 
     let systemMsg = null
-    if (options.isSimpleTask === true) {
+    if (isSimpleTask === true) {
         // [FIX] 简单任务模式：只使用 char.prompt，彻底跳过通用角色扮演模板
+        // 同时支持 hasCustomSystem 兜底，确保 prompt 不会丢失
         systemMsg = {
             role: 'system',
-            content: char.prompt || '你是一个直接完成任务的 AI 助手。不要进行多余的对话或自我介绍，严格按照指令输出结果。'
+            content: char.prompt || (hasCustomSystem ? messages[0].content : '你是一个直接完成任务的 AI 助手。不要进行多余的对话或自我介绍，严格按照指令输出结果。')
         }
     } else if (!hasCustomSystem) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
@@ -1000,6 +1002,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             } else {
                 formattedMessages.push(msg)
             }
+        } else if (msg.role === 'system') {
+            // [FIX] 如果已经有了 systemMsg (特别是 SimpleTask 模式)，则忽略消息数组中的 system 消息，防止重复
+            if (!systemMsg) {
+                formattedMessages.push(msg)
+            }
         } else {
             formattedMessages.push(msg)
         }
@@ -1169,19 +1176,18 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Handle all system messages for any model
         finalMessages = finalMessages.map(msg => {
             if (msg.role === 'system') {
-                return { ...msg, role: 'user', content: `[System Instructions]\n${msg.content}` };
+                // [FIX] 避免 [System Instructions] 倍增：先检查是否已经存在
+                const content = msg.content.startsWith('[System Instructions]') ? msg.content : `[System Instructions]\n${msg.content}`;
+                return { ...msg, role: 'user', content: content };
             }
             return msg;
         });
 
         if (isGeminiModel) {
-            const systemContent = finalMessages[0].content;
-
-            // STRATEGY: Ensure System Prompt is ALWAYS at the very top (Index 0).
-            // Instead of searching for the first user message (which might be deep in history after Assistant greetings),
-            // we convert the System message directly into a User message at Index 0.
-
-            finalMessages[0] = { role: 'user', content: `[System Instructions]\n${systemContent} ` };
+            // [FIX] Ensure first message has correct prefix after map
+            if (finalMessages.length > 0 && !finalMessages[0].content.startsWith('[System Instructions]')) {
+                finalMessages[0].content = `[System Instructions]\n${finalMessages[0].content}`;
+            }
 
             // Optimization: If the immediate next message is ALSO User, merge them to avoid "User, User" sequence
             // (Many models perform better with strictly alternating User/Assistant roles)
@@ -1204,7 +1210,6 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     if (images.length > 0) finalMessages[0].content.push(...images);
                 }
 
-                // Remove the merged message
                 finalMessages.splice(1, 1);
             }
         }
@@ -1308,12 +1313,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     try {
         if (model.toLowerCase().includes('gemini')) {
             // Gemini (native) json format
-            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
+            // [FIX] If the prompt uses [LS_JSON: tags, we must NOT enable strict JSON mode as it conflicts
+            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON') && !fullMessages[0].content.includes('[LS_JSON')) {
                 reqBody.generationConfig = { response_mime_type: "application/json" };
             }
         } else {
             // OpenAI compatible json object mode
-            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
+            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON') && !fullMessages[0].content.includes('[LS_JSON')) {
                 reqBody.response_format = { type: "json_object" };
             }
         }
@@ -1487,12 +1493,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // Deep Debugging for Empty Content
         if (!rawContent) {
-            useLoggerStore().addLog('WARN', 'AI返回内容为空', data)
+            useLoggerStore().addLog('WARN', 'AI 返回内容为空', data)
             // Check for safety/finish reason
             const finishReason = data.choices?.[0]?.finish_reason || data.candidates?.[0]?.finishReason
             if (finishReason === 'safety' || finishReason === 'content_filter') {
                 return {
-                    error: '内容被AI安全策略拦截 (Safety Filter)',
+                    error: '内容被 AI 安全策略拦截 (Safety Filter)',
                     request: {
                         provider,
                         endpoint,
@@ -1505,8 +1511,24 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             if (data.choices?.[0]?.message?.tool_calls) {
                 return { content: '正在思考中...', innerVoice: null, raw: JSON.stringify(data.choices[0].message.tool_calls) }
             }
+                    
+            // AUTO-RETRY: If empty content, retry once with shorter context
+            if (!options.retryAttempt) {
+                useLoggerStore().addLog('AI', '⚠️ 空内容自动重试...', { originalData: data })
+                        
+                // Create a shorter version by reducing character count
+                const retryOptions = { ...options, retryAttempt: true }
+                if (options.characters && options.characters.length > 3) {
+                    // Only use first 3 characters for retry
+                    retryOptions.characters = options.characters.slice(0, 3)
+                }
+                        
+                // Recursive retry
+                return await _generateReplyInternal(messages, char, signal, retryOptions)
+            }
+                    
             return {
-                error: 'AI返回了空内容，请检查日志 (Raw Data)',
+                error: 'AI 返回了空内容（已重试仍失败）',
                 request: {
                     provider,
                     endpoint,
@@ -1548,7 +1570,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
                 // 1. Perform local search
                 const store = useChatStore()
-                const searchResults = store.searchHistory(settings.name, searchArgs) // settings.name is actually the chatId in generateReply context
+                const searchResults = store.searchHistory(char.id, searchArgs) 
 
                 // 2. Build injection block
                 let searchInjection = `\n\n【系统提示：您刚才发起了记忆检索，以下是本地数据库中找到的关联聊天记录，请结合以下记忆重新回答用户。】\n`
@@ -1565,7 +1587,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 newMessages.push({ role: 'system', content: searchInjection }) // Pushed the system's reply to the invocation
 
                 // Recursive call (must set a flag to prevent loops)
-                return await _generateReplyInternal(newMessages, settings, providerType, { ...options, _isSearchRetry: true })
+                return await _generateReplyInternal(newMessages, char, signal, { ...options, _isSearchRetry: true })
 
             } catch (searchErr) {
                 console.error('[AI Service] Search parsing failed:', searchErr)
@@ -1646,7 +1668,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // --------------------------
         // 第二步：标签没匹配到，就从全文末尾提取完整JSON（不认标签，直接找心声）
         // --------------------------
-        if (!ivJsonStr && !isCallProtocol) {
+        // [FIX] 如果是指令任务（isCommandTask/isSimpleTask），禁用无标签 JSON 提取，避免吃掉原本的业务指令
+        if (!ivJsonStr && !isCallProtocol && !isCommandTask && !isSimpleTask) {
             ivJsonStr = extractLastCompleteJson(content)
             // 找到JSON后，从正文中彻底移除
             if (ivJsonStr) {
@@ -1683,9 +1706,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             return matchCount >= 2
         }
 
-        const isCommandTask = options.isCommandTask || options.isSimpleTask
 
-        if (ivJsonStr && !isCallProtocol && !isCommandTask) {
+        if (ivJsonStr && !isCallProtocol && !isCommandTask && !isSimpleTask) {
             try {
                 // 清理JSON里的干扰字符
                 const cleanJson = ivJsonStr
@@ -1710,7 +1732,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // 终极兜底：解析失败/没找到JSON，强制生成符合格式的心声
         // --------------------------
-        if (!innerVoice && !isCallProtocol && !isCommandTask) {
+        if (!innerVoice && !isCallProtocol && !isCommandTask && !isSimpleTask) {
             console.warn('[AI Service] 未找到有效心声，生成兜底内容')
             const now = new Date()
             innerVoice = {
@@ -2142,7 +2164,6 @@ export async function generateBatchMomentsWithInteractions(options) {
     const { characters, worldContext, customPrompt, userProfile, historicalMoments = [], count = 3 } = options
 
     // 1. Build character list with recent chat snippets for context
-    // 1. Build character list with recent chat snippets for context
     const charList = characters.map((c, idx) => {
         const bio = localStorage.getItem(`char_bio_${c.id}`) || ''
         const bioText = bio ? `\n   个人简介/详细背景：${bio}` : ''
@@ -2151,7 +2172,7 @@ export async function generateBatchMomentsWithInteractions(options) {
         const userSpecificName = c.userName || userProfile?.name || '用户'
         const userSpecificPersona = c.userPersona ? `\n   【用户（${userSpecificName}）在此角色剧本中的身份/设定】：${c.userPersona}` : ''
 
-        const chatText = c.recentChats ? `\n   最近 15 条聊天碎片: ${c.recentChats.substring(0, 1000)}` : ''
+        const chatText = c.recentChats ? `\n   最近 15 条聊天碎片：${c.recentChats.substring(0, 1000)}` : ''
         const personalHistoryText = c.personalHistory ? `\n   TA最近发过：${c.personalHistory}` : ''
 
         // 获取表情包信息 (增加名称匹配引导)

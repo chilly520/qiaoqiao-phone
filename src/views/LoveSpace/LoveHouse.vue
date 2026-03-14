@@ -5,8 +5,13 @@
         <i class="fa-solid fa-chevron-left"></i>
       </button>
       <h2>两人小屋</h2>
-      <div class="house-stats">
-        <span class="comfort"><i class="fa-solid fa-couch"></i> 舒适度: {{ house.comfortLevel || 100 }}</span>
+      <div class="header-actions">
+        <button @click="generateMagic" class="magic-btn" :class="{ 'animating': isGenerating }">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+        <div class="house-stats">
+          <span class="comfort"><i class="fa-solid fa-couch"></i> 舒适度: {{ house.comfortLevel || 100 }}</span>
+        </div>
       </div>
     </div>
 
@@ -84,7 +89,19 @@ const house = computed(() => loveSpaceStore.house)
 const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg')
 const partnerAvatar = computed(() => loveSpaceStore.partner?.avatar || '/avatars/default.jpg')
 
+const isGenerating = ref(false)
 const showInteraction = ref(null)
+
+async function generateMagic() {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  try {
+    await loveSpaceStore.generateSingleFeature('house')
+  } catch (e) {
+    console.error('Magic generation failed', e)
+  }
+  isGenerating.value = false
+}
 
 const isNight = computed(() => {
   const hour = new Date().getHours()
@@ -125,11 +142,32 @@ function toggleDecor() {
   z-index: 10;
 }
 
-.back-btn {
+.back-btn, .magic-btn {
   background: none;
   border: none;
   font-size: 20px;
   color: #ff6b9d;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.magic-btn.animating i {
+  animation: magic-spin 1.5s infinite linear;
+  color: #a87ffb;
+}
+
+@keyframes magic-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
 }
 
 h2 { font-size: 18px; color: #5a5a7a; margin: 0; }
@@ -283,4 +321,101 @@ h2 { font-size: 18px; color: #5a5a7a; margin: 0; }
 
 .animate-fade-in { animation: fadeIn 0.5s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .love-house {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .house-stats {
+    font-size: 11px;
+  }
+  
+  .house-canvas {
+    padding: 12px;
+  }
+  
+  .room-background {
+    width: 100%;
+  }
+  
+  .window {
+    width: 120px;
+    height: 120px;
+  }
+  
+  .furniture img {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .furniture.bed {
+    width: 100px;
+    height: 80px;
+  }
+  
+  .furniture.desk {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .furniture.plant {
+    width: 50px;
+    height: 60px;
+  }
+  
+  .characters {
+    gap: 15px;
+  }
+  
+  .char img {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .status-pin {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  
+  .interact-bubble {
+    top: -50px;
+    font-size: 11px;
+    padding: 8px 12px;
+  }
+  
+  .house-event-bubble {
+    top: 10%;
+    left: 10px;
+    font-size: 11px;
+    padding: 8px 12px;
+  }
+  
+  .house-dock {
+    height: 70px;
+    padding-bottom: 15px;
+  }
+  
+  .dock-item i {
+    font-size: 18px;
+  }
+  
+  .dock-item span {
+    font-size: 10px;
+  }
+}
 </style>

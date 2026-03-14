@@ -1922,6 +1922,11 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
     clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); // Scrub stray closing tags
+    
+    // AGGRESSIVE: Remove any remaining [INNER_VOICE] fragments and JSON content
+    // This catches cases where the JSON structure is broken or incomplete
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '');
 
     // Remove Moment Interaction tags from display bubble
     clean = clean.replace(/\[LIKE[:：]\s*[^\]]+\]/gi, '');
@@ -1950,7 +1955,36 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/\{[\s\n]*"(?:type|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
 
     // AGGRESSIVE: Remove loose JSON properties (e.g. spirit: {...}, "mood": {...}) that might be missing enclosing braces
-    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
+    // Match anywhere in the string, not just at line start
+    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
+    
+    // EXTRA AGGRESSIVE: Remove any remaining JSON-like properties anywhere in text
+    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
+        
+    // ULTRA AGGRESSIVE: Remove any remaining loose braces and quotes that look like broken JSON
+    // This catches fragments like: } " { 
+    if (clean.match(/[\}\{"]\s*[\}\{"]/)) {
+        // If we see multiple braces/quotes in sequence, likely broken JSON - remove all of them
+        clean = clean.replace(/[\}\{"]+/g, (match) => {
+            // Only remove if it looks like isolated JSON fragments (not part of normal text)
+            const trimmed = match.trim();
+            if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) {
+                return '';
+            }
+            return match;
+        });
+    }
+    
+    // Remove CSS transform/animation code fragments
+    clean = clean.replace(/\d+%\s*transform:\s*scale\([^)]+\)/gi, '');
+    clean = clean.replace(/transform:\s*scale\([^)]+\)/gi, '');
+    
+    // FINAL CLEANUP: Remove any remaining isolated punctuation that looks like JSON fragments
+    // This catches: ; ;  or  , ,  or single braces/quotes
+    clean = clean.replace(/^[\s;:,{}"]+|[\s;:,{}"]+$/g, '');
+    
+    // Remove lines that only contain punctuation (likely JSON remnants)
+    clean = clean.replace(/^[\s]*[;:,{}"\]]+[\s]*$/gm, '');
 
     // ATOMIC BLOCK REMOVAL for cards & Leaked Tech Code
     if (isCard || clean.includes('<') || clean.includes('{') || clean.includes('transform:') || clean.includes('animation:')) {

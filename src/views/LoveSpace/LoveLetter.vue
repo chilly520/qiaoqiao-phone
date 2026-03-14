@@ -52,6 +52,9 @@
         <button @click="() => { console.log('点击冬天'); setSeason('winter') }" :class="['season-btn', { active: season === 'winter' }]" title="冬天">
           ❄️
         </button>
+        <button @click="generateMagic" class="season-btn magic-wand-btn" :class="{ 'animating': isGenerating }" title="魔法生成">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
       </div>
       
       <!-- 文字区域 - 邮箱上方 -->
@@ -73,9 +76,11 @@
           <i class="fa-solid fa-chevron-left"></i>
         </button>
         <h2>纸短情长</h2>
-        <button @click="showWriteModal = true" class="write-btn">
-          <i class="fa-solid fa-pen-nib"></i>
-        </button>
+        <div class="header-actions">
+          <button @click="showWriteModal = true" class="write-btn">
+            <i class="fa-solid fa-pen-nib"></i>
+          </button>
+        </div>
       </div>
 
       <!-- 信件列表 -->
@@ -109,9 +114,6 @@
           <div class="envelope-flap flap-secondary"></div>
           <div class="envelope-flap flap-main"></div>
           
-          <!-- 装饰丝带 (特定款式) -->
-          <div class="ribbon"></div>
-
           <!-- 火漆印章 -->
           <div class="wax-seal"></div>
 
@@ -120,6 +122,9 @@
             <h4 class="letter-title">{{ letter.title || '无题的信' }}</h4>
             <span class="letter-date">{{ formatDateShort(letter.createdAt) }}</span>
           </div>
+
+          <!-- 装饰性邮戳 -->
+          <div class="postmark-decor"></div>
 
           <!-- 系列标签 -->
           <div class="series-tag">{{ getEnvelopeSeriesName(letter) }}</div>
@@ -136,43 +141,57 @@
       </div>
     </div>
 
-    <!-- 写信弹窗 -->
-    <div v-if="showWriteModal" class="modal-overlay" @click.self="showWriteModal = false">
-      <div class="modal">
-        <h3>书写信笺</h3>
-        <input v-model="newTitle" type="text" placeholder="信件标题..." class="title-input">
-        <textarea 
-          v-model="newContent" 
-          placeholder="见字如面，此致敬礼..." 
-          class="content-textarea"
-        ></textarea>
+    <!-- 写信页面 (全屏) -->
+    <div v-if="showWriteModal" 
+      class="write-page"
+      :class="[`paper-${selectedPaperIndex}`]"
+      :style="{ backgroundImage: selectedPaperIndex !== null && selectedPaperIndex < randomLetterPapers.length ? `url('${randomLetterPapers[selectedPaperIndex]}')` : 'none' }"
+    >
+        <div class="write-header">
+          <button @click="showWriteModal = false" class="back-btn-write">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <h3>书写信笺</h3>
+          <div class="header-placeholder"></div>
+        </div>
+        
+        <div class="write-scroll-container">
+          <div class="write-content-inner">
+            <input v-model="newTitle" type="text" placeholder="信件标题..." class="title-input-write">
+            <textarea 
+              v-model="newContent" 
+              placeholder="见字如面，此致敬礼..." 
+              class="content-textarea-write"
+              ref="contentRef"
+            ></textarea>
+
+            <div class="modal-actions-write">
+              <button @click="showWriteModal = false" class="cancel-btn-write">收起</button>
+              <button @click="saveLetter" :disabled="!newContent.trim()" class="save-btn-write">封信</button>
+            </div>
+          </div>
+        </div>
 
         <!-- 信纸选择 -->
-        <div class="paper-selector">
-          <p class="selector-label">选择信纸：</p>
-          <div class="paper-grid-container">
-            <div class="paper-grid">
+        <div class="paper-selector-write">
+          <p class="selector-label-write">选择信纸：</p>
+          <div class="paper-grid-container-write">
+            <div class="paper-grid-write">
               <div 
                 v-for="(p, idx) in randomLetterPapers" 
                 :key="idx"
-                class="paper-item"
+                class="paper-item-write"
                 :class="{ active: selectedPaperIndex === idx }"
                 @click="selectedPaperIndex = idx"
               >
-                <img :src="p" class="paper-thumb">
-                <div class="check-mark" v-if="selectedPaperIndex === idx">
+                <img :src="p" class="paper-thumb-write">
+                <div class="check-mark-write" v-if="selectedPaperIndex === idx">
                   <i class="fa-solid fa-check"></i>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        <div class="modal-actions">
-          <button @click="showWriteModal = false" class="cancel-btn">收起</button>
-          <button @click="saveLetter" :disabled="!newContent.trim()" class="save-btn">封信</button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -193,6 +212,19 @@ const showWriteModal = ref(false)
 const newTitle = ref('')
 const newContent = ref('')
 const selectedPaperIndex = ref(0)
+
+const isGenerating = ref(false)
+
+async function generateMagic() {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  try {
+    await loveSpaceStore.generateSingleFeature('letter')
+  } catch (e) {
+    console.error('Magic generation failed', e)
+  }
+  isGenerating.value = false
+}
 
 
 // 四季和日夜轮换
@@ -379,7 +411,10 @@ function getParticleStyle(index) {
 
 function formatDateShort(dateStr) {
   const date = new Date(dateStr)
-  return `${date.getMonth() + 1}/${date.getDate()}`
+  const year = date.getFullYear()
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  return `${year}.${month}.${day}`
 }
 
 function getEnvelopeStyleClass(letter) {
@@ -399,14 +434,16 @@ function getEnvelopeSeriesName(letter) {
   return names[Math.abs(index) % 6]
 }
 
-function openLetter(letter) {
-  // 标记为已读
+async function openLetter(letter) {
+  // 标记为已读并保存
   letter.isRead = true
+  await loveSpaceStore.saveToStorage()
   router.push({ name: 'couple-letter-detail', params: { id: letter.id } })
 }
 
 function enterMailbox() {
-  router.push('/couple/letter')
+  // 点击信箱：跳转到信件列表
+  router.push({ name: 'couple-letter' })
 }
 
 async function saveLetter() {
@@ -419,7 +456,7 @@ async function saveLetter() {
     title: newTitle.value || '无题的信',
     content: newContent.value,
     author: 'user',
-    isRead: false,
+    isRead: true,  // 用户写的信默认为已读
     paperIndex: selectedPaperIndex.value
   })
 
@@ -448,6 +485,41 @@ onMounted(() => {
   background: linear-gradient(135deg, #fff5f7 0%, #fdf5e6 50%, #f0f4ff 100%);
   position: relative;
   overflow: hidden;
+}
+
+/* 信件列表页：允许滚动 */
+.love-letter .letter-list-page {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  height: 100vh;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.magic-btn, .back-btn, .write-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #ff6b9d;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.magic-btn.animating i {
+  animation: magic-spin 1.5s infinite linear;
+  color: #a87ffb;
+}
+
+@keyframes magic-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
 }
 
 /* ===== 信箱主页 ===== */
@@ -702,6 +774,25 @@ onMounted(() => {
   box-shadow: 0 6px 16px rgba(255, 107, 157, 0.4);
 }
 
+.magic-wand-btn i {
+  color: #ff6b9d;
+}
+
+.magic-wand-btn.active i, .magic-wand-btn:active i {
+  color: white;
+}
+
+.magic-wand-btn.animating i {
+  animation: magic-spin 1.5s infinite linear;
+  color: #a87ffb;
+}
+
+@keyframes magic-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
 /* 时间显示 */
 .time-display {
   margin-top: 10px;
@@ -948,7 +1039,7 @@ onMounted(() => {
 /* 邮箱标题区域 - 邮箱上方 */
 .mailbox-title-area {
   position: absolute;
-  top: 180px;
+  top: 120px;  /* 上移，位于季节切换图标下方 */
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
@@ -1055,8 +1146,51 @@ onMounted(() => {
 /* ===== 信件列表页 ===== */
 .letter-list-page {
   min-height: 100vh;
-  background: radial-gradient(circle at 50% 50%, #fef8f8 0%, #f5f7fa 100%);
+  /* 小清新渐变背景 */
+  background: 
+    linear-gradient(135deg, rgba(255, 182, 193, 0.1) 0%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(to bottom right, #fff5f7 0%, #f0f8ff 50%, #f5f3ff 100%);
+  background-size: 100% 100%, 200% 200%;
   padding-bottom: 40px;
+  position: relative;
+}
+
+/* 添加装饰性背景元素 */
+.letter-list-page::before {
+  content: '';
+  position: fixed;
+  top: -50%;
+  right: -20%;
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(255, 182, 193, 0.08) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  animation: bgFloat 8s ease-in-out infinite;
+}
+
+.letter-list-page::after {
+  content: '';
+  position: fixed;
+  bottom: -40%;
+  left: -10%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(135, 206, 250, 0.06) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  animation: bgFloat 10s ease-in-out infinite reverse;
+}
+
+@keyframes bgFloat {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(20px, -20px) scale(1.05);
+  }
 }
 
 .header {
@@ -1117,6 +1251,28 @@ h2 {
   gap: 28px;
   position: relative;
   z-index: 1;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 自定义滚动条样式 */
+.letter-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.letter-list::-webkit-scrollbar-track {
+  background: rgba(255, 182, 193, 0.1);
+  border-radius: 3px;
+}
+
+.letter-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #ff6b9d 0%, #ff8fa3 100%);
+  border-radius: 3px;
+}
+
+.letter-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #ff8fa3 0%, #ffb6c1 100%);
 }
 
 /* 信封基础样式 */
@@ -1410,6 +1566,21 @@ h2 {
   color: #4e342e;
 }
 
+/* 信纸 1、2、3 是深色背景，使用白色文字 */
+.content-textarea.paper-0,
+.content-textarea.paper-1,
+.content-textarea.paper-2 {
+  color: #ffffff !important;
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.content-textarea.paper-0::placeholder,
+.content-textarea.paper-1::placeholder,
+.content-textarea.paper-2::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .content-textarea:focus {
   border-color: #ffb6c1;
   background: rgba(255, 255, 255, 0.95);
@@ -1471,12 +1642,15 @@ h2 {
 /* ========== 1. 基础容器：绝对统一的基准尺寸 ========== */
 .envelope-card {
   position: relative;
-  width: 320px;
+  width: 100%;
+  max-width: 320px;
   height: 200px;
   border-radius: 4px;
   cursor: pointer;
   box-shadow: 0 12px 35px rgba(100, 110, 140, 0.1);
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  flex-shrink: 0;
+  margin-bottom: 30px;
 }
 
 .envelope-card:hover {
@@ -1527,7 +1701,7 @@ h2 {
 .flap-secondary { z-index: 3; }
 
 /* 装饰丝带 */
-.ribbon { position: absolute; z-index: 3; }
+/* .ribbon deleted */
 
 /* 重工火漆印章底座 */
 .wax-seal {
@@ -1577,6 +1751,30 @@ h2 {
   white-space: nowrap;
   border: 1px solid rgba(0,0,0,0.05);
 }
+
+/* 装饰性邮戳 */
+.postmark-decor {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 35px;
+  height: 35px;
+  border: 2px dashed rgba(255, 182, 193, 0.3);
+  border-radius: 50%;
+  z-index: 4; /* 降低层级，避免遮挡日期 */
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.postmark-decor::before {
+  content: '💌';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  filter: grayscale(0.3);
+}
 .author-tag-chic i {
   font-size: 11px;
 }
@@ -1607,7 +1805,7 @@ h2 {
   font-size: 16px;
   font-weight: 900;
   color: #5d4037;
-  margin: 0;
+  margin: 0 0 8px 0;
   width: 100%;
   text-align: center;
   font-family: "huangkaihuaLawyerfont", cursive;
@@ -1615,6 +1813,22 @@ h2 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.letter-content-overlay .letter-date {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b8a5b4;
+  letter-spacing: 1px;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 4px 12px;
+  border-radius: 12px;
+  display: inline-block;
+  border: 1px solid rgba(255, 182, 193, 0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.6);
+  z-index: 16;
+  position: relative;
 }
 
 /* 未读气泡 (右上) */
@@ -1746,7 +1960,7 @@ h2 {
 .style-snow .inner-border { border: 2px solid rgba(168, 192, 216, 0.4); top: 12px; left: 12px; right: 12px; bottom: 12px; }
 .style-snow .corner-decor { border-color: #a8c0d8; width: 16px; height: 16px; }
 
-.style-snow .ribbon { width: 36px; height: 100%; top: 0; right: 40px; background: rgba(255,255,255,0.6); border-left: 1px solid #a8c0d8; border-right: 1px solid #a8c0d8; }
+
 
 .style-snow .envelope-flap { height: 55%; background-color: #ffffff; border-bottom: 2px solid #a8c0d8; clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 70%); }
 .style-snow .flap-secondary { height: 60%; background-color: #e3f0fc; clip-path: polygon(0 0, 100% 0, 100% 100%, 0% 70%); }
@@ -1766,7 +1980,7 @@ h2 {
 .style-iris .inner-border { border-top: 1px solid #d4c4a8; border-bottom: 1px solid #d4c4a8; left: 0; right: 0; }
 .style-iris .corner-decor { display: none; }
 
-.style-iris .ribbon { width: 100px; height: 100%; top: 0; left: 50%; transform: translateX(-50%); background: #ffffff; border-left: 1px dashed #d4c4a8; border-right: 1px dashed #d4c4a8; }
+
 
 .style-iris .envelope-flap { height: 50%; background-color: #ffffff; border-bottom: 2px solid #d4c4a8; clip-path: polygon(0 0, 100% 0, 100% 60%, 75% 60%, 50% 100%, 25% 60%, 0 60%); }
 .style-iris .flap-secondary { height: 55%; background-color: #f0e6f5; clip-path: polygon(0 0, 100% 0, 100% 60%, 75% 60%, 50% 100%, 25% 60%, 0 60%); }
@@ -1785,7 +1999,7 @@ h2 {
 .style-mint .inner-border { border: 1px solid #a3c9b3; top: 10px; left: 10px; right: 10px; bottom: 10px; }
 .style-mint .corner-decor { border-color: #a3c9b3; border-width: 3px; }
 
-.style-mint .ribbon { width: 100%; height: 36px; top: 50%; left: 0; background: #e3f5e7; border-top: 1px solid #a3c9b3; border-bottom: 1px solid #a3c9b3; }
+
 
 .style-mint .envelope-flap { height: 50%; background-color: #ffffff; border-bottom: 2px solid #a3c9b3; clip-path: polygon(0 0, 100% 0, 100% 10%, 50% 100%, 0 10%); }
 
@@ -1819,7 +2033,7 @@ h2 {
 .style-pearl .inner-border { border: 1px solid #d1d9e6; top: 6px; left: 6px; right: 6px; bottom: 6px; }
 .style-pearl .corner-decor { border-color: #d1d9e6; border-width: 2px; }
 
-.style-pearl .ribbon { width: 100%; height: 42px; top: 50%; transform: translateY(-50%); background: linear-gradient(90deg, rgba(209, 217, 230, 0.2), rgba(209, 217, 230, 0.4), rgba(209, 217, 230, 0.2)); border-top: 1px solid #d1d9e6; border-bottom: 1px solid #d1d9e6; }
+
 
 .style-pearl .envelope-flap { height: 45%; background-color: #f8f9fc; border-bottom: 2px solid #d1d9e6; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 40%); }
 .style-pearl .flap-secondary { height: 50%; background-color: #f0f2f8; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 40%); }
@@ -1974,5 +2188,436 @@ h2 {
   justify-content: center;
   font-size: 11px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .love-letter {
+    padding: 0;
+  }
+  
+  /* 信箱主页适配 */
+  .mailbox-home {
+    padding: 20px 12px;
+  }
+  
+  .main-title {
+    font-size: 32px;
+    letter-spacing: 3px;
+  }
+  
+  .sub-title {
+    font-size: 12px;
+  }
+  
+  .time-badge {
+    font-size: 12px;
+    padding: 6px 16px;
+  }
+  
+  .season-selector {
+    right: 60px;
+    gap: 6px;
+  }
+  
+  .season-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+  
+  .mailbox-back-btn {
+    width: 36px;
+    height: 36px;
+    top: 16px;
+    left: 16px;
+  }
+  
+  .season-mailbox {
+    clip-path: polygon(20% 35%, 80% 35%, 85% 60%, 85% 100%, 15% 100%, 15% 60%);
+  }
+  
+  .unread-badge-floating {
+    top: 45%;
+    right: 20%;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+  
+  .decor-cloud {
+    font-size: 40px;
+  }
+  
+  /* 信件列表页适配 */
+  .letter-list-page {
+    padding-bottom: 0;
+    height: calc(100vh - 50px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: block;
+  }
+  
+  .love-letter {
+    overflow: visible;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+  
+  .back-btn, .write-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+  
+  .letter-list {
+    padding: 16px 12px 0;
+    gap: 24px;
+    max-width: 320px;
+    margin: 0 auto;
+    display: block;
+  }
+  
+  .envelope-card {
+    width: 300px;
+    height: 200px;
+    margin-bottom: 24px;
+    flex-shrink: 0;
+  }
+  
+  .wax-seal {
+    width: 48px;
+    height: 48px;
+    font-size: 32px;
+  }
+  
+  .letter-content-overlay .letter-title {
+    font-size: 14px;
+    padding: 0 15px;
+  }
+  
+  .author-tag-chic {
+    font-size: 10px;
+    padding: 5px 12px;
+    bottom: -12px;
+  }
+  
+  .series-tag {
+    font-size: 9px;
+    padding: 3px 8px;
+  }
+  
+  .unread-pill {
+    top: -8px;
+    right: -8px;
+    padding: 5px 10px;
+    font-size: 10px;
+  }
+  
+  .empty-state {
+    padding: 80px 16px;
+  }
+  
+  .letter-icon-bg {
+    font-size: 56px;
+  }
+  
+  .empty-state p {
+    font-size: 14px;
+  }
+  
+  .empty-state .sub {
+    font-size: 11px;
+  }
+  
+  /* 写信弹窗适配 */
+  .modal {
+    padding: 20px;
+    width: 95%;
+    max-width: none;
+  }
+  
+  h3 {
+    font-size: 18px;
+    margin-bottom: 16px;
+  }
+  
+  .title-input {
+    padding: 12px;
+    font-size: 16px;
+    margin-bottom: 20px;
+  }
+  
+  .content-textarea {
+    height: 240px;
+    font-size: 15px;
+    padding: 12px;
+  }
+  
+  .paper-selector {
+    margin: 12px 0;
+  }
+  
+  .selector-label {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  
+  .paper-item {
+    width: 50px;
+    height: 70px;
+  }
+  
+  .modal-actions {
+    gap: 12px;
+    margin-top: 20px;
+  }
+  
+  .cancel-btn, .save-btn {
+    padding: 12px;
+    font-size: 14px;
+  }
+  
+  /* 写信页面 (全屏) */
+  .write-page {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to bottom, #fdf6f0, #fff5f0);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .write-page * {
+    box-sizing: border-box;
+  }
+  
+  .write-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 50px 20px 15px 20px; /* 增加顶部 padding，避免被状态栏遮挡 */
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  }
+  
+  .write-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #5d4037;
+    margin: 0;
+  }
+  
+  .back-btn-write {
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: #8b4513;
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+  }
+  
+  .header-placeholder {
+    width: 36px;
+  }
+  
+  .write-scroll-container {
+    flex: 1;
+    margin-top: 15vh;
+    margin-bottom: 0;
+    overflow-y: auto;
+    padding: 0 25px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .write-content-inner {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    padding-bottom: 10vh; /* 内部留空 10vh 给文字书写 */
+  }
+  
+  .title-input-write {
+    width: 100%;
+    border: none;
+    outline: none;
+    font-size: 22px;
+    font-weight: 700;
+    padding: 10px 0;
+    margin-bottom: 20px;
+    background: transparent;
+    color: #4e342e;
+    font-family: "huangkaihuaLawyerfont", cursive;
+    border-bottom: 1px dashed rgba(0,0,0,0.1);
+  }
+
+  .write-page.paper-0 .title-input-write,
+  .write-page.paper-1 .title-input-write,
+  .write-page.paper-2 .title-input-write {
+    color: #f5deb3;
+    border-bottom-color: rgba(255,255,255,0.2);
+  }
+  
+  .content-textarea-write {
+    flex: 1;
+    width: 100%;
+    border: none;
+    outline: none;
+    font-family: "huangkaihuaLawyerfont", cursive;
+    font-size: 18px;
+    resize: none;
+    line-height: 2.2;
+    padding: 0;
+    background: transparent !important;
+    transition: all 0.3s ease;
+    color: #4e342e;
+    -webkit-text-fill-color: inherit;
+  }
+
+  /* 深色信纸适配正文 */
+  .write-page.paper-0 .content-textarea-write,
+  .write-page.paper-1 .content-textarea-write,
+  .write-page.paper-2 .content-textarea-write {
+    color: #f5deb3;
+  }
+  
+  /* 信纸 1、2、3 是深色背景，使用浅棕色文字 */
+  .content-textarea-write.paper-0,
+  .content-textarea-write.paper-1,
+  .content-textarea-write.paper-2 {
+    color: #f5deb3 !important; /* 小麦色，在深色背景上清晰可见 */
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+    
+  .content-textarea-write.paper-0::placeholder,
+  .content-textarea-write.paper-1::placeholder,
+  .content-textarea-write.paper-2::placeholder {
+    color: rgba(245, 222, 179, 0.7);
+  }
+  
+  .content-textarea-write:focus {
+    border-color: #ffb6c1;
+    background-size: cover !important;
+    background-position: center !important;
+    box-shadow: 0 0 20px rgba(255, 182, 193, 0.15);
+  }
+  
+  .paper-selector-write {
+    margin: 20px 0;
+  }
+  
+  .selector-label-write {
+    font-size: 14px;
+    font-weight: 600;
+    color: #8b4513;
+    margin-bottom: 12px;
+  }
+  
+  .paper-grid-container-write {
+    overflow-x: auto;
+    padding: 10px 0;
+  }
+  
+  .paper-grid-write {
+    display: flex;
+    gap: 12px;
+    padding-bottom: 10px;
+  }
+  
+  .paper-item-write {
+    width: 60px;
+    height: 80px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+  
+  .paper-item-write.active {
+    border-color: #ffb6c1;
+    box-shadow: 0 4px 12px rgba(255, 182, 193, 0.3);
+  }
+  
+  .paper-thumb-write {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .check-mark-write {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    background: #ffb6c1;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+  }
+  
+  .modal-actions-write {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+  }
+  
+  .cancel-btn-write, .save-btn-write {
+    flex: 1;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+  
+  .cancel-btn-write {
+    background: #f0f0f0;
+    color: #666;
+  }
+  
+  .cancel-btn-write:hover {
+    background: #e0e0e0;
+  }
+  
+  .save-btn-write {
+    background: linear-gradient(135deg, #ffb6c1, #ff91a4);
+    color: white;
+  }
+  
+  .save-btn-write:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 182, 193, 0.4);
+  }
+  
+  .save-btn-write:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 </style>

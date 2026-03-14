@@ -15,10 +15,9 @@
       <div class="grid-particle" v-for="n in 15" :key="n" :style="getParticleStyle(n)"></div>
     </div>
 
-    <div class="letter-paper">
-      <div class="paper-top"></div>
-      <div class="paper-scroll-area" :style="{'--letter-paper-bg': 'url(\'' + currentLetterPaper + '\')'}">
-        <div class="paper-content">
+    <div class="letter-paper" :style="{'--letter-paper-bg': 'url(\'' + currentLetterPaper + '\')'}">
+      <div class="paper-scroll-area">
+        <div class="paper-content" :class="[`paper-${letterPaperIndex}`]">
           <h3 class="paper-title font-handwritten">{{ letter.title }}</h3>
           <div class="body-text font-handwritten">{{ letter.content }}</div>
           <div class="paper-footer">
@@ -29,8 +28,8 @@
             </p>
           </div>
         </div>
-        
-        <!-- 评论区 -->
+
+        <!-- 评论区：移回滚动区域，仅在滑动到底部时可见 -->
         <div class="letter-comments">
           <div class="comment-count">
             <i class="fa-regular fa-comment-dots"></i> {{ letter.comments?.length || 0 }} 条互动
@@ -50,6 +49,18 @@
         </div>
       </div>
     </div>
+
+    <!-- 自定义确认弹窗 -->
+    <div v-if="showConfirmModal" class="modal-overlay" @click="showConfirmModal = false">
+      <div class="modal-content" @click.stop>
+        <h3>提示</h3>
+        <p>确定要删除这封信吗？</p>
+        <div class="modal-buttons">
+          <button @click="confirmDeleteAction" class="confirm-btn">确定</button>
+          <button @click="showConfirmModal = false" class="cancel-btn">取消</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div v-else class="not-found">
     <p>未找到该信件</p>
@@ -59,12 +70,16 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 
 const route = useRoute()
+const router = useRouter()
 const loveSpaceStore = useLoveSpaceStore()
 const letterId = parseInt(route.params.id)
+
+// 自定义弹窗状态
+const showConfirmModal = ref(false)
 
 // 随机信纸池 (13 张)
 const randomLetterPapers = [
@@ -106,6 +121,19 @@ const currentLetterPaper = computed(() => {
   return encodedPaper
 })
 
+const letterPaperIndex = computed(() => {
+  let index
+  if (letter.value?.paperIndex !== undefined) {
+    index = letter.value.paperIndex % randomLetterPapers.length
+  } else {
+    const paper = getLetterPaper(letterId)
+    index = randomLetterPapers.indexOf(paper)
+    if (index === -1) index = 0
+  }
+  console.log('[LetterDetail] 信纸索引:', index, '信件 ID:', letterId, 'paperIndex:', letter.value?.paperIndex)
+  return index
+})
+
 const newComment = ref('')
 
 function formatFullDate(dateStr) {
@@ -140,10 +168,13 @@ async function addComment() {
 }
 
 function confirmDelete() {
-  if (confirm('确定要删除这封信吗？')) {
-    loveSpaceStore.deleteLetter(letter.value.id)
-    router.back()
-  }
+  showConfirmModal.value = true
+}
+
+function confirmDeleteAction() {
+  loveSpaceStore.deleteLetter(letter.value.id)
+  showConfirmModal.value = false
+  router.back()
 }
 </script>
 
@@ -239,26 +270,23 @@ h2 {
     0 4px 20px rgba(166, 124, 82, 0.15),
     0 8px 40px rgba(166, 124, 82, 0.1);
   overflow: hidden;
-  border: 1px solid rgba(233, 224, 209, 0.5);
-  background: transparent;
-}
-
-.paper-scroll-area {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  /* 信纸背景 - 在最底层 */
+  background: white;
   background-image: var(--letter-paper-bg) !important;
   background-size: cover !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
-  background-color: #ffffff !important;
+}
+
+.paper-scroll-area {
+  margin-top: 15vh;
+  margin-bottom: 10vh; /* 强制正文底部留空 10% */
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
 }
 
 .paper-content {
-  padding: 40px 30px;
+  padding: 0 30px 20px;
   line-height: 32px;
   position: relative;
 }
@@ -275,6 +303,7 @@ h2 {
   font-size: 26px;
   text-align: center;
   margin-bottom: 35px;
+  margin-top: 10px; /* 给起始位置一点微调 */
   color: #2d1f1a;
   font-weight: 900;
   text-shadow: 0 2px 4px rgba(255, 255, 255, 0.9), 0 3px 8px rgba(255, 255, 255, 0.7);
@@ -304,6 +333,41 @@ h2 {
   position: relative;
   animation: fadeInText 2s ease-out;
   text-shadow: 1px 1px 2px rgba(166, 124, 82, 0.15);
+  text-indent: 2em; /* 首行缩进 */
+}
+
+/* 段落间距 */
+.body-text p {
+  margin: 1em 0;
+  text-indent: 2em;
+}
+
+/* 信纸 1、2、3 (索引 0、1、2) 是深色背景，使用白色文字 - 提高优先级 */
+.letter-detail .paper-content.paper-0 .body-text,
+.letter-detail .paper-content.paper-1 .body-text,
+.letter-detail .paper-content.paper-2 .body-text {
+  color: #ffffff !important;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6) !important;
+  text-indent: 2em;
+}
+
+.letter-detail .paper-content.paper-0 .paper-title,
+.letter-detail .paper-content.paper-1 .paper-title,
+.letter-detail .paper-content.paper-2 .paper-title {
+  color: #ffffff !important;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6) !important;
+}
+
+.letter-detail .paper-content.paper-0 .sign,
+.letter-detail .paper-content.paper-1 .sign,
+.letter-detail .paper-content.paper-2 .sign {
+  color: #ffffff !important;
+}
+
+.letter-detail .paper-content.paper-0 .date,
+.letter-detail .paper-content.paper-1 .date,
+.letter-detail .paper-content.paper-2 .date {
+  color: #f0f0f0 !important;
 }
 
 @keyframes fadeInText {
@@ -395,18 +459,111 @@ h2 {
   transform: scale(0.95) rotate(0deg);
 }
 
+/* 自定义弹窗样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  min-width: 280px;
+  max-width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s;
+}
+
+.modal-content h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #333;
+}
+
+.modal-content p {
+  margin: 0 0 20px;
+  color: #666;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.modal-buttons button {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.modal-buttons .confirm-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.modal-buttons .confirm-btn:hover {
+  background: #c82333;
+}
+
+.modal-buttons .cancel-btn {
+  background: #e9ecef;
+  color: #495057;
+}
+
+.modal-buttons .cancel-btn:hover {
+  background: #dee2e6;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .font-handwritten {
   font-family: "huangkaihuaLawyerfont", cursive !important;
   font-weight: normal;
 }
 
 .letter-comments {
-  background: rgba(255, 255, 255, 0.7);
-  padding: 25px;
-  border-top: 2px solid rgba(233, 224, 209, 0.6);
-  margin-top: auto;
-  backdrop-filter: blur(10px);
-  box-shadow: inset 0 2px 10px rgba(233, 224, 209, 0.2);
+  background: rgba(255, 255, 255, 0.4); /* 回归通透感 */
+  padding: 20px 25px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.05);
+  margin-top: 20px;
+  backdrop-filter: blur(5px);
+  border-radius: 15px;
+  margin: 20px 15px;
 }
 
 .comment-count {
@@ -525,5 +682,96 @@ h2 {
 .not-found {
   padding: 50px;
   text-align: center;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .letter-detail {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn {
+    font-size: 18px;
+  }
+  
+  .delete-letter-btn-detail {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  
+  .letter-paper {
+    margin: 12px;
+    border-radius: 10px;
+  }
+  
+  .paper-scroll-area {
+    margin-top: 12vh;
+    margin-bottom: 8vh;
+  }
+  
+  .paper-content {
+    padding: 0 20px 30px;
+  }
+  
+  .paper-title {
+    font-size: 22px;
+    margin-bottom: 25px;
+  }
+  
+  .body-text {
+    font-size: 17px;
+    line-height: 1.8;
+    min-height: 200px;
+  }
+  
+  .paper-footer {
+    margin-top: 35px;
+  }
+  
+  .sign {
+    font-size: 16px;
+  }
+  
+  .date {
+    font-size: 11px;
+  }
+  
+  .author-badge {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+  
+  .letter-comments {
+    padding: 20px;
+  }
+  
+  .comment-count {
+    font-size: 11px;
+  }
+  
+  .comment-item {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+  
+  .comment-input-area input {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+  
+  .comment-input-area button {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
 }
 </style>

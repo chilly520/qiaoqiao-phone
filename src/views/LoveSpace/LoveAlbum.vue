@@ -5,9 +5,14 @@
         <i class="fa-solid fa-chevron-left"></i>
       </button>
       <h2>我们的相册</h2>
-      <button @click="triggerUpload" class="add-btn">
-        <i class="fa-solid fa-cloud-arrow-up"></i>
-      </button>
+      <div class="header-actions">
+        <button @click="generateMagic" class="magic-btn" :class="{ 'animating': isGenerating }">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+        <button @click="triggerUpload" class="add-btn">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+        </button>
+      </div>
     </div>
 
     <!-- 顶部状态栏 -->
@@ -125,6 +130,18 @@ const newComment = ref('')
 const showUploadModal = ref(false)
 const uploadDesc = ref('')
 const pendingPhotoUrl = ref('')
+const isGenerating = ref(false)
+
+async function generateMagic() {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  try {
+    await loveSpaceStore.generateSingleFeature('album')
+  } catch (e) {
+    console.error('Magic generation failed', e)
+  }
+  isGenerating.value = false
+}
 
 const album = computed(() => loveSpaceStore.album || [])
 const sortedAlbum = computed(() => {
@@ -232,12 +249,36 @@ async function deletePhoto(id) {
   z-index: 100;
 }
 
-.back-btn, .add-btn {
+.back-btn, .add-btn, .magic-btn {
   background: none;
   border: none;
   font-size: 20px;
   color: #5a5a7a;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.magic-btn i {
+  color: #ff6b9d;
+}
+
+.magic-btn.animating i {
+  animation: magic-spin 1.5s infinite linear;
+  color: #a87ffb;
+}
+
+@keyframes magic-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
 }
 
 h2 {
@@ -567,4 +608,165 @@ h2 {
 
 .animate-fade-in { animation: fadeIn 0.25s ease-out; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .couple-album {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn, .add-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .album-stats {
+    padding: 12px 16px;
+  }
+  
+  .stat-item {
+    font-size: 12px;
+  }
+  
+  .stat-item .num {
+    font-size: 18px;
+  }
+  
+  .photo-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 6px;
+  }
+  
+  .photo-card {
+    border-radius: 6px;
+  }
+  
+  .photo-img {
+    height: 100px;
+  }
+  
+  .photo-info {
+    font-size: 8px;
+    padding: 3px;
+  }
+  
+  .empty-album {
+    grid-column: span 3;
+    padding: 60px 16px;
+  }
+  
+  .empty-icon {
+    font-size: 48px;
+  }
+  
+  .upload-hint-btn {
+    font-size: 12px;
+    padding: 8px 20px;
+  }
+  
+  /* 上传弹窗适配 */
+  .modal-content {
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  .modal-header {
+    padding: 12px 16px;
+  }
+  
+  .modal-header h3 {
+    font-size: 15px;
+  }
+  
+  .modal-close {
+    font-size: 18px;
+  }
+  
+  .modal-body {
+    padding: 16px;
+  }
+  
+  .upload-desc-input {
+    height: 80px;
+    font-size: 13px;
+    padding: 10px;
+  }
+  
+  .modal-actions {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  
+  .modal-actions button {
+    padding: 10px;
+    font-size: 13px;
+  }
+  
+  /* 大图预览适配 */
+  .zoom-header {
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    padding: 8px 12px;
+  }
+  
+  .zoom-back-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+  
+  .photo-info-panel {
+    padding: 16px;
+    max-height: 35vh;
+  }
+  
+  .info-header {
+    margin-bottom: 12px;
+  }
+  
+  .zoom-date {
+    font-size: 11px;
+  }
+  
+  .delete-photo-btn {
+    font-size: 16px;
+    padding: 4px;
+  }
+  
+  .photo-caption {
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  
+  .comment-item {
+    font-size: 12px;
+    padding: 6px 0;
+  }
+  
+  .comment-author {
+    font-size: 12px;
+  }
+  
+  .comment-input-row {
+    gap: 8px;
+  }
+  
+  .comment-input-row input {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+  
+  .comment-input-row button {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+}
 </style>

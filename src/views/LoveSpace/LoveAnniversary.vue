@@ -5,9 +5,14 @@
         <i class="fa-solid fa-chevron-left"></i>
       </button>
       <h2>纪念日</h2>
-      <button @click="showAddModal = true" class="add-btn">
-        <i class="fa-solid fa-calendar-plus"></i>
-      </button>
+      <div class="header-actions">
+        <button @click="generateMagic" class="magic-btn" :class="{ 'animating': isGenerating }">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+        <button @click="showAddModal = true" class="add-btn">
+          <i class="fa-solid fa-calendar-plus"></i>
+        </button>
+      </div>
     </div>
 
     <div class="scroll-container">
@@ -82,6 +87,19 @@ const loveSpaceStore = useLoveSpaceStore()
 const anniversaries = computed(() => loveSpaceStore.anniversaries || [])
 const nextAnniversary = computed(() => loveSpaceStore.nextAnniversary)
 
+const isGenerating = ref(false)
+
+async function generateMagic() {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  try {
+    await loveSpaceStore.generateSingleFeature('anniversary')
+  } catch (e) {
+    console.error('Magic generation failed', e)
+  }
+  isGenerating.value = false
+}
+
 const showAddModal = ref(false)
 const newName = ref('')
 const newDate = ref('')
@@ -148,12 +166,32 @@ async function saveAnniversary() {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
-.back-btn, .add-btn {
+.back-btn, .add-btn, .magic-btn {
   background: none;
   border: none;
   font-size: 20px;
   color: #ff6b9d;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.magic-btn.animating i {
+  animation: magic-spin 1.5s infinite linear;
+  color: #a87ffb;
+}
+
+@keyframes magic-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
 }
 
 h2 {
@@ -370,5 +408,109 @@ h3 {
   color: #a89bb9;
   padding: 40px 0;
   font-size: 14px;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .love-anniversary {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn, .add-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .scroll-container {
+    padding: 12px;
+  }
+  
+  .countdown-card {
+    padding: 16px;
+  }
+  
+  .next-title {
+    font-size: 12px;
+  }
+  
+  .days-remaining .num {
+    font-size: 36px;
+  }
+  
+  .days-remaining .unit {
+    font-size: 14px;
+  }
+  
+  .target-date {
+    font-size: 11px;
+  }
+  
+  .section-title {
+    font-size: 14px;
+  }
+  
+  .anniversary-item {
+    gap: 10px;
+  }
+  
+  .item-date {
+    min-width: 60px;
+  }
+  
+  .dot {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .date-text {
+    font-size: 10px;
+  }
+  
+  .item-card {
+    padding: 12px;
+  }
+  
+  .item-name {
+    font-size: 13px;
+  }
+  
+  .item-status {
+    font-size: 11px;
+  }
+  
+  .modal {
+    padding: 20px;
+    width: 95%;
+  }
+  
+  h3 {
+    font-size: 16px;
+  }
+  
+  .input-group label {
+    font-size: 12px;
+  }
+  
+  .text-input, .date-input {
+    padding: 10px;
+    font-size: 13px;
+  }
+  
+  .modal-actions {
+    gap: 8px;
+  }
+  
+  .cancel-btn, .save-btn {
+    padding: 10px;
+    font-size: 13px;
+  }
 }
 </style>

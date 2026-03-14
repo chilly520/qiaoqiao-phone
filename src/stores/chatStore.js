@@ -221,6 +221,18 @@ export const useChatStore = defineStore('chat', () => {
             if (typeof processedContent === 'string') {
                 processedContent = processTaskCommands(processedContent, chatId);
                 processedContent = processBioUpdate(processedContent, chatId);
+                
+                // Intercept Couple Space commands [LS_JSON: ...]
+                if (processedContent.includes('[LS_JSON:')) {
+                    console.log('[ChatStore] Couple Space LS_JSON detected, processing...');
+                    import('./loveSpaceStore').then(m => {
+                        const loveSpaceStore = m.useLoveSpaceStore();
+                        loveSpaceStore.executeSpaceCommands(processedContent, chat.name)
+                            .then(() => console.log('[ChatStore] LS_JSON commands executed successfully'))
+                            .catch(err => console.error('[ChatStore] LS_JSON execution failed', err));
+                    }).catch(err => console.error('[ChatStore] Failed to load loveSpaceStore for command parsing', err));
+                }
+                
                 msg.content = processedContent;
             }
         }
@@ -877,6 +889,8 @@ export const useChatStore = defineStore('chat', () => {
                 /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
                 /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
                 /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
+                /\[LS_JSON:[\s\S]*?\]/gi,
+                /\[LOVESPACE_CONTRACT:[^\]]+\]|\[LOVESPACE_REJECT:[^\]]+\]|\[LOVESPACE_INVITE:[^\]]+\]/gi,
                 /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
                 /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
                 /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
@@ -1594,6 +1608,26 @@ export const useChatStore = defineStore('chat', () => {
                 } catch (e) { content = '[收藏内容]' }
             } else if (m.type === 'voice') {
                 content = `[语音消息:${content}]`
+            } else if (m.type === 'lovespace_diary' || m.type === 'lovespace_message' || m.type === 'lovespace_letter') {
+                try {
+                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                    const spaceType = {
+                        'lovespace_diary': '日记',
+                        'lovespace_message': '留言',
+                        'lovespace_letter': '情书'
+                    }[m.type];
+                    content = `[情侣空间·${spaceType}] ${data.author || 'TA'}: ${data.title || data.content || ''}`;
+                } catch (e) { content = '[情侣空间动态]' }
+            } else if (m.type === 'lovespace_album' || m.type === 'lovespace_sticky' || m.type === 'lovespace_anniversary') {
+                try {
+                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                    const spaceType = {
+                        'lovespace_album': '相册',
+                        'lovespace_sticky': '便利贴',
+                        'lovespace_anniversary': '纪念日'
+                    }[m.type];
+                    content = `[情侣空间·${spaceType}] ${data.author || 'TA'}: ${data.title || data.content || data.name || ''}`;
+                } catch (e) { content = '[情侣空间动态]' }
             }
 
             if (m.role === 'ai') {
@@ -2536,7 +2570,7 @@ export const useChatStore = defineStore('chat', () => {
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
                 // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：]?.*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：]?.*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|LS_JSON|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2549,7 +2583,7 @@ export const useChatStore = defineStore('chat', () => {
                     if (part === undefined) continue;
 
                     const trimmedPart = part.trim();
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*INNER|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:INNER|LS_JSON)|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {
@@ -2652,13 +2686,28 @@ export const useChatStore = defineStore('chat', () => {
                             let processedHtml = msgContent.replace(/\[\s*\/?[CARD\s]*\]/gi, '').trim();
                             if (processedHtml.includes('\\"')) processedHtml = processedHtml.replace(/\\"/g, '"');
                             if (!processedHtml.trim().startsWith('{') && (processedHtml.includes('"type":') || processedHtml.includes('"html":'))) processedHtml = '{' + processedHtml + '}';
-
+                        
                             let extractedHtml = processedHtml;
                             try {
                                 const parsed = JSON.parse(processedHtml);
                                 if (parsed.html) extractedHtml = parsed.html;
-                            } catch (e) { /* Fallback to raw */ }
-
+                            } catch (e) {
+                                // If parsing fails, use the processed HTML directly
+                                console.log('[ChatStore] JSON parse failed for HTML card, using raw content');
+                            }
+                        
+                            // Ensure we always have valid HTML content
+                            if (!extractedHtml || extractedHtml.trim().length === 0) {
+                                extractedHtml = processedHtml;
+                            }
+                        
+                            console.log('[ChatStore] Adding HTML message:', {
+                                type: 'html',
+                                contentLength: processedHtml?.length,
+                                htmlLength: extractedHtml?.length,
+                                hasHtml: !!extractedHtml
+                            });
+                        
                             msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
                         } else {
                             // Text Message Delivery

@@ -777,26 +777,52 @@ onMounted(async () => {
     backpackStore.initStore()
 
     // CRITICAL FIX: Force restore typing status and consume pending segments
-    if (chatStore.currentChatId) {
+    // Even if currentChatId is null (after page refresh), try to find the last active chat
+    let targetChatId = chatStore.currentChatId;
+    
+    // If no currentChatId, find the chat with most recent AI message
+    if (!targetChatId) {
+        console.log('[ChatWindow] No currentChatId, searching for active chat...');
+        const chats = chatStore.chats;
+        
+        // Find the most recent AI message
+        let mostRecentTime = 0;
+        for (const chatId in chats) {
+            const chat = chats[chatId];
+            const lastMsg = chat.msgs?.[chat.msgs.length - 1];
+            if (lastMsg && lastMsg.role === 'ai' && lastMsg.timestamp > mostRecentTime) {
+                mostRecentTime = lastMsg.timestamp;
+                targetChatId = chatId;
+            }
+        }
+        if (targetChatId) {
+            console.log('[ChatWindow] Found chat with recent AI message:', targetChatId);
+        }
+    }
+    
+    if (targetChatId) {
+        // Set currentChatId if it was null
+        if (!chatStore.currentChatId) {
+            chatStore.currentChatId = targetChatId;
+        }
+        
+        // CRITICAL: Reset pagination to ensure latest messages are shown
+        chatStore.resetPagination(targetChatId);
+        
         nextTick(() => {
-            const chat = chatStore.chats[chatStore.currentChatId];
+            const chat = chatStore.chats[targetChatId];
             if (!chat) return;
             
             console.log('[ChatWindow] onMounted, checking chat state for', chat.id);
-            console.log('[ChatWindow] pendingSegments:', chat.pendingSegments?.length || 0);
-            console.log('[ChatWindow] typingStatus:', chatStore.typingStatus[chat.id]);
+            console.log('[ChatWindow] msgs.length:', chat.msgs.length);
             console.log('[ChatWindow] lastMsg:', chat.msgs[chat.msgs.length - 1]);
             
-            // ALWAYS restore typing status if there are pending segments OR if AI just finished
-            const hasPendingSegments = chat.pendingSegments && chat.pendingSegments.length > 0;
-            const lastMsg = chat.msgs[chat.msgs.length - 1];
-            const aiJustFinished = lastMsg && lastMsg.role === 'ai' && Date.now() - lastMsg.timestamp < 30000; // 30 seconds
-            
-            if (hasPendingSegments || aiJustFinished) {
-                console.log('[ChatWindow] Restoring typing status and consuming segments');
-                chatStore.typingStatus[chat.id] = true;
-                chatStore.consumePendingSegments(chat.id);
-            }
+            // Version 1.2.25: No pendingSegments mechanism, messages are added directly
+            // Just scroll to bottom to show latest messages
+            console.log('[ChatWindow] No pendingSegments in 1.2.25, scrolling to bottom');
+            setTimeout(() => {
+                scrollToBottom(true);
+            }, 100);
         });
     }
 
@@ -815,18 +841,15 @@ onMounted(async () => {
         }
     }, 100)
 
-    // Ensure pump is running when returning to app
+    // Ensure typing indicator is handled when returning to app
     const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible' && chatStore.currentChatId) {
-            console.log('[ChatWindow] App became visible, checking pump status...');
-            const chat = chatStore.chats[chatStore.currentChatId];
-            if (chat && (chat.pendingSegments?.length > 0 || 
-                (chat.msgs[chat.msgs.length - 1]?.role === 'ai' && Date.now() - chat.msgs[chat.msgs.length - 1].timestamp < 30000))) {
-                chatStore.typingStatus[chatStore.currentChatId] = true;
-                chatStore.consumePendingSegments(chatStore.currentChatId);
-            }
+            console.log('[ChatWindow] App became visible');
+            // If we're still waiting for AI, the typingStatus[chatId] should still be true
+            // if it wasn't cleared by the network response yet.
         }
     };
+    
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
     // Cleanup on unmount

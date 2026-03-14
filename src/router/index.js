@@ -237,7 +237,7 @@ const router = createRouter({
         {
             path: '/couple/sticky',
             name: 'couple-sticky',
-            component: () => import('../views/LoveSpace/LoveSticky.vue')
+            component: () => import('../views/LoveSpace/StickyNotes.vue')
         },
         {
             path: '/couple/mailbox',
@@ -273,6 +273,11 @@ const router = createRouter({
             path: '/couple/gacha',
             name: 'couple-gacha',
             component: () => import('../views/LoveSpace/CoupleGacha.vue')
+        },
+        {
+            path: '/couple/schedule',
+            name: 'couple-schedule',
+            component: () => import('../views/LoveSpace/LoveSchedule.vue')
         }
     ]
 })

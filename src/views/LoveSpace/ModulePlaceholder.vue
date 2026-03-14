@@ -64,4 +64,35 @@ h3 {
 p {
   color: #8b7aa8;
 }
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .module-placeholder {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn {
+    font-size: 18px;
+  }
+  
+  .icon {
+    font-size: 48px;
+  }
+  
+  h3 {
+    font-size: 15px;
+  }
+  
+  p {
+    font-size: 13px;
+  }
+}
 </style>

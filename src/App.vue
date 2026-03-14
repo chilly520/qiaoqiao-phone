@@ -454,11 +454,7 @@ const handleGlobalPromptCancel = () => {
             :class="{ 'h-[100dvh] !mt-0 !basis-full': isInspection }"
             style="margin-top: 0; flex-basis: calc(100% - 28px);">
             <!-- 使用 key 强制组件重新渲染 -->
-            <!-- CRITICAL FIX: Use keep-alive to preserve ChatWindow state during navigation -->
-            <!-- This prevents stream interruption when switching routes -->
-            <keep-alive include="ChatWindow">
-                <RouterView :key="routeKey" />
-            </keep-alive>
+            <RouterView :key="routeKey" />
         </div>
 
         <!-- Global Call Components -->

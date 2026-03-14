@@ -114,9 +114,12 @@ async function generateMagic() {
   if (isGenerating.value) return
   isGenerating.value = true
   try {
-    await loveSpaceStore.generateMagicContent()
+    await loveSpaceStore.generateSingleFeature('message')
   } catch (e) {
     console.error('Magic generation failed', e)
+    if (chatStore && chatStore.triggerToast) {
+      chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
+    }
   }
   isGenerating.value = false
 }
@@ -438,5 +441,76 @@ h3 {
 
 .send-btn:disabled {
   opacity: 0.5;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .love-messages {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn, .add-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .magic-btn {
+    font-size: 16px;
+  }
+  
+  .messages-list {
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .message-card {
+    padding: 12px;
+  }
+  
+  .msg-avatar {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .sender-name {
+    font-size: 13px;
+  }
+  
+  .msg-time {
+    font-size: 9px;
+  }
+  
+  .action-btn-mini {
+    padding: 4px;
+    font-size: 12px;
+  }
+  
+  .modal {
+    padding: 20px;
+    width: 95%;
+  }
+  
+  h3 {
+    font-size: 16px;
+  }
+  
+  .msg-input {
+    height: 100px;
+    padding: 10px;
+    font-size: 13px;
+  }
+  
+  .cancel-btn, .send-btn {
+    padding: 10px;
+    font-size: 13px;
+  }
 }
 </style>

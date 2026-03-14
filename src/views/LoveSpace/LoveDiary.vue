@@ -1,54 +1,100 @@
 <template>
   <div class="love-diary">
     <div class="header">
-      <button @click="$router.back()" class="back-btn">
+      <button @click="viewMode === 'reading' ? viewMode = 'toc' : $router.back()" class="back-btn">
         <i class="fa-solid fa-chevron-left"></i>
       </button>
-      <h2>交换日记</h2>
-      <button @click="showAddModal = true" class="add-btn">
-        <i class="fa-solid fa-pen-nib"></i>
-      </button>
+      <h2>{{ viewMode === 'toc' ? '日记目录' : '交换日记' }}</h2>
+      <div class="header-actions">
+        <button @click="generateMagic" class="magic-btn" :class="{ 'animating': isGenerating }">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+        </button>
+        <button @click="showAddModal = true" class="add-btn">
+          <i class="fa-solid fa-pen-nib"></i>
+        </button>
+      </div>
     </div>
 
-    <!-- 日记列表 -->
-    <div class="diary-list">
+    <div v-if="viewMode === 'toc'" class="toc-container">
+      <div class="toc-title">秘密</div>
+      
       <div v-if="diary.length === 0" class="empty-state">
-        <div class="empty-icon">📔</div>
-        <p>还没有日记呢，快记录今天的甜蜜吧~</p>
+        <p>还没有日记，快来写下第一篇吧</p>
       </div>
       
-      <div v-for="entry in sortedDiary" :key="entry.id" class="diary-card">
-        <div class="diary-date">
-          <span class="day">{{ getDay(entry.createdAt) }}</span>
-          <span class="month">{{ getMonth(entry.createdAt) }}</span>
-        </div>
-        <div class="diary-body">
-          <div class="diary-meta">
-            <img :src="getAvatar(entry)" class="author-avatar">
-            <span class="author-name">{{ entry.authorName }}</span>
-            <button class="delete-diary-btn" @click="deleteDiary(entry.id)">
-              <i class="fa-solid fa-trash-can"></i>
-            </button>
+      <div class="toc-list" v-else>
+        <div 
+          v-for="(entry, index) in sortedDiary" 
+          :key="entry.id" 
+          class="toc-item" 
+          @click="goToPage(index)"
+        >
+          <span class="toc-number">{{ String(index + 1).padStart(2, '0') }}.</span>
+          <div class="toc-info">
+            <span class="toc-snippet">{{ truncateText(entry.content, 12) }}</span>
+            <span class="toc-date">{{ getMonth(entry.createdAt) }} {{ getDay(entry.createdAt) }} · {{ entry.authorName }}</span>
           </div>
-          <div class="diary-content">{{ entry.content }}</div>
-          <div v-if="entry.image" class="diary-image-wrapper">
-            <img :src="entry.image" class="diary-image">
-          </div>
+          <div class="toc-dotted-line"></div>
+          <span class="toc-page-ref">P{{ index + 1 }}</span>
         </div>
       </div>
     </div>
 
-    <!-- 写日记弹窗 -->
+    <div v-else-if="viewMode === 'reading'" class="book-container" @touchstart="onTouchStart" @touchend="onTouchEnd">
+      <div class="book-spine"></div>
+      
+      <div class="book">
+        <div 
+          v-for="(entry, index) in sortedDiary" 
+          :key="entry.id" 
+          class="page"
+          :class="{ 'is-flipped': index < currentPage }"
+          :style="{ zIndex: sortedDiary.length - index }"
+        >
+          <div class="page-front">
+            <div class="page-content">
+              <div class="diary-date">
+                <span class="day">{{ getDay(entry.createdAt) }}</span>
+                <span class="month">{{ getMonth(entry.createdAt) }}</span>
+              </div>
+              
+              <div class="diary-body">
+                <div class="diary-meta">
+                  <img :src="getAvatar(entry)" class="author-avatar">
+                  <span class="author-name">{{ entry.authorName }}</span>
+                  <button class="delete-diary-btn" @click="deleteDiary(entry.id)">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+                <div class="diary-content">{{ entry.content }}</div>
+                <div v-if="entry.image" class="diary-image-wrapper">
+                  <img :src="entry.image" class="diary-image">
+                </div>
+              </div>
+              
+              <div class="page-number">- {{ index + 1 }} -</div>
+            </div>
+          </div>
+          <div class="page-back"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="book-controls" v-if="viewMode === 'reading' && sortedDiary.length > 0">
+      <button @click="prevPage" :disabled="currentPage === 0" class="page-btn">上一页</button>
+      <span class="page-indicator">{{ currentPage + 1 }} / {{ sortedDiary.length }}</span>
+      <button @click="nextPage" :disabled="currentPage >= sortedDiary.length - 1" class="page-btn">下一页</button>
+    </div>
+
     <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
       <div class="modal animate-pop-in">
         <div class="modal-header">
-          <span class="modal-icon">✍️</span>
           <h3>亲爱的日记...</h3>
         </div>
-        <textarea v-model="newEntry" placeholder="记下这一刻的甜意..." class="diary-input"></textarea>
+        <textarea v-model="newEntry" placeholder="记下这一刻的思绪..." class="diary-input"></textarea>
         <div class="modal-actions">
           <button @click="showAddModal = false" class="cancel-btn">以后再说</button>
-          <button @click="saveEntry" :disabled="!newEntry.trim()" class="save-btn">封存甜蜜</button>
+          <button @click="saveEntry" :disabled="!newEntry.trim()" class="save-btn">封存记录</button>
         </div>
       </div>
     </div>
@@ -64,12 +110,70 @@ const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
 
 const diary = computed(() => loveSpaceStore.diary || [])
-const sortedDiary = computed(() => [...diary.value].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)))
+const sortedDiary = computed(() => [...diary.value].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)))
+
+const viewMode = ref('toc') // 'toc' 为目录视图, 'reading' 为阅读视图
 const showAddModal = ref(false)
 const newEntry = ref('')
+const currentPage = ref(0) 
 
 const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg')
 const userName = computed(() => settingsStore.personalization.userProfile.name || '用户')
+
+const isGenerating = ref(false)
+
+// 截断文本用于目录预览
+function truncateText(text, length) {
+  if (!text) return ''
+  return text.length > length ? text.substring(0, length) + '...' : text
+}
+
+// 跳转到指定日记页
+function goToPage(index) {
+  currentPage.value = index
+  viewMode.value = 'reading'
+}
+
+// 滑动翻页逻辑
+let touchStartX = 0
+function onTouchStart(e) {
+  touchStartX = e.changedTouches[0].screenX
+}
+
+function onTouchEnd(e) {
+  const touchEndX = e.changedTouches[0].screenX
+  const swipeDistance = touchStartX - touchEndX
+  
+  if (swipeDistance > 50) {
+    nextPage()
+  } else if (swipeDistance < -50) {
+    prevPage()
+  }
+}
+
+function nextPage() {
+  if (currentPage.value < sortedDiary.value.length - 1) {
+    currentPage.value++
+  }
+}
+
+function prevPage() {
+  if (currentPage.value > 0) {
+    currentPage.value--
+  }
+}
+
+async function generateMagic() {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  try {
+    const chatStore = (await import('@/stores/chatStore')).useChatStore()
+    await loveSpaceStore.generateSingleFeature('diary')
+  } catch (e) {
+    console.error('Magic generation failed', e)
+  }
+  isGenerating.value = false
+}
 
 function getAvatar(entry) {
   if (entry.authorId === 'user') return userAvatar.value
@@ -96,18 +200,30 @@ async function saveEntry() {
   
   newEntry.value = ''
   showAddModal.value = false
+  
+  // 保存后自动切换到阅读模式，并翻到最后一页
+  viewMode.value = 'reading'
+  setTimeout(() => {
+    currentPage.value = sortedDiary.value.length - 1
+  }, 100)
 }
 
 async function deleteDiary(id) {
   loveSpaceStore.currentSpace.diary = loveSpaceStore.currentSpace.diary.filter(d => d.id !== id)
   await loveSpaceStore.saveToStorage()
+  
+  if (sortedDiary.value.length === 0) {
+    viewMode.value = 'toc'
+  } else if (currentPage.value >= sortedDiary.value.length && currentPage.value > 0) {
+    currentPage.value--
+  }
 }
 </script>
 
 <style scoped>
 .love-diary {
   height: 100vh;
-  background: #fff5f7;
+  background: #fdfaf6;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -118,225 +234,313 @@ async function deleteDiary(id) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: white;
-  position: sticky;
-  top: 0;
+  background: transparent;
   z-index: 100;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
-.back-btn, .add-btn {
+.back-btn, .add-btn, .magic-btn {
   background: none;
   border: none;
   font-size: 20px;
-  color: #ff6b9d;
+  color: #c7a78e;
   cursor: pointer;
   padding: 5px;
 }
 
-h2 {
-  font-size: 18px;
-  color: #5a5a7a;
-  margin: 0;
-}
-
-.diary-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-.diary-card {
+.header-actions {
   display: flex;
   gap: 15px;
 }
 
-.diary-date {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  min-width: 50px;
-}
-
-.day {
-  font-size: 28px;
-  font-weight: 900;
-  color: #ff6b9d;
-  line-height: 1;
-}
-
-.month {
-  font-size: 11px;
-  font-weight: 700;
-  color: #a89bb9;
+h2 {
+  font-size: 18px;
+  color: #8b7355;
+  margin: 0;
+  font-weight: normal;
   letter-spacing: 2px;
 }
 
-.diary-body {
+/* 目录视图样式 */
+.toc-container {
   flex: 1;
-  background: white;
-  padding: 20px;
-  border-radius: 20px;
-  box-shadow: 0 10px 25px rgba(255, 107, 157, 0.08);
-  position: relative;
-  background-image: linear-gradient(#f0f0f0 1.1px, transparent 1.1px);
-  background-size: 100% 28px;
-  line-height: 28px;
+  overflow-y: auto;
+  margin: 10px 20px 30px 20px;
+  background: #fffdf9;
+  border-radius: 4px 12px 12px 4px;
+  box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.05);
+  border-left: 6px solid #e8dcc8;
+  padding: 30px 20px;
 }
 
-.diary-body::after {
-  content: '';
+.toc-title {
+  font-size: 28px;
+  color: #8b7355;
+  text-align: center;
+  margin-bottom: 30px;
+  font-family: Georgia, serif;
+  letter-spacing: 4px;
+  border-bottom: 1px solid #e8dcc8;
+  padding-bottom: 20px;
+}
+
+.toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.toc-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.toc-number {
+  font-size: 16px;
+  color: #c7a78e;
+  font-family: Georgia, serif;
+  min-width: 35px;
+}
+
+.toc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toc-snippet {
+  font-size: 15px;
+  color: #4a4036;
+  font-weight: bold;
+}
+
+.toc-date {
+  font-size: 12px;
+  color: #b5a48f;
+}
+
+.toc-dotted-line {
+  flex: 1;
+  border-bottom: 1px dotted #d3c4b5;
+  margin: 0 10px;
+  position: relative;
+  top: 5px;
+}
+
+.toc-page-ref {
+  font-size: 14px;
+  color: #b5a48f;
+  font-family: Georgia, serif;
+}
+
+/* 书本容器核心样式 (保持不变) */
+.book-container {
+  flex: 1;
+  position: relative;
+  margin: 10px 20px 30px 30px;
+  perspective: 1500px;
+  display: flex;
+}
+
+.book-spine {
   position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60px;
-  height: 20px;
-  background: rgba(255, 107, 157, 0.2);
-  border-radius: 4px;
+  left: -15px;
+  top: 0;
+  bottom: 0;
+  width: 30px;
+  background: linear-gradient(to right, #e3cba8, #f4e4c9, #e3cba8);
+  border-radius: 5px 0 0 5px;
+  box-shadow: inset -2px 0 5px rgba(0,0,0,0.1), 2px 0 5px rgba(0,0,0,0.2);
+  z-index: 0;
+}
+
+.book {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  transition: transform 0.8s cubic-bezier(0.645, 0.045, 0.355, 1);
+  transform-style: preserve-3d;
+  box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
+  border-radius: 2px 8px 8px 2px;
+}
+
+.page.is-flipped {
+  transform: rotateY(-180deg);
+}
+
+.page-front, .page-back {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  backface-visibility: hidden;
+  border-radius: 2px 8px 8px 2px;
+}
+
+.page-front {
+  background: #fffdf9;
+  background-image: linear-gradient(#f0ebe1 1px, transparent 1px);
+  background-size: 100% 32px;
+  background-position: 0 50px;
+  border-left: 2px solid #e8dcc8;
+}
+
+.page-back {
+  background: #faf6f0;
+  transform: rotateY(180deg);
+  box-shadow: inset 5px 0 10px rgba(0,0,0,0.05);
+}
+
+.page-content {
+  padding: 30px 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.page-number {
+  margin-top: auto;
+  text-align: center;
+  color: #ccc;
+  font-size: 12px;
+  padding-top: 20px;
+}
+
+/* 页面内部排版 */
+.diary-date {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #e8dcc8;
+}
+
+.day {
+  font-size: 32px;
+  font-family: Georgia, serif;
+  color: #8b7355;
+}
+
+.month {
+  font-size: 14px;
+  color: #b5a48f;
+  letter-spacing: 1px;
 }
 
 .diary-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  line-height: 1;
+  gap: 10px;
+  margin-bottom: 15px;
 }
-
-.delete-diary-btn {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: #ccc;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 4px;
-  transition: color 0.2s;
-}
-
-.delete-diary-btn:hover { color: #ff4d4f; }
 
 .author-avatar {
-  width: 22px;
-  height: 22px;
+  width: 28px; height: 28px;
   border-radius: 50%;
-  object-fit: cover;
-  border: 1.5px solid #fff;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  border: 1px solid #e8dcc8;
 }
 
 .author-name {
-  font-size: 11px;
-  color: #ff6b9d;
-  font-weight: 800;
-  opacity: 0.8;
+  font-size: 13px; color: #8b7355; font-weight: bold;
 }
 
+.delete-diary-btn {
+  margin-left: auto; background: none; border: none;
+  color: #d3c4b5; cursor: pointer; transition: color 0.3s;
+}
+
+.delete-diary-btn:hover { color: #ff6b9d; }
+
 .diary-content {
-  font-family: 'Zhi Mang Xing', 'Long Cang', 'Kaiti', 'STKaiti', cursive, serif;
-  font-size: 19px;
-  color: #5a5a7a;
+  font-family: 'Zhi Mang Xing', 'Kaiti', serif;
+  font-size: 18px; color: #4a4036;
+  line-height: 32px;
   white-space: pre-wrap;
-  padding-top: 4px;
-  line-height: 28px;
 }
 
 .diary-image-wrapper {
-  margin-top: 15px;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 3px solid white;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-  transform: rotate(-1deg);
+  margin-top: 20px; padding: 8px; background: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: rotate(-2deg);
 }
 
 .diary-image {
-  width: 100%;
-  max-height: 250px;
-  object-fit: cover;
+  width: 100%; max-height: 200px; object-fit: cover; display: block;
 }
 
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
+  color: #c7a78e;
+  padding: 40px 0;
 }
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+/* 底部控制栏 */
+.book-controls {
+  padding: 15px 20px; display: flex;
+  justify-content: space-between; align-items: center;
+  background: transparent;
 }
 
-/* Modal */
+.page-btn {
+  background: none; border: 1px solid #c7a78e; color: #8b7355;
+  padding: 8px 16px; border-radius: 20px; font-size: 14px; cursor: pointer;
+}
+
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.page-indicator {
+  color: #8b7355; font-size: 14px; letter-spacing: 2px;
+}
+
+/* 弹窗样式 */
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4); display: flex;
+  align-items: center; justify-content: center; z-index: 1000;
 }
 
 .modal {
-  background: white;
-  border-radius: 20px;
-  padding: 24px;
-  width: 90%;
-  max-width: 400px;
+  background: #fffdf9; border-radius: 12px; padding: 24px;
+  width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
 }
 
 h3 {
-  margin-bottom: 16px;
-  text-align: center;
-  color: #ff6b9d;
+  margin-bottom: 20px; text-align: center; color: #8b7355; font-weight: normal;
 }
 
 .diary-input {
-  width: 100%;
-  height: 180px;
-  border: 1px solid #ffecf0;
-  border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 20px;
-  resize: none;
-  font-family: inherit;
-  outline: none;
+  width: 100%; height: 180px; border: 1px solid #e8dcc8;
+  background: transparent; padding: 15px; margin-bottom: 20px;
+  resize: none; font-family: inherit; outline: none; line-height: 1.6;
 }
 
-.modal-actions {
-  display: flex;
-  gap: 12px;
-}
+.modal-actions { display: flex; gap: 12px; }
 
 .cancel-btn, .save-btn {
-  flex: 1;
-  padding: 12px;
-  border-radius: 12px;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
+  flex: 1; padding: 12px; border-radius: 8px; border: none;
+  font-size: 14px; cursor: pointer;
 }
 
-.cancel-btn {
-  background: #f5f5f5;
-  color: #666;
+.cancel-btn { background: #f0ebe1; color: #8b7355; }
+.save-btn { background: #c7a78e; color: white; }
+.save-btn:disabled { opacity: 0.5; }
+
+/* 动画 */
+@keyframes magic-spin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
 }
 
-.save-btn {
-  background: #ff6b9d;
-  color: white;
-}
-
-.save-btn:disabled {
-  opacity: 0.5;
-}
+.magic-btn.animating i { animation: magic-spin 1.5s infinite linear; }
 </style>

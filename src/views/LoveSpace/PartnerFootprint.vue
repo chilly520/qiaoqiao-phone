@@ -232,7 +232,14 @@ async function deleteFootprint(id) {
 
 async function generateFootprint() {
   isGenerating.value = true
-  await loveSpaceStore.generateMagicContent(selectedDate.value)
+  try {
+    await loveSpaceStore.generateSingleFeature('footprint')
+  } catch (e) {
+    console.error('Generate footprint failed', e)
+    if (chatStore && chatStore.triggerToast) {
+      chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
+    }
+  }
   isGenerating.value = false
 }
 </script>
@@ -509,5 +516,159 @@ async function generateFootprint() {
   color: white;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .partner-footprint {
+    padding: 0;
+  }
+  
+  .header {
+    padding: 12px 16px;
+  }
+  
+  h2 {
+    font-size: 16px;
+  }
+  
+  .back-btn,
+  .magic-btn {
+    font-size: 18px;
+    padding: 8px;
+  }
+  
+  .calendar-section {
+    margin: 12px;
+    padding: 15px;
+  }
+  
+  .calendar-header {
+    gap: 8px;
+  }
+  
+  .month-label {
+    font-size: 14px;
+  }
+  
+  .cal-btn-hex {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  
+  .today-tag {
+    font-size: 10px;
+    padding: 4px 10px;
+  }
+  
+  .calendar-grid {
+    gap: 4px;
+  }
+  
+  .weekday-label {
+    font-size: 11px;
+  }
+  
+  .calendar-day {
+    min-height: 36px;
+    padding: 4px;
+  }
+  
+  .day-num {
+    font-size: 12px;
+  }
+  
+  .pulse-dot {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .today-status {
+    padding: 0 12px;
+  }
+  
+  .status-card {
+    padding: 12px;
+  }
+  
+  .status-icon {
+    font-size: 20px;
+  }
+  
+  .status-text .time {
+    font-size: 11px;
+  }
+  
+  .status-text .content {
+    font-size: 13px;
+  }
+  
+  .footprint-timeline {
+    padding: 0 12px 24px;
+  }
+  
+  .date-header {
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+  
+  .day-label {
+    font-size: 13px;
+  }
+  
+  .weekday {
+    font-size: 11px;
+  }
+  
+  .timeline-item {
+    gap: 8px;
+  }
+  
+  .timeline-left {
+    width: 50px;
+  }
+  
+  .time {
+    font-size: 10px;
+  }
+  
+  .timeline-dot {
+    width: 10px;
+    height: 10px;
+    left: -25px;
+  }
+  
+  .footprint-card {
+    padding: 12px;
+    border-radius: 10px;
+  }
+  
+  .delete-btn-tiny {
+    font-size: 12px;
+    padding: 2px;
+  }
+  
+  .footprint-card .text {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  
+  .footprint-footer {
+    font-size: 10px;
+  }
+  
+  .empty-state {
+    padding: 60px 15px;
+  }
+  
+  .empty-icon {
+    font-size: 40px;
+  }
+  
+  .init-btn {
+    font-size: 13px;
+    padding: 8px 20px;
+  }
 }
 </style>
