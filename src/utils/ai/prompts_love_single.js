@@ -89,10 +89,17 @@ ${recentMessages.slice(-5).map(m => `[ID:${m.id}] ${m.senderName}: ${m.content}`
 export function generateFootprintPrompt(charName, userName, userProfile, recentChats, todayFootprints) {
   const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
   const today = new Date().toLocaleDateString();
+  const now = new Date();
+  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
   
   return `${commonContext}
 【任务：记录今日角色足迹】
 为你自己 (${charName}) 的今天记录下 2-3 条动态，让 ${userName} 知道你在忙什么或想分享什么瞬间。
+
+【时间范围】
+- 从今天 00:00 到当前时间 (${currentTime})
+- 如果历史记录中已有足迹，则从最后一条足迹的时间继续往后添加
+- 以 15-30-60 分钟为间隔节点，不要过于密集
 
 【今日已发布足迹】
 ${todayFootprints.map(f => `${f.time}: ${f.content} (@${f.location})`).join('\n') || '（今日暂无足迹记录）'}
@@ -106,8 +113,9 @@ ${todayFootprints.map(f => `${f.time}: ${f.content} (@${f.location})`).join('\n'
 }]
 
 【专项要求】
-1. **真实感**：时间需在 00:00 到现在之间。
-2. **严禁任何 [表情包:xxx] 内容**。
+1. **时间逻辑**：新足迹的时间必须在 00:00~${currentTime} 之间，且如果已有足迹，要在最后一条时间之后
+2. **间隔合理**：每条足迹间隔 15-30-60 分钟，模拟真实生活动线
+3. **严禁任何 [表情包:xxx] 内容**。
 `;
 }
 
@@ -295,7 +303,7 @@ export function generateSchedulePrompt(charName, userName, userProfile, recentCh
   
   return `${commonContext}
 【任务：规划共同日程】
-为你们在空间里新增 2-3 条即将到来的计划或重要的个人动态。
+为你们在空间里新增 2-3 条即将到来的计划或重要的个人动态，工作安排、约会安排、出门安排等。
 
 【近期日程历史】
 ${recentSchedules.slice(-5).map(s => `${s.date} ${s.time}: ${s.title}`).join('\n') || '（暂无记录）'}
@@ -306,7 +314,7 @@ ${recentSchedules.slice(-5).map(s => `${s.date} ${s.time}: ${s.title}`).join('\n
   "date": "YYYY-MM-DD",
   "time": "HH:mm",
   "title": "充满期待的日程名称",
-  "description": "详细描写该日程背后的深意或两人的约定",
+  "description": "详细描写该日程背后的深意或两人的约定，不仅是恋爱日程，也可以是日常生活中的工作琐事",
   "eventType": "daily|romantic|special",
   "location": "地点",
   "mood": "happy|romantic|busy"
@@ -323,8 +331,8 @@ export function generateQuestionReplyPrompt(charName, userName, userProfile, rec
   
   return `${commonContext}
 【任务：回应 ${userName} 的灵魂提问回答】
-${userName} 刚刚回答了你提出的问题：“${questionData.text}”。
-TA 的回答是：“${questionData.userAnswer}”。
+${userName} 刚刚回答了你提出的问题："${questionData.text}"。
+TA 的回答是："${questionData.userAnswer}"。
 
 请你以 ${charName} 的身份，针对 TA 的回答进行深情、细腻且带有你独特人设风格的回应。
 
@@ -336,7 +344,79 @@ TA 的回答是：“${questionData.userAnswer}”。
 }]
 
 【专项要求】
-1. **情感共鸣**：不要只是说“好的”，要针对具体内容展开，像是一场灵魂的深度交谈。
+1. **情感共鸣**：不要只是说"好的"，要针对具体内容展开，像是一场灵魂的深度交谈。
+2. **严禁任何 [表情包:xxx] 内容**。
+`;
+}
+
+// ==================== 13. 书信评论 ====================
+export function generateLetterCommentPrompt(charName, userName, userProfile, recentChats, letterData) {
+  const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
+  
+  return `${commonContext}
+【任务：评论 ${userName} 的来信】
+${userName} 给你写了一封信《${letterData.title}》。
+信件内容："${letterData.content.substring(0, 200)}${letterData.content.length > 200 ? '...' : ''}"
+
+请你以 ${charName} 的身份，在信件下方写一条评论，表达你读后的感受。
+
+【输出格式】
+[LS_JSON: {
+  "type": "letterComment",
+  "letterId": ${letterData.id},
+  "content": "50-100 字的评论，要真诚地表达读后感受"
+}]
+
+【专项要求】
+1. **真情实感**：针对信件内容表达具体感受，不要泛泛而谈
+2. **严禁任何 [表情包:xxx] 内容**。
+`;
+}
+
+// ==================== 14. 相册评论 ====================
+export function generateAlbumCommentPrompt(charName, userName, userProfile, recentChats, photoData) {
+  const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
+  
+  return `${commonContext}
+【任务：评论 ${userName} 上传的照片】
+${userName} 上传了一张照片《${photoData.title}》。
+描述："${photoData.desc || '无'}"
+
+请你以 ${charName} 的身份，在照片下方写一条评论，表达你的感受或回忆。
+
+【输出格式】
+[LS_JSON: {
+  "type": "albumComment",
+  "photoId": ${photoData.id},
+  "content": "30-80 字的评论，可以是对照片的赞美、回忆或感受"
+}]
+
+【专项要求】
+1. **具体生动**：结合照片内容或描述，不要泛泛而谈
+2. **严禁任何 [表情包:xxx] 内容**。
+`;
+}
+
+// ==================== 15. 日记评论 ====================
+export function generateDiaryCommentPrompt(charName, userName, userProfile, recentChats, diaryData) {
+  const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
+  
+  return `${commonContext}
+【任务：评论 ${userName} 的日记】
+${userName} 写了一篇日记《${diaryData.title}》。
+日记内容："${diaryData.content.substring(0, 150)}${diaryData.content.length > 150 ? '...' : ''}"
+
+请你以 ${charName} 的身份，在日记下方写一条评论，表达你的共鸣或关心。
+
+【输出格式】
+[LS_JSON: {
+  "type": "diaryComment",
+  "diaryId": ${diaryData.id},
+  "content": "40-100 字的评论，表达共鸣、关心或想说的话"
+}]
+
+【专项要求】
+1. **温暖贴心**：像恋人之间的互动，表达理解和关心
 2. **严禁任何 [表情包:xxx] 内容**。
 `;
 }

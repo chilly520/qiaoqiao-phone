@@ -35,7 +35,8 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
   state: () => ({
     spaces: {}, // { [charId]: spaceData }
     currentPartnerId: null,
-    isLoaded: false
+    isLoaded: false,
+    isMagicGenerating: false // 全局生成状态
   }),
   
   getters: {
@@ -241,6 +242,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
     },
     
     async loadFromStorage() {
+      this.isMagicGenerating = false
       try {
         let data = await loveSpaceDB.getItem('all_spaces_v2')
         if (!data) {
@@ -453,6 +455,34 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       }
     },
 
+    async addAlbumComment(photoId, comment) {
+      if (!this.currentPartnerId) return
+      const photo = this.currentSpace.album.find(p => p.id === photoId)
+      if (photo) {
+        if (!photo.comments) photo.comments = []
+        photo.comments.push({
+          id: Date.now(),
+          ...comment,
+          createdAt: new Date().toISOString()
+        })
+        await this.saveToStorage()
+      }
+    },
+
+    async addDiaryComment(diaryId, comment) {
+      if (!this.currentPartnerId) return
+      const diary = this.currentSpace.diary.find(d => d.id === diaryId)
+      if (diary) {
+        if (!diary.comments) diary.comments = []
+        diary.comments.push({
+          id: Date.now(),
+          ...comment,
+          createdAt: new Date().toISOString()
+        })
+        await this.saveToStorage()
+      }
+    },
+
     async rollGacha(reward) {
       if (!this.currentPartnerId) return
       this.currentSpace.gachaHistory.unshift({
@@ -518,7 +548,17 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
     },
 
     async generateMagicContent(targetDate = null) {
-      if (!this.currentPartnerId) return
+      if (!this.currentPartnerId) {
+        console.warn('[LoveSpaceStore] generateMagicContent: No currentPartnerId')
+        return
+      }
+      if (this.isMagicGenerating) {
+        console.warn('[LoveSpaceStore] generateMagicContent: Already generating')
+        return
+      }
+      
+      console.log('[LoveSpaceStore] === Starting Magic Magic generation ===')
+      this.isMagicGenerating = true
       const charId = this.currentPartnerId
       
       const chatStore = (await import('./chatStore')).useChatStore()
@@ -585,16 +625,24 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
           console.log('[LoveSpaceStore] Calling executeSpaceCommands with result.content:', result.content.substring(0, 300))
           await this.executeSpaceCommands(result.content, chat.name, targetDate)
         }
-      } catch (err) {
-        console.error('[LoveSpaceStore] Magic generation failed', err)
-        chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
+      } finally {
+        this.isMagicGenerating = false
       }
     },
 
     // 单独生成某个功能
     async generateSingleFeature(featureType) {
-      if (!this.currentPartnerId) return
-      const charId = this.currentPartnerId
+      if (!this.currentPartnerId) {
+        console.warn('[LoveSpaceStore] generateSingleFeature: No currentPartnerId')
+        return
+      }
+      if (this.isMagicGenerating) {
+        console.warn('[LoveSpaceStore] generateSingleFeature: Already generating')
+        return
+      }
+      
+      console.log(`[LoveSpaceStore] === Starting generation for ${featureType} ===`)
+      this.isMagicGenerating = true
       
       const chatStore = (await import('./chatStore')).useChatStore()
       const settingsStore = (await import('./settingsStore')).useSettingsStore()
@@ -718,12 +766,13 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
 
         if (result.content) {
           console.log(`[LoveSpaceStore] Single feature ${featureType} generated:`, result.content.substring(0, 300))
-          // 移除 Toast，由 executeSpaceCommands 显示具体结果的 Toast
           await this.executeSpaceCommands(result.content, chat.name)
         }
       } catch (err) {
         console.error(`[LoveSpaceStore] Single feature ${featureType} generation failed`, err)
         chatStore.triggerToast('魔法施放失败，稍后再试一次吧~', 'error')
+      } finally {
+        this.isMagicGenerating = false
       }
     },
 
@@ -731,29 +780,20 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       if (!text) return
       const chatStore = (await import('./chatStore')).useChatStore()
       
-      console.log('[LoveSpaceStore] executeSpaceCommands called with text length:', text.length)
-      console.log('[LoveSpaceStore] Has [LS_JSON:?', text.includes('[LS_JSON:'))
-      console.log('[LoveSpaceStore] First 500 chars:', text.substring(0, 500))
-      
       const blocks = []
-      const startMarker = '[LS_JSON:'
-      const endMarker = ']'
+      const startMarkerRegex = /[\\[【]\s*LS_JSON[:：]?\s*/gi
       
-      let searchIdx = 0
-      while (true) {
-        const startIdx = text.indexOf(startMarker, searchIdx)
-        if (startIdx === -1) break
-        console.log('[LoveSpaceStore] Found [LS_JSON: at index:', startIdx)
+      let match
+      while ((match = startMarkerRegex.exec(text)) !== -1) {
+        const startIdx = match.index
+        const markerText = match[0]
+        console.log('[LoveSpaceStore] Found LS_JSON at index:', startIdx, 'marker:', markerText)
 
-        const contentStart = startIdx + startMarker.length
+        const contentStart = startIdx + markerText.length
         
         // Improved: Find the matching closing bracket for this specific [LS_JSON: block
-        // Instead of lastIndexOf, we look for the FIRST ] after contentStart, 
-        // but we must be careful if the JSON itself contains ] (unlikely for well-formatted JSON but possible in strings)
-        // More robust: find the end of the JSON block { ... } and the first ] after it.
         const firstBrace = text.indexOf('{', contentStart)
         if (firstBrace === -1) {
-          searchIdx = contentStart
           continue
         }
 
@@ -781,18 +821,44 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
         }
 
         if (jsonEndIdx === -1) {
-          // Fallback to last index if we couldn't find matching brace
-          const fallbackEnd = text.indexOf(endMarker, contentStart)
-          if (fallbackEnd === -1) break
-          jsonEndIdx = fallbackEnd - 1
+          // 容错处理：可能是 AI 输出中断（如返回桌面导致连接断开），尝试修复剩余文本
+          console.warn('[LoveSpaceStore] LS_JSON block appears unfinished, attempting repair...')
+          const remaining = text.substring(contentStart).trim();
+          if (remaining.startsWith('{')) {
+            let patched = remaining;
+            // 启发式修复：尝试闭合未完成的 JSON
+            for (let j = 0; j < 6; j++) {
+              try {
+                JSON.parse(patched);
+                blocks.push(patched);
+                jsonEndIdx = text.length; // 标记处理完毕
+                console.log('[LoveSpaceStore] Successfully repaired interrupted JSON');
+                break;
+              } catch(e) {
+                // 根据缺失情况补齐
+                const openB = (patched.match(/{/g) || []).length;
+                const closeB = (patched.match(/}/g) || []).length;
+                const openA = (patched.match(/\[/g) || []).length;
+                const closeA = (patched.match(/\]/g) || []).length;
+                
+                if (openB > closeB) patched += '}';
+                else if (openA > closeA) patched += ']';
+                else patched += '"}'; // 尝试闭合可能的字符串并结束对象
+              }
+            }
+          }
+          if (jsonEndIdx === -1) break; // 修复失败
         }
 
-        const nextBracket = text.indexOf(endMarker, jsonEndIdx)
-        const finalEndIdx = nextBracket !== -1 ? nextBracket : text.length
+        const afterJson = text.substring(jsonEndIdx)
+        const nextBracketMatch = afterJson.match(/[\]】]/)
+        const finalEndIdx = nextBracketMatch ? jsonEndIdx + nextBracketMatch.index : text.length
 
         const rawBlock = text.substring(contentStart, finalEndIdx).trim()
         blocks.push(rawBlock)
-        searchIdx = finalEndIdx + 1
+        
+        // Update regex lastIndex to continue after this block
+        startMarkerRegex.lastIndex = finalEndIdx
       }
       
       // AI 容错：如果没有找到 [LS_JSON: 标记，但内容看起来是完整的 JSON，也进行尝试
@@ -948,6 +1014,21 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
               }
             } else if (type === 'answer') {
               if (cmd.qId) await this.answerQuestion(cmd.qId, cmd.content, false)
+            } else if (type === 'letterComment') {
+              if (cmd.letterId) {
+                await this.addLetterComment(cmd.letterId, { content: cmd.content, author: 'partner' })
+                chatStore.triggerToast('💬 评论已发布', 'success')
+              }
+            } else if (type === 'albumComment') {
+              if (cmd.photoId) {
+                await this.addAlbumComment(cmd.photoId, { content: cmd.content, author: 'partner' })
+                chatStore.triggerToast('💬 评论已发布', 'success')
+              }
+            } else if (type === 'diaryComment') {
+              if (cmd.diaryId) {
+                await this.addDiaryComment(cmd.diaryId, { content: cmd.content, author: 'partner' })
+                chatStore.triggerToast('💬 评论已发布', 'success')
+              }
             } else if (type === 'sticky') {
               await this.addSticky({ content: cmd.content || cmd.text, color: cmd.color, author: 'partner' })
               chatStore.triggerToast('📝 便利贴已生成', 'success')
