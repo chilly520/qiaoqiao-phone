@@ -70,6 +70,25 @@
                 <div v-if="entry.image" class="diary-image-wrapper">
                   <img :src="entry.image" class="diary-image">
                 </div>
+                
+                <!-- 评论区 -->
+                <div class="diary-comments">
+                  <div class="comment-count">
+                    <i class="fa-regular fa-comment-dots"></i> {{ entry.comments?.length || 0 }} 条互动
+                  </div>
+                  <div class="comment-list" v-if="entry.comments?.length">
+                    <div v-for="c in entry.comments" :key="c.id" class="comment-item">
+                      <span class="comment-author">{{ c.authorName }}:</span>
+                      <span class="comment-text">{{ c.text }}</span>
+                    </div>
+                  </div>
+                  <div class="comment-input-area">
+                    <input v-model="newComment" placeholder="给这篇日记留个言吧..." @keyup.enter="addComment">
+                    <button @click="addComment" :disabled="!newComment.trim()">
+                      <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                  </div>
+                </div>
               </div>
               
               <div class="page-number">- {{ index + 1 }} -</div>
@@ -115,12 +134,13 @@ const sortedDiary = computed(() => [...diary.value].sort((a, b) => new Date(a.cr
 const viewMode = ref('toc') // 'toc' 为目录视图, 'reading' 为阅读视图
 const showAddModal = ref(false)
 const newEntry = ref('')
-const currentPage = ref(0) 
+const currentPage = ref(0)
+const newComment = ref('') 
 
 const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg')
 const userName = computed(() => settingsStore.personalization.userProfile.name || '用户')
 
-const isGenerating = ref(false)
+const isGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 
 // 截断文本用于目录预览
 function truncateText(text, length) {
@@ -165,14 +185,13 @@ function prevPage() {
 
 async function generateMagic() {
   if (isGenerating.value) return
-  isGenerating.value = true
   try {
     const chatStore = (await import('@/stores/chatStore')).useChatStore()
+    chatStore.triggerToast('正在为你凝聚恋爱日记... ✨', 'info')
     await loveSpaceStore.generateSingleFeature('diary')
   } catch (e) {
     console.error('Magic generation failed', e)
   }
-  isGenerating.value = false
 }
 
 function getAvatar(entry) {
@@ -217,6 +236,19 @@ async function deleteDiary(id) {
   } else if (currentPage.value >= sortedDiary.value.length && currentPage.value > 0) {
     currentPage.value--
   }
+}
+
+async function addComment() {
+  const entry = sortedDiary.value[currentPage.value]
+  if (!newComment.value.trim() || !entry) return
+  
+  await loveSpaceStore.addDiaryComment(entry.id, {
+    authorId: 'user',
+    authorName: userName.value,
+    text: newComment.value
+  })
+  
+  newComment.value = ''
 }
 </script>
 
@@ -476,6 +508,84 @@ h2 {
 
 .diary-image {
   width: 100%; max-height: 200px; object-fit: cover; display: block;
+}
+
+/* 评论区样式 */
+.diary-comments {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px dashed #e8dcc8;
+}
+
+.comment-count {
+  font-size: 12px;
+  color: #a67c52;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.comment-list {
+  margin-bottom: 15px;
+}
+
+.comment-item {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.comment-author {
+  color: #8b7355;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.comment-text {
+  color: #4a4036;
+}
+
+.comment-input-area {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.comment-input-area input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e8dcc8;
+  border-radius: 20px;
+  font-size: 13px;
+  background: white;
+  outline: none;
+}
+
+.comment-input-area input:focus {
+  border-color: #ff6b9d;
+}
+
+.comment-input-area button {
+  padding: 8px 16px;
+  background: #ff6b9d;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.comment-input-area button:hover {
+  background: #ff528a;
+  transform: scale(1.05);
+}
+
+.comment-input-area button:disabled {
+  background: #e8dcc8;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .empty-state {
