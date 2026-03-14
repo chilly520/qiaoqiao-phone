@@ -346,13 +346,11 @@ h2 {
   position: relative;
   animation: fadeInText 2s ease-out;
   text-shadow: 1px 1px 2px rgba(166, 124, 82, 0.15);
-  text-indent: 2em; /* 首行缩进 */
 }
 
 /* 段落间距 */
 .body-text p {
   margin: 1em 0;
-  text-indent: 2em;
 }
 
 /* 信纸 1、2、3 (索引 0、1、2) 是深色背景，使用白色文字 - 提高优先级 */
@@ -659,6 +657,7 @@ h2 {
   border: none;
   width: 40px;
   height: 40px;
+  min-width: 40px; /* 防止被挤压 */
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -785,6 +784,7 @@ h2 {
   .comment-input-area button {
     width: 36px;
     height: 36px;
+    min-width: 36px; /* 防止在手机端被挤压 */
     font-size: 14px;
     flex-shrink: 0;
   }
