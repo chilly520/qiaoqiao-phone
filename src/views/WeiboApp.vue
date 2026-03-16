@@ -448,8 +448,7 @@ function deleteComment(postId, commentIndex) {
   }
 }
 
-// --- AI Generator Logic ---
-import { generateReply } from '../utils/aiService'
+// --- AI Generator Logic (Using Store Methods) ---
 
 async function handleGenerateEffect(targetPostId = null) {
   if (weiboStore.posts.length === 0) return chatStore.triggerToast('先发一条微博吧！', 'warning')
@@ -467,40 +466,7 @@ async function handleGenerateEffect(targetPostId = null) {
 
   try {
     // 1. Generate Content via AI
-    const prompt = `你现在是微博上的吃瓜网友。
-请阅读这条微博内容：“${targetPost.content}”
-请生成 3 条不同的网友评论。
-要求：
-1. 风格各异（有的搞笑，有的羡慕，有的吃瓜）。
-2. 口语化，可以使用颜文字。
-3. 每条评论一行。不要带序号。
-4. 不要包含任何解释性文字，只返回评论内容。`
-
-    const res = await generateReply(prompt, 'system') // Use system role to bypass specific persona
-    const comments = res.split('\n').filter(c => c.trim().length > 0)
-
-    // 2. Add Comments
-    comments.forEach(text => {
-      const randomUser = getRandomNetizen()
-      weiboStore.addComment(targetPost.id, {
-        author: randomUser.name,
-        avatar: randomUser.avatar,
-        content: text.trim(),
-        time: Date.now(),
-        likes: Math.floor(Math.random() * 20),
-        isVip: Math.random() > 0.8
-      })
-    })
-
-    // 3. Update Stats
-    if (targetPost.stats) {
-      targetPost.stats.comment += comments.length
-      targetPost.stats.like += Math.floor(Math.random() * 10) + 5
-    }
-
-    // Toast
-    chatStore.triggerToast(`已生成 ${comments.length} 条新互动！`, 'success')
-
+    await weiboStore.generateComments(targetPost.id, 3)
   } catch (e) {
     console.error(e)
     chatStore.triggerToast('生成神评失败，请稍后再试', 'error')
@@ -509,16 +475,31 @@ async function handleGenerateEffect(targetPostId = null) {
   }
 }
 
-const NETIZEN_NAMES = ['吃瓜少女', '熬夜冠军', '纯爱战士', '没睡醒的猫', '冲浪达人', '芋泥波波', '这里是XX', '某不知名网友', '热心市民']
-const NETIZEN_AVATARS = [
-  '/avatars/小猫举爪.jpg', '/avatars/小猫吃芒果.jpg', '/avatars/小猫吃草莓.jpg',
-  '/avatars/小猫喝茶.jpg', '/avatars/小猫坏笑.jpg', '/avatars/小猫开心.jpg'
-]
+async function handleGenerateHotSearch() {
+  const btnIcon = document.querySelector('.fa-fire-sparkles')
+  if (btnIcon) btnIcon.classList.add('fa-spin')
+  
+  try {
+    await weiboStore.generateHotSearch()
+  } catch (e) {
+    console.error(e)
+    chatStore.triggerToast('生成热搜失败，请稍后再试', 'error')
+  } finally {
+    if (btnIcon) btnIcon.classList.remove('fa-spin')
+  }
+}
 
-function getRandomNetizen() {
-  return {
-    name: NETIZEN_NAMES[Math.floor(Math.random() * NETIZEN_NAMES.length)],
-    avatar: NETIZEN_AVATARS[Math.floor(Math.random() * NETIZEN_AVATARS.length)]
+async function handleGenerateDM(dmName) {
+  const btnIcon = document.querySelector('.msg-generate-btn .fa-wand-magic')
+  if (btnIcon) btnIcon.classList.add('fa-spin')
+  
+  try {
+    await weiboStore.generateDM(dmName)
+  } catch (e) {
+    console.error(e)
+    chatStore.triggerToast('生成消息失败，请稍后再试', 'error')
+  } finally {
+    if (btnIcon) btnIcon.classList.remove('fa-spin')
   }
 }
 
@@ -769,7 +750,7 @@ function getRandomNetizen() {
         <div class="header-top">
           <div style="width: 60px;"></div>
           <div class="header-title">热搜广场</div>
-          <button class="ai-header-btn">
+          <button class="ai-header-btn" @click="handleGenerateHotSearch">
             <i class="fa-solid fa-fire-sparkles"></i> AI热议
           </button>
         </div>
@@ -931,7 +912,7 @@ function getRandomNetizen() {
         style="display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: white; border-bottom: 1px solid var(--wb-divider);">
         <div style="width: 80px;"></div>
         <div style="font-weight: bold;">消息</div>
-        <button class="ai-header-btn">
+        <button class="ai-header-btn msg-generate-btn" @click="handleGenerateDM('系统通知')">
           <i class="fa-solid fa-wand-magic"></i> 生成回复
         </button>
       </header>

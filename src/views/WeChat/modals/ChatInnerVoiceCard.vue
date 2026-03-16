@@ -120,8 +120,9 @@
                             <div class="heart-rate-grid"></div>
                             <div class="heart-rate-ecg-line"></div>
                             <div class="heart-rate-wave">
-                                <svg viewBox="0 0 800 60" preserveAspectRatio="none" :style="waveAnimationStyle">
+                                <svg viewBox="0 0 1600 60" preserveAspectRatio="none" :style="waveAnimationStyle">
                                     <path :d="ecgPath" />
+                                    <path :d="ecgPath" transform="translate(800, 0)" />
                                 </svg>
                             </div>
                         </div>
@@ -424,10 +425,12 @@ const ecgPath = computed(() => {
 // 波形动画样式 - 使用计算属性缓存
 const waveAnimationStyle = computed(() => {
     const hr = currentHeartRate.value
-    // 60bpm = 2s, 120bpm = 1s - 与心跳周期同步
-    const duration = 60 / hr * 2  // 2个心跳周期的时间
+    // 逻辑：每幅 800 单位的画面包含全周期心跳，移动 50%（即 800 单位）实现无缝循环
+    // 速度：心率越高，滚动越快。60bpm 时每 2 秒滚动一周期，120bpm 时每 1 秒滚动一周期
+    const duration = 60 / hr * 2 
     return {
-        animation: `waveScroll ${duration}s linear infinite`
+        animation: `waveScroll ${duration}s linear infinite`,
+        width: '200%' // 确保 SVG 宽度足以容纳两份路径
     }
 })
 
@@ -449,8 +452,8 @@ const startHeartRateAnimation = () => {
     // 根据心率计算更新频率：心率越高，跳动越快
     const getInterval = () => {
         const hr = currentHeartRate.value
-        // 60bpm = 1000ms, 120bpm = 500ms
-        return Math.max(400, Math.min(1000, 1000 - (hr - 60) * 8))
+        // 60bpm = 1000ms, 120bpm = 500ms, 180bpm = 333ms
+        return Math.max(300, Math.min(1000, 60000 / hr))
     }
     
     updateHeartRate()
@@ -649,8 +652,7 @@ const getECGPath = (hr) => {
     if (!hr) hr = 75
     
     // 根据心率计算幅度系数：心率越高，心跳越有力，幅度越大
-    // 60bpm = 0.8倍, 100bpm = 1.0倍, 140bpm = 1.3倍
-    const amplitudeScale = 0.8 + ((hr - 60) / 80) * 0.5
+    const amplitudeScale = 0.7 + ((hr - 60) / 100) * 0.4
     
     // 生成心电图路径：P 波 -QRS 波群-T 波
     const pathParts = []
@@ -658,9 +660,9 @@ const getECGPath = (hr) => {
     const height = 60
     const centerY = height / 2
     
-    // 生成更多心跳周期来填满 200% 宽度的 SVG
-    // 心率越高，显示的心跳周期越多，但每个周期宽度越小
-    const beats = Math.max(3, Math.min(6, Math.floor(180 / hr) + 2))
+    // 密度优化：心率越高，显示的跳动周期越多
+    // 60bpm 约 3 个周期, 120bpm 约 6 个周期
+    const beats = Math.max(3, Math.min(8, Math.floor(hr / 20)))
     const beatWidth = width / beats
     
     for (let b = 0; b < beats; b++) {
@@ -670,10 +672,10 @@ const getECGPath = (hr) => {
         let currentX = startX
         pathParts.push(`${b === 0 ? 'M' : 'L'} ${currentX} ${centerY}`)
         
-        // P 波（心房收缩）- 小幅度上升，幅度随心率变化
+        // P 波（心房收缩）
         const p1 = startX + beatWidth * 0.1
         const p2 = startX + beatWidth * 0.15
-        const pHeight = 8 * amplitudeScale
+        const pHeight = 6 * amplitudeScale
         pathParts.push(`Q ${p1} ${centerY - pHeight} ${p2} ${centerY}`)
         
         // P-R 段
@@ -681,29 +683,30 @@ const getECGPath = (hr) => {
         pathParts.push(`L ${pr} ${centerY}`)
         
         // QRS 波群
-        // Q 波 - 小幅下降
+        // Q 波
         const q = startX + beatWidth * 0.25
-        const qDepth = 5 * amplitudeScale
+        const qDepth = 4 * amplitudeScale
         pathParts.push(`L ${q} ${centerY + qDepth}`)
         
-        // R 波 - 急剧上升（最高峰），幅度随心率显著变化
+        // R 波 - 急剧上升（最高峰）
+        // 限制最高点在 centerY - 25 以内，防止切顶
         const r = startX + beatWidth * 0.3
-        const rHeight = (25 + Math.random() * 5) * amplitudeScale  // 添加轻微随机变化 + 心率幅度
+        const rHeight = Math.min(26, (18 + Math.random() * 4) * amplitudeScale)
         pathParts.push(`L ${r} ${centerY - rHeight}`)
         
-        // S 波 - 急剧下降
+        // S 波
         const s = startX + beatWidth * 0.35
-        const sDepth = 8 * amplitudeScale
+        const sDepth = 6 * amplitudeScale
         pathParts.push(`L ${s} ${centerY + sDepth}`)
         
         // S-T 段
         const st = startX + beatWidth * 0.45
         pathParts.push(`L ${st} ${centerY}`)
         
-        // T 波（心室复极化）- 中等幅度上升
+        // T 波
         const t1 = startX + beatWidth * 0.55
         const t2 = startX + beatWidth * 0.65
-        const tHeight = 12 * amplitudeScale
+        const tHeight = 10 * amplitudeScale
         pathParts.push(`Q ${t1} ${centerY - tHeight} ${t2} ${centerY}`)
         
         // 等电位线到下一个周期
@@ -1268,19 +1271,16 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 .heart-rate-container.hr-excited .heart-rate-wave svg path {
     stroke: #ff6b6b;
     filter: drop-shadow(0 0 8px rgba(255, 107, 107, 0.9));
-    animation-duration: 1s;
 }
 
 .heart-rate-container.hr-extreme .heart-rate-wave svg path {
     stroke: #ff0000;
     filter: drop-shadow(0 0 10px rgba(255, 0, 0, 1));
-    animation-duration: 0.5s;
 }
 
 .heart-rate-container.hr-low .heart-rate-wave svg path {
     stroke: #888;
     filter: drop-shadow(0 0 3px rgba(136, 136, 136, 0.5));
-    animation-duration: 4s;
 }
 
 .heart-rate-status {

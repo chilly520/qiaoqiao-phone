@@ -25,24 +25,25 @@ const fullContent = computed(() => {
   const content = props.content || ''
 
   const bootstrap = `
-    <style id="base-styles">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box !important;
+      }
       html, body {
         margin: 0 !important;
         padding: 12px !important; 
         border: 0 !important;
         width: 100% !important;
+        min-width: 280px !important;
         height: auto !important;
-        display: block !important; /* Fix narrow strip issue: verify block layout */
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
         box-sizing: border-box !important;
         overflow-wrap: break-word !important;
         word-wrap: break-word !important;
         background: transparent !important;
-        -webkit-tap-highlight-color: transparent;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      }
-      
-      html::-webkit-scrollbar, body::-webkit-scrollbar {
-        display: none !important;
       }
       
       * {

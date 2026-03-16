@@ -23,7 +23,7 @@
             <div class="flex-1 overflow-visible" @click="isMultiSelectMode ? $emit('toggle-select', msg.id) : null">
 
                 <!-- CASE 1: System / Recall Message -->
-                <div v-if="msg.type === 'system' || msg.role === 'system'"
+                <div v-if="(msg.type === 'system' || msg.role === 'system') && getCleanContent(msg.content)"
                     class="flex flex-col items-center my-2 w-full animate-fade-in"
                     @contextmenu.prevent="emitContextMenu">
                     <span class="text-[11px] px-3 py-1 rounded font-songti select-none transition-colors duration-300"
@@ -542,54 +542,13 @@
                             <MomentShareCard :data="msg.content" />
                         </div>
                         
-                        <!-- CASE: Generic Card (from [CARD] tag) -->
-                        <div v-else-if="msg.type === 'card'"
-                            class="max-w-[280px] rounded-2xl shadow-md overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in mt-1"
-                            :class="[
-                                msg.role === 'user' ? 'mr-1' : 'ml-1',
-                                isHtmlCardType ? 'bg-transparent border-0' : 'bg-white border-2 border-amber-300/50'
-                            ]"
+                        <!-- CASE: HTML Card (from [CARD] tag or type: html) -->
+                        <div v-else-if="(msg.type === 'card' || msg.type === 'html') && hasHtmlContent"
+                            class="w-full max-w-[280px] mt-1"
                             @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                            
-                            <!-- HTML Card Type (Render raw HTML) -->
-                            <div v-if="isHtmlCardType" 
-                                class="w-full"
-                                @click.stop>
-                                <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
-                            </div>
-                            
-                            <!-- Simple Card Type (Title + Content) -->
-                            <div v-else
-                                class="bg-white rounded-2xl overflow-hidden">
-                                <!-- Header -->
-                                <div class="px-4 py-2.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 flex items-center justify-between relative overflow-hidden">
-                                    <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer"></div>
-                                    <div class="flex items-center gap-1.5 text-white shadow-sm relative z-10">
-                                        <i class="fa-solid fa-star text-[13px]"></i>
-                                        <span class="text-[11px] font-bold tracking-widest drop-shadow-sm">{{ getCardTitle(msg.content) }}</span>
-                                    </div>
-                                    <div class="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center relative z-10">
-                                        <i class="fa-solid fa-gift text-white text-[10px]"></i>
-                                    </div>
-                                </div>
-                                
-                                <!-- Content -->
-                                <div class="p-4 flex flex-col gap-2 relative overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50">
-                                    <div class="absolute -right-4 -bottom-4 text-[60px] text-amber-200 opacity-20 pointer-events-none">
-                                        <i class="fa-solid fa-star"></i>
-                                    </div>
-                                    <div class="text-[15px] font-black text-slate-800 line-clamp-2 leading-snug drop-shadow-sm">
-                                        {{ getCardTitle(msg.content) }}
-                                    </div>
-                                    <div class="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-amber-100 shadow-inner">
-                                        <div class="text-[13px] text-slate-700 leading-relaxed line-clamp-4">
-                                            {{ getCardContent(msg.content) }}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                         </div>
                         
                         <!-- CASE: Forum Share Card -->
@@ -785,58 +744,73 @@
                         </div>
 
                         <!-- CASE: Dice Result Card -->
-                        <div v-else-if="msg.diceResults" class="flex flex-col gap-2 w-[280px]"
-                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
-                            <div class="w-full bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100 p-3 rounded-2xl shadow-sm border border-white/50 text-center relative overflow-hidden"
-                                @contextmenu.prevent="emitContextMenu"
-                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                        <div v-else-if="isDiceMsg" class="flex flex-col gap-2 w-[280px] mb-2"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'"
+                            @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            
+                            <!-- Premium Dice Card -->
+                            <div class="w-full p-3 rounded-2xl shadow-lg border relative overflow-hidden transition-all duration-300 hover:shadow-xl"
+                                :class="msg.role === 'user' 
+                                    ? 'bg-gradient-to-br from-purple-50 to-white border-purple-200' 
+                                    : 'bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100 border-white/50'">
 
-                                <!-- 装饰星星 -->
-                                <div class="absolute top-2 left-2 text-yellow-400 text-xs animate-twinkle z-0">✨</div>
-                                <div class="absolute top-3 right-3 text-purple-400 text-xs animate-twinkle z-0"
-                                    style="animation-delay: 0.5s">⭐
-                                </div>
-                                <div class="absolute bottom-2 left-3 text-pink-400 text-xs animate-twinkle z-0"
-                                    style="animation-delay: 1s">✨
-                                </div>
+                                <!-- Decorative Stars (Only for AI/Premium look) -->
+                                <template v-if="msg.role !== 'user'">
+                                    <div class="absolute top-2 left-2 text-yellow-400 text-xs animate-twinkle z-0">✨</div>
+                                    <div class="absolute top-3 right-3 text-purple-400 text-xs animate-twinkle z-0" style="animation-delay: 0.5s">⭐</div>
+                                    <div class="absolute bottom-2 left-3 text-pink-400 text-xs animate-twinkle z-0" style="animation-delay: 1s">✨</div>
+                                </template>
 
-                                <div class="bg-white/90 backdrop-blur-sm rounded-xl p-4 relative z-10">
+                                <div class="bg-white/80 backdrop-blur-sm rounded-xl p-4 relative z-10 border border-white/40">
                                     <div class="flex items-center justify-between mb-3">
                                         <div class="flex items-center gap-2">
                                             <span class="text-xl">🎲</span>
-                                            <span class="text-sm font-bold text-purple-600">摇骰子</span>
+                                            <span class="text-sm font-bold" :class="msg.role === 'user' ? 'text-purple-600' : 'text-purple-700'">摇骰子</span>
                                         </div>
-                                        <span v-if="msg.diceResults.every(r => r === msg.diceResults[0])"
-                                            class="text-xs bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">豹子!</span>
-                                        <span v-else-if="msg.diceTotal >= msg.diceCount * 6 * 0.8"
-                                            class="text-xs bg-gradient-to-r from-purple-400 to-pink-400 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">大吉!</span>
-                                        <span v-else-if="msg.diceTotal <= msg.diceCount * 2"
-                                            class="text-xs bg-gradient-to-r from-blue-400 to-blue-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">加油!</span>
+                                        <div class="flex gap-1">
+                                            <span v-if="diceResultsValue.length > 1 && diceResultsValue.every(r => r === diceResultsValue[0])"
+                                                class="text-[10px] bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-2 py-0.5 rounded-full font-bold animate-pulse shadow-sm">豹子!</span>
+                                            <span v-else-if="diceTotalValue >= diceCountValue * 6 * 0.8"
+                                                class="text-[10px] bg-gradient-to-r from-purple-400 to-pink-400 text-white px-2 py-0.5 rounded-full font-bold animate-pulse shadow-sm">大吉!</span>
+                                            <span v-else-if="diceTotalValue <= diceCountValue * 2"
+                                                class="text-[10px] bg-gradient-to-r from-blue-400 to-blue-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse shadow-sm">加油!</span>
+                                        </div>
                                     </div>
 
-                                    <!-- 骰子结果展示 -->
-                                    <div class="flex justify-center gap-2 mb-3">
-                                        <div v-for="(r, i) in msg.diceResults" :key="i"
-                                            class="w-14 h-14 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-md flex items-center justify-center border-2 border-purple-200 dice-msg-dice"
+                                    <!-- Dice Visuals -->
+                                    <div class="flex justify-center flex-wrap gap-2 mb-4">
+                                        <div v-for="(r, i) in diceResultsValue" :key="i"
+                                            class="w-14 h-14 rounded-2xl shadow-sm flex items-center justify-center border-2 transition-all hover:scale-110 active:scale-95 duration-300"
+                                            :class="msg.role === 'user' 
+                                                ? 'bg-white border-purple-200' 
+                                                : 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-100'"
                                             :style="{ animationDelay: (i * 100) + 'ms' }">
-                                            <i class="fa-solid text-purple-600 drop-shadow-sm text-4xl"
-                                                :class="'fa-dice-' + ['one', 'two', 'three', 'four', 'five', 'six'][r - 1]">
+                                            <i class="fa-solid text-4xl drop-shadow-sm dice-msg-dice"
+                                                :class="[
+                                                    'fa-dice-' + ['one', 'two', 'three', 'four', 'five', 'six'][r - 1],
+                                                    msg.role === 'user' ? 'text-purple-500' : 'text-purple-600'
+                                                ]">
                                             </i>
                                         </div>
                                     </div>
 
-                                    <!-- 分数展示 -->
-                                    <div
-                                        class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-3 border border-purple-100">
-                                        <div class="flex items-center justify-center gap-2">
-                                            <span class="text-sm text-gray-600">合计点数</span>
-                                            <span class="text-3xl font-bold text-purple-600">{{ msg.diceTotal }}</span>
-                                            <span class="text-xs text-gray-400">/ {{ msg.diceCount * 6 }}</span>
+                                    <!-- Score Display -->
+                                    <div class="bg-gray-50/50 rounded-xl p-3 border border-gray-100 flex flex-col items-center">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xs text-gray-500">合计点数</span>
+                                            <span class="text-3xl font-black italic tracking-tighter" 
+                                                :class="msg.role === 'user' ? 'text-purple-600' : 'text-purple-700'">
+                                                {{ diceTotalValue }}
+                                            </span>
+                                            <span class="text-[10px] text-gray-400 font-mono">/ {{ diceCountValue * 6 }}</span>
                                         </div>
-                                        <div class="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                            <div class="h-full bg-gradient-to-r from-purple-400 to-pink-400 rounded-full transition-all duration-1000"
-                                                :style="{ width: ((msg.diceTotal / (msg.diceCount * 6)) * 100) + '%' }">
+                                        <!-- Progress Bar -->
+                                        <div class="w-full h-1.5 bg-gray-200/50 rounded-full overflow-hidden shadow-inner">
+                                            <div class="h-full rounded-full transition-all duration-1000 ease-out"
+                                                :class="msg.role === 'user' ? 'bg-purple-500' : 'bg-gradient-to-r from-purple-400 to-pink-400'"
+                                                :style="{ width: ((diceTotalValue / (diceCountValue * 6)) * 100) + '%' }">
                                             </div>
                                         </div>
                                     </div>
@@ -1024,7 +998,8 @@
 
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
                             <!-- Show bubble if there's cleaned content and not a family card. -->
-                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard" @contextmenu.prevent="emitContextMenu"
+                            <!-- Added check for isDiceMsg to prevent double rendering/bubble background for dice rolls -->
+                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !msg.tarotCards" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -1190,7 +1165,7 @@
 
                             <!-- 3. HTML Card Layer -->
                             <div v-if="shouldRenderCard && hasHtmlContent"
-                                class="mt-1 transition-all relative z-10 w-auto" @contextmenu.prevent="emitContextMenu"
+                                class="mt-1 transition-all relative z-10 w-full min-w-[280px] max-w-full overflow-hidden" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 @message="handleIframeMessage">
@@ -1478,8 +1453,46 @@ const isPayCard = computed(() => {
 
 const cleanedContent = computed(() => getCleanContent(props.msg.content, isHtmlCard.value))
 
+const isDiceMsg = computed(() => {
+    if (props.msg.diceResults) return true
+    if (props.msg.type === 'dice_result') return true
+    // Explicitly check for [摇骰子] or [掷骰子] tags in text
+    const content = ensureString(props.msg.content)
+    return /[\[【](?:摇骰子|掷骰子|DICE)[:：]?\s*(\d+)?[\]】]/i.test(content)
+})
+
+const isValidDiceRollCommand = computed(() => {
+    if (props.msg.diceResults) return false
+    const content = ensureString(props.msg.content)
+    return /[\[【](?:摇骰子|掷骰子|DICE)[:：]?\s*(\d+)?[\]】]/i.test(content)
+})
+
 const formattedTime = computed(() => {
     return formatTime(props.msg.timestamp)
+})
+
+const diceCountValue = computed(() => {
+    if (props.msg.diceCount) return props.msg.diceCount;
+    const content = ensureString(props.msg.content);
+    const match = content.match(/[\[【](?:摇骰子|掷骰子|DICE)[:：]?\s*(\d+)?[\]】]/i);
+    return match && match[1] ? parseInt(match[1]) : 1;
+})
+
+const diceResultsValue = computed(() => {
+    if (props.msg.diceResults && Array.isArray(props.msg.diceResults) && props.msg.diceResults.length > 0) {
+        return props.msg.diceResults;
+    }
+    // Fallback: Generate random results if missing
+    const results = [];
+    for (let i = 0; i < diceCountValue.value; i++) {
+        results.push(Math.floor(Math.random() * 6) + 1);
+    }
+    return results;
+})
+
+const diceTotalValue = computed(() => {
+    if (props.msg.diceTotal != null && props.msg.diceTotal > 0) return props.msg.diceTotal;
+    return diceResultsValue.value.reduce((a, b) => a + b, 0);
 })
 
 const hasHtmlContent = computed(() => {
@@ -1497,41 +1510,24 @@ const isValidMessage = computed(() => {
         return clean && clean.length > 0
     }
 
-    // 2. Card & Media Checks
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share') return true;
-    if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg)) return true
+    // 2. Card & Media Checks - 先检查卡片/媒体消息，这些消息应该显示
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value) {
+        // 如果虽然被判定为 HTML 卡片，但其实没有提取出任何有效内容，直接隐藏防止空气泡
+        if (shouldRenderCard.value && !hasHtmlContent.value) return false;
+        return true;
+    }
+    if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg) || props.msg.diceResults) return true
 
-    // 3. Text Content Filtering
+    // 3. Text Content Filtering - 只有非卡片/媒体消息才检查内容是否为空
     const content = ensureString(props.msg.content).trim()
     const clean = getCleanContent(content)
 
-    // If the displayed content is empty...
+    // If the displayed content is empty, hide the message (except for HTML cards already handled above)
     if (!clean || clean.length === 0) {
-        // ...and it looks like a protocol/metadata object, HIDE IT.
-        if (content.startsWith('{') && (
-            content.includes('"status"') ||
-            content.includes('"mind"') ||
-            content.includes('"着装"') ||
-            content.includes('"心声"') ||
-            content.includes('"mood"') ||
-            content.includes('"heartRate"') ||
-            content.includes('"stats"')
-        )) {
-            return false
-        }
-
-        // Hide BIO updates
-        if (content.match(/^\[(?:UPDATE_)?BIO:/i)) return false
-
-        // Hide heartRate text format (心率数据清理后为空)
-        if (/heartRate\s*[:：]/i.test(content)) return false
-        if (/心率\s*[:：]/i.test(content)) return false
-        
-        // Hide messages that only contain INNER_VOICE tags
-        if (/\[INNER_VOICE\]/i.test(content)) return false
+        return false
     }
 
-    // Default: Show (render the placeholder if empty, to allow debug/delete)
+    // Default: Show
     return true
 })
 
@@ -1783,56 +1779,6 @@ const cardData = computed(() => {
 })
 
 // Check if card contains HTML content
-const isHtmlCardType = computed(() => {
-    // Check card data first
-    if (cardData.value?.type === 'html' || !!cardData.value?.html) return true
-    
-    // Check for raw HTML content in message
-    const content = ensureString(props.msg.content)
-    if (props.msg.type === 'html') return true
-    if (/<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(content)) return true
-    if (/<div\s+/i.test(content) && content.includes('</div>')) return true
-    if (/<table\s+/i.test(content) && content.includes('</table>')) return true
-    if (/<style\s*/i.test(content)) return true
-    
-    return false
-})
-
-const getCardTitle = (content) => {
-    const data = typeof content === 'string' ? cardData.value : content
-    if (!data) {
-        // Try to extract title from raw HTML
-        const htmlContent = ensureString(props.msg.content)
-        const titleMatch = htmlContent.match(/<title>([^<]*)<\/title>/i) || 
-                          htmlContent.match(/<h[1-6][^>]*>([^<]*)<\/h[1-6]>/i) ||
-                          htmlContent.match(/<div[^>]*>([^<]{2,20})<\/div>/i)
-        if (titleMatch) return titleMatch[1].trim()
-        return 'HTML卡片'
-    }
-    // If it's an HTML card, try to extract title from HTML or use default
-    if (data.type === 'html') {
-        return data.title || data.name || '特别卡片'
-    }
-    return data.title || data.name || '特别卡片'
-}
-
-const getCardContent = (content) => {
-    const data = typeof content === 'string' ? cardData.value : content
-    if (!data) {
-        // For raw HTML, return empty string so it doesn't show text content
-        const htmlContent = ensureString(props.msg.content)
-        if (/<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(htmlContent) ||
-            /<div\s+/i.test(htmlContent) ||
-            /<table\s+/i.test(htmlContent)) {
-            return ''
-        }
-        return htmlContent
-    }
-    // If it's an HTML card, don't show content in text format
-    if (data.type === 'html') return ''
-    return data.content || data.desc || data.description || data.text || ''
-}
-
 const musicInfo = computed(() => {
     if (props.msg.type !== 'music') return ''
     const content = ensureString(props.msg.content)
@@ -1951,27 +1897,27 @@ function getCleanContent(contentRaw, isCard = false) {
 
     let clean = content;
     
-    // ✅ 如果是 HTML 卡片 JSON 格式，直接返回空字符串
-    if ((clean.includes('"type"') && clean.includes('"html"')) || 
-        (clean.includes('"html"') && clean.includes('{') && clean.includes('}')) ||
-        clean.includes('[CARD]')) {
+    // 1. 兼容不带双引号的异常 JSON 心声 (修复空气泡的关键)
+    const isHtmlCardJson = /"type"\s*:\s*"html"/.test(clean) && /"html"\s*:/.test(clean);
+    const isInnerVoiceJson = /"(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)"/.test(clean) ||
+                             /\{\s*(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)\s*[:：]/i.test(clean);
+    
+    if (isHtmlCardJson && !isInnerVoiceJson) {
         return '';
     }
     
-    // ✅ 修复：移除【系统提示】前缀的显示，只在后台日志中使用
+    if (isInnerVoiceJson && !isHtmlCardJson) {
+        return '';
+    }
+    
     clean = clean.replace(/^\s*【系统提示】\s*/g, '');
     
-    // 处理 INNER_VOICE 标签（有结束标签的情况）
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
-    
-    // 处理 INNER_VOICE 标签（没有结束标签的情况）- 匹配到 JSON 对象结束为止
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\n\}[ \t]*\n/gi, '\n');
-    
-    // 清理残留的标签
-    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); 
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '');
+    // 2. 彻底处理 INNER_VOICE 标签（无视是否闭合，直接向后清除）
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, '');
+    // 清理可能残留的结束标签
+    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
 
-    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间)[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
@@ -2055,79 +2001,198 @@ function getPureHtml(content) {
     const str = ensureString(content)
     let trimmed = str.trim()
 
-    // Helper to unescape typical string escapes into actual characters
     const unescapeContent = (text) => {
         if (!text || typeof text !== 'string') return text;
+        
+        // Pass 0: Robust Detection of Fragmented JSON
+        // If the content looks like series of {"type":"html"...} or similar, use recursive extraction
+        if ((text.includes('{"type"') || text.includes('{\"type\"')) && text.includes('"html"')) {
+            console.log('[getPureHtml] Detected fragmented/nested JSON in HTML content, executing extraction...');
+            try {
+                // Try to find all JSON-like objects { ... } in the text
+                let segments = [];
+                let braceDepth = 0;
+                let startPos = -1;
+                
+                for (let i = 0; i < text.length; i++) {
+                    if (text[i] === '{') {
+                        if (braceDepth === 0) startPos = i;
+                        braceDepth++;
+                    } else if (text[i] === '}') {
+                        braceDepth--;
+                        if (braceDepth === 0 && startPos !== -1) {
+                            const segment = text.substring(startPos, i + 1);
+                            try {
+                                // Double unescape for potential double-wrapped AI outputs
+                                const cleanSeg = segment.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                                const parsed = JSON.parse(cleanSeg);
+                                if (parsed.html || parsed.content) {
+                                    segments.push(parsed.html || parsed.content);
+                                }
+                            } catch (e) {
+                                // Not a valid JSON, skip
+                            }
+                        }
+                    }
+                }
+                
+                if (segments.length > 0) {
+                    // Recursive call to handle nested layers
+                    return segments.map(s => unescapeContent(s)).join('');
+                }
+            } catch (err) { }
+        }
+
         return text
-            .replace(/\\n/g, '\n')
+            .replace(/\\\\n/g, '\n')  // 处理 \\\\n → 换行
+            .replace(/\\\\r/g, '\r')
+            .replace(/\\\\t/g, '\t')
+            .replace(/\\\\"/g, '"')
+            .replace(/\\\\/g, '\\')   // 处理 \\\\ → \
+            .replace(/\\n/g, '\n')    // 处理 \\n → 换行
             .replace(/\\r/g, '\r')
             .replace(/\\t/g, '\t')
-            .replace(/\\"/g, '"')
-            .replace(/\\\\/g, '\\');
+            .replace(/\\"/g, '"');
     }
 
-    // Pass 0: Handle "Leaked" string-escaped JSON (e.g. \"{\\\"type\\\":\\\"html\\\",...}\")
-    if (trimmed.startsWith('\\"') && trimmed.endsWith('\\"')) {
+    // Pass 0: 处理 [CARD] 标签包裹的 JSON（带双重转义）
+    // 匹配 { 开头，中间包含 "type": "html" 或 "html":，且以 } 结尾的内容
+    const cardJsonMatch = trimmed.match(/^\{\s*(?:[\s\S]*?)"(?:type|html)"\s*:\s*(?:[\s\S]*?)\}$/);
+    if (cardJsonMatch) {
         try {
-            const unescapedOnce = trimmed.substring(2, trimmed.length - 2).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-            if (unescapedOnce.includes('"html"')) {
-                const parsed = JSON.parse(unescapedOnce);
-                if (parsed.html || parsed.content) return unescapeContent(parsed.html || parsed.content);
+            const jsonStr = cardJsonMatch[0].replace(/[\r\n]/g, '');
+            // 先处理双重转义
+            const unescaped = jsonStr
+                .replace(/\\"/g, '"')
+                .replace(/\\\\n/g, '\\n')
+                .replace(/\\\\/g, '\\');
+            const parsed = JSON.parse(unescaped);
+            if (parsed.html || parsed.content) {
+                return cleanHtmlResult(unescapeContent(parsed.html || parsed.content));
             }
         } catch (e) {}
     }
 
-    // 1. Unified Favorites Store Logic: Aggressive JSON cleanup
+    // Pass 1: 处理 "Leaked" 字符串转义 JSON（以 \\" 开头和结尾）
+    if (trimmed.startsWith('\\"') && trimmed.endsWith('\\"')) {
+        try {
+            const unescapedOnce = trimmed.substring(2, trimmed.length - 2)
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\');
+            if (unescapedOnce.includes('"html"')) {
+                const parsed = JSON.parse(unescapedOnce);
+                if (parsed.html || parsed.content) return cleanHtmlResult(unescapeContent(parsed.html || parsed.content));
+            }
+        } catch (e) {}
+    }
+
+    // Pass 2: 尝试标准 JSON 解析 (支持多 JSON 数组)
     try {
         let jsonStr = trimmed;
-        if (jsonStr.includes('[CARD]')) {
-            jsonStr = jsonStr.replace(/\[CARD\][\s\S]*?(\{|<)/i, '$1').trim();
-            jsonStr = jsonStr.replace(/\[\/CARD\]/gi, '').trim();
+        // 如果是连续的多个对象 } {，补齐为数组
+        if (jsonStr.match(/\}\s*\{/)) {
+            jsonStr = '[' + jsonStr.replace(/\}\s*\{/g, '},{') + ']';
         }
 
-        // Remove markdown backticks
-        jsonStr = jsonStr.replace(/```(?:html|json)?/gi, '').replace(/```/g, '').trim();
-
-        // Cleaning newlines that typically break JSON.parse
-        let cleanedJson = jsonStr.replace(/[\r\n]/g, '');
-        
-        // Handle double-escaped JSON
-        if (cleanedJson.includes('\\"')) {
+        if (jsonStr.startsWith('{') || jsonStr.startsWith('[')) {
+            let cleanedJson = jsonStr.replace(/[\r\n]/g, '');
+            if (cleanedJson.includes('\\"')) {
+                try {
+                    const unescaped = cleanedJson.replace(/\\"/g, '"');
+                    const parsed = JSON.parse(unescaped);
+                    if (Array.isArray(parsed)) {
+                        // 提取所有 HTML 片段并合并
+                        const htmlParts = parsed.map(p => cleanHtmlResult(unescapeContent(p.html || p.content))).filter(Boolean);
+                        if (htmlParts.length > 0) {
+                            // 如果有多个片段，尝试合并成一个完整的 HTML
+                            if (htmlParts.length > 1) {
+                                // 提取所有片段的内部内容，去掉外层的 <div> 标签
+                                const merged = htmlParts.map(part => {
+                                    const trimmedPart = part.trim();
+                                    // 如果是以 <div 开头的完整标签，提取内部内容
+                                    if (trimmedPart.startsWith('<div') && trimmedPart.endsWith('</div>')) {
+                                        const match = trimmedPart.match(/^<div[^>]*>([\s\S]*)<\/div>$/i);
+                                        return match ? match[1] : part;
+                                    }
+                                    return part;
+                                }).join('');
+                                return merged;
+                            }
+                            return htmlParts[0];
+                        }
+                    }
+                    if (parsed.type === 'html' || parsed.html) {
+                        const result = cleanHtmlResult(unescapeContent(parsed.html || parsed.content));
+                        if (result) return result;
+                    }
+                } catch (e) { }
+            }
             try {
-                const unescaped = cleanedJson.replace(/\\"/g, '"');
-                const parsed = JSON.parse(unescaped);
+                const parsed = JSON.parse(cleanedJson);
+                if (Array.isArray(parsed)) {
+                    // 提取所有 HTML 片段并合并
+                    const htmlParts = parsed.map(p => cleanHtmlResult(unescapeContent(p.html || p.content))).filter(Boolean);
+                    if (htmlParts.length > 0) {
+                        // 如果有多个片段，尝试合并成一个完整的 HTML
+                        if (htmlParts.length > 1) {
+                            // 提取所有片段的内部内容，去掉外层的 <div> 标签
+                            const merged = htmlParts.map(part => {
+                                const trimmedPart = part.trim();
+                                // 如果是以 <div 开头的完整标签，提取内部内容
+                                if (trimmedPart.startsWith('<div') && trimmedPart.endsWith('</div>')) {
+                                    const match = trimmedPart.match(/^<div[^>]*>([\s\S]*)<\/div>$/i);
+                                    return match ? match[1] : part;
+                                }
+                                return part;
+                            }).join('');
+                            return merged;
+                        }
+                        return htmlParts[0];
+                    }
+                }
                 if (parsed.type === 'html' || parsed.html) {
-                    return unescapeContent(parsed.html || parsed.content);
+                    const result = cleanHtmlResult(unescapeContent(parsed.html || parsed.content));
+                    if (result) return result;
                 }
             } catch (e) { }
         }
-
-        const parsed = JSON.parse(cleanedJson);
-        if (parsed.type === 'html' || parsed.html) {
-            return unescapeContent(parsed.html || parsed.content);
-        }
     } catch (e) { }
 
-    // 2. Regex Recovery: Greedy but bounded match
-    if (trimmed.includes('"type":') || trimmed.includes('"html":')) {
-        const htmlMatch = str.match(/"html"\s* : \s*(["'])([\s\S]*?)\1\s*(?:,|\}|\]|\n)/);
-        if (htmlMatch) {
-            const rawStr = htmlMatch[2];
-            try {
-                return JSON.parse(`"${rawStr}"`);
-            } catch (e) {
-                return unescapeContent(rawStr);
-            }
-        }
-    }
+    // Pass 3: 正则安全提取 html 键值
+    try {
+        let result = '';
+        let currentIndex = 0;
+        while (true) {
+            let keyIdx = trimmed.indexOf('"html"', currentIndex);
+            if (keyIdx === -1) keyIdx = trimmed.indexOf('"content"', currentIndex);
+            if (keyIdx === -1) break;
 
-    // 3. Raw Fallback: If it's pure HTML or contains markers
+            let colonIdx = trimmed.indexOf(':', keyIdx);
+            if (colonIdx === -1) break;
+
+            let quoteIdx = trimmed.indexOf('"', colonIdx);
+            if (quoteIdx === -1) break;
+
+            let endQuoteIdx = quoteIdx + 1;
+            while (endQuoteIdx < trimmed.length) {
+                if (trimmed[endQuoteIdx] === '"' && trimmed[endQuoteIdx - 1] !== '\\') break;
+                endQuoteIdx++;
+            }
+
+            if (endQuoteIdx < trimmed.length) {
+                let htmlContent = trimmed.substring(quoteIdx + 1, endQuoteIdx);
+                result += cleanHtmlResult(unescapeContent(htmlContent)) + '\n';
+            }
+            currentIndex = endQuoteIdx + 1;
+        }
+        if (result.trim().length > 0) return result.trim();
+    } catch (e) { }
+
+    // Pass 4: 终极 Fallback - 提取纯 HTML
     const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-    
-    // Check for common HTML tags
-    const htmlTags = ['<div', '<style', '<table', '<ul', '<ol', '<p', '<h1', '<h2', '<h3', '<h4', '<h5', '<h6', '<section', '<article', '<header', '<footer', '<nav', '<aside', '<main', '<details', '<summary'];
+    const htmlTags = ['<div', '<style', '<table', '<ul', '<ol', '<p', '<h1', '<h2', '<h3', '<section', '<article', '<svg'];
     let startIdx = -1;
-    
+
     for (const tag of htmlTags) {
         const idx = decoded.toLowerCase().indexOf(tag);
         if (idx !== -1 && (startIdx === -1 || idx < startIdx)) {
@@ -2136,14 +2201,33 @@ function getPureHtml(content) {
     }
 
     if (startIdx !== -1) {
-        // Find the last closing tag
         const endIdx = decoded.lastIndexOf('>');
         if (endIdx > startIdx) {
-            return unescapeContent(decoded.substring(startIdx, endIdx + 1));
+            return cleanHtmlResult(unescapeContent(decoded.substring(startIdx, endIdx + 1)));
         }
     }
 
-    return ''
+    return '';
+}
+
+// 最终清理：确保返回的 HTML 不包含 JSON 残留
+function cleanHtmlResult(html) {
+    if (!html) return '';
+    let result = html.trim();
+    
+    // 移除开头的 { 和 }（JSON 残留）
+    while (result.startsWith('{') || result.startsWith('}')) {
+        result = result.substring(1);
+    }
+    while (result.endsWith('}') || result.endsWith('{')) {
+        result = result.substring(0, result.length - 1);
+    }
+    
+    // 移除 "html": 或 "content": 前缀
+    result = result.replace(/^["']?html["']?\s*:\s*["']?/i, '');
+    result = result.replace(/^["']?content["']?\s*:\s*["']?/i, '');
+    
+    return result.trim();
 }
 
 const mixedText = computed(() => {
@@ -2452,35 +2536,10 @@ function formatMessageContent(msg) {
         .trim();
     
     // 1. Render dice_result type messages (system generated)
-    if (msg.type === 'dice_result') {
-        console.log('[Dice Debug Frontend] Rendering dice_result:', { diceCount: msg.diceCount, diceTotal: msg.diceTotal, diceResults: msg.diceResults });
-        const diceCount = msg.diceCount || 1;
-        const totalPoints = msg.diceTotal || 0;
-        
-        // Use FontAwesome dice icons: fa-dice-1 through fa-dice-6
-        const diceIcons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four', 'fa-dice-five', 'fa-dice-six'];
-        let diceDisplay = '';
-        // Use stored dice results or generate new ones
-        const diceResults = msg.diceResults || [];
-        for (let i = 0; i < diceCount; i++) {
-            const roll = diceResults[i] || (Math.floor(Math.random() * 6) + 1);
-            diceDisplay += `<i class="fa-solid ${diceIcons[roll - 1]} text-2xl mx-0.5 text-amber-500 animate-bounce"></i>`;
-        }
-        
-        const senderName = msg.senderName || '对方';
-        return `<div class="inline-flex flex-col items-center gap-3 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-5 py-4 my-2 select-none backdrop-blur-sm shadow-lg w-[280px] max-w-[90vw] min-h-[220px] justify-center">
-            <div class="flex items-center gap-2">
-                <i class="fa-solid fa-dice text-amber-500 text-[16px]"></i>
-                <span class="text-sm text-amber-700 font-bold">${senderName} 摇了 ${diceCount} 颗骰子</span>
-            </div>
-            <div class="flex items-center justify-center gap-2">
-                ${diceDisplay}
-            </div>
-            <div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-4 py-2">
-                <span class="text-sm text-amber-800 font-medium">合计点数</span>
-                <span class="text-xl font-bold text-amber-600">${totalPoints}</span>
-            </div>
-        </div>`;
+    // NOTE: Traditional dice cards are now rendered via template logic for better role-based styling.
+    // This block is kept as a last-resort fallback but ideally won't be hit for dice rolls.
+    if (msg.type === 'dice_result' && !props.msg.diceResults) {
+        console.log('[Dice Debug] Using fallback formattedContent for dice_result...');
     }
     
     // 2. Render dice roll command directly (for AI sent [摇骰子] or [掷骰子])
