@@ -544,7 +544,7 @@ const clearChats = () => {
 <style scoped>
 /* Custom Slider Style to match screenshot 'gold/beige' thumb if possible, otherwise default */
 input[type=range] {
-    @apply accent-[#E5E7EB];
+    accent-color: #E5E7EB;
     /* Gray track feel */
 }
 
