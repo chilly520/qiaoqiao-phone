@@ -1024,7 +1024,7 @@
 
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
                             <!-- Show bubble if there's cleaned content and not a family card. -->
-                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject" @contextmenu.prevent="emitContextMenu"
+                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
@@ -1950,6 +1950,13 @@ function getCleanContent(contentRaw, isCard = false) {
     }
 
     let clean = content;
+    
+    // ✅ 如果是 HTML 卡片 JSON 格式，直接返回空字符串
+    if ((clean.includes('"type"') && clean.includes('"html"')) || 
+        (clean.includes('"html"') && clean.includes('{') && clean.includes('}')) ||
+        clean.includes('[CARD]')) {
+        return '';
+    }
     
     // ✅ 修复：移除【系统提示】前缀的显示，只在后台日志中使用
     clean = clean.replace(/^\s*【系统提示】\s*/g, '');
