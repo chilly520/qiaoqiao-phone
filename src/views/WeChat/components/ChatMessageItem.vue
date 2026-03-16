@@ -554,10 +554,10 @@
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                             
                             <!-- HTML Card Type (Render raw HTML) -->
-                            <div v-if="isHtmlCardType && cardData?.html" 
+                            <div v-if="isHtmlCardType" 
                                 class="w-full"
                                 @click.stop>
-                                <div class="w-full" v-html="cardData.html"></div>
+                                <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
                             </div>
                             
                             <!-- Simple Card Type (Title + Content) -->
@@ -1565,14 +1565,35 @@ const isFamilyCardReject = computed(() => {
 })
 
 const isHtmlCard = computed(() => {
-    if (props.msg.type === 'html') return true
+    if (props.msg.type === 'html') {
+        console.log('[ChatMessageItem] isHtmlCard: true (type is html)');
+        return true
+    }
     const c = ensureString(props.msg.content)
-    if (c.includes('[CARD]')) return true
+    if (c.includes('[CARD]')) {
+        console.log('[ChatMessageItem] isHtmlCard: true (has [CARD])');
+        return true
+    }
     // Also support escaped quotes in detection
     if ((c.includes('"type"') && c.includes('"html"')) || 
         (c.includes('\\"type\\"') && c.includes('\\"html\\"')) ||
         (c.includes('"html"') && c.includes('{') && c.includes('}')) ||
-        (c.includes('\\"html\\"') && c.includes('{') && c.includes('}'))) return true
+        (c.includes('\\"html\\"') && c.includes('{') && c.includes('}'))) {
+        console.log('[ChatMessageItem] isHtmlCard: true (JSON html detected)');
+        return true
+    }
+    
+    // Check for raw HTML content (e.g., <div style=...>)
+    const hasRawHtml = /<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(c) || 
+                       /<div\s+/i.test(c) || 
+                       /<table\s+/i.test(c) ||
+                       /<style\s*/i.test(c);
+    if (hasRawHtml && c.includes('<') && c.includes('>')) {
+        console.log('[ChatMessageItem] isHtmlCard: true (raw HTML detected)');
+        return true;
+    }
+    
+    console.log('[ChatMessageItem] isHtmlCard: false');
     return false
 })
 
@@ -1763,12 +1784,31 @@ const cardData = computed(() => {
 
 // Check if card contains HTML content
 const isHtmlCardType = computed(() => {
-    return cardData.value?.type === 'html' || !!cardData.value?.html
+    // Check card data first
+    if (cardData.value?.type === 'html' || !!cardData.value?.html) return true
+    
+    // Check for raw HTML content in message
+    const content = ensureString(props.msg.content)
+    if (props.msg.type === 'html') return true
+    if (/<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(content)) return true
+    if (/<div\s+/i.test(content) && content.includes('</div>')) return true
+    if (/<table\s+/i.test(content) && content.includes('</table>')) return true
+    if (/<style\s*/i.test(content)) return true
+    
+    return false
 })
 
 const getCardTitle = (content) => {
     const data = typeof content === 'string' ? cardData.value : content
-    if (!data) return '特别卡片'
+    if (!data) {
+        // Try to extract title from raw HTML
+        const htmlContent = ensureString(props.msg.content)
+        const titleMatch = htmlContent.match(/<title>([^<]*)<\/title>/i) || 
+                          htmlContent.match(/<h[1-6][^>]*>([^<]*)<\/h[1-6]>/i) ||
+                          htmlContent.match(/<div[^>]*>([^<]{2,20})<\/div>/i)
+        if (titleMatch) return titleMatch[1].trim()
+        return 'HTML卡片'
+    }
     // If it's an HTML card, try to extract title from HTML or use default
     if (data.type === 'html') {
         return data.title || data.name || '特别卡片'
@@ -1778,7 +1818,16 @@ const getCardTitle = (content) => {
 
 const getCardContent = (content) => {
     const data = typeof content === 'string' ? cardData.value : content
-    if (!data) return ''
+    if (!data) {
+        // For raw HTML, return empty string so it doesn't show text content
+        const htmlContent = ensureString(props.msg.content)
+        if (/<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(htmlContent) ||
+            /<div\s+/i.test(htmlContent) ||
+            /<table\s+/i.test(htmlContent)) {
+            return ''
+        }
+        return htmlContent
+    }
     // If it's an HTML card, don't show content in text format
     if (data.type === 'html') return ''
     return data.content || data.desc || data.description || data.text || ''
@@ -1926,6 +1975,9 @@ function getCleanContent(contentRaw, isCard = false) {
     
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
     clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
+    clean = clean.replace(/<(html|div|section|article|style|svg)[\s\S]*?<\/\1>/gi, ''); // Fixed back-reference \1
+    clean = clean.replace(/<[^>]+>/g, '');  // Strip remaining tags
+    
     clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
     clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');
     
@@ -2064,9 +2116,20 @@ function getPureHtml(content) {
 
     // 3. Raw Fallback: If it's pure HTML or contains markers
     const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-    const startIdx = decoded.toLowerCase().indexOf('<div') !== -1 ? decoded.toLowerCase().indexOf('<div') : decoded.toLowerCase().indexOf('<style');
+    
+    // Check for common HTML tags
+    const htmlTags = ['<div', '<style', '<table', '<ul', '<ol', '<p', '<h1', '<h2', '<h3', '<h4', '<h5', '<h6', '<section', '<article', '<header', '<footer', '<nav', '<aside', '<main', '<details', '<summary'];
+    let startIdx = -1;
+    
+    for (const tag of htmlTags) {
+        const idx = decoded.toLowerCase().indexOf(tag);
+        if (idx !== -1 && (startIdx === -1 || idx < startIdx)) {
+            startIdx = idx;
+        }
+    }
 
     if (startIdx !== -1) {
+        // Find the last closing tag
         const endIdx = decoded.lastIndexOf('>');
         if (endIdx > startIdx) {
             return unescapeContent(decoded.substring(startIdx, endIdx + 1));

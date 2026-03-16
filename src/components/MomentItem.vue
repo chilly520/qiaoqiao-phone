@@ -254,9 +254,10 @@ const renderCommentContent = (comment) => {
     })
 
     // 3. Regex for [表情包:名称]
-    const stickerRegex = /\[表情包:([^\]]+)\]/g
+    const stickerRegex = /\[表情包[:：]\s*([^\]]+?)\s*\]/g
     const parseStickers = (txt) => {
-        return txt.replace(stickerRegex, (match, name) => {
+        return txt.replace(stickerRegex, (match, rawName) => {
+            const name = rawName.trim()
             // Priority: Author's specific emojis > Global sticks
             let sticker = null
             if (props.moment?.authorId) {
@@ -324,8 +325,9 @@ const parsedContent = computed(() => {
     })
 
     // 4. Regex for [表情包:名称]
-    const stickerRegex = /\[表情包:([^\]]+)\]/g
-    content = content.replace(stickerRegex, (match, name) => {
+    const stickerRegex = /\[表情包[:：]\s*([^\]]+?)\s*\]/g
+    content = content.replace(stickerRegex, (match, rawName) => {
+        const name = rawName.trim()
         let sticker = null
         if (props.moment?.authorId) {
             const char = chatStore.chats[props.moment.authorId]

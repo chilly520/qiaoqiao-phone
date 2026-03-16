@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useAITaskStore } from './aiTaskStore'
@@ -37,6 +37,7 @@ export const useChatStore = defineStore('chat', () => {
     // State
     const chats = ref({}) // { 'char_id': { name: '...', avatar: '...', msgs: [], unreadCount: 0 } }
     const currentChatId = ref(null)
+    const pendingRequests = ref([]) // [ { id, fromId, fromName, fromAvatar, targetId, targetName, type: 'friend' | 'group_invite', timestamp } ]
     const typingStatus = ref({}) // { chatId: boolean }
     const isProfileProcessing = ref({}) // track if a specific character's archive is being analyzed
     const isTyping = computed({
@@ -138,6 +139,24 @@ export const useChatStore = defineStore('chat', () => {
             // Sort contacts alphabetically or by pinyin
             return (a.name || '').localeCompare(b.name || '', 'zh-CN')
         })
+    })
+
+    const groupNpcs = computed(() => {
+        const npcs = [];
+        Object.entries(chats.value).forEach(([chatId, chat]) => {
+            if (chat.isGroup && Array.isArray(chat.participants)) {
+                chat.participants.forEach(p => {
+                    if (p.isNPC || p.role === 'npc') {
+                        npcs.push({
+                            ...p,
+                            groupId: chatId,
+                            groupName: chat.name
+                        });
+                    }
+                });
+            }
+        });
+        return npcs;
     })
 
     const currentChat = computed(() => {
@@ -317,17 +336,16 @@ export const useChatStore = defineStore('chat', () => {
             { name: '爱之物 I', image: '' }, { name: '爱之物 II', image: '' }, { name: '爱之物 III', image: '' }
         ];
 
-        // EARLY FILTER: Reject JSON fragment messages (头尾碎片过滤)
+        // EARLY FILTER: Reject JSON/Metadata fragments (清除残余碎片)
         if (msg.content && typeof msg.content === 'string') {
             const trimmed = msg.content.trim();
 
-            console.log('[addMessage] Checking:', JSON.stringify(trimmed));
-
-            // Filter header fragment: EXACT match for { "type": "html", "html": "
-            // Use regex to match the exact JSON wrapper pattern, not just keywords
+            // Filter header fragment: EXACT match for { "type": "html", "html": " or type: html, html:
             const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
-            if (headerPattern.test(trimmed)) {
-                console.log('[ChatStore] ✅ Rejected header fragment');
+            const metaPattern = /^\s*(?:type|card|json|html|content)\s*[:：]\s*[^\[\<{]*$/i;
+            
+            if (headerPattern.test(trimmed) || metaPattern.test(trimmed)) {
+                console.log('[ChatStore] ✅ Rejected header/metadata fragment:', trimmed);
                 return false;
             }
 
@@ -925,8 +943,9 @@ export const useChatStore = defineStore('chat', () => {
                 console.log('[ChatStore] Call Protocol Detected (Enhanced)');
 
                 // Ensure we are in active state if we receive protocol data
-                // This allows auto-accepting when AI starts talking during dialing
-                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
+                // This allows auto-accepting when AI starts talking during dialing (User calling AI)
+                // WE DO NOT auto-accept if status is 'incoming' (AI calling User)
+                if (callStore.status === 'dialing') {
                     console.log('[ChatStore] Auto-accepting established call due to protocol data');
                     callStore.acceptCall();
                 }
@@ -1447,6 +1466,30 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
+    function acceptPendingRequest(requestId) {
+        const req = pendingRequests.value.find(r => r.id === requestId);
+        if (!req) return;
+
+        if (req.type === 'group_invite') {
+            // Join group logic: set inChatList to true so it shows up
+            updateCharacter(req.targetId, { inChatList: true, isExited: false });
+            triggerToast(`已加入群聊: ${req.targetName}`, 'success');
+        } else {
+            // Add friend logic: already exists in chats, just show it
+            updateCharacter(req.fromId, { inChatList: true });
+            triggerToast(`已添加好友: ${req.fromName}`, 'success');
+        }
+
+        pendingRequests.value = pendingRequests.value.filter(r => r.id !== requestId);
+        saveChats();
+    }
+
+    function rejectPendingRequest(requestId) {
+        pendingRequests.value = pendingRequests.value.filter(r => r.id !== requestId);
+        saveChats();
+        triggerToast('已拒绝申请', 'info');
+    }
+
     // --- Proactive Chat Logic ---
     let proactiveWorker = null
 
@@ -1798,7 +1841,9 @@ export const useChatStore = defineStore('chat', () => {
         if (callStatus === 'dialing' || callStatus === 'incoming') {
             const userName = chat.userName || '用户'
             const callType = callStore.type === 'video' ? '视频' : '语音'
-            const callHint = callStatus === 'incoming'
+            // If status is 'dialing', it means the USER initiated a call to the AI.
+            // If status is 'incoming', it means the AI initiated a call to the USER.
+            const callHint = callStatus === 'dialing'
                 ? `【系统提示：${userName}正在呼叫你（${callType}通话）。请立即做出选择：
 
 **选项1：接听**
@@ -1817,7 +1862,7 @@ export const useChatStore = defineStore('chat', () => {
 回复：[拒绝] 并说明理由
 
 注意：如果接听，必须严格按照上述 JSON 格式输出，不要使用 INNER_VOICE 或其他标签。】`
-                : `【系统提示：你正在呼叫${userName}（${callType}通话），等待对方响应...】`
+                : `【系统提示：你正在发起呼叫 ${userName}（${callType}通话），等待对方响应...】`
 
             console.log(`[ChatStore] Injecting call hint for status: ${callStatus}`);
 
@@ -1881,7 +1926,9 @@ export const useChatStore = defineStore('chat', () => {
                 emojis: chat.emojis,
                 virtualTime: currentVirtualTime,
                 canDraw: true,
-                searchEnabled: aiOptions.searchEnabled
+                searchEnabled: aiOptions.searchEnabled,
+                userLocation: chat.userLocation,
+                locationSync: chat.locationSync
             }
 
             // Inject Drawing Capability Hint globally if not explicitly disabled
@@ -1979,7 +2026,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle Call Signal Interception ([接听] / [拒绝]) ---
-                if (callStore.status === 'incoming' || callStore.status === 'dialing') {
+                if (callStore.status === 'dialing') {
                     if (fullContent.includes('[接听]')) {
                         console.log('[ChatStore] AI accepted the call');
                         callStore.acceptCall();
@@ -2596,13 +2643,42 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
-                    .replace(/\[\s*LS_JSON[:：]?\s*\{[\s\S]*?\}\s*\]/gi, '') // LS_JSON
-                    .replace(/\[\s*LS_JSON[:：]?\s*/gi, '') // Catch dangling markers
                     .replace(/\[LIKE[:：].*?\]/gi, '') // SCRUB INTERACTIONS FROM BUBBLES
                     .replace(/\[COMMENT[:：].*?\]/gi, '')
                     .replace(/\[REPLY[:：].*?\]/gi, '')
                     .replace(/\[MUSIC:\s*.*?\]/gi, '') // Remove MUSIC command tags
                     .trim();
+                
+                // --- Pass 0: Robust LS_JSON Extraction (Balanced Braces) ---
+                // We do this first to nuke them completely before they get split
+                const lsMarkerRegex = /\[\s*LS_JSON[:：]?\s*/gi;
+                let lsMatch;
+                while ((lsMatch = lsMarkerRegex.exec(properlyOrderedContent)) !== null) {
+                    const startIdx = lsMatch.index;
+                    const jsonStart = properlyOrderedContent.indexOf('{', startIdx + lsMatch[0].length);
+                    if (jsonStart !== -1) {
+                        let braceCount = 0, inString = false, isEscaped = false, jsonEndIdx = -1;
+                        for (let i = jsonStart; i < properlyOrderedContent.length; i++) {
+                            const char = properlyOrderedContent[i];
+                            if (isEscaped) { isEscaped = false; continue; }
+                            if (char === '\\') { isEscaped = true; continue; }
+                            if (char === '"') { inString = !inString; continue; }
+                            if (!inString) {
+                                if (char === '{') braceCount++;
+                                else if (char === '}') { braceCount--; if (braceCount === 0) { jsonEndIdx = i; break; } }
+                            }
+                        }
+                        if (jsonEndIdx !== -1) {
+                            let blockEnd = jsonEndIdx + 1;
+                            const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
+                            const closeMatch = remaining.match(/^\s*[\]】]/);
+                            if (closeMatch) blockEnd = jsonEndIdx + 1 + closeMatch[0].length;
+                            // Nuke this whole block from cleanContent
+                            const blockText = properlyOrderedContent.substring(startIdx, blockEnd);
+                            cleanContent = cleanContent.replace(blockText, '').trim();
+                        }
+                    }
+                }
 
                 // Final sanitization: remove common leaked structured content or CSS leaking
                 if (cleanContent.includes('author:') && cleanContent.includes('content:')) {
@@ -2641,18 +2717,42 @@ export const useChatStore = defineStore('chat', () => {
                     return match;
                 });
 
-                // Pass 2: Handle naked <html>...</html> or large <div> blocks
-                cleanContent = cleanContent.replace(/(?:^|\n)(<(html|div|section|article|style)[\s\S]*?<\/\2>)(?:\n|$)/gi, (match, html) => {
-                    if (html.length > 50 && !cleanContent.includes('[CARD]')) {
-                        const json = JSON.stringify({ type: 'html', html: html.trim() });
+                // Pass 1.5: Catch emoji-prefixed metadata (e.g., "😡 心情：", "🥺 渴望：")
+                // We do this before HTML extraction so it doesn't get tangled
+                cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status)\s*[:：].*?(?:\n|$)/gm, '');
+
+                // Pass 2: Handle naked <html>...</html> or large <div> blocks anywhere in the message
+                // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
+                // This version is greedy and handles leading emojis/text often found in AI-generated "status cards".
+                cleanContent = cleanContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[\s\S]*?)?(<(html|div|section|article|style|svg)[\s\S]+?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
+                    // Always wrap the HTML part
+                    const html = htmlContent.trim();
+                    if (html.length > 20 || html.includes('style=')) {
+                        // Include the full match in the card if it contains the header
+                        const fullMatch = match.trim();
+                        const json = JSON.stringify({ type: 'html', html: fullMatch.includes('html:') ? fullMatch.substring(fullMatch.indexOf('<')) : html });
                         return `\n[CARD]${json}\n`;
                     }
                     return match;
                 });
 
+                // Pass 2.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
+                // This nukes patterns like "type: html, \n html: \n [FAMILY_CARD...]"
+                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking';
+                const metaLinePattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\n\\[\\<{]*`, 'gim');
+                cleanContent = cleanContent.replace(metaLinePattern, '').trim();
+                
+                // Pass 2.6: Merge logic for tags prepended with metadata (Stubborn AI fix)
+                // If a tag follows metadata immediately, nuke the metadata
+                const tagPrependPattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\]]*\\n?(\\[[^\\]]+\\])`, 'gim');
+                cleanContent = cleanContent.replace(tagPrependPattern, '$1').trim();
+
+                // Pass 2.7: Final stubborn cleanup for dangling card keys
+                cleanContent = cleanContent.replace(/^\s*(?:type|card|json|html|content)\s*[:：]\s*(?:html|card|{)?\s*$/gim, '');
+                
                 // Pass 3: Extraction using robust brace matcher (The Protectors)
-                // Aggressively match anything starting with [CARD]{ or just { "any_key":
-                const cardStartRegex = /(?:\[\s*CARD\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)/gi;
+                // Aggressively match anything starting with [CARD]{, { "type":, or type: html {
+                const cardStartRegex = /(?:\[\s*(?:CARD|LS_JSON|JSON)\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)|(?:type\s*[:：]\s*html[\s\S]*?\{)/gi;
                 let cardMatch;
                 const cardPositions = [];
 
@@ -2681,7 +2781,15 @@ export const useChatStore = defineStore('chat', () => {
                     if (braceCount === 0) {
                         let totalEnd = endPos;
                         const remaining = cleanContent.substring(endPos);
-                        const closingTagMatch = remaining.match(/^\s*\[\/CARD\]/i);
+                        
+                        // Consume trailing whitespace and optional CLOSING bracket if we started with an OPENING bracket [
+                        if (cardMatch[0].trim().startsWith('[')) {
+                            const trailingBracketMatch = remaining.match(/^\s*\]/);
+                            if (trailingBracketMatch) totalEnd += trailingBracketMatch[0].length;
+                        }
+
+                        const afterBracket = cleanContent.substring(totalEnd);
+                        const closingTagMatch = afterBracket.match(/^\s*\[\/CARD\]/i);
                         if (closingTagMatch) totalEnd += closingTagMatch[0].length;
 
                         const fullCard = cleanContent.substring(startPos, totalEnd);
@@ -2716,8 +2824,10 @@ export const useChatStore = defineStore('chat', () => {
                 // We split by punctuation but keep segments meaningful.
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
-                // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block to prevent splitting by newlines inside JSON
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:.*?\]|\[(?:表情包|表情-包)[:：].*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?.*?\]|\[语音[:：]?.*?\]|\[LIKE[:：].*?\]|\[COMMENT[:：]?.*?\]|\[REPLY[:：].*?\]|\[(?!INNER_VOICE|LS_JSON|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block. 
+                // We also include ( ) and （ ） as potential segments to catch leaked mind voice, 
+                // but we will filter them in the delivery loop.
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2730,7 +2840,7 @@ export const useChatStore = defineStore('chat', () => {
                     if (part === undefined) continue;
 
                     const trimmedPart = part.trim();
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:INNER|LS_JSON)|\[DRAW:|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:INNER|LS_JSON|DRAW:)|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {
@@ -2774,15 +2884,17 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'draw', content: content.trim() });
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
-                        const toxicKeywords = ['border-radius', 'box-shadow', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity'];
+                        const toxicKeywords = ['border-radius', 'box-shadow', 'background-color', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity', 'border: 3px solid', 'border: 1px solid', 'font-family:', 'animation:', 'keyframes'];
                         const cssLineRegex = /^\s*[a-z-]+\s*:\s*[^:]{1,100}(?:;|px|em|rem|%|vw|vh)\s*$/i;
 
                         let filtered = content;
                         
                         // Apply toxic filter to all text segments regardless of braces
                         // (Only skip if the message explicitly has a [CARD] marker we added)
-                        if (filtered.includes('{') && filtered.includes('}')) {
+                        if (filtered.includes('{') || filtered.includes('<')) {
                             filtered = filtered.replace(/\{[\s\S]*?(padding:|margin:|border:|display:|width:|height:|font-size:|background-color:|position:|z-index:|overflow:|pointer-events:|opacity:)[\s\S]*?\}/gi, '');
+                            filtered = filtered.replace(/<(?:html|div|section|article|style|svg|p|span|b|i|br|hr|h\d)[\s\S]*?>/gi, '');
+                            filtered = filtered.replace(/<\/(?:html|div|section|article|style|svg|p|span|b|i|br|hr|h\d)>/gi, '');
                         }
                         filtered = filtered.split('\n').filter(line => {
                             const lower = line.trim().toLowerCase();
@@ -2794,7 +2906,25 @@ export const useChatStore = defineStore('chat', () => {
                         }).join('\n').trim();
 
                         if (filtered) {
-                            finalSegments.push({ type: 'text', content: filtered });
+                            // Filtered out trash segments like residual brackets or punctuation
+                            const isLeakedVoice = /^[\(（].*?[\)）]$/.test(filtered.trim()) && 
+                                               (filtered.length < 50 || /尴尬|白团|思考|想着|犹豫|惊讶|开心|难过|宠溺|无奈|沉默|心跳/.test(filtered));
+                            
+                            // Aggressively catch card metadata remnants (e.g., "type: html, html:")
+                            // MULTILINE SUPPORT: Catch keys even if they contain some values within the segment
+                            // STRENGTHENED: Catch any segment that only contains brackets, braces, commas, dots or metadata keys
+                            // NEW: Use multiline global test to catch internal metadata keys
+                            const isTrashMetadata = /^\s*(?:type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking)\s*[:：]/i.test(filtered.trim());
+                            const containsMetadata = /(?:type|card|html|json)\s*[:：]/i.test(filtered);
+                            const isPunctuationOnly = /^[\[\]\{\}\(\)（）\s、,，.。:：\d\|\/\\_-]+$/.test(filtered.trim());
+
+                            if (isPunctuationOnly || isTrashMetadata || (filtered.length < 30 && containsMetadata)) {
+                                console.log('[ChatStore] Swallowed trash or metadata segment:', filtered);
+                            } else if (!isLeakedVoice) {
+                                finalSegments.push({ type: 'text', content: filtered });
+                            } else {
+                                console.log('[ChatStore] Swallowed leaked voice segment:', filtered);
+                            }
                         }
                     }
                 }
@@ -2829,16 +2959,26 @@ export const useChatStore = defineStore('chat', () => {
                         if (type === 'card' || msgContent.match(/\[\s*CARD\s*\]/i) || msgContent.trim().startsWith('{')) {
                             // HTML Card Delivery
                             let processedHtml = msgContent.replace(/\[\s*\/?[CARD\s]*\]/gi, '').trim();
+                            // Aggressively strip "type: html, html:" prefix regardless of outer braces
+                            processedHtml = processedHtml.replace(/^(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*/i, '');
+                            // Also catch dangling "html: " after the above replacement
+                            processedHtml = processedHtml.replace(/^(?:html|content)\s*[:：]\s*/i, '');
                             if (processedHtml.includes('\\"')) processedHtml = processedHtml.replace(/\\"/g, '"');
                             if (!processedHtml.trim().startsWith('{') && (processedHtml.includes('"type":') || processedHtml.includes('"html":'))) processedHtml = '{' + processedHtml + '}';
                         
                             let extractedHtml = processedHtml;
                             try {
-                                const parsed = JSON.parse(processedHtml);
+                                // Try to strip JSON structures if any
+                                let jsonToParse = processedHtml;
+                                if (!jsonToParse.startsWith('{') && jsonToParse.includes('{')) {
+                                    jsonToParse = jsonToParse.substring(jsonToParse.indexOf('{'));
+                                }
+                                const parsed = JSON.parse(jsonToParse);
                                 if (parsed.html) extractedHtml = parsed.html;
                             } catch (e) {
                                 // If parsing fails, use the processed HTML directly
-                                console.log('[ChatStore] JSON parse failed for HTML card, using raw content');
+                                // It might be just raw HTML text
+                                console.log('[ChatStore] HTML card is raw text, using as-is');
                             }
                         
                             // Ensure we always have valid HTML content
@@ -2846,14 +2986,9 @@ export const useChatStore = defineStore('chat', () => {
                                 extractedHtml = processedHtml;
                             }
                         
-                            console.log('[ChatStore] Adding HTML message:', {
-                                type: 'html',
-                                contentLength: processedHtml?.length,
-                                htmlLength: extractedHtml?.length,
-                                hasHtml: !!extractedHtml
-                            });
-                        
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'html', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
+                            console.log('[ChatStore] Adding HTML card message');
+                            // Use type: 'card' for maximum compatibility with template conditions
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
                         } else {
                             // Text Message Delivery
                             const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
@@ -3125,6 +3260,7 @@ export const useChatStore = defineStore('chat', () => {
         try {
             // Use IndexedDB for large data
             await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
+            await localforage.setItem('qiaoqiao_pending_requests', JSON.parse(JSON.stringify(pendingRequests.value)));
             // Small marker in localStorage to trigger 'storage' events for cross-tab sync if needed
             localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
             return true
@@ -3167,6 +3303,7 @@ export const useChatStore = defineStore('chat', () => {
 
             if (saved) {
                 chats.value = saved;
+                pendingRequests.value = await localforage.getItem('qiaoqiao_pending_requests') || [];
 
                 // --- DATA SANITIZER ---
                 Object.values(chats.value).forEach(c => {
@@ -3307,6 +3444,7 @@ export const useChatStore = defineStore('chat', () => {
     return {
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
+        groupNpcs, pendingRequests, acceptPendingRequest, rejectPendingRequest,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
         deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
         checkProactive, summarizeHistory, updateCharacter, initDemoData,
