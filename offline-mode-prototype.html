@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>线下模式 - 沉浸式角色扮演</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #121212 0%, #1e1e2f 50%, #2c2c3e 100%);
+            min-height: 100vh;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        /* 场景容器 */
+        .scene-container {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: linear-gradient(180deg, 
+                rgba(28, 28, 45, 0.3) 0%, 
+                rgba(18, 18, 18, 0.5) 30%,
+                rgba(30, 30, 47, 0.7) 100%);
+        }
+
+        /* 顶部状态栏 */
+        .status-bar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: linear-gradient(180deg, 
+                rgba(30, 30, 47, 0.95) 0%, 
+                rgba(18, 18, 18, 0.9) 100%);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 16px;
+        }
+
+        .location-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .location-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #8b5cf6;
+        }
+
+        .location-icon {
+            font-size: 20px;
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 8px;
+        }
+
+        .mode-btn {
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: #aaa;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        .time-weather {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+            color: #b8b8b8;
+        }
+
+        .time-display, .weather-display {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .weather-icon {
+            font-size: 16px;
+        }
+
+        /* 场景描述卡片 */
+        .scene-card {
+            margin: 16px;
+            padding: 16px;
+            background: linear-gradient(135deg, 
+                rgba(139, 92, 246, 0.15) 0%, 
+                rgba(236, 72, 153, 0.15) 100%);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            animation: fadeInDown 0.5s ease;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .scene-title {
+            font-size: 14px;
+            color: #8b5cf6;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .scene-description {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #e2e8f0;
+            font-style: italic;
+        }
+
+        /* 消息列表 */
+        .message-list {
+            padding: 0 16px 100px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* 旁白消息 */
+        .narrator-message {
+            text-align: center;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, 
+                rgba(139, 92, 246, 0.1) 0%, 
+                rgba(236, 72, 153, 0.05) 100%);
+            border-radius: 12px;
+            border-left: 3px solid #8b5cf6;
+            font-size: 13px;
+            color: #a78bfa;
+            font-style: italic;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* NPC消息 */
+        .npc-message {
+            display: flex;
+            gap: 12px;
+            animation: slideInLeft 0.4s ease;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .npc-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .npc-content {
+            flex: 1;
+        }
+
+        .npc-name {
+            font-size: 12px;
+            color: #a78bfa;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .npc-bubble {
+            background: linear-gradient(135deg, 
+                rgba(167, 139, 250, 0.2) 0%, 
+                rgba(236, 72, 153, 0.15) 100%);
+            padding: 12px 16px;
+            border-radius: 16px;
+            border-top-left-radius: 4px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #f8fafc;
+            border: 1px solid rgba(167, 139, 250, 0.3);
+        }
+
+        /* 角色消息 */
+        .character-message {
+            display: flex;
+            gap: 12px;
+            animation: slideInRight 0.4s ease;
+        }
+
+        .character-message.user {
+            flex-direction: row-reverse;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .character-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f472b6 0%, #ec4899 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            overflow: hidden;
+        }
+
+        .character-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .character-content {
+            flex: 1;
+            max-width: 75%;
+        }
+
+        .character-name {
+            font-size: 12px;
+            color: #f472b6;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .character-message.user .character-name {
+            text-align: right;
+            color: #4ade80;
+        }
+
+        .character-bubble {
+            background: linear-gradient(135deg, 
+                rgba(244, 114, 182, 0.2) 0%, 
+                rgba(236, 72, 153, 0.15) 100%);
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #f8fafc;
+            border: 1px solid rgba(244, 114, 182, 0.3);
+        }
+
+        .character-message.user .character-bubble {
+            background: linear-gradient(135deg, 
+                rgba(74, 222, 128, 0.2) 0%, 
+                rgba(34, 197, 94, 0.15) 100%);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            border-top-right-radius: 4px;
+        }
+
+        /* 动作描写 */
+        .action-text {
+            color: #94a3b8;
+            font-style: italic;
+            font-size: 13px;
+            background: linear-gradient(135deg, rgba(148, 163, 184, 0.1) 0%, rgba(148, 163, 184, 0.05) 100%);
+            padding: 2px 8px;
+            border-radius: 12px;
+            border-left: 2px solid #94a3b8;
+            margin: 4px 0;
+            display: inline-block;
+            animation: actionFadeIn 0.5s ease;
+        }
+
+        @keyframes actionFadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* 美化卡片（保留原有样式） */
+        .beauty-card {
+            margin: 8px 0;
+            padding: 16px;
+            background: linear-gradient(135deg, 
+                rgba(139, 92, 246, 0.2) 0%, 
+                rgba(236, 72, 153, 0.2) 100%);
+            border-radius: 16px;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            animation: cardPop 0.5s ease;
+        }
+
+        @keyframes cardPop {
+            0% {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            50% {
+                transform: scale(1.02);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #a78bfa;
+            margin-bottom: 8px;
+        }
+
+        .card-content {
+            font-size: 13px;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        /* 底部输入栏 */
+        .input-bar {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 480px;
+            background: linear-gradient(180deg, 
+                rgba(22, 33, 62, 0.95) 0%, 
+                rgba(15, 52, 96, 0.98) 100%);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 16px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .input-container {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .input-container textarea {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #e8e8e8;
+            font-size: 14px;
+            resize: none;
+            max-height: 100px;
+            line-height: 1.4;
+        }
+
+        .input-container textarea::placeholder {
+            color: #888;
+        }
+
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .action-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #aaa;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        /* 场景切换动画 */
+        .scene-transition {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+
+        .scene-transition.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .scene-transition-text {
+            font-size: 24px;
+            color: #ffd93d;
+            text-align: center;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* 时间流逝效果 */
+        .time-passed {
+            text-align: center;
+            padding: 8px;
+            font-size: 12px;
+            color: #888;
+            border-top: 1px dashed rgba(255, 255, 255, 0.1);
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+            margin: 8px 0;
+        }
+
+        /* 响应式 */
+        @media (max-width: 480px) {
+            .status-bar {
+                padding: 10px 12px;
+            }
+
+            .message-list {
+                padding: 0 12px 90px;
+            }
+
+            .input-bar {
+                padding: 10px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="scene-container">
+        <!-- 顶部状态栏 -->
+        <div class="status-bar">
+            <div class="location-bar">
+                <div class="location-name">
+                    <span class="location-icon">🏠</span>
+                    <span>乔家别墅 · 客厅</span>
+                </div>
+                <div class="mode-toggle">
+                    <button class="mode-btn" onclick="switchMode('online')">线上</button>
+                    <button class="mode-btn active">线下</button>
+                </div>
+            </div>
+            <div class="time-weather">
+                <div class="time-display">
+                    <span>🌙</span>
+                    <span>晚上 20:30</span>
+                </div>
+                <div class="weather-display">
+                    <span class="weather-icon">🌧️</span>
+                    <span>小雨</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 场景描述卡片 -->
+        <div class="scene-card">
+            <div class="scene-title">📍 当前场景</div>
+            <div class="scene-description">
+                宽敞明亮的客厅里，落地窗外传来淅淅沥沥的雨声。暖黄色的灯光洒在米色的沙发上，营造出温馨的氛围。茶几上摆着两杯热气腾腾的咖啡，空气中弥漫着淡淡的咖啡香。
+            </div>
+        </div>
+
+        <!-- 消息列表 -->
+        <div class="message-list">
+            <!-- 旁白 -->
+            <div class="narrator-message">
+                雨夜，乔笙和乔篱坐在客厅的沙发上，窗外的雨声为这个夜晚增添了几分宁静。
+            </div>
+
+            <!-- NPC消息 -->
+            <div class="npc-message">
+                <div class="npc-avatar">👩</div>
+                <div class="npc-content">
+                    <div class="npc-name">管家 · 王阿姨</div>
+                    <div class="npc-bubble">
+                        少爷、小姐，咖啡已经泡好了，还有什么需要吗？
+                    </div>
+                </div>
+            </div>
+
+            <!-- 角色消息（AI） -->
+            <div class="character-message">
+                <div class="character-avatar">
+                    <img src="https://image.pollinations.ai/prompt/cute%20cartoon%20husky%20ceo%20suit%20blushing" alt="乔笙">
+                </div>
+                <div class="character-content">
+                    <div class="character-name">乔笙</div>
+                    <div class="character-bubble">
+                        <span class="action-text">(轻轻摇晃着咖啡杯，目光温柔地看着乔篱)</span><br><br>
+                        王阿姨，不用了，您早点休息吧。<br><br>
+                        <span class="action-text">(转向乔篱，嘴角微微上扬)</span><br>
+                        今晚的雨下得真大啊...篱篱，你冷不冷？
+                    </div>
+                </div>
+            </div>
+
+            <!-- 旁白 -->
+            <div class="narrator-message">
+                乔笙起身走到落地窗前，看着窗外的雨幕，背影显得有些落寞。
+            </div>
+
+            <!-- 角色消息（用户） -->
+            <div class="character-message user">
+                <div class="character-avatar">
+                    <img src="https://image.pollinations.ai/prompt/cute%20cartoon%20dinosaur%20girl%20pout" alt="乔篱">
+                </div>
+                <div class="character-content">
+                    <div class="character-name">乔篱</div>
+                    <div class="character-bubble">
+                        <span class="action-text">(抱着抱枕，眨了眨眼睛)</span><br><br>
+                        不冷呀~ 笙笙哥哥，你在看什么呀？<br><br>
+                        <span class="action-text">(歪着头，好奇地看着他的背影)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 时间流逝 -->
+            <div class="time-passed">
+                · · · 几分钟后 · · ·
+            </div>
+
+            <!-- 美化卡片 -->
+            <div class="beauty-card">
+                <div class="card-title">🎲 摇骰子 · 惩罚游戏</div>
+                <div class="card-content">
+                    <div style="display: flex; justify-content: space-around; margin: 12px 0;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 32px;">🎲</div>
+                            <div style="font-size: 12px; color: #a78bfa;">乔笙: 5点</div>
+                        </div>
+                        <div style="font-size: 24px; color: #ffd93d;">VS</div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 32px;">🎲</div>
+                            <div style="font-size: 12px; color: #f093fb;">乔篱: 3点</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center; font-size: 12px; color: #4ade80;">
+                        🎉 乔笙获胜！乔篱需要接受惩罚~
+                    </div>
+                </div>
+            </div>
+
+            <!-- 角色消息（AI） -->
+            <div class="character-message">
+                <div class="character-avatar">
+                    <img src="https://image.pollinations.ai/prompt/cute%20cartoon%20husky%20ceo%20suit%20blushing" alt="乔笙">
+                </div>
+                <div class="character-content">
+                    <div class="character-name">乔笙</div>
+                    <div class="character-bubble">
+                        <span class="action-text">(嘴角勾起一抹坏笑，慢慢走向乔篱)</span><br><br>
+                        呵呵...篱篱，愿赌服输哦~<br><br>
+                        <span class="action-text">(坐在她身边，轻轻捏了捏她的脸)</span><br>
+                        惩罚嘛...让我想想...亲我一下怎么样？
+                    </div>
+                </div>
+            </div>
+
+            <!-- NPC消息 -->
+            <div class="npc-message">
+                <div class="npc-avatar">🌸</div>
+                <div class="npc-content">
+                    <div class="npc-name">系统提示</div>
+                    <div class="npc-bubble" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.15) 100%); border-color: rgba(251, 191, 36, 0.3);">
+                        💡 场景切换提示：可以输入"去卧室"或"上楼"切换场景
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部输入栏 -->
+        <div class="input-bar">
+            <button class="action-btn" title="场景">📍</button>
+            <div class="input-container">
+                <textarea rows="1" placeholder="输入消息或动作... (用括号表示动作)"></textarea>
+            </div>
+            <button class="action-btn" title="骰子">🎲</button>
+            <button class="send-btn">➤</button>
+        </div>
+    </div>
+
+    <!-- 场景切换动画 -->
+    <div class="scene-transition">
+        <div class="scene-transition-text">
+            场景切换中...<br>
+            <span style="font-size: 16px; color: #888;">📍 乔家别墅 · 卧室</span>
+        </div>
+    </div>
+
+    <script>
+        // 模拟场景切换
+        function switchScene() {
+            const transition = document.querySelector('.scene-transition');
+            transition.classList.add('active');
+            
+            setTimeout(() => {
+                transition.classList.remove('active');
+            }, 2000);
+        }
+
+        // 模式切换
+        function switchMode(mode) {
+            if (mode === 'online') {
+                alert('切换到线上模式（微信聊天界面）');
+            }
+        }
+
+        // 自动调整输入框高度
+        const textarea = document.querySelector('textarea');
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+        });
+
+        // 发送消息示例
+        document.querySelector('.send-btn').addEventListener('click', function() {
+            const input = document.querySelector('textarea');
+            const message = input.value.trim();
+            
+            if (message) {
+                // 这里可以添加发送消息的逻辑
+                console.log('发送消息:', message);
+                input.value = '';
+                input.style.height = 'auto';
+            }
+        });
+
+        // 骰子按钮示例
+        document.querySelector('.action-btn[title="骰子"]').addEventListener('click', function() {
+            alert('🎲 摇骰子功能');
+        });
+
+        // 场景按钮示例
+        document.querySelector('.action-btn[title="场景"]').addEventListener('click', function() {
+            alert('📍 场景列表:\n\n1. 乔家别墅 · 客厅\n2. 乔家别墅 · 卧室\n3. 乔家别墅 · 厨房\n4. 户外 · 花园');
+        });
+    </script>
+</body>
+</html>

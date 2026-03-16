@@ -572,6 +572,9 @@ const handleGlobalPromptCancel = () => {
 </template>
 
 <style>
+/* Google Fonts for Love Space */
+@import url('https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&family=Long+Cang&family=Ma+Shan+Zheng&display=swap');
+
 @keyframes slideDown {
     from {
         transform: translateY(-120%);
@@ -631,8 +634,7 @@ const handleGlobalPromptCancel = () => {
     animation: toastPop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-/* Google Fonts for Love Space */
-@import url('https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&family=Long+Cang&family=Ma+Shan+Zheng&display=swap');
+
 
 /* 全屏自适应 - 所有手机/平板全屏显示 */
 .app-root {

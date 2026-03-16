@@ -9,7 +9,7 @@ import {
     WEIBO_TOPIC_POST_PROMPT,
     buildWeiboContext,
     getRandomNetizen
-} from '../utils/ai/prompts_weibo'
+} from '../utils/ai/prompts_weibo.js'
 import { useChatStore } from './chatStore'
 import { useWorldBookStore } from './worldBookStore'
 
