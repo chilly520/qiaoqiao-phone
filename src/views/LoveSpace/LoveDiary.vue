@@ -186,7 +186,7 @@ function prevPage() {
 async function generateMagic() {
   if (isGenerating.value) return
   try {
-    const chatStore = (await import('@/stores/chatStore')).useChatStore()
+    const chatStore = (await import('@/stores/chatStore.js')).useChatStore()
     chatStore.triggerToast('正在为你凝聚恋爱日记... ✨', 'info')
     await loveSpaceStore.generateSingleFeature('diary')
   } catch (e) {

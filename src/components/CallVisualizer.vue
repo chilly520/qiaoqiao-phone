@@ -380,6 +380,27 @@ watch(() => callStore.isMuted, (newVal) => {
     }
 })
 
+// Watch call status to auto-start camera and microphone for calls
+watch(() => callStore.status, (newStatus, oldStatus) => {
+    // Auto-start camera when video call becomes active
+    if (newStatus === 'active' && oldStatus !== 'active' && callStore.type === 'video') {
+        if (callStore.isCameraOff) {
+            startCamera()
+        }
+    }
+    // Auto-start voice recognition when any call becomes active
+    if (newStatus === 'active' && oldStatus !== 'active') {
+        if (callStore.isMuted) {
+            startListening()
+        }
+    }
+    // Stop camera and listening when call ends
+    if (newStatus === 'none' || newStatus === 'ended') {
+        stopCamera()
+        stopListening()
+    }
+})
+
 // Keyboard Toggle
 const isKeyboardVisible = ref(false)
 const toggleKeyboard = () => {

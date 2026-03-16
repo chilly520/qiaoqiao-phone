@@ -144,12 +144,12 @@ function getAuthorName(author) {
   return loveSpaceStore.partner?.name || 'TA'
 }
 
-// 20 种样式库
+// 19 种样式库（移除了红色波点样式）
 const availableStyles = [
   's-v1-grid', 's-v1-line', 's-v1-plaid', 's-v1-minimal',
   's-blue-grid', 's-blue-memo', 's-blue-matrix', 's-blue-time',
   's-blue-dash', 's-blue-plaid', 's-blue-todo', 's-blue-polaroid',
-  's-red-frame', 's-red-scallop', 's-red-circle-grid', 's-red-apple',
+  's-red-frame', 's-red-scallop', 's-red-apple',
   's-red-todo', 's-red-star-matrix', 's-red-habits', 's-red-tartan'
 ]
 
@@ -430,22 +430,7 @@ const formatDate = (timestamp) => {
   background: #fffcf5; height: 100%; padding: 16px; color: #e48088; font-weight: bold;
   mask-image: radial-gradient(circle at 4px 4px, transparent 4px, black 4.5px); mask-size: 12px 12px; mask-position: -4px -4px;
 }
-.s-red-circle-grid {
-  background: #ff6b81; 
-  padding: 16px; 
-  color: white;
-  background-image: radial-gradient(circle, rgba(255,255,255,0.4) 2px, transparent 2px);
-  background-size: 20px 20px;
-}
-.s-red-circle-grid .note-content {
-  z-index: 10;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.2);
-}
-.s-red-circle-grid .note-signature,
-.s-red-circle-grid .note-date {
-  color: white;
-  opacity: 0.9;
-}
+
 .s-red-apple { background: #b6d3eb; color: white; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 16px; }
 .apple-shape { width: 80px; height: 70px; background: #ee5d68; border-radius: 40% 40% 50% 50%; border: 3px solid #fff; position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }
 .apple-stem { position: absolute; top: -10px; width: 4px; height: 12px; background: #666; border-radius: 2px; }

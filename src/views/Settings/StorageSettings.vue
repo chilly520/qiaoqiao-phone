@@ -255,7 +255,7 @@ const compressAIImages = async () => {
             }
 
             // 2. 压缩朋友圈图片
-            const momentsStore = (await import('../../stores/momentsStore')).useMomentsStore()
+            const momentsStore = (await import('../../stores/momentsStore.js')).useMomentsStore()
             const allMoments = momentsStore.moments || []
             for (const moment of allMoments) {
                 if (moment.images && Array.isArray(moment.images)) {
@@ -278,7 +278,7 @@ const compressAIImages = async () => {
             }
 
             // 3. 压缩论坛帖子图片
-            const forumStore = (await import('../../stores/forumStore')).useForumStore()
+            const forumStore = (await import('../../stores/forumStore.js')).useForumStore()
             const forumData = forumStore.forumData || {}
             for (const forumKey in forumData) {
                 const posts = forumData[forumKey]?.posts || []
@@ -320,7 +320,7 @@ const compressAIImages = async () => {
             }
 
             // 情侣空间
-            const loveSpaceStore = (await import('../../stores/loveSpaceStore')).useLoveSpaceStore()
+            const loveSpaceStore = (await import('../../stores/loveSpaceStore.js')).useLoveSpaceStore()
             const spaces = loveSpaceStore.spaces || {}
             for (const sId in spaces) {
                 const space = spaces[sId]

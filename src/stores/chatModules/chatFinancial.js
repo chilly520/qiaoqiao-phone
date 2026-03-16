@@ -186,7 +186,7 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
             claimantAvatar = useSettingsStore().personalization?.userProfile?.avatar || '';
             // If user claims AI gift, add to backpack
             try {
-                const { useBackpackStore } = await import('../backpackStore')
+                const { useBackpackStore } = await import('../backpackStore.js')
                 useBackpackStore().addItem({
                     id: msg.itemId || `item_${Date.now()}`,
                     title: msg.giftName,

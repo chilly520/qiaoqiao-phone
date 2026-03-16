@@ -49,12 +49,15 @@
 
           <!-- Balance -->
           <div class="flex justify-between items-end border-t border-[#d4af37]/10 pt-6">
-            <div>
+            <div class="flex-1 min-w-0">
               <div class="text-[10px] opacity-60 tracking-[0.2em] mb-1.5 uppercase font-bold">Available Quota</div>
-              <div class="text-4xl font-bold font-mono tracking-tighter text-shadow-gold">¥ {{ availableAmount }}</div>
+              <div class="text-3xl font-bold font-mono tracking-tighter text-shadow-gold flex items-baseline gap-1">
+                <span class="text-2xl">¥</span>
+                <span class="truncate">{{ availableAmount }}</span>
+              </div>
               <div class="text-[10px] opacity-40 mt-2 font-medium">总额度: ¥{{ cardDetail?.amount.toFixed(2) }}</div>
             </div>
-            <div class="text-right">
+            <div class="text-right flex-shrink-0 ml-4">
               <div class="text-[11px] font-mono tracking-[0.15em] opacity-40 mb-1">FAMILY PASS</div>
               <i class="fa-brands fa-weixin text-3xl opacity-20"></i>
             </div>
@@ -140,8 +143,9 @@ const getCharAvatar = (id) => {
 
 const getThemeClass = (theme) => {
   switch (theme) {
-    case 'pink': return 'bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e]'
+    case 'pink': return 'bg-gradient-to-br from-pink-500 to-rose-400 text-white border-pink-400/30'
     case 'blue': return 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white border-blue-400/30'
+    case 'gold': return 'bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e]'
     default: return 'bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e]'
   }
 }

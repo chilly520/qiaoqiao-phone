@@ -1,5 +1,5 @@
 <template>
-    <div class="chat-container bg-gray-50 flex flex-col h-screen overflow-hidden">
+    <div class="chat-container bg-gray-50 flex flex-col h-full overflow-hidden">
         <!-- 客服列表模式 -->
         <div v-if="!activeChatId" class="flex-1 overflow-y-auto pb-10 animate-fade-in text-gray-800">
             <div class="p-4 pt-10 bg-white border-b sticky top-0 z-20">
@@ -58,7 +58,7 @@
         </div>
 
         <!-- 具体聊天模式 -->
-        <div v-else class="chat-view-detail flex-1 flex flex-col bg-white overflow-hidden animate-slide-in-right">
+        <div v-else class="chat-view-detail flex-1 flex flex-col bg-white overflow-hidden animate-slide-in-right h-full relative">
             <!-- 聊天头部 -->
             <div class="p-4 pt-10 border-b flex items-center gap-3 bg-white z-20">
                 <button @click="exitChatDetail"
@@ -74,7 +74,7 @@
             </div>
 
             <!-- 消息列表 -->
-            <div class="flex-1 p-4 overflow-y-auto space-y-6 bg-gray-50/50" ref="messageContainer">
+            <div class="flex-1 p-4 overflow-y-auto space-y-6 bg-gray-50/50 pb-20" ref="messageContainer">
                 <div v-for="msg in currentMessages" :key="msg.id"
                     :class="['flex gap-3', msg.type === 'user' ? 'flex-row-reverse' : '']">
 
@@ -123,13 +123,13 @@
                         </div>
                     </div>
                 </div>
-                <!-- 底部撑开间距 -->
-                <div class="h-4"></div>
+                <!-- 底部撑开间距，为固定输入框留出空间 -->
+                <div class="h-24"></div>
             </div>
 
-            <!-- 输入框容器：独立定位，避开外部影响 -->
+            <!-- 输入框容器：固定底部 -->
             <div
-                class="chat-input-area p-4 bg-white border-t flex items-end gap-2 shadow-[0_-5px_30px_rgba(0,0,0,0.05)] pb-safe z-50">
+                class="chat-input-area absolute bottom-0 left-0 right-0 p-4 pb-6 bg-white border-t flex items-end gap-2 shadow-[0_-5px_30px_rgba(0,0,0,0.05)] z-50">
                 <!-- AI 召唤按钮 -->
                 <button @click="store.triggerAIReply(activeChatId)"
                     class="w-11 h-11 bg-orange-50 text-orange-500 border border-orange-200 rounded-2xl flex items-center justify-center shadow-sm active:scale-90 transition-transform flex-none">

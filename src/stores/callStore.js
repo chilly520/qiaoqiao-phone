@@ -45,8 +45,13 @@ export const useCallStore = defineStore('call', () => {
 
     // Computeds
     const durationText = computed(() => {
-        const mins = Math.floor(elapsedSeconds.value / 60)
-        const secs = elapsedSeconds.value % 60
+        // Use actual time difference for accurate duration (handles background/tab throttling)
+        let totalSeconds = elapsedSeconds.value
+        if (status.value === 'active' && callStartTime.value) {
+            totalSeconds = Math.floor((Date.now() - callStartTime.value) / 1000)
+        }
+        const mins = Math.floor(totalSeconds / 60)
+        const secs = totalSeconds % 60
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     })
 

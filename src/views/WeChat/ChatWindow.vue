@@ -611,17 +611,17 @@ const selectedMsgIds = ref(new Set())
 const lastSelectedId = ref(null)
 
 const toggleMessageSelection = (msgId) => {
-    if (selectedMsgIds.value.has(msgId)) {
-        selectedMsgIds.value.delete(msgId)
+    const newSet = new Set(selectedMsgIds.value)
+    if (newSet.has(msgId)) {
+        newSet.delete(msgId)
         if (lastSelectedId.value === msgId) {
-            // If the anchor is deselected, we could find another one or just clear
-            // For simplicity, we just keep it or clear if empty
-            if (selectedMsgIds.value.size === 0) lastSelectedId.value = null
+            if (newSet.size === 0) lastSelectedId.value = null
         }
     } else {
-        selectedMsgIds.value.add(msgId)
+        newSet.add(msgId)
         lastSelectedId.value = msgId
     }
+    selectedMsgIds.value = newSet
 }
 
 const selectToBottom = () => {
@@ -643,14 +643,16 @@ const selectToBottom = () => {
     if (minIdx === -1) return
 
     // Select everything from the earliest selection to the end of the visible list
+    const newSet = new Set(selectedMsgIds.value)
     for (let i = minIdx; i < visibleMsgs.length; i++) {
-        selectedMsgIds.value.add(visibleMsgs[i].id)
+        newSet.add(visibleMsgs[i].id)
     }
+    selectedMsgIds.value = newSet
 }
 
 const exitMultiSelectMode = () => {
     isMultiSelectMode.value = false
-    selectedMsgIds.value.clear()
+    selectedMsgIds.value = new Set()
     lastSelectedId.value = null
 }
 
@@ -1471,6 +1473,7 @@ const handleBackpackSendCard = (payload) => {
             content: giftContent,
             giftId: payload.giftId,
             giftName: payload.giftName,
+            giftDescription: payload.giftDescription || '一件珍贵的礼物',
             giftImage: payload.giftImage,
             giftNote: payload.giftNote,
             giftQuantity: payload.giftQuantity,

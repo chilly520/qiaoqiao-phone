@@ -552,6 +552,7 @@ export const useMomentsStore = defineStore('moments', () => {
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
         const stickerStore = useStickerStore()
+        const worldBookStore = useWorldBookStore()
 
         chatStore.triggerToast('正在召唤朋友前来互动...', 'info')
 
@@ -567,6 +568,16 @@ export const useMomentsStore = defineStore('moments', () => {
             content: m.content
         }))
 
+        // 获取朋友圈实验室的自定义提示词和世界书设置
+        const customPrompt = config.value.customPrompt
+        let worldBookContext = ''
+        if (config.value.enabledWorldBookEntries.length > 0) {
+            const books = worldBookStore.books || []
+            const allEntries = books.flatMap(b => b.entries || [])
+            const activeEntries = allEntries.filter(e => config.value.enabledWorldBookEntries.includes(e.id))
+            worldBookContext = activeEntries.map(e => `[${e.name}]: ${e.content}`).join('\n')
+        }
+
         const charInfos = allCharIds.map(id => {
             const chat = chatStore.chats[id]
             if (!chat) return null
@@ -575,16 +586,23 @@ export const useMomentsStore = defineStore('moments', () => {
             const globalStickers = stickerStore.getStickers('global') || []
             const allStickers = [...charStickers, ...globalStickers].filter(s => s && s.name)
 
+            // 合并世界书上下文和角色标签
+            const combinedWorldContext = worldBookContext 
+                ? `${worldBookContext}\n${(chat.tags || []).join(', ')}`
+                : (chat.tags || []).join(', ')
+
             return {
                 id,
                 name: chat.name,
                 persona: chat.prompt,
                 recentChats: (chat.msgs || []).slice(-20).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join('\n'),
-                worldContext: (chat.tags || []).join(', '),
+                worldContext: combinedWorldContext,
                 emojis: allStickers,
                 // 传递用户对该角色的设定
                 userName: chat.userName,
-                userPersona: chat.userPersona
+                userPersona: chat.userPersona,
+                // 传递朋友圈实验室的自定义提示词
+                customPrompt: customPrompt
             }
         }).filter(char => char && canInteractWithMoment(moment, char.id))
 
@@ -605,7 +623,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         try {
             moment.baseLikeCount += Math.floor(Math.random() * 30) + 5
-            const { generateBatchInteractions } = await import('../utils/aiService')
+            const { generateBatchInteractions } = await import('../utils/aiService.js')
             const interactions = await generateBatchInteractions(currentContext, charInfos, historicalMoments, userProfile)
 
             for (const interaction of interactions) {
@@ -664,7 +682,7 @@ export const useMomentsStore = defineStore('moments', () => {
         await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000))
 
         try {
-            const ai = await import('../utils/aiService')
+            const ai = await import('../utils/aiService.js')
 
             // Get character stickers
             const charStickers = stickerStore.getStickers(replier.id) || []
@@ -777,7 +795,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 worldContext = activeEntries.map(e => `[${e.name}]: ${e.content}`).join('\n')
             }
 
-            const ai = await import('../utils/aiService')
+            const ai = await import('../utils/aiService.js')
             const result = await ai.generateBatchMomentsWithInteractions({
                 characters: chars,
                 worldContext: worldContext,
@@ -991,7 +1009,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 worldContext = activeEntries.map(e => `[${e.name}]: ${e.content}`).join('\n')
             }
 
-            const ai = await import('../utils/aiService')
+            const ai = await import('../utils/aiService.js')
             const profileData = await ai.generateCharacterProfile(char, userProfile, { customPrompt, worldContext }, options)
 
             // 1. Update Character Info (Signature & Background & Bio Fields)

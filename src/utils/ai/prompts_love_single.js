@@ -32,8 +32,9 @@ export function generateDiaryPrompt(charName, userName, userProfile, recentChats
   const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
   
   return `${commonContext}
-【任务：发布一篇情侣日记】
-请以发布“共享日记”的口吻，为你们的空间记录下一段深刻的回忆或当下的感悟。
+【任务：发布一篇私密情侣日记】
+这是埋藏在心底的秘密，记录只属于你们两个人的甜蜜时刻。不是公开的日记，而是写给对方的私密心事。
+请以私密日记的口吻，为你们的空间记录下一段深刻的回忆或当下的感悟。
 
 【历史日记背景 (最后 5 条)】
 ${recentDiary.slice(-5).map(d => `${d.authorName || '我'}: 《${d.title}》- ${d.content.substring(0, 100)}...`).join('\n') || '（空间暂无历史日记）'}
@@ -54,9 +55,11 @@ ${recentDiary.slice(-5).map(d => `${d.authorName || '我'}: 《${d.title}》- ${
 4. **段落间距**：段与段之间要有明显间隔
 
 【专项要求】
-1. 风格：像是一篇写给彼此看的精美小短文。
-2. 历史：如果对方最近写了日记，你可以尝试在内容中给予回应。
-3. **严禁任何 [表情包:xxx] 内容**。
+1. **私密性**：这是埋藏在心底的秘密，写给对方的私密心事，不是公开的日记。
+2. 风格：像是一篇写给彼此看的精美小短文。
+3. 历史：如果对方最近写了日记，你可以尝试在内容中给予回应。
+4. **重要**：这是你偷偷看到的用户日记，请用温柔细腻的文字回应这份私密的心意。
+5. **严禁任何 [表情包:xxx] 内容**。
 `;
 }
 

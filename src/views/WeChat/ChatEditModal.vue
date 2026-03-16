@@ -203,7 +203,8 @@ const save = () => {
             role: b.role,
             type: 'text',
             content: b.content,
-            timestamp: Date.now()
+            // Preserve original timestamp when editing
+            timestamp: originalMsg.value?.timestamp || Date.now()
         }
 
         if (b.type === 'image' || b.type === 'sticker') {

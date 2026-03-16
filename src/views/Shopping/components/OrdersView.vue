@@ -322,13 +322,19 @@ const selectFriend = async (friend) => {
         type: 'order_share',
         orderId: sharingOrder.value.id,
         orderData: JSON.parse(JSON.stringify(sharingOrder.value)),
-        timestamp: new Date().toISOString()
+        timestamp: Date.now()
     }
 
     console.log('发送的订单卡片:', orderCard)
 
     try {
-        await chatStore.addMessage(friend.id, orderCard)
+        const result = await chatStore.addMessage(friend.id, orderCard)
+        console.log('addMessage 返回结果:', result)
+        if (result) {
+            console.log('订单卡片发送成功')
+        } else {
+            console.error('订单卡片发送失败，addMessage 返回 false')
+        }
     } catch (error) {
         console.error('发送订单卡片失败:', error)
     }

@@ -98,6 +98,7 @@ const route = useRoute()
 const router = useRouter()
 const walletStore = useWalletStore()
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 const cardId = route.params.id
 const card = computed(() => walletStore.bankCards.find(c => c.id === cardId))

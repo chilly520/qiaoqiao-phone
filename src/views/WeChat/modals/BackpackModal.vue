@@ -209,6 +209,7 @@ const handleGift = () => {
         giftId: giftId,
         itemId: item.id,
         giftName: item.title,
+        giftDescription: item.description || '一件珍贵的礼物',
         giftImage: item.image,
         giftNote: giftNote.value,
         giftQuantity: 1,

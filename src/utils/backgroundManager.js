@@ -9,6 +9,10 @@ class BackgroundManager {
         this.logger = null;
         this.checkInterval = null;
         this.checkIntervalTime = 60000; // 1分钟检查一次
+        this.audioLogCount = 0; // 限制音频日志频率
+        this.heartbeatLogCount = 0; // 限制心跳日志频率
+        this.wakeLockLogged = false; // 限制 Wake Lock 日志
+        this.visibilityLogged = false; // 限制 visibility 日志
     }
 
     /**
@@ -59,11 +63,16 @@ class BackgroundManager {
         try {
             await this.audio.play();
             this.isActive = true;
-            this.log('Silent audio loop is active (maintaining JS thread).', 'info');
+            // 只在前3次打印日志，之后静默
+            if (this.audioLogCount < 3) {
+                this.log('Silent audio loop is active (maintaining JS thread).', 'info');
+                this.audioLogCount++;
+            }
         } catch (e) {
             // Only log error if not actively paused by logic
-            if (e.name !== 'AbortError') {
+            if (e.name !== 'AbortError' && this.audioLogCount < 3) {
                 this.log('Audio play failed (waiting for user gesture): ' + e.message, 'info');
+                this.audioLogCount++;
             }
             this.isActive = false;
         }
@@ -83,11 +92,14 @@ class BackgroundManager {
             
             try {
                 this.wakeLock = await navigator.wakeLock.request('screen');
-                this.log('Screen Wake Lock acquired.', 'info');
+                if (!this.wakeLockLogged) {
+                    this.log('Screen Wake Lock acquired.', 'info');
+                    this.wakeLockLogged = true;
+                }
 
                 this.wakeLock.addEventListener('release', () => {
                     this.wakeLock = null;
-                    this.log('Wake Lock was released.', 'sys');
+                    // Wake Lock 释放日志只在调试时需要，日常静默
                     // Try to re-request if released involuntarily
                     if (document.visibilityState === 'visible') {
                         setTimeout(() => this.requestWakeLock(), 1000);
@@ -105,11 +117,16 @@ class BackgroundManager {
     setupVisibilityHandler() {
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                this.log('App returned to foreground. Re-syncing keepers...', 'sys');
+                if (!this.visibilityLogged) {
+                    this.log('App returned to foreground. Re-syncing keepers...', 'sys');
+                }
                 this.playAudio();
                 this.requestWakeLock();
             } else {
-                this.log('App entered background. Audio loop maintaining execution.', 'sys');
+                if (!this.visibilityLogged) {
+                    this.log('App entered background. Audio loop maintaining execution.', 'sys');
+                    this.visibilityLogged = true; // 只打印一次
+                }
                 // Ensure audio is playing before fully backgrounding
                 if (this.audio) {
                     this.playAudio();
@@ -145,12 +162,16 @@ class BackgroundManager {
                 // If audio failed and hasn't recovered, isActive might be false
                 // But we still try to run checks if possible
                 
-                this.log('Running background heartbeat...', 'info');
+                // 只在前3次打印心跳日志
+                if (this.heartbeatLogCount < 3) {
+                    this.log('Running background heartbeat...', 'info');
+                    this.heartbeatLogCount++;
+                }
                 
                 // Try to import and use chatStore
                 try {
                     // Use dynamic import for ES modules
-                    const { useChatStore } = await import('../stores/chatStore');
+                    const { useChatStore } = await import('../stores/chatStore.js');
                     const chatStore = useChatStore();
                     
                     // Check for all chats
@@ -163,7 +184,7 @@ class BackgroundManager {
                     }
                 } catch (e) {
                     // Chat store might not be available yet, or component not mounted
-                    this.log(`Chat store not available for background check: ${e.message}`, 'info');
+                    // 静默处理，不打印日志避免刷屏
                 }
             } catch (error) {
                 this.log(`Error in background check: ${error.message}`, 'error');

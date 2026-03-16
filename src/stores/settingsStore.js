@@ -251,6 +251,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const weather = ref({
         virtualLocation: '',
         realLocation: '',
+        userLocation: null,
         // Live data synced from HomeView
         temp: '--°',
         desc: '获取中',

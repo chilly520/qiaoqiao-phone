@@ -48,10 +48,13 @@ const filteredChatList = computed(() => {
     if (searchQuery.value) {
         const q = searchQuery.value.toLowerCase()
         list = list.filter(chat => {
+            // 搜索原名、备注名和显示名
             const nameMatch = (chat.name || '').toLowerCase().includes(q)
+            const remarkMatch = (chat.remark || '').toLowerCase().includes(q)
+            const displayNameMatch = (chat.displayName || '').toLowerCase().includes(q)
             const content = ensureString(chat.lastMsg?.content)
             const contentMatch = content.toLowerCase().includes(q)
-            return nameMatch || contentMatch
+            return nameMatch || remarkMatch || displayNameMatch || contentMatch
         })
     }
     return list
@@ -1305,7 +1308,7 @@ const handleImport = async (e) => {
                                         <div class="flex items-center gap-1.5 truncate">
                                             <span v-if="chat.isGroup"
                                                 class="bg-green-500 text-white text-[8px] px-1 rounded-sm shrink-0">群组</span>
-                                            <span class="font-medium text-gray-900 truncate">{{ chat.name }}</span>
+                                            <span class="font-medium text-gray-900 truncate">{{ chat.displayName || chat.name }}</span>
                                         </div>
                                         <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
                                             Date(chat.lastMsg.timestamp).toLocaleTimeString([], {

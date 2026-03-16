@@ -66,7 +66,7 @@ export const useWalletStore = defineStore('wallet', () => {
                 // Send notification on the 1st of the month (or first time seeing the new month)
                 setTimeout(async () => {
                     try {
-                        const { useChatStore } = await import('./chatStore')
+                        const { useChatStore } = await import('./chatStore.js')
                         const chatStore = useChatStore()
                         chatStore.addMessage(card.ownerId, {
                             role: 'system',
@@ -190,8 +190,8 @@ export const useWalletStore = defineStore('wallet', () => {
                     // NEW: Notify the card owner
                     setTimeout(async () => {
                         try {
-                            const { useChatStore } = await import('./chatStore')
-                            const { useSettingsStore } = await import('./settingsStore')
+                            const { useChatStore } = await import('./chatStore.js')
+                            const { useSettingsStore } = await import('./settingsStore.js')
                             const { useMahjongStore } = await import('./mahjongStore.js')
                             const chatStore = useChatStore()
                             const settingsStore = useSettingsStore()
@@ -347,8 +347,8 @@ export const useWalletStore = defineStore('wallet', () => {
             // NEW: Notify the card owner
             setTimeout(async () => {
                 try {
-                    const { useChatStore } = await import('./chatStore')
-                    const { useSettingsStore } = await import('./settingsStore')
+                    const { useChatStore } = await import('./chatStore.js')
+                    const { useSettingsStore } = await import('./settingsStore.js')
                     const { useMahjongStore } = await import('./mahjongStore.js')
                     const chatStore = useChatStore()
                     const settingsStore = useSettingsStore()

@@ -216,7 +216,7 @@ export const useShoppingStore = defineStore('shopping', () => {
                 // 通过在 chatStore 中注册 DRAW 指令处理器来实现
                 if (p.imagePrompt) {
                     try {
-                        const { generateImage } = await import('../utils/aiService')
+                        const { generateImage } = await import('../utils/aiService.js')
                         // Pass isProduct flag to enforce realism in generateImage logic
                         p.image = await generateImage(p.imagePrompt, { width: 600, height: 600, isProduct: true });
                         console.log(`[Shopping] Generated image for product ${p.id} using custom drawing API`)

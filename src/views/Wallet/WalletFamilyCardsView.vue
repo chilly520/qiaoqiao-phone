@@ -213,8 +213,9 @@ const getCharAvatar = (id, card) => {
 
 const getThemeClass = (theme) => {
     switch (theme) {
-        case 'pink': return 'bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e]'
+        case 'pink': return 'bg-gradient-to-br from-pink-500 to-rose-400 !text-white border-pink-400/30'
         case 'blue': return 'bg-gradient-to-br from-blue-600 to-indigo-700 !text-white border-blue-400/30'
+        case 'gold': return 'bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e]'
         default: return 'bg-gradient-to-br from-[#2c2c2e] to-[#1c1c1e]'
     }
 }

@@ -327,12 +327,13 @@ export function generateContextPreview(chatId, char) {
         ? weatherService.getLocationContextText()
         : ''
         
-    // 读取用户位置：优先读取角色独立位置，其次读取全局位置
-    const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
+    // 读取用户位置：优先读取角色独立位置，其次读取全局用户位置，最后读取虚拟地点
+    const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || settingsStore.weather?.virtualLocation || {}
     console.log('[AI Service] 用户位置数据源检查:', {
         'char.userLocation': char.userLocation,
         'char.bio?.location': char.bio?.location,
         'settingsStore.weather?.userLocation': settingsStore.weather?.userLocation,
+        'settingsStore.weather?.virtualLocation': settingsStore.weather?.virtualLocation,
         '最终 userLoc': userLoc
     })
         
@@ -597,7 +598,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     // Dynamic import to avoid circular dependency
     let momentsStore = null
     try {
-        const { useMomentsStore } = await import('../stores/momentsStore')
+        const { useMomentsStore } = await import('../stores/momentsStore.js')
         momentsStore = useMomentsStore()
     } catch (e) {
         console.warn('[AI Service] MomentsStore dynamic load failed:', e)
@@ -753,11 +754,12 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             console.warn('[AI Service] Failed to link memories:', e)
         }
 
-        const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || {}
+        const userLoc = char.userLocation || char.bio?.location || settingsStore.weather?.userLocation || settingsStore.weather?.virtualLocation || {}
         console.log('[AI Service - 通话模式] 用户位置数据源检查:', {
             'char.userLocation': char.userLocation,
             'char.bio?.location': char.bio?.location,
             'settingsStore.weather?.userLocation': settingsStore.weather?.userLocation,
+            'settingsStore.weather?.virtualLocation': settingsStore.weather?.virtualLocation,
             '最终 userLoc': userLoc
         })
                 
@@ -2539,30 +2541,32 @@ async function _generateImageInternal(prompt, options = {}) {
     const isPerson = isMale || isFemale || isCouple || /\b(person|human|people|face|selfie|character)\b/.test(p)
     const hasAbs = /\b(abs|muscle|muscular|six pack)\b/.test(p)
 
-    // Extreme negative boosters - EXPLICITLY ban muscles and exposed chest
-    let negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.8), (bulky:1.8), (thick neck:1.5), (abs:1.8), (exposed chest:1.8), (open shirt:1.5), (pecs:1.8), (bodybuilder:2.0), (buff:1.8), (ugly:1.3), (bad anatomy), (extra digits), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5)"
+    // Extreme negative boosters - EXPLICITLY ban muscles, exposed chest, bad anatomy, wrong age, and unwanted backgrounds
+    let negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.8), (bulky:1.8), (thick neck:1.5), (abs:1.8), (exposed chest:1.8), (open shirt:1.5), (pecs:1.8), (bodybuilder:2.0), (buff:1.8), (ugly:1.3), (bad anatomy:1.5), (bad proportions:1.5), (malformed limbs:1.5), (extra limbs:1.5), (missing limbs:1.5), (extra digits:1.5), (fused fingers:1.5), (too many fingers:1.5), (poorly drawn hands:1.5), (poorly drawn face:1.5), (mutation:1.5), (deformed:1.5), (child:1.8), (little girl:1.8), (little boy:1.8), (kid:1.8), (loli:1.8), (shota:1.8), (teenager:1.3), (adolescent:1.3), (flowers background:1.5), (floral background:1.5), (garden background:1.5), (nature background:1.5), (outdoor flowers:1.5), (field of flowers:1.5), (blossom background:1.5), (cherry blossom background:1.5), (rose background:1.5), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5)"
 
     let enhancedPrompt = ""
     // Universal Anime Style Base - Strictly 2D Japanese Anime, counter Kolors' thick-paint default
     const animeStyleBase = "(anime style:1.6), (Japanese anime style:1.5), (light novel illustration:1.4), (clean lineart:1.4), (flat shading:1.3), (2D:1.6), (illustration:1.4), (cel shading:1.3), (pastel colors), (soft lighting), (no thick painting), (no korean manhwa), (no realistic), (no 3D)"
+    // Default modern urban/indoor background to avoid flowers
+    const defaultBackground = "(modern city background: 1.3), (urban setting: 1.2), (indoor environment: 1.2), (clean simple background: 1.2), (no flowers: 1.5)"
 
     if (options.isProduct) {
         // Strict E-commerce Product Strategy
         negativeBoost = "(human:1.8), (person:1.8), (people:1.8), (face:1.8), (hands:1.8), (body:1.8), (fingers:1.8), (model:1.8), (ugly:1.3), (worst quality), (low quality), (blurry), (watermark)"
         enhancedPrompt = `masterpiece, highly detailed, professional product photography, (photorealistic:1.5), (realistic:1.5), studio lighting, 8k resolution, crisp focus, (product only:1.5), (no humans:1.8), ${prompt}`
     } else if (isCouple) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, (two distinct individuals), romantic atmosphere, highly detailed`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, ${prompt}, (two distinct individuals), (young adult couple: 1.5), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), romantic atmosphere, highly detailed, 18-25 years old`
     } else if (isMale) {
-        // STRICT Bishounen aesthetic: slender, elegant, NO muscles, CLOTHED
+        // STRICT Bishounen aesthetic: slender, elegant, NO muscles, CLOTHED, YOUNG ADULT
         // Force clothing and ban exposed skin unless explicitly requested
         const clothingEnforcement = hasAbs ? "" : "(fully clothed:1.4), (wearing shirt:1.3), (covered chest:1.3), "
         const bodyType = hasAbs ? "(lean athletic build:1.2)" : "(slender elegant build:1.5), (thin:1.3), (no muscles:1.5), (delicate frame:1.3)"
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful bishounen: 1.6), (pretty boy: 1.4), (otome game cg: 1.5), (delicate features: 1.4), (clean shaven: 1.3), (no facial hair: 1.3), ${clothingEnforcement}${bodyType}, (soft expression), ${prompt}, sharp focus, detailed sparkling eyes, handsome, elegant`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, (beautiful bishounen: 1.6), (pretty boy: 1.4), (young adult man: 1.5), (otome game cg: 1.5), (delicate features: 1.4), (clean shaven: 1.3), (no facial hair: 1.3), ${clothingEnforcement}${bodyType}, (soft expression), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, detailed sparkling eyes, handsome, elegant, 20-25 years old`
     } else if (isFemale || isPerson) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, (beautiful anime girl: 1.3), (detailed huge eyes), (soft skin), ${prompt}, sharp focus, vibrant pastel colors, cute`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, (beautiful anime girl: 1.3), (young adult woman: 1.5), (detailed huge eyes), (soft skin), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, vibrant pastel colors, cute, 18-22 years old`
     } else {
         // Fallback also anime
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${prompt}, highly detailed, sharp focus, vibrant colors, clear background`
+        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, ${prompt}, highly detailed, sharp focus, vibrant colors, clear background`
     }
 
     const seed = Math.floor(Math.random() * 1000000)
@@ -2776,7 +2780,11 @@ export async function generateBatchInteractions(moment, charInfos, historicalMom
         userInformation += `背景设定: ${userProfile.persona || '一位普通用户'}\n`
     }
 
-    const systemPrompt = `你现在是“朋友圈拟真生态引擎”。
+    // 收集所有角色的 customPrompt（如果有）
+    const allCustomPrompts = charInfos.map(c => c.customPrompt).filter(Boolean)
+    const uniqueCustomPrompt = allCustomPrompts.length > 0 ? allCustomPrompts[0] : ''
+
+    const systemPrompt = `你现在是"朋友圈拟真生态引擎"。
 你的任务是为以下动态模拟出真实的社交互动（包含点赞、评论和多级回复）。
 
 【现有角色及对应用户身份】
@@ -2789,6 +2797,8 @@ ${userInformation}
 ${moment.location ? `地点：${moment.location}` : ''}
 ${moment.visualContext ? `图片：${moment.visualContext}` : ''}
 ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有评论】：\n${moment.existingComments.map((c, i) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
+
+${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : ''}
 
 【生成规则】
 1. **互动组合**：

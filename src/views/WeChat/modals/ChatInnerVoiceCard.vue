@@ -114,14 +114,14 @@
                     <div class="heart-rate-container" :class="getHeartRateClass(currentHeartRate)">
                         <div class="heart-rate-header">
                             <span class="heart-rate-label">HEART RATE 心率</span>
-                            <span class="heart-rate-value">{{ currentHeartRate }}<span class="heart-rate-unit">bpm</span></span>
+                            <span class="heart-rate-value" :key="animatedHeartRate">{{ animatedHeartRate }}<span class="heart-rate-unit">bpm</span></span>
                         </div>
                         <div class="heart-rate-bar">
                             <div class="heart-rate-grid"></div>
                             <div class="heart-rate-ecg-line"></div>
                             <div class="heart-rate-wave">
-                                <svg viewBox="0 0 800 60" preserveAspectRatio="none">
-                                    <path :d="getECGPath(currentHeartRate)" />
+                                <svg viewBox="0 0 800 60" preserveAspectRatio="none" :style="waveAnimationStyle">
+                                    <path :d="ecgPath" />
                                 </svg>
                             </div>
                         </div>
@@ -416,6 +416,57 @@ const currentHeartRate = computed(() => {
     return currentVoiceContent.value.stats?.heartRate || 75
 })
 
+// 心电图路径 - 使用计算属性缓存
+const ecgPath = computed(() => {
+    return getECGPath(currentHeartRate.value)
+})
+
+// 波形动画样式 - 使用计算属性缓存
+const waveAnimationStyle = computed(() => {
+    const hr = currentHeartRate.value
+    // 60bpm = 2s, 120bpm = 1s - 与心跳周期同步
+    const duration = 60 / hr * 2  // 2个心跳周期的时间
+    return {
+        animation: `waveScroll ${duration}s linear infinite`
+    }
+})
+
+// 动态心率值，用于呼吸感跳动效果
+const animatedHeartRate = ref(75)
+let heartRateInterval = null
+
+// 启动心率跳动动画
+const startHeartRateAnimation = () => {
+    if (heartRateInterval) clearInterval(heartRateInterval)
+    
+    const updateHeartRate = () => {
+        const baseRate = currentHeartRate.value
+        // +-3 随机跳动
+        const variation = Math.floor(Math.random() * 7) - 3 // -3 to +3
+        animatedHeartRate.value = baseRate + variation
+    }
+    
+    // 根据心率计算更新频率：心率越高，跳动越快
+    const getInterval = () => {
+        const hr = currentHeartRate.value
+        // 60bpm = 1000ms, 120bpm = 500ms
+        return Math.max(400, Math.min(1000, 1000 - (hr - 60) * 8))
+    }
+    
+    updateHeartRate()
+    heartRateInterval = setInterval(updateHeartRate, getInterval())
+}
+
+// 监听心率变化，重新启动动画
+watch(currentHeartRate, () => {
+    startHeartRateAnimation()
+}, { immediate: true })
+
+// 组件卸载时清理
+onUnmounted(() => {
+    if (heartRateInterval) clearInterval(heartRateInterval)
+})
+
 const sortedHistory = computed(() => {
     return historyList.value.map((item, index) => {
         const parsed = parseVoiceData(item.content)
@@ -475,7 +526,8 @@ const finalCharCoord = computed(() => {
     let visualRadius = Math.min(42, 8 + (dist * 1.5))
 
     // Anti-collision: Ensure at least sufficient distance to prevent overlapping tags/avatars
-    const MIN_SAFE_DIST = 28
+    // Avatar ~40px + tag ~30px + padding = need at least 35% distance to be safe
+    const MIN_SAFE_DIST = 35
     if (visualRadius < MIN_SAFE_DIST) {
         visualRadius = MIN_SAFE_DIST
     }
@@ -485,8 +537,22 @@ const finalCharCoord = computed(() => {
 
     // Boundary & Obscuring check: Stay away from edges and bottom panel
     // Left/Right: 5%-95%, Top: 5%-75% (avoiding bottom panel which is roughly at 80%+)
-    targetX = Math.max(10, Math.min(90, targetX))
-    targetY = Math.max(10, Math.min(72, targetY))
+    targetX = Math.max(12, Math.min(88, targetX))
+    targetY = Math.max(12, Math.min(70, targetY))
+
+    // Additional anti-collision: if too close to user after boundary clamp, push further
+    const dx = targetX - userCoord.value.x
+    const dy = targetY - userCoord.value.y
+    const actualDist = Math.sqrt(dx * dx + dy * dy)
+    if (actualDist < MIN_SAFE_DIST) {
+        // Push in the same direction to maintain angle
+        const pushFactor = MIN_SAFE_DIST / Math.max(actualDist, 1)
+        targetX = userCoord.value.x + dx * pushFactor
+        targetY = userCoord.value.y + dy * pushFactor
+        // Re-apply boundaries
+        targetX = Math.max(12, Math.min(88, targetX))
+        targetY = Math.max(12, Math.min(70, targetY))
+    }
 
     return { x: targetX, y: targetY }
 })
@@ -582,8 +648,9 @@ const getHeartRateAnimation = (hr) => {
 const getECGPath = (hr) => {
     if (!hr) hr = 75
     
-    // 心率影响波形密度：心率越高，波形越密集
-    const waveDensity = Math.max(0.5, hr / 75)
+    // 根据心率计算幅度系数：心率越高，心跳越有力，幅度越大
+    // 60bpm = 0.8倍, 100bpm = 1.0倍, 140bpm = 1.3倍
+    const amplitudeScale = 0.8 + ((hr - 60) / 80) * 0.5
     
     // 生成心电图路径：P 波 -QRS 波群-T 波
     const pathParts = []
@@ -591,8 +658,9 @@ const getECGPath = (hr) => {
     const height = 60
     const centerY = height / 2
     
-    // 生成 2 个完整的心动周期（为了循环平滑）
-    const beats = 2
+    // 生成更多心跳周期来填满 200% 宽度的 SVG
+    // 心率越高，显示的心跳周期越多，但每个周期宽度越小
+    const beats = Math.max(3, Math.min(6, Math.floor(180 / hr) + 2))
     const beatWidth = width / beats
     
     for (let b = 0; b < beats; b++) {
@@ -602,10 +670,11 @@ const getECGPath = (hr) => {
         let currentX = startX
         pathParts.push(`${b === 0 ? 'M' : 'L'} ${currentX} ${centerY}`)
         
-        // P 波（心房收缩）- 小幅度上升
+        // P 波（心房收缩）- 小幅度上升，幅度随心率变化
         const p1 = startX + beatWidth * 0.1
         const p2 = startX + beatWidth * 0.15
-        pathParts.push(`Q ${p1} ${centerY - 8} ${p2} ${centerY}`)
+        const pHeight = 8 * amplitudeScale
+        pathParts.push(`Q ${p1} ${centerY - pHeight} ${p2} ${centerY}`)
         
         // P-R 段
         const pr = startX + beatWidth * 0.2
@@ -614,16 +683,18 @@ const getECGPath = (hr) => {
         // QRS 波群
         // Q 波 - 小幅下降
         const q = startX + beatWidth * 0.25
-        pathParts.push(`L ${q} ${centerY + 5}`)
+        const qDepth = 5 * amplitudeScale
+        pathParts.push(`L ${q} ${centerY + qDepth}`)
         
-        // R 波 - 急剧上升（最高峰）
+        // R 波 - 急剧上升（最高峰），幅度随心率显著变化
         const r = startX + beatWidth * 0.3
-        const rHeight = 25 + Math.random() * 5  // 添加轻微随机变化
+        const rHeight = (25 + Math.random() * 5) * amplitudeScale  // 添加轻微随机变化 + 心率幅度
         pathParts.push(`L ${r} ${centerY - rHeight}`)
         
         // S 波 - 急剧下降
         const s = startX + beatWidth * 0.35
-        pathParts.push(`L ${s} ${centerY + 8}`)
+        const sDepth = 8 * amplitudeScale
+        pathParts.push(`L ${s} ${centerY + sDepth}`)
         
         // S-T 段
         const st = startX + beatWidth * 0.45
@@ -632,9 +703,10 @@ const getECGPath = (hr) => {
         // T 波（心室复极化）- 中等幅度上升
         const t1 = startX + beatWidth * 0.55
         const t2 = startX + beatWidth * 0.65
-        pathParts.push(`Q ${t1} ${centerY - 12} ${t2} ${centerY}`)
+        const tHeight = 12 * amplitudeScale
+        pathParts.push(`Q ${t1} ${centerY - tHeight} ${t2} ${centerY}`)
         
-        // 等电位线
+        // 等电位线到下一个周期
         const end = startX + beatWidth
         pathParts.push(`L ${end} ${centerY}`)
     }
@@ -848,6 +920,19 @@ watch(() => props.visible, (val) => {
 
 onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId) })
 </script>
+
+<!-- 全局样式 - 定义关键帧动画 -->
+<style>
+/* 心电图波形滚动动画 - 全局定义以便动态绑定使用 */
+@keyframes waveScroll {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-50%);
+    }
+}
+</style>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Noto+Serif+SC:wght@300;500;700&display=swap');
@@ -1082,6 +1167,23 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     display: flex;
     align-items: baseline;
     gap: 4px;
+    animation: heartRateBeat 0.3s ease-out;
+}
+
+/* 心率数值跳动动画 - 每次数值变化时触发 */
+@keyframes heartRateBeat {
+    0% {
+        transform: scale(1);
+        text-shadow: 0 0 0 rgba(212, 175, 55, 0);
+    }
+    50% {
+        transform: scale(1.08);
+        text-shadow: 0 0 15px rgba(212, 175, 55, 0.6);
+    }
+    100% {
+        transform: scale(1);
+        text-shadow: 0 0 0 rgba(212, 175, 55, 0);
+    }
 }
 
 .heart-rate-unit {
@@ -1141,7 +1243,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     top: 0;
     height: 100%;
     width: 200%;
-    animation: waveScroll 2s linear infinite;
+    will-change: transform;
 }
 
 .heart-rate-wave svg path {
@@ -1179,15 +1281,6 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     stroke: #888;
     filter: drop-shadow(0 0 3px rgba(136, 136, 136, 0.5));
     animation-duration: 4s;
-}
-
-@keyframes waveScroll {
-    0% {
-        transform: translateX(0);
-    }
-    100% {
-        transform: translateX(-50%);
-    }
 }
 
 .heart-rate-status {
@@ -1480,19 +1573,19 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 
 .map-nav-panel {
     position: absolute;
-    bottom: 10px;
+    bottom: 5px;
     left: 10px;
     right: 10px;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 0, 0, 0.03);
     border-radius: 10px;
-    padding: 8px 15px;
+    padding: 6px 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     z-index: 30;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
 }
 
 .nav-item {

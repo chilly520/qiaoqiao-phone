@@ -424,6 +424,41 @@
             </div>
             <textarea v-model="editForm.trendingTopics" rows="4" class="w-full bg-white rounded-[16px] border border-teal-100 px-4 py-3 text-[13px] focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-50 transition-all text-teal-600 font-medium shadow-sm resize-none"></textarea>
           </div>
+          
+          <!-- 世界书绑定 -->
+          <div>
+            <div class="flex items-center gap-2 mb-2 px-1">
+               <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">世界书内容联动</label>
+               <span class="text-[10px] text-amber-500 font-medium bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                 <i class="fa-solid fa-star mr-1"></i>重要
+               </span>
+            </div>
+            <div class="text-[11px] text-slate-500 mb-2 px-1 leading-relaxed">
+              选中的世界书条目将作为该岛屿生成内容的核心依据，AI 在生成帖子和评论时必须严格遵守这些设定。
+            </div>
+            <div v-if="worldBookStore.books.length === 0" class="bg-slate-50 rounded-[16px] border border-slate-100 p-4 text-center">
+              <i class="fa-solid fa-book-open text-slate-300 text-2xl mb-2"></i>
+              <div class="text-[12px] text-slate-400">暂无世界书，先去创建一些设定吧</div>
+            </div>
+            <div v-else class="bg-white rounded-[16px] border border-teal-100 p-3 shadow-sm max-h-48 overflow-y-auto">
+              <div v-for="book in worldBookStore.books" :key="book.id" class="mb-2 last:mb-0">
+                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-1">{{ book.name }}</div>
+                <div class="space-y-1">
+                  <label v-for="entry in book.entries" :key="entry.id" 
+                         class="flex items-start gap-2 p-2 rounded-xl hover:bg-teal-50/50 cursor-pointer transition-colors">
+                    <input type="checkbox" 
+                           :value="entry.id" 
+                           v-model="editForm.worldBookEntries"
+                           class="mt-0.5 w-4 h-4 rounded border-slate-300 text-teal-500 focus:ring-teal-500/20">
+                    <div class="flex-1 min-w-0">
+                      <div class="text-[12px] font-bold text-slate-700 truncate">{{ entry.name }}</div>
+                      <div class="text-[10px] text-slate-400 truncate">{{ entry.content.substring(0, 50) }}...</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="p-5 bg-[#f8fbfb] border-t border-teal-50">
@@ -536,6 +571,7 @@ import { ref, onMounted, reactive, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useForumStore } from '@/stores/forumStore'
 import { useChatStore } from '@/stores/chatStore'
+import { useWorldBookStore } from '@/stores/worldBookStore'
 import ForumPostCard from './components/ForumPostCard.vue'
 import ForumPostDetail from './components/ForumPostDetail.vue'
 import ProfileCharacters from './components/ProfileCharacters.vue'
@@ -546,6 +582,7 @@ import ProfileAdmin from './components/ProfileAdmin.vue'
 
 const forumStore = useForumStore()
 const chatStore = useChatStore()
+const worldBookStore = useWorldBookStore()
 const route = useRoute()
 const router = useRouter()
 const currentTab = ref('discover') // 'discover' | 'forum' | 'profile'
@@ -650,7 +687,8 @@ const newAltForm = reactive({ name: '', role: '', avatar: '', isRealUser: false 
 const editForm = reactive({
   forumName: '',
   forumDesc: '',
-  trendingTopics: ''
+  trendingTopics: '',
+  worldBookEntries: []
 })
 
 onMounted(async () => {
@@ -689,10 +727,10 @@ function formatTime(ts) {
 
 async function handleAutoDesc() {
   if (!newForumForm.name.trim()) return
-  const desc = await forumStore.generateForumDesc(newForumForm.name)
+  const desc = await forumStore.generateForumDesc(newForumForm.name, newForumForm.desc)
   if (desc) {
     newForumForm.desc = desc
-    showToast('简介已生成 ✨', 'fa-solid fa-wand-magic-sparkles text-teal-300')
+    showToast(newForumForm.desc.trim() ? '简介已润色 ✨' : '简介已生成 ✨', 'fa-solid fa-wand-magic-sparkles text-teal-300')
   }
 }
 
@@ -814,13 +852,14 @@ function openSettings() {
   editForm.forumName = forumStore.currentForum.name
   editForm.forumDesc = forumStore.currentForum.desc
   editForm.trendingTopics = forumStore.currentForum.trendingTopics.join('\n')
+  editForm.worldBookEntries = forumStore.currentForum.worldBookEntries || []
   showSettings.value = true
 }
 
 function saveSettings() {
   if (!forumStore.currentForum) return;
   const topicsArr = editForm.trendingTopics.split('\n').filter(t => t.trim() !== '')
-  forumStore.editForum(forumStore.currentForumId, editForm.forumName, editForm.forumDesc, topicsArr)
+  forumStore.editForum(forumStore.currentForumId, editForm.forumName, editForm.forumDesc, topicsArr, editForm.worldBookEntries)
   showSettings.value = false
 }
 

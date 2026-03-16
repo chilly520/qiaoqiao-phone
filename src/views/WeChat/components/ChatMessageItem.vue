@@ -122,11 +122,16 @@
                                     </div>
                                 </div>
 
+                                <!-- Description -->
+                                <div class="bg-white/10 rounded-lg p-2 border border-white/10">
+                                    <p class="text-white/80 text-xs leading-relaxed line-clamp-2">{{
+                                        msg.giftDescription || '一件珍贵的礼物' }}</p>
+                                </div>
+
                                 <!-- Note -->
-                                <div class="bg-black/5 rounded-lg p-2 border border-white/10">
+                                <div v-if="msg.giftNote" class="bg-black/5 rounded-lg p-2 border border-white/10">
                                     <p class="text-white/90 text-xs leading-relaxed italic line-clamp-2">"{{
-                                        msg.giftNote ||
-                                        '送给你的小惊喜' }}"</p>
+                                        msg.giftNote }}"</p>
                                 </div>
                             </div>
 
@@ -277,16 +282,21 @@
                                     </div>
                                 </div>
 
+                                <!-- Description -->
+                                <div class="bg-white/10 rounded-lg p-2 border border-white/10">
+                                    <p class="text-white/80 text-xs leading-relaxed line-clamp-2">{{
+                                        msg.giftDescription || '一件珍贵的礼物' }}</p>
+                                </div>
+
                                 <!-- Claim Info -->
-                                <div class="bg-black/5 rounded-lg p-2 border border-white/10">
+                                <div v-if="msg.giftNote" class="bg-black/5 rounded-lg p-2 border border-white/10">
                                     <p class="text-white/90 text-xs leading-relaxed italic line-clamp-2">"{{
-                                        msg.giftNote ||
-                                        '送给你的小惊喜' }}"</p>
-                                    <div class="mt-2 pt-2 border-t border-white/20">
-                                        <div class="flex items-center gap-2">
-                                            <img :src="msg.claimantAvatar" class="w-4 h-4 rounded-full object-cover">
-                                            <span class="text-white/80 text-xs">{{ msg.claimantName }} 领取了这份礼物</span>
-                                        </div>
+                                        msg.giftNote }}"</p>
+                                </div>
+                                <div class="mt-2 pt-2 border-t border-white/20">
+                                    <div class="flex items-center gap-2">
+                                        <img :src="msg.claimantAvatar" class="w-4 h-4 rounded-full object-cover">
+                                        <span class="text-white/80 text-xs">{{ msg.claimantName }} 领取了这份礼物</span>
                                     </div>
                                 </div>
                             </div>
@@ -673,7 +683,10 @@
                                 <!-- ✅ 修复：语音气泡样式遵循全局 bubbleCss 规则 -->
                                 <div class="voice-bubble music-bubble chat-bubble-voice"
                                     :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
-                                    :style="getVoiceBubbleStyle()"
+                                    :style="[
+                                        getVoiceBubbleStyle(),
+                                        computedBubbleStyle
+                                    ]"
                                     @click="handlePlayMusic">
                                     <div class="voice-icon">
                                         <i class="fa-solid fa-music"
@@ -695,7 +708,10 @@
                                         msg.role === 'user' ? 'chat-bubble-right flex-row-reverse' : 'chat-bubble-left',
                                         (msg.isPlaying || false) ? 'voice-playing-effect' : ''
                                     ]"
-                                    :style="{ width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px', fontSize: (chatData?.bubbleSize || 15) + 'px' }"
+                                    :style="[
+                                        { width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px', fontSize: (chatData?.bubbleSize || 15) + 'px' },
+                                        computedBubbleStyle
+                                    ]"
                                     @click="handleToggleVoice" @contextmenu.prevent="emitContextMenu"
                                     @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                     @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
@@ -1482,7 +1498,7 @@ const isValidMessage = computed(() => {
     }
 
     // 2. Card & Media Checks
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card') return true;
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share') return true;
     if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg)) return true
 
     // 3. Text Content Filtering
@@ -1497,13 +1513,22 @@ const isValidMessage = computed(() => {
             content.includes('"mind"') ||
             content.includes('"着装"') ||
             content.includes('"心声"') ||
-            content.includes('"mood"')
+            content.includes('"mood"') ||
+            content.includes('"heartRate"') ||
+            content.includes('"stats"')
         )) {
             return false
         }
 
         // Hide BIO updates
         if (content.match(/^\[(?:UPDATE_)?BIO:/i)) return false
+
+        // Hide heartRate text format (心率数据清理后为空)
+        if (/heartRate\s*[:：]/i.test(content)) return false
+        if (/心率\s*[:：]/i.test(content)) return false
+        
+        // Hide messages that only contain INNER_VOICE tags
+        if (/\[INNER_VOICE\]/i.test(content)) return false
     }
 
     // Default: Show (render the placeholder if empty, to allow debug/delete)
@@ -1880,11 +1905,15 @@ function getCleanContent(contentRaw, isCard = false) {
     // ✅ 修复：移除【系统提示】前缀的显示，只在后台日志中使用
     clean = clean.replace(/^\s*【系统提示】\s*/g, '');
     
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
+    // 处理 INNER_VOICE 标签（有结束标签的情况）
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    
+    // 处理 INNER_VOICE 标签（没有结束标签的情况）- 匹配到 JSON 对象结束为止
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\n\}[ \t]*\n/gi, '\n');
+    
+    // 清理残留的标签
     clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); 
-    clean = clean.replace(/\[\s *INNER[-_ ]?VOICE\s*\]/gi, '');
-    clean = clean.replace(/\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '');
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '');
 
     clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间)[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
@@ -1913,9 +1942,41 @@ function getCleanContent(contentRaw, isCard = false) {
     clean = clean.replace(/(?:rgba?|hsla?)\([^\)]+\)/gi, '');
     clean = clean.replace(/#[0-9a-f]{3,8}/gi, '');
 
-    clean = clean.replace(/\{[\s\n]*"(?:type|html|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
-    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value|emotion|energy|spirit|hangup|speech)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
-    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind|emotion|energy|spirit)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
+    // ✅ 移除包含 status/stats/heartRate/着装/环境/心声/行为 的 JSON 块
+    // 使用平衡括号匹配来正确处理嵌套的 JSON 结构
+    const removeJsonWithKeywords = (str) => {
+        let result = ''
+        let i = 0
+        while (i < str.length) {
+            if (str[i] === '{') {
+                let depth = 0
+                let start = i
+                while (i < str.length) {
+                    if (str[i] === '{') depth++
+                    else if (str[i] === '}') depth--
+                    i++
+                    if (depth === 0) break
+                }
+                const jsonBlock = str.substring(start, i)
+                if (/"(?:status|stats|heartRate|着装|环境|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit)"/.test(jsonBlock)) {
+                    // Skip this JSON block
+                } else {
+                    result += jsonBlock
+                }
+            } else {
+                result += str[i]
+                i++
+            }
+        }
+        return result
+    }
+    clean = removeJsonWithKeywords(clean)
+    
+    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind|emotion|energy|spirit|heartRate)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
+    
+    // ✅ 隐藏心率参数（防止泄露）
+    clean = clean.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '');
+    clean = clean.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '');
         
     clean = clean.replace(/[\}\{"]+/g, (match) => {
         const trimmed = match.trim();
@@ -2130,12 +2191,22 @@ function isImageMsg(msg) {
     // Sticker check (Only return true if it exists or is a URL)
     const match = clean.match(STICKER_REGEX)
     if (match) {
-        const c = match[1].trim()
-        if (c.startsWith('http') || c.startsWith('blob:') || c.startsWith('data:')) return true
+        const stickerName = match[1].trim()
+        const stickerUrl = match[2] ? match[2].trim() : null
+        
+        // 如果提供了URL，直接认为是图片
+        if (stickerUrl && (stickerUrl.startsWith('http') || stickerUrl.startsWith('blob:') || stickerUrl.startsWith('data:'))) {
+            return true
+        }
+        
+        // 传统格式：名称就是URL
+        if (stickerName.startsWith('http') || stickerName.startsWith('blob:') || stickerName.startsWith('data:')) {
+            return true
+        }
 
         // Return TRUE only if we have a standalone tag AND it's a known sticker
         // This ensures broken stickers fall back to text bubble
-        const found = findSticker(c);
+        const found = findSticker(stickerName, stickerUrl);
         if (found) {
             // Check if it's purely just the sticker tag
             const isTagOnly = /^\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]$/i.test(clean)
@@ -2185,7 +2256,10 @@ function isSticker(msg) {
     return STICKER_REGEX.test(content)
 }
 
-const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*(.*?)\s*\]/i;
+// 支持两种格式：
+// 1. [表情包：名称] - 传统格式，通过名称查找
+// 2. [表情包：名称：https://url] - 新格式，通过URL查找或验证
+const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*([^:：\]]+)(?:[:：]\s*(https?:\/\/[^\]]+))?\s*\]/i;
 
 function normalizeStickerName(s) {
     if (!s) return '';
@@ -2197,15 +2271,22 @@ function normalizeStickerName(s) {
         .trim();
 }
 
-function findSticker(name) {
-    if (!name) return null;
-    const n = name.trim();
+function findSticker(name, url = null) {
+    if (!name && !url) return null;
+    const n = name ? name.trim() : '';
     const nClean = normalizeStickerName(n);
-    if (!nClean && !n) return null;
-
+    
     const charStickers = props.chatData?.emojis || [];
     const globalStickers = stickerStore.getStickers('global') || [];
     const allAvailable = [...charStickers, ...globalStickers];
+    
+    // 如果提供了URL，优先通过URL精确匹配
+    if (url) {
+        const urlMatch = allAvailable.find(s => s.url === url.trim());
+        if (urlMatch) return urlMatch;
+    }
+    
+    if (!n && !nClean) return null;
 
     // 1. Precise Match (Raw)
     let found = allAvailable.find(s => s.name === n);
@@ -2238,15 +2319,29 @@ function getImageSrc(msg) {
 
     const match = clean.match(STICKER_REGEX)
     if (match) {
-        const c = match[1].trim()
-        if (c.startsWith('http') || c.startsWith('blob:') || c.startsWith('data:')) return c
+        const stickerName = match[1].trim()
+        const stickerUrl = match[2] ? match[2].trim() : null
+        
+        // 如果提供了URL，直接使用
+        if (stickerUrl) {
+            // 同时通过URL查找验证
+            const found = findSticker(stickerName, stickerUrl);
+            if (found) return found.url;
+            // 如果没找到但URL有效，直接使用URL
+            if (stickerUrl.startsWith('http')) return stickerUrl;
+        }
+        
+        // 传统格式：只提供了名称
+        if (stickerName.startsWith('http') || stickerName.startsWith('blob:') || stickerName.startsWith('data:')) {
+            return stickerName;
+        }
 
-        // Robust Lookup
-        const found = findSticker(c);
+        // Robust Lookup by name
+        const found = findSticker(stickerName);
         if (found) return found.url;
 
         // Fallback to Dicebear INITIALS (using cleaned name)
-        const seed = normalizeStickerName(c) || c;
+        const seed = normalizeStickerName(stickerName) || stickerName;
         return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`
     }
 
@@ -2274,6 +2369,12 @@ function formatMessageContent(msg) {
     if (text.includes('\\n')) {
         text = text.replace(/\\n/g, '\n');
     }
+
+    // ✅ 隐藏心率参数（防止泄露到聊天框）
+    // 英文格式: heartRate: 110, heartRate：110, heartRate: 110 bpm, heartRate:110bpm
+    text = text.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
+    // 中文格式: 心率：110, 心率: 110 次, 心率:110次, 心率：110次/min
+    text = text.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '').trim();
 
     // Continue chaining processing on the 'text' variable
     text = text.replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
@@ -2366,6 +2467,15 @@ function formatMessageContent(msg) {
         text = text.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, (match, content) => {
             try {
                 const data = typeof content === 'string' ? JSON.parse(content.trim()) : content;
+                
+                // 检测错误的格式（包含推理流程内容）
+                const invalidKeys = ['情境扫描', '用户解读', '角色内心', '回应策略', '生活化细节', '主动创造'];
+                const hasInvalidContent = invalidKeys.some(key => data[key] || JSON.stringify(data).includes(`"${key}"`));
+                if (hasInvalidContent) {
+                    // 跳过显示错误的格式
+                    return '';
+                }
+                
                 const status = data.status || data.状态 || '思考中';
                 const outfit = data.着装 || data.outfit || '';
                 const scene = data.环境 || data.scene || '';
@@ -2381,7 +2491,8 @@ function formatMessageContent(msg) {
                     <span class="text-[10px] text-pink-300 font-medium">${displayText.trim()}</span>
                 </div>`;
             } catch (e) {
-                return '<div class="inline-block bg-pink-50/20 border border-pink-200/30 rounded-lg px-2 py-1 my-1 select-none backdrop-blur-sm"><span class="text-[10px] text-pink-300 font-medium">💭 心声数据</span></div>';
+                // JSON 解析失败，跳过显示
+                return '';
             }
         });
     }
@@ -3007,8 +3118,13 @@ function getHtmlContent(content) {
     try {
         let processed = content;
 
-        // 1. 移除[INNER_VOICE]标签和内容（包括换行符）
+        // 1. 移除 [INNER_VOICE] 标签和内容（包括换行符）
         processed = processed.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+        // ✅ 隐藏心率参数（防止泄露）
+        // 英文格式: heartRate: 110, heartRate：110, heartRate: 110 bpm, heartRate:110bpm
+        processed = processed.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
+        // 中文格式: 心率：110, 心率: 110 次, 心率:110次, 心率：110次/min
+        processed = processed.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '').trim();
 
         // 2. 检查是否是[CARD]格式
         if (processed.startsWith('[CARD]')) {
@@ -3055,6 +3171,9 @@ function getHtmlContent(content) {
 
             // 重新处理原始内容
             cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+            // 隐藏心率参数
+            cleaned = cleaned.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
+            cleaned = cleaned.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '').trim();
             cleaned = cleaned.replace(/\[CARD\]/gi, '').trim();
             cleaned = cleaned.replace(/\[\/CARD\]/gi, '').trim();
             cleaned = cleaned.replace(/^```(?:html|json)?\n?|```$/gi, '').trim();

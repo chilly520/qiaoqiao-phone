@@ -85,18 +85,85 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       const photoCount = space.album?.length || 0
       const houseStatus = space.house?.desc || '充满了温馨的气息'
       
-      // 历史记录摘要
-      const history = this.gatherContextHistoryForSpace(charId)
-      let historyPart = ""
-      if (history.recentDiary.length > 0) historyPart += `\n- 最近日记：${history.recentDiary.join('; ')}`
-      if (history.recentMessages.length > 0) historyPart += `\n- 最近留言：${history.recentMessages.join('; ')}`
-      if (history.recentLetters.length > 0) historyPart += `\n- 最近情书：${history.recentLetters.join('; ')}`
+      // 详细内容展示
+      let contentDetails = ""
+      
+      // 最近日记（最新3条，完整内容）
+      if (space.diary && space.diary.length > 0) {
+        const recentDiaries = space.diary.slice(-3).reverse()
+        contentDetails += `\n\n【最近日记】`
+        recentDiaries.forEach(d => {
+          contentDetails += `\n- ${d.authorName || (d.author === 'user' ? '用户' : '你')}《${d.title}》：${d.content || ''}`
+        })
+      }
+      
+      // 最近留言（最新5条，完整内容）
+      if (space.messages && space.messages.length > 0) {
+        const recentMessages = space.messages.slice(-5).reverse()
+        contentDetails += `\n\n【最近留言】`
+        recentMessages.forEach(m => {
+          contentDetails += `\n- ${m.senderName || (m.senderId === 'user' ? '用户' : '你')}："${m.content || ''}"`
+        })
+      }
+      
+      // 最近情书（最新3条，完整内容）
+      if (space.letters && space.letters.length > 0) {
+        const recentLetters = space.letters.slice(-3).reverse()
+        contentDetails += `\n\n【最近情书】`
+        recentLetters.forEach(l => {
+          contentDetails += `\n- ${l.authorName || (l.author === 'user' ? '用户' : '你')}《${l.title}》：${l.content || ''}`
+        })
+      }
+      
+      // 最近足迹（最新5条）
+      if (space.footprints && space.footprints.length > 0) {
+        const recentFootprints = space.footprints.slice(-5).reverse()
+        contentDetails += `\n\n【最近足迹】`
+        recentFootprints.forEach(f => {
+          contentDetails += `\n- ${f.location || f.place}：${f.note || f.memory || ''}`
+        })
+      }
+      
+      // 便利贴（最新5条）
+      if (space.stickies && space.stickies.length > 0) {
+        const recentStickies = space.stickies.slice(-5).reverse()
+        contentDetails += `\n\n【便利贴】`
+        recentStickies.forEach(s => {
+          contentDetails += `\n- ${s.authorName || s.author}："${s.content}"`
+        })
+      }
+      
+      // 纪念日（最新5条）
+      if (space.anniversaries && space.anniversaries.length > 0) {
+        const recentAnniversaries = space.anniversaries.slice(-5).reverse()
+        contentDetails += `\n\n【纪念日】`
+        recentAnniversaries.forEach(a => {
+          contentDetails += `\n- ${a.title}：${a.date}`
+        })
+      }
+      
+      // 日程（最近2天）
+      if (space.schedules && space.schedules.length > 0) {
+        const now = new Date()
+        const twoDaysLater = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
+        const recentSchedules = space.schedules.filter(s => {
+          const scheduleDate = new Date(s.date)
+          return scheduleDate >= now && scheduleDate <= twoDaysLater
+        })
+        if (recentSchedules.length > 0) {
+          contentDetails += `\n\n【最近日程】`
+          recentSchedules.forEach(s => {
+            contentDetails += `\n- ${s.date}：${s.title}${s.note ? `（${s.note}）` : ''}`
+          })
+        }
+      }
 
       return `【情侣空间状态】
 - 与 ${partnerName} 的恋爱天数：${loveDays} 天
 - 共同日记：${diaryCount} 篇
 - 纪念相册：${photoCount} 张照片
-- 两人小屋动态：${houseStatus}${historyPart}
+- 两人小屋动态：${houseStatus}${contentDetails}
+
 - 功能提示：你可以在回复中随时包含 [LS_JSON: ...] 指令来更新空间内容（如日记、留言、足迹、扭蛋等）。指令应静默通过 JSON 执行。`
     },
 
@@ -114,6 +181,10 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       this.currentPartnerId = charId
       if (!this.spaces[charId]) {
          this.spaces[charId] = DEFAULT_SPACE()
+      }
+      // Ensure space is initialized for command execution
+      if (!this.spaces[charId].initialized) {
+        this.spaces[charId].initialized = true
       }
       this.updateLoveDays()
       await this.saveToStorage()
@@ -159,13 +230,13 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       }))
       await loveSpaceDB.setItem('all_spaces_v2', data)
       
-      // 同步最近 5 条各模块内容到微信聊天上下文
-      await this.syncToWeChat()
+      // 已禁用：不再同步到微信聊天上下文，情侣空间内容只在提示词中展示
+      // await this.syncToWeChat()
     },
     
     async syncToWeChat() {
       // 同步最近的 5 条各模块内容到微信聊天上下文
-      const chatStore = (await import('./chatStore')).useChatStore()
+      const chatStore = (await import('./chatStore.js')).useChatStore()
       const chat = chatStore.chats[this.currentPartnerId]
       if (!chat) return
       
@@ -440,10 +511,10 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!this.currentPartnerId) return
       const charId = this.currentPartnerId
       
-      const chatStore = (await import('./chatStore')).useChatStore()
-      const settingsStore = (await import('./settingsStore')).useSettingsStore()
-      const { generateReply } = await import('../utils/aiService')
-      const { generateQuestionReplyPrompt } = await import('../utils/ai/prompts_love_single')
+      const chatStore = (await import('./chatStore.js')).useChatStore()
+      const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
+      const { generateReply } = await import('../utils/aiService.js')
+      const { generateQuestionReplyPrompt } = await import('../utils/ai/prompts_love_single.js')
       
       const chat = chatStore.chats[charId]
       if (!chat) return
@@ -604,10 +675,10 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       this.isMagicGenerating = true
       const charId = this.currentPartnerId
       
-      const chatStore = (await import('./chatStore')).useChatStore()
-      const settingsStore = (await import('./settingsStore')).useSettingsStore()
-      const { generateReply } = await import('../utils/aiService')
-      const { LOVE_SPACE_GENERATOR_PROMPT } = await import('../utils/ai/prompts_love')
+      const chatStore = (await import('./chatStore.js')).useChatStore()
+      const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
+      const { generateReply } = await import('../utils/aiService.js')
+      const { LOVE_SPACE_GENERATOR_PROMPT } = await import('../utils/ai/prompts_love.js')
       
       const chat = chatStore.chats[charId]
       if (!chat) return
@@ -616,7 +687,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       const dateToUse = targetDate || new Date().toISOString().split('T')[0]
       const spaceHistory = {
         targetDate: dateToUse,
-        recentDiary: (this.currentSpace.diary || []).slice(-3).map(d => `${d.authorName || '我'}: ${d.title} (${d.mood})`),
+        recentDiary: (this.currentSpace.diary || []).slice(-3).map(d => `${d.authorName || '我'}: 《${d.title}》(${d.mood})\n${d.content || '无内容'}`),
         todayFootprints: (this.currentSpace.footprints || [])
           .filter(f => f.createdAt?.startsWith(dateToUse))
           .sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt))
@@ -628,19 +699,19 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         recentUserMessages: (this.currentSpace.messages || [])
           .filter(m => m.senderId === 'user')
           .slice(-5)
-          .map(m => `ID:${m.id} ${m.senderName}: ${m.content}`)
-          .join('; '),
+          .map(m => `【用户留言】ID:${m.id} ${m.senderName}: ${m.content}`)
+          .join('\n'),
         recentPartnerMessages: (this.currentSpace.messages || [])
           .filter(m => m.senderId !== 'user')
           .slice(-3)
-          .map(m => `ID:${m.id} ${m.senderName}: ${m.content}`)
-          .join('; '),
+          .map(m => `【我的留言】ID:${m.id} ${m.senderName}: ${m.content}`)
+          .join('\n'),
         // 用户来信（未回复的）
         unansweredLetters: (this.currentSpace.letters || [])
           .filter(l => l.author === 'user' && !l.comments?.length)
           .slice(-3)
-          .map(l => `《${l.title}》: ${l.content.substring(0, 50)}...`)
-          .join('; ') || '暂无',
+          .map(l => `【用户来信】《${l.title}》: ${l.content}`)
+          .join('\n---\n') || '暂无',
         // 最近的相册
         recentAlbum: (this.currentSpace.album || []).slice(-5).map(a => `${a.title}${a.desc ? ': ' + a.desc : ''}`)
       }
@@ -694,13 +765,13 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       console.log(`[LoveSpaceStore] === Starting generation for ${featureType} ===`)
       this.isMagicGenerating = true
       
-      const chatStore = (await import('./chatStore')).useChatStore()
-      const settingsStore = (await import('./settingsStore')).useSettingsStore()
-      const { generateReply } = await import('../utils/aiService')
+      const chatStore = (await import('./chatStore.js')).useChatStore()
+      const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
+      const { generateReply } = await import('../utils/aiService.js')
       
       // 导入对应的提示词函数
       console.log(`[LoveSpaceStore] === Importing prompts for ${featureType} ===`)
-      const prompts = await import('../utils/ai/prompts_love_single')
+      const prompts = await import('../utils/ai/prompts_love_single.js')
       console.log(`[LoveSpaceStore] Imported prompts_love_single, available functions:`, Object.keys(prompts))
       
       const promptFunctionName = `generate${featureType.charAt(0).toUpperCase() + featureType.slice(1)}Prompt`
@@ -828,7 +899,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
 
     async executeSpaceCommands(text, partnerName, targetDate = null, forcedCharId = null) {
       if (!text) return { success: false, reason: 'No text' }
-      const chatStore = (await import('./chatStore')).useChatStore()
+      const chatStore = (await import('./chatStore.js')).useChatStore()
       
       // 关键修复：如果当前没有选择空间，或者强制指定了空间ID，则先进行选择
       if (forcedCharId && this.currentPartnerId !== forcedCharId) {
@@ -926,6 +997,8 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
         }
       }
       
+      console.log('[LoveSpaceStore] Total LS_JSON blocks found:', blocks.length)
+      
       // AI 容错：如果没有找到 [LS_JSON: 标记，但内容看起来是完整的 JSON，也进行尝试
       if (blocks.length === 0) {
         const jsonMatch = text.match(/\{[\s\S]*\}/)
@@ -935,6 +1008,8 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
         }
       }
 
+      let totalExecutedCount = 0
+      
       for (let jsonStr of blocks) {
         try {
           // 极致容错预处理
@@ -1138,7 +1213,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                 })
                 chatStore.triggerToast('🖼️ 相册已生成 (图片生成中...)', 'success')
                 // 后台异步生成图片，不阻塞
-                const { generateImage } = await import('../utils/aiService')
+                const { generateImage } = await import('../utils/aiService.js')
                 const prompt = cmd.draw_cmd.replace(/\[DRAW:\s*(.*?)\s*\]/i, '$1')
                 generateImage(prompt)
                   .then(url => {
@@ -1194,11 +1269,12 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
           
           // 执行完成后显示提示
           const executedCount = commands.length
-          console.log(`[LoveSpaceStore] Successfully executed ${executedCount} commands`)
+          totalExecutedCount += executedCount
+          console.log(`[LoveSpaceStore] Successfully executed ${executedCount} commands in this block`)
           
         } catch (e) {
-          console.error('[LoveSpaceStore] Command execution error', e)
-          throw e // 重新抛出错误，让上层捕获
+          console.error('[LoveSpaceStore] Command execution error for block:', e)
+          // Continue to next block instead of throwing
         }
       }
       
@@ -1206,7 +1282,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       await this.saveToStorage()
       
       // 返回执行结果
-      return { success: true, executedCount: blocks.length }
+      return { success: true, executedCount: totalExecutedCount }
     }
   }
 })

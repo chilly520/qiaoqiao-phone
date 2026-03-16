@@ -423,7 +423,7 @@ async function handleRedrawScene() {
     emit('close')
 
     try {
-        const { generateImage } = await import('../../../utils/aiService')
+        const { generateImage } = await import('../../../utils/aiService.js')
         // 2. Generate the image
         const imageUrl = await generateImage(`${theme}, cinematic realism, background masterpiece, high quality, no characters`)
         
@@ -518,7 +518,7 @@ async function handleEditAvatar(id) {
         })
 
         try {
-            const { generateImage } = await import('../../../utils/aiService')
+            const { generateImage } = await import('../../../utils/aiService.js')
             const url = await generateImage(theme || `${char.name} anime style, masterpiece, profile picture`)
             chatStore.updateCharacter(id, { avatar: url })
             chatStore.updateMessage(chatStore.currentChatId, msgId, {

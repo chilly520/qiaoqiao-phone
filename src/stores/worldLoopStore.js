@@ -120,7 +120,7 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
 
         isLoading.value = true
         try {
-            const { generateCharacterPersona, generateImage, generateCompleteProfile } = await import('../utils/aiService')
+            const { generateCharacterPersona, generateImage, generateCompleteProfile } = await import('../utils/aiService.js')
 
             // 1. Generate Persona
             const persona = await generateCharacterPersona(theme, loop.description)
