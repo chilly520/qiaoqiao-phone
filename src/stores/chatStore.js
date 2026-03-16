@@ -1,4 +1,4 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useAITaskStore } from './aiTaskStore'
@@ -723,7 +723,9 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3.2 Moment Share Parsing (AI Only)
         if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
-            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]*?)\]/i;
+            // Robust Regex: Matches [MOMENT_SHARE: payload ] where payload may contain nested brackets (JSON)
+            // It stops before the next known tag start [ or at the end of the message.
+            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[[A-Z_]|【|$))/i;
             const match = newMsg.content.match(shareRegex);
 
             if (match) {
@@ -731,25 +733,25 @@ export const useChatStore = defineStore('chat', () => {
                 let momentData = null;
 
                 try {
-                    // 1. Try JSON Parsing
-                    if (shareContent.startsWith('{')) {
+                    // Pre-process shareContent: handle AI's tendency to escape quotes in tags
+                    const unescapedContent = shareContent.replace(/\\"/g, '"');
+                    
+                    if (unescapedContent.startsWith('{')) {
+                        momentData = JSON.parse(unescapedContent);
+                    } else if (shareContent.startsWith('{')) {
                         momentData = JSON.parse(shareContent);
                     }
                 } catch (e) {
-                    console.warn('[ChatStore] Failed to parse Moment JSON, falling back to text', e);
+                    console.warn('[ChatStore] Failed to parse Moment JSON, falling back to basic data', e);
                 }
 
-                // 2. Fallback: Treat as simple text/ID
+                // Fallback: If not JSON or failed, treat as simple text
                 if (!momentData) {
-                    // Check if it's a known Moment ID (simple check: if it exists in momentsStore?)
-                    // Since specific store access might be tricky here without circular dep or extra checking, 
-                    // we will treat it as a "New Moment Stub" or just text.
-                    // Improving UX: logic to fetch image if possible? 
                     momentData = {
-                        id: crypto.randomUUID(), // Stub ID
-                        text: shareContent,
+                        id: crypto.randomUUID(),
+                        text: shareContent.replace(/\\"/g, '"'), 
                         author: chat.name,
-                        image: chat.avatar // Fallback image
+                        image: chat.avatar
                     };
                 }
 
@@ -758,9 +760,14 @@ export const useChatStore = defineStore('chat', () => {
                 if (!momentData.author) momentData.author = chat.name;
                 if (!momentData.avatar) momentData.avatar = chat.avatar;
 
-                // Convert to Card Message
+                // We've found a share tag. We want to convert the WHOLE message to a moment_card ONLY if 
+                // there's no other significant text. If there is other text, the UI component will handle 
+                // stripping the tag and showing the card separately (Mixed rendering).
+                // However, to maintain current architecture where cards are distinct types:
                 newMsg.type = 'moment_card';
-                newMsg.content = JSON.stringify(momentData); // Store structured data
+                newMsg.momentData = momentData; // Store structured data for cleaner access
+                // Keep content as JSON for persistence if needed, or structured
+                newMsg.content = JSON.stringify(momentData); 
             }
         }
 

@@ -432,7 +432,7 @@ const handleGlobalPromptCancel = () => {
 
         <!-- Global Toast Notification -->
         <div v-if="showToast"
-            class="fixed top-16 left-1/2 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[9999] flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30 animate-toast-pop"
+            class="fixed top-16 left-1/2 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[11000] flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30 animate-toast-pop"
             :class="{
                 'bg-gradient-to-br from-blue-400/90 to-blue-500/90': toastData.type === 'info' || !toastData.type,
                 'bg-gradient-to-br from-green-400/90 to-green-500/90': toastData.type === 'success',

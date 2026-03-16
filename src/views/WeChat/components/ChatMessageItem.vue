@@ -992,6 +992,16 @@
                             </div>
                         </div>
 
+                        <!-- CASE: Moment Share Card -->
+                        <div v-else-if="isMomentCard && momentDataValue"
+                            class="max-w-[260px] animate-fade-in mt-1 overflow-hidden"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'"
+                            @click="navigateToMoment(msg)" @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <MomentShareCard :data="momentDataValue" />
+                        </div>
+
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -1511,7 +1521,7 @@ const isValidMessage = computed(() => {
     }
 
     // 2. Card & Media Checks - 先检查卡片/媒体消息，这些消息应该显示
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value) {
+    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value) {
         // 如果虽然被判定为 HTML 卡片，但其实没有提取出任何有效内容，直接隐藏防止空气泡
         if (shouldRenderCard.value && !hasHtmlContent.value) return false;
         return true;
@@ -1718,6 +1728,42 @@ const weiboCardData = computed(() => {
     }
 })
 
+const isMomentCard = computed(() => {
+    return props.msg.type === 'moment_card' || /\[(?:MOMENT_SHARE|分享朋友圈)[:：]/.test(ensureString(props.msg.content))
+})
+
+const momentDataValue = computed(() => {
+    if (!isMomentCard.value) return null
+    try {
+        // 1. If structured data already exists (set by chatStore)
+        if (props.msg.momentData) return props.msg.momentData;
+        
+        const content = ensureString(props.msg.content)
+        
+        // 2. If content is a JSON string (type moment_card)
+        if (props.msg.type === 'moment_card') {
+            try { return JSON.parse(content); } catch (e) {}
+        }
+        
+        // 3. Extract and parse from raw text tag
+        const match = content.match(/\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[|$))/i);
+        if (match) {
+            let dataStr = match[1].trim()
+            // Unescape common AI quote escapes
+            dataStr = dataStr.replace(/\\"/g, '"');
+            
+            if (dataStr.startsWith('{')) {
+                return JSON.parse(dataStr)
+            }
+            return { text: dataStr } // Simple text fallback
+        }
+    } catch (e) {
+        console.warn('[ChatMessageItem] Failed to parse moment card data', e);
+        return null
+    }
+    return null
+})
+
 const favoriteCardData = computed(() => {
     if (!isFavoriteCard.value) return null
     try {
@@ -1917,11 +1963,12 @@ function getCleanContent(contentRaw, isCard = false) {
     // 清理可能残留的结束标签
     clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
 
-    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
+    clean = clean.replace(/[\\[【]\s*MOMENT_SHARE[:：]?\s*[\s\S]*?[\]】]/gi, ''); // Explicitly handle longer share tags
     clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
     clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
     clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
