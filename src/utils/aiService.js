@@ -79,7 +79,7 @@ async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, endpoint, 
                 contents: [{
                     role: 'user',
                     parts: [
-                        { text: `请为名字叫"${name}"的人物的头像提供一段简短的视觉描述（15字以内）。重点描述发色、发型、衣服和神态。请以 "[DESC: 描述内容]" 的格式返回。` },
+                        { text: `请为名字叫 ${name} 的人物头像提供一段简短的视觉描述，控制在 15 字以内。重点描述发色、发型、穿着和神态。请以 [DESC: 描述内容] 的格式返回。` },
                         { inline_data: { mime_type: mime, data: data } }
                     ]
                 }],
@@ -361,12 +361,12 @@ export function generateContextPreview(chatId, char) {
     const personaContext = `
 【角色设定】
 姓名：${char.name}
-性别：${char.gender || '未知'}
-描述：${char.prompt || char.description || '无'}
+性别：
+描述：
 【用户设定】
-姓名：${char.userName || '用户'}
-性别：${char.userGender || '未知'}
-人设：${char.userPersona || '无'}
+姓名：
+性别：
+人设：
     `.trim()
     // 3. Moments Context (The complex part)
     let momentsContext = ''
@@ -430,7 +430,7 @@ export function generateContextPreview(chatId, char) {
             const hours = Math.floor(diffMinutes / 60);
             const mins = diffMinutes % 60;
             const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
-            content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。】`
+            content += `\n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。】`;
         }
         return `${m.role === 'user' ? (char.userName || 'User') : char.name}: ${content}`
     }).join('\n')
@@ -724,7 +724,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                         if (voiceMatch) {
                                             try {
                                                 const voiceObj = JSON.parse(voiceMatch[1])
-                                                const statusText = voiceObj.status || voiceObj.状态 || ''
+                                                const statusText = voiceObj.status || voiceObj.state || ''
                                                 const outfitText = voiceObj.outfit || voiceObj.着装 || voiceObj.dress || ''
                                                 const locationText = voiceObj.location || voiceObj.地点 || ''
                                                 
@@ -804,9 +804,25 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         const contactListStr = chatStore ? chatStore.contactList.filter(c => !c.isGroup).slice(0, 30).map(c => `- ${c.name} (ID: ${c.id})`).join('\n') : ''
 
-        const promptContent = options.isCall
+        // 妫€鏌ユ槸鍚﹀浜庣嚎涓嬫ā寮?
+        const isOfflineMode = settingsStore.isOfflineMode
+        
+        let promptContent = options.isCall
             ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
             : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx, linkedGroupMemory, contactListStr, calendarContext)
+        
+        // 线上/线下模式追加提示词
+        const forceOffline = options.mode === 'offline' || isOfflineMode
+        if (!options.isCall) {
+            if (forceOffline) {
+                promptContent += '\n\n【重要提示】当前处于线下文游模式，请严格按照【场景 B：线下文游模式】输出。必须使用长段式、小说式、沉浸式描写，重点写环境、动作、氛围和剧情推进；不要模仿线上微信聊天，不要一句一句拆成很多短气泡。'
+                if (settingsStore.offlineMode?.enableAIBackground) {
+                    promptContent += '\n\n【背景图更新】你可以使用【场景：英文场景描写】指令来更新聊天背景图。例如：【场景：a cozy coffee shop with warm lighting】。当场景发生变化时，使用此指令生成匹配的背景图。'
+                }
+            } else {
+                promptContent += '\n\n【重要提示】当前处于线上微信聊天模式，请严格按照【场景 A：微信聊天】输出。使用短句、口语化表达，保持自然的微信聊天节奏。'
+            }
+        }
 
         systemMsg = {
             role: 'system',
@@ -836,7 +852,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     // Process messages for Vision API (Multimodal)
-    // Convert [图片:URL] or [表情包:名称] to { type: "image_url", image_url: { url: "..." } }
+    // Convert [鍥剧墖:URL] or [琛ㄦ儏鍖?鍚嶇О] to { type: "image_url", image_url: { url: "..." } }
     // OPTIMIZATION: Only send the LAST 5 images to the AI to prevent massive payloads.
 
     // 1. First, count total images to determine the cutoff index
@@ -959,7 +975,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     formattedMessages.push({
                         role: msg.role === 'assistant' ? 'assistant' : 'user',
                         content: [
-                            { type: 'text', text: msg.role === 'user' ? `（用户发送了表情包: ${matchedSticker.name}）` : `[表情包:${matchedSticker.name}]` },
+                            { type: 'text', text: msg.role === 'user' ? `（用户发送了表情包 ${matchedSticker.name}）` : `[表情包:${matchedSticker.name}]` },
                             { type: 'image_url', image_url: { url: imgUrl } }
                         ]
                     })
@@ -1026,7 +1042,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 formattedMessages.push(msg)
             }
         } else if (msg.role === 'system') {
-            // [FIX] 如果已经有了 systemMsg (特别是 SimpleTask 模式)，则忽略消息数组中的 system 消息，防止重复
+            // [FIX] 濡傛灉宸茬粡鏈変簡 systemMsg (鐗瑰埆鏄?SimpleTask 妯″紡)锛屽垯蹇界暐娑堟伅鏁扮粍涓殑 system 娑堟伅锛岄槻姝㈤噸澶?
             if (!systemMsg) {
                 formattedMessages.push(msg)
             }
@@ -1604,7 +1620,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 }
 
                 // 3. Inject and Retry (Self-Correction Loop)
-                useLoggerStore().addLog('INFO', '检索结果已注入，正在重新请求AI', searchResults)
+                useLoggerStore().addLog('INFO', 'AI触发了记忆检索', searchArgs)
                 const newMessages = [...messages]
                 newMessages.push({ role: 'assistant', content: searchMatch[0] }) // Pushed its search invocation
                 newMessages.push({ role: 'system', content: searchInjection }) // Pushed the system's reply to the invocation
@@ -1753,7 +1769,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
         }
 
-        // 终极兜底：解析失败/没找到JSON，强制生成符合格式的心声
+        // 缁堟瀬鍏滃簳锛氳В鏋愬け璐?娌℃壘鍒癑SON锛屽己鍒剁敓鎴愮鍚堟牸寮忕殑蹇冨０
         // --------------------------
         if (!innerVoice && !isCallProtocol && !isCommandTask && !isSimpleTask) {
             console.warn('[AI Service] 未找到有效心声，生成兜底内容')
@@ -1762,7 +1778,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 "status": "正常对话",
                 "着装": "上装：日常穿搭 下装：休闲裤 鞋子：小白鞋 装饰：无",
                 "环境": `${now.toLocaleDateString('zh-CN')} 室内 常温 安静环境`,
-                "心声": `用户发来消息，正在正常回应，贴合${char.name || '角色'}的人设`,
+                "心声": `用户发来消息，正在正常回应，贴合${char.name || '角色'}的人设。`,
                 "行为": "【线上】正拿着手机回复用户的消息",
                 "stats": {
                     "date": now.toLocaleDateString('zh-CN'),
@@ -1805,7 +1821,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // If error is 400 and related to thinking_budget AND model has 'nothinking', try stripping it.
         if (error.message && error.message.includes('thinking_budget')) {
             // Aggressive Clean: Remove prefix (e.g. "channel/") AND "nothinking"
-            // Example: "流式抗截断/gemini-2.5-pro-nothinking" -> "gemini-2.5-pro"
+            // Example: "娴佸紡鎶楁埅鏂?gemini-2.5-pro-nothinking" -> "gemini-2.5-pro"
             const baseName = model.split('/').pop()
             const cleanModel = baseName.replace(/[-_.]?nothinking[-_.]?/i, '')
 
@@ -2094,7 +2110,7 @@ export async function generateMomentContent(options) {
     const systemPrompt = `你现在是【${name}】。
 你的设定：${persona}。
 
-${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)】\n${recentChats}\n` : ''}
+${recentChats ? `銆愭渶杩戣亰澶╄褰?(浣滀负鑳屾櫙鍙傝€冿紝涓嶈鐩存帴澶嶈)銆慭n${recentChats}\n` : ''}
 
 【任务】
 1. 发布一条朋友圈动态。可以包含心情感悟、生活趣事、或是想对某人（Chilly）说的话。
@@ -2103,7 +2119,7 @@ ${recentChats ? `【最近聊天记录 (作为背景参考，不要直接复读)
    - 虚构合理的NPC（如同事、同学、邻居、亲戚等）
    - 确保互动多样性，既有现实好友也有虚拟NPC
 
-回复必须是一个 JSON 对象，格式如下：
+鍥炲蹇呴』鏄竴涓?JSON 瀵硅薄锛屾牸寮忓涓嬶細
 {
   "content": "朋友圈文字内容",
   "location": "地理位置（可选，如：‘上海·某某咖啡厅’）",
@@ -2187,7 +2203,7 @@ export async function generateBatchMomentsWithInteractions(options) {
     const { characters, worldContext, customPrompt, userProfile, historicalMoments = [], count = 3 } = options
 
     // 1. Build character list with recent chat snippets for context
-    // ✅ 优化：表情包改为全局统一声明，避免在每个角色后重复浪费 token
+    // 鉁?浼樺寲锛氳〃鎯呭寘鏀逛负鍏ㄥ眬缁熶竴澹版槑锛岄伩鍏嶅湪姣忎釜瑙掕壊鍚庨噸澶嶆氮璐?token
     const allEmojis = new Set()
        
     const charList = characters.map((c, idx) => {
@@ -2201,18 +2217,18 @@ export async function generateBatchMomentsWithInteractions(options) {
         const chatText = c.recentChats ? `\n   最近 15 条聊天碎片：${c.recentChats.substring(0, 1000)}` : ''
         const personalHistoryText = c.personalHistory ? `\n   TA 最近发过：${c.personalHistory}` : ''
    
-        // ✅ 收集所有表情包（去重），不再在每个角色后重复
+        // 鉁?鏀堕泦鎵€鏈夎〃鎯呭寘锛堝幓閲嶏級锛屼笉鍐嶅湪姣忎釜瑙掕壊鍚庨噸澶?
         if (c.emojis && c.emojis.length > 0) {
             c.emojis.forEach(e => allEmojis.add(e.name))
         }
    
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
-   核心人设：${c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}
+   鏍稿績浜鸿锛?{c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}
    --- 
    当前与用户关系：${c.name} 称呼用户为"${userSpecificName}"${chatText}${personalHistoryText}`
     }).join('\n\n')
        
-    // ✅ 全局统一声明表情包列表（节省 token）
+    // 鉁?鍏ㄥ眬缁熶竴澹版槑琛ㄦ儏鍖呭垪琛紙鑺傜渷 token锛?
     const globalEmojiList = allEmojis.size > 0
         ? `\n\n【通用表情包池】（所有角色都可使用，格式：[表情包：名字]）\n${Array.from(allEmojis).map(name => `  - "${name}"`).join('\n')}`
         : ''
@@ -2223,11 +2239,11 @@ export async function generateBatchMomentsWithInteractions(options) {
 
     // 2. Build explicit recent history to allow "Ecosystem Interactions"
     const historyText = historicalMoments.length > 0
-        ? "\n【最近 20 条朋友圈现状（请分析后决定是否进行互动，如回复评论、补赞、@-用户点赞等）】\n" + historicalMoments.map(m => {
+        ? "\n銆愭渶杩?20 鏉℃湅鍙嬪湀鐜扮姸锛堣鍒嗘瀽鍚庡喅瀹氭槸鍚﹁繘琛屼簰鍔紝濡傚洖澶嶈瘎璁恒€佽ˉ璧炪€丂-鐢ㄦ埛鐐硅禐绛夛級銆慭n" + historicalMoments.map(m => {
             const commentsStr = (m.comments || []).map(c => `   - [评论] ${c.authorName}: ${c.content}`).join('\n')
             const likesStr = (m.likes || []).join(', ')
             return `动态ID: ${m.id}
-作者: ${m.authorName}
+浣滆€? ${m.authorName}
 内容: ${m.content}
 点赞: [${likesStr}]
 评论区:
@@ -2261,21 +2277,21 @@ ${historyText}
 
 ${userContextText}
 
-【输出格式】必须是一个 JSON 对象，严禁包含任何 ID 作为展示名称：
+銆愯緭鍑烘牸寮忋€戝繀椤绘槸涓€涓?JSON 瀵硅薄锛屼弗绂佸寘鍚换浣?ID 浣滀负灞曠ず鍚嶇О锛?
 ${"```"}json
 {
     "newMoments": [
         {
-            "authorId": "选中的角色 ID (如：char_123)",
-            "content": "发帖文字内容 (自然生活化，可包含 [表情包：名字] 和 @提及)",
-            "html": "可选：自定义 HTML 卡片内容（完整的 HTML 字符串，包含内联样式）",
+            "authorId": "选中的角色 ID（如：char_123）",
+            "content": "发帖正文内容（自然生活化，可包含 [表情包:名字] 和 @提及）",
+            "html": "可选：自定义 HTML 卡片内容（完整 HTML 字符串，包含内联样式）",
             "mentions": ["提及的角色姓名"],
             "location": "地点",
             "imagePrompts": ["英文生图提示词 1", "英文生图提示词 2"],
             "imageDescriptions": ["中文图片描述 1", "中文图片描述 2"],
             "interactions": [
-                { "type": "comment", "authorId": "互动者角色ID (如果是备选角色)", "authorName": "角色姓名 (如果是备选角色) 或 虚构NPC名", "content": "评论内容", "isVirtual": false },
-                { "type": "like", "authorId": "虚拟NPC角色ID", "authorName": "虚拟NPC名字", "isVirtual": true }
+                { "type": "comment", "authorId": "互动者角色 ID", "authorName": "角色姓名", "content": "评论内容", "isVirtual": false },
+                { "type": "like", "authorId": "虚拟 NPC 角色 ID", "authorName": "虚拟 NPC 名字", "isVirtual": true }
             ]
         }
     ],
@@ -2283,7 +2299,7 @@ ${"```"}json
         {
             "momentId": "旧动态的ID",
             "newInteractions": [
-                { "type": "comment", "authorId": "角色ID (如果是备选角色)", "authorName": "姓名", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false },
+                { "type": "comment", "authorId": "角色 ID", "authorName": "姓名", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false },
                 { "type": "like", "authorId": "角色ID", "authorName": "姓名", "isVirtual": false }
             ]
         }
@@ -2303,7 +2319,7 @@ ${"```"}
 2. **图文契合**：每一张图片的 imagePrompts 都要与 content 紧密相关且风格统一。
 3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包：名称]。**必须确保名称与提供的列表完全一致**。
 4. **@-提及**：在 content 或评论中合适的位置使用 @名字。
-5. **🚫 用户身份禁令**：再次强调，**严禁**在 newMoments 或 ecosystemUpdates 中生成任何 authorName 为"${userProfile?.name || '用户'}"的互动。所有互动必须来自 NPC 角色或虚构的第三方人物。`
+5. **用户身份禁令**：再次强调，严禁在 newMoments 或 ecosystemUpdates 中生成任何 authorName 为 ${userProfile?.name || '用户'} 的互动。所有互动必须来自 NPC 角色或虚构第三方人物。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2391,7 +2407,7 @@ ${"```"}
             const prompts = moment.imagePrompts || (moment.imagePrompt ? [moment.imagePrompt] : [])
             const descriptions = moment.imageDescriptions || (moment.imageDescription ? [moment.imageDescription] : [])
 
-            console.log('[BatchMoments] 图片提示词:', prompts)
+            console.log('[BatchMoments] 图片描述:', descriptions)
             console.log('[BatchMoments] 图片描述:', descriptions)
 
             if (prompts.length > 0) {
@@ -2584,7 +2600,7 @@ async function _generateImageInternal(prompt, options = {}) {
         // SECURITY / ARCHITECTURE CHECK:
         if (apiKey.startsWith('sk_')) {
             console.error('[AI Image] DETECTED SECRET KEY (sk_). These keys are meant for SERVERS only and will be BLOCKED by Pollinations anti-bot (Turnstile) in a browser.')
-            throw new Error('检测到 Secret Key (sk_)。此类密钥不适用于浏览器直接调用，会被官方拦截。请使用 pk_ 开头的 Publishable Key。')
+            throw new Error('检测到 Secret Key (sk_)。这类密钥不适合在浏览器直接调用，会被官方拦截。请使用 pk_ 开头的 Publishable Key。')
         }
 
         try {
@@ -2594,7 +2610,7 @@ async function _generateImageInternal(prompt, options = {}) {
             // SANITIZATION: Heavily sanitize the prompt for URL safety.
             // URL params are extremely fragile for prompt text.
             const safePrompt = enhancedPrompt
-                .replace(/[,，:：\n\r]/g, ' ') // CRITICAL: Stop commas/colons breaking URL structure
+                .replace(/[,锛?锛歕n\r]/g, ' ') // CRITICAL: Stop commas/colons breaking URL structure
                 .replace(/[#?%&]/g, '')        // Remove strict URL control chars
                 .replace(/\s+/g, ' ')          // Collapse spaces
                 .trim()
@@ -2621,11 +2637,11 @@ async function _generateImageInternal(prompt, options = {}) {
                 const errText = await response.text()
 
                 if (response.status === 401) {
-                    throw new Error('密钥校验失败 (401)。这通常意味着您的 pk_ 密钥额度已耗尽 (官方免费版仅 1张/小时) 或由于提示词违规被拦截。')
+                    throw new Error('密钥校验失败 (401)。这通常意味着你的 pk_ 密钥额度已耗尽，或提示词被拦截。')
                 }
 
                 if (response.status === 403 || errText.includes('Turnstile') || errText.includes('token')) {
-                    throw new Error('被官方人机验证拦截 (Turnstile 403)。即使带了 Key 也可能由于 IP 被风控。建议改用 SiliconFlow。')
+                    throw new Error('被官方人机验证拦截 (Turnstile 403)。即使带 Key 也可能因 IP 风控失败，建议改用 SiliconFlow。')
                 }
                 throw new Error(`API 响应异常 ${response.status}: ${errText.substring(0, 100)}`)
             }
@@ -2664,7 +2680,7 @@ async function _generateImageInternal(prompt, options = {}) {
                     
             // Special handling for AbortError (timeout/network issues)
             if (e.name === 'AbortError' || e.message.includes('aborted')) {
-                throw new Error('请求超时，可能是网络不稳定或 API 服务响应过慢。请检查网络连接后重试。')
+                throw new Error('请求超时，可能是网络不稳定或 API 服务响应过慢。请检查网络后重试。')
             }
                     
             // CRITICAL: Stop falling back to anonymous image.pollinations.ai because it returns the "WE HAVE MOVED" placeholder.
@@ -2752,7 +2768,7 @@ async function _generateImageInternal(prompt, options = {}) {
 
 /**
  * 生成朋友圈动态的批量互动（3-5条点赞/评论）
- * 包含：已有角色 + 虚拟NPC（亲戚、同事等）
+ * 鍖呭惈锛氬凡鏈夎鑹?+ 铏氭嫙NPC锛堜翰鎴氥€佸悓浜嬬瓑锛?
  * @param {Object} moment 目标动态
  * @param {Array} charInfos 备选互动角色列表
  * @param {Array} historicalMoments 历史朋友圈列表
@@ -2784,8 +2800,8 @@ export async function generateBatchInteractions(moment, charInfos, historicalMom
     const allCustomPrompts = charInfos.map(c => c.customPrompt).filter(Boolean)
     const uniqueCustomPrompt = allCustomPrompts.length > 0 ? allCustomPrompts[0] : ''
 
-    const systemPrompt = `你现在是"朋友圈拟真生态引擎"。
-你的任务是为以下动态模拟出真实的社交互动（包含点赞、评论和多级回复）。
+    const systemPrompt = `你现在是“朋友圈拟真生态引擎”。
+你的任务是为以下动态生成真实的社交互动，包括点赞、评论和回复。
 
 【现有角色及对应用户身份】
 ${friendsList}
@@ -2796,33 +2812,33 @@ ${userInformation}
 内容：${moment.content}
 ${moment.location ? `地点：${moment.location}` : ''}
 ${moment.visualContext ? `图片：${moment.visualContext}` : ''}
-${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有评论】：\n${moment.existingComments.map((c, i) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
+${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有评论】\n${moment.existingComments.map((c) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
 
 ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : ''}
-
 【生成规则】
-1. **互动组合**：
-   - 生成 5-15 个 **like** (点赞)。
-   - 生成 3-8 条 **comment** (直接评论) 或 **reply** (针对已有评论的回复)。
-2. **严守人设背景**：
-   - **绝对禁止冲突**：如果角色人设提到“父母双亡/孤儿”，严禁虚构“爸爸/妈妈/亲戚”这类 NPC 进行评论。
-   - **身份一致性**：评论语气必须符合角色与用户之间的【用户身份设定】。
-3. **多样性要求**：
-   - 优先选择现有好友。虚构 NPC 应符合发帖人的社会圈层。
-   - **重要强调**：必须包含虚拟NPC的互动，且数量不少于总互动的30%。
-4. **内容风格**：简短、真实、口语化。像真人微信对话。
-5. **绝对禁止**：严禁代表“用户”或“${userProfile.name}”生成任何内容。
+1. 生成 5-15 个点赞，3-8 条评论或回复。
+2. 互动语气要符合角色设定和与用户的关系。
+3. 内容要简短、自然、口语化，像真实朋友圈互动。
+4. 必须包含一部分虚构 NPC 互动，但不要冒充用户本人。
+5. 严禁生成 authorName 为 ${userProfile.name} 的互动。
 
-【输出格式】直接返回 JSON 数组，严禁包含 ID 作为展示名称：
+【输出格式】
+直接返回 JSON 数组：
 [
-  { "type": "like", "authorId": "角色ID (如果是列表中的好友)", "authorName": "展示名称", "isVirtual": false },
-  { "type": "comment", "authorId": "角色ID (如果是列表中的好友)", "authorName": "展示名称", "content": "内容", "isVirtual": false },
-  { "type": "reply", "authorId": "角色ID (如果是列表中的好友)", "authorName": "展示名称", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false }
+  { "type": "like", "authorId": "角色ID", "authorName": "显示名称", "isVirtual": false },
+  { "type": "comment", "authorId": "角色ID", "authorName": "显示名称", "content": "内容", "isVirtual": false },
+  { "type": "reply", "authorId": "角色ID", "authorName": "显示名称", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false }
 ]
-【特别注意】
-- 对于【现有角色】列表里的人，必须填对 \`authorId\`。
-- \`authorName\` 必须是人类可读的真实姓名（如：林深），**绝对禁止**填入 \`char_xxx\`。
-不要输出任何 Markdown 标签或额外解释。`
+
+不要输出 Markdown，不要补充解释。`
+
+
+
+
+
+
+
+
 
     try {
         const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true }])
@@ -2872,23 +2888,23 @@ export async function generateMomentComment(charInfo, moment, historicalContext 
     const uPersona = charInfo.userPersona ? `\n用户在此角色剧本中的设定：${charInfo.userPersona}` : ''
 
     const systemPrompt = `你现在是【${charInfo.name}】。
-    你的设定：${charInfo.persona}。${uPersona}
+你的设定：${charInfo.persona}。${uPersona}
 ${charInfo.worldContext ? `当前世界背景：${charInfo.worldContext}` : ''}
 ${historicalContext ? `\n${historicalContext}` : ''}
-${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包(格式 [表情包:名字]): ${charInfo.emojis.map(e => e.name).join(', ')}` : ''}
+${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包（格式 [表情包:名字]）：${charInfo.emojis.map(e => e.name).join(', ')}` : ''}
 
 【任务】
-    请对【${moment.authorName}】发布的一条朋友圈进行评论。注意：如果人设提及孤儿/父母双亡，严禁生成任何以家人身份自居的内容。
-    朋友圈内容：${moment.content}
-    图片 / 视觉内容：${moment.visualContext || '无图片'}
+请对【${moment.authorName}】发布的一条朋友圈进行评论。
+朋友圈内容：${moment.content}
+图片 / 视觉内容：${moment.visualContext || '无图片'}
 
 【要求】
-    1. 回复要简短、真实（类似微信评论），字数控制在30字以内。
-    2. 根据你和对方的关系（参考用户在此剧本中的设定）决定语气。
-    3. 如果朋友圈内容或之前的历史动态很有意思，请结合背景进行吐槽、互动或接梗。
-    4. 如果有图片描述，请尝试提及图片中的元素以增强“视觉感”。
-    5. ** @功能支持 **：你可以通过 '@名字' 提醒特定的人阅读评论。
-    6. 直接输出评论文字，不要包含任何标签或多余解释。`
+1. 评论要简短、真实、口语化，控制在 20 字以内。
+2. 根据你和对方的关系决定语气。
+3. 如有历史上下文，可适度承接。
+4. 如有图片描述，可以提及画面元素。
+5. 可以使用 @名字 提醒特定的人阅读评论。
+6. 直接输出评论文字，不要带标签或解释。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2917,21 +2933,21 @@ export async function generateReplyToComment(charInfo, moment, targetComment) {
     const uPersona = charInfo.userPersona ? `\n用户在此角色剧本中的身份设定：${charInfo.userPersona}` : ''
 
     const systemPrompt = `你现在是【${charInfo.name}】。
-    你的设定：${charInfo.persona}。${uPersona}
+你的设定：${charInfo.persona}。${uPersona}
 ${charInfo.worldContext ? `当前世界背景：${charInfo.worldContext}` : ''}
-${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包(格式 [表情包:名字]): ${charInfo.emojis.map(e => e.name).join(', ')}` : ''}
+${charInfo.emojis && charInfo.emojis.length > 0 ? `\n可用表情包（格式 [表情包:名字]）：${charInfo.emojis.map(e => e.name).join(', ')}` : ''}
 
 【任务】
-    你在朋友圈看到了【${targetComment.authorName}】的评论，请针对这条评论进行回复。
-    朋友圈原文（作者：${moment.authorName}）：${moment.content}
-    对方的评论：${targetComment.content}
+你在朋友圈看到了【${targetComment.authorName}】的评论，请针对这条评论进行回复。
+朋友圈原文（作者：${moment.authorName}）：${moment.content}
+对方的评论：${targetComment.content}
 
 【要求】
-    1. 回复要简短、口语化（类似微信回复），字数控制在20字以内。
-    2. 身份契合：回复内容必须符合你与对方的关系（参考上面的设定）。
-    3. 逻辑一致：严禁出现违背人设背景（如孤儿设定下管别人叫妈）的回复。
-    4. ** @功能支持 **：你可以通过 '@名字' 提醒阅读。
-    5. 直接输出回复内容，不要包含任何标签。`
+1. 回复要简短、口语化，控制在 20 字以内。
+2. 回复内容必须符合你与对方的关系和人设。
+3. 严禁出现违背背景设定的回应。
+4. 可以使用 @名字 提醒阅读。
+5. 直接输出回复内容，不要带标签或解释。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2964,47 +2980,47 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
     if (includeArchive) tasks.push("灵魂档案 (底层规格与性格)");
     if (includeMoments) tasks.push("置顶动态 (3条朋友圈)");
 
-    const systemPrompt = `你现在是"角色主页架构师"。
+    const systemPrompt = `你现在是“角色主页架构师”。
 任务：为角色生成以下内容：${tasks.join('、')}。
 
 角色姓名：${character.name}
 基础人设：${character.prompt || '无'}${uPersona}
 
 【用户身份说明】
-- 微信"我"页面显示的昵称是："${userName}"
-- 角色设定中的用户昵称也是："${userName}"
-- 这两个名称指向的是同一个人，即微信的使用者本人。
-- 在生成朋友圈动态时，如果需要提到用户，使用名称"${userName}"，id 设为 "user"。
+- 微信“我”页面显示的昵称是：${userName}
+- 角色设定中的用户称呼也是：${userName}
+- 如果生成朋友圈内容，允许在 mentions 中提到用户，但禁止生成用户本人发布的互动
 
-【输出格式】请严格返回以下结构的 JSON：
+【输出格式】
+请严格返回以下 JSON 结构：
 {
-  ${includeSocial ? `
-  "signature": "个性签名 (20字内)",
+  ${includeSocial ? `"signature": "个性签名（20 字内）",
   "backgroundPrompt": "英文背景图提示词",` : ''}
-  ${includeArchive ? `
-  "bioFields": {
+  ${includeArchive ? `"bioFields": {
     "occupation": "职业", "gender": "性别", "mbti": "人格代码", "birthday": "生日", "zodiac": "星座",
     "height": "身高", "weight": "体重", "body": "身材描述", "status": "情感/生活状态", "scent": "气味",
     "style": "穿着风格", "hobbies": ["爱好1", "爱好2"], "idealType": "理想型描述", "heartbeatMoment": "心动瞬间描述"
   },` : ''}
-  ${includeMoments ? `
-  "pinnedMoments": [
+  ${includeMoments ? `"pinnedMoments": [
     {
-      "comment": "必须展示角色生活/人设的三个完全不同的侧面，并根据角色与用户的特定关系决定是否要在动态中提到用户。",
-      "content": "动态文字内容...",
+      "comment": "展示角色生活和人设的不同侧面",
+      "content": "动态文字内容",
       "mentions": [ { "id": "user", "name": "${userName}" } ],
       "imagePrompt": "英文图片提示词",
       "interactions": [
-         { "type": "like", "authorName": "符合背景的虚拟路人名" },
-         { "type": "comment", "authorName": "符合背景的虚拟路人名", "content": "..." }
+        { "type": "like", "authorName": "符合背景的路人名" },
+        { "type": "comment", "authorName": "符合背景的路人名", "content": "..." }
       ]
     }
   ]` : ''}
 }
+
 【重要规则】
-1. 如果人设注明"孤儿/单亲/父母不在"，动态评论区严禁虚构对应的亲属评论。
-2. interactions 中的点赞和评论只能来自虚拟路人角色，严禁生成用户(${userName})的点赞、评论或任何互动。用户只能出现在 mentions 中。
-禁止解释，直接输出 JSON。`
+1. 如果人设注明孤儿、单亲、父母不在等信息，严禁虚构对应亲属互动。
+2. interactions 中的点赞和评论只能来自虚构路人或 NPC，严禁生成用户 ${userName} 本人的互动。
+3. 只输出 JSON，不要补充解释。`
+
+
 
     try {
         const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'System' }, null, { skipVisualContext: true }])
@@ -3109,27 +3125,27 @@ export async function generateCharacterProfile(char, userProfile, config = {}, o
  * @param {String} loopContext - 世界圈背景 (辅助生成)
  */
 export async function generateCharacterPersona(theme, loopContext = '') {
-    const systemPrompt = `你是一个顶级剧本家和人设设计师。
-任务：根据用户提供的主题，为一个名为「世界圈」的多人RPG系统生成一个具有灵魂的 NPC 角色。
+    const systemPrompt = `你是一名顶级剧本作家和人设设计师。
+任务：根据用户提供的主题，为“世界圈”多人 RPG 系统生成一个有灵魂的 NPC 角色。
 
 【当前世界背景】
-${loopContext || '通用现代社交圈'}
+${loopContext || '通用现代社交场'}
 
-【召唤主题】
+【主题】
 ${theme}
 
 请生成以下信息，并以 JSON 格式输出：
-1. **name**: 角色姓名 (具有特色，符合背景)
-2. **gender**: 性别 (男/女/非人类等)
-3. **age**: 表象年龄
-4. **identity**: 核心身份 (一句话描述)
-5. **personality**: 性质偏好与性格特征 (丰富且有记忆点)
-6. **prompt**: 核心 AI 提示词 (用于驱动后续对话，语气控制的关键，包含口癖、思考模式、对用户的初始态度)
-7. **appearance**: 视觉外观描述 (英文，用于后续头像生成)
+1. name: 角色姓名
+2. gender: 性别
+3. age: 表象年龄
+4. identity: 核心身份
+5. personality: 性格与偏好
+6. prompt: 核心 AI 提示词，用于驱动后续对话
+7. appearance: 英文外观描述，用于头像生成
 
-JSON 格式要求：
-\`\`\`json
+JSON 示例：
 {
+
   "name": "...",
   "gender": "...",
   "age": "...",
@@ -3138,8 +3154,8 @@ JSON 格式要求：
   "prompt": "...",
   "appearance": "english visual prompt for image generation..."
 }
-\`\`\`
-直接输出 JSON，不要任何回复语。`
+直接输出 JSON，不要补充解释。`
+
 
     try {
         const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'PersonaManager' }, null, { skipVisualContext: true }])

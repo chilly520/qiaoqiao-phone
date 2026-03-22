@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>指令集测试工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            font-size: 28px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .test-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .test-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+        }
+        .test-card h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .command-list {
+            list-style: none;
+        }
+        .command-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+        }
+        .command-item:last-child {
+            border-bottom: none;
+        }
+        .command-text {
+            font-family: 'Courier New', monospace;
+            background: #f5f5f5;
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #555;
+            flex: 1;
+            margin-right: 10px;
+        }
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .status.supported {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status.pending {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+        .status-icon {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .status.supported .status-icon {
+            background: #4caf50;
+        }
+        .status.pending .status-icon {
+            background: #ff9800;
+        }
+        .summary {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .summary h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        .summary-stats {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+        .test-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 20px auto;
+            display: block;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+        .copy-hint {
+            text-align: center;
+            color: rgba(255,255,255,0.8);
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 指令集功能测试工具</h1>
+        
+        <button class="test-btn" onclick="generateTestScript()">📋 生成测试指令文本</button>
+        
+        <div class="test-grid" id="testGrid"></div>
+        
+        <div class="summary">
+            <h2>📊 指令支持统计</h2>
+            <div class="summary-stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalCount">0</div>
+                    <div class="stat-label">总指令数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="supportedCount">0</div>
+                    <div class="stat-label">已支持</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="pendingCount">0</div>
+                    <div class="stat-label">待完善</div>
+                </div>
+            </div>
+        </div>
+        
+        <p class="copy-hint">点击"生成测试指令文本"按钮，复制生成的文本到聊天框中测试所有指令</p>
+    </div>
+
+    <script>
+        // 指令集配置
+        const commandCategories = [
+            {
+                name: "💰 支付类",
+                commands: [
+                    { text: "[红包:8.88:恭喜发财]", supported: true, desc: "发红包" },
+                    { text: "[转账:520:爱你]", supported: true, desc: "转账" },
+                    { text: "[领取红包:PAY-xxx]", supported: true, desc: "领取红包" },
+                    { text: "[领取转账:PAY-xxx]", supported: true, desc: "领取转账" },
+                    { text: "[拒收红包:PAY-xxx]", supported: true, desc: "拒收红包" },
+                    { text: "[亲属卡:1000:我的钱就是你的钱]", supported: true, desc: "赠送亲属卡" },
+                    { text: "[申请亲属卡:求包养]", supported: true, desc: "申请亲属卡" },
+                    { text: "[拒绝亲属卡]", supported: true, desc: "拒绝亲属卡" }
+                ]
+            },
+            {
+                name: "🎨 多媒体类",
+                commands: [
+                    { text: "[图片:https://example.com/pic.jpg]", supported: true, desc: "发送图片" },
+                    { text: "[表情包:嘬嘬嘬嘬]", supported: true, desc: "发送表情包" },
+                    { text: "[语音:你好呀]", supported: true, desc: "发送语音" },
+                    { text: "[视频:https://example.com/video.mp4]", supported: true, desc: "发送视频" },
+                    { text: "[文件:document.pdf]", supported: true, desc: "发送文件" },
+                    { text: "[DRAW:一只可爱的猫咪]", supported: true, desc: "AI绘画" }
+                ]
+            },
+            {
+                name: "🎮 互动游戏类",
+                commands: [
+                    { text: "[摇骰子:3]", supported: true, desc: "摇骰子" },
+                    { text: "[塔罗牌:爱情运势]", supported: true, desc: "塔罗占卜" },
+                    { text: "[演奏:钢琴:小星星]", supported: true, desc: "演奏音乐" }
+                ]
+            },
+            {
+                name: "💝 社交互动类",
+                commands: [
+                    { text: "[拍一拍]", supported: true, desc: "拍一拍" },
+                    { text: "[戳一戳]", supported: true, desc: "戳一戳" },
+                    { text: "[点赞:msgId]", supported: true, desc: "点赞消息" },
+                    { text: "[评论:真棒:msgId]", supported: true, desc: "评论消息" },
+                    { text: "[回复:好的:msgId]", supported: true, desc: "回复消息" },
+                    { text: "[引用:msgId]", supported: true, desc: "引用消息" }
+                ]
+            },
+            {
+                name: "📍 位置分享类",
+                commands: [
+                    { text: "[位置:北京市朝阳区:116.4,39.9]", supported: true, desc: "分享位置" },
+                    { text: "[地图:导航到xxx]", supported: false, desc: "地图导航" }
+                ]
+            },
+            {
+                name: "🎁 礼物道具类",
+                commands: [
+                    { text: "[礼物:玫瑰花:一朵红玫瑰:爱你]", supported: true, desc: "赠送礼物" },
+                    { text: "[GIFT:巧克力:甜蜜礼物:送给你]", supported: true, desc: "赠送礼物(英文)" }
+                ]
+            },
+            {
+                name: "🔗 分享类",
+                commands: [
+                    { text: "[分享:https://example.com:标题:描述]", supported: true, desc: "分享链接" },
+                    { text: "[链接:https://example.com]", supported: true, desc: "发送链接" },
+                    { text: "[朋友圈:分享生活]", supported: false, desc: "分享到朋友圈" }
+                ]
+            },
+            {
+                name: "⚙️ 系统设置类",
+                commands: [
+                    { text: "[设置头像:avatarId]", supported: true, desc: "更换头像" },
+                    { text: "[设置昵称:新昵称]", supported: true, desc: "更换昵称" },
+                    { text: "[设置拍一拍:后缀]", supported: true, desc: "设置拍一拍" },
+                    { text: "[系统提示:欢迎消息]", supported: true, desc: "系统提示" }
+                ]
+            },
+            {
+                name: "💑 情侣空间类",
+                commands: [
+                    { text: "[情侣空间:邀请]", supported: true, desc: "邀请情侣空间" },
+                    { text: "[情侣空间:同意]", supported: true, desc: "同意邀请" },
+                    { text: "[情侣空间:拒绝]", supported: true, desc: "拒绝邀请" },
+                    { text: "[在一起:100]", supported: true, desc: "记录恋爱天数" }
+                ]
+            },
+            {
+                name: "🎵 音乐类",
+                commands: [
+                    { text: "[一起听歌:歌曲ID]", supported: true, desc: "一起听歌" },
+                    { text: "[停止听歌]", supported: true, desc: "停止听歌" }
+                ]
+            },
+            {
+                name: "🎲 其他功能类",
+                commands: [
+                    { text: "[定时:10分钟后提醒]", supported: true, desc: "定时提醒" },
+                    { text: "[搜索:关键词]", supported: true, desc: "搜索内容" },
+                    { text: "[黄历:今日运势]", supported: true, desc: "查看黄历" }
+                ]
+            }
+        ];
+
+        // 渲染测试卡片
+        function renderTestCards() {
+            const grid = document.getElementById('testGrid');
+            let total = 0;
+            let supported = 0;
+            let pending = 0;
+
+            commandCategories.forEach(category => {
+                const card = document.createElement('div');
+                card.className = 'test-card';
+                
+                const list = document.createElement('ul');
+                list.className = 'command-list';
+                
+                category.commands.forEach(cmd => {
+                    total++;
+                    if (cmd.supported) supported++;
+                    else pending++;
+                    
+                    const item = document.createElement('li');
+                    item.className = 'command-item';
+                    item.innerHTML = `
+                        <span class="command-text" title="${cmd.desc}">${cmd.text}</span>
+                        <span class="status ${cmd.supported ? 'supported' : 'pending'}">
+                            <span class="status-icon"></span>
+                            ${cmd.supported ? '已支持' : '待完善'}
+                        </span>
+                    `;
+                    list.appendChild(item);
+                });
+                
+                card.innerHTML = `<h3>${category.name}</h3>`;
+                card.appendChild(list);
+                grid.appendChild(card);
+            });
+
+            // 更新统计
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('supportedCount').textContent = supported;
+            document.getElementById('pendingCount').textContent = pending;
+        }
+
+        // 生成测试脚本
+        function generateTestScript() {
+            let script = "=== 指令集功能测试 ===\n\n";
+            
+            commandCategories.forEach(category => {
+                script += `${category.name}\n`;
+                script += "-".repeat(30) + "\n";
+                category.commands.forEach(cmd => {
+                    if (cmd.supported) {
+                        script += `${cmd.text}\n`;
+                    }
+                });
+                script += "\n";
+            });
+            
+            script += "=== 测试说明 ===\n";
+            script += "1. 复制以上指令到聊天框\n";
+            script += "2. 观察每个指令的显示效果\n";
+            script += "3. 检查是否正确渲染为对应的卡片/样式\n";
+            script += "4. 如有问题请记录具体指令\n";
+            
+            // 复制到剪贴板
+            navigator.clipboard.writeText(script).then(() => {
+                alert('测试指令已复制到剪贴板！\n\n请粘贴到聊天框中测试所有指令。');
+            }).catch(() => {
+                // 如果复制失败，显示文本让用户手动复制
+                const textarea = document.createElement('textarea');
+                textarea.value = script;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('测试指令已复制到剪贴板！\n\n请粘贴到聊天框中测试所有指令。');
+            });
+        }
+
+        // 初始化
+        renderTestCards();
+    </script>
+</body>
+</html>

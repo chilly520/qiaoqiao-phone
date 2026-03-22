@@ -5,6 +5,7 @@ import { useChatStore, getRandomAvatar } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useMomentsStore } from '../../stores/momentsStore'
 import ChatWindow from './ChatWindow.vue'
+import OfflineModeChatWindow from './OfflineModeChatWindow.vue'
 import MomentsView from './MomentsView.vue'
 import { useWorldLoopStore } from '../../stores/worldLoopStore'
 import WorldLoopCreateModal from './modals/WorldLoopCreateModal.vue'
@@ -913,7 +914,9 @@ const handleImport = async (e) => {
         <input type="file" ref="importFileInput" class="hidden" accept=".json" @change="handleImport">
 
         <!-- Chat Window Overlay -->
-        <ChatWindow v-if="chatStore.currentChatId" v-show="!showMoments" class="absolute inset-0 z-50"
+        <ChatWindow v-if="chatStore.currentChatId && !settingsStore.isOfflineMode" v-show="!showMoments" class="absolute inset-0 z-50"
+            @back="handleChatBack" :initial-unread-count="initialUnreadCount" @show-profile="openProfileFromChat" />
+        <OfflineModeChatWindow v-if="chatStore.currentChatId && settingsStore.isOfflineMode" v-show="!showMoments" class="absolute inset-0 z-50"
             @back="handleChatBack" :initial-unread-count="initialUnreadCount" @show-profile="openProfileFromChat" />
 
         <WorldLoopCreateModal :visible="showCreateLoopModal" :contacts="chatStore.contactList.filter(c => !c.isGroup)"

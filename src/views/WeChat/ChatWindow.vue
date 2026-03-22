@@ -192,8 +192,37 @@ const chatData = computed(() => chatStore.currentChat)
 const msgs = computed(() => chatData.value?.msgs || [])
 const loopData = computed(() => {
     if (!chatData.value?.loopId) return null
-    return worldLoopStore.loops[chatData.value.loopId]
+    return worldLoopStore.loops[chatData.value?.loopId]
 })
+
+// 检测是否有未读的线下消息（用于线上模式显示提示）
+const hasUnreadOfflineMessages = computed(() => {
+    if (!chatData.value?.msgs) return false
+    const lastReadOfflineMsgId = localStorage.getItem(`lastReadOffline_${chatData.value?.id}`)
+    const offlineMsgs = chatData.value.msgs.filter(m => m.mode === 'offline' && m.role === 'ai')
+    if (offlineMsgs.length === 0) return false
+    if (!lastReadOfflineMsgId) return true
+    const lastUnread = offlineMsgs.find(m => m.id === lastReadOfflineMsgId)
+    if (!lastUnread) return true
+    // 检查是否有更新的线下消息
+    const lastUnreadIndex = offlineMsgs.findIndex(m => m.id === lastReadOfflineMsgId)
+    return lastUnreadIndex < offlineMsgs.length - 1
+})
+
+// 切换到线下模式并标记已读
+const switchToOfflineMode = () => {
+    if (chatData.value?.loopId) {
+        // 标记最后一条线下消息为已读
+        const offlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'offline' && m.role === 'ai')
+        if (offlineMsgs && offlineMsgs.length > 0) {
+            const lastMsg = offlineMsgs[offlineMsgs.length - 1]
+            localStorage.setItem(`lastReadOffline_${chatData.value.id}`, lastMsg.id)
+        }
+        // 切换到线下模式
+        worldLoopStore.toggleMode(chatData.value.loopId)
+    }
+}
+
 const route = useRoute()
 const router = useRouter()
 const chatInputBarRef = ref(null)
@@ -215,15 +244,28 @@ const isMsgVisible = (msg) => {
     if (!msg) return false
     if (msg.hidden) return false
 
+    // 关键：过滤掉明确标记为线下模式的消息
+    if (msg.mode === 'offline') return false
+
+    // 过滤掉朋友圈相关消息（朋友圈应该在朋友圈界面显示，不在聊天界面）
+    if (msg.type === 'moment_card' || msg.type === 'moment') return false
+    const content = ensureString(msg.content)
+    if (content.includes('[MOMENT_SHARE') || content.includes('[分享朋友圈')) return false
+
     // Debug logging for family_card
     if (msg.content && (msg.content.includes('亲属卡') || msg.content.includes('FAMILY_CARD'))) {
         console.log('[isMsgVisible] Checking family_card message:', { type: msg.type, role: msg.role, content: msg.content?.substring(0, 50) })
     }
 
-    // 1. Always show special message types as long as they aren't explicitly hidden
-    if (msg.type && msg.type !== 'text') return true
+    // 1. 线上模式：显示明确标记为 online 或没有标记的消息
+    // 贴纸消息：显示 mode === 'online' 或没有 mode 的消息
+    if (msg.type === 'sticker') {
+        return msg.mode === 'online' || !msg.mode
+    }
 
-    const content = ensureString(msg.content)
+    // 其他特殊消息类型（非贴纸）
+    if (msg.type && msg.type !== 'text' && msg.type !== 'sticker') return true
+
     if (content.includes('[红包]') || content.includes('[转账]') || content.includes('[GIFT:')) return true
     if (msg.type === 'image' || isImageMsg(msg)) return true
 
@@ -492,6 +534,7 @@ const handleShowRank = (chatId) => {
     rankChatId.value = chatId || chatData.value?.id
     showRankModal.value = true
 }
+
 // Watch for call transcripts to trigger TTS
 watch(() => callStore.transcript.length, (newLen, oldLen) => {
     if (newLen > oldLen && callStore.status === 'active') {
@@ -627,9 +670,8 @@ const toggleMessageSelection = (msgId) => {
 const selectToBottom = () => {
     if (selectedMsgIds.value.size === 0) return
 
-    // Use displayedMsgs (the current paginated view) instead of the full store history.
-    // This ensures we only select messages that are currently visible on the screen.
-    const visibleMsgs = displayedMsgs.value
+    // Use filteredDisplayMsgs (the current visible messages) instead of the full store history.
+    const visibleMsgs = filteredDisplayMsgs.value
 
     // Find the earliest message index in the visible selection
     let minIdx = -1
@@ -646,6 +688,45 @@ const selectToBottom = () => {
     const newSet = new Set(selectedMsgIds.value)
     for (let i = minIdx; i < visibleMsgs.length; i++) {
         newSet.add(visibleMsgs[i].id)
+    }
+    selectedMsgIds.value = newSet
+}
+
+// 选择从第一个勾选的消息到指定索引的所有消息（用于虚线区间选择）
+const selectRangeToIndex = (endIndex) => {
+    if (selectedMsgIds.value.size === 0) {
+        // 如果没有选中任何消息，只选择当前虚线位置的消息
+        const msg = filteredDisplayMsgs.value[endIndex]
+        if (msg) {
+            selectedMsgIds.value = new Set([msg.id])
+            lastSelectedId.value = msg.id
+        }
+        return
+    }
+
+    const visibleMsgs = filteredDisplayMsgs.value
+    
+    // 找到第一个选中的消息索引
+    let startIndex = -1
+    for (let i = 0; i < visibleMsgs.length; i++) {
+        if (selectedMsgIds.value.has(visibleMsgs[i].id)) {
+            startIndex = i
+            break
+        }
+    }
+    
+    if (startIndex === -1) return
+    
+    // 确保 startIndex <= endIndex
+    const fromIndex = Math.min(startIndex, endIndex)
+    const toIndex = Math.max(startIndex, endIndex)
+    
+    // 选择区间内的所有消息
+    const newSet = new Set(selectedMsgIds.value)
+    for (let i = fromIndex; i <= toIndex; i++) {
+        if (visibleMsgs[i]) {
+            newSet.add(visibleMsgs[i].id)
+        }
     }
     selectedMsgIds.value = newSet
 }
@@ -2382,13 +2463,15 @@ const handleSendMessage = (payload) => {
                 type: 'voice',
                 content: content,
                 duration: Math.ceil(content.length / 3) || 1,
-                quote: currentQuote.value
+                quote: currentQuote.value,
+                mode: 'online'
             })
         } else {
             chatStore.addMessage(chatId, {
                 role: 'user',
                 content: content,
-                quote: currentQuote.value
+                quote: currentQuote.value,
+                mode: 'online'
             })
         }
 
@@ -3040,7 +3123,8 @@ const handleStickerSelect = (sticker) => {
         role: 'user',
         type: 'sticker',
         content: `[表情包: ${sticker.name || '表情'}]`,
-        image: sticker.url
+        image: sticker.url,
+        mode: 'online'
     });
     showEmojiPicker.value = false;
     nextTick(() => scrollToBottom());
@@ -3239,6 +3323,18 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     </div>
                 </div>
                 <div class="absolute right-2 flex items-center gap-1.5 text-black z-20">
+                    <!-- 切换到线下模式按钮 (仅 World Loop 模式显示) -->
+                    <div v-if="loopData" 
+                        class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 relative"
+                        @click="switchToOfflineMode"
+                        title="切换到线下模式">
+                        <i class="fa-solid fa-masks-theater text-purple-600"></i>
+                        <!-- 小红点和呼吸灯 -->
+                        <div v-if="hasUnreadOfflineMessages" 
+                            class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-sm animate-breathing-dot">
+                        </div>
+                    </div>
+
                     <!-- Auto TTS Button -->
                     <div class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
                         :class="{ 'opacity-30': !chatData?.autoTTS }" @click="toggleAutoRead"
@@ -3341,13 +3437,24 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
 
                 <!-- Message List -->
-                <ChatMessageItem v-for="(msg, index) in filteredDisplayMsgs" :key="msg.id" :id="'msg-' + msg.id"
-                    :msg="msg" :prevMsg="filteredDisplayMsgs[index - 1]" :chatData="chatData"
-                    :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
-                    :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
-                    @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
-                    @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
-                    @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
+                <template v-for="(msg, index) in filteredDisplayMsgs" :key="msg.id">
+                    <!-- 区间选择虚线 (多选模式下显示在消息之间) -->
+                    <div v-if="isMultiSelectMode && index > 0" 
+                        class="relative h-6 flex items-center justify-center cursor-pointer group select-range-divider"
+                        @click="selectRangeToIndex(index)">
+                        <div class="w-full border-t border-dashed border-gray-300 group-hover:border-[#07c160] transition-colors"></div>
+                        <div class="absolute bg-white px-2 text-[10px] text-gray-400 group-hover:text-[#07c160] transition-colors">
+                            <i class="fa-solid fa-check-double mr-1"></i>选到这
+                        </div>
+                    </div>
+                    <ChatMessageItem :id="'msg-' + msg.id"
+                        :msg="msg" :prevMsg="filteredDisplayMsgs[index - 1]" :chatData="chatData"
+                        :isMultiSelectMode="isMultiSelectMode" :isSelected="selectedMsgIds.has(msg.id)"
+                        :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
+                        @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
+                        @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
+                        @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
+                </template>
 
 
                 <!-- Typing Indicator -->
@@ -3385,8 +3492,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     <button @click="selectToBottom"
                         class="flex flex-col items-center justify-center text-gray-600 hover:text-[#07c160] transition-colors"
                         :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
-                        <i class="fa-solid fa-list-check text-lg"></i>
-                        <span class="text-[10px] mt-0.5">勾选到这</span>
+                        <i class="fa-solid fa-arrow-down text-lg"></i>
+                        <span class="text-[10px] mt-0.5">选到底部</span>
                     </button>
                     <button @click="favoriteSelectedMessages"
                         class="flex flex-col items-center justify-center text-gray-600 hover:text-[#07c160] transition-colors"
@@ -3818,6 +3925,35 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
 .animate-fade-in {
     animation: fadeIn 0.2s ease-out;
+}
+
+/* 呼吸灯动画 - 用于未读消息小红点 */
+@keyframes breathing-dot {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.9;
+        box-shadow: 0 0 8px 4px rgba(239, 68, 68, 0.4);
+    }
+}
+
+.animate-breathing-dot {
+    animation: breathing-dot 1.5s ease-in-out infinite;
+}
+
+/* 多选区间选择虚线 */
+.select-range-divider {
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.select-range-divider:active {
+    opacity: 1;
+    background-color: rgba(7, 193, 96, 0.1);
 }
 
 .animate-scale-in {

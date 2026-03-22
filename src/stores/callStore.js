@@ -27,6 +27,7 @@ export const useCallStore = defineStore('call', () => {
 
     let timer = null
     let ringtone = null
+    let incomingCallTimer = null // 来电超时定时器
 
     // ACTIONS
     const updateStatus = (newStatus) => {
@@ -127,10 +128,26 @@ export const useCallStore = defineStore('call', () => {
         customCallAvatarUser.value = callPartner.callAvatarUser || ''
 
         playRingtone(RINGTONE_INCOMING)
+
+        // 启动60秒超时定时器，如果用户未接听则自动挂断
+        if (incomingCallTimer) clearTimeout(incomingCallTimer)
+        incomingCallTimer = setTimeout(() => {
+            if (status.value === 'incoming') {
+                console.log('[CallStore] Incoming call timeout (60s), auto rejecting...')
+                autoRejectCall('timeout')
+            }
+        }, 60000) // 60秒超时
     }
 
     const acceptCall = () => {
         stopRingtone()
+        
+        // 清除超时定时器（用户已接听）
+        if (incomingCallTimer) {
+            clearTimeout(incomingCallTimer)
+            incomingCallTimer = null
+        }
+        
         status.value = 'active'
         callStartTime.value = Date.now()
 
@@ -156,8 +173,49 @@ export const useCallStore = defineStore('call', () => {
             })
         }
 
+        // 清除超时定时器
+        if (incomingCallTimer) {
+            clearTimeout(incomingCallTimer)
+            incomingCallTimer = null
+        }
+
         stopRingtone()
         status.value = 'none'
+        partner.value = null
+    }
+
+    // 自动挂断（超时未接听）
+    const autoRejectCall = (reason = 'timeout') => {
+        if (status.value !== 'incoming') return
+
+        const currentPartner = partner.value
+        const callTypeLabel = type.value === 'video' ? '视频通话' : '语音通话'
+        const chatStore = useChatStore()
+
+        // 清除超时定时器
+        if (incomingCallTimer) {
+            clearTimeout(incomingCallTimer)
+            incomingCallTimer = null
+        }
+
+        stopRingtone()
+        status.value = 'none'
+
+        if (currentPartner?.id) {
+            // 添加系统提示：对方未接听
+            chatStore.addMessage(currentPartner.id, {
+                role: 'system',
+                type: 'system',
+                content: '对方未接听',
+                timestamp: Date.now()
+            })
+
+            // 给AI发送提示，让它知道通话超时了
+            chatStore.sendMessageToAI(currentPartner.id, {
+                hiddenHint: `你发起的${callTypeLabel}已超时（60秒未接听），系统自动挂断了。请自然地回应这个情况（可以询问对方是否不方便、留言、或者稍后再联系）。`
+            })
+        }
+
         partner.value = null
     }
 
@@ -180,6 +238,11 @@ export const useCallStore = defineStore('call', () => {
         if (timer) {
             clearInterval(timer)
             timer = null
+        }
+        // 清除来电超时定时器
+        if (incomingCallTimer) {
+            clearTimeout(incomingCallTimer)
+            incomingCallTimer = null
         }
 
         const finalDuration = durationText.value

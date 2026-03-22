@@ -67,6 +67,12 @@
             <i class="fa-solid fa-location-dot cursor-pointer hover:text-green-600 transition-colors"
                 @click="settingsStore.showLocationInput = true" title="当前位置"></i>
 
+            <!-- Offline Mode Toggle -->
+            <i :class="settingsStore.isOfflineMode ? 'fa-solid fa-moon text-purple-500' : 'fa-regular fa-moon'" 
+                @click="toggleOfflineMode" 
+                class="cursor-pointer hover:text-purple-600 transition-colors"
+                :title="settingsStore.isOfflineMode ? '切换到线上模式' : '切换到线下模式'"></i>
+
             <!-- Scroll to Bottom -->
             <i v-if="showScrollToBottom"
                 class="fa-solid fa-angles-down cursor-pointer text-blue-500 hover:text-blue-600 transition-all animate-bounce-subtle"
@@ -145,7 +151,7 @@ const props = defineProps({
 const emit = defineEmits([
     'send', 'generate', 'stop-generate',
     'toggle-panel', 'toggle-emoji', 'toggle-music', 'toggle-search', 'regenerate',
-    'cancel-quote', 'scroll-to-bottom', 'at-member'
+    'cancel-quote', 'scroll-to-bottom', 'at-member', 'toggle-offline-mode'
 ])
 
 const inputVal = ref('')
@@ -196,6 +202,10 @@ const pickMention = (member) => {
 const toggleVoiceMode = () => {
     isVoiceMode.value = !isVoiceMode.value
     // We could emit this state if parent needs it, but keeping it local is simpler for now
+}
+
+const toggleOfflineMode = () => {
+    settingsStore.toggleOfflineMode()
 }
 
 const handleAutoResize = () => {

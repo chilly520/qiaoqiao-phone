@@ -45,7 +45,7 @@
                     :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
 
                     <!-- Avatar -->
-                    <div class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
+                    <div v-if="!forceOffline && shouldShowAvatar" class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
                         @click.stop="handleAvatarClick(msg)" @dblclick="$emit('dblclick-avatar', msg)"
                         @touchstart="startAvatarLongPress(msg, $event)" @touchend="cancelAvatarLongPress"
                         @touchcancel="cancelAvatarLongPress" @mousedown="startAvatarLongPress(msg, $event)"
@@ -67,10 +67,11 @@
                     <!-- Content Column -->
                     <div class="flex flex-col" :class="[
                         msg.role === 'user' ? 'items-end' : 'items-start',
-                        (msg.type === 'html' || isHtmlCard) ? 'max-w-[82%]' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]')
+                        (msg.type === 'html' || isHtmlCard) ? 'max-w-[82%]' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]'),
+                        isCenteredContent ? 'w-full items-center' : ''
                     ]">
                         <!-- New: Sender Name and Title for Group Chats -->
-                        <div v-if="chatData?.isGroup && msg.role !== 'system'"
+                        <div v-if="!forceOffline && chatData?.isGroup && msg.role !== 'system'"
                             class="flex items-center gap-1 text-[10px] text-gray-400 mb-0.5 px-1"
                             :class="msg.role === 'user' ? 'flex-row-reverse mr-0.5' : 'ml-0.5'">
                             <!-- Title Badge -->
@@ -658,6 +659,48 @@
                             </div>
                         </div>
 
+                        <!-- Timer Reminder -->
+                        <div v-else-if="msg.type === 'timer'" class="flex flex-col w-full"
+                            :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                            <div class="timer-bubble chat-bubble"
+                                :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
+                                :style="computedBubbleStyle">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-clock text-amber-500"></i>
+                                    <span class="text-sm font-medium">定时提醒</span>
+                                </div>
+                                <div class="mt-1 text-sm opacity-90">{{ msg.content }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Search Result -->
+                        <div v-else-if="msg.type === 'search'" class="flex flex-col w-full"
+                            :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                            <div class="search-bubble chat-bubble"
+                                :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
+                                :style="computedBubbleStyle">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-magnifying-glass text-blue-500"></i>
+                                    <span class="text-sm font-medium">搜索</span>
+                                </div>
+                                <div class="mt-1 text-sm opacity-90">{{ msg.content }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Almanac / Fortune -->
+                        <div v-else-if="msg.type === 'almanac'" class="flex flex-col w-full"
+                            :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                            <div class="almanac-bubble chat-bubble"
+                                :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
+                                :style="computedBubbleStyle">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-calendar-days text-red-500"></i>
+                                    <span class="text-sm font-medium">今日运势</span>
+                                </div>
+                                <div class="mt-1 text-sm opacity-90">{{ msg.content }}</div>
+                            </div>
+                        </div>
+
                         <!-- Voice (Moved up) -->
                         <div v-else-if="msg.type === 'voice'" class="flex flex-col w-full"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
@@ -1012,9 +1055,9 @@
                             <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !msg.tarotCards" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
-                                class="px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm relative transition-all"
+                                class="px-3 py-2 text-[15px] leading-relaxed break-words relative transition-all"
                                 :class="[
-                                    msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left',
+                                    forceOffline ? 'no-bubble-offline w-full' : (msg.role === 'user' ? 'chat-bubble-right shadow-sm' : 'chat-bubble-left shadow-sm'),
                                 ]" :style="{
                                     fontSize: (chatData?.bubbleSize || 15) + 'px',
                                     ...(computedBubbleStyle || {})
@@ -1221,6 +1264,14 @@ import { useWalletStore } from '../../../stores/walletStore'
 import { useSettingsStore } from '../../../stores/settingsStore'
 import { useMusicBoxStore } from '../../../stores/musicBoxStore'
 import { parseWeChatEmojis } from '../../../utils/emojiParser'
+import {
+    ensureMessageString,
+    getOfflineRenderableContent,
+    getOfflineTextContent,
+    getOnlineRenderableContent,
+    getOnlineTextContent,
+    parseOfflineSegments
+} from '../../../utils/chatMessageDisplay'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
 import FamilyCardClaimModal from '../FamilyCardClaimModal.vue'
@@ -1235,6 +1286,10 @@ const props = defineProps({
     shakingAvatars: {
         type: Object,
         default: () => new Set()
+    },
+    forceOffline: {
+        type: Boolean,
+        default: false
     }
 })
 
@@ -1461,7 +1516,7 @@ const isPayCard = computed(() => {
         (typeof content === 'string' && (content.includes('[红包]') || content.includes('[转账]')))
 })
 
-const cleanedContent = computed(() => getCleanContent(props.msg.content, isHtmlCard.value))
+const cleanedContent = computed(() => getCleanContent(props.msg.content, isHtmlCard.value, props.msg.role))
 
 const isDiceMsg = computed(() => {
     if (props.msg.diceResults) return true
@@ -1570,38 +1625,26 @@ const isFamilyCardReject = computed(() => {
     return /[\\]?\[\s*(?:FAMILY_CARD_REJECT|拒绝亲属卡)/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
 })
 
+
+
 const isHtmlCard = computed(() => {
-    if (props.msg.type === 'html') {
-        console.log('[ChatMessageItem] isHtmlCard: true (type is html)');
-        return true
-    }
+    if (props.msg.type === 'html') return true
     const c = ensureString(props.msg.content)
-    if (c.includes('[CARD]')) {
-        console.log('[ChatMessageItem] isHtmlCard: true (has [CARD])');
-        return true
-    }
-    // Also support escaped quotes in detection
-    if ((c.includes('"type"') && c.includes('"html"')) || 
-        (c.includes('\\"type\\"') && c.includes('\\"html\\"')) ||
-        (c.includes('"html"') && c.includes('{') && c.includes('}')) ||
-        (c.includes('\\"html\\"') && c.includes('{') && c.includes('}'))) {
-        console.log('[ChatMessageItem] isHtmlCard: true (JSON html detected)');
+    if (c.includes('[CARD]')) return true
+    
+    // Check for nested types
+    if (c.includes('"type"') && c.includes('"html"')) return true
+    if (c.includes('\\"type\\"') && c.includes('\\"html\\"')) return true
+    
+    // Check for raw HTML tags
+    if (/<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(c) || /<div\s+/i.test(c) || /<style\s*/i.test(c)) {
         return true
     }
     
-    // Check for raw HTML content (e.g., <div style=...>)
-    const hasRawHtml = /<[a-zA-Z][^>]*\s+(style|class|id)=/i.test(c) || 
-                       /<div\s+/i.test(c) || 
-                       /<table\s+/i.test(c) ||
-                       /<style\s*/i.test(c);
-    if (hasRawHtml && c.includes('<') && c.includes('>')) {
-        console.log('[ChatMessageItem] isHtmlCard: true (raw HTML detected)');
-        return true;
-    }
-    
-    console.log('[ChatMessageItem] isHtmlCard: false');
     return false
 })
+
+
 
 const isHtmlContentCard = computed(() => isHtmlCard.value)
 const shouldRenderCard = computed(() => {
@@ -1933,7 +1976,7 @@ const getUserName = computed(() => {
     return props.chatData.userName || '用户'
 })
 
-function getCleanContent(contentRaw, isCard = false) {
+function getCleanContent(contentRaw, isCard = false, role = null) {
     if (!contentRaw) return '';
     const content = ensureString(contentRaw);
 
@@ -1941,7 +1984,7 @@ function getCleanContent(contentRaw, isCard = false) {
         return '';
     }
 
-    let clean = content;
+    let clean = props.forceOffline ? getOfflineRenderableContent(content) : getOnlineRenderableContent(content);
     
     // 1. 兼容不带双引号的异常 JSON 心声 (修复空气泡的关键)
     const isHtmlCardJson = /"type"\s*:\s*"html"/.test(clean) && /"html"\s*:/.test(clean);
@@ -1958,12 +2001,46 @@ function getCleanContent(contentRaw, isCard = false) {
     
     clean = clean.replace(/^\s*【系统提示】\s*/g, '');
     
-    // 2. 彻底处理 INNER_VOICE 标签（无视是否闭合，直接向后清除）
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, '');
-    // 清理可能残留的结束标签
-    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    // 2. 彻底处理 INNER_VOICE 标签（只匹配闭合的标签）
+    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
+    
+    // 3. 处理 [ONLINE] 和 [OFFLINE] 标签
+    // 用户发送的消息不做过滤，直接显示
+    if (role === 'user') {
+        clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
+    } else {
+        const isOffline = settingsStore.isOfflineMode || props.forceOffline
+        const onlineMatch = clean.match(/\[ONLINE\]([\s\S]*?)\[\/ONLINE\]/i)
+        const offlineMatch = clean.match(/\[OFFLINE\]([\s\S]*?)\[\/OFFLINE\]/i)
+        
+        if (isOffline && !props.forceOffline) {
+            // 线下模式：不显示任何内容（由 OfflineModeChatWindow 处理）
+            clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
+        }
+        
+        if (props.forceOffline) {
+            // 强制线下模式：显示原始内容（用于特殊类型消息）
+            clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
+        } else if (onlineMatch) {
+            // 线上模式：显示 [ONLINE] 内容
+            clean = onlineMatch[1]
+        } else if (offlineMatch) {
+            // 如果有 [OFFLINE] 但没有 [ONLINE]，不显示（这是线下消息）
+            return ''
+        } else {
+            // 没有标签的旧消息：检查是否包含剧场版格式符号
+            const hasOfflineFormat = /(‖[^‖]+‖|【[^】]+】|[（\(][\s\S]*?[）\)]|「[^」]+」)/.test(clean)
+            if (hasOfflineFormat) {
+                // 如果包含剧场版格式，这是线下消息，线上模式不显示
+                return ''
+            }
+            // 普通文本消息，移除标签后显示
+            clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
+        }
+    }
 
     clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
+    clean = props.forceOffline ? getOfflineTextContent(clean) : getOnlineTextContent(clean)
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
@@ -2104,6 +2181,36 @@ function getPureHtml(content) {
 
     // Pass 0: 处理 [CARD] 标签包裹的 JSON（带双重转义）
     // 匹配 { 开头，中间包含 "type": "html" 或 "html":，且以 } 结尾的内容
+    const deepDecoded = (() => {
+        let decoded = trimmed
+        for (let i = 0; i < 3; i += 1) {
+            decoded = unescapeContent(decoded)
+        }
+        return decoded.replace(/`/g, '').trim()
+    })()
+
+    const firstHtmlIndex = deepDecoded.search(/<(div|section|article|table|ul|ol|p|h[1-6]|svg)\b/i)
+    if (firstHtmlIndex !== -1) {
+        const closingTags = ['</div>', '</section>', '</article>', '</table>', '</ul>', '</ol>', '</p>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</svg>']
+        let lastHtmlIndex = -1
+
+        closingTags.forEach((tag) => {
+            const index = deepDecoded.toLowerCase().lastIndexOf(tag)
+            if (index > lastHtmlIndex) lastHtmlIndex = index + tag.length
+        })
+
+        if (lastHtmlIndex > firstHtmlIndex) {
+            const directHtml = deepDecoded
+                .slice(firstHtmlIndex, lastHtmlIndex)
+                .replace(/"\s*\}\s*(?=<)/g, '')
+                .replace(/\{\s*"type"\s*:\s*"html"\s*,\s*"html"\s*:\s*"/gi, '')
+                .replace(/\\"\}/g, '')
+                .trim()
+
+            if (directHtml) return cleanHtmlResult(directHtml)
+        }
+    }
+
     const cardJsonMatch = trimmed.match(/^\{\s*(?:[\s\S]*?)"(?:type|html)"\s*:\s*(?:[\s\S]*?)\}$/);
     if (cardJsonMatch) {
         try {
@@ -2343,9 +2450,62 @@ const shouldShowArrow = computed(() => {
 // --- Methods (Ported) ---
 
 function ensureString(val) {
-    if (typeof val === 'string') return val;
-    if (val && typeof val === 'object') return val.text || val.content || JSON.stringify(val);
-    return String(val || '');
+    return ensureMessageString(val)
+}
+
+function escapeHtml(value) {
+    return ensureString(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
+function renderOfflineMessageHtml(msg) {
+    const segments = parseOfflineSegments(msg?.content)
+    if (!segments.length) {
+        return escapeHtml(getOfflineTextContent(msg?.content)).replace(/\n/g, '<br>')
+    }
+
+    const userName = props.chatData?.groupSettings?.myNickname
+        || props.chatData?.userName
+        || settingsStore.personalization.userProfile.name
+        || '我'
+    const characterName = props.chatData?.name || '对方'
+    const userAvatar = props.chatData?.userAvatar
+        || settingsStore.personalization.userProfile.avatar
+        || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me'
+    const characterAvatar = props.chatData?.avatar
+        || 'https://api.dicebear.com/bottts/svg?seed=Bot'
+
+    return segments.map((segment) => {
+        if (segment.type === 'scene') {
+            return `<div class="node-scene">${escapeHtml(segment.content)}</div>`
+        }
+        if (segment.type === 'narration') {
+            return `<div class="node-narration">${escapeHtml(segment.content)}</div>`
+        }
+        if (segment.type === 'action') {
+            return `<div class="node-action">${escapeHtml(segment.content)}</div>`
+        }
+
+        const speaker = segment.speaker || (msg?.role === 'user' ? userName : characterName)
+        const isUser = msg?.role === 'user' || speaker === userName
+        const side = isUser ? 'right' : 'left'
+        const avatar = isUser ? userAvatar : characterAvatar
+        const nameHtml = segment.speaker ? `<div class="node-name">${escapeHtml(speaker)}</div>` : ''
+
+        return `
+            <div class="node-speech ${side}">
+                <img src="${avatar}" class="node-avatar shadow-sm" />
+                <div class="node-content">
+                    ${nameHtml}
+                    <div class="node-text">${escapeHtml(segment.content).replace(/\n/g, '<br>')}</div>
+                </div>
+            </div>
+        `
+    }).join('')
 }
 
 
@@ -2382,12 +2542,18 @@ function isImageMsg(msg) {
     // If it's currently DRAWING, we want to show it as text (loading card)
     if ((msg.type === 'image' || msg.type === 'sticker') && content.toUpperCase().includes('[DRAW:')) return false;
 
-    const clean = getCleanContent(content).trim()
+    // 对于图片/表情包检查，使用原始内容或最小清理，避免移除标签
+    let clean = content
+    // 只移除基本的模式标签，保留表情包标签
+    clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '').trim()
 
     // URL check
     const isUrlOnly = clean.startsWith('http') && clean.split(/\s+/).length === 1 &&
         (clean.split('?')[0].toLowerCase().match(/\.(jpg|png|gif|jpeg|webp)$/i))
     if (isUrlOnly) return true;
+
+    // 如果消息类型明确是 sticker，直接认为是图片/贴纸
+    if (msg.type === 'sticker') return true;
 
     // Sticker check (Only return true if it exists or is a URL)
     const match = clean.match(STICKER_REGEX)
@@ -2447,7 +2613,6 @@ function getFamilyCardApplyNote() {
         const note = rawMatch[1].trim()
         return note || '申请亲属卡'
     }
-    
     return '申请亲属卡'
 }
 
@@ -2456,6 +2621,25 @@ function isSticker(msg) {
     const content = ensureString(msg.content)
     return STICKER_REGEX.test(content)
 }
+
+const shouldShowAvatar = computed(() => {
+    if (!props.forceOffline) return true
+    let text = ensureString(props.msg.content)
+    
+    // If markers are present, formatMessageContent will handle internal avatars.
+    if (/[‖【（「\(]/.test(text)) return false
+    
+    // Default to true for plain dialogue without markers
+    if (props.msg.type && props.msg.type !== 'text') return false
+    if (isSticker(props.msg) || isImageMsg(props.msg)) return false
+    
+    return true
+})
+
+const isCenteredContent = computed(() => {
+    if (!props.forceOffline) return false
+    return !shouldShowAvatar.value
+})
 
 // 支持两种格式：
 // 1. [表情包：名称] - 传统格式，通过名称查找
@@ -2508,6 +2692,11 @@ function findSticker(name, url = null) {
 }
 
 function getImageSrc(msg) {
+    // 如果消息有 sticker 对象，直接使用 sticker 的 URL
+    if (msg.sticker && msg.sticker.url) {
+        return msg.sticker.url;
+    }
+
     const content = ensureString(msg.content).trim()
     if (content.startsWith('data:image/')) return content
     const clean = getCleanContent(content).trim()
@@ -2556,444 +2745,112 @@ function getImageSrc(msg) {
 
 function formatMessageContent(msg) {
     if (!msg) return ''
-    const textRaw = ensureString(msg.content)
+    
+    // 如果是贴纸/图片消息，不显示文本内容（由图片层显示）
+    if (msg.type === 'sticker' || msg.type === 'image' || isImageMsg(msg)) {
+        return ''
+    }
+    
+    let text = ensureString(msg.content)
 
-    // 0. Performance: Don't parse massive image strings or blob URLs as markdown
-    if (textRaw.length > 500 && (textRaw.includes('data:image/') || textRaw.includes('blob:'))) {
-        return '';
+    // Clear AI status tags
+    text = text.replace(/\[STATUS[:：][\s\S]*?\]/gi, '')
+               .replace(/\[THINK[:：][\s\S]*?\]/gi, '')
+               .trim();
+
+    if (props.forceOffline) {
+        return renderOfflineMessageHtml(msg)
     }
 
-    // Force unescape specific chars before processing (Fix for garbled \n display)
-    let text = getCleanContent(textRaw)
+    // 0. Novel Style Rendering
+    if (props.forceOffline) {
+        text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：]\s*([^\]]+)\]/gi, (m, n) => {
+            const f = findSticker(n.trim())
+            return f ? `<img src="${f.url}" class="node-inline-sticker" style="height: 1.25em; vertical-align: middle; display: inline-block; margin: 0 4px;" />` : m
+        })
 
-    // Safety check: ensure we didn't miss any double-escaped newlines
-    if (text.includes('\\n')) {
-        text = text.replace(/\\n/g, '\n');
+        if (/‖|【|（|\(|\「/.test(text)) {
+            const parts = text.split(/(‖[^‖]+‖|【[^】]+】|[（\(][^）\)]+?[）\)]|「[^」]+」)/g).filter(p => p && p.trim())
+            let htmlResult = ''
+            
+            const userName = props.chatData.groupSettings?.myNickname || props.chatData.userName || settingsStore.personalization.userProfile.name || '我'
+            const characterName = props.chatData.name || '对方'
+            const userAvatar = props.chatData.userAvatar || settingsStore.personalization.userProfile.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me'
+            const characterAvatar = props.chatData.avatar || 'https://api.dicebear.com/bottts/svg?seed=Bot'
+
+            parts.forEach(p => {
+                const chunk = p.trim()
+                if (chunk.startsWith('‖')) {
+                    htmlResult += `<div class="node-narration">‖ ${chunk.slice(1, -1)} ‖</div>`
+                } else if (chunk.startsWith('【')) {
+                    htmlResult += `<div class="node-scene">${chunk.slice(1, -1)}</div>`
+                } else if (chunk.startsWith('（') || chunk.startsWith('(')) {
+                    htmlResult += `<div class="node-action">（ ${chunk.replace(/[（）()]/g, '')} ）</div>`
+                } else {
+                    const isTagged = chunk.startsWith('「')
+                    let speaker = props.msg.role === 'user' ? userName : characterName
+                    let content = chunk
+                    
+                    if (isTagged) {
+                        const match = chunk.match(/「(?:([^：:]+)[：:])?(.+?)」/)
+                        if (match) {
+                            speaker = match[1] || speaker
+                            content = match[2]
+                        } else {
+                            content = chunk.slice(1, -1)
+                        }
+                    }
+
+                    const isMe = (speaker === userName || props.msg.role === 'user')
+                    const avatar = isMe ? userAvatar : characterAvatar
+                    const side = isMe ? 'right' : 'left'
+                    
+                    // Dialogue with Avatar and Name
+                    htmlResult += `
+                        <div class="node-speech ${side}">
+                            <img src="${avatar}" class="node-avatar shadow-sm" />
+                            <div class="node-content">
+                                <div class="node-name">${speaker}</div>
+                                <div class="node-text">${isTagged ? `「${content}」` : content}</div>
+                            </div>
+                        </div>`
+                }
+            })
+            return htmlResult || text
+        }
     }
 
-    // ✅ 隐藏心率参数（防止泄露到聊天框）
-    // 英文格式: heartRate: 110, heartRate：110, heartRate: 110 bpm, heartRate:110bpm
+    // Standard processing
+    text = getCleanContent(text)
+    if (text.includes('\\n')) text = text.replace(/\\n/g, '\n');
     text = text.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
-    // 中文格式: 心率：110, 心率: 110 次, 心率:110次, 心率：110次/min
     text = text.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '').trim();
 
-    // Continue chaining processing on the 'text' variable
-    text = text.replace(/\[Image Reference ID:.*?\]/g, '') // Remove ID tags
-        .replace(/Here is the original image:/gi, '') // Remove AI parroting
-        .trim();
+    // Protocol Badges
+    text = text.replace(/\[DRAW:\s*([\s\S]*?)\]/gi, (match, prompt) => {
+        const truncated = prompt.trim().length > 30 ? prompt.trim().substring(0, 30) + '...' : prompt.trim()
+        return `<div class="inline-flex items-center gap-2 bg-blue-50/10 border border-blue-400/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm overflow-hidden max-w-full"><i class="fa-solid fa-spinner fa-spin text-blue-400"></i><span class="text-xs text-blue-200/80 whitespace-nowrap overflow-hidden text-ellipsis">AI 正在绘制：${truncated}</span></div>`
+    })
+
+    text = text.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '');
     
-    // 1. Render dice_result type messages (system generated)
-    // NOTE: Traditional dice cards are now rendered via template logic for better role-based styling.
-    // This block is kept as a last-resort fallback but ideally won't be hit for dice rolls.
-    if (msg.type === 'dice_result' && !props.msg.diceResults) {
-        console.log('[Dice Debug] Using fallback formattedContent for dice_result...');
-    }
-    
-    // 2. Render dice roll command directly (for AI sent [摇骰子] or [掷骰子])
-    // Flexible regex to capture various formats with spacing
-    if (msg.type === 'text') {
-        console.log('[Dice Debug Frontend] Checking text message for dice:', textRaw);
-        const diceMatch = textRaw.match(/[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]/i);
-        if (diceMatch) {
-            let diceCount = diceMatch[1] ? parseInt(diceMatch[1]) : 1;
-            // Limit to max 3 dice to match DiceModal UI
-            if (!diceCount || diceCount < 1) diceCount = 1;
-            if (diceCount > 3) diceCount = 3;
-            
-            // Use FontAwesome dice icons: fa-dice-1 through fa-dice-6
-            const diceIcons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four', 'fa-dice-five', 'fa-dice-six'];
-            let diceDisplay = '';
-            let totalPoints = 0;
-            for (let i = 0; i < diceCount; i++) {
-                const roll = Math.floor(Math.random() * 6) + 1;
-                totalPoints += roll;
-                diceDisplay += `<i class="fa-solid ${diceIcons[roll - 1]} text-2xl mx-0.5 text-amber-500 animate-bounce"></i>`;
-            }
-            
-            return `<div class="inline-flex flex-col items-center gap-3 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-5 py-4 my-2 select-none backdrop-blur-sm shadow-lg w-[280px] max-w-[90vw] min-h-[220px] justify-center">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-dice text-amber-500 text-[16px]"></i>
-                    <span class="text-sm text-amber-700 font-bold">对方摇了 ${diceCount} 颗骰子</span>
-                </div>
-                <div class="flex items-center justify-center gap-2">
-                    ${diceDisplay}
-                </div>
-                <div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-4 py-2">
-                    <span class="text-sm text-amber-800 font-medium">合计点数</span>
-                    <span class="text-xl font-bold text-amber-600">${totalPoints}</span>
-                </div>
-            </div>`;
-        }
+    // Dice result card
+    const diceMatch = text.match(/[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]/i);
+    if (diceMatch) {
+       let dCount = Math.min(3, Math.max(1, parseInt(diceMatch[1]) || 1));
+       const icons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four', 'fa-dice-five', 'fa-dice-six'];
+       let dDisp = ''; let total = 0;
+       for(let i=0; i<dCount; i++) {
+           let r = Math.floor(Math.random()*6)+1; total+=r;
+           dDisp += `<i class="fa-solid ${icons[r-1]} text-2xl mx-0.5 text-amber-500 animate-bounce"></i>`;
+       }
+       return `<div class="inline-flex flex-col items-center gap-3 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-5 py-4 my-2 select-none backdrop-blur-sm shadow-lg w-[280px] max-w-[90vw] min-h-[140px] justify-center"><div class="flex items-center gap-2"><i class="fa-solid fa-dice text-amber-500 text-[16px]"></i><span class="text-sm text-amber-700 font-bold">掷出了骰子</span></div><div class="flex items-center justify-center gap-2">${dDisp}</div><div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-4 py-2 mt-2"><span class="text-sm text-amber-800 font-medium">合计点数</span><span class="text-xl font-bold text-amber-600">${total}</span></div></div>`;
     }
 
-    // 2. Render [DRAW:...] as loading indicator
-    if (msg.isDrawing !== false && /\[DRAW:\s*[\s\S]*?\]/i.test(text)) {
-        text = text.replace(/\[DRAW:\s*([\s\S]*?)\]/gi, (match, prompt) => {
-            const promptText = prompt.trim();
-            const truncated = promptText.length > 30 ? promptText.substring(0, 30) + '...' : promptText
-            return `<div class="inline-flex items-center gap-2 bg-blue-50/10 border border-blue-400/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm overflow-hidden max-w-full">
-                <i class="fa-solid fa-spinner fa-spin text-blue-400"></i>
-                <span class="text-xs text-blue-200/80 whitespace-nowrap overflow-hidden text-ellipsis">AI 正在绘制：${truncated}</span>
-            </div>`
-        })
-    }
-    
-    // 3. Render [INNER_VOICE:...] as metadata badge
-    if (/\[INNER_VOICE\]/i.test(text)) {
-        text = text.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, (match, content) => {
-            try {
-                const data = typeof content === 'string' ? JSON.parse(content.trim()) : content;
-                
-                // 检测错误的格式（包含推理流程内容）
-                const invalidKeys = ['情境扫描', '用户解读', '角色内心', '回应策略', '生活化细节', '主动创造'];
-                const hasInvalidContent = invalidKeys.some(key => data[key] || JSON.stringify(data).includes(`"${key}"`));
-                if (hasInvalidContent) {
-                    // 跳过显示错误的格式
-                    return '';
-                }
-                
-                const status = data.status || data.状态 || '思考中';
-                const outfit = data.着装 || data.outfit || '';
-                const scene = data.环境 || data.scene || '';
-                const action = data.行为 || data.action || '';
-                    
-                let displayText = '💭 ';
-                if (status) displayText += `${status} · `;
-                if (outfit) displayText += `${outfit}`;
-                if (scene) displayText += ` | ${scene}`;
-                if (action) displayText += ` | ${action}`;
-                    
-                return `<div class="inline-block bg-pink-50/20 border border-pink-200/30 rounded-lg px-2 py-1 my-1 select-none backdrop-blur-sm">
-                    <span class="text-[10px] text-pink-300 font-medium">${displayText.trim()}</span>
-                </div>`;
-            } catch (e) {
-                // JSON 解析失败，跳过显示
-                return '';
-            }
-        });
-    }
-    
-    // 4. Render [FAMILY_CARD:...] as card badge
-    if (/\[FAMILY_CARD(?:_APPLY)?:/i.test(text)) {
-        text = text.replace(/\[FAMILY_CARD(?:_APPLY)?:([\s\S]*?)\]/gi, (match, data) => {
-            const parts = data.split(':');
-            const amount = parts[0] || '0';
-            const note = parts[1] || '亲属卡';
-            return `<div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-50/20 to-yellow-50/20 border border-amber-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm shadow-sm">
-                <i class="fa-solid fa-credit-card text-amber-400 text-[10px]"></i>
-                <span class="text-[10px] text-amber-100 font-medium">¥${amount} · ${note}</span>
-            </div>`;
-        });
-    }
-    
-    // 5. Render [MUSIC:...] or [演奏：...] as music badge
-    if (/^\[(?:演奏|MUSIC)[:：]/i.test(text)) {
-        text = text.replace(/^\[(?:演奏|MUSIC)[:：]([\s\S]*?)\]/gi, (match, songInfo) => {
-            return `<div class="inline-flex items-center gap-1.5 bg-purple-50/20 border border-purple-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm">
-                <i class="fa-solid fa-music text-purple-400 text-[10px]"></i>
-                <span class="text-[10px] text-purple-200 font-medium">🎵 ${songInfo.trim()}</span>
-            </div>`;
-        });
-    }
-    
-    // 6. Render [GIFT:...] or [礼物：...] as gift badge
-    if (/^\[(?:GIFT|礼物)[:：]/i.test(text)) {
-        text = text.replace(/^\[(?:GIFT|礼物)[:：]([\s\S]*?)\]/gi, (match, giftInfo) => {
-            return `<div class="inline-flex items-center gap-1.5 bg-red-50/20 border border-red-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm shadow-sm">
-                <i class="fa-solid fa-gift text-red-400 text-[10px]"></i>
-                <span class="text-[10px] text-red-200 font-medium">🎁 ${giftInfo.trim()}</span>
-            </div>`;
-        });
-    }
-
-    // 7. Render [语音：...] or [VOICE:...] as voice badge
-    if (/^\[(?:语音|语音消息|VOICE)[:：]/i.test(text)) {
-        text = text.replace(/^\[(?:语音|语音消息|VOICE)[:：]([\s\S]*?)\]/gi, (match, voiceContent) => {
-            // Calculate approximate duration based on text length
-            const duration = Math.ceil(voiceContent.trim().length / 3) || 1;
-            return `<div class="inline-flex items-center gap-2 bg-slate-800/20 border border-slate-600/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm">
-                <i class="fa-solid fa-microphone text-slate-400 text-[12px]"></i>
-                <span class="text-[10px] text-slate-300 font-medium">语音 ${duration}"</span>
-                <i class="fa-solid fa-wave-square text-slate-500 text-[10px] opacity-60"></i>
-            </div>`;
-        });
-    }
-
-    // 8. Render [语音通话], [视频通话], [接听], [挂断], [拒绝] as call badges
-    const callCommands = {
-        '语音通话': { icon: 'fa-phone', color: 'green', label: '语音通话' },
-        '视频通话': { icon: 'fa-video', color: 'blue', label: '视频通话' },
-        '接听': { icon: 'fa-phone-arrow-down-left', color: 'green', label: '已接听' },
-        '挂断': { icon: 'fa-phone-arrow-up-right', color: 'red', label: '已挂断' },
-        '拒绝': { icon: 'fa-phone-slash', color: 'red', label: '已拒绝' }
-    };
-
-    Object.keys(callCommands).forEach(cmd => {
-        const regex = new RegExp(`\\[${cmd}\\]`, 'gi');
-        if (regex.test(text)) {
-            const config = callCommands[cmd];
-            const colorClasses = {
-                green: 'bg-green-50/20 border-green-300/30 text-green-400',
-                blue: 'bg-blue-50/20 border-blue-300/30 text-blue-400',
-                red: 'bg-red-50/20 border-red-300/30 text-red-400'
-            };
-            
-            text = text.replace(regex, () => {
-                return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm border">
-                    <i class="fa-solid ${config.icon} text-[12px]"></i>
-                    <span class="text-[10px] font-medium">${config.label}</span>
-                </div>`;
-            });
-        }
-    });
-
-    // 9. Render [NUDGE] as cute badge
-    if (/\[NUDGE(?:_SELF)?[:：]?[^\]]*\]/i.test(text)) {
-        text = text.replace(/\[NUDGE(?:_SELF)?[:：]?([^\]]*)\]/gi, (match, modifier) => {
-            const mod = modifier ? modifier.trim() : '';
-            let displayText = '👋 拍了拍';
-            if (mod) {
-                displayText += ` ${mod}`;
-            }
-            return `<div class="inline-flex items-center gap-2 bg-orange-50/20 border border-orange-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm animate-pulse">
-                <i class="fa-solid fa-hand-sparkles text-orange-400 text-[12px]"></i>
-                <span class="text-[10px] text-orange-200 font-medium">${displayText}</span>
-            </div>`;
-        });
-    }
-
-    // 10. Render [MOMENT] / [朋友圈] as moment badge
-    if (/\[(?:MOMENT|朋友圈)\]/i.test(text)) {
-        text = text.replace(/\[(?:MOMENT|朋友圈)\]/gi, () => {
-            return `<div class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50/20 to-cyan-50/20 border border-blue-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm">
-                <i class="fa-regular fa-image text-blue-400 text-[12px]"></i>
-                <span class="text-[10px] text-blue-200 font-medium">📸 朋友圈</span>
-            </div>`;
-        });
-    }
-
-    // 11. Render [定时:...] / [SCHEDULE:...] as task badge (REMOVED: User prefers raw text for now)
-    /*
-    if (/\[(?:定时|SCHEDULE)[:：]/i.test(text)) {
-        text = text.replace(/\[(?:定时|SCHEDULE)[:：]\s*([^\]]+)\]/gi, (match, inner) => {
-            const parts = inner.match(/^((?:\d{2,4}[-/]\d{1,2}[-/]\d{1,2}\s+)?\d{1,2}[:：]\d{2})\s+([\s\S]+)$/) || 
-                         inner.match(/^((?:\d{2,4}[-/]\d{1,2}[-/]\d{1,2}\s+)?\d{1,2}[:：]\d{2})[:：]\s*([\s\S]+)$/) ||
-                         inner.match(/^((?:\d{2,4}[-/]\d{1,2}[-/]\d{1,2}))\s+([\s\S]+)$/) ||
-                         inner.match(/^(.+?)\s+([\s\S]+)$/);
-
-            if (parts) {
-                const timeStr = parts[1].trim();
-                const taskContent = parts[2].trim();
-                return `<div class="inline-flex flex-col gap-1 bg-indigo-50/20 border border-indigo-400/30 rounded-xl px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm">
-                    <div class="flex items-center gap-1.5">
-                        <i class="fa-solid fa-clock text-indigo-400 text-[10px]"></i>
-                        <span class="text-[10px] text-indigo-100 font-bold">设定提醒</span>
-                    </div>
-                    <div class="flex flex-col">
-                        <span class="text-[12px] text-white font-medium leading-tight">${taskContent}</span>
-                        <span class="text-[9px] text-indigo-200/70 font-mono">${timeStr}</span>
-                    </div>
-                </div>`;
-            }
-            return match;
-        });
-    }
-    */
-
-    // 12. Render [LIKE], [COMMENT], [REPLY] as interaction badges
-    const interactionCommands = {
-        'LIKE': { icon: 'fa-heart', color: 'pink', label: '点赞' },
-        'COMMENT': { icon: 'fa-comment', color: 'blue', label: '评论' },
-        'REPLY': { icon: 'fa-reply', color: 'green', label: '回复' }
-    };
-
-    Object.keys(interactionCommands).forEach(cmd => {
-        const regex = new RegExp(`\\[${cmd}[:：][^\\]]+\\]`, 'gi');
-        if (regex.test(text)) {
-            const config = interactionCommands[cmd];
-            const colorClasses = {
-                pink: 'bg-pink-50/20 border-pink-300/30 text-pink-400',
-                blue: 'bg-blue-50/20 border-blue-300/30 text-blue-400',
-                green: 'bg-green-50/20 border-green-300/30 text-green-400'
-            };
-            
-            text = text.replace(regex, (match) => {
-                // Extract target info if present
-                const targetMatch = match.match(new RegExp(`\\[${cmd}[:：]([^\\]]+)\\]`, 'i'));
-                const targetInfo = targetMatch ? ` ${targetMatch[1].trim()}` : '';
-                
-                return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm border">
-                    <i class="fa-solid ${config.icon} text-[10px]"></i>
-                    <span class="text-[10px] font-medium">${config.label}${targetInfo}</span>
-                </div>`;
-            });
-        }
-    });
-
-    // 12. Render [VOTE], [CREATE_VOTE], [END_VOTE] as vote badges
-    const voteCommands = {
-        'VOTE': { icon: 'fa-circle-check', color: 'purple', label: '投票' },
-        'CREATE_VOTE': { icon: 'fa-square-plus', color: 'indigo', label: '发起投票' },
-        'END_VOTE': { icon: 'fa-circle-xmark', color: 'gray', label: '结束投票' }
-    };
-
-    Object.keys(voteCommands).forEach(cmd => {
-        const regex = new RegExp(`\\[${cmd}[:：][^\\]]+\\]`, 'gi');
-        if (regex.test(text)) {
-            const config = voteCommands[cmd];
-            const colorClasses = {
-                purple: 'bg-purple-50/20 border-purple-300/30 text-purple-400',
-                indigo: 'bg-indigo-50/20 border-indigo-300/30 text-indigo-400',
-                gray: 'bg-gray-50/20 border-gray-300/30 text-gray-400'
-            };
-            
-            text = text.replace(regex, (match) => {
-                const targetMatch = match.match(new RegExp(`\\[${cmd}[:：]([^\\]]+)\\]`, 'i'));
-                const targetInfo = targetMatch ? ` ${targetMatch[1].trim().substring(0, 20)}` : '';
-                
-                return `<div class="inline-flex items-center gap-2 ${colorClasses[config.color]} rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm border">
-                    <i class="fa-solid ${config.icon} text-[10px]"></i>
-                    <span class="text-[10px] font-medium">${config.label}${targetInfo}</span>
-                </div>`;
-            });
-        }
-    });
-
-    // 13. Render [RECALL] / [撤回] as recall badge
-    if (/\[(?:RECALL|撤回)(?:[:：][^\]]+)?\]/i.test(text)) {
-        text = text.replace(/\[(?:RECALL|撤回)(?:[:：]([^\]]+))?\]/gi, (match, keyword) => {
-            return `<div class="inline-flex items-center gap-2 bg-gray-50/20 border border-gray-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm">
-                <i class="fa-solid fa-rotate-left text-gray-400 text-[12px]"></i>
-                <span class="text-[10px] text-gray-300 font-medium">↩️ 撤回消息${keyword ? ` · ${keyword.trim()}` : ''}</span>
-            </div>`;
-        });
-    }
-
-    // 14. Render [SET_PAT] as pat settings badge
-    if (/\[SET_PAT[:：][^\]]+\]/i.test(text)) {
-        text = text.replace(/\[SET_PAT[:：]([^\]:]+)(?:[:：]([^\]]+))?\]/gi, (match, action, suffix) => {
-            const actionText = action.trim();
-            const suffixText = suffix ? suffix.trim() : '';
-            return `<div class="inline-flex items-center gap-2 bg-amber-50/20 border border-amber-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm">
-                <i class="fa-solid fa-pen-to-square text-amber-400 text-[12px]"></i>
-                <span class="text-[10px] text-amber-200 font-medium">✏️ 设置拍一拍：${actionText}${suffixText ? ` · ${suffixText}` : ''}</span>
-            </div>`;
-        });
-    }
-
-    // 15. Render [SET_AVATAR] / [更换头像] as avatar change badge
-    if (/\[(?:SET_AVATAR|更换头像)[:：][^\]]+\]/i.test(text)) {
-        text = text.replace(/\[(?:SET_AVATAR|更换头像)[:：]([^\]]+)\]/gi, (match, reason) => {
-            return `<div class="inline-flex items-center gap-2 bg-cyan-50/20 border border-cyan-300/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm">
-                <i class="fa-solid fa-user-pen text-cyan-400 text-[12px]"></i>
-                <span class="text-[10px] text-cyan-200 font-medium">🖼️ 更换头像</span>
-            </div>`;
-        });
-    }
-
-    // 16. Render [UPDATE_BIO] / [BIO:] as bio update badge
-    if (/\[(?:UPDATE_)?BIO[:：][^\]]+\]/i.test(text)) {
-        text = text.replace(/\[(?:UPDATE_)?BIO[:：]([^:]+):([^\]]+)\]/gi, (match, key, value) => {
-            const keyMap = {
-                'gender': '性别', '性别': '性别',
-                'age': '年龄', '年龄': '年龄',
-                'signature': '签名', '个性签名': '签名',
-                'occupation': '职业', '职业': '职业',
-                'status': '状态', '婚姻': '状态', '情感': '状态'
-            };
-            const displayKey = keyMap[key.trim().toLowerCase()] || key.trim();
-            return `<div class="inline-flex items-center gap-2 bg-emerald-50/20 border border-emerald-300/30 rounded-lg px-2.5 py-1.5 my-1 select-none backdrop-blur-sm">
-                <i class="fa-solid fa-pen-line text-emerald-400 text-[10px]"></i>
-                <span class="text-[10px] text-emerald-200 font-medium">📝 更新${displayKey}</span>
-            </div>`;
-        });
-    }
-
-    // 17. Render [摇骰子] as dice result card
-    if (/\[摇骰子\]/i.test(text)) {
-        text = text.replace(/\[摇骰子\]\s*(.+?)\s*摇了\s*(\d+)\s*颗骰子 [，,]?\s*合计点数 [：:]?\s*(\d+)/gi, (match, who, count, total) => {
-            const whoName = who.trim() || '对方';
-            const diceCount = parseInt(count);
-            const totalPoints = parseInt(total);
-            
-            // Generate dice face emojis
-            const diceEmojis = ['⚀', '⚁', '', '⚃', '⚄', '⚅'];
-            let diceDisplay = '';
-            for (let i = 0; i < Math.min(diceCount, 6); i++) {
-                const randomFace = Math.floor(Math.random() * 6);
-                diceDisplay += `<span class="text-2xl mx-0.5 animate-bounce">${diceEmojis[randomFace]}</span>`;
-            }
-            
-            return `<div class="inline-flex flex-col items-center gap-2 bg-gradient-to-br from-yellow-50/30 to-amber-50/30 border border-amber-400/40 rounded-xl px-4 py-3 my-2 select-none backdrop-blur-sm shadow-lg">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-dice text-amber-500 text-[14px]"></i>
-                    <span class="text-xs text-amber-700 font-bold">${whoName} 摇了 ${diceCount} 颗骰子</span>
-                </div>
-                <div class="flex items-center justify-center gap-1">
-                    ${diceDisplay}
-                </div>
-                <div class="flex items-center gap-2 bg-amber-100/50 rounded-full px-3 py-1">
-                    <span class="text-xs text-amber-800 font-medium">合计点数</span>
-                    <span class="text-lg font-bold text-amber-600">${totalPoints}</span>
-                </div>
-            </div>`;
-        });
-    }
-
-    // 6. Handle bracketed text (Small font styling)
-    // Supports (), （）
-    const bracketRegex = /([\(（][\s\S]*?[\)）])/g;
-    text = text.replace(bracketRegex, '<span class="bracket-text">$1</span>');
-
-    // text = text.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '') // DESTRUCTIVE: Removed to let inline replacer handle it
-
-    // 5. Highlight Mentions (@name or @id)
     const userName = settingsStore.personalization.userProfile.name;
     const myName = props.chatData?.groupSettings?.myNickname || userName || '我';
-    const contactName = props.chatData?.name;
-    const allMembers = props.chatData?.isGroup ? '全体成员' : null;
-
-    // Normalize AI referring to user generically
     text = text.replace(/@(user|User|我)(?!\w)/g, `@${myName}`);
 
-    let namesToHighlight = [myName, userName, contactName, allMembers].filter(Boolean);
-
-    if (props.chatData?.isGroup && Array.isArray(props.chatData.participants)) {
-        props.chatData.participants.forEach(p => {
-            if (p.id && p.name) {
-                // Escapie id for regex just in case
-                const escapedId = p.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const idRegex = new RegExp(`@${escapedId}`, 'g');
-                text = text.replace(idRegex, `@${p.name}`);
-                namesToHighlight.push(p.name);
-            }
-        });
-    }
-
-    // Deduplicate and sort by length descending to prevent double-wrapping (e.g., @Alice vs @Ali)
-    namesToHighlight = [...new Set(namesToHighlight)].sort((a, b) => b.length - a.length);
-
-    namesToHighlight.forEach(name => {
-        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const mentionRegex = new RegExp(`@${escapedName}`, 'g')
-        const isAll = name === allMembers
-        const isMe = (name === myName || name === userName)
-
-        // Improve styling: only highlight @Me and @All with background
-        let highlightClass = ''
-        if (isAll) {
-            highlightClass = 'text-orange-600 bg-orange-100/80 px-1 rounded font-bold'
-        } else if (isMe) {
-            highlightClass = 'text-[#07c160] bg-[#07c160]/10 px-1 rounded font-bold'
-        } else {
-            // For others, just blue text (like a handle) but NO background to avoid confusion
-            highlightClass = 'text-blue-500 font-medium'
-        }
-        text = text.replace(mentionRegex, `<span class="${highlightClass}">@${name}</span>`)
-    });
-
-    // --- STICKER INLINE REPLACER ---
-    // Moved after marked.parse to prevent escaping
     let html = '';
     try {
         html = marked.parse(text);
@@ -3001,60 +2858,17 @@ function formatMessageContent(msg) {
         html = text;
     }
 
-    // Replace [StickerName] or [表情包：StickerName]
-    // EXCLUDE all protocol commands (DRAW, INNER_VOICE, FAMILY_CARD, etc.)
+    // Sticker fallback
     html = html.replace(/\[(.*?)\]/g, (match, name) => {
-        let n = name.trim()
-    
-        // EXCLUDE all protocol commands - these should NOT be treated as stickers
-        const protocolCommands = [
-            'DRAW:', 'INNER', 'FAMILY_CARD', 'CARD', 'GIFT', 'MUSIC', '演奏',
-            '位置', '分享', '转账', '红包', 'SET_AVATAR', '更换头像', 'NUDGE',
-            '申请亲属卡', '拒绝亲属卡', '领取红包', 'RECEIVE_RED_PACKET',
-            'LIKE', 'COMMENT', 'REPLY', 'MOMENT', 'HTML 卡片', '图片', 'IMAGE',
-            '表情包', '表情', 'STICKER', 'VOTE', 'CREATE_VOTE', 'END_VOTE',
-            'RECALL', '撤回', 'SET_PAT', 'UPDATE_BIO', 'BIO', '摇骰子',
-            'LOVESPACE_INVITE', 'LOVESPACE_CONTRACT', 'LOVESPACE_REJECT', 'LS_JSON'
-        ];
-            
-        // Check if the content starts with any protocol command
-        const isProtocolCommand = protocolCommands.some(cmd => 
-            n.toUpperCase().includes(cmd.toUpperCase())
-        );
-            
-        if (isProtocolCommand) {
-            return match; // Return as-is, don't treat as sticker
-        }
-    
-        const prefixMatch = n.match(/^(?:表情包 | 表情|STICKER|IMAGE|图片)[:：\-\s]\s*(.*)/i);
-        if (prefixMatch) {
-            n = prefixMatch[1].trim();
-        }
-    
+        let n = name.trim();
         const found = findSticker(n);
-        if (found) {
-            return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`
-        }
-    
-        // If it was a generated image URL directly in the tag, remove it
-        if (n.startsWith('http') || n.includes('//')) {
-            return '';
-        }
-    
-        // Fallback: If sticker not found, return the original match to render as text
-        // This allows the user to see the hallucinated name and edit it.
+        if (found) return `<img src="${found.url}" class="w-16 h-16 inline-block mx-1 align-middle animate-bounce-subtle" alt="${found.name}" />`;
         return match;
     });
 
-    // Also remove any standalone [图片:https...] URLs to prevent duplicate display for DRAW commands
-    html = html.replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：\-\s]*https?:\/\/[^\]]+\]/gi, '');
-
-    // --- WECHAT EMOJI FALLBACK ---
-    // Handle [微笑] [心] etc.
-    html = parseWeChatEmojis(html);
-
-    return html;
+    return parseWeChatEmojis(html);
 }
+
 
 function getDuration(msg) {
     if (msg.duration) return msg.duration
@@ -3239,6 +3053,8 @@ function emitContextMenu(event) {
 // Long Press Logic
 let longPressTimer = null
 function startLongPress(event) {
+    if (!event?.touches?.length) return
+    cancelLongPress()
     // Capture coordinates immediately to prevent stale event issues
     const touch = event.touches ? event.touches[0] : event;
     const capturedEvent = {
@@ -3249,7 +3065,7 @@ function startLongPress(event) {
 
     longPressTimer = setTimeout(() => {
         emitContextMenu(capturedEvent)
-    }, 500)
+    }, 450)
 }
 function cancelLongPress() {
     if (longPressTimer) {
@@ -3263,6 +3079,7 @@ let avatarLongPressTimer = null
 let avatarLongPressTriggered = false
 
 function startAvatarLongPress(msg, event) {
+    if (!event?.touches?.length) return
     avatarLongPressTriggered = false
     cancelAvatarLongPress()
 
@@ -3270,7 +3087,7 @@ function startAvatarLongPress(msg, event) {
         avatarLongPressTriggered = true
         emit('avatar-longpress', msg)
         avatarLongPressTimer = null
-    }, 500)
+    }, 450)
 }
 
 function cancelAvatarLongPress() {
@@ -3986,5 +3803,110 @@ const scrollToVote = (refId) => {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(168, 85, 247, 0.7);
+}
+.no-bubble-offline {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    color: white !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    width: 100%;
+}
+
+:deep(.node-narration) {
+    text-align: center;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 12px 0;
+    width: 100%;
+    font-family: "KaiTi", "STKaiti", serif;
+}
+
+:deep(.node-scene) {
+    text-align: center;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    margin: 18px 0;
+    font-size: 13px;
+    letter-spacing: 0.3em;
+    width: 100%;
+}
+
+:deep(.node-action) {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 15px;
+    margin: 8px 0;
+    width: 100%;
+}
+
+:deep(.node-speech) {
+    display: flex;
+    gap: 12px;
+    margin: 12px 0;
+    width: 100%;
+}
+
+:deep(.node-speech.right) {
+    flex-direction: row-reverse;
+}
+
+:deep(.node-avatar) {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+:deep(.node-content) {
+    display: flex;
+    flex-direction: column;
+    max-width: 75%;
+}
+
+:deep(.node-speech.right .node-content) {
+    align-items: flex-end;
+}
+
+:deep(.node-speech.left .node-content) {
+    align-items: flex-start;
+}
+
+:deep(.node-name) {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 4px;
+}
+
+:deep(.node-text) {
+    font-size: 16px;
+    color: white;
+    line-height: 1.6;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-blur: sm;
+    padding: 8px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.node-speech.right .node-text) {
+    background: rgba(149, 236, 105, 0.2);
+    border-radius: 12px 2px 12px 12px;
+}
+
+:deep(.node-speech.left .node-text) {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px 12px 12px 12px;
+}
+
+:deep(.node-inline-sticker) {
+    height: 1.3em;
+    vertical-align: middle;
+    display: inline-block;
+    margin: 0 4px;
 }
 </style>

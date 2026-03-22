@@ -381,7 +381,8 @@ export const useChatStore = defineStore('chat', () => {
             duration: msg.duration || 0,
             quote: msg.quote || null,
             paymentId: msg.paymentId || null, // Initialize paymentId
-            hidden: msg.hidden || false // Detection for visualizer-only messages
+            hidden: msg.hidden || false, // Detection for visualizer-only messages
+            mode: msg.mode || null // 线上/线下模式标记: 'online' | 'offline' | null
         }
 
         // 1.0 STRICT CONTENT FILTER: Reject "undefined", "null", or empty content
@@ -2847,7 +2848,8 @@ export const useChatStore = defineStore('chat', () => {
                     if (part === undefined) continue;
 
                     const trimmedPart = part.trim();
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:INNER|LS_JSON|DRAW:)|\[(?:表情包|表情-包)[:：]|\[语音:|\[CARD\]|\[FAMILY_CARD|\(|（)/.test(trimmedPart);
+                    // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|SEARCH|查找|黄历|ALMANAC|运势)|\(|（)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {
@@ -2873,22 +2875,61 @@ export const useChatStore = defineStore('chat', () => {
                         const index = parseInt(placeholderMatch[1]);
                         content = cardBlocks[cardBlocks.length - 1 - index];
                         finalSegments.push({ type: 'card', content });
-                    } else if (/^\[(?:表情包|表情-包)[:：].*?\]$/.test(content.trim())) {
-                        // Keep full content (tag) so frontend can parse it with regex
+                    } else if (/^\[(?:表情包|表情-包|STICKER)[:：].*?\]$/.test(content.trim())) {
                         finalSegments.push({ type: 'sticker', content: content.trim() });
-                    } else if (content.startsWith('[语音通话]') || content.startsWith('[通话]')) {
+                    } else if (content.startsWith('[语音通话]') || content.startsWith('[通话]') || content.startsWith('[CALL]')) {
                         finalSegments.push({ type: 'call', content: 'voice' });
                     } else if (content.startsWith('[视频通话]')) {
                         finalSegments.push({ type: 'call', content: 'video' });
-                    } else if (content.startsWith('[语音')) {
-                        // Support both [语音:text] and [语音消息] text
-                        let voiceContent = content.replace(/^\[语音(消息)?[:：]?\s*/, '').replace(/\]$/, '');
+                    } else if (content.startsWith('[语音') || content.startsWith('[VOICE')) {
+                        let voiceContent = content.replace(/^\[(?:语音|VOICE)(消息)?[:：]?\s*/, '').replace(/\]$/, '');
                         finalSegments.push({ type: 'voice', content: voiceContent.trim() });
-                    } else if (content.startsWith('[图片')) {
-                        // AI sometimes outputs [图片] or [图片消息]
-                        finalSegments.push({ type: 'text', content: '[图片]' }); // Handled as image msg by type: 'text' + content: '[图片]'
-                    } else if (content.startsWith('[DRAW:')) {
+                    } else if (content.startsWith('[图片') || content.startsWith('[IMAGE')) {
+                        finalSegments.push({ type: 'text', content: '[图片]' });
+                    } else if (content.startsWith('[DRAW:') || content.startsWith('[绘画:') || content.startsWith('[生成图片:')) {
                         finalSegments.push({ type: 'draw', content: content.trim() });
+                    } else if (content.startsWith('[演奏:') || content.startsWith('[MUSIC:') || content.startsWith('[音乐:')) {
+                        finalSegments.push({ type: 'music', content: content.trim() });
+                    } else if (content.startsWith('[骰子:') || content.startsWith('[DICE:') || content.startsWith('[掷骰子:')) {
+                        finalSegments.push({ type: 'dice', content: content.trim() });
+                    } else if (content.startsWith('[塔罗:') || content.startsWith('[塔罗牌:') || content.startsWith('[TAROT:')) {
+                        finalSegments.push({ type: 'tarot', content: content.trim() });
+                    } else if (content.startsWith('[红包:') || content.startsWith('[转账:') || content.startsWith('[REDPACKET:') || content.startsWith('[TRANSFER:')) {
+                        finalSegments.push({ type: 'payment', content: content.trim() });
+                    } else if (content.startsWith('[位置:') || content.startsWith('[LOCATION:') || content.startsWith('[地图:') || content.startsWith('[MAP:')) {
+                        finalSegments.push({ type: 'location', content: content.trim() });
+                    } else if (content.startsWith('[文件:') || content.startsWith('[FILE:')) {
+                        finalSegments.push({ type: 'file', content: content.trim() });
+                    } else if (content.startsWith('[链接:') || content.startsWith('[LINK:') || content.startsWith('[URL:')) {
+                        finalSegments.push({ type: 'link', content: content.trim() });
+                    } else if (content.startsWith('[礼物:') || content.startsWith('[GIFT:')) {
+                        finalSegments.push({ type: 'gift', content: content.trim() });
+                    } else if (content.startsWith('[戳一戳:') || content.startsWith('[拍一拍:') || content.startsWith('[NUDGE:')) {
+                        finalSegments.push({ type: 'nudge', content: content.trim() });
+                    } else if (content.startsWith('[引用:') || content.startsWith('[QUOTE:')) {
+                        finalSegments.push({ type: 'quote', content: content.trim() });
+                    } else if (content.startsWith('[点赞:') || content.startsWith('[喜欢:') || content.startsWith('[LIKE:')) {
+                        finalSegments.push({ type: 'like', content: content.trim() });
+                    } else if (content.startsWith('[评论:') || content.startsWith('[COMMENT:')) {
+                        finalSegments.push({ type: 'comment', content: content.trim() });
+                    } else if (content.startsWith('[回复:') || content.startsWith('[REPLY:')) {
+                        finalSegments.push({ type: 'reply', content: content.trim() });
+                    } else if (content.startsWith('[分享:') || content.startsWith('[转发:') || content.startsWith('[SHARE:')) {
+                        finalSegments.push({ type: 'share', content: content.trim() });
+                    } else if (content.startsWith('[系统:') || content.startsWith('[通知:') || content.startsWith('[SYSTEM:')) {
+                        finalSegments.push({ type: 'system', content: content.trim() });
+                    } else if (content.startsWith('[设置头像:') || content.startsWith('[SET_AVATAR:')) {
+                        finalSegments.push({ type: 'set_avatar', content: content.trim() });
+                    } else if (content.startsWith('[设置昵称:') || content.startsWith('[SET_NAME:')) {
+                        finalSegments.push({ type: 'set_name', content: content.trim() });
+                    } else if (content.startsWith('[设置拍一拍:') || content.startsWith('[SET_PAT:')) {
+                        finalSegments.push({ type: 'set_pat', content: content.trim() });
+                    } else if (content.startsWith('[定时:') || content.startsWith('[定时提醒:') || content.startsWith('[TIMER:') || content.startsWith('[REMIND:')) {
+                        finalSegments.push({ type: 'timer', content: content.trim() });
+                    } else if (content.startsWith('[搜索:') || content.startsWith('[SEARCH:') || content.startsWith('[查找:')) {
+                        finalSegments.push({ type: 'search', content: content.trim() });
+                    } else if (content.startsWith('[黄历:') || content.startsWith('[ALMANAC:') || content.startsWith('[运势:') || content.startsWith('[今日运势:]')) {
+                        finalSegments.push({ type: 'almanac', content: content.trim() });
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-color', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity', 'border: 3px solid', 'border: 1px solid', 'font-family:', 'animation:', 'keyframes'];
@@ -3107,6 +3148,112 @@ export const useChatStore = defineStore('chat', () => {
                         // AI主动发起通话
                         const callType = content === 'video' ? 'video' : 'voice';
                         callStore.receiveCall(chat, callType);
+                    } else if (type === 'music') {
+                        // 处理音乐/演奏指令
+                        const musicMatch = content.match(/\[(?:演奏|MUSIC|音乐)[:：]\s*(.*?)\]/i);
+                        if (musicMatch) {
+                            const musicData = musicMatch[1].trim();
+                            addMessage(chatId, {
+                                role: 'ai',
+                                type: 'music',
+                                content: musicData,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode
+                            });
+                        }
+                    } else if (type === 'dice') {
+                        // 处理骰子指令
+                        addMessage(chatId, {
+                            role: 'ai',
+                            type: 'dice',
+                            content: content,
+                            quote: i === 0 ? aiQuote : null,
+                            hidden: isCallMode
+                        });
+                    } else if (type === 'tarot') {
+                        // 处理塔罗牌指令
+                        addMessage(chatId, {
+                            role: 'ai',
+                            type: 'tarot',
+                            content: content,
+                            quote: i === 0 ? aiQuote : null,
+                            hidden: isCallMode
+                        });
+                    } else if (type === 'location') {
+                        // 处理位置指令
+                        addMessage(chatId, {
+                            role: 'ai',
+                            type: 'location',
+                            content: content,
+                            quote: i === 0 ? aiQuote : null,
+                            hidden: isCallMode
+                        });
+                    } else if (type === 'nudge') {
+                        // 处理戳一戳/拍一拍
+                        triggerPatEffect(chatId, 'user');
+                    } else if (type === 'gift') {
+                        // 处理礼物
+                        addMessage(chatId, {
+                            role: 'ai',
+                            type: 'gift',
+                            content: content,
+                            quote: i === 0 ? aiQuote : null,
+                            hidden: isCallMode
+                        });
+                    } else if (type === 'system') {
+                        // 系统通知
+                        addMessage(chatId, {
+                            role: 'system',
+                            content: content.replace(/^\[(?:系统|通知|SYSTEM)[:：]?\s*/, '').replace(/\]$/, ''),
+                            hidden: isCallMode
+                        });
+                    } else if (type === 'timer') {
+                        // 处理定时提醒指令
+                        const timerMatch = content.match(/\[(?:定时|定时提醒|TIMER|REMIND)[:：]\s*(.+?)\]/i);
+                        if (timerMatch) {
+                            const timerContent = timerMatch[1].trim();
+                            addMessage(chatId, {
+                                role: 'ai',
+                                type: 'timer',
+                                content: timerContent,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode
+                            });
+                            // 触发定时任务提示
+                            setTimeout(() => {
+                                addMessage(chatId, {
+                                    role: 'system',
+                                    content: `⏰ 定时提醒: ${timerContent}`,
+                                    hidden: false
+                                });
+                            }, 10000); // 10秒后触发（演示用）
+                        }
+                    } else if (type === 'search') {
+                        // 处理搜索指令
+                        const searchMatch = content.match(/\[(?:搜索|SEARCH|查找)[:：]\s*(.+?)\]/i);
+                        if (searchMatch) {
+                            const searchKeyword = searchMatch[1].trim();
+                            addMessage(chatId, {
+                                role: 'ai',
+                                type: 'search',
+                                content: searchKeyword,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode
+                            });
+                        }
+                    } else if (type === 'almanac') {
+                        // 处理黄历/运势指令
+                        const almanacMatch = content.match(/\[(?:黄历|ALMANAC|运势|今日运势)[:：]?\s*(.*?)\]/i);
+                        if (almanacMatch) {
+                            const almanacContent = almanacMatch[1] ? almanacMatch[1].trim() : '今日运势';
+                            addMessage(chatId, {
+                                role: 'ai',
+                                type: 'almanac',
+                                content: almanacContent,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode
+                            });
+                        }
                     }
 
                     // Sequential Delay

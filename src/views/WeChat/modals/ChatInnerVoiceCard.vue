@@ -28,9 +28,9 @@
                 <div v-if="!showHistory && activeTab === 'main'" id="voice-character-view" class="animate-fade-in">
                     <div class="voice-header-group">
                         <div class="voice-char-avatar-box">
-                            <img :src="chatData.avatar" alt="Avatar">
+                            <img :src="chatData?.avatar || '/avatars/default.png'" alt="Avatar">
                         </div>
-                        <div class="voice-char-name">{{ chatData.name }}</div>
+                        <div class="voice-char-name">{{ chatData?.name || '角色' }}</div>
                         <div class="voice-char-meta">Current Mood / {{ historyList.length > 0 ? '已记录' : '无记录' }}</div>
                     </div>
 
@@ -389,12 +389,20 @@ const historyList = computed(() => {
     const voiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\s*\n\s*\[(?!\/))|$)/i;
 
     return msgs.filter(m => {
+        // 优先从消息参数中检查心声数据
+        if (m.innerVoice || m.mindData || m.inner_voice) return true
         if (!m.content) return false;
         if (m.type === 'inner_voice_card') return true;
         // Test content against regex OR check for raw JSON characteristics
         const str = String(m.content);
-        return voiceRegex.test(str) || (str.includes('{') && (str.includes('"status"') || str.includes('“status”') || str.includes('"心声"') || str.includes('“心声”')));
+        return voiceRegex.test(str) || (str.includes('{') && (str.includes('"status"') || str.includes('"status"') || str.includes('"心声"') || str.includes('"心声"')));
     }).map(m => {
+        // 优先从消息参数中提取心声数据
+        const voiceData = m.innerVoice || m.mindData || m.inner_voice
+        if (voiceData) {
+            return { id: m.id, timestamp: m.timestamp, content: voiceData };
+        }
+        
         let content = m.content;
         if (typeof content === 'string') {
             const match = content.match(voiceRegex);

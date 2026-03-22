@@ -81,10 +81,10 @@ export const useSettingsStore = defineStore('settings', () => {
             me: { url: '', localUrl: '' }
         },
         userProfile: {
-            name: '乔乔',
-            avatar: '/avatars/小猫星星眼.jpg',
-            wechatId: 'admin',
-            signature: '对方很懒，什么都没有留下'
+            name: '我',
+            avatar: '/avatars/default.jpg',
+            wechatId: '',
+            signature: ''
         },
         presets: [
             {
@@ -266,6 +266,14 @@ export const useSettingsStore = defineStore('settings', () => {
         quality: 'standard'
     })
 
+    // --- 3.5 Offline Mode State ---
+    const isOfflineMode = ref(false)
+    const offlineMode = ref({
+        enableAIBackground: false,
+        customBackground: '',
+        backgroundType: 'default'
+    })
+
     // --- 4. Persistence Helpers ---
     const isInitialized = ref(false)
 
@@ -277,7 +285,9 @@ export const useSettingsStore = defineStore('settings', () => {
             voice: voice.value,
             weather: weather.value,
             compressQuality: compressQuality.value,
-            drawing: drawing.value
+            drawing: drawing.value,
+            isOfflineMode: isOfflineMode.value,
+            offlineMode: offlineMode.value
         }
         try {
             // DEEP CLONE to avoid Proxy DataCloneError
@@ -453,6 +463,10 @@ export const useSettingsStore = defineStore('settings', () => {
                 console.log('[SettingsStore] Found drawing config in storage. Model:', data.drawing.model, 'HasKey:', !!data.drawing.apiKey)
                 drawing.value = { ...drawing.value, ...data.drawing }
             }
+
+            // Load Offline Mode settings
+            if (data.isOfflineMode !== undefined) isOfflineMode.value = data.isOfflineMode
+            if (data.offlineMode) offlineMode.value = { ...offlineMode.value, ...data.offlineMode }
 
             isInitialized.value = true
             // Save back to ensure migration
@@ -792,12 +806,27 @@ export const useSettingsStore = defineStore('settings', () => {
         window.location.reload()
     }
 
+    // --- Offline Mode Actions ---
+    function toggleOfflineMode() {
+        isOfflineMode.value = !isOfflineMode.value
+        saveToStorage()
+    }
+    function toggleAIBackground() {
+        offlineMode.value.enableAIBackground = !offlineMode.value.enableAIBackground
+        saveToStorage()
+    }
+    function setOfflineModeConfig(config) {
+        offlineMode.value = { ...offlineMode.value, ...config }
+        saveToStorage()
+    }
+
     // --- Initialization ---
     loadFromStorage()
 
     return {
         apiConfigs, currentConfigIndex, currentConfig, apiConfig,
         personalization, voice, weather, compressQuality, drawing,
+        isOfflineMode, offlineMode,
         updateConfig, createConfig, deleteConfig,
         saveToStorage, loadFromStorage,
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
@@ -805,6 +834,7 @@ export const useSettingsStore = defineStore('settings', () => {
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
+        toggleOfflineMode, toggleAIBackground, setOfflineModeConfig,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
 
         // 👇 这两个是你备份页面必须要的
