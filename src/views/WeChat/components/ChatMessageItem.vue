@@ -2027,7 +2027,7 @@ function getCleanContent(contentRaw, isCard = false, role = null) {
         return '';
     }
 
-    let clean = props.forceOffline ? getOfflineRenderableContent(content) : getOnlineRenderableContent(content);
+    let clean = props.forceOffline ? getOfflineRenderableContent(props.msg) : getOnlineRenderableContent(props.msg);
     
     // 1. 兼容不带双引号的异常 JSON 心声 (修复空气泡的关键)
     const isHtmlCardJson = /"type"\s*:\s*"html"/.test(clean) && /"html"\s*:/.test(clean);
@@ -2083,7 +2083,7 @@ function getCleanContent(contentRaw, isCard = false, role = null) {
     }
 
     clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
-    clean = props.forceOffline ? getOfflineTextContent(clean) : getOnlineTextContent(clean)
+    clean = props.forceOffline ? getOfflineTextContent({ content: clean, mode: props.msg.mode }) : getOnlineTextContent({ content: clean, mode: props.msg.mode })
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
@@ -2604,9 +2604,9 @@ function escapeHtml(value) {
 }
 
 function renderOfflineMessageHtml(msg) {
-    const segments = parseOfflineSegments(msg?.content)
+    const segments = parseOfflineSegments(msg)
     if (!segments.length) {
-        return escapeHtml(getOfflineTextContent(msg?.content)).replace(/\n/g, '<br>')
+        return escapeHtml(getOfflineTextContent(msg)).replace(/\n/g, '<br>')
     }
 
     const userName = props.chatData?.groupSettings?.myNickname

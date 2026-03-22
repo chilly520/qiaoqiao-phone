@@ -1839,6 +1839,14 @@ export const useChatStore = defineStore('chat', () => {
                 content = `（引用来自 ${quoteAuthor} 的消息: "${m.quote.content}"）\n${content}`
             }
 
+            // Mode Awareness Injection (Let AI know the context of each message)
+            const msgMode = m.mode || 'online';
+            if (msgMode === 'offline') {
+                content = `[OFFLINE]\n${content}\n[/OFFLINE]`;
+            } else {
+                content = `[ONLINE]\n${content}\n[/ONLINE]`;
+            }
+
             return {
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
@@ -1847,6 +1855,7 @@ export const useChatStore = defineStore('chat', () => {
         })
 
         // --- 角色轮替保护：合并连续的 User/Assistant 消息 (Gemini 必须交替) ---
+        // 同时携带模式信息以便后续包装
         const mergedContext = [];
         rawContext.forEach(m => {
             const last = mergedContext[mergedContext.length - 1];
@@ -1855,7 +1864,6 @@ export const useChatStore = defineStore('chat', () => {
                 if (typeof last.content === 'string' && typeof m.content === 'string') {
                     last.content += `\n\n${m.content}`;
                 }
-                // 图视觉信息合并 (AI Vision 注入)
                 if (m.image) last.image = m.image;
             } else {
                 mergedContext.push(m);
@@ -1892,14 +1900,18 @@ export const useChatStore = defineStore('chat', () => {
 
             console.log(`[ChatStore] Injecting call hint for status: ${callStatus}`);
 
+            const callTag = (options.mode || 'online') === 'offline' ? 'OFFLINE' : 'ONLINE';
+            const wrappedCallHint = `[${callTag}]\n${callHint}\n[/${callTag}]`;
+            
             const last = mergedContext[mergedContext.length - 1]
             if (last && last.role === 'user') {
-                last.content += `\n\n${callHint}`
+                last.content += `\n\n${wrappedCallHint}`
             } else {
-                mergedContext.push({ role: 'user', content: callHint })
+                mergedContext.push({ role: 'user', content: wrappedCallHint })
             }
         } else if (callStatus === 'active') {
-            const callActiveHint = `【系统：当前通话已接通。请继续与用户愉快地聊天，直接输出对话 JSON 即可，严禁再次回复“[接听]”或重复开场动作。】`
+            const callTag = (options.mode || 'online') === 'offline' ? 'OFFLINE' : 'ONLINE';
+            const callActiveHint = `[${callTag}]\n【系统：当前通话已接通。请继续与用户愉快地聊天，直接输出对话 JSON 即可，严禁再次回复“[接听]”或重复开场动作。】\n[/${callTag}]`
             const last = mergedContext[mergedContext.length - 1]
             if (last && last.role === 'user') {
                 last.content += `\n\n${callActiveHint}`
@@ -1908,20 +1920,24 @@ export const useChatStore = defineStore('chat', () => {
             }
         } else if (options.hiddenHint) {
             const last = mergedContext[mergedContext.length - 1];
+            const hintTag = (options.mode || 'online') === 'offline' ? 'OFFLINE' : 'ONLINE';
+            const wrappedHint = `[${hintTag}]\n[系统要求] ${options.hiddenHint}\n[/${hintTag}]`;
+
             if (last && last.role === 'user') {
-                last.content += `\n\n[系统要求] ${options.hiddenHint}`;
+                last.content += `\n\n${wrappedHint}`;
             } else {
-                mergedContext.push({ role: 'user', content: `[系统要求] ${options.hiddenHint}` });
+                mergedContext.push({ role: 'user', content: wrappedHint });
             }
         }
         else if (diffMinutes >= 1) {
             const last = mergedContext[mergedContext.length - 1];
             if (last && last.role === 'user') {
                 const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
-                last.content += ` \n\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。】`;
+                const timeTag = (options.mode || 'online') === 'offline' ? 'OFFLINE' : 'ONLINE';
+                const wrappedTime = `[${timeTag}]\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。】\n[/${timeTag}]`;
+                last.content += ` \n\n${wrappedTime}`;
             }
         }
-
 
         const context = mergedContext;
 
@@ -2852,7 +2868,7 @@ export const useChatStore = defineStore('chat', () => {
                 // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block. 
                 // We also include ( ) and （ ） as potential segments to catch leaked mind voice, 
                 // but we will filter them in the delivery loop.
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*OFFLINE\s*\][\s\S]*?(?:\[\/\s*OFFLINE\s*\]|(?=\[)|$)|\[\s*ONLINE\s*\][\s\S]*?(?:\[\/\s*ONLINE\s*\]|(?=\[)|$)|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2866,7 +2882,7 @@ export const useChatStore = defineStore('chat', () => {
 
                     const trimmedPart = part.trim();
                     // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|SEARCH|查找|黄历|ALMANAC|运势)|\(|（)/.test(trimmedPart);
+                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|SEARCH|查找|黄历|ALMANAC|运势)|\(|（|【)/.test(trimmedPart);
                     const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
 
                     if (isSpecial) {
@@ -2947,6 +2963,13 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'search', content: content.trim() });
                     } else if (content.startsWith('[黄历:') || content.startsWith('[ALMANAC:') || content.startsWith('[运势:') || content.startsWith('[今日运势:]')) {
                         finalSegments.push({ type: 'almanac', content: content.trim() });
+                    } else if (content.startsWith('[OFFLINE]')) {
+                        finalSegments.push({ type: 'text', content: content.replace(/\[\s*OFFLINE\s*\]|\[\/\s*OFFLINE\s*\]/gi, '').trim(), mode: 'offline' });
+                    } else if (content.startsWith('[ONLINE]')) {
+                        finalSegments.push({ type: 'text', content: content.replace(/\[\s*ONLINE\s*\]|\[\/\s*ONLINE\s*\]/gi, '').trim(), mode: 'online' });
+                    } else if (content.trim().startsWith('【') && content.trim().endsWith('】')) {
+                        // Theater style location/scene marker
+                        finalSegments.push({ type: 'text', content: content.trim(), mode: 'offline' });
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-color', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity', 'border: 3px solid', 'border: 1px solid', 'font-family:', 'animation:', 'keyframes'];
@@ -2998,9 +3021,10 @@ export const useChatStore = defineStore('chat', () => {
                 for (let i = 0; i < finalSegments.length; i++) {
                     if (!typingStatus.value[chatId]) break;
 
-                    const { type, content } = finalSegments[i];
+                    const { type, content, mode: segmentMode } = finalSegments[i];
                     let msgAdded = null;
                     let msgContent = content;
+                    const finalMode = segmentMode || options.mode || 'online';
 
                     if (type === 'card' || type === 'text') {
                         // Process Payment Tags
@@ -3053,7 +3077,7 @@ export const useChatStore = defineStore('chat', () => {
                         
                             console.log('[ChatStore] Adding HTML card message');
                             // Use type: 'card' for maximum compatibility with template conditions
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: 'online' });
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: finalMode });
                         } else {
                             // Text Message Delivery
                             const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
@@ -3084,11 +3108,11 @@ export const useChatStore = defineStore('chat', () => {
                                 note,
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
-                                mode: 'online'
+                                mode: finalMode
                             });
                         }
 
-                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt, mode: 'online' }));
+                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt, mode: finalMode }));
 
                     } else if (type === 'sticker') {
                         // Ensure sticker content is just the name/filename if needed, or keeping full tag if components handle it
@@ -3101,10 +3125,10 @@ export const useChatStore = defineStore('chat', () => {
                             content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: 'online'
+                            mode: finalMode
                         });
                     } else if (type === 'voice') {
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: 'online' });
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: finalMode });
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
@@ -3119,7 +3143,7 @@ export const useChatStore = defineStore('chat', () => {
                                 type: 'text',
                                 content: '🎨 正在根据灵感绘图...',
                                 quote: i === 0 ? aiQuote : null,
-                                mode: 'online'
+                                mode: finalMode
                             });
 
                             // Safe ID retrieval - Now safe because we awaited addMessage

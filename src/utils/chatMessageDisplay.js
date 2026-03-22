@@ -115,28 +115,42 @@ export function extractInnerVoiceData(content, msgData = null) {
   return null
 }
 
-export function getOfflineRenderableContent(content) {
+export function getOfflineRenderableContent(msg) {
+  const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
   const offline = extractTaggedBlock(raw, 'OFFLINE')
   if (offline !== null) return offline
-  if (extractTaggedBlock(raw, 'ONLINE') !== null) return ''
+  const online = extractTaggedBlock(raw, 'ONLINE')
+  if (online !== null) return ''
+  
+  // No tags found, use the message's explicit mode if available
+  if (msg?.mode === 'offline') return stripModeWrapperTags(raw).trim()
+  if (msg?.mode === 'online') return ''
+
   return stripModeWrapperTags(raw).trim()
 }
 
-export function getOnlineRenderableContent(content) {
+export function getOnlineRenderableContent(msg) {
+  const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
   const online = extractTaggedBlock(raw, 'ONLINE')
   if (online !== null) return online
-  if (extractTaggedBlock(raw, 'OFFLINE') !== null) return ''
+  const offline = extractTaggedBlock(raw, 'OFFLINE')
+  if (offline !== null) return ''
+  
+  // No tags found, use the message's explicit mode if available
+  if (msg?.mode === 'online') return stripModeWrapperTags(raw).trim()
+  if (msg?.mode === 'offline') return ''
+
   return stripModeWrapperTags(raw).trim()
 }
 
-export function getOfflineTextContent(content) {
-  return stripCardBlocks(stripInnerVoiceBlocks(getOfflineRenderableContent(content))).trim()
+export function getOfflineTextContent(msg) {
+  return stripCardBlocks(stripInnerVoiceBlocks(getOfflineRenderableContent(msg))).trim()
 }
 
-export function getOnlineTextContent(content) {
-  return stripCardBlocks(stripInnerVoiceBlocks(getOnlineRenderableContent(content))).trim()
+export function getOnlineTextContent(msg) {
+  return stripCardBlocks(stripInnerVoiceBlocks(getOnlineRenderableContent(msg))).trim()
 }
 
 export function parseOfflineLine(line) {
@@ -202,8 +216,9 @@ export function splitOfflineLine(line) {
   return parts.length ? parts : [value]
 }
 
-export function parseOfflineSegments(content) {
-  const text = getOfflineTextContent(content)
+export function parseOfflineSegments(msg) {
+  if (!msg) return []
+  const text = getOfflineTextContent(msg)
   if (!text) return []
 
   const segments = []

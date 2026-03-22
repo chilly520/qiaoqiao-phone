@@ -65,7 +65,7 @@ const settingsStore = useSettingsStore()
 
 const isNightMode = computed(() => settingsStore.offlineMode.themeMode === 'night')
 
-const segments = computed(() => parseOfflineSegments(props.msg?.content))
+const segments = computed(() => parseOfflineSegments(props.msg))
 
 const userName = computed(() => (
   props.chatData?.groupSettings?.myNickname
