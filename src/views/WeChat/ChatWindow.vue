@@ -935,9 +935,9 @@ onMounted(async () => {
             console.log('[ChatWindow] msgs.length:', chat.msgs.length);
             console.log('[ChatWindow] lastMsg:', chat.msgs[chat.msgs.length - 1]);
             
-            // Version 1.2.25: No pendingSegments mechanism, messages are added directly
+            // Version 1.2.26: No pending segments mechanism, messages are added directly
             // Just scroll to bottom to show latest messages
-            console.log('[ChatWindow] No pendingSegments in 1.2.25, scrolling to bottom');
+            console.log('[ChatWindow] No pending segments in 1.2.26, scrolling to bottom');
             setTimeout(() => {
                 scrollToBottom(true);
             }, 100);
