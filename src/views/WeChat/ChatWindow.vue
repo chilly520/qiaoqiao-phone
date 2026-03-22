@@ -244,48 +244,29 @@ const isMsgVisible = (msg) => {
     if (!msg) return false
     if (msg.hidden) return false
 
-    // 关键：过滤掉明确标记为线下模式的消息
-    if (msg.mode === 'offline') return false
+    // 确定消息的归属模式（老旧消息没有 mode 标识时，通过内容启发推断）
+    let mode = msg.mode;
+    if (!mode) {
+        const rawContent = ensureString(msg.content);
+        mode = rawContent.includes('[OFFLINE]') ? 'offline' : 'online';
+    }
+
+    // 关键：严格过滤掉明确标记为线下模式的消息
+    if (mode === 'offline') return false
 
     // 过滤掉朋友圈相关消息（朋友圈应该在朋友圈界面显示，不在聊天界面）
     if (msg.type === 'moment_card' || msg.type === 'moment') return false
     const content = ensureString(msg.content)
     if (content.includes('[MOMENT_SHARE') || content.includes('[分享朋友圈')) return false
 
-    // Debug logging for family_card
-    if (msg.content && (msg.content.includes('亲属卡') || msg.content.includes('FAMILY_CARD'))) {
-        console.log('[isMsgVisible] Checking family_card message:', { type: msg.type, role: msg.role, content: msg.content?.substring(0, 50) })
-    }
-
-    // 1. 线上模式：显示明确标记为 online 或没有标记的消息
-    // 贴纸消息：显示 mode === 'online' 或没有 mode 的消息
-    if (msg.type === 'sticker') {
-        return msg.mode === 'online' || !msg.mode
-    }
-
-    // 其他特殊消息类型（非贴纸）
-    if (msg.type && msg.type !== 'text' && msg.type !== 'sticker') return true
-
-    if (content.includes('[红包]') || content.includes('[转账]') || content.includes('[GIFT:')) return true
-    if (msg.type === 'image' || isImageMsg(msg)) return true
-
-    // 2. Role-based filtering
-    // If it's a known AI respondent or user, check content
-    const knownRoles = ['ai', 'assistant', 'user', 'thought', 'bot', 'system']
+    // 其他角色/系统文本的快速返回，只有明确需要过滤的 AI 内容才调用性能昂贵的 getCleanContent
     const role = msg.role ? msg.role.toLowerCase() : 'ai'
-
-    if (knownRoles.includes(role)) {
+    if (['ai', 'assistant', 'thought', 'bot'].includes(role) && msg.type !== 'sticker' && msg.type !== 'image' && msg.type !== 'voice' && !isImageMsg(msg)) {
         const cleanContent = getCleanContent(content)
-        // For AI/Assistant/Thought, hide if it's purely protocol/metadata JSON
-        if (['ai', 'assistant', 'thought', 'bot'].includes(role)) {
-            if (!cleanContent || cleanContent.trim().length === 0) return false
-        }
-        return true
+        if (!cleanContent || cleanContent.trim().length === 0) return false
     }
 
-    // 3. Last fallback: if it has any readable content, show it
-    const clean = getCleanContent(content)
-    return !!(clean && clean.trim().length > 0)
+    return true
 }
 
 const displayedMsgs = computed(() => {
@@ -2457,6 +2438,34 @@ const handleSendMessage = (payload) => {
             return
         }
 
+        // 检测用户发送的是否是 HTML 格式的消息
+        let msgType = type || 'text'
+        let msgContent = content
+        let msgHtml = null
+        
+        if (type !== 'voice' && typeof content === 'string') {
+            const trimmed = content.trim()
+            console.log('[ChatWindow] Checking for HTML message, content starts with:', trimmed.substring(0, 50))
+            // 检测是否是 HTML JSON 格式
+            if (trimmed.startsWith('{') && trimmed.includes('"type"') && trimmed.includes('"html"')) {
+                try {
+                    const parsed = JSON.parse(trimmed)
+                    console.log('[ChatWindow] JSON parsed:', parsed.type, parsed.html ? 'has html' : 'no html')
+                    if (parsed.type === 'html' && parsed.html) {
+                        msgType = 'html'
+                        msgHtml = parsed.html
+                        console.log('[ChatWindow] Detected user HTML message, html length:', msgHtml.length)
+                    } else {
+                        console.log('[ChatWindow] JSON parsed but not HTML type or no html content')
+                    }
+                } catch (e) {
+                    console.log('[ChatWindow] JSON parse failed:', e.message)
+                }
+            } else {
+                console.log('[ChatWindow] Not an HTML JSON message')
+            }
+        }
+
         if (type === 'voice') {
             chatStore.addMessage(chatId, {
                 role: 'user',
@@ -2465,6 +2474,16 @@ const handleSendMessage = (payload) => {
                 duration: Math.ceil(content.length / 3) || 1,
                 quote: currentQuote.value,
                 mode: 'online'
+            })
+        } else if (msgType === 'html') {
+            chatStore.addMessage(chatId, {
+                role: 'user',
+                type: 'html',
+                content: content,
+                html: msgHtml,
+                quote: currentQuote.value,
+                mode: 'online',
+                forceCard: true
             })
         } else {
             chatStore.addMessage(chatId, {
@@ -3323,18 +3342,6 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                     </div>
                 </div>
                 <div class="absolute right-2 flex items-center gap-1.5 text-black z-20">
-                    <!-- 切换到线下模式按钮 (仅 World Loop 模式显示) -->
-                    <div v-if="loopData" 
-                        class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-purple-500/10 relative"
-                        @click="switchToOfflineMode"
-                        title="切换到线下模式">
-                        <i class="fa-solid fa-masks-theater text-purple-600"></i>
-                        <!-- 小红点和呼吸灯 -->
-                        <div v-if="hasUnreadOfflineMessages" 
-                            class="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-sm animate-breathing-dot">
-                        </div>
-                    </div>
-
                     <!-- Auto TTS Button -->
                     <div class="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
                         :class="{ 'opacity-30': !chatData?.autoTTS }" @click="toggleAutoRead"
@@ -3474,6 +3481,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <ChatInputBar v-if="!isMultiSelectMode" ref="chatInputBarRef" :currentQuote="currentQuote"
                 :chatData="chatData" :isTyping="chatStore.isTyping" :musicVisible="musicStore.playerVisible"
                 :searchEnabled="chatData?.searchEnabled" :show-scroll-to-bottom="showScrollToBottom"
+                :has-unread-offline-messages="hasUnreadOfflineMessages"
                 @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
                 @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
                 @toggle-search="() => chatStore.toggleSearch(chatData?.id)" @regenerate="regenerateLastMessage"

@@ -382,7 +382,18 @@ export const useChatStore = defineStore('chat', () => {
             quote: msg.quote || null,
             paymentId: msg.paymentId || null, // Initialize paymentId
             hidden: msg.hidden || false, // Detection for visualizer-only messages
-            mode: msg.mode || null // 线上/线下模式标记: 'online' | 'offline' | null
+            mode: msg.mode || 'online' // 线上/线下模式标记: 'online' | 'offline' | null, 默认为 'online'
+        }
+        
+        // Debug: 记录 HTML 消息
+        if (msg.type === 'html' || msg.html) {
+            console.log('[ChatStore] addMessage received HTML message:', {
+                role: msg.role,
+                type: msg.type,
+                htmlLength: msg.html?.length,
+                contentLength: msg.content?.length,
+                forceCard: msg.forceCard
+            });
         }
 
         // 1.0 STRICT CONTENT FILTER: Reject "undefined", "null", or empty content
@@ -407,32 +418,39 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             const content = newMsg.content.trim();
             // Look for any JSON-like structure that has "type":"html" or similar keywords
-            const suspectedHtml = (content.includes('"type"') && content.includes('"html"')) || (content.includes('<div') && content.includes('{'));
+            const suspectedHtml = (content.includes('"type"') && content.includes('"html"')) || 
+                                  (content.includes('"type":') && content.includes('"html":')) ||
+                                  (content.includes('<div') && content.includes('{'));
 
             if (suspectedHtml) {
+                console.log('[ChatStore] Suspected HTML message detected, content preview:', content.substring(0, 100));
                 try {
-                    // ROBUST REGEX: Handles escaped quotes and multi-line content
-                    const robustHtmlRegex = /["']html["']\s*[:：]\s*["']((?:[^"\\]|\\.|[\r\n])*?)["']/;
-                    const htmlMatch = content.match(robustHtmlRegex);
-
-                    if (htmlMatch && htmlMatch[1]) {
-                        newMsg.type = 'html';
-                        newMsg.html = htmlMatch[1];
-                        newMsg.forceCard = true; // Flag for component to isolate
-                        console.log('[ChatStore] Detected Manual HTML Message (Robust Flag)');
-                    } else if (content.startsWith('{')) {
-                        // try JSON.parse as last resort (with newline sanitization)
+                    // 首先尝试直接解析整个内容作为 JSON
+                    if (content.startsWith('{')) {
                         try {
-                            const parsed = JSON.parse(content.replace(/\n/g, '\\n').replace(/\r/g, '\\r'));
-                            if (parsed.html || parsed.content) {
+                            const parsed = JSON.parse(content);
+                            console.log('[ChatStore] JSON parsed successfully:', parsed.type, parsed.html ? 'has html' : 'no html');
+                            if (parsed.type === 'html' && (parsed.html || parsed.content)) {
                                 newMsg.type = 'html';
                                 newMsg.html = parsed.html || parsed.content;
                                 newMsg.forceCard = true;
+                                console.log('[ChatStore] Detected Manual HTML Message (JSON Parse), html length:', newMsg.html.length);
                             }
-                        } catch (e) { }
+                        } catch (e) { 
+                            console.log('[ChatStore] JSON parse failed:', e.message);
+                        }
+                    }
+                    
+                    // 如果上面的方法没有成功，尝试简单的关键字检测
+                    if (newMsg.type !== 'html') {
+                        if (/["']type["']\s*[:：]\s*["']html["']/i.test(content) || /\[CARD\]/i.test(content)) {
+                            newMsg.type = 'html';
+                            newMsg.forceCard = true; // Flag for component to isolate
+                            console.log('[ChatStore] Detected Manual HTML Message (Keyword Flag)');
+                        }
                     }
                 } catch (e) {
-                    // Fail silently
+                    console.log('[ChatStore] HTML detection error:', e.message);
                 }
             }
         }
@@ -1220,7 +1238,7 @@ export const useChatStore = defineStore('chat', () => {
 
             const response = await generateReply([{ role: 'system', content: systemInstructions }], chat);
             if (response && response.content) {
-                addMessage(chatId, { role: 'ai', content: response.content });
+                addMessage(chatId, { role: 'ai', content: response.content, mode: 'online' });
             }
             triggerToast('个人档案更新成功', 'success');
         } catch (e) {
@@ -2729,36 +2747,7 @@ export const useChatStore = defineStore('chat', () => {
                 // We do this before HTML extraction so it doesn't get tangled
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status)\s*[:：].*?(?:\n|$)/gm, '');
 
-                // Pass 2: Handle naked <html>...</html> or large <div> blocks anywhere in the message
-                // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
-                // This version is greedy and handles leading emojis/text often found in AI-generated "status cards".
-                cleanContent = cleanContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[\s\S]*?)?(<(html|div|section|article|style|svg)[\s\S]+?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
-                    // Always wrap the HTML part
-                    const html = htmlContent.trim();
-                    if (html.length > 20 || html.includes('style=')) {
-                        // Include the full match in the card if it contains the header
-                        const fullMatch = match.trim();
-                        const json = JSON.stringify({ type: 'html', html: fullMatch.includes('html:') ? fullMatch.substring(fullMatch.indexOf('<')) : html });
-                        return `\n[CARD]${json}\n`;
-                    }
-                    return match;
-                });
-
-                // Pass 2.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
-                // This nukes patterns like "type: html, \n html: \n [FAMILY_CARD...]"
-                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking';
-                const metaLinePattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\n\\[\\<{]*`, 'gim');
-                cleanContent = cleanContent.replace(metaLinePattern, '').trim();
-                
-                // Pass 2.6: Merge logic for tags prepended with metadata (Stubborn AI fix)
-                // If a tag follows metadata immediately, nuke the metadata
-                const tagPrependPattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\]]*\\n?(\\[[^\\]]+\\])`, 'gim');
-                cleanContent = cleanContent.replace(tagPrependPattern, '$1').trim();
-
-                // Pass 2.7: Final stubborn cleanup for dangling card keys
-                cleanContent = cleanContent.replace(/^\s*(?:type|card|json|html|content)\s*[:：]\s*(?:html|card|{)?\s*$/gim, '');
-                
-                // Pass 3: Extraction using robust brace matcher (The Protectors)
+                // Pass 2: Extraction using robust brace matcher (The Protectors)
                 // Aggressively match anything starting with [CARD]{, { "type":, or type: html {
                 const cardStartRegex = /(?:\[\s*(?:CARD|LS_JSON|JSON)\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)|(?:type\s*[:：]\s*html[\s\S]*?\{)/gi;
                 let cardMatch;
@@ -2812,8 +2801,36 @@ export const useChatStore = defineStore('chat', () => {
                     const pos = cardPositions[i];
                     const contentToStore = pos.isNaked ? ('[CARD]' + pos.content) : pos.content;
                     cardBlocks.push(contentToStore);
-                    processedContent = processedContent.substring(0, pos.start) + ` __CARD_PLACEHOLDER_${i}__ ` + processedContent.substring(pos.end);
+                    processedContent = processedContent.substring(0, pos.start) + ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ ` + processedContent.substring(pos.end);
                 }
+
+                // Pass 3: Handle naked <html>...</html> or large <div> blocks anywhere in the message
+                // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
+                // This version is greedy and handles leading emojis/text often found in AI-generated "status cards".
+                // Notice this now runs on processedContent so it doesn't corrupt extracted JSON blocks!
+                processedContent = processedContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[\s\S]*?)?(<(html|div|section|article|style|svg)[\s\S]+?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
+                    const html = htmlContent.trim();
+                    if (html.length > 20 || html.includes('style=')) {
+                        const fullMatch = match.trim();
+                        const json = JSON.stringify({ type: 'html', html: fullMatch.includes('html:') ? fullMatch.substring(fullMatch.indexOf('<')) : html });
+                        cardBlocks.push(`\n[CARD]${json}\n`);
+                        return ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
+                    }
+                    return match;
+                });
+
+                // Pass 3.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
+                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking';
+                const metaLinePattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\n\\[\\<{]*`, 'gim');
+                processedContent = processedContent.replace(metaLinePattern, '').trim();
+                
+                // Pass 3.6: Merge logic for tags prepended with metadata (Stubborn AI fix)
+                const tagPrependPattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\]]*\\n?(\\[[^\\]]+\\])`, 'gim');
+                processedContent = processedContent.replace(tagPrependPattern, '$1').trim();
+
+                // Pass 3.7: Final stubborn cleanup for dangling card keys
+                processedContent = processedContent.replace(/^\s*(?:type|card|json|html|content)\s*[:：]\s*(?:html|card|{)?\s*$/gim, '');
+
 
                 // Pass 4: Clean up image tags & Hallucination Cleanup
                 processedContent = processedContent.replace(/\[图片:(.+?)\]/gi, (match, url) => {
@@ -2873,7 +2890,7 @@ export const useChatStore = defineStore('chat', () => {
 
                     if (placeholderMatch) {
                         const index = parseInt(placeholderMatch[1]);
-                        content = cardBlocks[cardBlocks.length - 1 - index];
+                        content = cardBlocks[index];
                         finalSegments.push({ type: 'card', content });
                     } else if (/^\[(?:表情包|表情-包|STICKER)[:：].*?\]$/.test(content.trim())) {
                         finalSegments.push({ type: 'sticker', content: content.trim() });
@@ -3036,7 +3053,7 @@ export const useChatStore = defineStore('chat', () => {
                         
                             console.log('[ChatStore] Adding HTML card message');
                             // Use type: 'card' for maximum compatibility with template conditions
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null });
+                            msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: 'online' });
                         } else {
                             // Text Message Delivery
                             const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
@@ -3066,11 +3083,12 @@ export const useChatStore = defineStore('chat', () => {
                                 amount,
                                 note,
                                 quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode
+                                hidden: isCallMode,
+                                mode: 'online'
                             });
                         }
 
-                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt }));
+                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt, mode: 'online' }));
 
                     } else if (type === 'sticker') {
                         // Ensure sticker content is just the name/filename if needed, or keeping full tag if components handle it
@@ -3082,10 +3100,11 @@ export const useChatStore = defineStore('chat', () => {
                             type: 'sticker',
                             content,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            mode: 'online'
                         });
                     } else if (type === 'voice') {
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1 });
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: 'online' });
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
@@ -3099,7 +3118,8 @@ export const useChatStore = defineStore('chat', () => {
                                 role: 'ai',
                                 type: 'text',
                                 content: '🎨 正在根据灵感绘图...',
-                                quote: i === 0 ? aiQuote : null
+                                quote: i === 0 ? aiQuote : null,
+                                mode: 'online'
                             });
 
                             // Safe ID retrieval - Now safe because we awaited addMessage
@@ -3158,7 +3178,8 @@ export const useChatStore = defineStore('chat', () => {
                                 type: 'music',
                                 content: musicData,
                                 quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode
+                                hidden: isCallMode,
+                                mode: 'online'
                             });
                         }
                     } else if (type === 'dice') {
@@ -3168,7 +3189,8 @@ export const useChatStore = defineStore('chat', () => {
                             type: 'dice',
                             content: content,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            mode: 'online'
                         });
                     } else if (type === 'tarot') {
                         // 处理塔罗牌指令
@@ -3177,7 +3199,8 @@ export const useChatStore = defineStore('chat', () => {
                             type: 'tarot',
                             content: content,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            mode: 'online'
                         });
                     } else if (type === 'location') {
                         // 处理位置指令
@@ -3186,7 +3209,8 @@ export const useChatStore = defineStore('chat', () => {
                             type: 'location',
                             content: content,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            mode: 'online'
                         });
                     } else if (type === 'nudge') {
                         // 处理戳一戳/拍一拍
@@ -3198,14 +3222,16 @@ export const useChatStore = defineStore('chat', () => {
                             type: 'gift',
                             content: content,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            mode: 'online'
                         });
                     } else if (type === 'system') {
                         // 系统通知
                         addMessage(chatId, {
                             role: 'system',
                             content: content.replace(/^\[(?:系统|通知|SYSTEM)[:：]?\s*/, '').replace(/\]$/, ''),
-                            hidden: isCallMode
+                            hidden: isCallMode,
+                            mode: 'online'
                         });
                     } else if (type === 'timer') {
                         // 处理定时提醒指令
@@ -3217,14 +3243,16 @@ export const useChatStore = defineStore('chat', () => {
                                 type: 'timer',
                                 content: timerContent,
                                 quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode
+                                hidden: isCallMode,
+                                mode: 'online'
                             });
                             // 触发定时任务提示
                             setTimeout(() => {
                                 addMessage(chatId, {
                                     role: 'system',
                                     content: `⏰ 定时提醒: ${timerContent}`,
-                                    hidden: false
+                                    hidden: false,
+                                    mode: 'online'
                                 });
                             }, 10000); // 10秒后触发（演示用）
                         }
@@ -3238,7 +3266,8 @@ export const useChatStore = defineStore('chat', () => {
                                 type: 'search',
                                 content: searchKeyword,
                                 quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode
+                                hidden: isCallMode,
+                                mode: 'online'
                             });
                         }
                     } else if (type === 'almanac') {
@@ -3251,7 +3280,8 @@ export const useChatStore = defineStore('chat', () => {
                                 type: 'almanac',
                                 content: almanacContent,
                                 quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode
+                                hidden: isCallMode,
+                                mode: 'online'
                             });
                         }
                     }
@@ -3283,7 +3313,7 @@ export const useChatStore = defineStore('chat', () => {
             prompt: "你是Chilly的男朋友，名字叫林深。你性格温柔体贴，成熟稳重，深爱着Chilly。你会无微不至地关心她，秒回她的消息，生病时会很紧张。说话语气宠溺，偶尔会叫她'宝宝'或'傻瓜'。",
             userName: "Chilly"
         }, 'char_linshen')
-        addMessage('char_linshen', { role: 'ai', content: '宝宝，今天过得怎么样？有没有想我？' })
+        addMessage('char_linshen', { role: 'ai', content: '宝宝，今天过得怎么样？有没有想我？', mode: 'online' })
 
         const avatarTest = getRandomAvatar()
         createChat('测试酱', avatarTest, {
@@ -3292,7 +3322,7 @@ export const useChatStore = defineStore('chat', () => {
             activeChat: true,
             activeInterval: 120,
         }, 'char_tester')
-        addMessage('char_tester', { role: 'ai', content: '大小姐，您的专属测试员——测试酱已就位！请随时吩咐我测试任何功能哦！(｀・ω・´)' })
+        addMessage('char_tester', { role: 'ai', content: '大小姐，您的专属测试员——测试酱已就位！请随时吩咐我测试任何功能哦！(｀・ω・´)', mode: 'online' })
     }
 
     function clearAllChats() {
@@ -3510,7 +3540,7 @@ export const useChatStore = defineStore('chat', () => {
 
     function addSystemMessage(content) {
         if (!currentChatId.value) return
-        addMessage(currentChatId.value, { role: 'system', content: content, timestamp: Date.now() })
+        addMessage(currentChatId.value, { role: 'system', content: content, timestamp: Date.now(), mode: 'online' })
     }
 
     function estimateTokens(text) {

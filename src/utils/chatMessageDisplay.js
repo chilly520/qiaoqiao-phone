@@ -304,6 +304,8 @@ export function isOfflineTextMessage(msg) {
 
 export function shouldShowInOfflineMode(msg) {
   if (!msg || msg.hidden || msg.role === 'system') return false
+  // 关键：明确标记为线上模式的消息不显示
+  if (msg.mode === 'online') return false
   if (msg.mode === 'offline') return true
   if (msg.role === 'user') return false
 
@@ -316,7 +318,10 @@ export function shouldShowInOfflineMode(msg) {
 
 export function shouldShowInOnlineMode(msg) {
   if (!msg || msg.hidden) return false
+  // 关键：明确标记为线下模式的消息不显示
   if (msg.mode === 'offline') return false
+  // 明确标记为线上模式的消息显示
+  if (msg.mode === 'online') return true
   if (msg.role === 'system') return true
 
   const raw = ensureMessageString(msg.content)
@@ -331,10 +336,10 @@ export function extractLatestOfflineScene(messages = []) {
     const segments = parseOfflineSegments(messages[index]?.content)
     const scene = [...segments].reverse().find((segment) => segment.type === 'scene')
     if (scene?.content) {
-      const [location] = scene.content.split(/[·|]/)
       return {
         raw: scene.content,
-        location: (location || scene.content).trim()
+        // 这里直接用完整的内容，不根据·分割
+        location: scene.content.trim()
       }
     }
   }

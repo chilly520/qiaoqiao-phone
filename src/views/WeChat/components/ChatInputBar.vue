@@ -68,10 +68,16 @@
                 @click="settingsStore.showLocationInput = true" title="当前位置"></i>
 
             <!-- Offline Mode Toggle -->
-            <i :class="settingsStore.isOfflineMode ? 'fa-solid fa-moon text-purple-500' : 'fa-regular fa-moon'" 
-                @click="toggleOfflineMode" 
-                class="cursor-pointer hover:text-purple-600 transition-colors"
-                :title="settingsStore.isOfflineMode ? '切换到线上模式' : '切换到线下模式'"></i>
+            <div class="relative inline-block">
+                <i :class="settingsStore.isOfflineMode ? 'fa-solid fa-moon text-purple-500' : 'fa-regular fa-moon'" 
+                    @click="toggleOfflineMode" 
+                    class="cursor-pointer hover:text-purple-600 transition-colors"
+                    :title="settingsStore.isOfflineMode ? '切换到线上模式' : '切换到线下模式'"></i>
+                <!-- 小红点和呼吸灯 - 有未读线下消息时显示 -->
+                <div v-if="hasUnreadOfflineMessages" 
+                    class="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white shadow-sm animate-breathing-dot">
+                </div>
+            </div>
 
             <!-- Scroll to Bottom -->
             <i v-if="showScrollToBottom"
@@ -145,7 +151,8 @@ const props = defineProps({
     isTyping: Boolean,
     musicVisible: Boolean,
     searchEnabled: Boolean,
-    showScrollToBottom: Boolean
+    showScrollToBottom: Boolean,
+    hasUnreadOfflineMessages: Boolean
 })
 
 const emit = defineEmits([
@@ -303,6 +310,24 @@ defineExpose({
         transform: scale(1);
         opacity: 1;
     }
+}
+
+/* 呼吸灯动画 */
+@keyframes breathing-dot {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 0.8;
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+    }
+}
+
+.animate-breathing-dot {
+    animation: breathing-dot 1.5s ease-in-out infinite;
 }
 
 /* Hide scrollbar for functionality toolbar */

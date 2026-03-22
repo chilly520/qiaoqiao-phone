@@ -406,8 +406,23 @@ const showMissionScheduler = ref(false)
 
 const chatData = computed(() => chatStore.currentChat)
 const msgs = computed(() => chatStore.currentChat?.msgs || [])
-const displayedMsgs = computed(() => (msgs.value || []).filter(m => !m.hidden))
+
+// 分页逻辑 - 与线上模式保持一致
+const displayedMsgs = computed(() => {
+  if (!chatStore.currentChatId) return []
+  return chatStore.getDisplayedMessages(chatStore.currentChatId).filter(m => !m.hidden)
+})
 const filteredDisplayMsgs = computed(() => (displayedMsgs.value || []).filter(msg => isMsgVisible(msg)))
+
+const hasMoreMessages = computed(() => {
+  if (!chatStore.currentChatId) return false
+  return chatStore.hasMoreMessages(chatStore.currentChatId)
+})
+
+const loadMoreMessages = () => {
+  if (!chatStore.currentChatId) return
+  chatStore.loadMoreMessages(chatStore.currentChatId)
+}
 
 // 检测是否有未读的线上消息（用于线下模式显示提示）
 const hasUnreadOnlineMessages = computed(() => {
@@ -436,9 +451,6 @@ const switchToOnlineMode = () => {
     worldLoopStore.toggleMode(chatData.value.loopId)
   }
 }
-
-const hasMoreMessages = computed(() => (msgs.value?.length || 0) > 50)
-const hiddenMessageCount = computed(() => Math.max(0, (msgs.value?.length || 0) - (displayedMsgs.value?.length || 0)))
 
 const currentTime = ref('12:00')
 const currentDateLabel = ref('')
@@ -556,44 +568,30 @@ const isMsgVisible = (msg) => {
   if (!msg) return false
   if (msg.hidden) return false
   
+  // 确定消息的归属模式（老旧消息没有 mode 标识时，通过内容启发推断）
+  let mode = msg.mode;
+  if (!mode) {
+      const rawContent = ensureString(msg.content);
+      mode = rawContent.includes('[OFFLINE]') ? 'offline' : 'online';
+  }
+
+  // 关键：严格过滤掉明确标记为线上模式的消息
+  if (mode === 'online') return false
+  
   // 过滤掉朋友圈相关消息（朋友圈应该在朋友圈界面显示，不在聊天界面）
   if (msg.type === 'moment_card' || msg.type === 'moment') return false
   const content = ensureString(msg.content)
   if (content.includes('[MOMENT_SHARE') || content.includes('[分享朋友圈')) return false
   
-  // 关键：过滤掉明确标记为线上模式的消息
-  if (msg.mode === 'online') return false
-  
-  // 系统消息（发红包提示、转账提示等）显示
-  if (msg.role === 'system') {
-    // 只显示非隐藏的系统消息
-    return true
-  }
-  
-  // 贴纸消息：显示 mode === 'offline' 或没有 mode 的消息
-  if (msg.type === 'sticker') {
-    return msg.mode === 'offline' || !msg.mode
-  }
-  
-  // 其他特殊消息类型（红包、转账等）
-  if (msg.type && msg.type !== 'text' && msg.type !== 'sticker') return true
-  
-  // 用户消息：如果有 offline 标记，或者是特殊类型，则显示
-  if (msg.role === 'user') {
-    // 有 offline 标记的显示
-    if (msg.mode === 'offline') return true
-    // 内容包含特殊标记的显示
-    if (content.includes('[红包]') || content.includes('[转账]') || content.includes('[GIFT:')) return true
-    return false
-  }
-  
-  // AI消息：有 offline 标记，或者有 [OFFLINE] 标签，或者是剧场内容
+  // 在 offline mode 中，只要通过了 mode === 'offline' 校验就可以显示
+  // 但对于某些特殊的没有 mode 标记的历史 AI 消息，这里保留简单的 shouldShowInOfflineMode 退路
   if (msg.role === 'ai' || msg.role === 'assistant') {
     if (msg.mode === 'offline') return true
     return shouldShowInOfflineMode(msg)
   }
   
-  return false
+  // 用户发出的、或者系统提示（此时其 mode 已确认是 offline）必定显示
+  return true
 }
 
 const shouldShowHeader = (msg, index) => {
@@ -612,8 +610,8 @@ const ensureString = (val) => {
 const looksLikeMojibake = (value) => {
   const text = ensureString(value).trim()
   if (!text) return false
-  // 检测常见的乱码字符模式
-  return /[\u4e00-\u9fa5]{2,}|[\ufffd]/.test(text)
+  // 检测常见的乱码字符模式 ()
+  return /[\ufffd]/.test(text)
 }
 
 const hasInnerVoiceBlockInMsg = (msg) => hasInnerVoiceBlock(msg?.content, msg)
@@ -804,10 +802,6 @@ const confirmSend = () => {
   })
   showSendModal.value = false
   scrollToBottom(true)
-}
-
-const loadMoreMessages = () => {
-  chatStore.loadMoreMessages(chatStore.currentChatId)
 }
 
 // Context Menu Functions

@@ -544,7 +544,7 @@
                         </div>
                         
                         <!-- CASE: HTML Card (from [CARD] tag or type: html) -->
-                        <div v-else-if="(msg.type === 'card' || msg.type === 'html') && hasHtmlContent"
+                        <div v-else-if="msg.type === 'card' || msg.type === 'html'"
                             class="w-full max-w-[280px] mt-1"
                             @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
@@ -1217,7 +1217,7 @@
                             </div>
 
                             <!-- 3. HTML Card Layer -->
-                            <div v-if="shouldRenderCard && hasHtmlContent"
+                            <div v-if="shouldRenderCard"
                                 class="mt-1 transition-all relative z-10 w-full min-w-[280px] max-w-full overflow-hidden" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
@@ -1561,8 +1561,20 @@ const diceTotalValue = computed(() => {
 })
 
 const hasHtmlContent = computed(() => {
-    const html = getPureHtml(props.msg.html || props.msg.content)
-    return html && html.trim().length > 0
+    const source = props.msg.html || props.msg.content
+    const html = getPureHtml(source)
+    const hasContent = html && html.trim().length > 0
+    if (props.msg.type === 'html') {
+        console.log('[ChatMessageItem] HTML message check:', {
+            msgId: props.msg.id,
+            hasHtml: !!props.msg.html,
+            htmlLength: props.msg.html?.length,
+            contentLength: props.msg.content?.length,
+            resultLength: html?.length,
+            hasContent
+        })
+    }
+    return hasContent
 })
 
 const isValidMessage = computed(() => {
@@ -1575,15 +1587,46 @@ const isValidMessage = computed(() => {
         return clean && clean.length > 0
     }
 
+    // Debug HTML messages
+    if (props.msg.type === 'html') {
+        console.log('[ChatMessageItem] isValidMessage check for HTML:', {
+            msgId: props.msg.id,
+            role: props.msg.role,
+            shouldRenderCard: shouldRenderCard.value,
+            hasHtmlContent: hasHtmlContent.value,
+            content: props.msg.content?.substring(0, 50),
+            html: props.msg.html?.substring(0, 50)
+        })
+    }
+
     // 2. Card & Media Checks - 先检查卡片/媒体消息，这些消息应该显示
     if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value) {
-        // 如果虽然被判定为 HTML 卡片，但其实没有提取出任何有效内容，直接隐藏防止空气泡
-        if (shouldRenderCard.value && !hasHtmlContent.value) return false;
+        // 如果消息标记为线下模式，在线上模式不显示
+        if (props.msg.mode === 'offline') {
+            console.log('[ChatMessageItem] Card message hidden (offline mode):', props.msg.id)
+            return false
+        }
+        // 如果虽然被判定为 HTML 卡片或 card 类型，但其实没有提取出任何有效内容，直接隐藏防止空气泡
+        if ((shouldRenderCard.value || props.msg.type === 'card') && !hasHtmlContent.value) {
+            console.log('[ChatMessageItem] HTML/Card message hidden due to no content:', props.msg.id)
+            return false;
+        }
         return true;
     }
     if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg) || props.msg.diceResults) return true
 
-    // 3. Text Content Filtering - 只有非卡片/媒体消息才检查内容是否为空
+    // 3. HTML 消息特殊处理 - 如果是 HTML 类型，应该显示（但要过滤线下模式）
+    if (props.msg.type === 'html') {
+        // 如果消息标记为线下模式，在线上模式不显示
+        if (props.msg.mode === 'offline') {
+            console.log('[ChatMessageItem] HTML message hidden (offline mode):', props.msg.id)
+            return false
+        }
+        console.log('[ChatMessageItem] HTML message detected, showing:', props.msg.id, 'html:', !!props.msg.html)
+        return true
+    }
+
+    // 4. Text Content Filtering - 只有非卡片/媒体消息才检查内容是否为空
     const content = ensureString(props.msg.content).trim()
     const clean = getCleanContent(content)
 
@@ -1650,7 +1693,7 @@ const isHtmlContentCard = computed(() => isHtmlCard.value)
 const shouldRenderCard = computed(() => {
     // Render the card if flagged OR if we have valid HTML content OR if it's a card type
     if (props.msg.forceCard) return hasHtmlContent.value;
-    if (props.msg.type === 'card') return true;  // Always render [CARD] messages
+    if (props.msg.type === 'card') return hasHtmlContent.value;  // 只有有有效内容时才渲染
     return (props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value
 })
 
@@ -2124,13 +2167,28 @@ function getPureHtml(content) {
     if (!content) return ''
     const str = ensureString(content)
     let trimmed = str.trim()
+    
+    // 安全移除外层的 [CARD] 标签（可能包含由于双重包裹出现的转义斜杠），以便后续能准确识别 JSON 前缀 {
+    trimmed = trimmed.replace(/\[\s*\/?CARD\s*\]/gi, '').trim()
+    
+    // 快速检查：如果内容包含常见的 HTML 标签且不包含 JSON 结构，直接返回（已经是纯 HTML）
+    const hasHtmlTag = /<[a-zA-Z][^>]*>/.test(trimmed);
+    // 检查是否看起来像 JSON：结构中包含 type 键
+    const looksLikeJson = /"type"/i.test(trimmed) || /\\"type\\"/i.test(trimmed);
+    
+    if (hasHtmlTag && !looksLikeJson) {
+        console.log('[getPureHtml] Content appears to be pure HTML, returning directly');
+        return cleanHtmlResult(trimmed);
+    }
 
     const unescapeContent = (text) => {
         if (!text || typeof text !== 'string') return text;
         
         // Pass 0: Robust Detection of Fragmented JSON
-        // If the content looks like series of {"type":"html"...} or similar, use recursive extraction
-        if ((text.includes('{"type"') || text.includes('{\"type\"')) && text.includes('"html"')) {
+        // Check if string contains JSON-like structures that need deeper parsing (allowing for literal \\n spaces)
+        const hasJsonStructure = /\{\s*(?:\\[nrt]\s*)*\\?["']?(?:type|html|card)\\?["']?\s*(?:\\[nrt]\s*)*:/i.test(text);
+        
+        if (hasJsonStructure) {
             console.log('[getPureHtml] Detected fragmented/nested JSON in HTML content, executing extraction...');
             try {
                 // Try to find all JSON-like objects { ... } in the text
@@ -2189,9 +2247,9 @@ function getPureHtml(content) {
         return decoded.replace(/`/g, '').trim()
     })()
 
-    const firstHtmlIndex = deepDecoded.search(/<(div|section|article|table|ul|ol|p|h[1-6]|svg)\b/i)
+    const firstHtmlIndex = deepDecoded.search(/<(div|section|article|table|ul|ol|p|h[1-6]|svg|details|summary|style)\b/i)
     if (firstHtmlIndex !== -1) {
-        const closingTags = ['</div>', '</section>', '</article>', '</table>', '</ul>', '</ol>', '</p>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</svg>']
+        const closingTags = ['</div>', '</section>', '</article>', '</table>', '</ul>', '</ol>', '</p>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</svg>', '</details>', '</summary>', '</style>']
         let lastHtmlIndex = -1
 
         closingTags.forEach((tag) => {
@@ -2200,13 +2258,17 @@ function getPureHtml(content) {
         })
 
         if (lastHtmlIndex > firstHtmlIndex) {
-            const directHtml = deepDecoded
+            let directHtml = deepDecoded
                 .slice(firstHtmlIndex, lastHtmlIndex)
                 .replace(/"\s*\}\s*(?=<)/g, '')
                 .replace(/\{\s*"type"\s*:\s*"html"\s*,\s*"html"\s*:\s*"/gi, '')
                 .replace(/\\"\}/g, '')
                 .trim()
-
+            
+            // 移除可能残留的 JSON 结束符
+            directHtml = directHtml.replace(/"\s*\}$/, '')
+            directHtml = directHtml.replace(/\\"\}$/, '')
+            
             if (directHtml) return cleanHtmlResult(directHtml)
         }
     }
@@ -2242,7 +2304,8 @@ function getPureHtml(content) {
 
     // Pass 2: 尝试标准 JSON 解析 (支持多 JSON 数组)
     try {
-        let jsonStr = trimmed;
+        // 去除前端可能带来的转义空白，比如 \\n, \\r, \\t 等等再做首字符判断
+        let jsonStr = trimmed.replace(/^(?:\\[nrt]|\s)+/, '').replace(/(?:\\[nrt]|\s)+$/, '');
         // 如果是连续的多个对象 } {，补齐为数组
         if (jsonStr.match(/\}\s*\{/)) {
             jsonStr = '[' + jsonStr.replace(/\}\s*\{/g, '},{') + ']';
@@ -2318,6 +2381,7 @@ function getPureHtml(content) {
         let currentIndex = 0;
         while (true) {
             let keyIdx = trimmed.indexOf('"html"', currentIndex);
+            if (keyIdx === -1) keyIdx = trimmed.indexOf('\\"html\\"', currentIndex);
             if (keyIdx === -1) keyIdx = trimmed.indexOf('"content"', currentIndex);
             if (keyIdx === -1) break;
 
@@ -2327,9 +2391,27 @@ function getPureHtml(content) {
             let quoteIdx = trimmed.indexOf('"', colonIdx);
             if (quoteIdx === -1) break;
 
+            // Count backslashes before the opening quote to determine escaping depth
+            let startBackslashCount = 0;
+            let k = quoteIdx - 1;
+            while (k >= 0 && trimmed[k] === '\\') {
+                startBackslashCount++;
+                k--;
+            }
+
             let endQuoteIdx = quoteIdx + 1;
             while (endQuoteIdx < trimmed.length) {
-                if (trimmed[endQuoteIdx] === '"' && trimmed[endQuoteIdx - 1] !== '\\') break;
+                if (trimmed[endQuoteIdx] === '"') {
+                    let currentBackslashCount = 0;
+                    let m = endQuoteIdx - 1;
+                    while (m >= 0 && trimmed[m] === '\\') {
+                        currentBackslashCount++;
+                        m--;
+                    }
+                    if (currentBackslashCount === startBackslashCount) {
+                        break;
+                    }
+                }
                 endQuoteIdx++;
             }
 
@@ -2344,7 +2426,7 @@ function getPureHtml(content) {
 
     // Pass 4: 终极 Fallback - 提取纯 HTML
     const decoded = trimmed.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-    const htmlTags = ['<div', '<style', '<table', '<ul', '<ol', '<p', '<h1', '<h2', '<h3', '<section', '<article', '<svg'];
+    const htmlTags = ['<div', '<style', '<table', '<ul', '<ol', '<p', '<h1', '<h2>', '<h3', '<section', '<article', '<svg', '<details', '<summary'];
     let startIdx = -1;
 
     for (const tag of htmlTags) {
@@ -2364,22 +2446,81 @@ function getPureHtml(content) {
     return '';
 }
 
-// 最终清理：确保返回的 HTML 不包含 JSON 残留
 function cleanHtmlResult(html) {
     if (!html) return '';
     let result = html.trim();
     
+    // 移除可能直接泄漏到 HTML 内部的 [CARD] 标签
+    result = result.replace(/\[\s*\/?CARD\s*\]/gi, '');
+    
+    // 彻底移除由于多段输出或不规范输出导致的中间及开头 JSON 碎片包裹块
+    // 例如："} \n {"type":"html","html":" 或者带转义的 {\"type\":\"html\"
+    result = result.replace(/\\?["']?\s*\\?\}[\s\n\r,]*\{\s*\\?["']?type\\?["']?\s*:\s*\\?["']?(?:html|card)\\?["']?\s*(?:,\s*\\?["']?(?:html|content)\\?["']?\s*:\s*\\?["']?)?/gi, '\n');
+    
+    // 移除所有孤立开头的 JSON 结构残留 (无论中间或开头)，支持双重转义
+    result = result.replace(/\{\s*\\?["']?type\\?["']?\s*:\s*\\?["']?(?:html|card)\\?["']?\s*(?:,\s*\\?["']?(?:html|content)\\?["']?\s*:\s*\\?["']?)?/gi, '');
+    
     // 移除开头的 { 和 }（JSON 残留）
     while (result.startsWith('{') || result.startsWith('}')) {
-        result = result.substring(1);
+        result = result.substring(1).trim();
     }
+    
+    // 移除结尾的 JSON 结构残留 - 更全面的匹配
+    // 匹配 "} 或 "} 或 "} 后面跟着任何内容（包括空格）
+    result = result.replace(/"\s*\}\s*$/g, '');
+    result = result.replace(/'\s*\}\s*$/g, '');
+    result = result.replace(/\\"\s*\}\s*$/g, '');
+    result = result.replace(/\\'\s*\}\s*$/g, '');
+    
+    // 移除结尾的 } 和 {（JSON 残留）
     while (result.endsWith('}') || result.endsWith('{')) {
-        result = result.substring(0, result.length - 1);
+        result = result.substring(0, result.length - 1).trim();
     }
     
     // 移除 "html": 或 "content": 前缀
     result = result.replace(/^["']?html["']?\s*:\s*["']?/i, '');
     result = result.replace(/^["']?content["']?\s*:\s*["']?/i, '');
+    
+    // 移除开头和结尾的引号
+    result = result.replace(/^["']/, '');
+    result = result.replace(/["']$/, '');
+    
+    // 移除转义的引号
+    result = result.replace(/\\"/g, '"');
+    result = result.replace(/\\'/g, "'");
+    
+    // 再次清理可能残留的 JSON 结束符（处理多个片段合并后的情况）
+    result = result.replace(/"\s*\}\s*\{/g, '');
+    result = result.replace(/'\s*\}\s*\{/g, '');
+    
+    // 清理行首行尾的 JSON 残留符号（如 "} 或 "]）
+    result = result.replace(/^\s*["']\s*\}\s*/gm, '');
+    result = result.replace(/^\s*["']\s*\]\s*/gm, '');
+    result = result.replace(/\s*["']\s*\}\s*$/gm, '');
+    result = result.replace(/\s*["']\s*\]\s*$/gm, '');
+    
+    // 清理孤立的 "} 或 "] 在行内
+    result = result.replace(/["']\s*\}\s*(?=<|$)/g, '');
+    result = result.replace(/["']\s*\]\s*(?=<|$)/g, '');
+    
+    // 清理 HTML 标签之间的 JSON 残留
+    result = result.replace(/>\s*["']\s*\}\s*</g, '><');
+    result = result.replace(/>\s*["']\s*\]\s*</g, '><');
+    
+    // 清理段落开头/结尾的 JSON 残留
+    result = result.replace(/<p[^>]*>\s*["']\s*\}\s*/gi, '<p>');
+    result = result.replace(/<p[^>]*>\s*["']\s*\]\s*/gi, '<p>');
+    result = result.replace(/\s*["']\s*\}\s*<\/p>/gi, '</p>');
+    result = result.replace(/\s*["']\s*\]\s*<\/p>/gi, '</p>');
+    
+    // 清理 div 开头/结尾的 JSON 残留
+    result = result.replace(/<div[^>]*>\s*["']\s*\}\s*/gi, '<div>');
+    result = result.replace(/<div[^>]*>\s*["']\s*\]\s*/gi, '<div>');
+    result = result.replace(/\s*["']\s*\}\s*<\/div>/gi, '</div>');
+    result = result.replace(/\s*["']\s*\]\s*<\/div>/gi, '</div>');
+    
+    // 最终清理：移除所有孤立的 "} 或 "]（包括不在行首行尾的）
+    result = result.replace(/\s*["']\s*[\}\]]\s*/g, ' ');
     
     return result.trim();
 }
@@ -3125,6 +3266,21 @@ function getHtmlContent(content) {
             processed = processed.replace(/\[CARD\]/gi, '').trim();
             // 移除[/CARD]标签（如果存在）
             processed = processed.replace(/\[\/CARD\]/gi, '').trim();
+
+            // 尝试解析JSON内容
+            try {
+                // 如果内容是JSON格式，提取html或content字段
+                if (processed.startsWith('{')) {
+                    const jsonData = JSON.parse(processed);
+                    if (jsonData.html && typeof jsonData.html === 'string') {
+                        return jsonData.html;
+                    } else if (jsonData.content && typeof jsonData.content === 'string') {
+                        return jsonData.content;
+                    }
+                }
+            } catch (e) {
+                // JSON解析失败，直接返回HTML内容
+            }
 
             // 直接返回HTML内容（因为[CARD]格式中直接包含HTML）
             return processed;
