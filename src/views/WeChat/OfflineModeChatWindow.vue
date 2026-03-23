@@ -730,7 +730,22 @@ const toggleMusic = () => {
   musicStore.playerVisible = musicStore.isListeningTogether
 }
 const toggleSearch = () => { /* Logic */ }
-const regenerateAIResponse = () => { chatStore.sendMessageToAI(chatStore.currentChatId, { mode: 'offline' }) }
+const regenerateAIResponse = () => { 
+  const chat = chatStore.chats[chatStore.currentChatId]
+  if (!chat || !chat.msgs || !chat.msgs.length) return
+  const msgs = chat.msgs
+  const lastMsg = msgs[msgs.length - 1]
+  if (lastMsg.role === 'ai') {
+      let count = 0
+      for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'ai') count++
+          else break
+      }
+      chat.msgs.splice(msgs.length - count, count)
+      chatStore.saveChats()
+  }
+  chatStore.sendMessageToAI(chatStore.currentChatId, { mode: 'offline' }) 
+}
 
 const handleActionPanelAction = (action) => {
   showActionPanel.value = false

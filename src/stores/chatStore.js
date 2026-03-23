@@ -2300,37 +2300,61 @@ export const useChatStore = defineStore('chat', () => {
                     } else if (fullContent.includes('{') && (fullContent.includes('"status"') || fullContent.includes('"心声"'))) {
                         // Case B: AI Service didn't catch it, and it's not in result, but looks like JSON is there.
                         try {
-                            // Non-greedy scan for JSON blocks with specific keywords
-                            const blocks = [...fullContent.matchAll(/\{[\s\S]*?\}/g)]
-                            for (let i = blocks.length - 1; i >= 0; i--) {
-                                const candidate = blocks[i][0]
-                                if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
-                                    console.log('[ChatStore] Found raw JSON block in fallback, treating as Inner Voice');
-                                    innerVoiceBlock = `\n[INNER_VOICE]\n${candidate}\n[/INNER_VOICE]`;
-                                    pureDialogue = pureDialogue.replace(candidate, '').trim();
+                            const braceStarts = [];
+                            for (let i = 0; i < fullContent.length; i++) {
+                                if (fullContent[i] === '{') braceStarts.push(i);
+                            }
 
-                                    // Parse it to update status immediately
-                                    try {
-                                        const ivObj = JSON.parse(candidate);
-                                        if (ivObj.status || ivObj.状态 || ivObj["心声"]) {
-                                            const newStatus = ivObj.status || ivObj.状态 || (typeof ivObj["心声"] === 'string' ? ivObj["心声"] : null);
-                                            if (newStatus && chat) {
-                                                chat.statusText = String(newStatus).substring(0, 30);
-                                                chat.isOnline = true;
-                                            }
-                                            charInfo.mindscape = ivObj;
-
-                                            // Debug log
-                                            useLoggerStore().debug('Successfully updated Mindscape from fallback', ivObj);
+                            for (let i = braceStarts.length - 1; i >= 0; i--) {
+                                const startIdx = braceStarts[i];
+                                // Use balanced matcher
+                                let balance = 0, inStr = false, isEsc = false, endPos = -1;
+                                for (let j = startIdx; j < fullContent.length; j++) {
+                                    const char = fullContent[j];
+                                    if (isEsc) { isEsc = false; continue; }
+                                    if (char === '\\') { isEsc = true; continue; }
+                                    if (char === '"') { inStr = !inStr; continue; }
+                                    if (!inStr) {
+                                        if (char === '{') balance++;
+                                        else if (char === '}') {
+                                            balance--;
+                                            if (balance === 0) { endPos = j; break; }
                                         }
-                                    } catch (parseErr) {
-                                        console.warn('[ChatStore] Fallback JSON parse failed, but using block anyway', candidate.substring(0, 50));
                                     }
-                                    break;
+                                }
+
+                                if (endPos !== -1) {
+                                    const candidate = fullContent.substring(startIdx, endPos + 1);
+                                    if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
+                                        console.log('[ChatStore] Found raw JSON block in balanced fallback, treating as Inner Voice');
+                                        innerVoiceBlock = `\n[INNER_VOICE]\n${candidate}\n[/INNER_VOICE]`;
+                                        pureDialogue = pureDialogue.replace(candidate, '').trim();
+
+                                        // Special Cleanup: If the JSON was the sole content of an [OFFLINE] or [ONLINE] block, remove the empty tags
+                                        // e.g. [OFFLINE]\n{...}\n[/OFFLINE] -> avoid leaving [OFFLINE][/OFFLINE]
+                                        pureDialogue = pureDialogue.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
+
+                                        // Parse it to update status immediately
+                                        try {
+                                            const ivObj = JSON.parse(candidate);
+                                            if (ivObj.status || ivObj.状态 || ivObj["心声"]) {
+                                                const newStatus = ivObj.status || ivObj.状态 || (typeof ivObj["心声"] === 'string' ? ivObj["心声"] : null);
+                                                if (newStatus && chat) {
+                                                    chat.statusText = String(newStatus).substring(0, 30);
+                                                    chat.isOnline = true;
+                                                }
+                                                charInfo.mindscape = ivObj;
+                                                useLoggerStore().debug('Successfully updated Mindscape from balanced fallback', ivObj);
+                                            }
+                                        } catch (parseErr) {
+                                            console.warn('[ChatStore] Fallback balanced JSON parse failed', candidate.substring(0, 50));
+                                        }
+                                        break;
+                                    }
                                 }
                             }
                         } catch (e) {
-                            console.warn('[ChatStore] Failed to extract raw JSON fallback', e);
+                            console.warn('[ChatStore] Failed to extract balanced JSON fallback', e);
                         }
                     }
                 }
@@ -2865,10 +2889,7 @@ export const useChatStore = defineStore('chat', () => {
                 // We split by punctuation but keep segments meaningful.
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
-                // FIX: Explicitly capture [INNER_VOICE]...[/INNER_VOICE] as a single block. 
-                // We also include ( ) and （ ） as potential segments to catch leaked mind voice, 
-                // but we will filter them in the delivery loop.
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*OFFLINE\s*\][\s\S]*?(?:\[\/\s*OFFLINE\s*\]|(?=\[)|$)|\[\s*ONLINE\s*\][\s\S]*?(?:\[\/\s*ONLINE\s*\]|(?=\[)|$)|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*OFFLINE\s*\][\s\S]*?(?:\[\/\s*OFFLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*ONLINE\s*\][\s\S]*?(?:\[\/\s*ONLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);

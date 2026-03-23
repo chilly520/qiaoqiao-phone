@@ -38,10 +38,50 @@ export function ensureMessageString(value) {
 }
 
 export function stripInnerVoiceBlocks(content) {
-  return ensureMessageString(content)
-    .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*VOICE\s*\]/gi, '')
+  let cleaned = ensureMessageString(content)
+    .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]/gi, '')
     .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '')
     .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*$/i, '')
+    
+  // Balanced brace matcher for raw JSON
+  const braceStarts = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === '{') braceStarts.push(i);
+  }
+  
+  const blocksToRemove = [];
+  for (let i = braceStarts.length - 1; i >= 0; i--) {
+    const startIdx = braceStarts[i];
+    let balance = 0, inStr = false, isEsc = false, endPos = -1;
+    for (let j = startIdx; j < cleaned.length; j++) {
+      const char = cleaned[j];
+      if (isEsc) { isEsc = false; continue; }
+      if (char === '\\') { isEsc = true; continue; }
+      if (char === '"') { inStr = !inStr; continue; }
+      if (!inStr) {
+        if (char === '{') balance++;
+        else if (char === '}') {
+          balance--;
+          if (balance === 0) { endPos = j; break; }
+        }
+      }
+    }
+    if (endPos !== -1) {
+      const candidate = cleaned.substring(startIdx, endPos + 1);
+      if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
+          blocksToRemove.push(candidate);
+      }
+    }
+  }
+
+  blocksToRemove.forEach(b => {
+    cleaned = cleaned.replace(b, '').trim();
+  });
+
+  // Cleanup potentially empty mode tags
+  cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
+
+  return cleaned
 }
 
 export function stripCardBlocks(content) {
@@ -326,7 +366,40 @@ export function extractLatestOfflineScene(messages = []) {
 
 export function extractInnerVoiceData(content, msg) {
   const raw = ensureMessageString(content)
-  const block = extractTaggedBlock(raw, 'INNER_VOICE')
+  let block = extractTaggedBlock(raw, 'INNER_VOICE') || extractTaggedBlock(raw, 'INNERVOICE')
+  
+  if (!block) {
+    // Balanced brace matcher for raw JSON
+    const braceStarts = [];
+    for (let i = 0; i < raw.length; i++) {
+        if (raw[i] === '{') braceStarts.push(i);
+    }
+    for (let i = braceStarts.length - 1; i >= 0; i--) {
+        const startIdx = braceStarts[i];
+        let balance = 0, inStr = false, isEsc = false, endPos = -1;
+        for (let j = startIdx; j < raw.length; j++) {
+            const char = raw[j];
+            if (isEsc) { isEsc = false; continue; }
+            if (char === '\\') { isEsc = true; continue; }
+            if (char === '"') { inStr = !inStr; continue; }
+            if (!inStr) {
+                if (char === '{') balance++;
+                else if (char === '}') {
+                    balance--;
+                    if (balance === 0) { endPos = j; break; }
+                }
+            }
+        }
+        if (endPos !== -1) {
+            const candidate = raw.substring(startIdx, endPos + 1);
+            if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
+                block = candidate;
+                break;
+            }
+        }
+    }
+  }
+
   if (!block) return null
   
   try {
@@ -351,5 +424,9 @@ export function extractInnerVoiceData(content, msg) {
 }
 
 export function hasInnerVoice(content) {
-  return extractTaggedBlock(content, 'INNER_VOICE') !== null
+  const raw = ensureMessageString(content)
+  if (extractTaggedBlock(raw, 'INNER_VOICE') !== null || extractTaggedBlock(raw, 'INNERVOICE') !== null) {
+    return true
+  }
+  return /\{[\s\S]*?"(?:心声|着装|环境|行为|status|stats)"\s*[:：]/.test(raw)
 }
