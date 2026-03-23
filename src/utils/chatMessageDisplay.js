@@ -1,6 +1,6 @@
 const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
 const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)[\)\uFF09]\s*$/
-const OFFLINE_NARRATION_RE = /^(?:\|\||\u2016)([\s\S]*?)(?:\|\||\u2016)?$|^\|\|([\s\S]+?)\|\||^\u2016([\s\S]+?)\u2016/
+const OFFLINE_NARRATION_RE = /^\|\|([\s\S]+?)\|\||^\u2016([\s\S]+?)\u2016/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d/
 const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「]{1,10})\s*[:：\uFF1A]\s*([\s\S]+?)$/
@@ -200,7 +200,7 @@ export function parseOfflineLine(line) {
   }
 
   // 6. 普通对话
-  const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').replace(/^[‖\u2016|]+|[‖\u2016|]+$/g, '').trim()
+  const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').trim()
   if (!cleanDialogue) return null
 
   return { type: 'dialogue', content: cleanDialogue }
