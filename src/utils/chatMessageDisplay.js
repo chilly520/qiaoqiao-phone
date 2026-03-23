@@ -219,49 +219,56 @@ export function parseOfflineSegments(msg) {
   if (!text) return []
 
   const segments = []
-  const lines = text.split(/\n+/)
-  let mode = 'dialogue'
+  let lastIndex = 0
 
-  for (let line of lines) {
-    let trimmed = line.trim()
-    if (!trimmed) continue
+  // 1. 全局提取高优先级包裹块 (旁白、场景、动作)
+  // 此正则具备跨行能力 (\s\S)
+  const GLOBAL_BLOCK_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
+  const matches = [...text.matchAll(GLOBAL_BLOCK_RE)]
 
-    // 检查是否具备旁白开启/关闭标记
-    const hasStartMarker = trimmed.startsWith('‖') || trimmed.startsWith('||')
-    const hasEndMarker = trimmed.endsWith('‖') || trimmed.endsWith('||')
+  for (const match of matches) {
+    const start = match.index
+    const token = match[0]
 
-    // 如果处于旁白状态，或者此行标记了旁白开启
-    if (mode === 'narration' || hasStartMarker || hasEndMarker) {
-      // 如果本行开启了旁白，更新模式
-      if (hasStartMarker) mode = 'narration'
+    // 处理区块之前的间隙
+    const beforeText = text.slice(lastIndex, start).trim()
+    if (beforeText) {
+      beforeText.split(/\n+/).forEach(line => {
+        const l = line.trim()
+        if (l) {
+          const parsed = parseOfflineLine(l)
+          if (parsed) segments.push(parsed)
+        }
+      })
+    }
 
-      // 提取内容
-      const cleanLine = trimmed.replace(/[‖|]+/g, '').trim()
-      if (cleanLine) {
-        segments.push({ type: 'narration', content: cleanLine })
-      }
-
-      // 如果本行结束了旁白，更新模式供下一轮使用
-      if (hasEndMarker) mode = 'dialogue'
-    } else {
-      // 检查是否为场景或动作（这些比普通对白优先级高）
-      const sceneMatch = trimmed.match(OFFLINE_SCENE_RE)
-      if (sceneMatch) {
-         segments.push({ type: 'scene', content: sceneMatch[1].trim() })
-         continue
-      }
-      const actionMatch = trimmed.match(OFFLINE_ACTION_RE)
-      if (actionMatch) {
-         segments.push({ type: 'action', content: actionMatch[1].trim() })
-         continue
-      }
-      
-      // 普通对话逻辑（包含说话人识别）
-      const parsed = parseOfflineLine(trimmed)
-      if (parsed) {
-        segments.push(parsed)
+    // 处理区块本身
+    const parsedToken = parseOfflineLine(token.trim())
+    if (parsedToken) {
+      // 跨行旁白拆分 Logic
+      if (parsedToken.type === 'narration' && parsedToken.content.includes('\n')) {
+        parsedToken.content.split('\n').forEach(l => {
+          const content = l.trim()
+          if (content) segments.push({ type: 'narration', content })
+        })
+      } else if (parsedToken.content) {
+        segments.push(parsedToken)
       }
     }
+
+    lastIndex = start + token.length
+  }
+
+  // 处理剩余文本
+  const remaining = text.slice(lastIndex).trim()
+  if (remaining) {
+    remaining.split(/\n+/).forEach(line => {
+      const l = line.trim()
+      if (l) {
+        const parsed = parseOfflineLine(l)
+        if (parsed) segments.push(parsed)
+      }
+    })
   }
 
   return segments
