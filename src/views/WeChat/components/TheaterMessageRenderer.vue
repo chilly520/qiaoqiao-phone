@@ -7,9 +7,13 @@
         <span>{{ segment.content }}</span>
       </div>
 
-      <!-- 旁白/叙述 - 图3风格：浅灰背景卡片 -->
+      <!-- 旁白/叙述 - 图1风格：浅绿/青色 callout -->
       <div v-else-if="segment.type === 'narration'" class="narration-card">
-        <div class="narration-text">{{ segment.content }}</div>
+        <div class="narration-accent"></div>
+        <div class="narration-main">
+          <i class="fa-solid fa-bullhorn narration-icon"></i>
+          <div class="narration-text">{{ segment.content }}</div>
+        </div>
       </div>
 
       <!-- 动作描写 - 图3风格：淡色背景，斜体 -->
@@ -67,6 +71,12 @@ const isNightMode = computed(() => settingsStore.offlineMode.themeMode === 'nigh
 
 const segments = computed(() => parseOfflineSegments(props.msg))
 
+const characterName = computed(() => (
+  props.chatData?.name 
+  || props.chatData?.userName 
+  || '对方'
+))
+
 const userName = computed(() => (
   props.chatData?.groupSettings?.myNickname
   || props.chatData?.userName
@@ -86,21 +96,25 @@ const charAvatar = computed(() => (
 ))
 
 const renderedSegments = computed(() => {
-  let shouldShowAvatar = !props.suppressInitialAvatar
+  let lastSpeaker = null
 
   return segments.value.map((segment) => {
     if (segment.type !== 'dialogue') {
-      shouldShowAvatar = true
+      lastSpeaker = null // Reset on non-dialogue
       return segment
     }
 
-    const isNpcTagged = !!segment.speakerTagged
+    const currentSpeaker = segment.speaker || (props.msg?.role === 'user' ? userName.value : characterName.value)
+    
+    // 如果是 NPC 标签式发言，或者与上一个 segment 说话人不同，显示头像
+    const showAvatar = currentSpeaker !== lastSpeaker
+    
     const next = {
       ...segment,
-      showAvatar: !isNpcTagged && shouldShowAvatar
+      showAvatar: showAvatar
     }
 
-    shouldShowAvatar = isNpcTagged
+    lastSpeaker = currentSpeaker
     return next
   })
 })
@@ -210,33 +224,61 @@ function formatDialogueContent(content) {
   color: #789;
 }
 
-/* 旁白卡片 - 图3风格：浅灰背景，圆角 */
+/* 旁白卡片 - 图1风格：浅青背景，左侧重色边框，带小喇叭图标 */
 .narration-card {
   width: 100%;
-  padding: 16px 20px;
-  border-radius: 16px;
-  background: rgba(245, 247, 250, 0.85);
-  border: 1px solid rgba(230, 235, 240, 0.6);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+  position: relative;
+  border-radius: 12px;
+  background: rgba(224, 242, 241, 0.75);
+  border: 1px solid rgba(178, 223, 219, 0.5);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  margin: 4px 0;
 }
 
 .night-mode .narration-card {
-  background: rgba(35, 40, 50, 0.7);
-  border-color: rgba(60, 70, 85, 0.4);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  background: rgba(20, 45, 45, 0.6);
+  border-color: rgba(40, 90, 90, 0.4);
+}
+
+.narration-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  background: linear-gradient(to bottom, #4db6ac, #26a69a);
+  border-radius: 12px 0 0 12px;
+}
+
+.narration-main {
+  padding: 14px 18px 14px 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.narration-icon {
+  margin-top: 3px;
+  font-size: 14px;
+  color: #ff5252; /* 红色喇叭小图标 */
+  opacity: 0.9;
+  filter: drop-shadow(0 0 3px rgba(255, 82, 82, 0.3));
 }
 
 .narration-text {
+  flex: 1;
   font-size: 14px;
   line-height: 1.85;
   text-align: left;
-  color: #556070;
+  color: #2c3e50;
   white-space: pre-wrap;
   word-break: break-word;
+  font-weight: 500;
 }
 
 .night-mode .narration-text {
-  color: #b0b8c5;
+  color: #b2dfdb;
 }
 
 /* 动作描写 - 淡色斜体 */
