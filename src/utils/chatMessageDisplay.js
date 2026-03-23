@@ -219,74 +219,52 @@ export function parseOfflineSegments(msg) {
   if (!text) return []
 
   const segments = []
-  
-  // 第一阶段：全局提取具备成对标记的“大区块”
-  // 此时我们不按行切割，而是先找出所有的成对包裹
-  const BLOCK_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
-  let lastIndex = 0
-  const matches = [...text.matchAll(BLOCK_RE)]
+  const lines = text.split(/\n+/)
+  let mode = 'dialogue'
 
-  for (const match of matches) {
-    const start = match.index
-    const token = match[0]
+  for (let line of lines) {
+    let trimmed = line.trim()
+    if (!trimmed) continue
 
-    // 处理区块之前的文本
-    const beforeText = text.slice(lastIndex, start).trim()
-    if (beforeText) {
-      processNormalText(beforeText, segments)
+    // 检查是否具备旁白开启/关闭标记
+    const hasStartMarker = trimmed.startsWith('‖') || trimmed.startsWith('||')
+    const hasEndMarker = trimmed.endsWith('‖') || trimmed.endsWith('||')
+
+    // 如果处于旁白状态，或者此行标记了旁白开启
+    if (mode === 'narration' || hasStartMarker || hasEndMarker) {
+      // 如果本行开启了旁白，更新模式
+      if (hasStartMarker) mode = 'narration'
+
+      // 提取内容
+      const cleanLine = trimmed.replace(/[‖|]+/g, '').trim()
+      if (cleanLine) {
+        segments.push({ type: 'narration', content: cleanLine })
+      }
+
+      // 如果本行结束了旁白，更新模式供下一轮使用
+      if (hasEndMarker) mode = 'dialogue'
+    } else {
+      // 检查是否为场景或动作（这些比普通对白优先级高）
+      const sceneMatch = trimmed.match(OFFLINE_SCENE_RE)
+      if (sceneMatch) {
+         segments.push({ type: 'scene', content: sceneMatch[1].trim() })
+         continue
+      }
+      const actionMatch = trimmed.match(OFFLINE_ACTION_RE)
+      if (actionMatch) {
+         segments.push({ type: 'action', content: actionMatch[1].trim() })
+         continue
+      }
+      
+      // 普通对话逻辑（包含说话人识别）
+      const parsed = parseOfflineLine(trimmed)
+      if (parsed) {
+        segments.push(parsed)
+      }
     }
-
-    // 处理区块本身
-    processBlockToken(token, segments)
-    lastIndex = start + token.length
-  }
-
-  // 处理剩余文本
-  const remaining = text.slice(lastIndex).trim()
-  if (remaining) {
-    processNormalText(remaining, segments)
   }
 
   return segments
-}
-
-function processBlockToken(token, segments) {
-  const parsed = parseOfflineLine(token)
-  if (!parsed) return
-
-  // 特殊：如果大区块内包含换行，拆分为多条卡片
-  if ((parsed.type === 'narration' || parsed.type === 'action') && parsed.content.includes('\n')) {
-    parsed.content.split('\n').filter(l => l.trim()).forEach(l => {
-      segments.push({ type: parsed.type, content: l.trim() })
-    })
-  } else if (parsed.content) {
-    segments.push(parsed)
-  }
-}
-
-function processNormalText(text, segments) {
-  // 普通文本处理，支持基于单边竖线的状态机 fallback
-  const lines = text.split('\n')
-  let inNarrative = false
-  for (let line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-
-    if (trimmed.startsWith('‖') || trimmed.startsWith('||')) {
-      inNarrative = true
-      const content = trimmed.replace(/[‖|]+/g, '').trim()
-      if (content) segments.push({ type: 'narration', content })
-    } else if (trimmed.endsWith('‖') || trimmed.endsWith('||')) {
-      const content = trimmed.replace(/[‖|]+/g, '').trim()
-      if (content) segments.push({ type: 'narration', content })
-      inNarrative = false
-    } else if (inNarrative) {
-      segments.push({ type: 'narration', content: trimmed })
-    } else {
-      const parsed = parseOfflineLine(trimmed)
-      if (parsed) segments.push(parsed)
-    }
-  }
 }
 
 export function hasOfflineTheaterContent(content) {
