@@ -133,7 +133,10 @@ export function parseOfflineLine(line) {
   }
 
   // 6. 普通对话
-  return { type: 'dialogue', content: value.replace(/^[""'']+|[""'']+$/g, '') }
+  const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').trim()
+  if (!cleanDialogue || /^[‖\u2016|【】()（）]+$/.test(cleanDialogue)) return null
+
+  return { type: 'dialogue', content: cleanDialogue }
 }
 
 export function parseOfflineSegments(msg) {
@@ -164,7 +167,9 @@ export function parseOfflineSegments(msg) {
 
     // 处理标记内容
     const parsedToken = parseOfflineLine(token)
-    if (parsedToken) segments.push(parsedToken)
+    if (parsedToken && parsedToken.content && parsedToken.content.trim()) {
+       segments.push(parsedToken)
+    }
 
     lastIndex = index + token.length
   }

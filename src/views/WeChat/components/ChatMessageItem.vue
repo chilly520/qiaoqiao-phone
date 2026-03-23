@@ -1270,7 +1270,9 @@ import {
     getOfflineTextContent,
     getOnlineRenderableContent,
     getOnlineTextContent,
-    parseOfflineSegments
+    parseOfflineSegments,
+    shouldShowInOnlineMode,
+    shouldShowInOfflineMode
 } from '../../../utils/chatMessageDisplay'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
@@ -1581,61 +1583,47 @@ const isValidMessage = computed(() => {
     // 0. Explicit hidden flag from store
     if (props.msg.hidden) return false
 
-    // 1. If it's a system message, it must have content
+    // 1. Determine visibility based on mode (Online vs Offline)
+    // If in offline stage (forceOffline), check if it should show in offline mode
+    if (props.forceOffline) {
+        if (!shouldShowInOfflineMode(props.msg)) return false
+    } else {
+        // If in online stage, check if it should show in online mode
+        if (!shouldShowInOnlineMode(props.msg)) return false
+    }
+
+    // 2. Role-specific checks
     if (props.msg.role === 'system') {
         const clean = getCleanContent(ensureString(props.msg.content))
         return clean && clean.length > 0
     }
 
-    // Debug HTML messages
-    if (props.msg.type === 'html') {
-        console.log('[ChatMessageItem] isValidMessage check for HTML:', {
-            msgId: props.msg.id,
-            role: props.msg.role,
-            shouldRenderCard: shouldRenderCard.value,
-            hasHtmlContent: hasHtmlContent.value,
-            content: props.msg.content?.substring(0, 50),
-            html: props.msg.html?.substring(0, 50)
-        })
-    }
+    // 3. Card & Media Checks
+    const isSpecialType = shouldRenderCard.value || isPayCard.value || isFamilyCard.value || 
+                         isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || 
+                         isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || 
+                         props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || 
+                         props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value
 
-    // 2. Card & Media Checks - 先检查卡片/媒体消息，这些消息应该显示
-    if (shouldRenderCard.value || isPayCard.value || isFamilyCard.value || isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value) {
-        // 如果消息标记为线下模式，在线上模式不显示
-        if (props.msg.mode === 'offline') {
-            console.log('[ChatMessageItem] Card message hidden (offline mode):', props.msg.id)
-            return false
-        }
-        // 如果虽然被判定为 HTML 卡片或 card 类型，但其实没有提取出任何有效内容，直接隐藏防止空气泡
+    if (isSpecialType) {
+        // Hide if no effective content for cards
         if ((shouldRenderCard.value || props.msg.type === 'card') && !hasHtmlContent.value) {
-            console.log('[ChatMessageItem] HTML/Card message hidden due to no content:', props.msg.id)
             return false;
         }
         return true;
     }
-    if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || props.msg.image || isImageMsg(props.msg) || props.msg.diceResults) return true
 
-    // 3. HTML 消息特殊处理 - 如果是 HTML 类型，应该显示（但要过滤线下模式）
-    if (props.msg.type === 'html') {
-        // 如果消息标记为线下模式，在线上模式不显示
-        if (props.msg.mode === 'offline') {
-            console.log('[ChatMessageItem] HTML message hidden (offline mode):', props.msg.id)
-            return false
-        }
-        console.log('[ChatMessageItem] HTML message detected, showing:', props.msg.id, 'html:', !!props.msg.html)
+    if (props.msg.type === 'voice' || props.msg.type === 'music' || props.msg.type === 'image' || 
+        props.msg.image || isImageMsg(props.msg) || props.msg.diceResults) {
         return true
     }
 
-    // 4. Text Content Filtering - 只有非卡片/媒体消息才检查内容是否为空
-    const content = ensureString(props.msg.content).trim()
-    const clean = getCleanContent(content)
-
-    // If the displayed content is empty, hide the message (except for HTML cards already handled above)
+    // 4. Text Content Filtering
+    const clean = getCleanContent(ensureString(props.msg.content))
     if (!clean || clean.length === 0) {
         return false
     }
 
-    // Default: Show
     return true
 })
 
