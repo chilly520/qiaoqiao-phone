@@ -1,9 +1,9 @@
-const OFFLINE_SCENE_RE = /\u3010([\s\S]+?)\u3011/
-const OFFLINE_ACTION_RE = /[\(\uFF08]([\s\S]+?)[\)\uFF09]/
-const OFFLINE_NARRATION_RE = /\|\|([\s\S]+?)\|\||\u2016([\s\S]+?)\u2016/
+const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
+const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)[\)\uFF09]\s*$/
+const OFFLINE_NARRATION_RE = /^(?:\|\||\u2016)([\s\S]*?)(?:\|\||\u2016)?$|^\|\|([\s\S]+?)\|\||^\u2016([\s\S]+?)\u2016/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d/
-const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:\uFF1A\n]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)$/
+const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「]{1,20})\s*[:：\uFF1A]\s*([\s\S]+?)$/
 
 const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
@@ -126,15 +126,23 @@ export function parseOfflineLine(line) {
   }
 
   // 5. 标准对话（带名字前缀）
+  // 排除看起来像时间的内容 (如 08:00)
   match = value.match(OFFLINE_SPEAKER_DIALOGUE_RE)
   if (match) {
+    const speaker = match[1].trim()
     const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
-    return { type: 'dialogue', speaker: match[1].trim(), content, speakerTagged: true }
+    
+    // 如果名字部分全是数字或者包含时间号，且很短，通常不是说话人
+    if (/^\d+$/.test(speaker) || (speaker.length < 5 && /[:：]/.test(speaker))) {
+      // 这里的 [:：] 其实在正则里排除了，但以防万一
+    } else {
+      return { type: 'dialogue', speaker, content, speakerTagged: true }
+    }
   }
 
   // 6. 普通对话
-  const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').trim()
-  if (!cleanDialogue || /^[‖\u2016|【】()（）]+$/.test(cleanDialogue)) return null
+  const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').replace(/^[‖\u2016|]+|[‖\u2016|]+$/g, '').trim()
+  if (!cleanDialogue) return null
 
   return { type: 'dialogue', content: cleanDialogue }
 }
