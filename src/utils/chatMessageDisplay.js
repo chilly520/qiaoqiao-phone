@@ -182,20 +182,27 @@ export function parseOfflineLine(line) {
 
   // 5. 标准对话（带名字前缀）
   // 排除看起来像时间的内容 (如 08:00)
-  match = value.match(OFFLINE_SPEAKER_DIALOGUE_RE)
-  if (match) {
-    const speaker = match[1].trim()
-    const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
-    
-    // 判定是否真的为说话人
-    const isClock = /\d$/.test(speaker) && /^\d+/.test(content)
-    const hasNarrativeParticles = /[的了是在]/.test(speaker)
-    const isNumeric = /^\d+$/.test(speaker)
+  // 排除以旁白符号开头的行，避免误判为说话人
+  if (value.startsWith('‖') || value.startsWith('\u2016')) {
+    // If it starts with a narration symbol, it's not a speaker dialogue.
+    // It should have been caught by OFFLINE_NARRATION_RE already, but this adds robustness.
+    // Fall through to general dialogue if not caught as narration.
+  } else {
+    match = value.match(OFFLINE_SPEAKER_DIALOGUE_RE)
+    if (match) {
+      const speaker = match[1].trim()
+      const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
+      
+      // 判定是否真的为说话人
+      const isClock = /\d$/.test(speaker) && /^\d+/.test(content)
+      const hasNarrativeParticles = /[的了是在]/.test(speaker)
+      const isNumeric = /^\d+$/.test(speaker)
 
-    if (isClock || hasNarrativeParticles || isNumeric) {
-      // 看起来像时间 (08:00) 或描述，不作为说话人处理
-    } else {
-      return { type: 'dialogue', speaker, content, speakerTagged: true }
+      if (isClock || hasNarrativeParticles || isNumeric) {
+        // 看起来像时间 (08:00) 或描述，不作为说话人处理
+      } else {
+        return { type: 'dialogue', speaker, content, speakerTagged: true }
+      }
     }
   }
 
@@ -211,30 +218,37 @@ export function parseOfflineSegments(msg) {
   const text = getOfflineTextContent(msg)
   if (!text) return []
 
+  // 第一步：识别并锁定所有具有明确包裹标记的“令牌”区块
+  // 这包括：‖旁白‖, 【场景】, (动作), 「带标签对话」
+  // 我们必须支持跨行区块（尤其是旁白）
   const segments = []
   let lastIndex = 0
-  TOKEN_GLOBAL_RE.lastIndex = 0
-
-  const matches = [...text.matchAll(TOKEN_GLOBAL_RE)]
+  
+  // 专门用于全局提取的正则，必须是全局的且具有跨行能力
+  const GLOBAL_SCANNER_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
+  
+  const matches = [...text.matchAll(GLOBAL_SCANNER_RE)]
   
   for (const match of matches) {
     const index = match.index
     const token = match[0]
 
-    // 处理标记之前的内容
-    const beforeText = text.slice(lastIndex, index).trim()
-    if (beforeText) {
-      beforeText.split(/\n+/).forEach(line => {
-        if (line.trim()) {
-          const parsed = parseOfflineLine(line.trim())
-          if (parsed) segments.push(parsed)
+    // 1. 处理令牌之前的内容 (通常是普通对话)
+    const beforePart = text.slice(lastIndex, index).trim()
+    if (beforePart) {
+      beforePart.split(/\n+/).forEach(line => {
+        const l = line.trim()
+        if (l) {
+          const parsed = parseOfflineLine(l)
+          // 这里的 parsed 通常如果是普通文本，会返回 dialogue
+          if (parsed && parsed.content) segments.push(parsed)
         }
       })
     }
 
-    // 处理标记内容
+    // 2. 处理令牌本身
     const parsedToken = parseOfflineLine(token)
-    if (parsedToken && parsedToken.content && parsedToken.content.trim()) {
+    if (parsedToken && parsedToken.content) {
       // 如果旁白内容包含换行，拆分为多个小喇叭卡片
       if (parsedToken.type === 'narration' && parsedToken.content.includes('\n')) {
         parsedToken.content.split('\n').forEach(line => {
