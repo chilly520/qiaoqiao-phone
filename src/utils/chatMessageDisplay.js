@@ -1,6 +1,6 @@
 const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
 const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)[\)\uFF09]\s*$/
-const OFFLINE_NARRATION_RE = /^\|\|([\s\S]+?)\|\||^\u2016([\s\S]+?)\u2016/
+const OFFLINE_NARRATION_RE = /^(?:\|\||\u2016)([\s\S]*?)(?:\|\||\u2016)?$/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d/
 const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「\s]{1,8})\s*[:：\uFF1A]\s*([\s\S]+?)$/
@@ -11,7 +11,7 @@ const ONLINE_BLOCK_RE = /\[\s*ONLINE\s*\]([\s\S]*?)\[\/\s*ONLINE\s*\]/i
 const OFFLINE_BLOCK_RE = /\[\s*OFFLINE\s*\]([\s\S]*?)\[\/\s*OFFLINE\s*\]/i
 
 // TOKEN_GLOBAL_RE: 用来从整段文字中提取特殊区块（旁白、场景、括号动作、带「」的对话）
-const TOKEN_GLOBAL_RE = /(\|\|[\s\S]+?\|\||\u2016[\s\S]+?\u2016|\u3010[\s\S]+?\u3011|[\(\uFF08][\s\S]+?[\)\uFF09]|\u300c[\s\S]+?\u300d)/g
+const TOKEN_GLOBAL_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
 
 export function looksLikeHtmlCard(content) {
   const text = ensureMessageString(content)
