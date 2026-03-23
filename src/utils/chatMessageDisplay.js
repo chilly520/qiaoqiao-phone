@@ -3,7 +3,7 @@ const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)[\)\uFF09]\s*$/
 const OFFLINE_NARRATION_RE = /^(?:\|\||\u2016)([\s\S]*?)(?:\|\||\u2016)?$|^\|\|([\s\S]+?)\|\||^\u2016([\s\S]+?)\u2016/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d/
-const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「]{1,20})\s*[:：\uFF1A]\s*([\s\S]+?)$/
+const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「]{1,10})\s*[:：\uFF1A]\s*([\s\S]+?)$/
 
 const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
@@ -187,9 +187,13 @@ export function parseOfflineLine(line) {
     const speaker = match[1].trim()
     const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
     
-    // 如果名字部分全是数字或者包含时间号，且很短，通常不是说话人
-    if (/^\d+$/.test(speaker) || (speaker.length < 5 && /[:：]/.test(speaker))) {
-      // 这里的 [:：] 其实在正则里排除了，但以防万一
+    // 判定是否真的为说话人
+    const isClock = /\d$/.test(speaker) && /^\d+/.test(content)
+    const hasNarrativeParticles = /[的了是在]/.test(speaker)
+    const isNumeric = /^\d+$/.test(speaker)
+
+    if (isClock || hasNarrativeParticles || isNumeric) {
+      // 看起来像时间 (08:00) 或描述，不作为说话人处理
     } else {
       return { type: 'dialogue', speaker, content, speakerTagged: true }
     }
@@ -241,9 +245,10 @@ export function parseOfflineSegments(msg) {
   const afterText = text.slice(lastIndex).trim()
   if (afterText) {
     afterText.split(/\n+/).forEach(line => {
-      if (line.trim()) {
-        const parsed = parseOfflineLine(line.trim())
-        if (parsed) segments.push(parsed)
+      const trimmed = line.trim()
+      if (trimmed) {
+        const parsed = parseOfflineLine(trimmed)
+        if (parsed && parsed.content && parsed.content.trim()) segments.push(parsed)
       }
     })
   }
