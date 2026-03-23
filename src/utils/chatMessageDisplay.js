@@ -54,32 +54,99 @@ export function stripModeWrapperTags(content) {
   return ensureMessageString(content).replace(/\[\s*ONLINE\s*\]|\[\/\s*ONLINE\s*\]|\[\s*OFFLINE\s*\]|\[\/\s*OFFLINE\s*\]/gi, '')
 }
 
+/**
+ * 将内容按 [ONLINE]/[OFFLINE] 标签分块，并提取目标模式的内容。
+ * 支持内联模式继承：如果一段内容没有标签包裹，且前面紧邻一个标签块，则沿用前面的格式。
+ */
+export function getModePartitionedContent(content, targetMode) {
+  const raw = ensureMessageString(content)
+  if (!raw) return ''
+
+  // 正则匹配所有模式开关
+  const tagRe = /\[(ONLINE|OFFLINE)\]|\[\/(ONLINE|OFFLINE)\]/gi
+  let lastIndex = 0
+  let currentMode = null // 尚未明确模式
+  let result = ''
+  
+  let match
+  while ((match = tagRe.exec(raw)) !== null) {
+     const tagIndex = match.index
+     const fullTag = match[0]
+     const tagName = match[1] || match[2]
+     const isClosing = fullTag.startsWith('[/')
+
+     // 处理标签之前的文本
+     const prevBlock = raw.substring(lastIndex, tagIndex)
+     if (prevBlock) {
+        // 如果当前有模式，或者该模式符合目标，则累加
+        // 关键逻辑：没有标签的段落，如果是紧跟在某个模式后面，则“沿用”
+        if (currentMode === targetMode) {
+           result += prevBlock
+        } else if (currentMode === null) {
+           // 如果是开头的无标签文字，看其内容或默认模式
+           // 这里我们暂不轻易判定，或者可以根据 hasOfflineTheaterContent 判定
+           const estimated = hasOfflineTheaterContent(prevBlock) ? 'OFFLINE' : 'ONLINE'
+           if (estimated.toLowerCase() === targetMode.toLowerCase()) {
+              result += prevBlock
+           }
+        }
+     }
+
+     // 更新状态
+     if (isClosing) {
+        // 标签关闭后，模式恢复为 null（或者可以设计为继续保持，直到下个标签）
+        // 用户的要求是“沿用上一段”，所以我们选择“保持当前状态直到遇到变动”？
+        // 还是维持 currentMode 并在标签外也采集？
+        // 根据“沿用”原则，当标签关闭后，在遇到下一个开始标签前，我们依然认为处于该模式。
+        // 所以我们不在这里重置 currentMode。
+     } else {
+        currentMode = tagName.toUpperCase()
+     }
+     
+     lastIndex = tagIndex + fullTag.length
+  }
+
+  // 处理最后剩余的内容
+  const remaining = raw.substring(lastIndex)
+  if (remaining) {
+     if (currentMode === targetMode.toUpperCase()) {
+        result += remaining
+     } else if (currentMode === null) {
+        const estimated = hasOfflineTheaterContent(remaining) ? 'OFFLINE' : 'ONLINE'
+        if (estimated.toLowerCase() === targetMode.toLowerCase()) {
+           result += remaining
+        }
+     }
+  }
+
+  return result.trim()
+}
+
 export function getOfflineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
-  const offline = extractTaggedBlock(raw, 'OFFLINE')
-  if (offline !== null) return offline
-  const online = extractTaggedBlock(raw, 'ONLINE')
-  if (online !== null) return ''
   
-  if (msg?.mode === 'offline') return stripModeWrapperTags(raw).trim()
-  if (msg?.mode === 'online') return ''
+  // 检查是否有任何包裹标签
+  if (!/\[(ONLINE|OFFLINE)\]/i.test(raw)) {
+     if (msg?.mode === 'offline') return stripModeWrapperTags(raw).trim()
+     if (msg?.mode === 'online') return ''
+     return stripModeWrapperTags(raw).trim()
+  }
 
-  return stripModeWrapperTags(raw).trim()
+  return getModePartitionedContent(raw, 'OFFLINE')
 }
 
 export function getOnlineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
-  const online = extractTaggedBlock(raw, 'ONLINE')
-  if (online !== null) return online
-  const offline = extractTaggedBlock(raw, 'OFFLINE')
-  if (offline !== null) return ''
-  
-  if (msg?.mode === 'online') return stripModeWrapperTags(raw).trim()
-  if (msg?.mode === 'offline') return ''
 
-  return stripModeWrapperTags(raw).trim()
+  if (!/\[(ONLINE|OFFLINE)\]/i.test(raw)) {
+     if (msg?.mode === 'online') return stripModeWrapperTags(raw).trim()
+     if (msg?.mode === 'offline') return ''
+     return stripModeWrapperTags(raw).trim()
+  }
+
+  return getModePartitionedContent(raw, 'ONLINE')
 }
 
 export function getOfflineTextContent(msg) {
@@ -88,18 +155,6 @@ export function getOfflineTextContent(msg) {
 
 export function getOnlineTextContent(msg) {
   return stripCardBlocks(stripInnerVoiceBlocks(getOnlineRenderableContent(msg))).trim()
-}
-
-export function extractTaggedBlock(content, tag) {
-  const raw = ensureMessageString(content)
-  const startTag = `[${tag}]`
-  const endTag = `[/${tag}]`
-  const startIdx = raw.indexOf(startTag)
-  if (startIdx === -1) return null
-  const contentStart = startIdx + startTag.length
-  const endIdx = raw.indexOf(endTag, contentStart)
-  if (endIdx === -1) return raw.substring(contentStart)
-  return raw.substring(contentStart, endIdx)
 }
 
 export function parseOfflineLine(line) {
@@ -210,6 +265,18 @@ export function isOfflineTextMessage(msg) {
   return getOfflineTextContent(msg.content).length > 0
 }
 
+export function extractTaggedBlock(content, tag) {
+  const raw = ensureMessageString(content)
+  const startTag = `[${tag}]`
+  const endTag = `[/${tag}]`
+  const startIdx = raw.indexOf(startTag)
+  if (startIdx === -1) return null
+  const contentStart = startIdx + startTag.length
+  const endIdx = raw.indexOf(endTag, contentStart)
+  if (endIdx === -1) return raw.substring(contentStart)
+  return raw.substring(contentStart, endIdx)
+}
+
 export function shouldShowInOfflineMode(msg) {
   if (!msg || msg.hidden || msg.role === 'system') return false
   if (msg.mode === 'online') return false
@@ -217,8 +284,8 @@ export function shouldShowInOfflineMode(msg) {
   if (msg.role === 'user') return false
 
   const raw = ensureMessageString(msg.content)
-  const offlineBlock = extractTaggedBlock(raw, 'OFFLINE')
-  if (offlineBlock !== null) return offlineBlock.trim().length > 0
+  const offlineBlock = getModePartitionedContent(raw, 'OFFLINE')
+  if (offlineBlock) return offlineBlock.trim().length > 0
 
   return hasOfflineTheaterContent(raw)
 }
@@ -230,8 +297,8 @@ export function shouldShowInOnlineMode(msg) {
   if (msg.role === 'system') return true
 
   const raw = ensureMessageString(msg.content)
-  if (extractTaggedBlock(raw, 'ONLINE') !== null) return true
-  if (extractTaggedBlock(raw, 'OFFLINE') !== null) return false
+  if (getModePartitionedContent(raw, 'ONLINE').length > 0) return true
+  if (getModePartitionedContent(raw, 'OFFLINE').length > 0) return false
 
   return !hasOfflineTheaterContent(raw)
 }
