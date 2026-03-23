@@ -3,7 +3,7 @@ const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)[\)\uFF09]\s*$/
 const OFFLINE_NARRATION_RE = /^\|\|([\s\S]+?)\|\||^\u2016([\s\S]+?)\u2016/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d/
-const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「]{1,10})\s*[:：\uFF1A]\s*([\s\S]+?)$/
+const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「\s]{1,8})\s*[:：\uFF1A]\s*([\s\S]+?)$/
 
 const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
@@ -235,7 +235,15 @@ export function parseOfflineSegments(msg) {
     // 处理标记内容
     const parsedToken = parseOfflineLine(token)
     if (parsedToken && parsedToken.content && parsedToken.content.trim()) {
-       segments.push(parsedToken)
+      // 如果旁白内容包含换行，拆分为多个小喇叭卡片
+      if (parsedToken.type === 'narration' && parsedToken.content.includes('\n')) {
+        parsedToken.content.split('\n').forEach(line => {
+          const l = line.trim()
+          if (l) segments.push({ type: 'narration', content: l })
+        })
+      } else {
+        segments.push(parsedToken)
+      }
     }
 
     lastIndex = index + token.length
