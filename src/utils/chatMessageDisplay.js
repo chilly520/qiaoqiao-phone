@@ -218,61 +218,35 @@ export function parseOfflineSegments(msg) {
   const text = getOfflineTextContent(msg)
   if (!text) return []
 
-  // 第一步：识别并锁定所有具有明确包裹标记的“令牌”区块
-  // 这包括：‖旁白‖, 【场景】, (动作), 「带标签对话」
-  // 我们必须支持跨行区块（尤其是旁白）
   const segments = []
-  let lastIndex = 0
-  
-  // 专门用于全局提取的正则，必须是全局的且具有跨行能力
-  const GLOBAL_SCANNER_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
-  
-  const matches = [...text.matchAll(GLOBAL_SCANNER_RE)]
-  
-  for (const match of matches) {
-    const index = match.index
-    const token = match[0]
+  const rawLines = text.split(/\n+/)
+  let inNarrationMode = false
 
-    // 1. 处理令牌之前的内容 (通常是普通对话)
-    const beforePart = text.slice(lastIndex, index).trim()
-    if (beforePart) {
-      beforePart.split(/\n+/).forEach(line => {
-        const l = line.trim()
-        if (l) {
-          const parsed = parseOfflineLine(l)
-          // 这里的 parsed 通常如果是普通文本，会返回 dialogue
-          if (parsed && parsed.content) segments.push(parsed)
-        }
-      })
-    }
+  for (let line of rawLines) {
+    let trimmed = line.trim()
+    if (!trimmed) continue
 
-    // 2. 处理令牌本身
-    const parsedToken = parseOfflineLine(token)
-    if (parsedToken && parsedToken.content) {
-      // 如果旁白内容包含换行，拆分为多个小喇叭卡片
-      if (parsedToken.type === 'narration' && parsedToken.content.includes('\n')) {
-        parsedToken.content.split('\n').forEach(line => {
-          const l = line.trim()
-          if (l) segments.push({ type: 'narration', content: l })
-        })
+    // 统计行内旁白标记数量
+    const markers = (trimmed.match(/‖|\|\|/g) || []).length
+
+    if (markers > 0) {
+      if (markers >= 2) {
+        // 单行包裹: ‖ 内容 ‖
+        trimmed = trimmed.replace(/[‖|]+/g, '').trim()
+        if (trimmed) segments.push({ type: 'narration', content: trimmed })
       } else {
-        segments.push(parsedToken)
+        // 模式切换
+        inNarrationMode = !inNarrationMode
+        trimmed = trimmed.replace(/[‖|]+/g, '').trim()
+        if (trimmed) segments.push({ type: 'narration', content: trimmed })
       }
+    } else if (inNarrationMode) {
+      // 模式内
+      segments.push({ type: 'narration', content: trimmed })
+    } else {
+      const parsed = parseOfflineLine(trimmed)
+      if (parsed) segments.push(parsed)
     }
-
-    lastIndex = index + token.length
-  }
-
-  // 处理剩余内容
-  const afterText = text.slice(lastIndex).trim()
-  if (afterText) {
-    afterText.split(/\n+/).forEach(line => {
-      const trimmed = line.trim()
-      if (trimmed) {
-        const parsed = parseOfflineLine(trimmed)
-        if (parsed && parsed.content && parsed.content.trim()) segments.push(parsed)
-      }
-    })
   }
 
   return segments
