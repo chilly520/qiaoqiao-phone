@@ -219,37 +219,74 @@ export function parseOfflineSegments(msg) {
   if (!text) return []
 
   const segments = []
-  const rawLines = text.split(/\n+/)
-  let inNarrationMode = false
+  
+  // 第一阶段：全局提取具备成对标记的“大区块”
+  // 此时我们不按行切割，而是先找出所有的成对包裹
+  const BLOCK_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
+  let lastIndex = 0
+  const matches = [...text.matchAll(BLOCK_RE)]
 
-  for (let line of rawLines) {
-    let trimmed = line.trim()
+  for (const match of matches) {
+    const start = match.index
+    const token = match[0]
+
+    // 处理区块之前的文本
+    const beforeText = text.slice(lastIndex, start).trim()
+    if (beforeText) {
+      processNormalText(beforeText, segments)
+    }
+
+    // 处理区块本身
+    processBlockToken(token, segments)
+    lastIndex = start + token.length
+  }
+
+  // 处理剩余文本
+  const remaining = text.slice(lastIndex).trim()
+  if (remaining) {
+    processNormalText(remaining, segments)
+  }
+
+  return segments
+}
+
+function processBlockToken(token, segments) {
+  const parsed = parseOfflineLine(token)
+  if (!parsed) return
+
+  // 特殊：如果大区块内包含换行，拆分为多条卡片
+  if ((parsed.type === 'narration' || parsed.type === 'action') && parsed.content.includes('\n')) {
+    parsed.content.split('\n').filter(l => l.trim()).forEach(l => {
+      segments.push({ type: parsed.type, content: l.trim() })
+    })
+  } else if (parsed.content) {
+    segments.push(parsed)
+  }
+}
+
+function processNormalText(text, segments) {
+  // 普通文本处理，支持基于单边竖线的状态机 fallback
+  const lines = text.split('\n')
+  let inNarrative = false
+  for (let line of lines) {
+    const trimmed = line.trim()
     if (!trimmed) continue
 
-    // 统计行内旁白标记数量
-    const markers = (trimmed.match(/‖|\|\|/g) || []).length
-
-    if (markers > 0) {
-      if (markers >= 2) {
-        // 单行包裹: ‖ 内容 ‖
-        trimmed = trimmed.replace(/[‖|]+/g, '').trim()
-        if (trimmed) segments.push({ type: 'narration', content: trimmed })
-      } else {
-        // 模式切换
-        inNarrationMode = !inNarrationMode
-        trimmed = trimmed.replace(/[‖|]+/g, '').trim()
-        if (trimmed) segments.push({ type: 'narration', content: trimmed })
-      }
-    } else if (inNarrationMode) {
-      // 模式内
+    if (trimmed.startsWith('‖') || trimmed.startsWith('||')) {
+      inNarrative = true
+      const content = trimmed.replace(/[‖|]+/g, '').trim()
+      if (content) segments.push({ type: 'narration', content })
+    } else if (trimmed.endsWith('‖') || trimmed.endsWith('||')) {
+      const content = trimmed.replace(/[‖|]+/g, '').trim()
+      if (content) segments.push({ type: 'narration', content })
+      inNarrative = false
+    } else if (inNarrative) {
       segments.push({ type: 'narration', content: trimmed })
     } else {
       const parsed = parseOfflineLine(trimmed)
       if (parsed) segments.push(parsed)
     }
   }
-
-  return segments
 }
 
 export function hasOfflineTheaterContent(content) {
