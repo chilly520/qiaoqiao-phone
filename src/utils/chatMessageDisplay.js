@@ -218,22 +218,30 @@ export function parseOfflineSegments(msg) {
   const text = getOfflineTextContent(msg)
   if (!text) return []
 
+  // 核心逻辑：按旁白标记进行结构化切分
+  // 这能完美处理 A ‖ B ‖ C ‖ D ‖ E 这种复杂交替模式
+  const parts = text.split(/(‖|\|\|)/g)
   const segments = []
-  let lastIndex = 0
+  let inNarration = false
 
-  // 1. 全局提取高优先级包裹块 (旁白、场景、动作)
-  // 此正则具备跨行能力 (\s\S)
-  const GLOBAL_BLOCK_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
-  const matches = [...text.matchAll(GLOBAL_BLOCK_RE)]
+  for (let p of parts) {
+    if (p === '‖' || p === '||') {
+      inNarration = !inNarration
+      continue
+    }
 
-  for (const match of matches) {
-    const start = match.index
-    const token = match[0]
+    if (!p.trim()) continue
 
-    // 处理区块之前的间隙
-    const beforeText = text.slice(lastIndex, start).trim()
-    if (beforeText) {
-      beforeText.split(/\n+/).forEach(line => {
+    if (inNarration) {
+      // 处于旁白包裹区间：所有物理段落均强制识别为旁白卡片
+      // 这样内部即使包含 07:55 也绝不会被识别为说话人
+      p.split('\n').forEach(line => {
+        const l = line.trim()
+        if (l) segments.push({ type: 'narration', content: l })
+      })
+    } else {
+      // 处于普通区间：按行执行标准解析（场景、动作、对话）
+      p.split('\n').forEach(line => {
         const l = line.trim()
         if (l) {
           const parsed = parseOfflineLine(l)
@@ -242,33 +250,6 @@ export function parseOfflineSegments(msg) {
       })
     }
 
-    // 处理区块本身
-    const parsedToken = parseOfflineLine(token.trim())
-    if (parsedToken) {
-      // 跨行旁白拆分 Logic
-      if (parsedToken.type === 'narration' && parsedToken.content.includes('\n')) {
-        parsedToken.content.split('\n').forEach(l => {
-          const content = l.trim()
-          if (content) segments.push({ type: 'narration', content })
-        })
-      } else if (parsedToken.content) {
-        segments.push(parsedToken)
-      }
-    }
-
-    lastIndex = start + token.length
-  }
-
-  // 处理剩余文本
-  const remaining = text.slice(lastIndex).trim()
-  if (remaining) {
-    remaining.split(/\n+/).forEach(line => {
-      const l = line.trim()
-      if (l) {
-        const parsed = parseOfflineLine(l)
-        if (parsed) segments.push(parsed)
-      }
-    })
   }
 
   return segments
