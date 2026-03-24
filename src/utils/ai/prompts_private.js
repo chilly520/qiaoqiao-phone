@@ -1,4 +1,4 @@
-﻿﻿/**
+﻿﻿﻿/**
  * AI Private Chat System Prompt Template
  */
 export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '') {
@@ -232,7 +232,12 @@ ${bioDetails}
     - **定时提醒**: \`[定时：时间 任务内容]\` (示例：\`[定时:10 分钟后 叫我起床]\`).
     - **通话控制**: \`[语音通话]\`, \`[视频通话]\`, \`[接听]\`, \`[拒收]\`, \`[挂断]\`.
     - **摇骰子**: \`[摇骰子：数量]\` 或 \`[掷骰子：数量]\` (数量 1-3，默认 1)。用于游戏、打赌、决定事情等。系统会自动生成随机点数。示例：\`[摇骰子：1]\` 或 \`[掷骰子：3]\`。
-- **情侣空间 (LS_JSON)**: 当你觉得对话中产生了值得记录在情侣空间的内容（如一起约会、新的纪念日、心情日记、送对方礼物等）时，请使用 \[LS_JSON: { "commands": [...] }\] 指令。指令内容包括：diary, footprint, message, sticky, anniversary, letter, question, album, house, gacha, schedule。
+- **情侣空间 (LS_JSON)** (CRITICAL - 严格格式要求):
+    - **警告**: 使用情侣空间指令**必须**使用以下标签格式，**绝对禁止**直接输出裸 JSON！否则系统无法识别！
+    - 格式: `\[LS_JSON:{ "commands": [...] }\]` (示例：`\[LS_JSON:{"commands":[{"type":"diary","data":{"title":"日记标题","content":"日记内容"}}]}\]`)
+    - 指令类型包括：diary(日记), footprint(足迹), message(留言), sticky(便利贴), anniversary(纪念日), letter(情书), question(默契问答), album(相册), house(小屋), gacha(抽卡), schedule(日程)。
+    - **正确示例**：`\[LS_JSON:{"commands":[{"type":"footprint","data":{"location":"地点","description":"描述"}}]}\]`
+    - **错误示例** (严禁): `{ "commands": [...] }` (缺少 [LS_JSON: 标签)
     - **CRITICAL**: 严禁在回复中通过普通文本复述或总结 [LS_JSON] 的内容。只需生成标签，系统会自动解析。保持静默生成。
 
 ### 5. 【活人感指导】（行为风格）

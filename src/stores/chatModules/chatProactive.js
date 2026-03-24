@@ -86,12 +86,12 @@ export const setupProactiveLogic = (chats, currentChatId, typingStatus, sendMess
                     if (!chat.isGroup && rand < 0.2) {
                         const callType = Math.random() > 0.5 ? 'video' : 'voice'
                         sendMessageToAI(chatId, {
-                            hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                            hiddenHint: `（系统：距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
                             isProactiveCall: true
                         })
                     } else {
                         // Group chats: no call triggers, only messages
-                        sendMessageToAI(chatId, { hiddenHint: `（距离上次发言已过 ${Math.floor(diffMinutes)} 分钟，给${chat.isGroup ? '群里' : '用户'}主动发条简短的消息开启新话题或分享动态。可带上表情包。）` })
+                        sendMessageToAI(chatId, { hiddenHint: `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，给${chat.isGroup ? '群里' : '用户'}主动发条简短的消息开启新话题或分享动态。可带上表情包。）` })
                     }
                 }
             }
@@ -107,8 +107,8 @@ export const setupProactiveLogic = (chats, currentChatId, typingStatus, sendMess
                     const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
                     const callChance = !chat.isGroup && Math.random() < 0.15
                     const hint = callChance
-                        ? `（现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
-                        : `（现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
+                        ? `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
+                        : `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
                     sendMessageToAI(chatId, { hiddenHint: hint })
                 }
             }

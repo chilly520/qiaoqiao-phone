@@ -862,7 +862,7 @@
                         </div>
 
                         <!-- CASE: Tarot Result Card -->
-                        <div v-else-if="msg.tarotCards" class="flex flex-col gap-2 w-[300px]"
+                        <div v-else-if="isTarotMsg" class="flex flex-col gap-2 w-[300px]"
                             :class="msg.role === 'user' ? 'mr-1' : 'ml-1'">
                             <div class="w-full bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-3 rounded-2xl shadow-lg border border-purple-400/50 text-center relative overflow-hidden"
                                 @contextmenu.prevent="emitContextMenu">
@@ -880,45 +880,50 @@
                                     <!-- 标题 -->
                                     <div class="flex items-center justify-center gap-2 mb-3">
                                         <span class="text-xl">🔮</span>
-                                        <span class="text-sm font-bold text-white">{{ msg.tarotInterpretation ? '塔罗解牌' :
+                                        <span class="text-sm font-bold text-white">{{ tarotDataValue?.interpretation ? '塔罗解牌' :
                                             '塔罗占卜' }}</span>
                                     </div>
 
                                     <!-- 问题显示 -->
-                                    <div v-if="msg.tarotQuestion" class="mb-3 bg-white/10 rounded-lg p-2">
+                                    <div v-if="tarotDataValue?.question" class="mb-3 bg-white/10 rounded-lg p-2">
                                         <p class="text-xs text-purple-200 mb-1">问题</p>
-                                        <p class="text-sm text-white">{{ msg.tarotQuestion }}</p>
+                                        <p class="text-sm text-white">{{ tarotDataValue.question }}</p>
                                     </div>
 
                                     <!-- 牌阵名称 -->
-                                    <div class="text-xs text-purple-300 mb-3">{{ msg.tarotSpread?.name }}</div>
+                                    <div class="text-xs text-purple-300 mb-3">{{ tarotDataValue?.spread?.name }}</div>
 
                                     <!-- 塔罗牌展示 -->
-                                    <div class="flex justify-center gap-2 mb-3 flex-wrap">
-                                        <div v-for="(card, i) in msg.tarotCards.slice(0, 5)" :key="i"
+                                    <div v-if="tarotDataValue?.cards && tarotDataValue.cards.length > 0" class="flex justify-center gap-2 mb-3 flex-wrap">
+                                        <div v-for="(card, i) in tarotDataValue.cards.slice(0, 5)" :key="i"
                                             class="w-10 h-14 rounded-lg border border-purple-400/50 flex flex-col items-center justify-center"
                                             :class="getTarotCardColorClass(card)"
                                             :style="{ animationDelay: (i * 100) + 'ms' }">
                                             <span class="text-sm">{{ getTarotCardIcon(card) }}</span>
                                             <span v-if="card.isReversed" class="text-[6px] text-white/70">逆</span>
                                         </div>
-                                        <div v-if="msg.tarotCards.length > 5"
+                                        <div v-if="tarotDataValue.cards.length > 5"
                                             class="w-10 h-14 rounded-lg border border-purple-400/30 bg-white/10 flex items-center justify-center">
-                                            <span class="text-xs text-white/70">+{{ msg.tarotCards.length - 5 }}</span>
+                                            <span class="text-xs text-white/70">+{{ tarotDataValue.cards.length - 5 }}</span>
                                         </div>
                                     </div>
 
                                     <!-- 解牌内容 -->
-                                    <div v-if="msg.tarotInterpretation"
+                                    <div v-if="tarotDataValue?.interpretation"
                                         class="bg-white/10 rounded-lg p-3 max-h-32 overflow-y-auto custom-scrollbar">
                                         <p class="text-xs text-purple-200 mb-1">解牌</p>
                                         <p class="text-sm text-white leading-relaxed whitespace-pre-wrap">{{
-                                            msg.tarotInterpretation }}</p>
+                                            tarotDataValue.interpretation }}</p>
                                     </div>
 
                                     <!-- 简单提示 -->
+                                    <div v-else-if="tarotDataValue?.cards && tarotDataValue.cards.length > 0" class="text-xs text-purple-300">
+                                        抽到了 {{ tarotDataValue.cards.length }} 张塔罗牌
+                                    </div>
+                                    
+                                    <!-- 等待解牌提示 -->
                                     <div v-else class="text-xs text-purple-300">
-                                        抽到了 {{ msg.tarotCards.length }} 张塔罗牌
+                                        等待塔罗解牌...
                                     </div>
                                 </div>
                             </div>
@@ -1052,7 +1057,7 @@
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
                             <!-- Show bubble if there's cleaned content and not a family card. -->
                             <!-- Added check for isDiceMsg to prevent double rendering/bubble background for dice rolls -->
-                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !msg.tarotCards" @contextmenu.prevent="emitContextMenu"
+                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !isTarotMsg" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words relative transition-all"
@@ -1226,7 +1231,7 @@
                             </div>
 
                             <!-- 4. Empty/Protocol Placeholder (Clickable Fallback) -->
-                            <div v-if="!cleanedContent && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && msg.type !== 'voice' && msg.type !== 'music'"
+                            <div v-if="!cleanedContent && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && !isWeiboCard && !isForumCard && !isTarotMsg && msg.type !== 'voice' && msg.type !== 'music'"
                                 @contextmenu.prevent="emitContextMenu" @touchstart="startLongPress"
                                 @touchend="cancelLongPress" @touchmove="cancelLongPress" @mousedown="startLongPress"
                                 @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
@@ -1608,7 +1613,7 @@ const isValidMessage = computed(() => {
                          isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || 
                          isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || 
                          props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || 
-                         props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value
+                         props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value || isTarotMsg.value
 
     if (isSpecialType) {
         // Hide if no effective content for cards
@@ -1690,8 +1695,37 @@ const shouldRenderCard = computed(() => {
     return (props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value
 })
 
-const isFavoriteCard = computed(() => props.msg.type === 'favorite_card')
-const isWeiboCard = computed(() => props.msg.type === 'weibo_card')
+// 收藏卡片检测 - 支持 type: 'favorite_card' 或内容包含收藏标签/JSON
+const isFavoriteCard = computed(() => {
+    if (props.msg.type === 'favorite_card') return true
+    const content = ensureString(props.msg.content)
+    // 检测 [收藏:...] 或 [FAVORITE:...] 标签
+    if (/[\[【](?:收藏|FAVORITE)[:：]/.test(content)) return true
+    // 检测裸 JSON 格式（包含 favorite 相关字段）
+    if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+        try {
+            const parsed = JSON.parse(content)
+            if (parsed.source || parsed.preview || parsed.fullContent || parsed.favoriteId) return true
+        } catch (e) {}
+    }
+    return false
+})
+
+// 微博卡片检测 - 支持 type: 'weibo_card' 或内容包含微博标签/JSON
+const isWeiboCard = computed(() => {
+    if (props.msg.type === 'weibo_card') return true
+    const content = ensureString(props.msg.content)
+    // 检测 [微博:...] 或 [WEIBO:...] 标签
+    if (/[\[【](?:微博|WEIBO)[:：]/.test(content)) return true
+    // 检测裸 JSON 格式（包含 weibo 相关字段）
+    if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+        try {
+            const parsed = JSON.parse(content)
+            if (parsed.summary || parsed.author || parsed.avatar || parsed.weiboId) return true
+        } catch (e) {}
+    }
+    return false
+})
 
 const isForumCard = computed(() => {
     const c = ensureString(props.msg.content)
@@ -1801,14 +1835,93 @@ const weiboCardData = computed(() => {
     if (!isWeiboCard.value) return null
     try {
         const content = ensureString(props.msg.content)
-        return JSON.parse(content)
+        
+        // 1. 如果已有结构化数据，直接使用
+        if (props.msg.weiboData) return props.msg.weiboData
+        
+        // 2. 尝试直接解析 JSON
+        if (content.trim().startsWith('{')) {
+            return JSON.parse(content)
+        }
+        
+        // 3. 从 [微博:...] 或 [WEIBO:...] 标签中解析
+        const match = content.match(/[\[【](?:微博|WEIBO)[:：]\s*([\s\S]*?)[\]】]/i)
+        if (match) {
+            const dataStr = match[1].trim()
+            if (dataStr.startsWith('{')) {
+                return JSON.parse(dataStr)
+            }
+            // 纯文本格式，构造默认数据
+            return {
+                summary: dataStr,
+                author: props.msg.role === 'ai' ? 'AI' : '用户',
+                avatar: '',
+                image: null
+            }
+        }
+        
+        return null
     } catch (e) {
+        console.warn('[ChatMessageItem] Failed to parse weibo card data', e)
         return null
     }
 })
 
 const isMomentCard = computed(() => {
     return props.msg.type === 'moment_card' || /\[(?:MOMENT_SHARE|分享朋友圈)[:：]/.test(ensureString(props.msg.content))
+})
+
+// 塔罗牌消息检测 - 支持 type: 'tarot' 或内容包含塔罗标签
+const isTarotMsg = computed(() => {
+    if (props.msg.type === 'tarot') return true
+    if (props.msg.tarotCards && props.msg.tarotCards.length > 0) return true
+    const content = ensureString(props.msg.content)
+    return /[\[【](?:塔罗|塔罗牌|TAROT)[:：]/.test(content)
+})
+
+// 解析塔罗数据
+const tarotDataValue = computed(() => {
+    if (!isTarotMsg.value) return null
+    
+    // 如果已有结构化数据，直接使用
+    if (props.msg.tarotCards && props.msg.tarotCards.length > 0) {
+        return {
+            cards: props.msg.tarotCards,
+            question: props.msg.tarotQuestion || '',
+            interpretation: props.msg.tarotInterpretation || '',
+            spread: props.msg.tarotSpread || null
+        }
+    }
+    
+    // 从内容中解析塔罗数据
+    const content = ensureString(props.msg.content)
+    
+    // 尝试解析 [塔罗:...] 或 [塔罗牌:...] 标签中的 JSON 数据
+    const tarotMatch = content.match(/[\[【](?:塔罗|塔罗牌|TAROT)[:：]\s*([\s\S]*?)[\]】]/i)
+    if (tarotMatch) {
+        const dataStr = tarotMatch[1].trim()
+        
+        // 尝试解析 JSON 格式
+        if (dataStr.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(dataStr)
+                return {
+                    cards: parsed.cards || parsed.tarotCards || [],
+                    question: parsed.question || parsed.tarotQuestion || '',
+                    interpretation: parsed.interpretation || parsed.tarotInterpretation || '',
+                    spread: parsed.spread || parsed.tarotSpread || null
+                }
+            } catch (e) {
+                // JSON 解析失败，返回文本内容
+                return { cards: [], question: dataStr, interpretation: '', spread: null }
+            }
+        } else {
+            // 纯文本格式
+            return { cards: [], question: dataStr, interpretation: '', spread: null }
+        }
+    }
+    
+    return { cards: [], question: '', interpretation: '', spread: null }
 })
 
 const momentDataValue = computed(() => {
@@ -1847,8 +1960,34 @@ const favoriteCardData = computed(() => {
     if (!isFavoriteCard.value) return null
     try {
         const content = ensureString(props.msg.content)
-        return JSON.parse(content)
+        
+        // 1. 如果已有结构化数据，直接使用
+        if (props.msg.favoriteData) return props.msg.favoriteData
+        
+        // 2. 尝试直接解析 JSON
+        if (content.trim().startsWith('{')) {
+            return JSON.parse(content)
+        }
+        
+        // 3. 从 [收藏:...] 或 [FAVORITE:...] 标签中解析
+        const match = content.match(/[\[【](?:收藏|FAVORITE)[:：]\s*([\s\S]*?)[\]】]/i)
+        if (match) {
+            const dataStr = match[1].trim()
+            if (dataStr.startsWith('{')) {
+                return JSON.parse(dataStr)
+            }
+            // 纯文本格式，构造默认数据
+            return {
+                source: '收藏',
+                preview: dataStr,
+                fullContent: dataStr,
+                savedAt: Date.now()
+            }
+        }
+        
+        return null
     } catch (e) {
+        console.warn('[ChatMessageItem] Failed to parse favorite card data', e)
         return null
     }
 })

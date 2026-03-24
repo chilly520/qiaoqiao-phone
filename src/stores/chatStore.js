@@ -1,4 +1,4 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useAITaskStore } from './aiTaskStore'
@@ -241,6 +241,25 @@ export const useChatStore = defineStore('chat', () => {
             if (typeof processedContent === 'string') {
                 processedContent = processTaskCommands(processedContent, chatId);
                 processedContent = processBioUpdate(processedContent, chatId);
+                
+                // === 0. Pre-processing: Detect raw JSON LS_JSON format (AI sometimes outputs JSON without tag)
+                // Check if content is a pure JSON object with LS_JSON-like structure
+                const trimmedContent = processedContent.trim();
+                if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+                    try {
+                        const parsed = JSON.parse(trimmedContent);
+                        // Validate it has LS_JSON structure: { "commands": [...] }
+                        if (parsed.commands && Array.isArray(parsed.commands) && 
+                            parsed.commands.length > 0 && 
+                            ['diary', 'footprint', 'message', 'sticky', 'anniversary', 'letter', 'question', 'album', 'house', 'gacha', 'schedule'].includes(parsed.commands[0].type)) {
+                            console.log('[ChatStore] Detected raw JSON LS_JSON format, wrapping with tag...');
+                            // Wrap with LS_JSON tag for processing
+                            processedContent = `[LS_JSON:${trimmedContent}]`;
+                        }
+                    } catch (e) {
+                        // Not valid LS_JSON JSON, ignore
+                    }
+                }
                 
                 // Intercept Couple Space commands [LS_JSON: ...]
                 // Robust extraction using balanced brace matching
@@ -755,14 +774,18 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3.2 Moment Share Parsing (AI Only)
         // 3.2.1 Handle raw JSON format (AI sometimes outputs JSON without MOMENT_SHARE tag)
+        console.log('[ChatStore] Moment parsing check - role:', newMsg.role, 'content:', newMsg.content.substring(0, 50));
         if (newMsg.role === 'ai' && !newMsg.content.includes('[MOMENT_SHARE:') && !newMsg.content.includes('[分享朋友圈:')) {
             const trimmedContent = newMsg.content.trim();
+            console.log('[ChatStore] Checking raw JSON moment format, starts with {:', trimmedContent.startsWith('{'), 'ends with }:', trimmedContent.endsWith('}'));
             // Check if content is a pure JSON object with moment-related fields
             if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
                 try {
                     const parsed = JSON.parse(trimmedContent);
+                    console.log('[ChatStore] Parsed JSON:', parsed);
                     // Validate it has the required moment fields
                     if (parsed.content && (parsed.imagePrompt || parsed.location || parsed.visibility)) {
+                        console.log('[ChatStore] Valid moment JSON detected, converting to moment_card');
                         const momentData = {
                             id: crypto.randomUUID(),
                             content: parsed.content,
