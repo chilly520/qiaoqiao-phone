@@ -3309,9 +3309,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 :style="computedBgStyle"></div>
 
             <!-- Header -->
-            <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500 backdrop-blur-md"
-                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-blue-300/40 border-blue-300/20'"
-                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.4)', borderColor: 'rgba(147, 197, 253, 0.2)' } : {}">
+            <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
+                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-blue-300/90 border-blue-300/30'"
+                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.9)', borderColor: 'rgba(147, 197, 253, 0.3)' } : {}">
                 <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
                     @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
                     <i class="fa-solid fa-chevron-left text-black text-lg"></i>
