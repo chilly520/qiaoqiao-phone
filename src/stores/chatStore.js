@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useAITaskStore } from './aiTaskStore'
@@ -458,8 +458,21 @@ export const useChatStore = defineStore('chat', () => {
         // 2. Type Auto-Detection (if not specified)
         if (newMsg.type === 'text' && typeof newMsg.content === 'string') {
             let detectionContent = newMsg.content.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+            
+            // 2.0 Pre-processing: Extract content from [ONLINE]/[OFFLINE] tags for detection
+            // This handles cases where红包/转账 is wrapped in mode tags like [ONLINE][红包:...][/ONLINE]
+            let contentForDetection = detectionContent;
+            const onlineMatch = detectionContent.match(/\[ONLINE\]([\s\S]*?)\[\/ONLINE\]/i);
+            const offlineMatch = detectionContent.match(/\[OFFLINE\]([\s\S]*?)\[\/OFFLINE\]/i);
+            if (onlineMatch) {
+                contentForDetection = onlineMatch[1].trim();
+            } else if (offlineMatch) {
+                contentForDetection = offlineMatch[1].trim();
+            }
+            
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            const tagMatch = detectionContent.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
+            // Use contentForDetection to support红包 inside [ONLINE]/[OFFLINE] tags
+            const tagMatch = contentForDetection.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
 
             if (tagMatch) {
                 const tagType = tagMatch[1]
@@ -741,6 +754,49 @@ export const useChatStore = defineStore('chat', () => {
 
 
         // 3.2 Moment Share Parsing (AI Only)
+        // 3.2.1 Handle raw JSON format (AI sometimes outputs JSON without MOMENT_SHARE tag)
+        if (newMsg.role === 'ai' && !newMsg.content.includes('[MOMENT_SHARE:') && !newMsg.content.includes('[分享朋友圈:')) {
+            const trimmedContent = newMsg.content.trim();
+            // Check if content is a pure JSON object with moment-related fields
+            if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+                try {
+                    const parsed = JSON.parse(trimmedContent);
+                    // Validate it has the required moment fields
+                    if (parsed.content && (parsed.imagePrompt || parsed.location || parsed.visibility)) {
+                        const momentData = {
+                            id: crypto.randomUUID(),
+                            content: parsed.content,
+                            text: parsed.content,
+                            author: chat.name,
+                            avatar: chat.avatar,
+                            imagePrompt: parsed.imagePrompt || '',
+                            location: parsed.location || '',
+                            visibility: parsed.visibility || 'public',
+                            interactions: parsed.interactions || []
+                        };
+                        
+                        // Convert to moment_card type
+                        newMsg.type = 'moment_card';
+                        newMsg.momentData = momentData;
+                        newMsg.content = JSON.stringify(momentData);
+                        
+                        // Add system notification to chat
+                        const systemMsg = {
+                            id: crypto.randomUUID(),
+                            role: 'system',
+                            type: 'text',
+                            content: `${chat.name} 发布了一条朋友圈`,
+                            timestamp: Date.now()
+                        };
+                        chat.messages.push(systemMsg);
+                    }
+                } catch (e) {
+                    // Not valid JSON, ignore
+                }
+            }
+        }
+        
+        // 3.2.2 Handle standard MOMENT_SHARE tag format
         if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
             // Robust Regex: Matches [MOMENT_SHARE: payload ] where payload may contain nested brackets (JSON)
             // It stops before the next known tag start [ or at the end of the message.
@@ -787,6 +843,16 @@ export const useChatStore = defineStore('chat', () => {
                 newMsg.momentData = momentData; // Store structured data for cleaner access
                 // Keep content as JSON for persistence if needed, or structured
                 newMsg.content = JSON.stringify(momentData); 
+                
+                // Add system notification to chat
+                const systemMsg = {
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    type: 'text',
+                    content: `${chat.name} 发布了一条朋友圈`,
+                    timestamp: Date.now()
+                };
+                chat.messages.push(systemMsg);
             }
         }
 
@@ -1583,8 +1649,10 @@ export const useChatStore = defineStore('chat', () => {
         if (!chat) return
 
         const now = Date.now()
-        const lastMsg = (chat.msgs || []).slice(-1)[0]
-        const lastMsgTime = lastMsg ? lastMsg.timestamp : now
+        // 获取用户最后一条消息的时间（而不是 char 刷屏后的时间）
+        const userMsgs = (chat.msgs || []).filter(m => m.role === 'user')
+        const lastUserMsg = userMsgs.slice(-1)[0]
+        const lastMsgTime = lastUserMsg ? lastUserMsg.timestamp : now
         const diffMinutes = (now - lastMsgTime) / 1000 / 60
 
         if (typingStatus.value[chatId] || callStore.status !== 'none') return
@@ -1598,11 +1666,11 @@ export const useChatStore = defineStore('chat', () => {
                 if (rand < 0.2) {
                     const callType = Math.random() > 0.5 ? 'video' : 'voice'
                     sendMessageToAI(chatId, {
-                        hiddenHint: `（系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                        hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`,
                         isProactiveCall: true
                     })
                 } else {
-                    sendMessageToAI(chatId, { hiddenHint: `（你已经 ${Math.floor(diffMinutes)} 分钟没说话了，给用户发条简短的消息。可以带上表情包。）` })
+                    sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】给用户发条简短的消息。可以带上表情包。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
                 }
             }
         }
@@ -1617,8 +1685,8 @@ export const useChatStore = defineStore('chat', () => {
                     const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
                     const callChance = Math.random() < 0.15
                     const hint = callChance
-                        ? `（现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
-                        : `（现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
+                        ? `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方或发消息询问当前状态。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
+                        : `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
                     sendMessageToAI(chatId, { hiddenHint: hint })
                 }
             }
@@ -1631,7 +1699,7 @@ export const useChatStore = defineStore('chat', () => {
             dueTasks.forEach(task => {
                 logger.sys(`[Proactive] Executing scheduler task: ${task.content}`)
                 schedulerStore.removeTask(task.id)
-                sendMessageToAI(chatId, { hiddenHint: `（系统：执行定时任务：${task.content}。请根据当前人设发送消息通知用户。）` })
+                sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】执行定时任务：${task.content}。请根据当前人设发送消息通知用户。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
             })
         }
 
@@ -1640,7 +1708,7 @@ export const useChatStore = defineStore('chat', () => {
         if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
             logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
             schedulerStore.updateNextRandomTrigger(chatId)
-            sendMessageToAI(chatId, { hiddenHint: `（随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。）` })
+            sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
         }
     }
 
@@ -1802,6 +1870,11 @@ export const useChatStore = defineStore('chat', () => {
                 } catch (e) { content = '[收藏内容]' }
             } else if (m.type === 'voice') {
                 content = `[语音消息:${content}]`
+            } else if (m.type === 'sticker') {
+                // 表情包：提取名称或直接使用内容
+                const stickerMatch = content.match(/\[表情包[:：]\s*(.+?)\]/);
+                const stickerName = stickerMatch ? stickerMatch[1] : (content || '表情');
+                content = `[表情包:${stickerName}]`
             } else if (m.type === 'lovespace_diary' || m.type === 'lovespace_message' || m.type === 'lovespace_letter') {
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
@@ -1810,7 +1883,9 @@ export const useChatStore = defineStore('chat', () => {
                         'lovespace_message': '留言',
                         'lovespace_letter': '情书'
                     }[m.type];
-                    content = `[情侣空间·${spaceType}] ${data.author || 'TA'}: ${data.title || data.content || ''}`;
+                    // 添加时间戳
+                    const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                    content = `[情侣空间·${spaceType}${timeStr ? `·${timeStr}` : ''}] ${data.author || 'TA'}: ${data.title || data.content || ''}`;
                 } catch (e) { content = '[情侣空间动态]' }
             } else if (m.type === 'lovespace_album' || m.type === 'lovespace_sticky' || m.type === 'lovespace_anniversary') {
                 try {
@@ -1820,7 +1895,9 @@ export const useChatStore = defineStore('chat', () => {
                         'lovespace_sticky': '便利贴',
                         'lovespace_anniversary': '纪念日'
                     }[m.type];
-                    content = `[情侣空间·${spaceType}] ${data.author || 'TA'}: ${data.title || data.content || data.name || ''}`;
+                    // 添加时间戳
+                    const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                    content = `[情侣空间·${spaceType}${timeStr ? `·${timeStr}` : ''}] ${data.author || 'TA'}: ${data.title || data.content || data.name || ''}`;
                 } catch (e) { content = '[情侣空间动态]' }
             }
 
@@ -1839,23 +1916,17 @@ export const useChatStore = defineStore('chat', () => {
                 content = `（引用来自 ${quoteAuthor} 的消息: "${m.quote.content}"）\n${content}`
             }
 
-            // Mode Awareness Injection (Let AI know the context of each message)
-            const msgMode = m.mode || 'online';
-            if (msgMode === 'offline') {
-                content = `[OFFLINE]\n${content}\n[/OFFLINE]`;
-            } else {
-                content = `[ONLINE]\n${content}\n[/ONLINE]`;
-            }
-
+            // 注意：不在此处包裹 [ONLINE]/[OFFLINE] 标签，合并后再统一包裹以节省 token
             return {
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
-                image: m.image
+                image: m.image,
+                mode: m.mode || 'online'  // 保留模式信息用于后续统一包裹
             }
         })
 
         // --- 角色轮替保护：合并连续的 User/Assistant 消息 (Gemini 必须交替) ---
-        // 同时携带模式信息以便后续包装
+        // 合并相同角色的连续消息，然后统一包裹模式标签
         const mergedContext = [];
         rawContext.forEach(m => {
             const last = mergedContext[mergedContext.length - 1];
@@ -1865,9 +1936,22 @@ export const useChatStore = defineStore('chat', () => {
                     last.content += `\n\n${m.content}`;
                 }
                 if (m.image) last.image = m.image;
+                // 如果模式不同，以第一条消息的模式为准（通常同一轮发送的消息模式相同）
             } else {
-                mergedContext.push(m);
+                mergedContext.push({...m});
             }
+        });
+        
+        // 统一包裹模式标签：合并后的消息统一包裹一次标签，节省 token
+        mergedContext.forEach(m => {
+            const msgMode = m.mode || 'online';
+            if (msgMode === 'offline') {
+                m.content = `[OFFLINE]\n${m.content}\n[/OFFLINE]`;
+            } else {
+                m.content = `[ONLINE]\n${m.content}\n[/ONLINE]`;
+            }
+            // 删除临时的 mode 字段
+            delete m.mode;
         });
 
         // 2. 注入提示 (Hidden Hint / 时间感知 / 通话引导)
@@ -1934,7 +2018,7 @@ export const useChatStore = defineStore('chat', () => {
             if (last && last.role === 'user') {
                 const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
                 const timeTag = (options.mode || 'online') === 'offline' ? 'OFFLINE' : 'ONLINE';
-                const wrappedTime = `[${timeTag}]\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。】\n[/${timeTag}]`;
+                const wrappedTime = `[${timeTag}]\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。】\n[/${timeTag}]`;
                 last.content += ` \n\n${wrappedTime}`;
             }
         }
@@ -2889,7 +2973,7 @@ export const useChatStore = defineStore('chat', () => {
                 // We split by punctuation but keep segments meaningful.
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*OFFLINE\s*\][\s\S]*?(?:\[\/\s*OFFLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*ONLINE\s*\][\s\S]*?(?:\[\/\s*ONLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*OFFLINE\s*\][\s\S]*?(?:\[\/\s*OFFLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*ONLINE\s*\][\s\S]*?(?:\[\/\s*ONLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\]]+\]|[!?;。！？；…\n]+)/;
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -2904,7 +2988,7 @@ export const useChatStore = defineStore('chat', () => {
                     const trimmedPart = part.trim();
                     // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
                     const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|SEARCH|查找|黄历|ALMANAC|运势)|\(|（|【)/.test(trimmedPart);
-                    const isPunctuation = /^[!?;。！？；…\n]+$/.test(part);
+                    const isPunctuation = /^[!?;。！？；…\r\n]+$/.test(part);
 
                     if (isSpecial) {
                         if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }

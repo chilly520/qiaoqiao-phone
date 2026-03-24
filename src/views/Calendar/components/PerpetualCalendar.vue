@@ -413,35 +413,74 @@ const chongSha = computed(() => {
 })
 const zhiRi = computed(() => ['青龙', '明堂', '天刑', '朱雀', '金匮', '天德', '白虎', '玉堂', '天牢', '玄武', '司命', '勾陈'][selectedDay.value % 12])
 
-// 八字
+// 八字计算
 const bazi = computed(() => {
   const year = selectedYear.value
   const month = selectedMonth.value + 1
   const day = selectedDay.value
-  
-  // 简化的八字计算
+  const hour = new Date().getHours()
+
   const gan = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
   const zhi = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
-  
-  const yearGan = gan[year % 10]
-  const yearZhi = zhi[year % 12]
-  const monthGan = gan[(year * 2 + month) % 10]
-  const monthZhi = zhi[(month + 1) % 12]
-  const dayGanIndex = (year * 5 + month * 3 + day) % 10
+
+  // 年柱：以立春为界，简化计算（1984甲子年为基准）
+  // 1984 % 10 = 4, 4对应甲(0)，所以偏移量为6
+  const yearGanIndex = (year - 4) % 10
+  const yearZhiIndex = (year - 4) % 12
+  const yearGan = gan[yearGanIndex < 0 ? yearGanIndex + 10 : yearGanIndex]
+  const yearZhi = zhi[yearZhiIndex < 0 ? yearZhiIndex + 12 : yearZhiIndex]
+
+  // 月柱：年干决定月干起始，正月为寅
+  const monthGanStart = [2, 14, 26, 38, 50, 62, 74, 86, 98, 110][yearGanIndex < 0 ? yearGanIndex + 10 : yearGanIndex] % 10 // 甲己年丙起，乙庚年戊起...
+  const monthGanIndex = (monthGanStart + month - 1) % 10
+  const monthZhiIndex = (month + 1) % 12 // 正月寅(2)
+  const monthGan = gan[monthGanIndex]
+  const monthZhi = zhi[monthZhiIndex]
+
+  // 日柱：使用已知的基准日计算（1900-01-31为甲辰日）
+  const baseDate = new Date(1900, 0, 31)
+  const targetDate = new Date(year, month - 1, day)
+  const diffDays = Math.floor((targetDate - baseDate) / 86400000)
+  const dayGanIndex = ((diffDays % 10) + 10) % 10
+  const dayZhiIndex = ((diffDays % 12) + 12) % 12
   const dayGan = gan[dayGanIndex]
-  const dayZhi = zhi[(year + month + day) % 12]
-  const hourGan = gan[(dayGanIndex * 2 + Math.floor(new Date().getHours() / 2)) % 10]
-  const hourZhi = zhi[Math.floor((new Date().getHours() + 1) / 2) % 12]
-  
+  const dayZhi = zhi[dayZhiIndex]
+
+  // 时柱：日干决定时干起始，子时为起点
+  const hourZhiIndex = Math.floor((hour + 1) / 2) % 12
+  const hourGanStart = [0, 2, 4, 6, 8, 0, 2, 4, 6, 8][dayGanIndex] // 甲己日起甲，乙庚日起丙...
+  const hourGanIndex = (hourGanStart + hourZhiIndex) % 10
+  const hourGan = gan[hourGanIndex]
+  const hourZhi = zhi[hourZhiIndex]
+
+  // 纳音五行
+  const naYin = {
+    '甲子': '海中金', '乙丑': '海中金', '丙寅': '炉中火', '丁卯': '炉中火',
+    '戊辰': '大林木', '己巳': '大林木', '庚午': '路旁土', '辛未': '路旁土',
+    '壬申': '剑锋金', '癸酉': '剑锋金', '甲戌': '山头火', '乙亥': '山头火',
+    '丙子': '涧下水', '丁丑': '涧下水', '戊寅': '城头土', '己卯': '城头土',
+    '庚辰': '白蜡金', '辛巳': '白蜡金', '壬午': '杨柳木', '癸未': '杨柳木',
+    '甲申': '泉中水', '乙酉': '泉中水', '丙戌': '屋上土', '丁亥': '屋上土',
+    '戊子': '霹雳火', '己丑': '霹雳火', '庚寅': '松柏木', '辛卯': '松柏木',
+    '壬辰': '长流水', '癸巳': '长流水', '甲午': '沙中金', '乙未': '沙中金',
+    '丙申': '山下火', '丁酉': '山下火', '戊戌': '平地木', '己亥': '平地木',
+    '庚子': '壁上土', '辛丑': '壁上土', '壬寅': '金箔金', '癸卯': '金箔金',
+    '甲辰': '覆灯火', '乙巳': '覆灯火', '丙午': '天河水', '丁未': '天河水',
+    '戊申': '大驿土', '己酉': '大驿土', '庚戌': '钗钏金', '辛亥': '钗钏金',
+    '壬子': '桑柘木', '癸丑': '桑柘木', '甲寅': '大溪水', '乙卯': '大溪水',
+    '丙辰': '沙中土', '丁巳': '沙中土', '戊午': '天上火', '己未': '天上火',
+    '庚申': '石榴木', '辛酉': '石榴木', '壬戌': '大海水', '癸亥': '大海水'
+  }
+
   return {
     year: yearGan + yearZhi,
-    yearNa: '海中金',
+    yearNa: naYin[yearGan + yearZhi] || '未知',
     month: monthGan + monthZhi,
-    monthNa: '炉中火',
+    monthNa: naYin[monthGan + monthZhi] || '未知',
     day: dayGan + dayZhi,
-    dayNa: '大溪水',
+    dayNa: naYin[dayGan + dayZhi] || '未知',
     hour: hourGan + hourZhi,
-    hourNa: '剑锋金'
+    hourNa: naYin[hourGan + hourZhi] || '未知'
   }
 })
 

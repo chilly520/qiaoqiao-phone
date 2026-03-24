@@ -1513,9 +1513,14 @@ const shouldShowTimeDivider = computed(() => {
 const isPayCard = computed(() => {
     if (!props.msg) return false
     const content = ensureString(props.msg.content)
+    // Check for redpacket/transfer type or tags in content
+    // Support both [红包] and [红包:...] formats, including those inside [ONLINE]/[OFFLINE] tags
+    const hasRedPacket = /\[红包[\]：:]/.test(content) || content.includes('[发红包]')
+    const hasTransfer = /\[转账[\]：:]/.test(content)
     return props.msg.type === 'redpacket' ||
         props.msg.type === 'transfer' ||
-        (typeof content === 'string' && (content.includes('[红包]') || content.includes('[转账]')))
+        hasRedPacket ||
+        hasTransfer
 })
 
 const cleanedContent = computed(() => getCleanContent(props.msg.content, isHtmlCard.value, props.msg.role))

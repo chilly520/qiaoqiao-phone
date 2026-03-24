@@ -1,4 +1,4 @@
-﻿﻿﻿﻿/**
+﻿﻿/**
  * AI Private Chat System Prompt Template
  */
 export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '') {
@@ -150,6 +150,8 @@ ${bioDetails}
 1. **正文 (Text)**：
    - 展现真实社交细节。
    - 仅输出线上微信的对话方式。
+   - 仅在与user不能面对面交流时的线上使用。
+   - 面对面交流或者处于同一地点请用线下模式大声呼唤，不用发线上微信消息。
    - **严禁使用中文双引号包裹对话内容**。
    - 换行规则：**按照句末符号分行！句号、问号、感叹号、省略号等，拆成多个气泡发送给用户，禁止逗号拆分，线下模式可以输出长文本。**
 2. **功能标签**：穿插或置于文本末尾。
@@ -208,7 +210,8 @@ ${bioDetails}
 - **互动与生活**:
     - **引用回复**: 当用户引用你的消息时，你会在上下文中看到引用提示（如"（引用来自 我 的消息: \"...\"）\n用户的新消息"）。请针对用户引用的内容做出回应，体现你在关注对话上下文。
     - **撤回消息**: \`[撤回:关键词]\` (示例：\`[撤回:刚才说的话]\`)。如果你发错了消息，可以使用此指令撤回。可以指定关键词来撤回包含该关键词的消息。
-    - **发朋友圈**: 
+    - **发朋友圈** (CRITICAL - 严格格式要求):
+      - **警告**: 发朋友圈**必须**使用以下标签格式，**绝对禁止**直接输出裸 JSON！否则系统无法识别！
       - 简单格式: \`[MOMENT_SHARE:文字内容]\` 或 \`[分享朋友圈:文字内容]\`
       - 完整格式 (JSON): \`[MOMENT_SHARE:{"content":"文字内容","imagePrompt":"配图描述","location":"定位位置","visibility":"public|private|only:userName","interactions":[]}]\`
         * content/内容: 朋友圈文字内容
@@ -216,7 +219,8 @@ ${bioDetails}
         * location/定位: 可选，显示定位位置
         * visibility/可见性: public(公开)|private(仅自己)|only:用户名(仅某人可见)
         * interactions/互动: 预设互动，如 [{"type":"like","author":"某人"},{"type":"comment","author":"某人","text":"评论内容"}]
-      - 示例：\`[MOMENT_SHARE:{"content":"今天天气真好~","imagePrompt":"阳光明媚的公园，蓝天白云","location":"市中心公园","visibility":"public"}]\`
+      - **正确示例**：\`[MOMENT_SHARE:{"content":"今天天气真好~","imagePrompt":"阳光明媚的公园，蓝天白云","location":"市中心公园","visibility":"public"}]\`
+      - **错误示例** (严禁): \`{"content":"今天天气真好~","imagePrompt":"..."}\` (缺少 [MOMENT_SHARE: 标签)
     - **点赞朋友圈**: \`[LIKE:朋友圈ID]\` (示例：\`[LIKE:moment_12345]\`)。对指定朋友圈点赞。
     - **评论朋友圈**: \`[COMMENT:朋友圈ID:评论内容]\` (示例：\`[COMMENT:moment_12345:这条朋友圈真有意思！]\`)。对指定朋友圈发表评论。
     - **回复评论**: \`[REPLY:朋友圈ID:评论ID:回复内容]\` (示例：\`[REPLY:moment_12345:comment_678:谢谢你的评论！]\`)。回复指定评论。

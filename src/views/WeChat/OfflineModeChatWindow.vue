@@ -114,49 +114,72 @@
       </div>
 
       <div class="w-full max-w-[520px] mx-auto flex flex-col gap-1 relative z-10">
-        <div v-for="(msg, index) in filteredDisplayMsgs" :key="msg.id" :id="'msg-' + msg.id" class="w-full relative z-10">
-          <div class="message-item w-full flex flex-col items-stretch mb-2">
+        <template v-for="(msg, index) in filteredDisplayMsgs" :key="msg.id">
+          <!-- 区间选择虚线 (多选模式下显示在消息之间) -->
+          <div v-if="isMultiSelectMode && index > 0" 
+              class="relative h-6 flex items-center justify-center cursor-pointer group select-range-divider"
+              @click="selectRangeToIndex(index)">
+              <div class="w-full border-t border-dashed border-white/40 group-hover:border-amber-300/70 transition-colors"></div>
+              <div class="absolute bg-black/30 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] text-white/80 group-hover:text-amber-300 transition-colors">
+                  <i class="fa-solid fa-check-double mr-1"></i>选到这
+              </div>
+          </div>
+          <div :id="'msg-' + msg.id" class="w-full relative z-10">
+            <div class="message-item w-full flex items-stretch mb-2" :class="{ 'pl-10': isMultiSelectMode }">
+              
+              <!-- 多选复选框 -->
+              <div v-if="isMultiSelectMode" class="absolute left-0 top-1/2 -translate-y-1/2 z-20">
+                  <button 
+                      @click="toggleMessageSelection(msg.id)"
+                      class="w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                      :class="selectedMsgIds.has(msg.id) 
+                          ? 'bg-amber-500 border-amber-500' 
+                          : 'border-white/50 bg-black/20 hover:border-amber-300'">
+                      <i v-if="selectedMsgIds.has(msg.id)" class="fa-solid fa-check text-white text-xs"></i>
+                  </button>
+              </div>
           
 
-          <!-- 内容区 - 正居中 -->
-          <div class="w-full text-left">
-            
-            <!-- 消息内容 -->
-            <div class="w-full"
-                 @contextmenu.prevent="handleContextMenu(msg, $event)"
-                 @touchstart="startLongPress(msg, $event)"
-                 @touchmove="handleTouchMove"
-                 @touchend="cancelLongPress"
-                 @touchcancel="cancelLongPress">
-              <div class="w-full relative group">
-                <TheaterMessageRenderer
-                  v-if="isOfflineTextMessage(msg)"
-                  :msg="msg"
-                  :chatData="chatData"
-                  :suppressInitialAvatar="shouldSuppressInitialAvatar(index)"
-                />
-                <ChatMessageItem 
-                  v-else
-                  class="offline-special-message"
-                  :msg="msg" 
-                  :prevMsg="filteredDisplayMsgs[index - 1]" 
-                  :chatData="chatData"
-                  :forceOffline="true"
-                  @click-pay="handlePayClick"
-                />
-                <button v-if="hasInnerVoiceBlockInMsg(msg)" 
-                  @click.stop="openInnerVoiceFromMsg(msg)"
-                  class="absolute -right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-pink-400 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-125 hover:text-pink-500 z-10"
-                  title="点击查看心声">
-                  <i class="fa-solid fa-heart-pulse animate-pulse text-lg drop-shadow-md"></i>
-                </button>
+              <!-- 内容区 - 正居中 -->
+              <div class="w-full text-left">
+                
+                <!-- 消息内容 -->
+                <div class="w-full"
+                    @contextmenu.prevent="handleContextMenu(msg, $event)"
+                    @touchstart="startLongPress(msg, $event)"
+                    @touchmove="handleTouchMove"
+                    @touchend="cancelLongPress"
+                    @touchcancel="cancelLongPress">
+                  <div class="w-full relative group">
+                    <TheaterMessageRenderer
+                      v-if="isOfflineTextMessage(msg)"
+                      :msg="msg"
+                      :chatData="chatData"
+                      :suppressInitialAvatar="shouldSuppressInitialAvatar(index)"
+                    />
+                    <ChatMessageItem 
+                      v-else
+                      class="offline-special-message"
+                      :msg="msg" 
+                      :prevMsg="filteredDisplayMsgs[index - 1]" 
+                      :chatData="chatData"
+                      :forceOffline="true"
+                      @click-pay="handlePayClick"
+                    />
+                    <button v-if="hasInnerVoiceBlockInMsg(msg) && !isMultiSelectMode" 
+                      @click.stop="openInnerVoiceFromMsg(msg)"
+                      class="absolute -right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-pink-400 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-125 hover:text-pink-500 z-10"
+                      title="点击查看心声">
+                      <i class="fa-solid fa-heart-pulse animate-pulse text-lg drop-shadow-md"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- (Redundant Action Button Removed as requested) -->
               </div>
             </div>
-
-            <!-- (Redundant Action Button Removed as requested) -->
           </div>
-          </div>
-        </div>
+        </template>
       </div>
 
       <!-- 鎵撳瓧涓?-->
@@ -170,7 +193,7 @@
     </div>
 
     <!-- 底部输入区 -->
-    <div class="relative z-[40] px-4 pb-3 pt-1 offline-input-dock">
+    <div v-if="!isMultiSelectMode" class="relative z-[40] px-4 pb-3 pt-1 offline-input-dock">
       <div class="max-w-[520px] mx-auto">
       <OfflineChatInputBar 
         ref="inputBarRef"
@@ -191,6 +214,38 @@
         @regenerate="regenerateAIResponse"
       />
       </div>
+    </div>
+
+    <!-- 多选操作栏 -->
+    <div v-if="isMultiSelectMode"
+        class="relative z-[40] h-[60px] bg-black/40 backdrop-blur-md border-t border-white/10 flex items-center justify-between px-8">
+        <button @click="exitMultiSelectMode"
+            class="flex flex-col items-center justify-center text-white/80 hover:text-white transition-colors">
+            <i class="fa-solid fa-xmark text-lg"></i>
+            <span class="text-[10px] mt-0.5">取消</span>
+        </button>
+
+        <div class="flex gap-10">
+            <button @click="selectToBottom"
+                class="flex flex-col items-center justify-center text-white/80 hover:text-amber-300 transition-colors"
+                :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
+                <i class="fa-solid fa-arrow-down text-lg"></i>
+                <span class="text-[10px] mt-0.5">选到底部</span>
+            </button>
+            <button @click="favoriteSelectedMessages"
+                class="flex flex-col items-center justify-center text-white/80 hover:text-amber-300 transition-colors"
+                :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
+                <i class="fa-regular fa-star text-lg"></i>
+                <span class="text-[10px] mt-0.5">收藏</span>
+            </button>
+            <button @click="deleteSelectedMessages"
+                class="flex flex-col items-center justify-center text-red-400 hover:text-red-300 transition-colors"
+                :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
+                <i class="fa-regular fa-trash-can text-lg"></i>
+                <span class="text-[10px] mt-0.5">删除</span>
+            </button>
+        </div>
+        <div class="w-8"></div> <!-- Spacer -->
     </div>
 
     <!-- 通用弹窗/功能区 (提高层级防止被背景遮挡) -->
@@ -382,7 +437,134 @@ let longPressPoint = null
 // Multi Select & Quote
 const isMultiSelectMode = ref(false)
 const selectedMsgIds = ref(new Set())
+const lastSelectedId = ref(null)
 const currentQuote = ref(null)
+
+// 切换消息选择状态
+const toggleMessageSelection = (msgId) => {
+    const newSet = new Set(selectedMsgIds.value)
+    if (newSet.has(msgId)) {
+        newSet.delete(msgId)
+        if (lastSelectedId.value === msgId) {
+            if (newSet.size === 0) lastSelectedId.value = null
+        }
+    } else {
+        newSet.add(msgId)
+        lastSelectedId.value = msgId
+    }
+    selectedMsgIds.value = newSet
+}
+
+// 选择从第一个勾选的消息到指定索引的所有消息（用于虚线区间选择）
+const selectRangeToIndex = (endIndex) => {
+    if (selectedMsgIds.value.size === 0) {
+        // 如果没有选中任何消息，只选择当前虚线位置的消息
+        const msg = filteredDisplayMsgs.value[endIndex]
+        if (msg) {
+            selectedMsgIds.value = new Set([msg.id])
+            lastSelectedId.value = msg.id
+        }
+        return
+    }
+
+    const visibleMsgs = filteredDisplayMsgs.value
+    
+    // 找到第一个选中的消息索引
+    let startIndex = -1
+    for (let i = 0; i < visibleMsgs.length; i++) {
+        if (selectedMsgIds.value.has(visibleMsgs[i].id)) {
+            startIndex = i
+            break
+        }
+    }
+    
+    if (startIndex === -1) return
+    
+    // 确保 startIndex <= endIndex
+    const fromIndex = Math.min(startIndex, endIndex)
+    const toIndex = Math.max(startIndex, endIndex)
+    
+    // 选择区间内的所有消息
+    const newSet = new Set(selectedMsgIds.value)
+    for (let i = fromIndex; i <= toIndex; i++) {
+        if (visibleMsgs[i]) {
+            newSet.add(visibleMsgs[i].id)
+        }
+    }
+    selectedMsgIds.value = newSet
+}
+
+// 选择到底部
+const selectToBottom = () => {
+    if (selectedMsgIds.value.size === 0) return
+    const visibleMsgs = filteredDisplayMsgs.value
+    let minIdx = -1
+    for (let i = 0; i < visibleMsgs.length; i++) {
+        if (selectedMsgIds.value.has(visibleMsgs[i].id)) {
+            minIdx = i
+            break
+        }
+    }
+    if (minIdx === -1) return
+    const newSet = new Set(selectedMsgIds.value)
+    for (let i = minIdx; i < visibleMsgs.length; i++) {
+        newSet.add(visibleMsgs[i].id)
+    }
+    selectedMsgIds.value = newSet
+}
+
+// 退出多选模式
+const exitMultiSelectMode = () => {
+    isMultiSelectMode.value = false
+    selectedMsgIds.value = new Set()
+    lastSelectedId.value = null
+}
+
+// 收藏选中的消息
+const favoriteSelectedMessages = () => {
+    if (selectedMsgIds.value.size === 0) return
+    
+    const chatId = chatStore.currentChatId
+    if (!chatId) return
+    
+    const favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+    let addedCount = 0
+    
+    selectedMsgIds.value.forEach(msgId => {
+        const msg = chatStore.currentChat?.msgs?.find(m => m.id === msgId)
+        if (msg) {
+            const exists = favorites.some(f => f.id === msg.id && f.chatId === chatId)
+            if (!exists) {
+                favorites.push({
+                    ...msg,
+                    chatId: chatId,
+                    chatName: chatData.value?.name || '未知聊天',
+                    favoritedAt: new Date().toISOString()
+                })
+                addedCount++
+            }
+        }
+    })
+    
+    localStorage.setItem('favorites', JSON.stringify(favorites))
+    showToast(`已收藏 ${addedCount} 条消息`, 'success')
+    exitMultiSelectMode()
+}
+
+// 删除选中的消息
+const deleteSelectedMessages = () => {
+    if (selectedMsgIds.value.size === 0) return
+    
+    const chatId = chatStore.currentChatId
+    if (!chatId) return
+    
+    selectedMsgIds.value.forEach(msgId => {
+        chatStore.deleteMessage(chatId, msgId)
+    })
+    
+    showToast(`已删除 ${selectedMsgIds.value.size} 条消息`, 'info')
+    exitMultiSelectMode()
+}
 
 // History Modal
 const showHistoryModal = ref(false)
@@ -545,7 +727,18 @@ const openBackgroundModal = () => { showBackgroundModal.value = true }
 const toggleAIBackground = () => { settingsStore.toggleAIBackground() }
 const openInnerVoice = () => { showInnerVoiceCard.value = true }
 const closeInnerVoice = () => { showInnerVoiceCard.value = false }
-const toggleOfflineMode = () => { settingsStore.toggleOfflineMode() }
+const toggleOfflineMode = () => {
+  // 标记线上消息为已读（从线下切换到线上时）
+  if (chatData.value?.id) {
+    const onlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'online' && m.role === 'ai')
+    if (onlineMsgs && onlineMsgs.length > 0) {
+      const lastMsg = onlineMsgs[onlineMsgs.length - 1]
+      localStorage.setItem(`lastReadOnline_${chatData.value.id}`, lastMsg.id)
+      console.log('[OfflineModeChatWindow] Marked online messages as read:', lastMsg.id)
+    }
+  }
+  settingsStore.toggleOfflineMode()
+}
 
 const handleScroll = (e) => {
   const { scrollTop, scrollHeight, clientHeight } = e.target
@@ -856,7 +1049,7 @@ const startLongPress = (msg, event) => {
     setTimeout(() => { menuLock.value = false }, 500)
     longPressTimer = null
     longPressPoint = null
-  }, 450)
+  }, 650)
 }
 
 const handleTouchMove = (event) => {
@@ -864,7 +1057,7 @@ const handleTouchMove = (event) => {
   const touch = event.touches[0]
   const dx = Math.abs((touch.clientX || 0) - longPressPoint.x)
   const dy = Math.abs((touch.clientY || 0) - longPressPoint.y)
-  if (dx > 10 || dy > 10) cancelLongPress()
+  if (dx > 30 || dy > 30) cancelLongPress()
 }
 
 const cancelLongPress = () => {
@@ -1369,6 +1562,60 @@ onUnmounted(() => {
   border-bottom-color: rgba(255, 255, 255, 0.2);
 }
 
+/* 夜间模式 - 顶部区域暗色 */
+.night-mode .offline-top-shell {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0));
+}
+
+.night-mode .offline-lite-icon-btn {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgba(71, 85, 105, 0.6);
+  color: #94a3b8;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+.night-mode .scene-heading {
+  color: #e2e8f0;
+}
+
+.night-mode .scene-kicker {
+  color: #64748b;
+}
+
+.night-mode .scene-meta-item {
+  color: #94a3b8;
+}
+
+/* 夜间模式 - 底部输入区域暗色 */
+.night-mode .offline-input-dock {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0), rgba(15, 23, 42, 0.85) 28%, rgba(15, 23, 42, 0.98));
+}
+
+.night-mode .offline-menu-panel {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(71, 85, 105, 0.6);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+}
+
+.night-mode .offline-menu-item {
+  color: #cbd5e1;
+}
+
+.night-mode .offline-menu-item:hover {
+  background: rgba(51, 65, 85, 0.6);
+}
+
+.night-mode .menu-desc {
+  color: #64748b;
+}
+
+.night-mode .offline-load-more {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(71, 85, 105, 0.6);
+  color: #94a3b8;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
 /* 日间模式样式（覆盖默认白色文字） */
 :deep(.node-speech-content),
 :deep(.dialogue-bubble) {
@@ -1391,5 +1638,23 @@ onUnmounted(() => {
 :deep(.node-scene) {
   color: rgba(0, 0, 0, 0.8);
   border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 多选虚线区间选择样式 */
+.select-range-divider {
+  transition: all 0.2s ease;
+}
+
+.select-range-divider:hover {
+  background: rgba(251, 191, 36, 0.1);
+}
+
+/* 多选复选框动画 */
+.message-item button {
+  transition: all 0.2s ease;
+}
+
+.message-item button:active {
+  transform: scale(0.9);
 }
 </style>

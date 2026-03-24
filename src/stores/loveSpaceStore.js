@@ -85,6 +85,17 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       const photoCount = space.album?.length || 0
       const houseStatus = space.house?.desc || '充满了温馨的气息'
       
+      // 辅助函数：格式化时间戳
+      const formatDateTime = (timestamp) => {
+        if (!timestamp) return ''
+        const date = new Date(timestamp)
+        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+        const day = date.getDate().toString().padStart(2, '0')
+        const hour = date.getHours().toString().padStart(2, '0')
+        const minute = date.getMinutes().toString().padStart(2, '0')
+        return `${month}.${day} ${hour}:${minute}`
+      }
+      
       // 详细内容展示
       let contentDetails = ""
       
@@ -93,7 +104,8 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         const recentDiaries = space.diary.slice(-3).reverse()
         contentDetails += `\n\n【最近日记】`
         recentDiaries.forEach(d => {
-          contentDetails += `\n- ${d.authorName || (d.author === 'user' ? '用户' : '你')}《${d.title}》：${d.content || ''}`
+          const timeStr = formatDateTime(d.createdAt || d.date)
+          contentDetails += `\n- [${timeStr}] ${d.authorName || (d.author === 'user' ? '用户' : '你')}《${d.title}》：${d.content || ''}`
         })
       }
       
@@ -102,7 +114,8 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         const recentMessages = space.messages.slice(-5).reverse()
         contentDetails += `\n\n【最近留言】`
         recentMessages.forEach(m => {
-          contentDetails += `\n- ${m.senderName || (m.senderId === 'user' ? '用户' : '你')}："${m.content || ''}"`
+          const timeStr = formatDateTime(m.createdAt || m.timestamp)
+          contentDetails += `\n- [${timeStr}] ${m.senderName || (m.senderId === 'user' ? '用户' : '你')}："${m.content || ''}"`
         })
       }
       
@@ -111,7 +124,8 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         const recentLetters = space.letters.slice(-3).reverse()
         contentDetails += `\n\n【最近情书】`
         recentLetters.forEach(l => {
-          contentDetails += `\n- ${l.authorName || (l.author === 'user' ? '用户' : '你')}《${l.title}》：${l.content || ''}`
+          const timeStr = formatDateTime(l.createdAt || l.date)
+          contentDetails += `\n- [${timeStr}] ${l.authorName || (l.author === 'user' ? '用户' : '你')}《${l.title}》：${l.content || ''}`
         })
       }
       
@@ -120,7 +134,8 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         const recentFootprints = space.footprints.slice(-5).reverse()
         contentDetails += `\n\n【最近足迹】`
         recentFootprints.forEach(f => {
-          contentDetails += `\n- ${f.location || f.place}：${f.note || f.memory || ''}`
+          const timeStr = formatDateTime(f.createdAt || f.date)
+          contentDetails += `\n- [${timeStr}] ${f.location || f.place}：${f.note || f.memory || ''}`
         })
       }
       
@@ -129,7 +144,8 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         const recentStickies = space.stickies.slice(-5).reverse()
         contentDetails += `\n\n【便利贴】`
         recentStickies.forEach(s => {
-          contentDetails += `\n- ${s.authorName || s.author}："${s.content}"`
+          const timeStr = formatDateTime(s.createdAt)
+          contentDetails += `\n- [${timeStr}] ${s.authorName || s.author}："${s.content}"`
         })
       }
       
@@ -153,7 +169,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         if (recentSchedules.length > 0) {
           contentDetails += `\n\n【最近日程】`
           recentSchedules.forEach(s => {
-            contentDetails += `\n- ${s.date}：${s.title}${s.note ? `（${s.note}）` : ''}`
+            contentDetails += `\n- ${s.date} ${s.time || ''}：${s.title}${s.note ? `（${s.note}）` : ''}`
           })
         }
       }

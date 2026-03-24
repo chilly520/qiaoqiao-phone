@@ -34,16 +34,7 @@
           </div>
         </template>
 
-        <template v-if="note.styleClass === 's-red-scallop'">
-          <div class="inner scallop-inner">
-            <div class="note-content">
-              <span>{{ note.content }}</span>
-              <span class="note-signature" v-if="note.author">——{{ getAuthorName(note.author) }}</span>
-            </div>
-          </div>
-        </template>
-        
-        <template v-if="note.styleClass === 's-red-apple'">
+        <template v-else-if="note.styleClass === 's-red-apple'">
           <div class="apple-shape">
             <div class="apple-stem"></div>
             <div class="apple-core"></div>
@@ -144,12 +135,12 @@ function getAuthorName(author) {
   return loveSpaceStore.partner?.name || 'TA'
 }
 
-// 19 种样式库（移除了红色波点样式）
+// 18 种样式库（移除了红色波点样式 s-red-scallop）
 const availableStyles = [
   's-v1-grid', 's-v1-line', 's-v1-plaid', 's-v1-minimal',
   's-blue-grid', 's-blue-memo', 's-blue-matrix', 's-blue-time',
   's-blue-dash', 's-blue-plaid', 's-blue-todo', 's-blue-polaroid',
-  's-red-frame', 's-red-scallop', 's-red-apple',
+  's-red-frame', 's-red-apple',
   's-red-todo', 's-red-star-matrix', 's-red-habits', 's-red-tartan'
 ]
 
@@ -425,11 +416,6 @@ const formatDate = (timestamp) => {
 
 /* 红系 8 款 */
 .s-red-frame { background: #fffcf5; border: 2px solid #e48088; padding: 16px; color: #333; }
-.s-red-scallop { background: #e48088; padding: 8px; color: white; }
-.s-red-scallop .scallop-inner {
-  background: #fffcf5; height: 100%; padding: 16px; color: #e48088; font-weight: bold;
-  mask-image: radial-gradient(circle at 4px 4px, transparent 4px, black 4.5px); mask-size: 12px 12px; mask-position: -4px -4px;
-}
 
 .s-red-apple { background: #b6d3eb; color: white; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 16px; }
 .apple-shape { width: 80px; height: 70px; background: #ee5d68; border-radius: 40% 40% 50% 50%; border: 3px solid #fff; position: relative; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }

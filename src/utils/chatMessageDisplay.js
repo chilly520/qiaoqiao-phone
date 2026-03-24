@@ -364,6 +364,13 @@ export function extractLatestOfflineScene(messages = []) {
   return null
 }
 
+// 心声相关的字段名（用于识别无标签的JSON）
+const INNER_VOICE_FIELDS = [
+  'status', '心声', '着装', 'thought', 'mood', 'emotion', 'feeling',
+  '想法', '心情', '情绪', '感受', '思考', '内心', 'inner', '心理',
+  'state', 'mind', 'mental', 'activity', 'behavior', '行为'
+]
+
 export function extractInnerVoiceData(content, msg) {
   const raw = ensureMessageString(content)
   let block = extractTaggedBlock(raw, 'INNER_VOICE') || extractTaggedBlock(raw, 'INNERVOICE')
@@ -392,9 +399,22 @@ export function extractInnerVoiceData(content, msg) {
         }
         if (endPos !== -1) {
             const candidate = raw.substring(startIdx, endPos + 1);
-            if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
-                block = candidate;
-                break;
+            // 检查是否包含心声相关字段，或尝试解析为有效的短JSON对象（可能是AI忘写标签）
+            const hasVoiceField = INNER_VOICE_FIELDS.some(field => 
+              candidate.includes(`"${field}"`) || candidate.includes(`'${field}'`)
+            );
+            // 如果是较小的JSON对象（<500字符），即使没有已知字段也尝试解析
+            // 这可能是AI用了新的字段名或忘写标签
+            const isSmallObject = candidate.length < 500;
+            if (hasVoiceField || isSmallObject) {
+                // 额外验证：确保能解析为有效JSON
+                try {
+                  JSON.parse(candidate);
+                  block = candidate;
+                  break;
+                } catch (e) {
+                  // 不是有效JSON，跳过
+                }
             }
         }
     }
@@ -428,5 +448,27 @@ export function hasInnerVoice(content) {
   if (extractTaggedBlock(raw, 'INNER_VOICE') !== null || extractTaggedBlock(raw, 'INNERVOICE') !== null) {
     return true
   }
-  return /\{[\s\S]*?"(?:心声|着装|环境|行为|status|stats)"\s*[:：]/.test(raw)
+  // 检查是否包含心声相关字段
+  const hasVoiceField = INNER_VOICE_FIELDS.some(field => 
+    new RegExp(`["']${field}["']\\s*[:：]`).test(raw)
+  );
+  if (hasVoiceField) return true;
+  
+  // 检查是否有小的JSON对象（可能是AI忘写标签）
+  // 匹配 { ... } 模式，长度小于500，且能解析为有效JSON
+  const smallJsonMatches = raw.match(/\{[\s\S]{10,500}\}/g);
+  if (smallJsonMatches) {
+    for (const match of smallJsonMatches) {
+      try {
+        const parsed = JSON.parse(match);
+        // 如果解析成功且是对象，认为是心声数据
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return true;
+        }
+      } catch (e) {
+        // 不是有效JSON，继续检查下一个
+      }
+    }
+  }
+  return false;
 }

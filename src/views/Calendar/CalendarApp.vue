@@ -417,8 +417,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCalendarStore } from '../../stores/calendarStore'
-import { useChatStore } from '../../stores/chatStore'
+import { useCalendarStore } from '@/stores/calendarStore'
+import { useChatStore } from '@/stores/chatStore'
 import EventModal from './components/EventModal.vue'
 import PeriodModal from './components/PeriodModal.vue'
 import MoodModal from './components/MoodModal.vue'

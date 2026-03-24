@@ -213,6 +213,8 @@ const toggleVoiceMode = () => {
 
 const toggleOfflineMode = () => {
     settingsStore.toggleOfflineMode()
+    // 通知父组件切换了模式，父组件需要标记对应模式的消息为已读
+    emit('toggle-offline-mode')
 }
 
 const handleAutoResize = () => {

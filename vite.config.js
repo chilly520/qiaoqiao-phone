@@ -7,13 +7,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
-  esbuild: {
-    charset: 'utf8',
-  },
   plugins: [
     vue(),
     VitePWA({
-      disable: command === 'build', // 生产构建禁用，规避 Vercel 上 esbuild Utf8Error
+      disable: true, // 暂时全面禁用 PWA 以清理并规避严重的缓存及解析错误
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {

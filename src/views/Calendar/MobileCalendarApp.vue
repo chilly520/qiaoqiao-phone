@@ -226,8 +226,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCalendarStore } from '../../stores/calendarStore'
-import { useChatStore } from '../../stores/chatStore'
+import { useCalendarStore } from '@/stores/calendarStore'
+import { useChatStore } from '@/stores/chatStore'
 import PerpetualCalendar from './components/PerpetualCalendar.vue'
 import HealthTracker from './components/HealthTracker.vue'
 import ProfilePage from './components/ProfilePage.vue'
@@ -473,22 +473,27 @@ function savePeriod(data) {
 
 // 快速标记经期开始
 function markPeriodStart(date) {
-  const dateStr = calendarStore.formatDateStr(date)
-  const periodStatus = calendarStore.getPeriodStatus(date)
-  
-  if (periodStatus?.type === 'period') {
-    showToast('今天已经在经期中了', 'error')
-    return
-  }
-  
-  showConfirm(
-    '标记经期开始',
-    `确定要标记${date.getMonth() + 1}月${date.getDate()}日为经期开始吗？`,
-    () => {
-      showPeriodModal.value = true
-      // PeriodModal 会处理开始日期的设置
+  try {
+    const dateStr = calendarStore.formatDateStr(date)
+    const periodStatus = calendarStore.getPeriodStatus(date)
+
+    if (periodStatus?.type === 'period') {
+      showToast('今天已经在经期中了', 'error')
+      return
     }
-  )
+
+    // 直接使用默认周期长度5天，不依赖 periodData
+    const duration = 5
+    const endDate = new Date(date)
+    endDate.setDate(date.getDate() + duration - 1)
+    const endDateStr = calendarStore.formatDateStr(endDate)
+
+    calendarStore.recordPeriod(dateStr, endDateStr, [])
+    showToast('已标记经期开始', 'success')
+  } catch (error) {
+    console.error('标记经期失败:', error)
+    showToast('标记失败，请重试', 'error')
+  }
 }
 
 // 快速标记经期结束

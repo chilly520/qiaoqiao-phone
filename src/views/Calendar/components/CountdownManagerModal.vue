@@ -63,7 +63,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useCalendarStore } from '../../../stores/calendarStore'
+import { useCalendarStore } from '@/stores/calendarStore'
 import CountdownModal from './CountdownModal.vue'
 
 const emit = defineEmits(['close'])

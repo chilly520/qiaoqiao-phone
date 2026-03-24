@@ -143,7 +143,7 @@ function leapMonth(y) {
 }
 
 function monthDays(y, m) {
-  return (lunarInfo[y - 1900] & (0x10000 >> m)) ? 30 : 29
+  return (lunarInfo[y - 1900] & (0x10000 >> (m - 1))) ? 30 : 29
 }
 
 function ganZhiYear(year) {
@@ -851,6 +851,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     const settings = aiAccessSettings.value[charId] || {}
     const today = formatDateStr(new Date())
     const todayLunar = getLunarDate(new Date())
+    const now = new Date()
 
     let prompt = `【日历信息】\n今天是 ${today} (${todayLunar.yearName} ${todayLunar.monthName}${todayLunar.dayName})\n`
 
@@ -861,8 +862,9 @@ export const useCalendarStore = defineStore('calendar', () => {
       }
     }
 
-    if (settings.period) {
-      const status = getPeriodStatus(new Date())
+    // 经期信息：默认开启（settings.period !== false）
+    if (settings.period !== false) {
+      const status = getPeriodStatus(now)
       if (status) {
         if (status.type === 'period') {
           prompt += `生理期第${status.day}天\n`
@@ -871,6 +873,10 @@ export const useCalendarStore = defineStore('calendar', () => {
         } else if (status.type === 'ovulation') {
           prompt += `排卵期\n`
         }
+      }
+      // 添加经期记录状态提示
+      if (periodData.value.cycles.length === 0 && periodData.value.predictions.length === 0) {
+        prompt += `(暂无经期记录)\n`
       }
     }
 

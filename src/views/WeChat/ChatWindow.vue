@@ -223,6 +223,19 @@ const switchToOfflineMode = () => {
     }
 }
 
+// 仅标记线下消息为已读（用于月亮按钮切换）
+const markOfflineMessagesAsRead = () => {
+    if (chatData.value?.id) {
+        // 标记最后一条线下消息为已读
+        const offlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'offline' && m.role === 'ai')
+        if (offlineMsgs && offlineMsgs.length > 0) {
+            const lastMsg = offlineMsgs[offlineMsgs.length - 1]
+            localStorage.setItem(`lastReadOffline_${chatData.value.id}`, lastMsg.id)
+            console.log('[ChatWindow] Marked offline messages as read:', lastMsg.id)
+        }
+    }
+}
+
 const route = useRoute()
 const router = useRouter()
 const chatInputBarRef = ref(null)
@@ -3485,7 +3498,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 @send="handleSendMessage" @generate="generateAIResponse" @stop-generate="chatStore.stopGeneration"
                 @toggle-panel="toggleActionPanel" @toggle-emoji="toggleEmojiPicker" @toggle-music="handleToggleMusic"
                 @toggle-search="() => chatStore.toggleSearch(chatData?.id)" @regenerate="regenerateLastMessage"
-                @cancel-quote="cancelQuote" @scroll-to-bottom="scrollToBottom(false)" />
+                @cancel-quote="cancelQuote" @scroll-to-bottom="scrollToBottom(false)"
+                @toggle-offline-mode="markOfflineMessagesAsRead" />
 
             <!-- Multi-select Action Bar (Bottom Overlay) -->
             <div v-if="isMultiSelectMode"
