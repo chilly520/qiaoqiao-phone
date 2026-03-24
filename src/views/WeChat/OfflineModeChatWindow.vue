@@ -740,9 +740,14 @@ const toggleOfflineMode = () => {
   settingsStore.toggleOfflineMode()
 }
 
+const isUserNearBottom = ref(true)
+
 const handleScroll = (e) => {
   const { scrollTop, scrollHeight, clientHeight } = e.target
-  showScrollToBottom.value = scrollHeight - scrollTop - clientHeight > 300
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+  showScrollToBottom.value = distanceFromBottom > 300
+  // 记录用户是否在底部附近（100px内）
+  isUserNearBottom.value = distanceFromBottom < 100
 }
 
 const scrollToBottom = (instant = false) => {
@@ -1182,7 +1187,10 @@ watch(
   filteredDisplayMsgs,
   () => {
     updateSceneState()
-    scrollToBottom()
+    // 只有当用户已经在底部附近时才自动滚动，避免用户往上滑动查看历史时被强制拉回底部
+    if (isUserNearBottom.value) {
+      scrollToBottom()
+    }
   },
   { deep: true }
 )
