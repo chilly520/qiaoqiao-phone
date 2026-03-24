@@ -78,21 +78,21 @@ export const setupProactiveLogic = (chats, currentChatId, typingStatus, sendMess
         // 1. Proactive Chat / Call (Trigger when idle, applies globally now)
         if (chat.proactiveChat) {
             const pInterval = parseInt(chat.proactiveInterval) || 30
-            if (diffMinutes >= pInterval) {
-                if (!chat._lastProactiveTriggeredTime || (now - chat._lastProactiveTriggeredTime >= pInterval * 60000)) {
-                    chat._lastProactiveTriggeredTime = now
-                    const rand = Math.random()
-                    logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
-                    if (!chat.isGroup && rand < 0.2) {
-                        const callType = Math.random() > 0.5 ? 'video' : 'voice'
-                        sendMessageToAI(chatId, {
-                            hiddenHint: `（系统：距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
-                            isProactiveCall: true
-                        })
-                    } else {
-                        // Group chats: no call triggers, only messages
-                        sendMessageToAI(chatId, { hiddenHint: `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，给${chat.isGroup ? '群里' : '用户'}主动发条简短的消息开启新话题或分享动态。可带上表情包。）` })
-                    }
+            // 检查是否需要触发：距离上次触发时间超过间隔，且距离最后一条消息也超过间隔
+            const timeSinceLastTrigger = chat._lastProactiveTriggeredTime ? (now - chat._lastProactiveTriggeredTime) : Infinity
+            if (diffMinutes >= pInterval && timeSinceLastTrigger >= pInterval * 60000) {
+                chat._lastProactiveTriggeredTime = now
+                const rand = Math.random()
+                logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
+                if (!chat.isGroup && rand < 0.2) {
+                    const callType = Math.random() > 0.5 ? 'video' : 'voice'
+                    sendMessageToAI(chatId, {
+                        hiddenHint: `（系统：距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟。请主动找些话题或描写自己的动态行为，也可以主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]）`,
+                        isProactiveCall: true
+                    })
+                } else {
+                    // Group chats: no call triggers, only messages
+                    sendMessageToAI(chatId, { hiddenHint: `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，给${chat.isGroup ? '群里' : '用户'}主动发条简短的消息开启新话题或分享动态。可带上表情包。）` })
                 }
             }
         }
@@ -100,17 +100,17 @@ export const setupProactiveLogic = (chats, currentChatId, typingStatus, sendMess
         // 2. Active Chat (Check-in while user is elsewhere or app in background)
         if (chat.activeChat && currentChatId.value !== chatId) {
             const aInterval = parseInt(chat.activeInterval) || 120
-            if (diffMinutes >= aInterval) {
-                if (!chat._lastActiveTriggeredTime || (now - chat._lastActiveTriggeredTime > aInterval * 60000)) {
-                    chat._lastActiveTriggeredTime = now
-                    logger.sys(`[Proactive] Triggering check -in message for ${chat.name}`)
-                    const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
-                    const callChance = !chat.isGroup && Math.random() < 0.15
-                    const hint = callChance
-                        ? `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
-                        : `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
-                    sendMessageToAI(chatId, { hiddenHint: hint })
-                }
+            // 检查是否需要触发：距离上次触发时间超过间隔，且距离最后一条消息也超过间隔
+            const timeSinceLastTrigger = chat._lastActiveTriggeredTime ? (now - chat._lastActiveTriggeredTime) : Infinity
+            if (diffMinutes >= aInterval && timeSinceLastTrigger >= aInterval * 60000) {
+                chat._lastActiveTriggeredTime = now
+                logger.sys(`[Proactive] Triggering check -in message for ${chat.name}`)
+                const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
+                const callChance = !chat.isGroup && Math.random() < 0.15
+                const hint = callChance
+                    ? `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方。）`
+                    : `（距离用户最后一条消息已过 ${Math.floor(diffMinutes)} 分钟，现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。）`
+                sendMessageToAI(chatId, { hiddenHint: hint })
             }
         }
 

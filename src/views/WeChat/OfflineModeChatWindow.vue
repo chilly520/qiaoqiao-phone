@@ -390,6 +390,7 @@ import {
   parseOfflineSegments,
   shouldShowInOfflineMode
 } from '../../utils/chatMessageDisplay'
+import { generateImage } from '../../utils/aiService'
 
 const props = defineProps({
   initialUnreadCount: { type: Number, default: 0 }
@@ -1185,11 +1186,36 @@ const hasInnerVoice = (msg) => hasInnerVoiceBlock(msg?.content, msg)
 
 watch(
   filteredDisplayMsgs,
-  () => {
+  async () => {
     updateSceneState()
     // 只有当用户已经在底部附近时才自动滚动，避免用户往上滑动查看历史时被强制拉回底部
     if (isUserNearBottom.value) {
       scrollToBottom()
+    }
+    
+    // 检测【场景：...】指令并生成背景图
+    if (settingsStore.offlineMode.enableAIBackground) {
+      const lastMsg = filteredDisplayMsgs.value[filteredDisplayMsgs.value.length - 1]
+      if (lastMsg && lastMsg.role === 'ai') {
+        const content = ensureMessageString(lastMsg.content)
+        // 匹配【场景：英文描述】格式
+        const sceneMatch = content.match(/【场景：\s*([^】]+)】/)
+        if (sceneMatch) {
+          const scenePrompt = sceneMatch[1].trim()
+          if (scenePrompt) {
+            try {
+              console.log('[OfflineMode] 检测到场景指令，生成背景图:', scenePrompt)
+              const imageUrl = await generateImage(scenePrompt, { width: 1024, height: 1024 })
+              if (imageUrl) {
+                settingsStore.offlineMode.customBackground = imageUrl
+                console.log('[OfflineMode] 背景图已更新:', imageUrl)
+              }
+            } catch (e) {
+              console.error('[OfflineMode] 生成背景图失败:', e)
+            }
+          }
+        }
+      }
     }
   },
   { deep: true }

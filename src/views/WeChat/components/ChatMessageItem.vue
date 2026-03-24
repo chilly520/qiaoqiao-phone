@@ -3043,7 +3043,8 @@ function formatMessageContent(msg) {
         })
 
         if (/‖|【|（|\(|\「/.test(text)) {
-            const parts = text.split(/(‖[^‖]+‖|【[^】]+】|[（\(][^）\)]+?[）\)]|「[^」]+」)/g).filter(p => p && p.trim())
+            // 支持未闭合的括号（如内容跨行或被截断）
+            const parts = text.split(/(‖[^‖]+‖|【[^】]+】|[（\(][^）\)]*|「[^」]+」)/g).filter(p => p && p.trim())
             let htmlResult = ''
             
             const userName = props.chatData.groupSettings?.myNickname || props.chatData.userName || settingsStore.personalization.userProfile.name || '我'
