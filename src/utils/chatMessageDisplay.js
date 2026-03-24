@@ -382,6 +382,14 @@ export function extractInnerVoiceData(content, msg) {
   const raw = ensureMessageString(content)
   let block = extractTaggedBlock(raw, 'INNER_VOICE') || extractTaggedBlock(raw, 'INNERVOICE')
   
+  // 如果严格匹配失败，尝试使用正则匹配（支持未正确闭合的标签）
+  if (!block) {
+    const match = raw.match(INNER_VOICE_BLOCK_RE)
+    if (match) {
+      block = match[1].trim()
+    }
+  }
+  
   if (!block) {
     // Balanced brace matcher for raw JSON
     const braceStarts = [];
@@ -453,6 +461,10 @@ export function extractInnerVoiceData(content, msg) {
 export function hasInnerVoice(content) {
   const raw = ensureMessageString(content)
   if (extractTaggedBlock(raw, 'INNER_VOICE') !== null || extractTaggedBlock(raw, 'INNERVOICE') !== null) {
+    return true
+  }
+  // 检查是否匹配心声正则（支持未正确闭合的标签）
+  if (INNER_VOICE_BLOCK_RE.test(raw)) {
     return true
   }
   // 检查是否包含心声相关字段
