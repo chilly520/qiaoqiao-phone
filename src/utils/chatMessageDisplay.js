@@ -198,10 +198,12 @@ export function getOnlineTextContent(msg) {
   return stripCardBlocks(stripInnerVoiceBlocks(getOnlineRenderableContent(msg))).trim()
 }
 
+// 解析一行中的混合内容（如：动作+对话）
 export function parseOfflineLine(line) {
   let value = ensureMessageString(line).trim()
   if (!value) return null
   
+  // 先检查整行是否是特殊格式
   // 1. 旁白
   let match = value.match(OFFLINE_NARRATION_RE)
   if (match) return { type: 'narration', content: (match[1] || match[2] || '').trim() }
@@ -210,7 +212,7 @@ export function parseOfflineLine(line) {
   match = value.match(OFFLINE_SCENE_RE)
   if (match) return { type: 'scene', content: match[1].trim() }
 
-  // 3. 动作
+  // 3. 整行动作
   match = value.match(OFFLINE_ACTION_RE)
   if (match) return { type: 'action', content: match[1].trim() }
 
@@ -222,13 +224,7 @@ export function parseOfflineLine(line) {
   }
 
   // 5. 标准对话（带名字前缀）
-  // 排除看起来像时间的内容 (如 08:00)
-  // 排除以旁白符号开头的行，避免误判为说话人
-  if (value.startsWith('‖') || value.startsWith('\u2016')) {
-    // If it starts with a narration symbol, it's not a speaker dialogue.
-    // It should have been caught by OFFLINE_NARRATION_RE already, but this adds robustness.
-    // Fall through to general dialogue if not caught as narration.
-  } else {
+  if (!value.startsWith('‖') && !value.startsWith('\u2016')) {
     match = value.match(OFFLINE_SPEAKER_DIALOGUE_RE)
     if (match) {
       const speaker = match[1].trim()
@@ -239,15 +235,21 @@ export function parseOfflineLine(line) {
       const hasNarrativeParticles = /[的了是在]/.test(speaker)
       const isNumeric = /^\d+$/.test(speaker)
 
-      if (isClock || hasNarrativeParticles || isNumeric) {
-        // 看起来像时间 (08:00) 或描述，不作为说话人处理
-      } else {
+      if (!isClock && !hasNarrativeParticles && !isNumeric) {
         return { type: 'dialogue', speaker, content, speakerTagged: true }
       }
     }
   }
 
-  // 6. 普通对话
+  // 6. 处理混合内容（如：动作+对话）
+  // 按动作括号分割
+  const mixedParts = value.split(/([（\(][^）\)]*[）\)])/g).filter(p => p.trim())
+  if (mixedParts.length > 1) {
+    // 有多个部分，返回数组让调用者处理
+    return { type: 'mixed', parts: mixedParts }
+  }
+
+  // 7. 普通对话
   const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').trim()
   if (!cleanDialogue) return null
 
@@ -286,7 +288,29 @@ export function parseOfflineSegments(msg) {
         const l = line.trim()
         if (l) {
           const parsed = parseOfflineLine(l)
-          if (parsed) segments.push(parsed)
+          if (parsed) {
+            // 处理混合内容（如：动作+对话）
+            if (parsed.type === 'mixed' && parsed.parts) {
+              parsed.parts.forEach(part => {
+                const partTrimmed = part.trim()
+                if (!partTrimmed) return
+                
+                // 检查这部分是否是动作
+                const actionMatch = partTrimmed.match(/^\s*[\(\uFF08]([\s\S]*?)[\)\uFF09]\s*$/)
+                if (actionMatch) {
+                  segments.push({ type: 'action', content: actionMatch[1].trim() })
+                } else {
+                  // 普通对话内容
+                  const cleanContent = partTrimmed.replace(/^[""'']+|[""'']+$/g, '').trim()
+                  if (cleanContent) {
+                    segments.push({ type: 'dialogue', content: cleanContent })
+                  }
+                }
+              })
+            } else {
+              segments.push(parsed)
+            }
+          }
         }
       })
     }
