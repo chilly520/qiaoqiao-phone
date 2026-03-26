@@ -80,8 +80,13 @@ export const setupProactiveLogic = (chats, currentChatId, typingStatus, sendMess
             const pInterval = parseInt(chat.proactiveInterval) || 30
             // 检查是否需要触发：距离上次触发时间超过间隔，且距离最后一条消息也超过间隔
             const timeSinceLastTrigger = chat._lastProactiveTriggeredTime ? (now - chat._lastProactiveTriggeredTime) : Infinity
+            const timeSinceLastTriggerMinutes = timeSinceLastTrigger / 60000
+            
+            logger.sys(`[Proactive Debug] ${chat.name}: diffMinutes=${Math.floor(diffMinutes)}, pInterval=${pInterval}, timeSinceLastTrigger=${Math.floor(timeSinceLastTriggerMinutes)}min, lastTriggerTime=${chat._lastProactiveTriggeredTime || 'never'}`)
+            
             if (diffMinutes >= pInterval && timeSinceLastTrigger >= pInterval * 60000) {
                 chat._lastProactiveTriggeredTime = now
+                logger.sys(`[Proactive] Triggering proactive message for ${chat.name}, setting last trigger time to ${now}`)
                 const rand = Math.random()
                 logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
                 if (!chat.isGroup && rand < 0.2) {

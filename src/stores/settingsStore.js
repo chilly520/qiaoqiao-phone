@@ -266,12 +266,63 @@ export const useSettingsStore = defineStore('settings', () => {
         quality: 'standard'
     })
 
-    // --- 3.5 Offline Mode State ---
-    const isOfflineMode = ref(false)
-    const offlineMode = ref({
-        enableAIBackground: false,
-        customBackground: '',
-        backgroundType: 'default'
+    // --- 3.5 Offline Mode State (Per Chat) ---
+    // 改为按聊天 ID 存储，每个聊天独立的线上线下状态和背景设置
+    const chatOfflineModes = ref({}) // { chatId: { isOfflineMode: boolean, enableAIBackground: boolean, customBackground: string, backgroundType: string, themeMode: string, opacity: number, blur: number } }
+    
+    // 获取指定聊天的线下模式状态
+    function getChatOfflineMode(chatId) {
+        if (!chatId) return { isOfflineMode: false, enableAIBackground: false, customBackground: '', backgroundType: 'default', themeMode: 'day', opacity: 1, blur: 0 }
+        
+        if (!chatOfflineModes.value[chatId]) {
+            chatOfflineModes.value[chatId] = {
+                isOfflineMode: false,
+                enableAIBackground: false,
+                customBackground: '',
+                backgroundType: 'default',
+                themeMode: 'day',
+                opacity: 1,
+                blur: 0
+            }
+        }
+        return chatOfflineModes.value[chatId]
+    }
+    
+    // 设置指定聊天的线下模式状态
+    function setChatOfflineMode(chatId, config) {
+        if (!chatId) return
+        const current = getChatOfflineMode(chatId)
+        chatOfflineModes.value[chatId] = { ...current, ...config }
+        saveToStorage()
+    }
+    
+    // 切换指定聊天的线上线下模式
+    function toggleChatOfflineMode(chatId) {
+        if (!chatId) return
+        const current = getChatOfflineMode(chatId)
+        chatOfflineModes.value[chatId] = { ...current, isOfflineMode: !current.isOfflineMode }
+        saveToStorage()
+    }
+    
+    // 切换指定聊天的 AI 背景生成
+    function toggleChatAIBackground(chatId) {
+        if (!chatId) return
+        const current = getChatOfflineMode(chatId)
+        chatOfflineModes.value[chatId] = { ...current, enableAIBackground: !current.enableAIBackground }
+        saveToStorage()
+    }
+    
+    // 兼容旧代码的 getter（返回当前聊天的状态）
+    const isOfflineMode = computed(() => {
+        const chatStore = useChatStore()
+        const currentChatId = chatStore.currentChatId
+        return currentChatId ? getChatOfflineMode(currentChatId).isOfflineMode : false
+    })
+    
+    const offlineMode = computed(() => {
+        const chatStore = useChatStore()
+        const currentChatId = chatStore.currentChatId
+        return currentChatId ? getChatOfflineMode(currentChatId) : { enableAIBackground: false, customBackground: '', backgroundType: 'default', themeMode: 'day', opacity: 1, blur: 0 }
     })
 
     // --- 4. Persistence Helpers ---
@@ -286,8 +337,7 @@ export const useSettingsStore = defineStore('settings', () => {
             weather: weather.value,
             compressQuality: compressQuality.value,
             drawing: drawing.value,
-            isOfflineMode: isOfflineMode.value,
-            offlineMode: offlineMode.value
+            chatOfflineModes: chatOfflineModes.value
         }
         try {
             // DEEP CLONE to avoid Proxy DataCloneError
@@ -464,9 +514,14 @@ export const useSettingsStore = defineStore('settings', () => {
                 drawing.value = { ...drawing.value, ...data.drawing }
             }
 
-            // Load Offline Mode settings
-            if (data.isOfflineMode !== undefined) isOfflineMode.value = data.isOfflineMode
-            if (data.offlineMode) offlineMode.value = { ...offlineMode.value, ...data.offlineMode }
+            // Load Offline Mode settings (migrate from old format to new per-chat format)
+            if (data.chatOfflineModes) {
+                chatOfflineModes.value = data.chatOfflineModes
+            } else if (data.isOfflineMode !== undefined || data.offlineMode) {
+                // 迁移旧的全局数据到新的格式
+                chatOfflineModes.value._legacy_global_mode = data.isOfflineMode ?? false
+                chatOfflineModes.value._legacy_global_config = data.offlineMode || {}
+            }
 
             isInitialized.value = true
             // Save back to ensure migration
@@ -808,16 +863,22 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // --- Offline Mode Actions ---
     function toggleOfflineMode() {
-        isOfflineMode.value = !isOfflineMode.value
-        saveToStorage()
+        const chatStore = useChatStore()
+        if (chatStore.currentChatId) {
+            toggleChatOfflineMode(chatStore.currentChatId)
+        }
     }
     function toggleAIBackground() {
-        offlineMode.value.enableAIBackground = !offlineMode.value.enableAIBackground
-        saveToStorage()
+        const chatStore = useChatStore()
+        if (chatStore.currentChatId) {
+            toggleChatAIBackground(chatStore.currentChatId)
+        }
     }
     function setOfflineModeConfig(config) {
-        offlineMode.value = { ...offlineMode.value, ...config }
-        saveToStorage()
+        const chatStore = useChatStore()
+        if (chatStore.currentChatId) {
+            setChatOfflineMode(chatStore.currentChatId, config)
+        }
     }
 
     // --- Initialization ---
@@ -835,6 +896,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
         toggleOfflineMode, toggleAIBackground, setOfflineModeConfig,
+        getChatOfflineMode, setChatOfflineMode, toggleChatOfflineMode, toggleChatAIBackground,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
 
         // 👇 这两个是你备份页面必须要的

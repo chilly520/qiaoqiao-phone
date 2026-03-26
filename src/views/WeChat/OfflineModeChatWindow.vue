@@ -1,7 +1,7 @@
 <template>
   <div 
     class="offline-stage flex flex-col h-screen font-sans overflow-hidden relative"
-    :class="{ 'night-mode': settingsStore.offlineMode.themeMode === 'night' }"
+    :class="{ 'night-mode': currentChatOfflineMode.themeMode === 'night' }"
   >
     <div class="absolute inset-0 z-0 overflow-hidden">
       <div
@@ -79,8 +79,8 @@
                       <span class="menu-desc">根据剧情自动切换背景</span>
                     </span>
                   </span>
-                  <div :class="['w-9 h-5 rounded-full transition-all relative', settingsStore.offlineMode.enableAIBackground ? 'bg-rose-300' : 'bg-slate-200']">
-                    <div :class="['absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all shadow-sm', settingsStore.offlineMode.enableAIBackground ? 'left-[18px]' : 'left-0.5']"></div>
+                  <div :class="['w-9 h-5 rounded-full transition-all relative', currentChatOfflineMode.enableAIBackground ? 'bg-rose-300' : 'bg-slate-200']">
+                    <div :class="['absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all shadow-sm', currentChatOfflineMode.enableAIBackground ? 'left-[18px]' : 'left-0.5']"></div>
                   </div>
                 </button>
               </div>
@@ -254,10 +254,10 @@
       <BackgroundUploadModal 
         :visible="showBackgroundModal" 
         :initial-settings="{
-          themeMode: settingsStore.offlineMode.themeMode || 'day',
-          opacity: settingsStore.offlineMode.opacity ?? 1,
-          blur: settingsStore.offlineMode.blur ?? 0,
-          customBackground: settingsStore.offlineMode.customBackground
+          themeMode: currentChatOfflineMode.themeMode || 'day',
+          opacity: currentChatOfflineMode.opacity ?? 1,
+          blur: currentChatOfflineMode.blur ?? 0,
+          customBackground: currentChatOfflineMode.customBackground
         }"
         @close="showBackgroundModal = false" 
         @confirm="handleBackgroundConfirm" 
@@ -408,6 +408,20 @@ const walletStore = useWalletStore()
 const worldLoopStore = useWorldLoopStore()
 
 const DEFAULT_BACKGROUND = 'https://files.catbox.moe/e95o2s.jpg'
+
+// 当前聊天的线下模式配置（独立存储）
+const currentChatOfflineMode = computed(() => {
+  const chatId = chatStore.currentChatId
+  return chatId ? settingsStore.getChatOfflineMode(chatId) : { 
+    isOfflineMode: false, 
+    enableAIBackground: false, 
+    customBackground: '', 
+    backgroundType: 'default',
+    themeMode: 'day',
+    opacity: 1,
+    blur: 0
+  }
+})
 
 const sceneState = ref({
   location: '线下·未知位置',
@@ -659,8 +673,10 @@ const sceneDisplayTitle = computed(() => `${sceneState.value.location} · ${scen
 
 // 背景图片样式
 const backgroundImageStyle = computed(() => {
-  const bg = settingsStore.offlineMode.customBackground || DEFAULT_BACKGROUND
-  const opacity = settingsStore.offlineMode.opacity ?? (settingsStore.offlineMode.customBackground ? 1 : 0.22)
+  const customBg = currentChatOfflineMode.customBackground
+  const hasCustomBg = customBg && customBg.trim() !== ''
+  const bg = hasCustomBg ? customBg : DEFAULT_BACKGROUND
+  const opacity = currentChatOfflineMode.opacity ?? (hasCustomBg ? 1 : 0.22)
   return {
     backgroundImage: `url(${bg})`,
     opacity: opacity
@@ -669,8 +685,8 @@ const backgroundImageStyle = computed(() => {
 
 // 遮罩层样式
 const overlayStyle = computed(() => {
-  const isNight = settingsStore.offlineMode.themeMode === 'night'
-  const isCustomBg = !!settingsStore.offlineMode.customBackground
+  const isNight = currentChatOfflineMode.themeMode === 'night'
+  const isCustomBg = !!currentChatOfflineMode.customBackground
   
   if (isCustomBg) {
     // 自定义背景：根据主题模式调整遮罩
@@ -693,8 +709,8 @@ const overlayStyle = computed(() => {
 
 // 模糊层样式
 const blurStyle = computed(() => {
-  const blur = settingsStore.offlineMode.blur ?? 0
-  const isCustomBg = !!settingsStore.offlineMode.customBackground
+  const blur = currentChatOfflineMode.blur ?? 0
+  const isCustomBg = !!currentChatOfflineMode.customBackground
   
   if (isCustomBg) {
     return {
@@ -725,7 +741,11 @@ const toggleAutoRead = () => {
 
 const toggleSettingsMenu = () => { showSettingsMenu.value = !showSettingsMenu.value }
 const openBackgroundModal = () => { showBackgroundModal.value = true }
-const toggleAIBackground = () => { settingsStore.toggleAIBackground() }
+const toggleAIBackground = () => { 
+  if (chatStore.currentChatId) {
+    settingsStore.toggleChatAIBackground(chatStore.currentChatId)
+  }
+}
 const openInnerVoice = () => { showInnerVoiceCard.value = true }
 const closeInnerVoice = () => { showInnerVoiceCard.value = false }
 const toggleOfflineMode = () => {
@@ -1165,15 +1185,18 @@ const handleBackgroundConfirm = (result) => {
     opacity: result.opacity ?? 1,
     blur: result.blur ?? 0
   }
-  
+
   if (result.type === 'reset') {
-    config.customBackground = null
+    config.customBackground = ''
   } else if (result.type === 'url' || result.type === 'local' || result.type === 'update') {
     // 支持新上传、本地上传和仅更新参数的情况
     config.customBackground = result.data || result.url
   }
-  
-  settingsStore.setOfflineModeConfig(config)
+
+  // 使用当前聊天的独立配置
+  if (chatStore.currentChatId) {
+    settingsStore.setChatOfflineMode(chatStore.currentChatId, config)
+  }
   showBackgroundModal.value = false
 }
 

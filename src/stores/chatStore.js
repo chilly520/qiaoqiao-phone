@@ -1683,7 +1683,11 @@ export const useChatStore = defineStore('chat', () => {
         // 1. Proactive Chat / Call (While user is in the current chat but idle)
         if (chat.proactiveChat && currentChatId.value === chatId) {
             const pInterval = parseInt(chat.proactiveInterval) || 30
-            if (diffMinutes >= pInterval) {
+            // 检查是否需要触发：距离上次触发时间超过间隔，且距离最后一条消息也超过间隔
+            const timeSinceLastTrigger = chat._lastProactiveTriggeredTime ? (now - chat._lastProactiveTriggeredTime) : Infinity
+            if (diffMinutes >= pInterval && timeSinceLastTrigger >= pInterval * 60000) {
+                chat._lastProactiveTriggeredTime = now
+                saveChats() // 保存时间戳
                 const rand = Math.random()
                 logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
                 if (rand < 0.2) {
@@ -1701,17 +1705,18 @@ export const useChatStore = defineStore('chat', () => {
         // 2. Active Chat (Check-in while user is elsewhere or app in background)
         if (chat.activeChat && currentChatId.value !== chatId) {
             const aInterval = parseInt(chat.activeInterval) || 120
-            if (diffMinutes >= aInterval) {
-                if (!chat._lastActiveTriggeredTime || (now - chat._lastActiveTriggeredTime > aInterval * 60000)) {
-                    chat._lastActiveTriggeredTime = now
-                    logger.sys(`[Proactive] Triggering check-in message for ${chat.name}`)
-                    const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
-                    const callChance = Math.random() < 0.15
-                    const hint = callChance
-                        ? `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方或发消息询问当前状态。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
-                        : `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
-                    sendMessageToAI(chatId, { hiddenHint: hint })
-                }
+            // 检查是否需要触发：距离上次触发时间超过间隔，且距离最后一条消息也超过间隔
+            const timeSinceLastTrigger = chat._lastActiveTriggeredTime ? (now - chat._lastActiveTriggeredTime) : Infinity
+            if (diffMinutes >= aInterval && timeSinceLastTrigger >= aInterval * 60000) {
+                chat._lastActiveTriggeredTime = now
+                saveChats() // 保存时间戳
+                logger.sys(`[Proactive] Triggering check-in message for ${chat.name}`)
+                const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
+                const callChance = Math.random() < 0.15
+                const hint = callChance
+                    ? `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方或发消息询问当前状态。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
+                    : `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
+                sendMessageToAI(chatId, { hiddenHint: hint })
             }
         }
 

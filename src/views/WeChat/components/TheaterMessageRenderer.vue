@@ -49,6 +49,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useSettingsStore } from '../../../stores/settingsStore'
+import { useChatStore } from '../../../stores/chatStore'
 import { parseOfflineSegments } from '../../../utils/chatMessageDisplay'
 
 const props = defineProps({
@@ -67,8 +68,17 @@ const props = defineProps({
 })
 
 const settingsStore = useSettingsStore()
+const chatStore = useChatStore()
 
-const isNightMode = computed(() => settingsStore.offlineMode.themeMode === 'night')
+// 使用当前聊天的独立主题模式
+const isNightMode = computed(() => {
+  const chatId = chatStore.currentChatId || props.chatData?.id
+  if (chatId) {
+    const chatMode = settingsStore.getChatOfflineMode(chatId)
+    return chatMode.themeMode === 'night'
+  }
+  return false
+})
 
 const segments = computed(() => parseOfflineSegments(props.msg))
 
@@ -97,21 +107,16 @@ const charAvatar = computed(() => (
 ))
 
 const renderedSegments = computed(() => {
-  // 同一条消息的所有对话 segment 都应该显示头像
-  let isFirstDialogueInMsg = true
-
+  // 每个对话 segment 都显示头像
   return segments.value.map((segment) => {
     if (segment.type !== 'dialogue') {
       return segment
     }
 
-    // 每条消息的第一个对话 segment 显示头像
-    const showAvatar = isFirstDialogueInMsg
-    isFirstDialogueInMsg = false
-    
+    // 每个对话 segment 都显示头像
     return {
       ...segment,
-      showAvatar: showAvatar
+      showAvatar: true
     }
   })
 })
