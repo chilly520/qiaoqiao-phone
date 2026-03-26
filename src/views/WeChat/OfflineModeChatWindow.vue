@@ -83,6 +83,29 @@
                     <div :class="['absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all shadow-sm', currentChatOfflineMode.enableAIBackground ? 'left-[18px]' : 'left-0.5']"></div>
                   </div>
                 </button>
+                <!-- 字体大小调节 -->
+                <div class="offline-menu-item border-t border-slate-200/90">
+                  <span class="flex items-center gap-3">
+                    <i class="fa-solid fa-font text-[12px] text-orange-500"></i>
+                    <span class="flex flex-col items-start">
+                      <span>字体大小</span>
+                      <span class="menu-desc">调节整体文字缩放</span>
+                    </span>
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-400">A</span>
+                    <input 
+                      type="range" 
+                      min="0.8" 
+                      max="1.5" 
+                      step="0.1" 
+                      :value="settingsStore.fontScale"
+                      @input="e => settingsStore.setFontScale(parseFloat(e.target.value))"
+                      class="w-20 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                    >
+                    <span class="text-[12px] text-slate-400">A</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -673,10 +696,12 @@ const sceneDisplayTitle = computed(() => `${sceneState.value.location} · ${scen
 
 // 背景图片样式
 const backgroundImageStyle = computed(() => {
-  const customBg = currentChatOfflineMode.customBackground
+  const customBg = currentChatOfflineMode.value?.customBackground
+  console.log('[Background] customBg:', customBg?.substring(0, 50))
   const hasCustomBg = customBg && customBg.trim() !== ''
   const bg = hasCustomBg ? customBg : DEFAULT_BACKGROUND
-  const opacity = currentChatOfflineMode.opacity ?? (hasCustomBg ? 1 : 0.22)
+  const opacity = currentChatOfflineMode.value?.opacity ?? (hasCustomBg ? 1 : 0.22)
+  console.log('[Background] hasCustomBg:', hasCustomBg, 'bg:', bg.substring(0, 50))
   return {
     backgroundImage: `url(${bg})`,
     opacity: opacity
@@ -685,8 +710,8 @@ const backgroundImageStyle = computed(() => {
 
 // 遮罩层样式
 const overlayStyle = computed(() => {
-  const isNight = currentChatOfflineMode.themeMode === 'night'
-  const isCustomBg = !!currentChatOfflineMode.customBackground
+  const isNight = currentChatOfflineMode.value?.themeMode === 'night'
+  const isCustomBg = !!(currentChatOfflineMode.value?.customBackground)
   
   if (isCustomBg) {
     // 自定义背景：根据主题模式调整遮罩
@@ -709,8 +734,8 @@ const overlayStyle = computed(() => {
 
 // 模糊层样式
 const blurStyle = computed(() => {
-  const blur = currentChatOfflineMode.blur ?? 0
-  const isCustomBg = !!currentChatOfflineMode.customBackground
+  const blur = currentChatOfflineMode.value?.blur ?? 0
+  const isCustomBg = !!(currentChatOfflineMode.value?.customBackground)
   
   if (isCustomBg) {
     return {

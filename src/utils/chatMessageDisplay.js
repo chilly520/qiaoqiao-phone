@@ -379,16 +379,14 @@ export function extractLatestOfflineScene(messages = []) {
     // 直接在文本中查找最新的场景标签
     const sceneMatches = [...content.matchAll(/\u3010([\s\S]+?)\u3011/g)]
     if (sceneMatches.length > 0) {
-      // 从后往前找，跳过背景图描述（以"场景："开头的）
-      for (let i = sceneMatches.length - 1; i >= 0; i--) {
-        const match = sceneMatches[i]
-        const sceneContent = match[1].trim()
-        // 排除背景图描述（以"场景："开头的是生图描述，不是地点）
-        if (!sceneContent.startsWith('场景：')) {
-          return {
-            raw: match[0],
-            location: sceneContent
-          }
+      // 只提取第一个【】作为地点，避免 HTML 标题等后续内容干扰
+      const match = sceneMatches[0]
+      const sceneContent = match[1].trim()
+      // 排除背景图描述（以"场景："开头的是生图描述，不是地点）
+      if (!sceneContent.startsWith('场景：')) {
+        return {
+          raw: match[0],
+          location: sceneContent
         }
       }
     }

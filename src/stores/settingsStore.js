@@ -268,7 +268,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // --- 3.5 Offline Mode State (Per Chat) ---
     // 改为按聊天 ID 存储，每个聊天独立的线上线下状态和背景设置
-    const chatOfflineModes = ref({}) // { chatId: { isOfflineMode: boolean, enableAIBackground: boolean, customBackground: string, backgroundType: string, themeMode: string, opacity: number, blur: number } }
+    const chatOfflineModes = ref({}) // { chatId: { isOfflineMode: boolean, enableAIBackground: boolean, customBackground: string, backgroundType: string, themeMode: string, opacity: number, blur: number, fontScale: number } }
+    
+    // --- 3.6 Global Font Scale ---
+    const fontScale = ref(1) // 全局字体缩放比例，默认 1
     
     // 获取指定聊天的线下模式状态
     function getChatOfflineMode(chatId) {
@@ -337,7 +340,8 @@ export const useSettingsStore = defineStore('settings', () => {
             weather: weather.value,
             compressQuality: compressQuality.value,
             drawing: drawing.value,
-            chatOfflineModes: chatOfflineModes.value
+            chatOfflineModes: chatOfflineModes.value,
+            fontScale: fontScale.value
         }
         try {
             // DEEP CLONE to avoid Proxy DataCloneError
@@ -521,6 +525,11 @@ export const useSettingsStore = defineStore('settings', () => {
                 // 迁移旧的全局数据到新的格式
                 chatOfflineModes.value._legacy_global_mode = data.isOfflineMode ?? false
                 chatOfflineModes.value._legacy_global_config = data.offlineMode || {}
+            }
+            
+            // Load Font Scale
+            if (data.fontScale !== undefined) {
+                fontScale.value = data.fontScale
             }
 
             isInitialized.value = true
@@ -880,6 +889,12 @@ export const useSettingsStore = defineStore('settings', () => {
             setChatOfflineMode(chatStore.currentChatId, config)
         }
     }
+    
+    // 设置全局字体缩放
+    function setFontScale(scale) {
+        fontScale.value = Math.max(0.8, Math.min(1.5, scale))
+        saveToStorage()
+    }
 
     // --- Initialization ---
     loadFromStorage()
@@ -897,6 +912,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
         toggleOfflineMode, toggleAIBackground, setOfflineModeConfig,
         getChatOfflineMode, setChatOfflineMode, toggleChatOfflineMode, toggleChatAIBackground,
+        fontScale, setFontScale,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
 
         // 👇 这两个是你备份页面必须要的

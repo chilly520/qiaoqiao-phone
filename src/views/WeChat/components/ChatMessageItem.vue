@@ -41,8 +41,11 @@
                     </div>
                 </div>
 
-                <div v-else-if="isValidMessage" class="flex gap-2 w-full animate-fade-in"
-                    :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+                <div v-else-if="isValidMessage" class="flex gap-2 animate-fade-in"
+                    :class="[
+                        msg.role === 'user' ? 'flex-row-reverse' : '',
+                        (msg.type === 'html' || isHtmlCard) ? 'w-full justify-center' : 'w-full'
+                    ]">
 
                     <!-- Avatar -->
                     <div v-if="!forceOffline && shouldShowAvatar" class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
@@ -1052,7 +1055,10 @@
 
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
-                            :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                            :class="[
+                                msg.role === 'user' ? 'items-end' : 'items-start',
+                                (msg.type === 'html' || isHtmlCard) ? 'items-center' : ''
+                            ]">
 
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
                             <!-- Show bubble if there's cleaned content and not a family card. -->
@@ -1063,6 +1069,7 @@
                                 class="px-3 py-2 text-[15px] leading-relaxed break-words relative transition-all"
                                 :class="[
                                     forceOffline ? 'no-bubble-offline w-full' : (msg.role === 'user' ? 'chat-bubble-right shadow-sm' : 'chat-bubble-left shadow-sm'),
+                                    (msg.type === 'html' || isHtmlCard) ? 'flex justify-center !w-auto max-w-[90%]' : ''
                                 ]" :style="{
                                     fontSize: (chatData?.bubbleSize || 15) + 'px',
                                     ...(computedBubbleStyle || {})
@@ -1081,7 +1088,7 @@
                                 </div>
 
                                 <!-- Content -->
-                                <span v-html="formattedContent"></span>
+                                <span v-html="formattedContent" :class="(msg.type === 'html' || isHtmlCard) ? 'inline-block' : ''"></span>
                             </div>
 
                             <!-- 2. Image Layer -->

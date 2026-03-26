@@ -1,5 +1,5 @@
 <template>
-  <div class="theater-message" :class="{ 'night-mode': isNightMode }">
+  <div class="theater-message" :class="{ 'night-mode': isNightMode }" :style="fontScaleStyle">
     <template v-for="(segment, index) in renderedSegments" :key="`${msg?.id || 'msg'}-${index}`">
       <!-- 场景标签 -->
       <div v-if="segment.type === 'scene'" class="scene-chip">
@@ -79,6 +79,11 @@ const isNightMode = computed(() => {
   }
   return false
 })
+
+// 字体缩放样式
+const fontScaleStyle = computed(() => ({
+  fontSize: `${settingsStore.fontScale * 100}%`
+}))
 
 const segments = computed(() => parseOfflineSegments(props.msg))
 
@@ -225,8 +230,8 @@ function formatDialogueContent(content) {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 4px 0;
 }
 
 /* 场景标签 - 居中显示 */
@@ -353,8 +358,8 @@ function formatDialogueContent(content) {
   width: 100%;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 6px 0;
+  gap: 10px;
+  padding: 3px 0;
 }
 
 .dialogue-row.is-self {
