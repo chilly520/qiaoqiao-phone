@@ -14,6 +14,46 @@ import { RequestQueue } from './ai/requestQueue'
 
 const apiQueue = new RequestQueue(10, 60000); // Strict: 10 requests per 60 seconds as requested by the user
 
+/**
+ * 从内容中提取 INNER_VOICE 的 JSON 对象
+ * 支持多种格式：
+ * 1. [INNER_VOICE]{...}
+ * 2. [OFFLINE]...[INNER_VOICE]{...}[/OFFLINE]
+ * 3. 直接的 JSON 对象 {...}
+ * 4. 转义的 JSON 字符串 \"{...}\"
+ */
+function extractInnerVoiceJson(content) {
+    if (!content) return null
+    
+    // 尝试 1: 直接匹配 [INNER_VOICE] 标签内的 JSON
+    const innerVoiceMatch = content.match(/\[INNER_VOICE\]\s*({[\s\S]*?})\s*(?:\[\/INNER_VOICE\]|$)/i)
+    if (innerVoiceMatch) {
+        return innerVoiceMatch[1]
+    }
+    
+    // 尝试 2: 匹配转义的 JSON（AI 经常生成这种格式）
+    const escapedJsonMatch = content.match(/"status"[\s\S]*?"distance"/i)
+    if (escapedJsonMatch) {
+        // 提取包含 status 到 distance 的 JSON 片段
+        const jsonStart = content.lastIndexOf('{', escapedJsonMatch.index - 50)
+        const jsonEnd = content.indexOf('}', escapedJsonMatch.index + 50)
+        if (jsonStart !== -1 && jsonEnd !== -1) {
+            let jsonStr = content.substring(jsonStart, jsonEnd + 1)
+            // 移除转义字符
+            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\n/g, '\\n').replace(/\\\\/g, '\\')
+            return jsonStr
+        }
+    }
+    
+    // 尝试 3: 直接匹配 JSON 对象（没有标签）
+    const directJsonMatch = content.match(/\{[^{}]*"status"[^{}]*\}/i)
+    if (directJsonMatch) {
+        return directJsonMatch[0]
+    }
+    
+    return null
+}
+
 /* --- Avatar Description Cache Logic --- */
 const AVATAR_DESC_CACHE_KEY = 'qiaoqiao_avatar_descriptions';
 const simpleHash = (str) => {
@@ -432,7 +472,11 @@ export function generateContextPreview(chatId, char) {
             const timeStr = hours > 0 ? `${hours}小时${mins}分钟` : `${mins}分钟`;
             content += `\n\n【系统提示：当前时间为 ${currentVirtualTime}，距离双方上一次互动时间为 ${timeStr}。请根据时长和当前时间段，在回复中表现出合理的反应。】`;
         }
-        return `${m.role === 'user' ? (char.userName || 'User') : char.name}: ${content}`
+        // 修复角色名称显示：添加多重后备值
+        const speakerName = m.role === 'user' 
+            ? (char.userName || settingsStore?.personalization?.userProfile?.name || '用户')
+            : (char.name || char.remark || '对方')
+        return `${speakerName}: ${content}`
     }).join('\n')
     // 5. Summary
     let summaryText = ''
@@ -720,10 +764,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                             content = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
                                         }
                                         // 【关键修改】保留心声内容作为上下文参考，让 AI 知道角色的衣着和所在地
-                                        const voiceMatch = String(content).match(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i)
-                                        if (voiceMatch) {
+                                        // 直接从内容中提取 JSON 对象，不管外部是否有 [INNER_VOICE] 或 [OFFLINE] 标签
+                                        const voiceJson = extractInnerVoiceJson(String(content))
+                                        if (voiceJson) {
                                             try {
-                                                const voiceObj = JSON.parse(voiceMatch[1])
+                                                const voiceObj = typeof voiceJson === 'string' ? JSON.parse(voiceJson) : voiceJson
                                                 const statusText = voiceObj.status || voiceObj.state || ''
                                                 const outfitText = voiceObj.outfit || voiceObj.着装 || voiceObj.dress || ''
                                                 const locationText = voiceObj.location || voiceObj.地点 || ''
@@ -2811,7 +2856,7 @@ ${userInformation}
 作者：${moment.authorName}
 内容：${moment.content}
 ${moment.location ? `地点：${moment.location}` : ''}
-${moment.visualContext ? `图片：${moment.visualContext}` : ''}
+${moment.images && moment.images.length > 0 ? `\n【图片信息】共${moment.images.length}张图片。${moment.imageDescriptions ? `图片内容描述：${moment.imageDescriptions}` : '（图片内容需要通过视觉识别，请基于上下文推测）'}` : ''}
 ${moment.existingComments && moment.existingComments.length > 0 ? `\n【已有评论】\n${moment.existingComments.map((c) => `@${c.authorName}: ${c.content}`).join('\n')}` : ''}
 
 ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : ''}

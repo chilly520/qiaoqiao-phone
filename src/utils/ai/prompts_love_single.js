@@ -332,10 +332,15 @@ ${recentSchedules.slice(-5).map(s => `${s.date} ${s.time}: ${s.title}`).join('\n
 export function generateQuestionReplyPrompt(charName, userName, userProfile, recentChats, questionData) {
   const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
   
+  // 确定提问者身份
+  const questioner = questionData.authorId === 'user' ? userName : charName;
+  const responder = questionData.authorId === 'user' ? charName : userName;
+  const answerText = questionData.authorId === 'user' ? questionData.userAnswer : questionData.partnerAnswer;
+  
   return `${commonContext}
-【任务：回应 ${userName} 的灵魂提问回答】
-${userName} 刚刚回答了你提出的问题："${questionData.text}"。
-TA 的回答是："${questionData.userAnswer}"。
+【任务：回应 ${responder} 的灵魂提问回答】
+${questioner} 提出了一个问题："${questionData.text}"。
+${responder} 刚刚回答了这个问题："${answerText}"。
 
 请你以 ${charName} 的身份，针对 TA 的回答进行深情、细腻且带有你独特人设风格的回应。
 

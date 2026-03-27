@@ -1,6 +1,12 @@
 <template>
   <div class="theater-message" :class="{ 'night-mode': isNightMode }" :style="fontScaleStyle">
     <template v-for="(segment, index) in renderedSegments" :key="`${msg?.id || 'msg'}-${index}`">
+      <!-- 时间戳（仅 AI 回复的第一段显示） -->
+      <div v-if="segment.type !== 'scene' && index === 0 && msg?.role === 'ai' && msg?.timestamp" class="timestamp-chip">
+        <i class="fa-regular fa-clock"></i>
+        <span>{{ formatTimestamp(msg.timestamp) }}</span>
+      </div>
+      
       <!-- 场景标签 -->
       <div v-if="segment.type === 'scene'" class="scene-chip">
         <i class="fa-solid fa-location-dot scene-icon"></i>
@@ -223,6 +229,17 @@ function formatDialogueContent(content) {
   
   return result.join('\n')
 }
+
+// 格式化时间戳
+function formatTimestamp(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  return `${month}-${day} ${hours}:${minutes}`
+}
 </script>
 
 <style scoped>
@@ -266,7 +283,34 @@ function formatDialogueContent(content) {
   color: #789;
 }
 
-/* 旁白卡片 - 图1风格：浅青背景，左侧重色边框，带小喇叭图标 */
+/* 时间戳标签 */
+.timestamp-chip {
+  width: fit-content;
+  margin: 4px auto 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(60, 80, 100, 0.25);
+  color: #4a5568;
+  font-size: 10px;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.night-mode .timestamp-chip {
+  background: rgba(30, 40, 50, 0.6);
+  color: #cbd5e0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.timestamp-chip i {
+  font-size: 9px;
+  opacity: 0.8;
+}
+
+/* 旁白卡片 - 图 1 风格：浅青背景，左侧重色边框，带小喇叭图标 */
 .narration-card {
   width: 100%;
   position: relative;

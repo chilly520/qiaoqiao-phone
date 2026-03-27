@@ -1544,6 +1544,12 @@ export const useChatStore = defineStore('chat', () => {
 
             // Also update the latest summary field for AI context
             chat.summary = summaryContent
+            
+            console.log('[Summarize] Memory saved:', { 
+                memoryId: newMemoryItem.id, 
+                memoryCount: chat.memory.length,
+                summaryLength: summaryContent.length 
+            })
 
             triggerToast('总结已生成并存入记忆库', 'info')
 
@@ -1568,7 +1574,9 @@ export const useChatStore = defineStore('chat', () => {
                 }
             }
 
+            console.log('[Summarize] Saving to database...')
             saveChats()
+            console.log('[Summarize] Save completed')
             return { success: true }
 
         } catch (e) {
@@ -1884,6 +1892,11 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // 处理特殊卡片的上下文表现
+            if (m.type === 'image') {
+                // 图片消息：保留 [图片] 标签以便 AI 识别，同时保留 image 字段供多模态模型使用
+                content = '[图片]'
+                // 如果 image 字段存在（base64 或 URL），AI 服务会将其作为多模态输入
+            }
             if (m.type === 'moment_card') {
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;

@@ -72,7 +72,7 @@ export const useMomentsStore = defineStore('moments', () => {
         customPrompt: ''
     })
 
-    const backgroundUrl = ref(localStorage.getItem('moments_background') || '/默认背景图/橙玫瑰.png')
+    const backgroundUrl = ref(localStorage.getItem('moments_background') || 'https://files.catbox.moe/ivtxvo.jpg')
 
     // Load static configs from localStorage (they are small)
     try {
@@ -617,7 +617,8 @@ export const useMomentsStore = defineStore('moments', () => {
             authorName: moment.authorId === 'user' ? userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
             content: moment.content,
             location: moment.location || '',
-            visualContext: moment.imageDescriptions.join('; '),
+            images: moment.images || [], // 传递实际图片数据（base64/URL）供多模态 AI 使用
+            imageDescriptions: moment.imageDescriptions.join('; '), // 传递图片描述文本
             existingComments: moment.comments.map(c => ({ authorName: c.authorName, content: c.content, replyTo: c.replyTo }))
         }
 
@@ -699,7 +700,8 @@ export const useMomentsStore = defineStore('moments', () => {
             }, {
                 authorName: moment.authorId === 'user' ? settingsStore.personalization.userProfile.name : (chatStore.chats[moment.authorId]?.name || '神秘人'),
                 content: moment.content,
-                visualContext: moment.imageDescriptions.join('; ')
+                images: moment.images || [], // 传递实际图片数据（base64/URL）供多模态 AI 使用
+                imageDescriptions: moment.imageDescriptions.join('; '), // 传递图片描述文本
             }, {
                 authorName: settingsStore.personalization.userProfile.name,
                 content: userComment.content

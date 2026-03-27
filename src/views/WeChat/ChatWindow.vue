@@ -119,6 +119,8 @@ const getCleanContent = (contentRaw, isCard = false) => {
     clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
     clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
     clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
+    // 过滤【场景：xxx】标签，线上模式不显示大段场景描述
+    clean = clean.replace(/[\\[【] 场景：[^\]】]*[\]】]/gi, '');
     
     // 2. AGGRESSIVE: Remove style blocks and CSS fragments
     clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
@@ -183,9 +185,9 @@ const isImageMsg = (msg) => {
         }
     }
 
-    // Tag check: contains [图片:...] or [表情包:...]
-    // We use a more relaxed regex without strict ^ $ to handle potential surrounding chars/newlines
-    return /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：].*?\]/i.test(clean)
+    // Tag check: contains [图片：...] or [表情包：...] or just [图片]
+    // Support both formats: [图片：URL] and standalone [图片]
+    return /\[(?:图片|IMAGE|表情包|表情 - 包|STICKER)(?:[:：].*?)?\]/i.test(clean)
 }
 
 const chatData = computed(() => chatStore.currentChat)
@@ -2409,9 +2411,14 @@ const handleDrawCommandInChat = async (msgId, prompt) => {
     const chatId = chatStore.currentChatId;
     if (!chatId) return;
 
+    // Check if this is a ComfyUI workflow draw command
+    const comfyuiMatch = prompt.match(/^COMFYUI:\s*(.*)/i);
+    const actualPrompt = comfyuiMatch ? comfyuiMatch[1].trim() : prompt;
+    const useComfyUI = !!comfyuiMatch;
+
     try {
         // 1. Generate Image
-        const imageUrl = await generateImage(prompt);
+        const imageUrl = await generateImage(actualPrompt, { useComfyUI });
         if (!imageUrl) throw new Error('生图返回为空');
 
         // 2. Update message content in Store (Standard UI Update)
@@ -3310,8 +3317,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
             <!-- Header -->
             <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
-                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-blue-300/90 border-blue-300/30'"
-                :style="!loopData ? { backgroundColor: 'rgba(147, 197, 253, 0.9)', borderColor: 'rgba(147, 197, 253, 0.3)' } : {}">
+                :class="loopData ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200/50' : 'bg-white/95 border-gray-200/30'"
+                :style="!loopData ? { backgroundColor: 'rgba(255, 255, 255, 0.95)', borderColor: 'rgba(220, 220, 220, 0.3)' } : {}">
                 <div class="absolute left-3 flex items-center gap-1 cursor-pointer z-30 h-full w-14"
                     @click.stop="() => { console.log('[ChatWindow] Back button clicked'); $emit('back') }">
                     <i class="fa-solid fa-chevron-left text-black text-lg"></i>

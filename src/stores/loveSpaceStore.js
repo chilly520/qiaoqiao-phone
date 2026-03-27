@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import localforage from 'localforage'
 import { LOVE_SPACE_GENERATOR_PROMPT } from '@/utils/ai/prompts_love'
+import { useChatStore } from './chatStore.js'
 
 const loveSpaceDB = localforage.createInstance({
   name: 'qiaoqiao-phone',
@@ -45,7 +46,10 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       return state.spaces[state.currentPartnerId] || DEFAULT_SPACE()
     },
     initialized() { return this.currentSpace.initialized },
-    partner() { return this.currentSpace.partner },
+    partner() { 
+      const chatStore = useChatStore();
+      return chatStore.chats[this.currentPartnerId] || this.currentSpace.partner;
+    },
     startDate() { return this.currentSpace.startDate },
     loveDays() { return this.currentSpace.loveDays },
     diary() { return this.currentSpace.diary || [] },
@@ -371,6 +375,20 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         if (data) {
           this.spaces = data.spaces || {}
           this.currentPartnerId = data.currentPartnerId || null
+          
+          // 兼容旧数据：给问题添加 authorId 和 authorName
+          Object.values(this.spaces).forEach(space => {
+            if (space.questions && Array.isArray(space.questions)) {
+              space.questions.forEach(q => {
+                if (!q.authorId) {
+                  // 旧数据默认是 partner 提问
+                  q.authorId = 'partner'
+                  q.authorName = this.spaces[Object.keys(this.spaces)[0]]?.partner?.name || 'TA'
+                }
+              })
+            }
+          })
+          
           this.updateLoveDays()
         }
         this.isLoaded = true
@@ -484,6 +502,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         authorName: question.authorName || (this.partner?.name || 'TA'),
         userAnswer: question.userAnswer || '',
         partnerAnswer: question.partnerAnswer || '',
+        replies: [], // New: Store a list of replies for dialogue
         createdAt: new Date().toISOString() 
       }
       this.currentSpace.questions.unshift(newQuestion)
@@ -511,12 +530,24 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!this.currentPartnerId) return
       const q = this.currentSpace.questions.find(q => q.id === id)
       if (q) {
+        const now = new Date().toISOString()
+        const newReply = {
+          role: isUser ? 'user' : 'partner',
+          content: content,
+          createdAt: now
+        }
+        
+        if (!q.replies) q.replies = []
+        q.replies.push(newReply)
+
         if (isUser) {
           q.userAnswer = content
-          // 用户提交心声后，自动触发 AI 回应
+          q.userAnswerAt = now
+          // 用户提交之后触发 AI
           this.generateQuestionReply(q)
         } else {
           q.partnerAnswer = content
+          q.partnerAnswerAt = now
         }
         await this.saveToStorage()
       }
@@ -549,8 +580,12 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         questionData
       )
 
+      const messages = [
+        { role: 'system', content: prompt }
+      ]
+
       try {
-        const aiResponse = await generateReply(prompt, charId)
+        const aiResponse = await generateReply(messages, charId, null, { isCommandTask: true })
         if (aiResponse) {
           await this.executeSpaceCommands(aiResponse)
         }

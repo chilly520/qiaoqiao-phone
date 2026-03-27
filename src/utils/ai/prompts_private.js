@@ -1,4 +1,4 @@
-﻿﻿﻿/**
+﻿﻿﻿﻿﻿﻿﻿/**
  * AI Private Chat System Prompt Template
  */
 export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '') {

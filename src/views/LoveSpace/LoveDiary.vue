@@ -253,6 +253,8 @@ async function addComment() {
 </script>
 
 <style scoped>
+@import url("https://fontsapi.zeoseven.com/223/main/result.css");
+
 .love-diary {
   height: 100vh;
   background: #fdfaf6;
@@ -495,10 +497,12 @@ h2 {
 .delete-diary-btn:hover { color: #ff6b9d; }
 
 .diary-content {
-  font-family: 'Zhi Mang Xing', 'Kaiti', serif;
-  font-size: 18px; color: #4a4036;
-  line-height: 32px;
+  font-family: "huangkaihuaLawyerfont", cursive;
+  font-size: 20px;
+  color: #4e342e;
+  line-height: 2;
   white-space: pre-wrap;
+  text-shadow: 1px 1px 2px rgba(166, 124, 82, 0.15);
 }
 
 .diary-image-wrapper {

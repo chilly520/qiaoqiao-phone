@@ -339,7 +339,14 @@ const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
 
 // --- 状态与计算属性 ---
-const userAvatar = computed(() => settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg')
+const userAvatar = computed(() => {
+  const chat = chatStore.chats[loveSpaceStore.currentPartnerId]
+  return chat?.userAvatar || settingsStore.personalization.userProfile.avatar || '/avatars/default-user.jpg'
+})
+const userName = computed(() => {
+  const chat = chatStore.chats[loveSpaceStore.currentPartnerId]
+  return chat?.userName || settingsStore.personalization.userProfile.name || '我'
+})
 const partnerAvatar = computed(() => loveSpaceStore.partner?.avatar || '/avatars/default.jpg')
 const partnerName = computed(() => loveSpaceStore.partner?.name || 'TA')
 const loveDays = computed(() => loveSpaceStore.loveDays)
@@ -498,7 +505,7 @@ function confirmInvite() {
   });
 
   chatStore.sendMessageToAI(currentId, {
-    hiddenHint: `用户【${settingsStore.personalization.userProfile.name}】向你发送了情侣空间邀请。
+    hiddenHint: `用户【${userName.value}】向你发送了情侣空间邀请。
 
 【亲密度信息】
 - 当前亲密度：${intimacy}

@@ -608,7 +608,8 @@ onUnmounted(() => {
             <span class="text-[10px] text-white/90 font-medium uppercase tracking-widest">Widget 01</span>
           </div>
           <div id="widget-img-card1" :style="getCardBg('card1')"
-            class="absolute inset-0 w-full h-full pointer-events-none opacity-80">
+            class="absolute inset-0 w-full h-full pointer-events-none opacity-80"
+            style="background-color: transparent;">
           </div>
         </div>
 
@@ -621,7 +622,8 @@ onUnmounted(() => {
             <span class="text-[10px] text-white/90 font-medium uppercase tracking-widest">Widget 02</span>
           </div>
           <div id="widget-img-card2" :style="getCardBg('card2')"
-            class="absolute inset-0 w-full h-full pointer-events-none opacity-80">
+            class="absolute inset-0 w-full h-full pointer-events-none opacity-80"
+            style="background-color: transparent;">
           </div>
         </div>
 

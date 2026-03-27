@@ -44,6 +44,16 @@ export const useMahjongStore = defineStore('mahjong', () => {
         return { name: '钻石', color: '#b9f2ff', icon: '👑' }
     })
 
+    // 切换音效开关
+    function toggleSound() {
+        soundEnabled.value = !soundEnabled.value
+    }
+
+    // 切换背景音乐开关
+    function toggleBGM() {
+        bgmEnabled.value = !bgmEnabled.value
+    }
+
     // --- 新增：个性化与排行榜状态 ---
     const playerStats = ref([]) // 所有打过牌的玩家数据 [{ name, avatar, score, rank, wins, losses }]
     const tablecloth = ref('') // 自定义桌布 URL 或 Base64
@@ -83,6 +93,10 @@ export const useMahjongStore = defineStore('mahjong', () => {
                 wins: player.wins || 0,
                 losses: player.losses || 0
             })
+            // 限制只保留最近 50 个玩家，防止 localStorage 超限
+            if (playerStats.value.length > 50) {
+                playerStats.value = playerStats.value.slice(-50)
+            }
         }
         saveData()
     }
@@ -912,17 +926,39 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
     }
 
     const saveData = () => {
-        localStorage.setItem('mahjong_stats', JSON.stringify({
-            beans: beans.value,
-            score: score.value,
-            wins: wins.value,
-            losses: losses.value,
-            winStreak: winStreak.value,
-            rank: rank.value,
-            playerStats: playerStats.value,
-            tablecloth: tablecloth.value,
-            tileBacks: tileBacks.value
-        }))
+        try {
+            const data = {
+                beans: beans.value,
+                score: score.value,
+                wins: wins.value,
+                losses: losses.value,
+                winStreak: winStreak.value,
+                rank: rank.value,
+                playerStats: playerStats.value,
+                tablecloth: tablecloth.value,
+                tileBacks: tileBacks.value
+            }
+            localStorage.setItem('mahjong_stats', JSON.stringify(data))
+        } catch (e) {
+            console.warn('[Mahjong] 存储失败，可能是 localStorage 超限:', e)
+            // 如果存储失败，尝试清理旧数据后重试
+            try {
+                localStorage.removeItem('mahjong_stats')
+                // 只保留核心数据，丢弃 playerStats
+                const minimalData = {
+                    beans: beans.value,
+                    score: score.value,
+                    wins: wins.value,
+                    losses: losses.value,
+                    winStreak: winStreak.value,
+                    rank: rank.value
+                }
+                localStorage.setItem('mahjong_stats', JSON.stringify(minimalData))
+                console.log('[Mahjong] 已清理并存储最小化数据')
+            } catch (e2) {
+                console.error('[Mahjong] 存储完全失败:', e2)
+            }
+        }
     }
 
     const loadData = () => {
@@ -1029,6 +1065,6 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
         playerStats, tablecloth, tileBacks, currentTileBack, leaderboard,
         rechargeBeans, deductBeans, addBeans, updateScore, createRoom, addAIPlayers, startGame, playTile, nextTurn, handleAction, aiPlayTile,
         exitRoom, endRound, startNextRound: () => { if (gameState.value) gameState.value.roundResult = null; if (currentRoom.value) currentRoom.value.currentRound++ },
-        sendGameChat, recordPlayerStats, saveData
+        sendGameChat, recordPlayerStats, saveData, toggleSound, toggleBGM
     }
 })

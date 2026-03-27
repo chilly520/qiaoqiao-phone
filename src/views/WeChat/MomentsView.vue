@@ -162,12 +162,15 @@ const settingsForm = ref({
     customPrompt: momentsStore.config.customPrompt
 })
 
-// Default backgrounds from local folder
+// Default backgrounds from catbox.moe
 const defaultBackgrounds = [
-    '/默认背景图/橙玫瑰.png',
-    '/默认背景图/粉玫瑰.png',
-    '/默认背景图/紫玫瑰.png',
-    '/默认背景图/红玫瑰.png'
+    'https://files.catbox.moe/ivtxvo.jpg',
+    'https://files.catbox.moe/h4obao.jpg',
+    'https://files.catbox.moe/34bcq1.jpg',
+    'https://files.catbox.moe/2h9igu.jpg',
+    'https://files.catbox.moe/ys28y8.jpg',
+    'https://files.catbox.moe/zoh8jy.jpg',
+    'https://files.catbox.moe/fmhwhq.jpg'
 ]
 
 // Background customization removed (now in store)

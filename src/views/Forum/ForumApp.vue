@@ -567,7 +567,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, reactive, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useForumStore } from '@/stores/forumStore'
 import { useChatStore } from '@/stores/chatStore'
@@ -691,6 +691,8 @@ const editForm = reactive({
   worldBookEntries: []
 })
 
+let removeBackInterceptor = null
+
 onMounted(async () => {
    await forumStore.initStore()
    
@@ -710,6 +712,39 @@ onMounted(async () => {
        // Clean up URL without triggering reload
        router.replace({ path: '/forum' })
    }
+   
+   // 拦截浏览器返回按钮和侧滑返回手势
+   removeBackInterceptor = router.beforeEach((to, from, next) => {
+       // 如果是返回操作（to.path 比 from.path 更"上层"）
+       if (to.path === '/' || to.path === '/home') {
+           // 优先关闭详情页
+           if (selectedPost.value) {
+               selectedPost.value = null
+               next(false) // 阻止路由跳转
+               return
+           }
+           // 其次关闭个人中心子页面
+           if (profileSubPage.value) {
+               profileSubPage.value = null
+               next(false)
+               return
+           }
+           // 再其次返回发现页
+           if (currentTab.value !== 'discover') {
+               currentTab.value = 'discover'
+               next(false)
+               return
+           }
+       }
+       next() // 允许路由跳转
+   })
+})
+
+onUnmounted(() => {
+  // 清理路由守卫
+  if (removeBackInterceptor) {
+    removeBackInterceptor()
+  }
 })
 
 function selectForum(id) {
@@ -927,13 +962,23 @@ async function confirmClearAllPosts() {
   }
 }
 function handleBack() {
+  // 优先级 1: 关闭详情页（帖子详情）
+  if (selectedPost.value) {
+    selectedPost.value = null
+    return
+  }
+  // 优先级 2: 关闭个人中心子页面
   if (profileSubPage.value) {
     profileSubPage.value = null
-  } else if (currentTab.value !== 'discover') {
-    currentTab.value = 'discover'
-  } else {
-    router.push('/')
+    return
   }
+  // 优先级 3: 返回发现页
+  if (currentTab.value !== 'discover') {
+    currentTab.value = 'discover'
+    return
+  }
+  // 优先级 4: 返回桌面
+  router.push('/')
 }
 </script>
 

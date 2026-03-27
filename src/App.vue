@@ -153,13 +153,14 @@ const statusBarStyle = computed(() => {
         }
     }
 
-    // WeChat pages use water-blue frosted glass (same as chat header)
+    // WeChat pages use white background to match chat header
     if (wechatRoutes.includes(route.name)) {
         return {
             color: '#000000',
             textShadow: 'none',
-            backgroundColor: 'rgba(147, 197, 253, 0.4)',
-            borderBottomColor: 'rgba(147, 197, 253, 0.2)'
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            borderBottomColor: 'rgba(220, 220, 220, 0.3)'
         }
     }
 

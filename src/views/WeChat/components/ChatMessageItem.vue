@@ -1063,33 +1063,43 @@
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
                             <!-- Show bubble if there's cleaned content and not a family card. -->
                             <!-- Added check for isDiceMsg to prevent double rendering/bubble background for dice rolls -->
-                            <div v-if="cleanedContent && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !isTarotMsg" @contextmenu.prevent="emitContextMenu"
-                                @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
-                                @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
-                                class="px-3 py-2 text-[15px] leading-relaxed break-words relative transition-all"
-                                :class="[
-                                    forceOffline ? 'no-bubble-offline w-full' : (msg.role === 'user' ? 'chat-bubble-right shadow-sm' : 'chat-bubble-left shadow-sm'),
-                                    (msg.type === 'html' || isHtmlCard) ? 'flex justify-center !w-auto max-w-[90%]' : ''
-                                ]" :style="{
-                                    fontSize: (chatData?.bubbleSize || 15) + 'px',
-                                    ...(computedBubbleStyle || {})
-                                }">
-                                <!-- Arrow -->
-                                <div v-if="shouldShowArrow"
-                                    class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
-                                    :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#95EC69]' : 'left-[-6px] border-r-[6px] border-r-white'">
-                                </div>
-
-                                <!-- Quote -->
-                                <div v-if="msg.quote"
-                                    class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
-                                    <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方') }}</div>
-                                    <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
-                                </div>
-
-                                <!-- Content -->
-                                <span v-html="formattedContent" :class="(msg.type === 'html' || isHtmlCard) ? 'inline-block' : ''"></span>
+                            <!-- Split into multiple bubbles for multi-paragraph AI messages -->
+                            <!-- Scene change hint (online mode only) -->
+                            <div v-if="hasSceneChange && !forceOffline" class="scene-change-hint">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                                <span>已更换场景</span>
                             </div>
+                            
+                            <template v-for="(segment, segIndex) in contentSegments" :key="segIndex">
+                                <div v-if="segment && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !isTarotMsg" 
+                                    @contextmenu.prevent="emitContextMenu"
+                                    @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                                    @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
+                                    class="px-3 py-2 text-[15px] leading-relaxed break-words relative transition-all"
+                                    :class="[
+                                        forceOffline ? 'no-bubble-offline w-full' : (msg.role === 'user' ? 'chat-bubble-right shadow-sm' : 'chat-bubble-left shadow-sm'),
+                                        (msg.type === 'html' || isHtmlCard) ? 'flex justify-center !w-auto max-w-[90%]' : ''
+                                    ]" :style="{
+                                        fontSize: (chatData?.bubbleSize || 15) + 'px',
+                                        ...(computedBubbleStyle || {})
+                                    }">
+                                    <!-- Arrow (only show on last segment for multi-segment messages) -->
+                                    <div v-if="shouldShowArrow && segIndex === contentSegments.length - 1"
+                                        class="absolute top-3 w-0 h-0 border-y-[6px] border-y-transparent"
+                                        :class="msg.role === 'user' ? 'right-[-6px] border-l-[6px] border-l-[#95EC69]' : 'left-[-6px] border-r-[6px] border-r-white'">
+                                    </div>
+
+                                    <!-- Quote (only on first segment) -->
+                                    <div v-if="msg.quote && segIndex === 0"
+                                        class="mb-1.5 pb-1.5 border-b border-white/10 opacity-70 text-[11px] leading-tight flex flex-col gap-0.5">
+                                        <div class="font-bold">{{ msg.quote.role === 'user' ? '我' : (chatData.name || '对方') }}</div>
+                                        <div class="truncate max-w-[200px]">{{ msg.quote.content }}</div>
+                                    </div>
+
+                                    <!-- Content -->
+                                    <span v-html="renderSegment(segment)" :class="(msg.type === 'html' || isHtmlCard) ? 'inline-block' : ''"></span>
+                                </div>
+                            </template>
 
                             <!-- 2. Image Layer -->
                             <div v-if="isImageMsg(msg) || msg.image" class="msg-image bg-transparent"
@@ -1526,9 +1536,9 @@ const isPayCard = computed(() => {
     if (!props.msg) return false
     const content = ensureString(props.msg.content)
     // Check for redpacket/transfer type or tags in content
-    // Support both [红包] and [红包:...] formats, including those inside [ONLINE]/[OFFLINE] tags
-    const hasRedPacket = /\[红包[\]：:]/.test(content) || content.includes('[发红包]')
-    const hasTransfer = /\[转账[\]：:]/.test(content)
+    // Support both [红包] and [红包：...] formats, including those inside [ONLINE]/[OFFLINE] tags
+    const hasRedPacket = /\[红包[:：\s\]]/.test(content) || content.includes('[发红包]')
+    const hasTransfer = /\[转账[:：\s\]]/.test(content)
     return props.msg.type === 'redpacket' ||
         props.msg.type === 'transfer' ||
         hasRedPacket ||
@@ -1536,6 +1546,37 @@ const isPayCard = computed(() => {
 })
 
 const cleanedContent = computed(() => getCleanContent(props.msg.content, isHtmlCard.value, props.msg.role))
+
+// Detect scene change for online mode (show small hint only)
+const hasSceneChange = computed(() => {
+    if (!props.msg || props.msg.role !== 'ai') return false
+    const content = ensureString(props.msg.content)
+    // Check for【场景：xxx】tag
+    return /[\\[【] 场景：[^\]】]*[\]】]/i.test(content)
+})
+
+// Split content into segments for bubble rendering (only for AI messages with multiple paragraphs)
+const contentSegments = computed(() => {
+    if (!props.msg) return [cleanedContent.value]
+    
+    // User messages and system messages are not split
+    if (props.msg.role === 'user' || props.msg.role === 'system') return [cleanedContent.value]
+    
+    // Special message types are not split
+    if (props.msg.type === 'html' || isHtmlCard.value) return [cleanedContent.value]
+    if (isImageMsg(props.msg) || isDiceMsg.value || isTarotMsg.value) return [cleanedContent.value]
+    
+    const content = cleanedContent.value
+    if (!content) return []
+    
+    // Split by double newlines (paragraphs)
+    const segments = content.split(/\n\s*\n/).filter(s => s.trim().length > 0)
+    
+    // Only split if there are multiple substantial paragraphs
+    if (segments.length <= 1) return [content]
+    
+    return segments
+})
 
 const isDiceMsg = computed(() => {
     if (props.msg.diceResults) return true
@@ -2222,6 +2263,8 @@ function getCleanContent(contentRaw, isCard = false, role = null) {
     }
 
     clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
+    // 过滤 AI 描述的 [图片] 标签（只有带冒号的才保留，因为那可能是真正的图片 URL）
+    clean = clean.replace(/\[(?:图片|IMAGE|表情包|表情 - 包|STICKER)\]/gi, '');
     clean = props.forceOffline ? getOfflineTextContent({ content: clean, mode: props.msg.mode }) : getOnlineTextContent({ content: clean, mode: props.msg.mode })
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
@@ -3150,6 +3193,19 @@ function formatMessageContent(msg) {
     return parseWeChatEmojis(html);
 }
 
+// Render a single segment of content (for multi-paragraph bubble splitting)
+function renderSegment(segment) {
+    if (!segment) return ''
+    
+    // Create a temporary message object with just this segment's content
+    const tempMsg = {
+        ...props.msg,
+        content: segment
+    }
+    
+    return formatMessageContent(tempMsg)
+}
+
 
 function getDuration(msg) {
     if (msg.duration) return msg.duration
@@ -3659,6 +3715,31 @@ const scrollToVote = (refId) => {
     color: #000000;
     border: 1px solid rgba(0, 0, 0, 0.05);
     border-radius: 2px 12px 12px 12px;
+}
+
+/* 场景变更提示（线上模式） */
+.scene-change-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(100, 120, 140, 0.12);
+    color: #8899aa;
+    font-size: 10px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    animation: fadeIn 0.3s ease;
+}
+
+.scene-change-hint i {
+    font-size: 9px;
+    opacity: 0.7;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* Voice bubble adjustments */
