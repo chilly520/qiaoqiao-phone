@@ -3,8 +3,8 @@ const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
 const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)(?:[\)\uFF09]\s*)?$/
 const OFFLINE_NARRATION_RE = /^(?:\|\||\u2016)([\s\S]*?)(?:\|\||\u2016)?$/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
-const OFFLINE_QUOTED_DIALOGUE_RE = /"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d/
-const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「\s]{1,8})\s*[:：\uFF1A]\s*([\s\S]+?)$/
+const OFFLINE_QUOTED_DIALOGUE_RE = /^\s*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d)\s*$/
+const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「\s]{1,24})\s*[:：\uFF1A]\s*([\s\S]+?)$/
 
 const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
@@ -219,8 +219,15 @@ export function parseOfflineLine(line) {
   // 4. 带「标签」的对话
   match = value.match(OFFLINE_TAGGED_DIALOGUE_RE)
   if (match) {
-    const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
+    const content = match[2].trim().replace(/^[\s"“'‘\u201c\u2018]+|[\s"”'’\u201d\u2019]+$/g, '')
     return { type: 'dialogue', speaker: match[1].trim(), content, speakerTagged: true }
+  }
+
+  // 4b. 纯双引号对话
+  match = value.match(OFFLINE_QUOTED_DIALOGUE_RE)
+  if (match) {
+    const content = value.trim().replace(/^[\s"“'‘\u201c\u2018]+|[\s"”'’\u201d\u2019]+$/g, '')
+    if (content) return { type: 'dialogue', content }
   }
 
   // 5. 标准对话（带名字前缀）
@@ -307,6 +314,10 @@ export function parseOfflineSegments(msg) {
             } else {
               segments.push(parsed)
             }
+          } else {
+            // FALLBACK: If a line doesn't match any theater pattern, keep it as a dialogue segment
+            // This prevents plain text from being swallowed when it occurs between theater blocks
+            segments.push({ type: 'dialogue', content: l })
           }
         }
       })
@@ -326,6 +337,8 @@ export function hasOfflineTheaterContent(content) {
          OFFLINE_ACTION_RE.test(text) || 
          OFFLINE_NARRATION_RE.test(text) || 
          OFFLINE_TAGGED_DIALOGUE_RE.test(text) || 
+         OFFLINE_QUOTED_DIALOGUE_RE.test(text) ||
+         OFFLINE_SPEAKER_DIALOGUE_RE.test(text) ||
          (text.includes('（') && text.includes('）')) || 
          (text.includes('(') && text.includes(')')) ||
          /^\s*(\|\||\u2016)/.test(text) ||
