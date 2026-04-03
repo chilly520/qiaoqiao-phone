@@ -238,11 +238,12 @@ export function parseOfflineLine(line) {
       const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
       
       // 判定是否真的为说话人
+      const isUrl = /^(https?|ftp|file):\/\//i.test(value)
       const isClock = /\d$/.test(speaker) && /^\d+/.test(content)
       const hasNarrativeParticles = /[的了是在]/.test(speaker)
       const isNumeric = /^\d+$/.test(speaker)
 
-      if (!isClock && !hasNarrativeParticles && !isNumeric) {
+      if (!isUrl && !isClock && !hasNarrativeParticles && !isNumeric) {
         return { type: 'dialogue', speaker, content, speakerTagged: true }
       }
     }
