@@ -249,11 +249,8 @@ export function parseOfflineLine(line) {
     return { type: 'mixed', parts: mixedParts }
   }
 
-  // 7. 普通对话
-  const cleanDialogue = value.replace(/^[""'']+|[""'']+$/g, '').trim()
-  if (!cleanDialogue) return null
-
-  return { type: 'dialogue', content: cleanDialogue }
+  // 7. 如果都不匹配，就不返回任何线下特定类型，而是 null，这样它不会被单纯地算作强线下内容
+  return null
 }
 
 export function parseOfflineSegments(msg) {
@@ -323,7 +320,16 @@ export function parseOfflineSegments(msg) {
 export function hasOfflineTheaterContent(content) {
   const text = getOfflineTextContent(content)
   if (!text) return false
-  return parseOfflineSegments(text).length > 0
+  
+  // Quick explicit regex checks for robust identification without relying entirely on parser
+  return OFFLINE_SCENE_RE.test(text) || 
+         OFFLINE_ACTION_RE.test(text) || 
+         OFFLINE_NARRATION_RE.test(text) || 
+         OFFLINE_TAGGED_DIALOGUE_RE.test(text) || 
+         (text.includes('（') && text.includes('）')) || 
+         (text.includes('(') && text.includes(')')) ||
+         /^\s*(\|\||\u2016)/.test(text) ||
+         parseOfflineSegments(text).length > 0
 }
 
 export function isOfflineTextMessage(msg) {
@@ -348,11 +354,28 @@ export function extractTaggedBlock(content, tag) {
 
 export function shouldShowInOfflineMode(msg) {
   if (!msg || msg.hidden || msg.role === 'system') return false
-  if (msg.mode === 'online') return false
-  if (msg.mode === 'offline') return true
-  if (msg.role === 'user') return false
-
+  
   const raw = ensureMessageString(msg.content)
+  
+  // Whitelist: Always show interactive cards in both modes
+  const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
+                         msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
+                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer';
+  if (isSpecialCard) return true;
+
+  // If explicitly tagged for offline, show it
+  if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
+  
+  // For user messages, follow the explicit mode they sent it in
+  if (msg.role === 'user') return msg.mode === 'offline'
+
+  // If explicitly tagged for online exclusively, hide it
+  if (/\[\s*ONLINE\s*\]/i.test(raw) && !/\[\s*OFFLINE\s*\]/i.test(raw)) return false
+
+  // Fallback to mode flag
+  if (msg.mode === 'offline') return true
+  if (msg.mode === 'online') return false
+
   const offlineBlock = getModePartitionedContent(raw, 'OFFLINE')
   if (offlineBlock) return offlineBlock.trim().length > 0
 
@@ -361,11 +384,28 @@ export function shouldShowInOfflineMode(msg) {
 
 export function shouldShowInOnlineMode(msg) {
   if (!msg || msg.hidden) return false
-  if (msg.mode === 'offline') return false
-  if (msg.mode === 'online') return true
   if (msg.role === 'system') return true
+  
+  // Whitelist: Always show interactive cards in both modes
+  const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
+                         msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
+                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer';
+  if (isSpecialCard) return true;
 
   const raw = ensureMessageString(msg.content)
+  // If explicitly tagged for online, show it
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
+  
+  // For user messages, follow explicit mode
+  if (msg.role === 'user') return msg.mode !== 'offline'
+
+  // If explicitly tagged for offline exclusively, hide it
+  if (/\[\s*OFFLINE\s*\]/i.test(raw) && !/\[\s*ONLINE\s*\]/i.test(raw)) return false
+
+  // Fallback to mode flag
+  if (msg.mode === 'online') return true
+  if (msg.mode === 'offline') return false
+
   if (getModePartitionedContent(raw, 'ONLINE').length > 0) return true
   if (getModePartitionedContent(raw, 'OFFLINE').length > 0) return false
 

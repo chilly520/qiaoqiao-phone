@@ -1060,6 +1060,16 @@
                                 (msg.type === 'html' || isHtmlCard) ? 'items-center' : ''
                             ]">
 
+                            <!-- 0. Inner Voice Block -->
+                            <div v-if="parsedInnerVoice" class="w-full mb-1">
+                                <div class="bg-gray-50/50 rounded-xl p-3 border border-pink-100 flex items-start gap-2 shadow-inner" style="backdrop-filter: blur(4px);">
+                                    <i class="fa-solid fa-heart-pulse text-pink-400 mt-0.5 text-xs animate-pulse"></i>
+                                    <div class="text-[12px] text-gray-500 italic leading-relaxed break-words">
+                                        {{ parsedInnerVoice }}
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- 1. Text Bubble Layer (Sticker / Text) -->
                             <!-- Show bubble if there's cleaned content and not a family card. -->
                             <!-- Added check for isDiceMsg to prevent double rendering/bubble background for dice rolls -->
@@ -1248,7 +1258,7 @@
                             </div>
 
                             <!-- 4. Empty/Protocol Placeholder (Clickable Fallback) -->
-                            <div v-if="!cleanedContent && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && !isWeiboCard && !isForumCard && !isTarotMsg && msg.type !== 'voice' && msg.type !== 'music'"
+                            <div v-if="!cleanedContent && parsedInnerVoice === null && !isImageMsg(msg) && !shouldRenderCard && !isPayCard && !isFamilyCard && !isFavoriteCard && !isWeiboCard && !isForumCard && !isTarotMsg && !isDiceMsg && !isLoveSpaceInvite && !isLoveSpaceContract && !isLoveSpaceReject && !isMomentCard && msg.type !== 'voice' && msg.type !== 'music'"
                                 @contextmenu.prevent="emitContextMenu" @touchstart="startLongPress"
                                 @touchend="cancelLongPress" @touchmove="cancelLongPress" @mousedown="startLongPress"
                                 @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
@@ -1620,6 +1630,36 @@ const diceTotalValue = computed(() => {
     return diceResultsValue.value.reduce((a, b) => a + b, 0);
 })
 
+// Parse Inner Voice dynamically just like the legacy 0104 version did, so they don't appear as empty placeholders!
+const parsedInnerVoice = computed(() => {
+    if (!props.msg) return null;
+    let content = ensureString(props.msg.content);
+
+    // 1. Check for valid JSON format of inner voice
+    let innerText = '';
+    const isInnerVoiceJson = /"(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)"/.test(content) ||
+                             /\{\s*(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)\s*[:：]/i.test(content);
+                             
+    if (isInnerVoiceJson) {
+        try {
+            const jsonText = content.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+            const data = JSON.parse(jsonText);
+            if (data.status || data.心声 || data.mind || data.thoughts) {
+                 innerText = data.心声 || data.status || data.mind || data.thoughts;
+            }
+        } catch(e) {}
+    } else {
+        // 2. Check for explicit [INNER_VOICE]...[/INNER_VOICE] formatting
+        const voicePattern = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/i;
+        const match = content.match(voicePattern);
+        if (match && match[1]) {
+            innerText = match[1].trim();
+        }
+    }
+    
+    return innerText ? innerText : null;
+});
+
 const hasHtmlContent = computed(() => {
     const source = props.msg.html || props.msg.content
     const html = getPureHtml(source)
@@ -1661,7 +1701,8 @@ const isValidMessage = computed(() => {
                          isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || 
                          isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || 
                          props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || 
-                         props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value || isTarotMsg.value
+                         props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value || isTarotMsg.value ||
+                         parsedInnerVoice.value !== null
 
     if (isSpecialType) {
         // Hide if no effective content for cards
@@ -1919,12 +1960,12 @@ const isMomentCard = computed(() => {
     return props.msg.type === 'moment_card' || /\[(?:MOMENT_SHARE|分享朋友圈)[:：]/.test(ensureString(props.msg.content))
 })
 
-// 塔罗牌消息检测 - 支持 type: 'tarot' 或内容包含塔罗标签
+// 塔罗牌消息检测 - 支持 type: 'tarot'/'tarot_card'/'tarot_interpretation' 或内容包含塔罗标签
 const isTarotMsg = computed(() => {
-    if (props.msg.type === 'tarot') return true
+    if (props.msg.type === 'tarot' || props.msg.type === 'tarot_card' || props.msg.type === 'tarot_interpretation') return true
     if (props.msg.tarotCards && props.msg.tarotCards.length > 0) return true
     const content = ensureString(props.msg.content)
-    return /[\[【](?:塔罗|塔罗牌|TAROT)[:：]/.test(content)
+    return /[\[【](?:塔罗|塔罗牌|塔罗占卜|塔罗解牌|TAROT)[:：\]】]/.test(content)
 })
 
 // 解析塔罗数据
@@ -2226,43 +2267,8 @@ function getCleanContent(contentRaw, isCard = false, role = null) {
     
     // 2. 彻底处理 INNER_VOICE 标签（只匹配闭合的标签）
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
-    
-    // 3. 处理 [ONLINE] 和 [OFFLINE] 标签
-    // 用户发送的消息不做过滤，直接显示
-    if (role === 'user') {
-        clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
-    } else {
-        const isOffline = settingsStore.isOfflineMode || props.forceOffline
-        const onlineMatch = clean.match(/\[ONLINE\]([\s\S]*?)\[\/ONLINE\]/i)
-        const offlineMatch = clean.match(/\[OFFLINE\]([\s\S]*?)\[\/OFFLINE\]/i)
-        
-        if (isOffline && !props.forceOffline) {
-            // 线下模式：不显示任何内容（由 OfflineModeChatWindow 处理）
-            clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
-        }
-        
-        if (props.forceOffline) {
-            // 强制线下模式：显示原始内容（用于特殊类型消息）
-            clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
-        } else if (onlineMatch) {
-            // 线上模式：显示 [ONLINE] 内容
-            clean = onlineMatch[1]
-        } else if (offlineMatch) {
-            // 如果有 [OFFLINE] 但没有 [ONLINE]，不显示（这是线下消息）
-            return ''
-        } else {
-            // 没有标签的旧消息：检查是否包含剧场版格式符号
-            const hasOfflineFormat = /(‖[^‖]+‖|【[^】]+】|[（\(][\s\S]*?[）\)]|「[^」]+」)/.test(clean)
-            if (hasOfflineFormat) {
-                // 如果包含剧场版格式，这是线下消息，线上模式不显示
-                return ''
-            }
-            // 普通文本消息，移除标签后显示
-            clean = clean.replace(/\[ONLINE\]|\[\/ONLINE\]|\[OFFLINE\]|\[\/OFFLINE\]/gi, '')
-        }
-    }
 
-    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE)[:：]\s*[^\]]+\]/gi, '');
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|更换头像|SET_AVATAR|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE|TAROT|塔罗牌|塔罗占卜|塔罗解牌)[:：]\s*[^\]]+\]/gi, '');
     // 过滤 AI 描述的 [图片] 标签（只有带冒号的才保留，因为那可能是真正的图片 URL）
     clean = clean.replace(/\[(?:图片|IMAGE|表情包|表情 - 包|STICKER)\]/gi, '');
     clean = props.forceOffline ? getOfflineTextContent({ content: clean, mode: props.msg.mode }) : getOnlineTextContent({ content: clean, mode: props.msg.mode })

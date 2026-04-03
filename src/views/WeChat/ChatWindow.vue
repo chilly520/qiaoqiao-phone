@@ -50,6 +50,7 @@ import { compressImage } from '../../utils/imageUtils'
 import { generateImage, translateToEnglish } from '../../utils/aiService'
 import { batteryMonitor } from '../../utils/batteryMonitor'
 import { useChatTransaction } from '../../composables/chat/useChatTransaction'
+import { shouldShowInOnlineMode } from '../../utils/chatMessageDisplay'
 
 const ensureString = (val) => {
     if (typeof val === 'string') return val;
@@ -259,26 +260,24 @@ const isMsgVisible = (msg) => {
     if (!msg) return false
     if (msg.hidden) return false
 
-    // 确定消息的归属模式（老旧消息没有 mode 标识时，通过内容启发推断）
-    let mode = msg.mode;
-    if (!mode) {
-        const rawContent = ensureString(msg.content);
-        mode = rawContent.includes('[OFFLINE]') ? 'offline' : 'online';
-    }
+    // Use shared utility for online mode filtering (handles mixed tags)
+    if (!shouldShowInOnlineMode(msg)) return false
 
-    // 关键：严格过滤掉明确标记为线下模式的消息
-    if (mode === 'offline') return false
-
-    // 过滤掉朋友圈相关消息（朋友圈应该在朋友圈界面显示，不在聊天界面）
-    if (msg.type === 'moment_card' || msg.type === 'moment') return false
+    // Removed moment card filter: We want them to display normally if generated in chat.
     const content = ensureString(msg.content)
-    if (content.includes('[MOMENT_SHARE') || content.includes('[分享朋友圈')) return false
-
-    // 其他角色/系统文本的快速返回，只有明确需要过滤的 AI 内容才调用性能昂贵的 getCleanContent
+    // Ensure we don't swallow messages that are pure special cards/formats
     const role = msg.role ? msg.role.toLowerCase() : 'ai'
     if (['ai', 'assistant', 'thought', 'bot'].includes(role) && msg.type !== 'sticker' && msg.type !== 'image' && msg.type !== 'voice' && !isImageMsg(msg)) {
-        const cleanContent = getCleanContent(content)
-        if (!cleanContent || cleanContent.trim().length === 0) return false
+        // If it explicitly declares ANY special type or contains special protocols, don't drop it!
+        if (msg.type && msg.type !== 'text' && msg.type !== 'system') return true
+        
+        // Extended check for special tags that should render as cards/events
+        const hasCardProtocol = /\[(?:CARD|红包|转账|领取|退回|拒收|FAMILY_CARD|亲属卡|GIFT|MUSIC|一起听歌|摇骰子|掷骰子|DICE|TAROT|塔罗|塔罗牌|塔罗占卜|塔罗解牌|LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|LOVESPACE|情侣空间|更换头像|SET_AVATAR)/i.test(content) || /\\"type\\":\s*\\"html\\"/.test(content) || /"type"\s*:\s*"html"/.test(content) || /<(div|section|article|table|ul|ol|p|h[1-6]|svg)\b/i.test(content) || /\[(?:INNER[-_ ]?VOICE)\]/i.test(content);
+        
+        if (!hasCardProtocol) {
+            const cleanContent = getCleanContent(content)
+            if (!cleanContent || cleanContent.trim().length === 0) return false
+        }
     }
 
     return true

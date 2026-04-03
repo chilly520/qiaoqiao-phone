@@ -401,7 +401,28 @@ export const useChatStore = defineStore('chat', () => {
             quote: msg.quote || null,
             paymentId: msg.paymentId || null, // Initialize paymentId
             hidden: msg.hidden || false, // Detection for visualizer-only messages
-            mode: msg.mode || 'online' // 线上/线下模式标记: 'online' | 'offline' | null, 默认为 'online'
+            mode: msg.mode || 'online', // 线上/线下模式标记: 'online' | 'offline' | null, 默认为 'online'
+            // --- Gift fields ---
+            giftId: msg.giftId || null,
+            giftName: msg.giftName || null,
+            giftDescription: msg.giftDescription || null,
+            giftImage: msg.giftImage || null,
+            giftNote: msg.giftNote || null,
+            giftQuantity: msg.giftQuantity || null,
+            // --- Dice fields ---
+            diceResults: msg.diceResults || null,
+            diceTotal: msg.diceTotal || null,
+            diceCount: msg.diceCount || null,
+            // --- Tarot fields ---
+            tarotCards: msg.tarotCards || null,
+            tarotQuestion: msg.tarotQuestion || null,
+            tarotSpread: msg.tarotSpread || null,
+            tarotInterpretation: msg.tarotInterpretation || null,
+            // --- Moment fields ---
+            momentData: msg.momentData || null,
+            // --- Order fields ---
+            orderId: msg.orderId || null,
+            orderData: msg.orderData || null,
         }
         
         // Debug: 记录 HTML 消息
