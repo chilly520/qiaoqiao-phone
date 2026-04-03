@@ -69,7 +69,11 @@ export function stripInnerVoiceBlocks(content) {
     }
     if (endPos !== -1) {
       const candidate = cleaned.substring(startIdx, endPos + 1);
-      if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
+      // ENHANCED CHECK: Support escaped quotes (AI tend to use them sometimes)
+      const hasVoiceKey = INNER_VOICE_FIELDS.some(f => 
+        candidate.includes(`"${f}"`) || candidate.includes(`'${f}'`) || candidate.includes(`\\"${f}\\"`)
+      );
+      if (hasVoiceKey) {
           blocksToRemove.push(candidate);
       }
     }
@@ -493,7 +497,7 @@ export function extractInnerVoiceData(content, msg) {
             const candidate = raw.substring(startIdx, endPos + 1);
             // 检查是否包含心声相关字段，或尝试解析为有效的短JSON对象（可能是AI忘写标签）
             const hasVoiceField = INNER_VOICE_FIELDS.some(field => 
-              candidate.includes(`"${field}"`) || candidate.includes(`'${field}'`)
+              candidate.includes(`"${field}"`) || candidate.includes(`'${field}'`) || candidate.includes(`\\"${field}\\"`)
             );
             // 如果是较小的JSON对象（<500字符），即使没有已知字段也尝试解析
             // 这可能是AI用了新的字段名或忘写标签
@@ -546,7 +550,7 @@ export function hasInnerVoice(content) {
   }
   // 检查是否包含心声相关字段
   const hasVoiceField = INNER_VOICE_FIELDS.some(field => 
-    new RegExp(`["']${field}["']\\s*[:：]`).test(raw)
+    new RegExp(`["'\\\\]+${field}["'\\\\]+\\s*[:：]`).test(raw)
   );
   if (hasVoiceField) return true;
   

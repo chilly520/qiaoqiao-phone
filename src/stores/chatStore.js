@@ -216,6 +216,70 @@ export const useChatStore = defineStore('chat', () => {
         return chats.value[chatId]
     }
 
+    function createGroupChat(options = {}) {
+        const chatId = options.id || 'g-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+        const newChat = {
+            id: chatId,
+            isGroup: true,
+            name: options.name || '新建群聊',
+            avatar: options.avatar || getRandomAvatar(),
+            participants: options.participants || [],
+            groupProfile: options.groupProfile || {
+                avatar: options.avatar || getRandomAvatar(),
+                name: options.name || '新建群聊',
+                groupNo: 'G' + Math.floor(Math.random() * 1000000).toString().padStart(6, '0'),
+                announcement: ''
+            },
+            msgs: [],
+            inChatList: true,
+            unreadCount: 0,
+            isPinned: false,
+            lastSummaryIndex: 0,
+            lastSummaryCount: 0,
+            tokenStats: { total: 0, totalContext: 0 },
+            // Settings with defaults
+            activeChat: false,
+            autoSummary: false,
+            autoTTS: false,
+            showInnerVoice: true,
+            ...options
+        }
+        chats.value[chatId] = newChat
+        saveChats()
+        return newChat
+    }
+
+    function updateGroupProfile(chatId, profile) {
+        if (chats.value[chatId]) {
+            chats.value[chatId] = { 
+                ...chats.value[chatId], 
+                ...profile,
+                groupProfile: { ...(chats.value[chatId].groupProfile || {}), ...profile }
+            };
+            saveChats();
+            return true;
+        }
+        return false;
+    }
+
+    function updateGroupParticipants(chatId, participants) {
+        if (chats.value[chatId]) {
+            chats.value[chatId].participants = participants;
+            saveChats();
+            return true;
+        }
+        return false;
+    }
+
+    function updateGroupSettings(chatId, settings) {
+        if (chats.value[chatId]) {
+            chats.value[chatId] = { ...chats.value[chatId], ...settings };
+            saveChats();
+            return true;
+        }
+        return false;
+    }
+
     async function addMessage(chatId, msg) {
         const chat = chats.value[chatId]
         if (!chat) return false
@@ -1964,12 +2028,32 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             if (m.role === 'ai') {
-                // 清理心声，仅保留第一处心声以便 AI 参考
+                // 清理并标准化心声块。为了节省上下文，只给AI喂回它当时最后确定的这一条思维逻辑。
+                // 这能保证AI在接下来的回复中能维持人设和当前情绪的一致性。
                 const ivRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi
-                const matches = [...content.matchAll(ivRegex)]
-                if (matches.length > 0) {
-                    const firstIv = matches[0][0]
-                    content = content.replace(ivRegex, '').trim() + '\n' + firstIv
+                const ivMatches = [...content.matchAll(ivRegex)]
+                
+                // 同时检测 naked JSON (支持转义引号)
+                const jsonMatches = [...content.matchAll(/\{[\s\S]*?\}/g)];
+                let foundIv = null;
+
+                if (ivMatches.length > 0) {
+                    foundIv = ivMatches[0][0]; // 使用找到的首个带标签心声
+                } else {
+                    // 如果没带标签，搜索包含心声关键字的 JSON 块
+                    for (const jm of jsonMatches) {
+                        const block = jm[0];
+                        if (block.includes('"status"') || block.includes('"心声"') || 
+                            block.includes('\"status\"') || block.includes('\"心声\"')) {
+                            foundIv = `\n[INNER_VOICE]\n${block}\n[/INNER_VOICE]`;
+                            content = content.replace(block, '').trim();
+                            break;
+                        }
+                    }
+                }
+
+                if (foundIv) {
+                    content = content.replace(ivRegex, '').trim() + '\n' + foundIv
                 }
             }
 
@@ -3826,6 +3910,6 @@ export const useChatStore = defineStore('chat', () => {
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
         getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
-        isProfileProcessing
+        isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings
     }
 })
