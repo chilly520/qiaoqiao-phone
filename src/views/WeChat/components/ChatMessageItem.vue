@@ -1562,6 +1562,13 @@ function handleIframeMessage(event) {
 
 const shouldShowTimeDivider = computed(() => {
     if (!props.prevMsg) return true
+
+    const isOffline = props.msg.mode === 'offline'
+
+    if (isOffline) {
+        return !props.prevMsg || props.prevMsg.mode !== 'offline'
+    }
+
     const diff = props.msg.timestamp - props.prevMsg.timestamp
     return diff > 5 * 60 * 1000
 })
@@ -1622,13 +1629,14 @@ const isDiceMsg = computed(() => {
 
 const shouldShowBubbleTimestamp = computed(() => {
     if (!props.msg.timestamp) return false
-    if (!props.prevMsg) return true
-    
-    // Only show if role changed OR a significant time gap occurred
-    const roleChanged = props.prevMsg.role !== props.msg.role
-    const timeGap = (props.msg.timestamp - props.prevMsg.timestamp) > 5 * 60 * 1000 // 5 minutes
-    
-    return roleChanged || timeGap
+
+    const isOffline = props.msg.mode === 'offline'
+
+    if (isOffline) {
+        return !props.prevMsg || props.prevMsg.mode !== 'offline'
+    }
+
+    return true
 })
 
 const isValidDiceRollCommand = computed(() => {
