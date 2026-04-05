@@ -192,7 +192,6 @@
                       :msg="msg"
                       :chatData="chatData"
                       :suppressInitialAvatar="shouldSuppressInitialAvatar(index)"
-                      :suppressLocation="shouldSuppressLocation(index)"
                     />
                     <ChatMessageItem 
                       v-else
@@ -946,21 +945,50 @@ const looksLikeMojibake = (value) => {
 const hasInnerVoiceBlockInMsg = (msg) => hasInnerVoiceBlock(msg?.content, msg)
 
 const updateSceneState = () => {
-  // Search from the current visible dataset to find the most recent scene/location
-  let foundLocation = null
-  for (let i = filteredDisplayMsgs.value.length - 1; i >= 0; i--) {
-     const m = filteredDisplayMsgs.value[i]
-     const content = ensureString(m.content)
-     // Recognize 【XX】 or [XX] or 【地点：XX】 or [地点：XX]
-     // We specifically EXCLUDE '场景：' because that's for AI image generation, not a location
-     const match = content.match(/[\u3010\[](?:地点[:\uff1a])?\s*([^\]\u3011]+)[\u3011\]]/)
-     if (match) {
-        const loc = match[1].trim()
-        if (loc && !loc.startsWith('场景：') && !looksLikeMojibake(loc)) {
-          foundLocation = loc
-          break
-        }
+  const visibleMsgs = filteredDisplayMsgs.value
+  if (visibleMsgs.length === 0) return
+
+  // 1. 寻找当前最后一轮对话（Turn）的起始位置
+  let latestTurnStartIndex = -1
+  for (let i = visibleMsgs.length - 1; i >= 0; i--) {
+     if (i < visibleMsgs.length - 1 && visibleMsgs[i].role !== visibleMsgs[i+1].role) {
+        latestTurnStartIndex = i + 1
+        break
      }
+     if (i === 0) latestTurnStartIndex = 0
+  }
+
+  // 2. 在这轮对话中，从前往后找第一个【地点】
+  let foundLocation = null
+  if (latestTurnStartIndex !== -1) {
+    for (let i = latestTurnStartIndex; i < visibleMsgs.length; i++) {
+        const content = ensureString(visibleMsgs[i].content)
+        const match = content.match(/[\u3010\[](?:地点[:\uff1a])?\s*([^\]\u3011]+)[\u3011\]]/)
+        if (match) {
+           const loc = match[1].trim()
+           // 排除带有“场景”字样的指令（用于AI生成的描述，不是实时位置名）
+           if (loc && !loc.startsWith('场景：') && !looksLikeMojibake(loc)) {
+              foundLocation = loc
+              break 
+           }
+        }
+    }
+  }
+
+  // 3. 如果这一轮里没找到，我们就回溯查找以前的消息，找到最近的一个位置状态
+  if (!foundLocation) {
+    for (let i = visibleMsgs.length - 1; i >= 0; i--) {
+       const m = visibleMsgs[i]
+       const content = ensureString(m.content)
+       const match = content.match(/[\u3010\[](?:地点[:\uff1a])?\s*([^\]\u3011]+)[\u3011\]]/)
+       if (match) {
+          const loc = match[1].trim()
+          if (loc && !loc.startsWith('场景：') && !looksLikeMojibake(loc)) {
+             foundLocation = loc
+             break
+          }
+       }
+    }
   }
 
   if (foundLocation) {
@@ -969,9 +997,9 @@ const updateSceneState = () => {
     sceneState.value.location = '线下·未知位置'
   }
 
-  // Expression/Status detection
-  for (let index = filteredDisplayMsgs.value.length - 1; index >= 0; index -= 1) {
-    const msg = filteredDisplayMsgs.value[index]
+  // 表情/状态自动探测（保持原逻辑：逆序寻找最新状态）
+  for (let index = visibleMsgs.length - 1; index >= 0; index -= 1) {
+    const msg = visibleMsgs[index]
     const innerVoice = extractInnerVoiceData(msg?.content, msg)
     const status = innerVoice?.status || innerVoice?.state
     if (typeof status === 'string' && status.trim() && !looksLikeMojibake(status)) {
@@ -1001,23 +1029,7 @@ const shouldSuppressInitialAvatar = (index) => {
   return prevAllDialogue && currentStartsWithDialogue
 }
 
-const shouldSuppressLocation = (index) => {
-  const currentMsg = filteredDisplayMsgs.value[index]
-  if (!currentMsg || currentMsg.role !== 'ai') return false
-  
-  // Look backwards in the filtered list
-  for (let i = index - 1; i >= 0; i--) {
-     const m = filteredDisplayMsgs.value[i]
-     if (m.role !== 'ai') break // Stop when reach user or gap
-     
-     // Check if this previous message had a location/scene marker
-     const segments = parseOfflineSegments(m.content)
-     if (segments.some(s => s.type === 'location' || s.type === 'scene')) {
-        return true
-     }
-  }
-  return false
-}
+const shouldSuppressLocation = (index) => false // No longer used for card suppression
 
 
 
