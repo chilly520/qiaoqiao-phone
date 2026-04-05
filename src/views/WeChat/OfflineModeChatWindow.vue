@@ -284,18 +284,22 @@
         <div class="w-8"></div> <!-- Spacer -->
     </div>
 
-    <!-- 自定义确认弹窗 (与线下模式风格统一) -->
+    <!-- Premium Custom Confirmation Modal -->
     <div v-if="showConfirmModal" class="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-fadeIn">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-md" @click="cancelConfirm"></div>
-      <div class="relative w-full max-w-[300px] bg-white/90 backdrop-blur-xl border border-white/20 rounded-[32px] overflow-hidden shadow-2xl p-7 text-center">
-        <div class="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">
-          <i class="fa-solid fa-trash-can"></i>
+      <div class="absolute inset-0 bg-black/40 backdrop-blur-[6px]" @click="cancelConfirm"></div>
+      <div class="relative w-full max-w-[320px] bg-white/95 backdrop-blur-xl border border-white/20 rounded-[40px] overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.25)] p-9 text-center animate-slideUp">
+        <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl shadow-inner border border-rose-100/50">
+          <i class="fa-solid fa-trash-can animate-shake"></i>
         </div>
-        <h3 class="text-lg font-bold text-gray-900 mb-2">{{ confirmTitle }}</h3>
-        <p class="text-sm text-gray-500 mb-8 leading-relaxed">{{ confirmMessage }}</p>
-        <div class="flex gap-3">
-          <button @click="cancelConfirm" class="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-sm active:scale-95 transition-transform border-none">取消</button>
-          <button @click="executeConfirm" class="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold text-sm shadow-lg shadow-red-200 active:scale-95 transition-transform border-none">确认删除</button>
+        <h3 class="text-xl font-black text-gray-900 mb-3 tracking-tight">{{ confirmTitle }}</h3>
+        <p class="text-[13px] text-gray-500/90 mb-9 leading-relaxed px-2 font-medium">{{ confirmMessage }}</p>
+        <div class="flex flex-col gap-3">
+          <button @click="executeConfirm" class="w-full py-4.5 rounded-[22px] bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-sm shadow-[0_12px_24px_-8px_rgba(244,63,94,0.4)] active:scale-95 transition-all border-none">
+            确认删除
+          </button>
+          <button @click="cancelConfirm" class="w-full py-4.5 rounded-[22px] bg-gray-50 text-gray-500 font-bold text-sm hover:bg-gray-100 active:scale-95 transition-all border-none">
+            取消
+          </button>
         </div>
       </div>
     </div>
@@ -1206,7 +1210,7 @@ const startLongPress = (msg, event) => {
     setTimeout(() => { menuLock.value = false }, 500)
     longPressTimer = null
     longPressPoint = null
-  }, 1000) // Changed from 650 to 1000 for better scroll-safety
+  }, 1200) // 1.2s - Even more intentional for premium feel
 }
 
 const handleTouchMove = (event) => {

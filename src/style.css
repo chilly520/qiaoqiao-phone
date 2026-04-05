@@ -221,8 +221,8 @@ body {
 .system-chip-content {
     background: rgba(0, 0, 0, 0.05); /* Light translucent grey */
     color: #708090; /* Slate grey */
-    font-size: 11px;
-    padding: 3px 14px;
+    font-size: 0.85em;
+    padding: 4px 14px;
     border-radius: 999px;
     display: flex;
     align-items: center;

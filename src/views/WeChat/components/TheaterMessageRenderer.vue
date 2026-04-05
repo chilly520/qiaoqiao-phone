@@ -1,14 +1,14 @@
 <template>
   <div class="theater-message" :class="{ 'night-mode': isNightMode }" :style="fontScaleStyle">
     <template v-for="(segment, index) in renderedSegments" :key="`${msg?.id || 'msg'}-${index}`">
-      <!-- 时间戳（仅 AI 回复的第一段显示） -->
-      <div v-if="segment.type !== 'scene' && index === 0 && msg?.role === 'ai' && msg?.timestamp" class="timestamp-chip">
+      <!-- 时间戳（仅 AI 回复的第一段显示，除非第一段是场景标签则顺延） -->
+      <div v-if="index === 0 && msg?.role === 'ai' && msg?.timestamp" class="timestamp-chip">
         <i class="fa-regular fa-clock"></i>
         <span>{{ formatTimestamp(msg.timestamp) }}</span>
       </div>
       
-      <!-- 场景标签 -->
-      <div v-if="segment.type === 'scene'" class="scene-chip">
+      <!-- 场景/地点标签 -->
+      <div v-if="segment.type === 'scene' || segment.type === 'location'" class="scene-chip">
         <i class="fa-solid fa-location-dot scene-icon"></i>
         <span>{{ segment.content }}</span>
       </div>
@@ -482,7 +482,7 @@ function formatTimestamp(timestamp) {
 
 /* 说话人名字样式 */
 .dialogue-name {
-  font-size: 11px;
+  font-size: 0.75em;
   font-weight: 600;
   margin-bottom: 2px;
   padding: 0 12px;
@@ -589,7 +589,7 @@ function formatTimestamp(timestamp) {
 .system-chip-content {
   background: rgba(0, 0, 0, 0.05);
   color: #708090;
-  font-size: 11px;
+  font-size: 0.8em;
   padding: 4px 12px;
   border-radius: 999px;
   display: flex;

@@ -588,10 +588,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     // World Book Logic
     const worldBookStore = useWorldBookStore()
     const logger = useLoggerStore()
-    // Ensure entries are loaded (lightweight check)
+    // Ensure entries are loaded properly
     try {
-        if (worldBookStore && worldBookStore.books && worldBookStore.books.length === 0) {
-            await worldBookStore.loadEntries()
+        if (worldBookStore && !worldBookStore.isLoaded) {
+            await worldBookStore.ensureLoaded()
         }
     } catch (e) {
         if (logger) logger.addLog('WARN', 'WorldBook load fail', e.message)

@@ -2339,8 +2339,9 @@ const saveSettings = async () => {
     const oldRemark = props.chatData.remark
     const newRemark = localData.value.remark
 
-    // Cleanup stale world book links
-    if (localData.value.worldBookLinks && Array.isArray(worldBookStore.books)) {
+    // Cleanup stale world book links ONLY if store is loaded and has data
+    // This prevents wiping links if the store hasn't finished loading yet
+    if (localData.value.worldBookLinks && worldBookStore.isLoaded && worldBookStore.books.length > 0) {
         const allEntryIds = new Set()
         worldBookStore.books.forEach(book => {
             if (book && Array.isArray(book.entries)) {
@@ -2349,7 +2350,11 @@ const saveSettings = async () => {
                 })
             }
         })
+        const originalCount = localData.value.worldBookLinks.length
         localData.value.worldBookLinks = localData.value.worldBookLinks.filter(id => allEntryIds.has(id))
+        if (localData.value.worldBookLinks.length !== originalCount) {
+            console.log(`[Settings] Cleaned up ${originalCount - localData.value.worldBookLinks.length} stale world book links`)
+        }
     }
 
     // Virtual time sync logic

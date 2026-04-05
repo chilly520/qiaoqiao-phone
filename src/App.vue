@@ -4,6 +4,7 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from './stores/settingsStore'
 import { useChatStore } from './stores/chatStore'
 import { useLoveSpaceStore } from './stores/loveSpaceStore'
+import { useWorldBookStore } from './stores/worldBookStore'
 import { batteryMonitor } from './utils/batteryMonitor'
 
 import { notificationService } from './utils/notificationService'
@@ -16,6 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const store = useSettingsStore()
 const chatStore = useChatStore()
+const worldBookStore = useWorldBookStore()
 
 // 使用路由路径作为key，强制组件在路由切换时重新渲染
 const routeKey = computed(() => route.path)
@@ -38,8 +40,9 @@ onMounted(() => {
     updateTime()
     timer = setInterval(updateTime, 1000)
 
-    // Load love space data
+    // Load persistent data
     useLoveSpaceStore().loadFromStorage()
+    worldBookStore.loadEntries()
 
     // Initialize battery monitoring
     batteryMonitor.init().then((initialized) => {

@@ -3132,11 +3132,8 @@ export const useChatStore = defineStore('chat', () => {
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // --- Improved Splitting Logic (V11 - Balanced Aware) ---
-                // We split by punctuation but keep segments meaningful.
-                // Avoid capturing nested parentheses in the split pattern itself if possible
-
-                const splitRegex = new RegExp("(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\[\\s*INNER[\\s\\-_]*VOICE\\s*\\][\\s\\S]*?\\[\\/\\s*(?:INNER[\\s\\-_]*)?VOICE\\s*\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09|\\[\\s*LS_JSON[:\\uff1a][\\s\\S]*?\\]|\\[DRAW:[\\s\\S]*?\\]|\\[(?:\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305)[:\\uff1a][\\s\\S]*?\\]|\\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\\s\\S]*?\\]|\\[CARD\\][\\s\\S]*?(?=\\n\\n|\\[\\/CARD\\]|$)|\\u201c[^\\u201d]*\\u201d|\"[^\"]*\"|\\u2018[^\\u2019]*\\u2019|'[^']*'|\\[\\u56fe\\u7247[:\\uff1a]?[\\s\\S]*?\\]|\\[\\u8bed\\u97f3[:\\uff1a]?[\\s\\S]*?\\]|\\[LIKE[:\\uff1a][\\s\\S]*?\\]|\\[COMMENT[:\\uff1a]?[\\s\\S]*?\\]|\\[REPLY[:\\uff1a][\\s\\S]*?\\]|\\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\\]]+\\]|[!?;\\u3002\\uff01\\uff1f\\uff1b\\u2026\\n]+)");
+                // V13: Removed \\n from splitRegex to keep multi-line AI responses as single message objects
+                const splitRegex = new RegExp("(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09|[!?;\\u3002\\uff01\\uff1f\\uff1b\\u2026]+)");
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -3205,8 +3202,9 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'tarot', content: content.trim() });
                     } else if (content.startsWith('[红包:') || content.startsWith('[转账:') || content.startsWith('[REDPACKET:') || content.startsWith('[TRANSFER:')) {
                         finalSegments.push({ type: 'payment', content: content.trim() });
-                    } else if (content.startsWith('[位置:') || content.startsWith('[LOCATION:') || content.startsWith('[地图:') || content.startsWith('[MAP:')) {
-                        finalSegments.push({ type: 'location', content: content.trim() });
+                    } else if (content.startsWith('[位置:') || content.startsWith('[LOCATION:') || content.startsWith('[地图:') || content.startsWith('[MAP:') || 
+                            content.startsWith('【地点') || content.startsWith('【场景')) {
+                        finalSegments.push({ type: 'location', content: content.trim(), mode: 'offline' });
                     } else if (content.startsWith('[文件:') || content.startsWith('[FILE:')) {
                         finalSegments.push({ type: 'file', content: content.trim() });
                     } else if (content.startsWith('[链接:') || content.startsWith('[LINK:') || content.startsWith('[URL:')) {
@@ -3245,7 +3243,7 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'text', content: content.replace(/\[\s*ONLINE\s*\]|\[\/\s*ONLINE\s*\]/gi, '').trim(), mode: 'online' });
                     } else if (content.trim().startsWith('【') && content.trim().endsWith('】')) {
                         // Theater style location/scene marker
-                        finalSegments.push({ type: 'text', content: content.trim(), mode: 'offline' });
+                        finalSegments.push({ type: 'location', content: content.trim(), mode: 'offline' });
                     } else {
                         // Standard Text: Apply Toxic CSS Filter HERE only
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-color', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity', 'border: 3px solid', 'border: 1px solid', 'font-family:', 'animation:', 'keyframes'];
@@ -3270,7 +3268,7 @@ export const useChatStore = defineStore('chat', () => {
                         }).join('\n').trim();
 
                         if (filtered) {
-                            // Filtered out trash segments like residual brackets or punctuation
+                        // Filtered out trash segments like residual brackets or punctuation
                             const isLeakedVoice = /^[\(（].*?[\)）]$/.test(filtered.trim()) && 
                                                (filtered.length < 50 || /尴尬|白团|思考|想着|犹豫|惊讶|开心|难过|宠溺|无奈|沉默|心跳/.test(filtered));
                             
@@ -3381,7 +3379,11 @@ export const useChatStore = defineStore('chat', () => {
                                 }
                             }
 
-                            if (i === 0 && innerVoiceBlock) msgContent += '\n' + innerVoiceBlock;
+                            // V14: Attach inner-voice to the LAST segment if it's AI turn, 
+                            // to avoid breaking the initial scene/location markers
+                            if (i === finalSegments.length - 1 && innerVoiceBlock) {
+                                msgContent += (msgContent ? '\n\n' : '') + innerVoiceBlock;
+                            }
 
                             msgAdded = addMessage(chatId, {
                                 role: 'ai',
