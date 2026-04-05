@@ -497,6 +497,11 @@ const editingMsgId = ref(null)
 const showSettingsMenu = ref(false)
 const autoRead = ref(false)
 
+// Multi-select State
+const isMultiSelectMode = ref(false)
+const selectedMsgIds = ref(new Set())
+const lastSelectedId = ref(null)
+
 // Context Menu
 const showContextMenu = ref(false)
 const selectedMsg = ref(null)

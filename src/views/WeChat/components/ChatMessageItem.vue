@@ -1288,7 +1288,7 @@
                             </div>
 
                             <!-- Bubble Timestamp -->
-                            <div v-if="msg.timestamp" class="text-[10px] text-gray-400 mt-0.5 px-1">
+                            <div v-if="shouldShowBubbleTimestamp" class="text-[10px] text-gray-400 mt-0.5 px-1">
                                 {{ new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
                                     hour: '2-digit', minute: '2-digit'
                                 }) }}
@@ -1326,7 +1326,8 @@ import {
     getOnlineTextContent,
     parseOfflineSegments,
     shouldShowInOnlineMode,
-    shouldShowInOfflineMode
+    shouldShowInOfflineMode,
+    getUnifiedCleanContent
 } from '../../../utils/chatMessageDisplay'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
@@ -1617,6 +1618,17 @@ const isDiceMsg = computed(() => {
     // Explicitly check for [摇骰子] or [掷骰子] tags in text
     const content = ensureString(props.msg.content)
     return /[\[【](?:摇骰子|掷骰子|DICE)[:：]?\s*(\d+)?[\]】]/i.test(content)
+})
+
+const shouldShowBubbleTimestamp = computed(() => {
+    if (!props.msg.timestamp) return false
+    if (!props.prevMsg) return true
+    
+    // Only show if role changed OR a significant time gap occurred
+    const roleChanged = props.prevMsg.role !== props.msg.role
+    const timeGap = (props.msg.timestamp - props.prevMsg.timestamp) > 5 * 60 * 1000 // 5 minutes
+    
+    return roleChanged || timeGap
 })
 
 const isValidDiceRollCommand = computed(() => {
@@ -2269,120 +2281,9 @@ const getUserName = computed(() => {
     return props.chatData.userName || '用户'
 })
 
-function getCleanContent(contentRaw, isCard = false, role = null) {
-    if (!contentRaw) return '';
-    const content = ensureString(contentRaw);
-
-    if (isCard && !content.includes('\n') && content.trim().startsWith('<') && content.trim().endsWith('>')) {
-        return '';
-    }
-
-    let clean = props.forceOffline ? getOfflineRenderableContent(props.msg) : getOnlineRenderableContent(props.msg);
-    
-    // 1. 兼容不带双引号的异常 JSON 心声 (修复空气泡的关键)
-    const isHtmlCardJson = /"type"\s*:\s*"html"/.test(clean) && /"html"\s*:/.test(clean);
-    const isInnerVoiceJson = /"(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)"/.test(clean) ||
-                             /\{\s*(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)\s*[:：]/i.test(clean);
-    
-    if (isHtmlCardJson && !isInnerVoiceJson) {
-        return '';
-    }
-    
-    if (isInnerVoiceJson && !isHtmlCardJson) {
-        return '';
-    }
-    
-    clean = clean.replace(/^\s*【系统提示】\s*/g, '');
-    
-    // 2. 彻底处理 INNER_VOICE 标签（只匹配闭合的标签）
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
-
-    // Handle interactive cards: if the ONLY content is a tag, hide the bubble
-    const pureTrimmed = clean.trim()
-    const isOnlyMoment = /^\[(?:MOMENT_SHARE|分享朋友圈)[:：].*?\]$/i.test(pureTrimmed) || /^【\s*MOMENT_SHARE[:：].*?】$/i.test(pureTrimmed)
-    const isOnlyMusic = /^\[一起听歌:[^\]]+\]$/i.test(pureTrimmed) || /^<bgm>[\s\S]*?<\/bgm>$/i.test(pureTrimmed)
-    const isOnlyLS = /^[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]$/i.test(pureTrimmed)
-    const isOnlyDraw = /^\[DRAW[:：].*?\]$/i.test(pureTrimmed)
-
-    if (isOnlyMoment || isOnlyMusic || isOnlyLS || isOnlyDraw) return ''
-
-    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|更换头像|SET_AVATAR|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE|TAROT|塔罗牌|塔罗占卜|塔罗解牌)[:：]\s*[^\]]+\]/gi, '');
-    clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
-    clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
-    clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
-    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
-    clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
-    clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
-    clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
-    clean = clean.replace(/\[(?:MOMENT_SHARE|分享朋友圈)[:：][^\]]+\]/gi, '');
-    
-    clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
-    clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
-    clean = clean.replace(/<(html|div|section|article|style|svg)[\s\S]*?<\/\1>/gi, ''); 
-    clean = clean.replace(/<[^>]+>/g, '');
-    
-    clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
-    clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');
-    
-    clean = clean.replace(/[a-z0-9-]+\s*:\s*[^;{}]+(?=[;\}]|\n|$)/gi, (match) => {
-        const lower = match.toLowerCase();
-        const keywords = ['background', 'color', 'font', 'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom', 'display', 'position', 'opacity', 'z-index', 'overflow', 'transform', 'animation', 'mask', 'transition', 'cursor', 'box-shadow', 'text-shadow', 'flex', 'grid', 'justify', 'align', 'gap', 'radial', 'linear', 'gradient', 'rgba', 'rgb', 'hsl'];
-        if (keywords.some(k => lower.includes(k)) || lower.includes('%') || lower.includes('px') || lower.includes('rem') || lower.includes('#')) {
-            return '';
-        }
-        return match;
-    });
-
-    clean = clean.replace(/(?:\d+%\s+)+\d+%/g, '');
-    clean = clean.replace(/(?:rgba?|hsla?)\([^\)]+\)/gi, '');
-    clean = clean.replace(/#[0-9a-f]{3,8}/gi, '');
-
-    // ✅ 移除包含 status/stats/heartRate/着装/环境/心声/行为 的 JSON 块
-    // 使用平衡括号匹配来正确处理嵌套的 JSON 结构
-    const removeJsonWithKeywords = (str) => {
-        let result = ''
-        let i = 0
-        while (i < str.length) {
-            if (str[i] === '{') {
-                let depth = 0
-                let start = i
-                while (i < str.length) {
-                    if (str[i] === '{') depth++
-                    else if (str[i] === '}') depth--
-                    i++
-                    if (depth === 0) break
-                }
-                const jsonBlock = str.substring(start, i)
-                if (/"(?:status|stats|heartRate|着装|环境|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit)"/.test(jsonBlock)) {
-                    // Skip this JSON block
-                } else {
-                    result += jsonBlock
-                }
-            } else {
-                result += str[i]
-                i++
-            }
-        }
-        return result
-    }
-    clean = removeJsonWithKeywords(clean)
-    
-    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind|emotion|energy|spirit|heartRate)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
-    
-    // ✅ 隐藏心率参数（防止泄露）
-    clean = clean.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '');
-    clean = clean.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '');
-        
-    clean = clean.replace(/[\}\{"]+/g, (match) => {
-        const trimmed = match.trim();
-        if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) return '';
-        return match;
-    });
-    
-    clean = clean.replace(/<[^>]+>/g, '');
-    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-
-    return clean.trim();
+// Unified cleaning logic for AI responses
+function getCleanContent(contentRaw, isCard = false, role = 'ai') {
+    return getUnifiedCleanContent(contentRaw, isCard, role)
 }
 
 

@@ -140,9 +140,25 @@
                             <div v-else class="flex flex-col items-center py-10 text-gray-400">
                                 <template v-if="myClaim">
                                     <i class="fa-solid fa-circle-check text-4xl mb-3 text-green-500"></i>
-                                    <span class="text-sm">已存入零钱，可直接使用</span>
+                                    <span class="text-sm text-gray-600 font-medium">已存入零钱，可直接使用</span>
+                                </template>
+                                <template v-else-if="packet?.role === 'user' || packet?.senderId === 'user'">
+                                    <!-- Sender's view of their own red packet -->
+                                    <template v-if="packet?.isRejected">
+                                        <i class="fa-solid fa-rotate-left text-4xl mb-3 text-orange-400 opacity-60"></i>
+                                        <span class="text-sm">红包已退回</span>
+                                    </template>
+                                    <template v-else-if="packet?.isClaimed">
+                                        <i class="fa-solid fa-check-circle text-4xl mb-3 text-green-500 opacity-40"></i>
+                                        <span class="text-sm">红包已被领取</span>
+                                    </template>
+                                    <template v-else>
+                                        <i class="fa-solid fa-clock text-4xl mb-3 text-gray-200"></i>
+                                        <span class="text-sm">待对方领取</span>
+                                    </template>
                                 </template>
                                 <template v-else>
+                                    <!-- Recipient's view of an already claimed packet -->
                                     <i class="fa-solid fa-check-circle text-4xl mb-3 text-green-500 opacity-20"></i>
                                     <span class="text-sm">红包已领取</span>
                                 </template>

@@ -8,8 +8,11 @@ const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:\uff1a\uFF1A\n\u2016\u2016\u201c"\u300
 
 const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
-const ONLINE_BLOCK_RE = /\[\s*ONLINE\s*\]([\s\S]*?)\[\/\s*ONLINE\s*\]/i
-const OFFLINE_BLOCK_RE = /\[\s*OFFLINE\s*\]([\s\S]*?)\[\/\s*OFFLINE\s*\]/i
+const ONLINE_BLOCK_RE = /\[\s*\/?\s*ONLINE\s*\]/gi
+const OFFLINE_BLOCK_RE = /\[\s*\/?\s*OFFLINE\s*\]/gi
+
+// Robust Tag Regex for partitioning: Matches [ONLINE], [/ONLINE], [OFFLINE], [/OFFLINE] with optional spaces
+const MODE_TAG_RE = /\[\s*(\/?)\s*(ONLINE|OFFLINE)\s*\]/gi
 
 // TOKEN_GLOBAL_RE: \u7528\u6765\u4ece\u6574\u6bb5\u6587\u5b57\u4e2d\u63d0\u53d6\u7279\u6b8a\u533a\u5757\uff08\u65c1\u767d\u3001\u573a\u666f\u3001\u62ec\u53f7\u52a8\u4f5c\u3001\u5e26\u300c\u300d\u7684\u5bf9\u8bdd\uff09
 const TOKEN_GLOBAL_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
@@ -105,62 +108,63 @@ export function stripModeWrapperTags(content) {
  * \u5c06\u5185\u5bb9\u6309 [ONLINE]/[OFFLINE] \u6807\u7b7e\u5206\u5757\uff0c\u5e76\u63d0\u53d6\u76ee\u6807\u6a21\u5f0f\u7684\u5185\u5bb9\u3002
  * \u652f\u6301\u5185\u8054\u6a21\u5f0f\u7ee7\u627f\uff1a\u5982\u679c\u4e00\u6bb5\u5185\u5bb9\u6ca1\u6709\u6807\u7b7e\u5305\u88f9\uff0c\u4e14\u524d\u9762\u7d27\u90bb\u4e00\u4e2a\u6807\u7b7e\u5757\uff0c\u5219\u6cbf\u7528\u524d\u9762\u7684\u683c\u5f0f\u3002
  */
+/**
+ * Splits content by [ONLINE]/[OFFLINE] tags and extracts the target mode's content.
+ * Supports mode persistence: text following a tag belongs to that mode until changed.
+ */
 export function getModePartitionedContent(content, targetMode) {
   const raw = ensureMessageString(content)
   if (!raw) return ''
 
-  // \u6b63\u5219\u5339\u914d\u6240\u6709\u6a21\u5f0f\u5f00\u5173
-  const tagRe = /\[(ONLINE|OFFLINE)\]|\[\/(ONLINE|OFFLINE)\]/gi
+  // Use the robust regex defined above
+  const tagRe = /\[\s*(\/?)\s*(ONLINE|OFFLINE)\s*\]/gi
   let lastIndex = 0
-  let currentMode = null // \u5c1a\u672a\u660e\u786e\u6a21\u5f0f
+  let currentMode = null 
   let result = ''
   
   let match
   while ((match = tagRe.exec(raw)) !== null) {
      const tagIndex = match.index
-     const fullTag = match[0]
-     const tagName = match[1] || match[2]
-     const isClosing = fullTag.startsWith('[/')
+     const isClosing = match[1] === '/'
+     const tagName = match[2].toUpperCase()
 
-     // \u5904\u7406\u6807\u7b7e\u4e4b\u524d\u7684\u6587\u672c
+     // Content before this tag
      const prevBlock = raw.substring(lastIndex, tagIndex)
      if (prevBlock) {
-        // \u5982\u679c\u5f53\u524d\u6709\u6a21\u5f0f\uff0c\u6216\u8005\u8be5\u6a21\u5f0f\u7b26\u5408\u76ee\u6807\uff0c\u5219\u7d2f\u52a0
-        // \u5173\u952e\u903b\u8f91\uff1a\u6ca1\u6709\u6807\u7b7e\u7684\u6bb5\u843d\uff0c\u5982\u679c\u662f\u7d27\u8ddf\u5728\u67d0\u4e2a\u6a21\u5f0f\u540e\u9762\uff0c\u5219\u201c\u6cbf\u7528\u201d
-        if (currentMode === targetMode) {
+        // Apply logic to the previous block
+        if (currentMode === targetMode.toUpperCase()) {
            result += prevBlock
         } else if (currentMode === null) {
-           // \u5982\u679c\u662f\u5f00\u5934\u7684\u65e0\u6807\u7b7e\u6587\u5b57\uff0c\u770b\u5176\u5185\u5bb9\u6216\u9ed8\u8ba4\u6a21\u5f0f
-           // \u8fd9\u91cc\u6211\u4eec\u6682\u4e0d\u8f7b\u6613\u5224\u5b9a\uff0c\u6216\u8005\u53ef\u4ee5\u6839\u636e hasOfflineTheaterContent \u5224\u5b9a
-           const estimated = hasOfflineTheaterContent(prevBlock) ? 'OFFLINE' : 'ONLINE'
-           if (estimated.toLowerCase() === targetMode.toLowerCase()) {
+           // Heuristic for untagged initial text:
+           // If target is ONLINE, we include it if it's NOT theater. 
+           // If target is OFFLINE, we include it if it DOES have theater markers.
+           const estimated = hasOfflineTheaterContent({ content: prevBlock }) ? 'OFFLINE' : 'ONLINE'
+           if (estimated === targetMode.toUpperCase()) {
               result += prevBlock
            }
         }
      }
 
-     // \u66f4\u65b0\u72b6\u6001
+     // Update mode: Opening tags change mode. Closing tags reset to null? 
+     // The user wants "沿用" (Inherit/Persist).
+     // Decision: Opening tags SET mode. Closing tags CLEAR it to null.
      if (isClosing) {
-        // \u6807\u7b7e\u5173\u95ed\u540e\uff0c\u6a21\u5f0f\u6062\u590d\u4e3a null\uff08\u6216\u8005\u53ef\u4ee5\u8bbe\u8ba1\u4e3a\u7ee7\u7eed\u4fdd\u6301\uff0c\u76f4\u5230\u4e0b\u4e2a\u6807\u7b7e\uff09
-        // \u7528\u6237\u7684\u8981\u6c42\u662f\u201c\u6cbf\u7528\u4e0a\u4e00\u6bb5\u201d\uff0c\u6240\u4ee5\u6211\u4eec\u9009\u62e9\u201c\u4fdd\u6301\u5f53\u524d\u72b6\u6001\u76f4\u5230\u9047\u5230\u53d8\u52a8\u201d\uff1f
-        // \u8fd8\u662f\u7ef4\u6301 currentMode \u5e76\u5728\u6807\u7b7e\u5916\u4e5f\u91c7\u96c6\uff1f
-        // \u6839\u636e\u201c\u6cbf\u7528\u201d\u539f\u5219\uff0c\u5f53\u6807\u7b7e\u5173\u95ed\u540e\uff0c\u5728\u9047\u5230\u4e0b\u4e00\u4e2a\u5f00\u59cb\u6807\u7b7e\u524d\uff0c\u6211\u4eec\u4f9d\u7136\u8ba4\u4e3a\u5904\u4e8e\u8be5\u6a21\u5f0f\u3002
-        // \u6240\u4ee5\u6211\u4eec\u4e0d\u5728\u8fd9\u91cc\u91cd\u7f6e currentMode\u3002
+        currentMode = null
      } else {
-        currentMode = tagName.toUpperCase()
+        currentMode = tagName
      }
      
-     lastIndex = tagIndex + fullTag.length
+     lastIndex = tagIndex + match[0].length
   }
 
-  // \u5904\u7406\u6700\u540e\u5269\u4f59\u7684\u5185\u5bb9
+  // Handle remaining tail text
   const remaining = raw.substring(lastIndex)
   if (remaining) {
      if (currentMode === targetMode.toUpperCase()) {
         result += remaining
      } else if (currentMode === null) {
-        const estimated = hasOfflineTheaterContent(remaining) ? 'OFFLINE' : 'ONLINE'
-        if (estimated.toLowerCase() === targetMode.toLowerCase()) {
+        const estimated = hasOfflineTheaterContent({ content: remaining }) ? 'OFFLINE' : 'ONLINE'
+        if (estimated === targetMode.toUpperCase()) {
            result += remaining
         }
      }
@@ -173,11 +177,13 @@ export function getOfflineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
   
-  // \u68c0\u67e5\u662f\u5426\u6709\u4efb\u4f55\u5305\u88f9\u6807\u7b7e
-  if (!/\[(ONLINE|OFFLINE)\]/i.test(raw)) {
-     if (msg?.mode === 'offline') return stripModeWrapperTags(raw).trim()
-     if (msg?.mode === 'online') return ''
-     return stripModeWrapperTags(raw).trim()
+  // Detection with robust tags
+  if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) {
+     // If it has BOTH, it's mixed, so we can't just return false.
+     // But usually this function is used to decide if the WHOLE message is theater.
+     // If it's mixed, we rely on partitioning.
+     if (!/\[\s*OFFLINE\s*\]/i.test(raw)) return false 
   }
 
   return getModePartitionedContent(raw, 'OFFLINE')
@@ -187,10 +193,9 @@ export function getOnlineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
 
-  if (!/\[(ONLINE|OFFLINE)\]/i.test(raw)) {
-     if (msg?.mode === 'online') return stripModeWrapperTags(raw).trim()
-     if (msg?.mode === 'offline') return ''
-     return stripModeWrapperTags(raw).trim()
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
+  if (/\[\s*OFFLINE\s*\]/i.test(raw)) {
+     if (!/\[\s*ONLINE\s*\]/i.test(raw)) return false
   }
 
   return getModePartitionedContent(raw, 'ONLINE')
@@ -372,16 +377,17 @@ export function parseOfflineSegments(msg) {
 export function hasOfflineTheaterContent(msg) {
   if (!msg) return false
   
-  // 1. Explicit Mode Check
+  // Explicit Mode Check
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
 
-  // 2. Content-based detection (Fallback if mode not set or for mixed detection)
-  const raw = ensureMessageString(msg.content)
-  
-  // Explicit tags have highest authority
-  if (/\[OFFLINE\]/i.test(raw)) return true
-  if (/\[ONLINE\]/i.test(raw)) return false
+  // Detection with robust tags
+  if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) {
+     // If it has both, we check if there are theater markers in the offline portion
+     // but for simplicity, we return false here as it's primarily a "should I use the theater renderer" check.
+     if (!/\[\s*OFFLINE\s*\]/i.test(raw)) return false
+  }
 
   // Detect theater markers
   // Important: We check the RAW text here to catch messages before they are processed/split
@@ -451,8 +457,8 @@ export function shouldShowInOnlineMode(msg) {
   const raw = ensureMessageString(msg.content)
 
   // 1. Check for explicit tags (These are the ultimate authority)
-  if (/\[ONLINE\]/i.test(raw)) return true
-  if (/\[OFFLINE\]/i.test(raw) && !/\[ONLINE\]/i.test(raw)) return false
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
+  if (/\[\s*OFFLINE\s*\]/i.test(raw) && !/\[\s*ONLINE\s*\]/i.test(raw)) return false
 
   // 2. Check for theater markers (These imply offline mode)
   if (hasOfflineTheaterContent(msg)) return false
@@ -623,4 +629,92 @@ export function hasInnerVoice(content) {
     }
   }
   return false;
+}
+
+/**
+ * Common cleaning logic to strip all metadata, protocol tags, and structured debris from AI responses.
+ * Used to get "human readable" text for chat bubbles.
+ */
+export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
+  let clean = ensureMessageString(content)
+  if (!clean) return ''
+
+  // 1. Strip Mode Tags [ONLINE]/[OFFLINE]
+  clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE)\s*\]/gi, '')
+
+  // 2. Strip Metadata Blocks (JSON heartRate, stats, etc.)
+  clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, '')
+  
+  // 2b. Catch-all for isolated/dangling mode or protocol tags
+  clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\s*\]/gi, '')
+  
+  // 3. Strip common protocol tags
+  const protocols = [
+    'LIKE', 'COMMENT', 'REPLY', 'VOTE', 'CREATE_VOTE', 'RECALL', '撤回', 'NUDGE', '拍一拍', 
+    'SET_PAT', 'UPDATE_BIO', 'BIO', '更换头像', 'SET_AVATAR', 'MOMENT', '朋友圈', 
+    'SEARCH', 'ALMANAC', '定时', '在一起', '分手', '情侣空间', '摇骰子', '掷骰子', 
+    'DICE', 'TAROT', '塔罗牌', '塔罗占卜', '塔罗解牌'
+  ]
+  const protocolRe = new RegExp(`\\[(?:${protocols.join('|')})[:：]\\s*[^\\]]+\\]`, 'gi')
+  clean = clean.replace(protocolRe, '')
+  
+  clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '')
+  clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '')
+  clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '')
+  clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '')
+  clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '')
+  clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '')
+  clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '')
+  clean = clean.replace(/\[(?:MOMENT_SHARE|分享朋友圈)[:：][^\]]+\]/gi, '')
+  
+  // 4. Strip CARD blocks
+  clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '')
+  
+  // 5. If AI, aggressively strip any JSON-like hanging braces/logic/CSS
+  if (role !== 'user') {
+      // Strip style blocks
+      clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '')
+      // Strip common containers if they start/end with tags
+      clean = clean.replace(/<(html|div|section|article|style|svg)[\s\S]*?<\/\1>/gi, '') 
+      clean = clean.replace(/<[^>]+>/g, '')
+      
+      // Strip naked JSON blocks containing specific keywords (e.g. status cards)
+      const removeJsonWithKeywords = (str) => {
+          let result = ''
+          let i = 0
+          while (i < str.length) {
+              if (str[i] === '{') {
+                  let depth = 0
+                  let start = i
+                  while (i < str.length) {
+                      if (str[i] === '{') depth++
+                      else if (str[i] === '}') depth--
+                      i++
+                      if (depth === 0) break
+                  }
+                  const block = str.substring(start, i)
+                  if (/"(?:status|stats|heartRate|着装|环境|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit)"/i.test(block)) {
+                      // Skip
+                  } else {
+                      result += block
+                  }
+              } else {
+                  result += str[i]
+                  i++
+              }
+          }
+          return result
+      }
+      clean = removeJsonWithKeywords(clean)
+      
+      // Final cosmetic cleanup
+      clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces
+      clean = clean.replace(/[\}\{"]+/g, (m) => m.trim().length === 0 ? '' : m) // Remove dangling JSON chars
+  }
+
+  return clean.trim()
+}
+
+export function getMessageThumbnail(msg) {
+  return ensureMessageString(msg.content).substring(0, 30) + '...'
 }

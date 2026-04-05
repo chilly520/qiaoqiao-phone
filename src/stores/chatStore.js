@@ -3134,7 +3134,8 @@ export const useChatStore = defineStore('chat', () => {
 
                 // V16: Added holistic theater block matching to preventing internal splitting.
                 // Removed punctuation from splitRegex to stop fragmented narration.
-                const splitRegex = new RegExp("(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09)");
+                // V17: Added \r?\n to splitRegex to allow splitting bubbles by newlines
+                const splitRegex = new RegExp("(\\r?\\n|__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09)");
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -3147,17 +3148,25 @@ export const useChatStore = defineStore('chat', () => {
                     if (part === undefined) continue;
 
                     const trimmedPart = part.trim();
-                    // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
-                    // V15: Included theater markers (|| and \u2016) in isSpecial to ensure they break segments properly for card rendering
-                    // V16: splitRegex now returns either a special block (placeholder, tag, theater block etc) or text between them.
-                    const isSpecial = new RegExp("^(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|\\u7ea2\\u5305|\\u8f6c\\u8d26|REDPACKET|TRANSFER|\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305|STICKER|\\u56fe\\u7247|IMAGE|\\u8bed\\u97f3|VOICE|\\u8bed\\u97f3\\u901a\\u8bdd|\\u89c6\\u9891\\u901a\\u8bdd|\\u901a\\u8bdd|CALL|\\u7ed8\\u753b|\\u751f\\u6210\\u56fe\\u7247|\\u6f14\\u594f|\\u97f3\\u4e50|\\u9ab0\\u5b50|\\u63b7\\u9ab0\\u5b50|\\u5854\\u7f57|\\u5854\\u7f57\\u724c|FAMILY_CARD|\\u573a\\u666f|SCENE|LIKE|\\u70b9\\u8d5e|\\u559c\\u6b22|COMMENT|\\u8bc4\\u8bba|REPLY|\\u56de\\u590d|\\u4f4d\\u7f6e|LOCATION|\\u5730\\u56fe|MAP|SHARE|\\u5206\\u4eab|\\u8f6c\\u53d1|\\u6587\\u4ef6|FILE|LINK|\\u94fe\\u63a5|URL|SYSTEM|\\u7cfb\\u7edf|\\u901a\\u77e5|SET_AVATAR|SET_NAME|SET_PAT|\\u8bbe\\u7f6e\\u5934\\u50cf|\\u8bbe\\u7f6e\\u6635\\u79f0|\\u8bbe\\u7f6e\\u62cd\\u4e00\\u62cd|NUDGE|\\u6233\\u4e00\\u6233|\\u62cd\\u4e00\\u62cd|QUOTE|\\u5f15\\u7528|GIFT|\\u793c\\u7269|CARD|\\u5b9a\\u65f6|TIMER|REMIND|\\u63d0\\u9192|\\u641c\\u7d22|SEARCH|\\u67e5\\u627e|\\u9ec4\\u5386|ALMANAC|\\u8fd0\\u52bf)|\\(|\\uff08|\\u3010|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016)").test(trimmedPart);
-                    const isPunctuation = /^[!?;\u3002\uff01\uff1f\uff1b\u2026\r\n]+$/.test(part);
+                    // V17: Simplified isSpecial logic to be more inclusive of tags with parameters
+                    // Match newlines, placeholders, theater blocks, or any bracketed command tag
+                    const isNewline = /^\r?\n$/.test(part);
+                    const isTag = /^\[[^\s\]]+(?::[^\]]*)?\]$/.test(trimmedPart);
+                    const isTheater = /^(\|\||\u2016)[\s\S]*?(\|\||\u2016)$/.test(trimmedPart);
+                    const isPlaceholder = /^__CARD_PLACEHOLDER_\d+__$/.test(trimmedPart);
+                    
+                    // Specific command check for tags that aren't generic [xxx]
+                    const isCommandTag = isTag && /\[\/?\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|查找|黄历|ALMANAC|运势)/i.test(trimmedPart);
 
-                    if (isSpecial) {
-                        if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }
-                        rawSegments.push(part);
+                    if (isNewline || isPlaceholder || isCommandTag || isTheater || trimmedPart.startsWith('【') || trimmedPart.startsWith('(') || trimmedPart.startsWith('（')) {
+                        if (currentRawSegment) { 
+                            rawSegments.push(currentRawSegment); 
+                            currentRawSegment = ""; 
+                        }
+                        if (!isNewline) rawSegments.push(part);
+                        // If it's a newline, we just don't append it to currentRawSegment, 
+                        // effectively making it a segment break.
                     } else {
-                        // V15: Stopped splitting on punctuation to avoid fragmented message bubbles
                         currentRawSegment += part;
                     }
                 }
@@ -3169,6 +3178,8 @@ export const useChatStore = defineStore('chat', () => {
                 for (const seg of rawSegments) {
                     let content = seg;
                     const trimmedContent = content.trim();
+                    
+                    // Robust tag detection within the segmenter
                     if (/^\[\s*ONLINE\s*\]$/i.test(trimmedContent)) { activeMode = 'online'; continue; }
                     if (/^\[\/\s*ONLINE\s*\]$/i.test(trimmedContent)) { activeMode = null; continue; }
                     if (/^\[\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = 'offline'; continue; }
@@ -3180,72 +3191,72 @@ export const useChatStore = defineStore('chat', () => {
                     if (placeholderMatch) {
                         const index = parseInt(placeholderMatch[1]);
                         content = cardBlocks[index];
-                        finalSegments.push({ type: 'card', content });
+                        finalSegments.push({ type: 'card', content, mode: activeMode });
                     } else if (/^\[(?:表情包|表情-包|STICKER)[:：].*?\]$/.test(content.trim())) {
-                        finalSegments.push({ type: 'sticker', content: content.trim() });
+                        finalSegments.push({ type: 'sticker', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[语音通话]') || content.startsWith('[通话]') || content.startsWith('[CALL]')) {
-                        finalSegments.push({ type: 'call', content: 'voice' });
+                        finalSegments.push({ type: 'call', content: 'voice', mode: activeMode });
                     } else if (content.startsWith('[视频通话]')) {
-                        finalSegments.push({ type: 'call', content: 'video' });
+                        finalSegments.push({ type: 'call', content: 'video', mode: activeMode });
                     } else if (content.startsWith('[语音') || content.startsWith('[VOICE')) {
                         let voiceContent = content.replace(/^\[(?:语音|VOICE)(消息)?[:：]?\s*/, '').replace(/\]$/, '');
-                        finalSegments.push({ type: 'voice', content: voiceContent.trim() });
+                        finalSegments.push({ type: 'voice', content: voiceContent.trim(), mode: activeMode });
                     } else if (content.startsWith('[图片') || content.startsWith('[IMAGE')) {
-                        finalSegments.push({ type: 'text', content: '[图片]' });
+                        finalSegments.push({ type: 'text', content: '[图片]', mode: activeMode });
                     } else if (content.startsWith('[DRAW:') || content.startsWith('[绘画:') || content.startsWith('[生成图片:')) {
-                        finalSegments.push({ type: 'draw', content: content.trim() });
+                        finalSegments.push({ type: 'draw', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[演奏:') || content.startsWith('[MUSIC:') || content.startsWith('[音乐:')) {
-                        finalSegments.push({ type: 'music', content: content.trim() });
+                        finalSegments.push({ type: 'music', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[骰子:') || content.startsWith('[DICE:') || content.startsWith('[掷骰子:')) {
-                        finalSegments.push({ type: 'dice', content: content.trim() });
+                        finalSegments.push({ type: 'dice', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[塔罗:') || content.startsWith('[塔罗牌:') || content.startsWith('[TAROT:')) {
-                        finalSegments.push({ type: 'tarot', content: content.trim() });
+                        finalSegments.push({ type: 'tarot', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[红包:') || content.startsWith('[转账:') || content.startsWith('[REDPACKET:') || content.startsWith('[TRANSFER:')) {
-                        finalSegments.push({ type: 'payment', content: content.trim() });
+                        finalSegments.push({ type: 'payment', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[位置:') || content.startsWith('[LOCATION:') || content.startsWith('[地图:') || content.startsWith('[MAP:') || 
                             content.startsWith('【地点') || content.startsWith('【场景')) {
                         finalSegments.push({ type: 'location', content: content.trim(), mode: 'offline' });
                     } else if (content.startsWith('[文件:') || content.startsWith('[FILE:')) {
-                        finalSegments.push({ type: 'file', content: content.trim() });
+                        finalSegments.push({ type: 'file', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[链接:') || content.startsWith('[LINK:') || content.startsWith('[URL:')) {
-                        finalSegments.push({ type: 'link', content: content.trim() });
+                        finalSegments.push({ type: 'link', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[礼物:') || content.startsWith('[GIFT:')) {
-                        finalSegments.push({ type: 'gift', content: content.trim() });
+                        finalSegments.push({ type: 'gift', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[戳一戳:') || content.startsWith('[拍一拍:') || content.startsWith('[NUDGE:')) {
-                        finalSegments.push({ type: 'nudge', content: content.trim() });
+                        finalSegments.push({ type: 'nudge', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[引用:') || content.startsWith('[QUOTE:')) {
-                        finalSegments.push({ type: 'quote', content: content.trim() });
+                        finalSegments.push({ type: 'quote', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[点赞:') || content.startsWith('[喜欢:') || content.startsWith('[LIKE:')) {
-                        finalSegments.push({ type: 'like', content: content.trim() });
+                        finalSegments.push({ type: 'like', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[评论:') || content.startsWith('[COMMENT:')) {
-                        finalSegments.push({ type: 'comment', content: content.trim() });
+                        finalSegments.push({ type: 'comment', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[回复:') || content.startsWith('[REPLY:')) {
-                        finalSegments.push({ type: 'reply', content: content.trim() });
+                        finalSegments.push({ type: 'reply', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[分享:') || content.startsWith('[转发:') || content.startsWith('[SHARE:')) {
-                        finalSegments.push({ type: 'share', content: content.trim() });
+                        finalSegments.push({ type: 'share', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[系统:') || content.startsWith('[通知:') || content.startsWith('[SYSTEM:')) {
-                        finalSegments.push({ type: 'system', content: content.trim() });
+                        finalSegments.push({ type: 'system', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[设置头像:') || content.startsWith('[SET_AVATAR:')) {
-                        finalSegments.push({ type: 'set_avatar', content: content.trim() });
+                        finalSegments.push({ type: 'set_avatar', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[设置昵称:') || content.startsWith('[SET_NAME:')) {
-                        finalSegments.push({ type: 'set_name', content: content.trim() });
+                        finalSegments.push({ type: 'set_name', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[设置拍一拍:') || content.startsWith('[SET_PAT:')) {
-                        finalSegments.push({ type: 'set_pat', content: content.trim() });
+                        finalSegments.push({ type: 'set_pat', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[定时:') || content.startsWith('[定时提醒:') || content.startsWith('[TIMER:') || content.startsWith('[REMIND:')) {
-                        finalSegments.push({ type: 'timer', content: content.trim() });
+                        finalSegments.push({ type: 'timer', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[搜索:') || content.startsWith('[SEARCH:') || content.startsWith('[查找:')) {
-                        finalSegments.push({ type: 'search', content: content.trim() });
+                        finalSegments.push({ type: 'search', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[黄历:') || content.startsWith('[ALMANAC:') || content.startsWith('[运势:') || content.startsWith('[今日运势:]')) {
-                        finalSegments.push({ type: 'almanac', content: content.trim() });
+                        finalSegments.push({ type: 'almanac', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[OFFLINE]')) {
                         finalSegments.push({ type: 'text', content: content.replace(/\[\s*OFFLINE\s*\]|\[\/\s*OFFLINE\s*\]/gi, '').trim(), mode: 'offline' });
                     } else if (content.startsWith('[ONLINE]')) {
                         finalSegments.push({ type: 'text', content: content.replace(/\[\s*ONLINE\s*\]|\[\/\s*ONLINE\s*\]/gi, '').trim(), mode: 'online' });
                     } else if (content.trim().startsWith('【') && content.trim().endsWith('】')) {
-                        // Theater style location/scene marker
+                        // Theater style location/scene marker - always offline
                         finalSegments.push({ type: 'location', content: content.trim(), mode: 'offline' });
                     } else {
-                        // Standard Text: Apply Toxic CSS Filter HERE only
+                        // Standard Text
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-color', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity', 'border: 3px solid', 'border: 1px solid', 'font-family:', 'animation:', 'keyframes'];
                         const cssLineRegex = /^\s*[a-z-]+\s*:\s*[^:]{1,100}(?:;|px|em|rem|%|vw|vh)\s*$/i;
 

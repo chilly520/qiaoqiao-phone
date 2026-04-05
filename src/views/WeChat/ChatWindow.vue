@@ -50,7 +50,7 @@ import { compressImage } from '../../utils/imageUtils'
 import { generateImage, translateToEnglish } from '../../utils/aiService'
 import { batteryMonitor } from '../../utils/batteryMonitor'
 import { useChatTransaction } from '../../composables/chat/useChatTransaction'
-import { shouldShowInOnlineMode } from '../../utils/chatMessageDisplay'
+import { shouldShowInOnlineMode, getUnifiedCleanContent } from '../../utils/chatMessageDisplay'
 
 const ensureString = (val) => {
     if (typeof val === 'string') return val;
@@ -93,81 +93,8 @@ const callStore = useCallStore()
 const worldLoopStore = useWorldLoopStore()
 const backpackStore = useBackpackStore()
 
-const getCleanContent = (contentRaw, isCard = false) => {
-    if (!contentRaw) return '';
-    const content = ensureString(contentRaw);
-
-    // CRITICAL: Performance shortcut for massive image/base64 data
-    if (content.length > 500) {
-        if (content.includes('data:image/') || content.includes('blob:')) return '';
-    }
-
-    let clean = content;
-
-    // 1. Remove large protocol blocks
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?=\s*\n\s*\[(?!\/)|$)/gi, '');
-    clean = clean.replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, ''); 
-    clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '');
-    clean = clean.replace(/\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '');
-
-    // Existing protocol tags
-    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间)[:：]\s*[^\]]+\]/gi, '');
-    clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
-    clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
-    clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
-    clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
-    
-    // Standard UI filter
-    clean = clean.replace(/\[CALL_START\]|\[CALL_END\]|\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi, '');
-    clean = clean.replace(/\[STATUS[:：][\s\S]*?\]/gi, '');
-    clean = clean.replace(/\[THINK[:：][\s\S]*?\]/gi, '');
-    
-    clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
-    clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
-    
-    // 过滤【场景：xxx】标签，线上模式不显示大段场景描述
-    clean = clean.replace(/[\\[【]\s*场景：[^\]】]*[\]】]/gi, '');
-    
-    // 2. AGGRESSIVE: Remove style blocks and CSS fragments
-    clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
-    clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
-    clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');
-    
-    // Broad CSS property/value match: property: value;
-    clean = clean.replace(/[a-z0-9-]+\s*:\s*[^;{}]+(?=[;\}]|\n|$)/gi, (match) => {
-        const lower = match.toLowerCase();
-        const keywords = ['background', 'color', 'font', 'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom', 'display', 'position', 'opacity', 'z-index', 'overflow', 'transform', 'animation', 'mask', 'transition', 'cursor', 'box-shadow', 'text-shadow', 'flex', 'grid', 'justify', 'align', 'gap', 'radial', 'linear', 'gradient', 'rgba', 'rgb', 'hsl'];
-        if (keywords.some(k => lower.includes(k)) || lower.includes('%') || lower.includes('px') || lower.includes('rem') || lower.includes('#')) {
-            return '';
-        }
-        return match;
-    });
-
-    // Strip isolated common CSS values (like 50% 100%)
-    clean = clean.replace(/(?:\d+%\s+)+\d+%/g, '');
-    clean = clean.replace(/(?:rgba?|hsla?)\([^\)]+\)/gi, '');
-    clean = clean.replace(/#[0-9a-f]{3,8}/gi, '');
-
-    // 3. Remove JSON metadata blocks (心声, 着装, status, etc.)
-    clean = clean.replace(/\{[\s\n]*"(?:type|html|着装|环境|status|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|stats|state|metadata|speech)"[\s\S]*?\}/gi, '');
-    
-    // Loose JSON properties fallback
-    clean = clean.replace(/(?:^|[\r\n,])\s*["']?(?:spirit|mood|location|distance|outfit|scene|stats|status|mind|thoughts|label|value|emotion|energy|spirit|hangup|speech)["']?\s*[:：]\s*(?:\{[^{}]*\}|"[^"]*"|'[^']*'|[^\n,]*)(?:,)?/gi, '');
-    clean = clean.replace(/["']?(?:mood|label|value|location|distance|outfit|scene|status|mind|emotion|energy|spirit)["']?\s*[:：]\s*(?:[^\n}"']*)/gi, '');
-        
-    // ULTRA AGGRESSIVE: Cleanup remaining code-like fragments
-    clean = clean.replace(/[\}\{"]+/g, (match) => {
-        const trimmed = match.trim();
-        if (trimmed.length === 0 || /^[\}\{"]+$/.test(trimmed)) return '';
-        return match;
-    });
-    
-    // Strip HTML leftovers
-    clean = clean.replace(/<[^>]+>/g, '');
-    clean = clean.replace(/[\u200b\u200c\u200d\ufeff]/g, '');
-
-    return clean.trim();
+const getCleanContent = (contentRaw, isCard = false, role = 'ai') => {
+    return getUnifiedCleanContent(contentRaw, isCard, role)
 }
 
 const isImageMsg = (msg) => {
@@ -266,23 +193,28 @@ const isMsgVisible = (msg) => {
     if (!msg) return false
     if (msg.hidden) return false
 
-    // Use shared utility for online mode filtering (handles mixed tags)
+    // 1. Use shared utility for online mode filtering (handles robust [ONLINE]/[OFFLINE] tags)
     if (!shouldShowInOnlineMode(msg)) return false
 
-    // Removed moment card filter: We want them to display normally if generated in chat.
-    const content = ensureString(msg.content)
-    // Ensure we don't swallow messages that are pure special cards/formats
+    // 2. Role-based filtering for AI text messages
     const role = msg.role ? msg.role.toLowerCase() : 'ai'
-    if (['ai', 'assistant', 'thought', 'bot'].includes(role) && msg.type !== 'sticker' && msg.type !== 'image' && msg.type !== 'voice' && !isImageMsg(msg)) {
-        // If it explicitly declares ANY special type or contains special protocols, don't drop it!
-        if (msg.type && msg.type !== 'text' && msg.type !== 'system') return true
+    if (['ai', 'assistant', 'thought', 'bot'].includes(role)) {
+        // Special types (stickers, images, voice) are always visible if mode matches
+        if (msg.type && !['text', 'system', 'card', 'html'].includes(msg.type)) return true
         
-        // Extended check for special tags that should render as cards/events
-        const hasCardProtocol = /\[(?:CARD|红包|转账|领取|退回|拒收|FAMILY_CARD|亲属卡|GIFT|MUSIC|一起听歌|摇骰子|掷骰子|DICE|TAROT|塔罗|塔罗牌|塔罗占卜|塔罗解牌|LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|LOVESPACE|情侣空间|更换头像|SET_AVATAR)/i.test(content) || /\\"type\\":\s*\\"html\\"/.test(content) || /"type"\s*:\s*"html"/.test(content) || /<(div|section|article|table|ul|ol|p|h[1-6]|svg)\b/i.test(content) || /\[(?:INNER[-_ ]?VOICE)\]/i.test(content);
+        // For text/html types, check if it has "human" content after cleaning protocols
+        const cleanContent = getUnifiedCleanContent(msg.content, msg.type === 'html', role)
         
-        if (!hasCardProtocol) {
-            const cleanContent = getCleanContent(content)
-            if (!cleanContent || cleanContent.trim().length === 0) return false
+        // If it's a card (redpacket, gift, etc.), it MUST be visible!
+        // hasCardProtocol check was replaced by getUnifiedCleanContent's logic 
+        // but we need to ensure we don't hide messages that ARE cards but have empty text.
+        const isCard = /\[(?:CARD|红包|转账|领取|退回|拒收|FAMILY_CARD|亲属卡|GIFT|MUSIC|DICE|TAROT|LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|拍一拍|SET_PAT)/i.test(ensureString(msg.content));
+        if (isCard) return true
+
+        if (!cleanContent || cleanContent.trim().length === 0) {
+            // Check for RAW html cards that might not have text but have valid HTML
+            if (msg.type === 'html' || msg.html) return true
+            return false
         }
     }
 
