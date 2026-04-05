@@ -40,6 +40,63 @@ export const useChatStore = defineStore('chat', () => {
     const pendingRequests = ref([]) // [ { id, fromId, fromName, fromAvatar, targetId, targetName, type: 'friend' | 'group_invite', timestamp } ]
     const typingStatus = ref({}) // { chatId: boolean }
     const isProfileProcessing = ref({}) // track if a specific character's archive is being analyzed
+    
+    // Streaming message persistence state
+    const streamingState = ref({}) // { chatId: { msgId, content, startTime, mode } }
+    
+    async function saveStreamingState() {
+        try {
+            await localforage.setItem('qiaoqiao_streaming_state', JSON.parse(JSON.stringify(streamingState.value)))
+        } catch (e) {
+            console.warn('[ChatStore] Failed to save streaming state:', e)
+        }
+    }
+    
+    async function loadStreamingState() {
+        try {
+            const saved = await localforage.getItem('qiaoqiao_streaming_state')
+            if (saved) {
+                streamingState.value = saved
+            }
+        } catch (e) {
+            console.warn('[ChatStore] Failed to load streaming state:', e)
+        }
+    }
+    
+    async function clearStreamingState(chatId) {
+        if (chatId) {
+            delete streamingState.value[chatId]
+        } else {
+            streamingState.value = {}
+        }
+        await saveStreamingState()
+    }
+    
+    function setStreamingMessage(chatId, msgId, content, mode = 'online') {
+        streamingState.value[chatId] = {
+            msgId,
+            content,
+            startTime: Date.now(),
+            mode,
+            isComplete: false
+        }
+        saveStreamingState()
+    }
+    
+    function updateStreamingContent(chatId, content) {
+        if (streamingState.value[chatId]) {
+            streamingState.value[chatId].content = content
+            saveStreamingState()
+        }
+    }
+    
+    function markStreamingComplete(chatId) {
+        if (streamingState.value[chatId]) {
+            streamingState.value[chatId].isComplete = true
+            streamingState.value[chatId].completeTime = Date.now()
+        }
+        clearStreamingState(chatId)
+    }
     const isTyping = computed({
         get: () => !!typingStatus.value[currentChatId.value],
         set: (val) => {
@@ -2306,6 +2363,8 @@ export const useChatStore = defineStore('chat', () => {
             if (result.content) {
                 let fullContent = result.content;
 
+                setStreamingMessage(chatId, null, fullContent, options.mode || 'online')
+
                 // --- Pre-process: Strip Character Name Prefixes (防止剧本格式) ---
                 // Regex matches names like "乔笙: ", "乔笙：", "乔笙 " at start of lines or message
                 if (chat.name) {
@@ -2313,6 +2372,8 @@ export const useChatStore = defineStore('chat', () => {
                     const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
                     fullContent = fullContent.replace(nameRegex, '').trim();
                 }
+
+                updateStreamingContent(chatId, fullContent)
 
                 // --- Handle Call Signal Interception ([接听] / [拒绝]) ---
                 if (callStore.status === 'dialing') {
@@ -3667,6 +3728,7 @@ export const useChatStore = defineStore('chat', () => {
             typingStatus.value[chatId] = false;
             callStore.isSpeaking = false;
             delete abortControllers[chatId];
+            markStreamingComplete(chatId);
         }
     }
 
@@ -3890,13 +3952,38 @@ export const useChatStore = defineStore('chat', () => {
     const isLoaded = ref(false)
 
     // INITIALIZATION: Load data then check for empty state
-    loadChats().then(() => {
+    loadChats().then(async () => {
         isLoaded.value = true
         if (Object.keys(chats.value).length === 0) {
             console.log('[Storage] Empty state detected, initializing demo data...')
             initDemoData();
             saveChats();
         }
+        
+        await loadStreamingState()
+        
+        Object.entries(streamingState.value).forEach(([chatId, state]) => {
+            if (state && !state.isComplete && state.content) {
+                console.log(`[ChatStore] Recovering interrupted streaming message for chat: ${chatId}`)
+                const chat = chats.value[chatId]
+                if (chat) {
+                    const recoveredMsg = {
+                        role: 'ai',
+                        type: 'text',
+                        content: state.content,
+                        mode: state.mode || 'online',
+                        timestamp: state.startTime || Date.now(),
+                        _recovered: true
+                    }
+                    
+                    const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
+                    if (!existingMsg) {
+                        addMessage(chatId, recoveredMsg)
+                    }
+                }
+                clearStreamingState(chatId)
+            }
+        })
     }).catch(err => {
         console.error('[Storage] Crucial load failure:', err)
         isLoaded.value = true // Still mark as loaded to allow UI recovery
@@ -3999,6 +4086,7 @@ export const useChatStore = defineStore('chat', () => {
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
         getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
-        isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings
+        isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings,
+        streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState
     }
 })
