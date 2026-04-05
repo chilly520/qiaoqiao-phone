@@ -3009,10 +3009,10 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(/\[Image Reference ID:.*?\]/gi, '')
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
-                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
+                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\]/gi, '')
                     // Strip system context hints parrotted by AI
-                    .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE)消息[\]\)]?/gi, '')
-                    .replace(/\[(?:图片消息|语音消息)\]/gi, '')
+                    .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE|心声|INNER[-_ ]?VOICE)消息[\]\)]?/gi, '')
+                    .replace(/\[(?:图片消息|语音消息|心声数据)\]/gi, '')
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
@@ -3035,8 +3035,8 @@ export const useChatStore = defineStore('chat', () => {
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status)\s*[:：].*?(?:\n|$)/gm, '');
 
                 // Pass 2: Extraction using robust brace matcher (The Protectors)
-                // Aggressively match anything starting with [CARD]{, { "type":, or type: html {
-                const cardStartRegex = /(?:\[\s*(?:CARD|LS_JSON|JSON)\s*\][\s\S]*?\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)|(?:type\s*[:：]\s*html[\s\S]*?\{)/gi;
+                // Aggressively match anything starting with [CARD]{, [INNER_VOICE]{, { "type":, or type: html {
+                const cardStartRegex = /(?:\[\s*(?:CARD|LS_JSON|JSON|INNER[-_ ]?VOICE)\s*\]\s*\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)|(?:type\s*[:：]\s*html[\s\S]*?\{)/gi;
                 let cardMatch;
                 const cardPositions = [];
 
@@ -3073,7 +3073,7 @@ export const useChatStore = defineStore('chat', () => {
                         }
 
                         const afterBracket = cleanContent.substring(totalEnd);
-                        const closingTagMatch = afterBracket.match(/^\s*\[\/CARD\]/i);
+                        const closingTagMatch = afterBracket.match(/^\s*\[\/(?:CARD|INNER[-_ ]?VOICE)\]/i);
                         if (closingTagMatch) totalEnd += closingTagMatch[0].length;
 
                         const fullCard = cleanContent.substring(startPos, totalEnd);
@@ -3132,8 +3132,9 @@ export const useChatStore = defineStore('chat', () => {
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // V13: Removed \\n from splitRegex to keep multi-line AI responses as single message objects
-                const splitRegex = new RegExp("(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09|[!?;\\u3002\\uff01\\uff1f\\uff1b\\u2026]+)");
+                // V16: Added holistic theater block matching to preventing internal splitting.
+                // Removed punctuation from splitRegex to stop fragmented narration.
+                const splitRegex = new RegExp("(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09)");
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -3148,7 +3149,8 @@ export const useChatStore = defineStore('chat', () => {
                     const trimmedPart = part.trim();
                     // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
                     // V15: Included theater markers (|| and \u2016) in isSpecial to ensure they break segments properly for card rendering
-                    const isSpecial = new RegExp("^(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|\\u7ea2\\u5305|\\u8f6c\\u8d26|REDPACKET|TRANSFER|\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305|STICKER|\\u56fe\\u7247|IMAGE|\\u8bed\\u97f3|VOICE|\\u8bed\\u97f3\\u901a\\u8bdd|\\u89c6\\u9891\\u901a\\u8bdd|\\u901a\\u8bdd|CALL|\\u7ed8\\u753b|\\u751f\\u6210\\u56fe\\u7247|\\u6f14\\u594f|\\u97f3\\u4e50|\\u9ab0\\u5b50|\\u63b7\\u9ab0\\u5b50|\\u5854\\u7f57|\\u5854\\u7f57\\u724c|FAMILY_CARD|\\u573a\\u666f|SCENE|LIKE|\\u70b9\\u8d5e|\\u559c\\u6b22|COMMENT|\\u8bc4\\u8bba|REPLY|\\u56de\\u590d|\\u4f4d\\u7f6e|LOCATION|\\u5730\\u56fe|MAP|SHARE|\\u5206\\u4eab|\\u8f6c\\u53d1|\\u6587\\u4ef6|FILE|LINK|\\u94fe\\u63a5|URL|SYSTEM|\\u7cfb\\u7edf|\\u901a\\u77e5|SET_AVATAR|SET_NAME|SET_PAT|\\u8bbe\\u7f6e\\u5934\\u50cf|\\u8bbe\\u7f6e\\u6635\\u79f0|\\u8bbe\\u7f6e\\u62cd\\u4e00\\u62cd|NUDGE|\\u6233\\u4e00\\u6233|\\u62cd\\u4e00\\u62cd|QUOTE|\\u5f15\\u7528|GIFT|\\u793c\\u7269|CARD|\\u5b9a\\u65f6|TIMER|REMIND|\\u63d0\\u9192|\\u641c\\u7d22|SEARCH|\\u67e5\\u627e|\\u9ec4\\u5386|ALMANAC|\\u8fd0\\u52bf)|\\(|\\uff08|\\u3010|\\|\\||\\u2016)").test(trimmedPart);
+                    // V16: splitRegex now returns either a special block (placeholder, tag, theater block etc) or text between them.
+                    const isSpecial = new RegExp("^(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|\\u7ea2\\u5305|\\u8f6c\\u8d26|REDPACKET|TRANSFER|\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305|STICKER|\\u56fe\\u7247|IMAGE|\\u8bed\\u97f3|VOICE|\\u8bed\\u97f3\\u901a\\u8bdd|\\u89c6\\u9891\\u901a\\u8bdd|\\u901a\\u8bdd|CALL|\\u7ed8\\u753b|\\u751f\\u6210\\u56fe\\u7247|\\u6f14\\u594f|\\u97f3\\u4e50|\\u9ab0\\u5b50|\\u63b7\\u9ab0\\u5b50|\\u5854\\u7f57|\\u5854\\u7f57\\u724c|FAMILY_CARD|\\u573a\\u666f|SCENE|LIKE|\\u70b9\\u8d5e|\\u559c\\u6b22|COMMENT|\\u8bc4\\u8bba|REPLY|\\u56de\\u590d|\\u4f4d\\u7f6e|LOCATION|\\u5730\\u56fe|MAP|SHARE|\\u5206\\u4eab|\\u8f6c\\u53d1|\\u6587\\u4ef6|FILE|LINK|\\u94fe\\u63a5|URL|SYSTEM|\\u7cfb\\u7edf|\\u901a\\u77e5|SET_AVATAR|SET_NAME|SET_PAT|\\u8bbe\\u7f6e\\u5934\\u50cf|\\u8bbe\\u7f6e\\u6635\\u79f0|\\u8bbe\\u7f6e\\u62cd\\u4e00\\u62cd|NUDGE|\\u6233\\u4e00\\u6233|\\u62cd\\u4e00\\u62cd|QUOTE|\\u5f15\\u7528|GIFT|\\u793c\\u7269|CARD|\\u5b9a\\u65f6|TIMER|REMIND|\\u63d0\\u9192|\\u641c\\u7d22|SEARCH|\\u67e5\\u627e|\\u9ec4\\u5386|ALMANAC|\\u8fd0\\u52bf)|\\(|\\uff08|\\u3010|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016)").test(trimmedPart);
                     const isPunctuation = /^[!?;\u3002\uff01\uff1f\uff1b\u2026\r\n]+$/.test(part);
 
                     if (isSpecial) {

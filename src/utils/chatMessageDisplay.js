@@ -43,6 +43,8 @@ export function stripInnerVoiceBlocks(content) {
     .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]/gi, '')
     .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '')
     .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*$/i, '')
+    .replace(/\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]/gi, '') // Proactive closing tag cleanup
+    .replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '')
     
   // Balanced brace matcher for raw JSON
   const braceStarts = [];
@@ -298,30 +300,41 @@ export function parseOfflineSegments(msg) {
     if (!p.trim()) continue
 
     if (inNarration) {
-      // \u5904\u4e8e\u65c1\u767d\u5305\u88f9\u533a\u95f4\uff1a\u6240\u6709\u5185\u5bb9\uff08\u5305\u542b\u6362\u884c\uff09\u5747\u4f5c\u4e3a\u4e00\u4e2a\u65c1\u767d\u5361\u7247
-      // V15: \u4e0d\u518d\u6309 \n \u5207\u5206\u65c1\u767d\uff0c\u800c\u662f\u4ee5 || \u4e3a\u51c6
+      // 处于旁白包裹区间：所有内容（包含换行）均作为一各旁白卡片
+      // V15: 不再按 \n 切分旁白，而是以 || 为准
       const content = p.trim()
       if (content) segments.push({ type: 'narration', content })
     } else {
-      // \u5904\u4e8e\u666e\u901a\u533a\u95f4\uff1a\u6309\u884c\u8bc6\u522b\u573a\u666f\u3001\u52a8\u4f5c\u3001\u5bf9\u8bdd
-      // \u4f46\u4e0d\u8981\u56e0\u4e3a\u7a7a\u884c\u800c\u65ad\u5f00
+      // 处于普通区间：按行识别场景、动作、对话
+      // 但不要因为空行而断开
       p.split('\n').forEach(line => {
         const l = line.trim()
         if (l) {
+          // V16: If this line is ONLY punctuation and we have a previous segment that is narration or dialogue, 
+          // merge it back instead of creating a new card.
+          const isPunctuationOnly = /^[!?;.\u3002\uff01\uff1f\uff1b\u2026\u2014\u3001\uff0c,]+$/.test(l)
+          if (isPunctuationOnly && segments.length > 0) {
+            const last = segments[segments.length - 1]
+            if (last.type === 'narration' || last.type === 'dialogue') {
+               last.content += l
+               return
+            }
+          }
+
           const parsed = parseOfflineLine(l)
           if (parsed) {
-            // \u5904\u7406\u6df7\u5408\u5185\u5bb9\uff08\u5982\uff1a\u52a8\u4f5c+\u5bf9\u8bdd\uff09
+            // 处理混合内容（如：动作+对话）
             if (parsed.type === 'mixed' && parsed.parts) {
               parsed.parts.forEach(part => {
                 const partTrimmed = part.trim()
                 if (!partTrimmed) return
                 
-                // \u68c0\u67e5\u8fd9\u90e8\u5206\u662f\u5426\u662f\u52a8\u4f5c
+                // 检查这部分是否是动作
                 const actionMatch = partTrimmed.match(/^\s*[\(\uFF08]([\s\S]*?)[\)\uFF09]\s*$/)
                 if (actionMatch) {
                   segments.push({ type: 'action', content: actionMatch[1].trim() })
                 } else {
-                  // \u666e\u901a\u5bf9\u8bdd\u5185\u5bb9
+                  // 普通对话内容
                   const cleanContent = partTrimmed.replace(/^[""'']+|[""'']+$/g, '').trim()
                   if (cleanContent) {
                     segments.push({ type: 'dialogue', content: cleanContent })
@@ -339,7 +352,13 @@ export function parseOfflineSegments(msg) {
                 // Heuristic: If it lacks quotation marks and doesn't look like speaker text, treat as narration (if AI) or dialogue (if USER)
                 const hasDialogueMarkers = /["\u201c\u300c(\uFF08]/.test(l) || /[:\uff1a]/.test(l);
                 const actualType = hasDialogueMarkers ? 'dialogue' : (role === 'user' ? 'dialogue' : 'narration');
-                segments.push({ type: actualType, content: l })
+                
+                // V16: Aggressive merge for short non-dialogue lines that look like extensions of previous narration
+                if (actualType === 'narration' && segments.length > 0 && segments[segments.length-1].type === 'narration' && l.length < 20) {
+                   segments[segments.length-1].content += ' ' + l
+                } else {
+                   segments.push({ type: actualType, content: l })
+                }
             }
           }
         }
