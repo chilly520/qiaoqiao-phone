@@ -381,6 +381,8 @@ export function hasOfflineTheaterContent(msg) {
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
 
+  const raw = ensureMessageString(msg.content)
+
   // Detection with robust tags
   if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
   if (/\[\s*ONLINE\s*\]/i.test(raw)) {
