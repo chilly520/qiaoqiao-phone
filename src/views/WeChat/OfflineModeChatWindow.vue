@@ -155,9 +155,9 @@
               </div>
 
               <!-- 时间戳分界线 (每轮对话或时间间隔较长时显示) -->
-              <div v-if="shouldShowTimestamp(msg, index)" class="w-full flex justify-center my-4 opacity-60">
-                 <div class="bg-black/10 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] text-gray-500 font-medium">
-                    <i class="fa-regular fa-clock mr-1"></i>{{ formatMessageTime(msg.timestamp) }}
+              <div v-if="shouldShowTimestamp(msg, index)" class="w-full flex justify-center mt-6 mb-4 opacity-70">
+                 <div class="bg-black/15 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] text-gray-500 font-bold border border-white/10 shadow-sm flex items-center gap-1.5">
+                    <i class="fa-regular fa-clock opacity-60"></i>{{ formatMessageTime(msg.timestamp) }}
                  </div>
               </div>
           <div :id="'msg-' + msg.id" class="w-full relative z-10">

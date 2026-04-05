@@ -1,11 +1,7 @@
 <template>
   <div class="theater-message" :class="{ 'night-mode': isNightMode }" :style="fontScaleStyle">
     <template v-for="(segment, index) in renderedSegments" :key="`${msg?.id || 'msg'}-${index}`">
-      <!-- 时间戳（仅 AI 回复的第一段显示，除非第一段是场景标签则顺延） -->
-      <div v-if="index === 0 && msg?.role === 'ai' && msg?.timestamp" class="timestamp-chip">
-        <i class="fa-regular fa-clock"></i>
-        <span>{{ formatTimestamp(msg.timestamp) }}</span>
-      </div>
+      <!-- (Redundant internal timestamp removed to prevent fragmentation spam) -->
       
       <!-- 场景/地点标签 -->
       <div v-if="segment.type === 'scene' || segment.type === 'location'" class="scene-chip">
