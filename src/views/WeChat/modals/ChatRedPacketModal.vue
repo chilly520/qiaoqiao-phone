@@ -149,8 +149,12 @@
                                         <span class="text-sm">红包已退回</span>
                                     </template>
                                     <template v-else-if="packet?.isClaimed">
-                                        <i class="fa-solid fa-check-circle text-4xl mb-3 text-green-500 opacity-40"></i>
-                                        <span class="text-sm">红包已被领取</span>
+                                        <div class="flex flex-col items-center">
+                                            <img v-if="packet?.claimedBy" :src="packet.claimedBy.avatar" class="w-12 h-12 rounded-lg mb-3 shadow-md object-cover grayscale-[20%] opacity-80">
+                                            <i v-else class="fa-solid fa-check-circle text-4xl mb-3 text-green-500 opacity-40"></i>
+                                            <span class="text-sm font-bold text-gray-500 mb-1">红包已被领取</span>
+                                            <span v-if="packet?.claimedBy" class="text-[10px] text-gray-400">领取人: {{ packet.claimedBy.name }}</span>
+                                        </div>
                                     </template>
                                     <template v-else>
                                         <i class="fa-solid fa-clock text-4xl mb-3 text-gray-200"></i>

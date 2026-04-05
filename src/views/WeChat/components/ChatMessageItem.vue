@@ -3174,8 +3174,10 @@ function getPayDesc(msg, chatData) {
 function getPayStatusText(msg) {
     if (msg.isRejected) return '已拒收'
     if (msg.isClaimed || msg.status === 'received') {
-        if (msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')) return '已收款'
-        return '已领取'
+        if (msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')) {
+            return msg.role === 'user' ? '对方已收款' : '已收款'
+        }
+        return msg.role === 'user' ? '已被领取' : '已领取'
     }
 
     if (msg.type === 'redpacket' && msg.remainingCount === 0) return '已领完'

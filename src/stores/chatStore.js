@@ -3396,7 +3396,7 @@ export const useChatStore = defineStore('chat', () => {
                                 msgContent += (msgContent ? '\n\n' : '') + innerVoiceBlock;
                             }
 
-                            msgAdded = addMessage(chatId, {
+                            msgAdded = await addMessage(chatId, {
                                 role: 'ai',
                                 type: msgType,
                                 content: msgContent,

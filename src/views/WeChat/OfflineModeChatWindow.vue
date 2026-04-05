@@ -443,6 +443,7 @@ import {
   extractLatestOfflineScene,
   hasInnerVoice as hasInnerVoiceBlock,
   isOfflineTextMessage,
+  looksLikeMojibake,
   parseOfflineSegments,
   shouldShowInOfflineMode
 } from '../../utils/chatMessageDisplay'

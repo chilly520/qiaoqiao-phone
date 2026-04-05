@@ -715,6 +715,27 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   return clean.trim()
 }
 
+
+export function looksLikeMojibake(str) {
+  if (!str) return false
+  // Check for common mojibake patterns (random special chars, no real characters if it's supposed to be meaningful text)
+  const hasMeaningfulChar = /[\u4e00-\u9fa5a-zA-Z0-9]/.test(str)
+  if (!hasMeaningfulChar && str.length > 0) return true
+  
+  // Also check for common corrupted JSON fragments
+  if (str.includes('{') && (str.includes('\\"') || str.includes('":'))) {
+    try {
+      JSON.parse(str)
+      return false // Valid JSON is not mojibake
+    } catch (e) {
+      return true // Broken JSON segments are garbage
+    }
+  }
+  
+  return false
+}
+
 export function getMessageThumbnail(msg) {
   return ensureMessageString(msg.content).substring(0, 30) + '...'
 }
+
