@@ -942,11 +942,7 @@ const ensureString = (val) => {
   return String(val || '')
 }
 
-const looksLikeMojibake = (value) => {
-  const text = ensureString(value).trim()
-  if (!text) return false
-  return /[\ufffd\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)
-}
+
 
 const hasInnerVoiceBlockInMsg = (msg) => hasInnerVoiceBlock(msg?.content, msg)
 
