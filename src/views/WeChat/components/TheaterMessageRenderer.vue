@@ -27,6 +27,14 @@
         <div class="action-text">{{ segment.content }}</div>
       </div>
 
+      <!-- \u7cfb\u7edf\u63d0\u793a/\u901a\u77e5 - \u5c45\u4e2d\u5c0f\u5b57 -->
+      <div v-else-if="segment.type === 'system'" class="system-chip">
+        <div class="system-chip-content">
+          <i class="fa-solid fa-circle-info system-icon"></i>
+          <span>{{ segment.content }}</span>
+        </div>
+      </div>
+
       <!-- 对话 - 优化气泡样式 -->
       <div v-else class="dialogue-row" :class="[getDialogueClass(segment)]">
         <!-- 头像：仅角色和用户显示，NPC不显示 -->
@@ -48,6 +56,7 @@
           </div>
         </div>
       </div>
+
     </template>
   </div>
 </template>
@@ -172,38 +181,34 @@ function getBubbleClass(segment) {
   return 'char-bubble'
 }
 
-// 优化对话内容排版：智能处理换行，避免过短行
+// \u4f18\u5316\u5bf9\u8bdd\u5185\u5bb9\u6392\u7248\uff1a\u667a\u80fd\u5904\u7406\u6362\u884c\uff0c\u907f\u514d\u8fc7\u77ed\u884c
 function formatDialogueContent(content) {
   if (!content) return ''
   
-  // 清理内容：移除所有类型的引号（包括中文引号）
+  // \u6e05\u7406\u5185\u5bb9\uff1a\u79fb\u9664\u6240\u6709\u7c7b\u578b\u7684\u5f15\u53f7\uff08\u5305\u62ec\u4e2d\u6587\u5f15\u53f7\uff09
+  // Use escaped characters to prevent build-time syntax errors
   let cleanContent = content
-    .replace(/^[""''"'"'「【〖]+|[""''"'"'」】〗]+$/g, '')  // 首尾引号
-    .replace(/[""]/g, '')  // 中间的所有引号
+    .replace(/^[\x22\x27\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f\u3010\u3011\u3016\u3017]+|[\x22\x27\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f\u3010\u3011\u3016\u3017]+$/g, '')
+    .replace(/[\x22\x27\u201c\u201d\u2018\u2019]/g, '')
     .trim()
   
-  // 将内容按换行分割
+  // \u5c06\u5185\u5bb9\u6309\u6362\u884c\u5206\u5272
   const lines = cleanContent.split(/\n/)
   
-  // 过滤空行并清理每行
+  // \u8fc7\u6ee4\u7a7a\u884c\u5e76\u6e05\u7406\u6bcf\u884c
   const nonEmptyLines = lines
-    .map(l => l.trim().replace(/^[""'']+|[""'']+$/g, ''))  // 每行首尾引号
+    .map(l => l.trim().replace(/^[\x22\x27\u201c\u201d\u2018\u2019]+|[\x22\x27\u201c\u201d\u2018\u2019]+$/g, ''))
     .filter(l => l.length > 0)
   
   if (nonEmptyLines.length === 0) return ''
   if (nonEmptyLines.length === 1) return nonEmptyLines[0]
   
-  // 智能合并策略：
-  // 1. 如果所有行都很短（平均<30字），合并成一行
-  // 2. 否则，只合并那些明显被错误断开的行
   const avgLength = nonEmptyLines.reduce((sum, l) => sum + l.length, 0) / nonEmptyLines.length
   
   if (avgLength < 30) {
-    // 所有行都很短，直接合并成一行
     return nonEmptyLines.join('')
   }
   
-  // 智能合并：合并被错误断开的行
   const result = []
   let buffer = nonEmptyLines[0]
   
@@ -211,10 +216,8 @@ function formatDialogueContent(content) {
     const currentLine = nonEmptyLines[i]
     const prevLine = buffer
     
-    // 判断是否需要合并：
-    // 1. 上一行没有结束标点（。！？；）
-    // 2. 上一行很短（<20字）或当前行很短（<15字）
-    const hasEndPunctuation = /[。！？；~\-…]$/.test(prevLine)
+    // \u5224\u65ad\u662f\u5426\u9700\u8981\u5408\u5e76\uff1a\u53e5\u5c3e\u6ca1\u6709\u7ec8\u6b62\u6807\u70b9
+    const hasEndPunctuation = /[\u3002\uff01\uff1f\uff1b~\-\u2026]$/.test(prevLine)
     const shouldMerge = !hasEndPunctuation || prevLine.length < 20 || currentLine.length < 15
     
     if (shouldMerge) {
@@ -230,7 +233,7 @@ function formatDialogueContent(content) {
   return result.join('\n')
 }
 
-// 格式化时间戳
+// \u683c\u5f0f\u5316\u65f6\u95f4\u6233
 function formatTimestamp(timestamp) {
   if (!timestamp) return ''
   const date = new Date(timestamp)
@@ -281,6 +284,39 @@ function formatTimestamp(timestamp) {
 
 .night-mode .scene-icon {
   color: #789;
+}
+
+/* 系统提示/通知 - 居中小字 */
+.system-chip {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.system-chip-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(4px);
+  border-radius: 999px;
+  color: #8a97a8;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.night-mode .system-chip-content {
+  background: rgba(255, 255, 255, 0.05);
+  color: #9aa5b5;
+  border-color: rgba(255, 255, 255, 0.03);
+}
+
+.system-icon {
+  font-size: 10px;
+  opacity: 0.8;
 }
 
 /* 时间戳标签 */
@@ -354,7 +390,7 @@ function formatTimestamp(timestamp) {
 
 .narration-text {
   flex: 1;
-  font-size: 14px;
+  font-size: 1em;
   line-height: 1.85;
   text-align: left;
   color: #2c3e50;
@@ -384,7 +420,7 @@ function formatTimestamp(timestamp) {
 }
 
 .action-text {
-  font-size: 13px;
+  font-size: 0.93em;
   line-height: 1.6;
   color: #7a8a9a;
   font-style: italic;
@@ -485,7 +521,7 @@ function formatTimestamp(timestamp) {
 
 /* 对话气泡基础样式 */
 .dialogue-bubble {
-  font-size: 15px;
+  font-size: 1.07em;
   line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
@@ -538,5 +574,40 @@ function formatTimestamp(timestamp) {
   color: #f0e0c0;
   border-color: rgba(200, 170, 120, 0.25);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 系统芯片 - 居中小字 */
+.system-chip {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 12px 0;
+  pointer-events: none;
+}
+
+.system-chip-content {
+  background: rgba(0, 0, 0, 0.05);
+  color: #708090;
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 0, 0, 0.03);
+  letter-spacing: 0.5px;
+}
+
+.night-mode .system-chip-content {
+  background: rgba(255, 255, 255, 0.08);
+  color: #90a0b0;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.system-icon {
+  font-size: 10px;
+  opacity: 0.8;
 }
 </style>

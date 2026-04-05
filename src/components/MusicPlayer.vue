@@ -111,8 +111,26 @@ const handlePlayPause = () => {
     chatStore.addMessage(chatId, {
         role: 'system',
         type: 'system',
-        content: `【系统提示】${wasPlaying ? '暂停了播放' : '开始播放音乐'}`
+        content: `【系统提示】你${wasPlaying ? '暂停了播放' : '开始了音乐播放'}`
     })
+}
+
+const handleExit = () => {
+    const wasTogether = musicStore.isListeningTogether
+    const partnerName = musicStore.togetherPartner?.name || '对方'
+    
+    musicStore.stopTogether()
+    musicStore.pause()
+    musicStore.togglePlayer()
+    
+    if (wasTogether) {
+        const chatId = chatStore.currentChatId
+        chatStore.addMessage(chatId, {
+            role: 'system',
+            type: 'system',
+            content: `【系统提示】你结束了和 ${partnerName} 的一起听歌`
+        })
+    }
 }
 
 const handlePrev = () => {
@@ -122,7 +140,7 @@ const handlePrev = () => {
     chatStore.addMessage(chatId, {
         role: 'system',
         type: 'system',
-        content: `【系统提示】切换到了上一首歌曲`
+        content: `【系统提示】你切换到了上一首歌曲`
     })
 }
 
@@ -133,7 +151,7 @@ const handleNext = () => {
     chatStore.addMessage(chatId, {
         role: 'system',
         type: 'system',
-        content: `【系统提示】切换到了下一首歌曲`
+        content: `【系统提示】你切换到了下一首歌曲`
     })
 }
 
@@ -232,7 +250,7 @@ const handleImageError = (e) => {
                 </div>
                 <div class="listening-time" v-else>音乐播放器</div>
                 <button class="header-btn" title="关闭"
-                    @click="musicStore.stopTogether(); musicStore.pause(); musicStore.togglePlayer()">
+                    @click="handleExit">
                     <i class="fa-solid fa-power-off"></i>
                 </button>
             </div>
@@ -348,7 +366,9 @@ const handleImageError = (e) => {
         </div>
 
         <!-- Minimized Capsule (Dynamic Island style) -->
-        <div v-if="playerVisible && musicStore.isMinimized && !musicStore.isListeningTogether" class="music-capsule"
+        <!-- Logic: If not in Together mode, OR if Together mode but floating lyrics/avatars are OFF, show this -->
+        <div v-if="playerVisible && musicStore.isMinimized && (!musicStore.isListeningTogether || !musicStore.showFloatingLyrics)" 
+            class="music-capsule"
             @click="musicStore.toggleMinimize">
             <div class="capsule-content">
                 <div class="capsule-disc" :class="{ spinning: isPlaying }">
@@ -360,10 +380,10 @@ const handleImageError = (e) => {
                     <div class="capsule-lyrics">{{ musicStore.activeLyricText }}</div>
                 </div>
                 <div class="capsule-controls">
-                    <button class="capsule-btn" @click.stop="musicStore.togglePlay">
+                    <button class="capsule-btn" @click.stop="handlePlayPause">
                         <i class="fa-solid" :class="isPlaying ? 'fa-pause' : 'fa-play'"></i>
                     </button>
-                    <button class="capsule-btn" @click.stop="musicStore.next">
+                    <button class="capsule-btn" @click.stop="handleNext">
                         <i class="fa-solid fa-forward"></i>
                     </button>
                 </div>
@@ -1492,7 +1512,7 @@ const handleImageError = (e) => {
 /* Minimized Capsule Styles */
 .music-capsule {
     position: fixed;
-    bottom: 85px;
+    top: 24px;
     left: 50%;
     transform: translateX(-50%);
     width: 220px;
@@ -1513,7 +1533,7 @@ const handleImageError = (e) => {
 @keyframes capsuleAppear {
     from {
         opacity: 0;
-        transform: translateX(-50%) translateY(20px) scale(0.9);
+        transform: translateX(-50%) translateY(-20px) scale(0.9);
     }
 
     to {

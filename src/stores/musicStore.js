@@ -34,11 +34,13 @@ export const useMusicStore = defineStore('music', () => {
   const togetherPartner = ref(null) // { name, avatar }
   const togetherStartTime = ref(null)
   const togetherElapsedSeconds = ref(0)
+  const togetherTotalSeconds = ref(0) // Persistent total across sessions
   let togetherTimer = null
 
   const togetherDurationMinutes = computed(() => {
     if (!isListeningTogether.value) return 0
-    return Math.floor(togetherElapsedSeconds.value / 60)
+    // Show total cumulative minutes
+    return Math.floor((togetherTotalSeconds.value + togetherElapsedSeconds.value) / 60)
   })
 
   // Init from LocalStorage
@@ -55,6 +57,7 @@ export const useMusicStore = defineStore('music', () => {
           togetherPartner.value = data.togetherPartner
           togetherStartTime.value = data.togetherStartTime
           togetherElapsedSeconds.value = data.togetherElapsedSeconds || 0
+          togetherTotalSeconds.value = data.togetherTotalSeconds || 0
 
           // Resume timer
           if (togetherTimer) clearInterval(togetherTimer)
@@ -63,6 +66,9 @@ export const useMusicStore = defineStore('music', () => {
               togetherElapsedSeconds.value++
             }
           }, 1000)
+        } else {
+          // Just restore the total even if not currently listening
+          togetherTotalSeconds.value = data.togetherTotalSeconds || 0
         }
       }
     } catch (e) {
@@ -78,6 +84,7 @@ export const useMusicStore = defineStore('music', () => {
       togetherPartner: togetherPartner.value,
       togetherStartTime: togetherStartTime.value,
       togetherElapsedSeconds: togetherElapsedSeconds.value,
+      togetherTotalSeconds: togetherTotalSeconds.value,
       timestamp: Date.now()
     }))
   }
@@ -112,24 +119,58 @@ export const useMusicStore = defineStore('music', () => {
     if (!playlist.value[index]) return
 
     currentIndex.value = index
-    const song = playlist.value[index]
+    let song = playlist.value[index]
 
-    // Set Source
-    audio.src = song.url
+    const tryGetUrl = async (s) => {
+      try {
+        const full = await getSongUrl(s)
+        if (full && full.url) return full
+      } catch (e) {
+        console.warn('URL Fetch Fail', e)
+      }
+      return null
+    }
 
-    // Fetch Lyrics
-    if (song.id && song.source && song.source !== 'url' && song.source !== 'local') {
-      currentLyrics.value = '♪ 正在加载歌词...'
-      getLyrics(song.id, song.source).then(lyric => {
+    // 1. Try primary URL
+    let resultSong = await tryGetUrl(song)
+
+    // 2. Fallback: If VIP or failed, search on alternative platform
+    if (!resultSong || !resultSong.url) {
+      logger.addLog('Music', '触发播放自愈：尝试换源...', { song: song.song })
+      const altPlatforms = ['tencent', 'netease', 'kugou'].filter(p => p !== song._sourceKey)
+      
+      for (const platform of altPlatforms) {
+        const searchResults = await searchMusic(song.song, song.singer, platform)
+        if (searchResults && searchResults.length > 0) {
+          const altResult = await tryGetUrl(searchResults[0])
+          if (altResult && altResult.url) {
+            resultSong = altResult
+            playlist.value[index] = { ...altResult, _healed: true }
+            logger.addLog('Music', `换源成功：来自 ${platform}`, { song: song.song })
+            break
+          }
+        }
+      }
+    }
+
+    if (resultSong && resultSong.url) {
+      song = resultSong
+      audio.src = song.url
+      
+      // Fetch Lyrics with healer
+      currentLyrics.value = '♪ 正在全力加载歌词...'
+      getLyrics(song.id, song.source, song.song, song.singer).then(lyric => {
         currentLyrics.value = lyric
       })
+
+      if (autoPlay) {
+        play()
+      }
     } else {
-      currentLyrics.value = `♪ ${song.song} - ${song.singer}`
+      currentLyrics.value = `♪ 无法播放《${song.song}》(版权限制)`
+      isPlaying.value = false
     }
 
-    if (autoPlay) {
-      play()
-    }
     saveToStorage()
   }
 
@@ -165,14 +206,21 @@ export const useMusicStore = defineStore('music', () => {
 
     if (togetherTimer) clearInterval(togetherTimer)
     togetherTimer = setInterval(() => {
-      if (togetherStartTime.value) {
-        togetherElapsedSeconds.value = Math.floor((Date.now() - togetherStartTime.value) / 1000)
+      if (isPlaying.value) {
+        togetherElapsedSeconds.value++
+        // Auto-save total periodally
+        if (togetherElapsedSeconds.value % 60 === 0) {
+          saveToStorage()
+        }
       }
     }, 1000)
     saveToStorage()
   }
 
   const stopTogether = () => {
+    // Add current session to total before stopping
+    togetherTotalSeconds.value += togetherElapsedSeconds.value
+    
     isListeningTogether.value = false
     togetherPartner.value = null
     togetherStartTime.value = null
@@ -303,24 +351,31 @@ export const useMusicStore = defineStore('music', () => {
     return result.sort((a, b) => a.time - b.time)
   }
 
-  const getLyrics = async (id, source) => {
+  const getLyrics = async (id, source, songName = '', artist = '') => {
     const sourceKey = (source === 'QQ音乐' || source === 'tencent') ? 'tencent' : 'netease'
-    const types = ['lyric', '1', '2', '3']
+    // Added more comprehensive types
+    const types = ['lyric', 'lrc', '1', '2', '3']
 
     for (const t of types) {
-      const url = `/api-music/v2/music/${sourceKey}?id=${id}&type=${t}`
+      const url = `/v2/music/${sourceKey}?id=${id}&type=${t}`
       try {
         const res = await Http_Get(url)
-        if (res?.code === 200 || res?.status === 'success' || (res?.data && !res.code)) {
-          const data = res.data || res
-          let lyric = ''
+        if (res) {
+          // Robust extraction
+          const findLyric = (obj) => {
+            if (!obj) return null
+            if (typeof obj === 'string' && obj.trim().length > 10) return obj
+            if (typeof obj.lyric === 'string' && obj.lyric.length > 10) return obj.lyric
+            if (typeof obj.lrc === 'string' && obj.lrc.length > 10) return obj.lrc
+            if (obj.data) return findLyric(obj.data)
+            if (obj.lrc) return findLyric(obj.lrc)
+            if (obj.result) return findLyric(obj.result)
+            return null
+          }
 
-          if (typeof data === 'string') lyric = data
-          else if (typeof data.lyric === 'string') lyric = data.lyric
-          else if (typeof data.lrc === 'string') lyric = data.lrc
-          else if (data.data && typeof data.data.lyric === 'string') lyric = data.data.lyric
-
-          if (lyric && lyric.trim().length > 5) {
+          let lyric = findLyric(res)
+          
+          if (lyric) {
             // Check if it's LRC format (contains timestamps)
             if (/\[\d{2,}:\d{2}/.test(lyric)) {
               parsedLyrics.value = parseLrc(lyric)
@@ -329,8 +384,9 @@ export const useMusicStore = defineStore('music', () => {
             } else {
               // Flat text fallback
               parsedLyrics.value = []
-              currentLyrics.value = lyric.replace(/\s+/g, ' ').trim()
+              currentLyrics.value = lyric.replace(/\s+/g, ' ').replace(/\\n/g, ' ').trim()
             }
+            logger.addLog('Music', `Lyrics parsed successfully (Type: ${t})`, { length: lyric.length })
             return currentLyrics.value
           }
         }
@@ -340,8 +396,46 @@ export const useMusicStore = defineStore('music', () => {
       await new Promise(r => setTimeout(r, 100))
     }
 
+    // --- HEALER FALLBACK ---
+    // If still no lyrics, search on other platforms
+    if (parsedLyrics.value.length === 0 && songName) {
+      logger.addLog('Music', '触发歌词自愈：跨平台搜索中...', { song: songName })
+      const altPlatforms = ['tencent', 'netease', 'kugou'].filter(p => p !== (source === 'QQ音乐' ? 'tencent' : 'netease'))
+      
+      for (const platform of altPlatforms) {
+        const searchResults = await searchMusic(songName, artist, platform)
+        if (searchResults && searchResults.length > 0) {
+          // Try to get lyrics for the first search result
+          const altId = searchResults[0].id
+          const altSource = searchResults[0].source
+          const url = `/v2/music/${platform}?id=${altId}&type=lyric`
+          try {
+            const res = await Http_Get(url)
+            const findLyric = (obj) => {
+              if (!obj) return null
+              if (typeof obj === 'string' && obj.trim().length > 10) return obj
+              if (obj.lyric && typeof obj.lyric === 'string') return obj.lyric
+              if (obj.data) return findLyric(obj.data)
+              return null
+            }
+            let l = findLyric(res)
+            if (l) {
+              if (/\[\d{2,}:\d{2}/.test(l)) {
+                parsedLyrics.value = parseLrc(l)
+                currentLyrics.value = parsedLyrics.value.slice(0, 3).map(i => i.text).join(' ') || '♪ ...'
+              } else {
+                currentLyrics.value = l.replace(/\s+/g, ' ').trim()
+              }
+              logger.addLog('Music', `歌词自愈成功：来自 ${platform}`)
+              return currentLyrics.value
+            }
+          } catch (e) { /* silent */ }
+        }
+      }
+    }
+
     parsedLyrics.value = []
-    return '♪ 暂无歌词'
+    return songName ? `♪ ${songName} - ${artist}` : '♪ 暂无歌词'
   }
 
   const addSong = (songData) => {

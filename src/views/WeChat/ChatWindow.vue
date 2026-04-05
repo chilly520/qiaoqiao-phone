@@ -117,9 +117,15 @@ const getCleanContent = (contentRaw, isCard = false) => {
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
+    
+    // Standard UI filter
+    clean = clean.replace(/\[CALL_START\]|\[CALL_END\]|\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi, '');
+    clean = clean.replace(/\[STATUS[:：][\s\S]*?\]/gi, '');
+    clean = clean.replace(/\[THINK[:：][\s\S]*?\]/gi, '');
+    
     clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
     clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
-    clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
+    
     // 过滤【场景：xxx】标签，线上模式不显示大段场景描述
     clean = clean.replace(/[\\[【] 场景：[^\]】]*[\]】]/gi, '');
     
@@ -1484,6 +1490,9 @@ const handlePanelAction = (type) => {
     } else if (type === 'vote') {
         showVoteModal.value = true
         showActionPanel.value = false
+    } else if (type === 'together-listening' || type === 'music') {
+        handleToggleMusic()
+        toggleActionPanel()
     } else if (type === 'dice') {
         showDiceModal.value = true
         showActionPanel.value = false
@@ -3213,7 +3222,7 @@ const getHtmlContent = (content) => {
 const handleToggleMusic = () => {
     if (!musicStore.playerVisible) {
         // Automatically start 'Together' mode when opening the player in Chat
-        if (chatData.value) {
+        if (chatData.value && !musicStore.isListeningTogether) {
             musicStore.startTogether({
                 name: chatData.value.name,
                 avatar: chatData.value.avatar

@@ -271,10 +271,17 @@ export const useChatStore = defineStore('chat', () => {
         return false;
     }
 
-    function updateGroupSettings(chatId, settings) {
+    async function updateGroupSettings(chatId, settings) {
         if (chats.value[chatId]) {
+            // Ensure groupSettings sub-object is updated for component compatibility
+            chats.value[chatId].groupSettings = {
+                ...(chats.value[chatId].groupSettings || {}),
+                ...settings
+            };
+            // Also sync to top level for legacy support
             chats.value[chatId] = { ...chats.value[chatId], ...settings };
-            saveChats();
+            
+            await saveChats();
             return true;
         }
         return false;
@@ -465,7 +472,7 @@ export const useChatStore = defineStore('chat', () => {
             quote: msg.quote || null,
             paymentId: msg.paymentId || null, // Initialize paymentId
             hidden: msg.hidden || false, // Detection for visualizer-only messages
-            mode: msg.mode || 'online', // 线上/线下模式标记: 'online' | 'offline' | null, 默认为 'online'
+            mode: msg.mode || (useSettingsStore().getChatOfflineMode(chatId).isOfflineMode ? 'offline' : 'online'), // 线上/线下模式标记: 'online' | 'offline' | null, 默认为当前聊天模式
             // --- Gift fields ---
             giftId: msg.giftId || null,
             giftName: msg.giftName || null,
@@ -889,14 +896,18 @@ export const useChatStore = defineStore('chat', () => {
                         newMsg.content = JSON.stringify(momentData);
                         
                         // Add system notification to chat
-                        const systemMsg = {
-                            id: crypto.randomUUID(),
+                        const momentResult = momentsStore.addMoment({
+                            authorId: chatId,
+                            content: momentData.text || momentData.content || '',
+                            images: momentData.image ? [momentData.image] : (momentData.images || []),
+                        });
+
+                        addMessage(chatId, {
                             role: 'system',
-                            type: 'text',
+                            type: 'system',
                             content: `${chat.name} 发布了一条朋友圈`,
-                            timestamp: Date.now()
-                        };
-                        chat.messages.push(systemMsg);
+                            _momentReferenceId: momentResult.id
+                        });
                     }
                 } catch (e) {
                     // Not valid JSON, ignore
@@ -952,15 +963,22 @@ export const useChatStore = defineStore('chat', () => {
                 // Keep content as JSON for persistence if needed, or structured
                 newMsg.content = JSON.stringify(momentData); 
                 
-                // Add system notification to chat
-                const systemMsg = {
-                    id: crypto.randomUUID(),
+                // Publish to moments feed so details are accessible and it shows in profile
+                const momentResult = momentsStore.addMoment({
+                    authorId: chatId,
+                    content: momentData.text || momentData.content || '',
+                    images: momentData.image ? [momentData.image] : (momentData.images || []),
+                });
+
+                newMsg._momentReferenceId = momentResult.id;
+                
+                // Add system notification to chat using helper to ensure mode inheritance
+                addMessage(chatId, {
                     role: 'system',
-                    type: 'text',
+                    type: 'system',
                     content: `${chat.name} 发布了一条朋友圈`,
-                    timestamp: Date.now()
-                };
-                chat.messages.push(systemMsg);
+                    _momentReferenceId: momentResult.id
+                });
             }
         }
 
@@ -1423,7 +1441,7 @@ export const useChatStore = defineStore('chat', () => {
             isProfileProcessing.value[chatId] = false;
         }
     }
-    function updateCharacter(chatId, updates) {
+    async function updateCharacter(chatId, updates) {
         const chat = chats.value[chatId]
         if (!chat) return false
 
@@ -1433,13 +1451,12 @@ export const useChatStore = defineStore('chat', () => {
         // Re-assign the whole chats object to ensure top-level reactivity
         chats.value = { ...chats.value }
 
-        // Immediately check for auto-summary if settings changed (like enabling it or changing limit)
+        // Immediately check for auto-summary if settings changed
         if (updates.autoSummary || updates.summaryLimit) {
-            console.log(`[Store] Summary settings updated for ${chat.name}. Re-checking...`)
             checkAutoSummary(chatId)
         }
 
-        saveChats()
+        await saveChats()
         return true
     }
 
@@ -3119,7 +3136,7 @@ export const useChatStore = defineStore('chat', () => {
                 // We split by punctuation but keep segments meaningful.
                 // Avoid capturing nested parentheses in the split pattern itself if possible
 
-                const splitRegex = /(__CARD_PLACEHOLDER_\d+__|\[\s*OFFLINE\s*\][\s\S]*?(?:\[\/\s*OFFLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*ONLINE\s*\][\s\S]*?(?:\[\/\s*ONLINE\s*\]|(?=\[|__CARD_PLACEHOLDER_)|$)|\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|\([^\)]+\)|（[^）]+）|\[\s*LS_JSON[:：][\s\S]*?\]|\[DRAW:[\s\S]*?\]|\[(?:表情包|表情-包)[:：][\s\S]*?\]|\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\s\S]*?\]|\[CARD\][\s\S]*?(?=\n\n|\[\/CARD\]|$)|\([^\)]+\)|（[^）]+）|“[^”]*”|"[^"]*"|‘[^’]*’|'[^']*'|\[图片[:：]?[\s\S]*?\]|\[语音[:：]?[\s\S]*?\]|\[LIKE[:：][\s\S]*?\]|\[COMMENT[:：]?[\s\S]*?\]|\[REPLY[:：][\s\S]*?\]|\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\]]+\]|[!?;。！？；…\n]+)/;
+                const splitRegex = new RegExp("(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\[\\s*INNER[\\s\\-_]*VOICE\\s*\\][\\s\\S]*?\\[\\/\\s*(?:INNER[\\s\\-_]*)?VOICE\\s*\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09|\\[\\s*LS_JSON[:\\uff1a][\\s\\S]*?\\]|\\[DRAW:[\\s\\S]*?\\]|\\[(?:\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305)[:\\uff1a][\\s\\S]*?\\]|\\[FAMILY_CARD(?:_APPLY|_REJECT)?:[\\s\\S]*?\\]|\\[CARD\\][\\s\\S]*?(?=\\n\\n|\\[\\/CARD\\]|$)|\\u201c[^\\u201d]*\\u201d|\"[^\"]*\"|\\u2018[^\\u2019]*\\u2019|'[^']*'|\\[\\u56fe\\u7247[:\\uff1a]?[\\s\\S]*?\\]|\\[\\u8bed\\u97f3[:\\uff1a]?[\\s\\S]*?\\]|\\[LIKE[:\\uff1a][\\s\\S]*?\\]|\\[COMMENT[:\\uff1a]?[\\s\\S]*?\\]|\\[REPLY[:\\uff1a][\\s\\S]*?\\]|\\[(?!INNER_VOICE|LS_JSON|CARD|OFFLINE|ONLINE)[^\\]]+\\]|[!?;\\u3002\\uff01\\uff1f\\uff1b\\u2026\\n]+)");
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
@@ -3133,8 +3150,8 @@ export const useChatStore = defineStore('chat', () => {
 
                     const trimmedPart = part.trim();
                     // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
-                    const isSpecial = /^(__CARD_PLACEHOLDER_\d+__|\[\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|SEARCH|查找|黄历|ALMANAC|运势)|\(|（|【)/.test(trimmedPart);
-                    const isPunctuation = /^[!?;。！？；…\r\n]+$/.test(part);
+                    const isSpecial = new RegExp("^(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|\\u7ea2\\u5305|\\u8f6c\\u8d26|REDPACKET|TRANSFER|\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305|STICKER|\\u56fe\\u7247|IMAGE|\\u8bed\\u97f3|VOICE|\\u8bed\\u97f3\\u901a\\u8bdd|\\u89c6\\u9891\\u901a\\u8bdd|\\u901a\\u8bdd|CALL|\\u7ed8\\u753b|\\u751f\\u6210\\u56fe\\u7247|\\u6f14\\u594f|\\u97f3\\u4e50|\\u9ab0\\u5b50|\\u63b7\\u9ab0\\u5b50|\\u5854\\u7f57|\\u5854\\u7f57\\u724c|FAMILY_CARD|\\u573a\\u666f|SCENE|LIKE|\\u70b9\\u8d5e|\\u559c\\u6b22|COMMENT|\\u8bc4\\u8bba|REPLY|\\u56de\\u590d|\\u4f4d\\u7f6e|LOCATION|\\u5730\\u56fe|MAP|SHARE|\\u5206\\u4eab|\\u8f6c\\u53d1|\\u6587\\u4ef6|FILE|LINK|\\u94fe\\u63a5|URL|SYSTEM|\\u7cfb\\u7edf|\\u901a\\u77e5|SET_AVATAR|SET_NAME|SET_PAT|\\u8bbe\\u7f6e\\u5934\\u50cf|\\u8bbe\\u7f6e\\u6635\\u79f0|\\u8bbe\\u7f6e\\u62cd\\u4e00\\u62cd|NUDGE|\\u6233\\u4e00\\u6233|\\u62cd\\u4e00\\u62cd|QUOTE|\\u5f15\\u7528|GIFT|\\u793c\\u7269|CARD|\\u5b9a\\u65f6|TIMER|REMIND|\\u63d0\\u9192|\\u641c\\u7d22|SEARCH|\\u67e5\\u627e|\\u9ec4\\u5386|ALMANAC|\\u8fd0\\u52bf)|\\(|\\uff08|\\u3010)").test(trimmedPart);
+                    const isPunctuation = /^[!?;\u3002\uff01\uff1f\uff1b\u2026\r\n]+$/.test(part);
 
                     if (isSpecial) {
                         if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }
@@ -3151,8 +3168,16 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Restoring Card Blocks and Filtering Content ---
                 let finalSegments = [];
+                let activeMode = null;
                 for (const seg of rawSegments) {
                     let content = seg;
+                    const trimmedContent = content.trim();
+                    if (/^\[\s*ONLINE\s*\]$/i.test(trimmedContent)) { activeMode = 'online'; continue; }
+                    if (/^\[\/\s*ONLINE\s*\]$/i.test(trimmedContent)) { activeMode = null; continue; }
+                    if (/^\[\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = 'offline'; continue; }
+                    if (/^\[\/\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = null; continue; }
+
+                    const prevLength = finalSegments.length;
                     const placeholderMatch = content.match(/__CARD_PLACEHOLDER_(\d+)__/);
 
                     if (placeholderMatch) {
@@ -3264,6 +3289,13 @@ export const useChatStore = defineStore('chat', () => {
                             } else {
                                 console.log('[ChatStore] Swallowed leaked voice segment:', filtered);
                             }
+                        }
+                    }
+
+                    // Assign activeMode to any newly added segments
+                    for (let j = prevLength; j < finalSegments.length; j++) {
+                        if (!finalSegments[j].mode && activeMode) {
+                            finalSegments[j].mode = activeMode;
                         }
                     }
                 }
@@ -3448,14 +3480,58 @@ export const useChatStore = defineStore('chat', () => {
                         const musicMatch = content.match(/\[(?:演奏|MUSIC|音乐)[:：]\s*(.*?)\]/i);
                         if (musicMatch) {
                             const musicData = musicMatch[1].trim();
-                            addMessage(chatId, {
-                                role: 'ai',
-                                type: 'music',
-                                content: musicData,
-                                quote: i === 0 ? aiQuote : null,
-                                hidden: isCallMode,
-                                mode: 'online'
-                            });
+                            
+                            // Check if it's a score (contains notes like C4, D4) or a song name
+                            const isScore = /[A-G][0-9]/.test(musicData) || musicData.includes(',');
+                            
+                            if (isScore) {
+                                // Instrumental Performance
+                                addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'music',
+                                    content: musicData,
+                                    quote: i === 0 ? aiQuote : null,
+                                    hidden: isCallMode,
+                                    mode: 'online'
+                                });
+                            } else {
+                                // Listen Together Sync
+                                const musicStore = useMusicStore();
+                                // Trigger music store to start "listening together" session
+                                musicStore.startTogether({ 
+                                    name: chat.name, 
+                                    avatar: chat.avatar,
+                                    id: chatId 
+                                });
+                                
+                                // Auto-search and play the song
+                                musicStore.searchMusic(musicData, '', 'all').then(results => {
+                                    if (results && results.length > 0) {
+                                        // Pick first result and play
+                                        const firstSong = results[0];
+                                        musicStore.addToPlaylist(firstSong);
+                                        const newIdx = musicStore.playlist.length - 1;
+                                        musicStore.loadSong(newIdx);
+                                        musicStore.play();
+                                    }
+                                });
+
+                                addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'music_share', // Using a distinct type for Listen Together
+                                    content: musicData,
+                                    quote: i === 0 ? aiQuote : null,
+                                    hidden: isCallMode,
+                                    mode: 'online'
+                                });
+                                
+                                // Add a system notification about listening together
+                                addMessage(chatId, {
+                                    role: 'system',
+                                    type: 'system',
+                                    content: `${chat.name} 发起了一起听歌`
+                                });
+                            }
                         }
                     } else if (type === 'dice') {
                         // 处理骰子指令

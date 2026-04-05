@@ -1,17 +1,17 @@
 const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
-// 动作：支持 (内容) 或 （内容）格式，也支持未闭合的括号（如内容跨行）
+// \u52a8\u4f5c\uff1a\u652f\u6301 (\u5185\u5bb9) \u6216 \uff08\u5185\u5bb9\uff09\u683c\u5f0f\uff0c\u4e5f\u652f\u6301\u672a\u95ed\u5408\u7684\u62ec\u53f7\uff08\u5982\u5185\u5bb9\u8de8\u884c\uff09
 const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)(?:[\)\uFF09]\s*)?$/
 const OFFLINE_NARRATION_RE = /^(?:\|\||\u2016)([\s\S]*?)(?:\|\||\u2016)?$/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d]{1,24})\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /^\s*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d)\s*$/
-const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:：\uFF1A\n‖\u2016“"「\s]{1,24})\s*[:：\uFF1A]\s*([\s\S]+?)$/
+const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:\uff1a\uFF1A\n\u2016\u2016\u201c"\u300c\s]{1,24})\s*[:\uff1a\uFF1A]\s*([\s\S]+?)$/
 
 const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
 const ONLINE_BLOCK_RE = /\[\s*ONLINE\s*\]([\s\S]*?)\[\/\s*ONLINE\s*\]/i
 const OFFLINE_BLOCK_RE = /\[\s*OFFLINE\s*\]([\s\S]*?)\[\/\s*OFFLINE\s*\]/i
 
-// TOKEN_GLOBAL_RE: 用来从整段文字中提取特殊区块（旁白、场景、括号动作、带「」的对话）
+// TOKEN_GLOBAL_RE: \u7528\u6765\u4ece\u6574\u6bb5\u6587\u5b57\u4e2d\u63d0\u53d6\u7279\u6b8a\u533a\u5757\uff08\u65c1\u767d\u3001\u573a\u666f\u3001\u62ec\u53f7\u52a8\u4f5c\u3001\u5e26\u300c\u300d\u7684\u5bf9\u8bdd\uff09
 const TOKEN_GLOBAL_RE = /(\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[\s\S]*?\u3011|[\(\uFF08][\s\S]*?[\)\uFF09]|\u300c[\s\S]*?\u300d)/g
 
 export function looksLikeHtmlCard(content) {
@@ -100,17 +100,17 @@ export function stripModeWrapperTags(content) {
 }
 
 /**
- * 将内容按 [ONLINE]/[OFFLINE] 标签分块，并提取目标模式的内容。
- * 支持内联模式继承：如果一段内容没有标签包裹，且前面紧邻一个标签块，则沿用前面的格式。
+ * \u5c06\u5185\u5bb9\u6309 [ONLINE]/[OFFLINE] \u6807\u7b7e\u5206\u5757\uff0c\u5e76\u63d0\u53d6\u76ee\u6807\u6a21\u5f0f\u7684\u5185\u5bb9\u3002
+ * \u652f\u6301\u5185\u8054\u6a21\u5f0f\u7ee7\u627f\uff1a\u5982\u679c\u4e00\u6bb5\u5185\u5bb9\u6ca1\u6709\u6807\u7b7e\u5305\u88f9\uff0c\u4e14\u524d\u9762\u7d27\u90bb\u4e00\u4e2a\u6807\u7b7e\u5757\uff0c\u5219\u6cbf\u7528\u524d\u9762\u7684\u683c\u5f0f\u3002
  */
 export function getModePartitionedContent(content, targetMode) {
   const raw = ensureMessageString(content)
   if (!raw) return ''
 
-  // 正则匹配所有模式开关
+  // \u6b63\u5219\u5339\u914d\u6240\u6709\u6a21\u5f0f\u5f00\u5173
   const tagRe = /\[(ONLINE|OFFLINE)\]|\[\/(ONLINE|OFFLINE)\]/gi
   let lastIndex = 0
-  let currentMode = null // 尚未明确模式
+  let currentMode = null // \u5c1a\u672a\u660e\u786e\u6a21\u5f0f
   let result = ''
   
   let match
@@ -120,16 +120,16 @@ export function getModePartitionedContent(content, targetMode) {
      const tagName = match[1] || match[2]
      const isClosing = fullTag.startsWith('[/')
 
-     // 处理标签之前的文本
+     // \u5904\u7406\u6807\u7b7e\u4e4b\u524d\u7684\u6587\u672c
      const prevBlock = raw.substring(lastIndex, tagIndex)
      if (prevBlock) {
-        // 如果当前有模式，或者该模式符合目标，则累加
-        // 关键逻辑：没有标签的段落，如果是紧跟在某个模式后面，则“沿用”
+        // \u5982\u679c\u5f53\u524d\u6709\u6a21\u5f0f\uff0c\u6216\u8005\u8be5\u6a21\u5f0f\u7b26\u5408\u76ee\u6807\uff0c\u5219\u7d2f\u52a0
+        // \u5173\u952e\u903b\u8f91\uff1a\u6ca1\u6709\u6807\u7b7e\u7684\u6bb5\u843d\uff0c\u5982\u679c\u662f\u7d27\u8ddf\u5728\u67d0\u4e2a\u6a21\u5f0f\u540e\u9762\uff0c\u5219\u201c\u6cbf\u7528\u201d
         if (currentMode === targetMode) {
            result += prevBlock
         } else if (currentMode === null) {
-           // 如果是开头的无标签文字，看其内容或默认模式
-           // 这里我们暂不轻易判定，或者可以根据 hasOfflineTheaterContent 判定
+           // \u5982\u679c\u662f\u5f00\u5934\u7684\u65e0\u6807\u7b7e\u6587\u5b57\uff0c\u770b\u5176\u5185\u5bb9\u6216\u9ed8\u8ba4\u6a21\u5f0f
+           // \u8fd9\u91cc\u6211\u4eec\u6682\u4e0d\u8f7b\u6613\u5224\u5b9a\uff0c\u6216\u8005\u53ef\u4ee5\u6839\u636e hasOfflineTheaterContent \u5224\u5b9a
            const estimated = hasOfflineTheaterContent(prevBlock) ? 'OFFLINE' : 'ONLINE'
            if (estimated.toLowerCase() === targetMode.toLowerCase()) {
               result += prevBlock
@@ -137,13 +137,13 @@ export function getModePartitionedContent(content, targetMode) {
         }
      }
 
-     // 更新状态
+     // \u66f4\u65b0\u72b6\u6001
      if (isClosing) {
-        // 标签关闭后，模式恢复为 null（或者可以设计为继续保持，直到下个标签）
-        // 用户的要求是“沿用上一段”，所以我们选择“保持当前状态直到遇到变动”？
-        // 还是维持 currentMode 并在标签外也采集？
-        // 根据“沿用”原则，当标签关闭后，在遇到下一个开始标签前，我们依然认为处于该模式。
-        // 所以我们不在这里重置 currentMode。
+        // \u6807\u7b7e\u5173\u95ed\u540e\uff0c\u6a21\u5f0f\u6062\u590d\u4e3a null\uff08\u6216\u8005\u53ef\u4ee5\u8bbe\u8ba1\u4e3a\u7ee7\u7eed\u4fdd\u6301\uff0c\u76f4\u5230\u4e0b\u4e2a\u6807\u7b7e\uff09
+        // \u7528\u6237\u7684\u8981\u6c42\u662f\u201c\u6cbf\u7528\u4e0a\u4e00\u6bb5\u201d\uff0c\u6240\u4ee5\u6211\u4eec\u9009\u62e9\u201c\u4fdd\u6301\u5f53\u524d\u72b6\u6001\u76f4\u5230\u9047\u5230\u53d8\u52a8\u201d\uff1f
+        // \u8fd8\u662f\u7ef4\u6301 currentMode \u5e76\u5728\u6807\u7b7e\u5916\u4e5f\u91c7\u96c6\uff1f
+        // \u6839\u636e\u201c\u6cbf\u7528\u201d\u539f\u5219\uff0c\u5f53\u6807\u7b7e\u5173\u95ed\u540e\uff0c\u5728\u9047\u5230\u4e0b\u4e00\u4e2a\u5f00\u59cb\u6807\u7b7e\u524d\uff0c\u6211\u4eec\u4f9d\u7136\u8ba4\u4e3a\u5904\u4e8e\u8be5\u6a21\u5f0f\u3002
+        // \u6240\u4ee5\u6211\u4eec\u4e0d\u5728\u8fd9\u91cc\u91cd\u7f6e currentMode\u3002
      } else {
         currentMode = tagName.toUpperCase()
      }
@@ -151,7 +151,7 @@ export function getModePartitionedContent(content, targetMode) {
      lastIndex = tagIndex + fullTag.length
   }
 
-  // 处理最后剩余的内容
+  // \u5904\u7406\u6700\u540e\u5269\u4f59\u7684\u5185\u5bb9
   const remaining = raw.substring(lastIndex)
   if (remaining) {
      if (currentMode === targetMode.toUpperCase()) {
@@ -171,7 +171,7 @@ export function getOfflineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
   
-  // 检查是否有任何包裹标签
+  // \u68c0\u67e5\u662f\u5426\u6709\u4efb\u4f55\u5305\u88f9\u6807\u7b7e
   if (!/\[(ONLINE|OFFLINE)\]/i.test(raw)) {
      if (msg?.mode === 'offline') return stripModeWrapperTags(raw).trim()
      if (msg?.mode === 'online') return ''
@@ -202,49 +202,49 @@ export function getOnlineTextContent(msg) {
   return stripCardBlocks(stripInnerVoiceBlocks(getOnlineRenderableContent(msg))).trim()
 }
 
-// 解析一行中的混合内容（如：动作+对话）
+// \u89e3\u6790\u4e00\u884c\u4e2d\u7684\u6df7\u5408\u5185\u5bb9\uff08\u5982\uff1a\u52a8\u4f5c+\u5bf9\u8bdd\uff09
 export function parseOfflineLine(line) {
   let value = ensureMessageString(line).trim()
   if (!value) return null
   
-  // 先检查整行是否是特殊格式
-  // 1. 旁白
+  // \u5148\u68c0\u67e5\u6574\u884c\u662f\u5426\u662f\u7279\u6b8a\u683c\u5f0f
+  // 1. \u65c1\u767d
   let match = value.match(OFFLINE_NARRATION_RE)
   if (match) return { type: 'narration', content: (match[1] || match[2] || '').trim() }
 
-  // 2. 场景
+  // 2. \u573a\u666f
   match = value.match(OFFLINE_SCENE_RE)
   if (match) return { type: 'scene', content: match[1].trim() }
 
-  // 3. 整行动作
+  // 3. \u6574\u884c\u52a8\u4f5c
   match = value.match(OFFLINE_ACTION_RE)
   if (match) return { type: 'action', content: match[1].trim() }
 
-  // 4. 带「标签」的对话
+  // 4. \u5e26\u300c\u6807\u7b7e\u300d\u7684\u5bf9\u8bdd
   match = value.match(OFFLINE_TAGGED_DIALOGUE_RE)
   if (match) {
-    const content = match[2].trim().replace(/^[\s"“'‘\u201c\u2018]+|[\s"”'’\u201d\u2019]+$/g, '')
+    const content = match[2].trim().replace(/^[\s"\u201c'\u2018\u201c\u2018]+|[\s"\u201d'\u2019\u201d\u2019]+$/g, '')
     return { type: 'dialogue', speaker: match[1].trim(), content, speakerTagged: true }
   }
 
-  // 4b. 纯双引号对话
+  // 4b. \u7eaf\u53cc\u5f15\u53f7\u5bf9\u8bdd
   match = value.match(OFFLINE_QUOTED_DIALOGUE_RE)
   if (match) {
-    const content = value.trim().replace(/^[\s"“'‘\u201c\u2018]+|[\s"”'’\u201d\u2019]+$/g, '')
+    const content = value.trim().replace(/^[\s"\u201c'\u2018\u201c\u2018]+|[\s"\u201d'\u2019\u201d\u2019]+$/g, '')
     if (content) return { type: 'dialogue', content }
   }
 
-  // 5. 标准对话（带名字前缀）
-  if (!value.startsWith('‖') && !value.startsWith('\u2016')) {
+  // 5. \u6807\u51c6\u5bf9\u8bdd\uff08\u5e26\u540d\u5b57\u524d\u7f00\uff09
+  if (!value.startsWith('\u2016') && !value.startsWith('\u2016')) {
     match = value.match(OFFLINE_SPEAKER_DIALOGUE_RE)
     if (match) {
       const speaker = match[1].trim()
       const content = match[2].trim().replace(/^[""'']+|[""'']+$/g, '')
       
-      // 判定是否真的为说话人
+      // \u5224\u5b9a\u662f\u5426\u771f\u7684\u4e3a\u8bf4\u8bdd\u4eba
       const isUrl = /^(https?|ftp|file):\/\//i.test(value)
       const isClock = /\d$/.test(speaker) && /^\d+/.test(content)
-      const hasNarrativeParticles = /[的了是在]/.test(speaker)
+      const hasNarrativeParticles = /[\u7684\u4e86\u662f\u5728]/.test(speaker)
       const isNumeric = /^\d+$/.test(speaker)
 
       if (!isUrl && !isClock && !hasNarrativeParticles && !isNumeric) {
@@ -253,31 +253,44 @@ export function parseOfflineLine(line) {
     }
   }
 
-  // 6. 处理混合内容（如：动作+对话）
-  // 按动作括号分割
-  const mixedParts = value.split(/([（\(][^）\)]*[）\)])/g).filter(p => p.trim())
+  // 6. \u5904\u7406\u6df7\u5408\u5185\u5bb9\uff08\u5982\uff1a\u52a8\u4f5c+\u5bf9\u8bdd\uff09
+  // \u6309\u52a8\u4f5c\u62ec\u53f7\u5206\u5272
+  const mixedParts = value.split(/([\uff08\(][^\uff09\)]*[\uff09\)])/g).filter(p => p.trim())
   if (mixedParts.length > 1) {
-    // 有多个部分，返回数组让调用者处理
+    // \u6709\u591a\u4e2a\u90e8\u5206\uff0c\u8fd4\u56de\u6570\u7ec4\u8ba9\u8c03\u7528\u8005\u5904\u7406
     return { type: 'mixed', parts: mixedParts }
   }
 
-  // 7. 如果都不匹配，就不返回任何线下特定类型，而是 null，这样它不会被单纯地算作强线下内容
+  // 7. \u7cfb\u7edf\u63d0\u793a
+  if (value.startsWith('[\u7cfb\u7edf:') || value.startsWith('[\u901a\u77e5:') || value.startsWith('[SYSTEM:')) {
+    const content = value.replace(/^\[(?:\u7cfb\u7edf|\u901a\u77e5|SYSTEM)[:\uff1a]?\s*/, '').replace(/\]$/, '').trim()
+    return { type: 'system', content }
+  }
+
+  // 8. \u5982\u679c\u90fd\u4e0d\u5339\u914d\uff0c\u5c31\u4e0d\u8fd4\u56de\u4efb\u4f55\u7ebf\u4e0b\u7279\u5b9a\u7c7b\u578b\uff0c\u800c\u662f null\uff0c\u8fd9\u6837\u5b83\u4e0d\u4f1a\u88ab\u5355\u7eaf\u5730\u7b97\u4f5c\u5f3a\u7ebf\u4e0b\u5185\u5bb9
   return null
 }
 
 export function parseOfflineSegments(msg) {
   if (!msg) return []
+  const role = (typeof msg === 'object') ? msg.role : null
+  const type = (typeof msg === 'object') ? msg.type : null
   const text = getOfflineTextContent(msg)
   if (!text) return []
 
-  // 核心逻辑：按旁白标记进行结构化切分
-  // 这能完美处理 A ‖ B ‖ C ‖ D ‖ E 这种复杂交替模式
-  const parts = text.split(/(‖|\|\|)/g)
+  // Handle system messages or special interactive types by returning them as system segments
+  const systemTypes = ['system', 'payment', 'redpacket', 'transfer', 'gift', 'gift_claimed', 'family_card']
+  if (role === 'system' || systemTypes.includes(type)) {
+     return text.split('\n').filter(l => l.trim()).map(l => ({ type: 'system', content: l.trim() }))
+  }
+
+  // Core logic: structural split by narration markers || or ‖
+  const parts = text.split(/(\u2016|\|\|)/g)
   const segments = []
   let inNarration = false
 
   for (let p of parts) {
-    if (p === '‖' || p === '||') {
+    if (p === '\u2016' || p === '||') {
       inNarration = !inNarration
       continue
     }
@@ -285,31 +298,31 @@ export function parseOfflineSegments(msg) {
     if (!p.trim()) continue
 
     if (inNarration) {
-      // 处于旁白包裹区间：所有物理段落均强制识别为旁白卡片
-      // 这样内部即使包含 07:55 也绝不会被识别为说话人
+      // \u5904\u4e8e\u65c1\u767d\u5305\u88f9\u533a\u95f4\uff1a\u6240\u6709\u7269\u7406\u6bb5\u843d\u5747\u5f3a\u5236\u8bc6\u522b\u4e3a\u65c1\u767d\u5361\u7247
+      // \u8fd9\u6837\u5185\u90e8\u5373\u4f7f\u5305\u542b 07:55 \u4e5f\u7edd\u4e0d\u4f1a\u88ab\u8bc6\u522b\u4e3a\u8bf4\u8bdd\u4eba
       p.split('\n').forEach(line => {
         const l = line.trim()
         if (l) segments.push({ type: 'narration', content: l })
       })
     } else {
-      // 处于普通区间：按行执行标准解析（场景、动作、对话）
+      // \u5904\u4e8e\u666e\u901a\u533a\u95f4\uff1a\u6309\u884c\u6267\u884c\u6807\u51c6\u89e3\u6790\uff08\u573a\u666f\u3001\u52a8\u4f5c\u3001\u5bf9\u8bdd\uff09
       p.split('\n').forEach(line => {
         const l = line.trim()
         if (l) {
           const parsed = parseOfflineLine(l)
           if (parsed) {
-            // 处理混合内容（如：动作+对话）
+            // \u5904\u7406\u6df7\u5408\u5185\u5bb9\uff08\u5982\uff1a\u52a8\u4f5c+\u5bf9\u8bdd\uff09
             if (parsed.type === 'mixed' && parsed.parts) {
               parsed.parts.forEach(part => {
                 const partTrimmed = part.trim()
                 if (!partTrimmed) return
                 
-                // 检查这部分是否是动作
+                // \u68c0\u67e5\u8fd9\u90e8\u5206\u662f\u5426\u662f\u52a8\u4f5c
                 const actionMatch = partTrimmed.match(/^\s*[\(\uFF08]([\s\S]*?)[\)\uFF09]\s*$/)
                 if (actionMatch) {
                   segments.push({ type: 'action', content: actionMatch[1].trim() })
                 } else {
-                  // 普通对话内容
+                  // \u666e\u901a\u5bf9\u8bdd\u5185\u5bb9
                   const cleanContent = partTrimmed.replace(/^[""'']+|[""'']+$/g, '').trim()
                   if (cleanContent) {
                     segments.push({ type: 'dialogue', content: cleanContent })
@@ -320,9 +333,13 @@ export function parseOfflineSegments(msg) {
               segments.push(parsed)
             }
           } else {
-            // FALLBACK: If a line doesn't match any theater pattern, keep it as a dialogue segment
+            // FALLBACK: If a line doesn't match any theater pattern, keep it as a dialogue/system segment
             // This prevents plain text from being swallowed when it occurs between theater blocks
-            segments.push({ type: 'dialogue', content: l })
+            if (msg?.role === 'system' || msg?.type === 'system') {
+                segments.push({ type: 'system', content: l })
+            } else {
+                segments.push({ type: 'dialogue', content: l })
+            }
           }
         }
       })
@@ -344,7 +361,7 @@ export function hasOfflineTheaterContent(content) {
          OFFLINE_TAGGED_DIALOGUE_RE.test(text) || 
          OFFLINE_QUOTED_DIALOGUE_RE.test(text) ||
          OFFLINE_SPEAKER_DIALOGUE_RE.test(text) ||
-         (text.includes('（') && text.includes('）')) || 
+         (text.includes('\uff08') && text.includes('\uff09')) || 
          (text.includes('(') && text.includes(')')) ||
          /^\s*(\|\||\u2016)/.test(text) ||
          parseOfflineSegments(text).length > 0
@@ -352,8 +369,8 @@ export function hasOfflineTheaterContent(content) {
 
 export function isOfflineTextMessage(msg) {
   if (!msg || msg.hidden) return false
+  if (msg.role === 'system' || msg.type === 'system') return true
   if (msg.type && msg.type !== 'text') return false
-  if (msg.role === 'system') return false
   if (looksLikeHtmlCard(msg.content)) return false
   return getOfflineTextContent(msg.content).length > 0
 }
@@ -371,29 +388,38 @@ export function extractTaggedBlock(content, tag) {
 }
 
 export function shouldShowInOfflineMode(msg) {
-  if (!msg || msg.hidden || msg.role === 'system') return false
+  if (!msg || msg.hidden) return false
   
   const raw = ensureMessageString(msg.content)
-  
-  // Whitelist: Always show interactive cards in both modes
-  const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
-                         msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
-                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer';
-  if (isSpecialCard) return true;
 
-  // If explicitly tagged for offline, show it
+  // 1. If explicitly tagged for offline exclusively, show it
   if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
   
-  // For user messages, follow the explicit mode they sent it in
-  if (msg.role === 'user') return msg.mode === 'offline'
-
-  // If explicitly tagged for online exclusively, hide it
+  // 2. If explicitly tagged for online exclusively, hide it
   if (/\[\s*ONLINE\s*\]/i.test(raw) && !/\[\s*OFFLINE\s*\]/i.test(raw)) return false
 
-  // Fallback to mode flag
+  // 3. Obey explicit mode flag from data structure (Highest Priority)
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
 
+  // 4. For user messages, if mode not set, return false (online by default)
+  if (msg.role === 'user') return false
+
+  // 5. System messages: Show unless explicit mode says otherwise
+  if (msg.role === 'system') {
+    // Whitelist payment/gift notifications even if they might be tagged online
+    if (/[\u9886\u53d6\u9000\u56de]|[\u8f6c\u8d26\u5df2\u6536\u6536]|[\u4ed8\u6b3e]|[\u793c\u7269]/.test(raw)) return true
+    return true
+  }
+
+  // 6. Whitelist: Show interactive cards IF mode is undetermined
+  const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
+                         msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
+                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer' ||
+                         msg.type === 'family_card' || msg.type === 'gift_claimed';
+  if (isSpecialCard) return true;
+
+  // 7. Check partitioned content
   const offlineBlock = getModePartitionedContent(raw, 'OFFLINE')
   if (offlineBlock) return offlineBlock.trim().length > 0
 
@@ -402,27 +428,30 @@ export function shouldShowInOfflineMode(msg) {
 
 export function shouldShowInOnlineMode(msg) {
   if (!msg || msg.hidden) return false
+  
+  const raw = ensureMessageString(msg.content)
+
+  // 1. If explicitly tagged for online, show it
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
+  
+  // 2. If explicitly tagged for offline exclusively, hide it
+  if (/\[\s*OFFLINE\s*\]/i.test(raw) && !/\[\s*ONLINE\s*\]/i.test(raw)) return false
+
+  // 3. Obey explicit mode flag (Highest Priority)
+  if (msg.mode === 'online') return true
+  if (msg.mode === 'offline') return false
+
+  // 4. For user messages, default to true
+  if (msg.role === 'user') return true
+
+  // 5. System messages
   if (msg.role === 'system') return true
   
-  // Whitelist: Always show interactive cards in both modes
+  // 6. Whitelist: Always show interactive cards IF mode is undetermined
   const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
                          msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
                          msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer';
   if (isSpecialCard) return true;
-
-  const raw = ensureMessageString(msg.content)
-  // If explicitly tagged for online, show it
-  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
-  
-  // For user messages, follow explicit mode
-  if (msg.role === 'user') return msg.mode !== 'offline'
-
-  // If explicitly tagged for offline exclusively, hide it
-  if (/\[\s*OFFLINE\s*\]/i.test(raw) && !/\[\s*ONLINE\s*\]/i.test(raw)) return false
-
-  // Fallback to mode flag
-  if (msg.mode === 'online') return true
-  if (msg.mode === 'offline') return false
 
   if (getModePartitionedContent(raw, 'ONLINE').length > 0) return true
   if (getModePartitionedContent(raw, 'OFFLINE').length > 0) return false
@@ -434,14 +463,14 @@ export function extractLatestOfflineScene(messages = []) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const msg = messages[index]
     const content = getOfflineTextContent(msg)
-    // 直接在文本中查找最新的场景标签
+    // \u76f4\u63a5\u5728\u6587\u672c\u4e2d\u67e5\u627e\u6700\u65b0\u7684\u573a\u666f\u6807\u7b7e
     const sceneMatches = [...content.matchAll(/\u3010([\s\S]+?)\u3011/g)]
     if (sceneMatches.length > 0) {
-      // 只提取第一个【】作为地点，避免 HTML 标题等后续内容干扰
+      // \u53ea\u63d0\u53d6\u7b2c\u4e00\u4e2a\u3010\u3011\u4f5c\u4e3a\u5730\u70b9\uff0c\u907f\u514d HTML \u6807\u9898\u7b49\u540e\u7eed\u5185\u5bb9\u5e72\u6270
       const match = sceneMatches[0]
       const sceneContent = match[1].trim()
-      // 排除背景图描述（以"场景："开头的是生图描述，不是地点）
-      if (!sceneContent.startsWith('场景：')) {
+      // \u6392\u9664\u80cc\u666f\u56fe\u63cf\u8ff0\uff08\u4ee5"\u573a\u666f\uff1a"\u5f00\u5934\u7684\u662f\u751f\u56fe\u63cf\u8ff0\uff0c\u4e0d\u662f\u5730\u70b9\uff09
+      if (!sceneContent.startsWith('\u573a\u666f\uff1a')) {
         return {
           raw: match[0],
           location: sceneContent
@@ -452,18 +481,18 @@ export function extractLatestOfflineScene(messages = []) {
   return null
 }
 
-// 心声相关的字段名（用于识别无标签的JSON）
+// \u5fc3\u58f0\u76f8\u5173\u7684\u5b57\u6bb5\u540d\uff08\u7528\u4e8e\u8bc6\u522b\u65e0\u6807\u7b7e\u7684JSON\uff09
 const INNER_VOICE_FIELDS = [
-  'status', '心声', '着装', 'thought', 'mood', 'emotion', 'feeling',
-  '想法', '心情', '情绪', '感受', '思考', '内心', 'inner', '心理',
-  'state', 'mind', 'mental', 'activity', 'behavior', '行为'
+  'status', '\u5fc3\u58f0', '\u7740\u88c5', 'thought', 'mood', 'emotion', 'feeling',
+  '\u60f3\u6cd5', '\u5fc3\u60c5', '\u60c5\u7eea', '\u611f\u53d7', '\u601d\u8003', '\u5185\u5fc3', 'inner', '\u5fc3\u7406',
+  'state', 'mind', 'mental', 'activity', 'behavior', '\u884c\u4e3a'
 ]
 
 export function extractInnerVoiceData(content, msg) {
   const raw = ensureMessageString(content)
   let block = extractTaggedBlock(raw, 'INNER_VOICE') || extractTaggedBlock(raw, 'INNERVOICE')
   
-  // 如果严格匹配失败，尝试使用正则匹配（支持未正确闭合的标签）
+  // \u5982\u679c\u4e25\u683c\u5339\u914d\u5931\u8d25\uff0c\u5c1d\u8bd5\u4f7f\u7528\u6b63\u5219\u5339\u914d\uff08\u652f\u6301\u672a\u6b63\u786e\u95ed\u5408\u7684\u6807\u7b7e\uff09
   if (!block) {
     const match = raw.match(INNER_VOICE_BLOCK_RE)
     if (match) {
@@ -472,11 +501,12 @@ export function extractInnerVoiceData(content, msg) {
   }
   
   if (!block) {
-    // Balanced brace matcher for raw JSON
     const braceStarts = [];
     for (let i = 0; i < raw.length; i++) {
         if (raw[i] === '{') braceStarts.push(i);
     }
+    
+    // Check from the back to find the most complete JSON block
     for (let i = braceStarts.length - 1; i >= 0; i--) {
         const startIdx = braceStarts[i];
         let balance = 0, inStr = false, isEsc = false, endPos = -1;
@@ -495,41 +525,50 @@ export function extractInnerVoiceData(content, msg) {
         }
         if (endPos !== -1) {
             const candidate = raw.substring(startIdx, endPos + 1);
-            // 检查是否包含心声相关字段，或尝试解析为有效的短JSON对象（可能是AI忘写标签）
+            // Check for voice fields
             const hasVoiceField = INNER_VOICE_FIELDS.some(field => 
               candidate.includes(`"${field}"`) || candidate.includes(`'${field}'`) || candidate.includes(`\\"${field}\\"`)
             );
-            // 如果是较小的JSON对象（<500字符），即使没有已知字段也尝试解析
-            // 这可能是AI用了新的字段名或忘写标签
-            const isSmallObject = candidate.length < 500;
-            if (hasVoiceField || isSmallObject) {
-                // 额外验证：确保能解析为有效JSON
+            // If it's a small JSON object, try to parse it anyway
+            if (hasVoiceField || candidate.length < 600) {
                 try {
                   JSON.parse(candidate);
                   block = candidate;
                   break;
                 } catch (e) {
-                  // 不是有效JSON，跳过
+                  // Not valid JSON, keep looking
                 }
             }
         }
     }
   }
 
+  // If still no block, check for simple key-value pairs at the start or end
+  if (!block) {
+     const metaKeys = INNER_VOICE_FIELDS.join('|');
+     const metaRegex = new RegExp(`(?:^|\\n)\\s*(?:${metaKeys})\\s*[:\uff1a]`, 'i');
+     if (metaRegex.test(raw)) {
+        // Find the range of meta lines
+        const lines = raw.split('\n');
+        const metaLines = lines.filter(l => new RegExp(`^\\s*(?:${metaKeys})\\s*[:\uff1a]`, 'i').test(l));
+        if (metaLines.length > 0) block = metaLines.join('\n');
+     }
+  }
+
   if (!block) return null
   
   try {
-    // 尝试解析为 JSON
+    // \u5c1d\u8bd5\u89e3\u6790\u4e3a JSON
     const jsonStr = block.trim().replace(/^[^\{]*/, '').replace(/[^\}]*$/, '')
     if (jsonStr) {
       const parsed = JSON.parse(jsonStr)
       return parsed
     }
   } catch (e) {
-    // 降级：按行解析键值对
+    // \u964d\u7ea7\uff1a\u6309\u884c\u89e3\u6790\u952e\u503c\u5bf9
     const data = {}
     block.split(/\n+/).forEach(line => {
-      const kv = line.split(/[:：]/)
+      const kv = line.split(/[:\uff1a]/)
       if (kv.length >= 2) {
         data[kv[0].trim()] = kv.slice(1).join(':').trim()
       }
@@ -544,29 +583,29 @@ export function hasInnerVoice(content) {
   if (extractTaggedBlock(raw, 'INNER_VOICE') !== null || extractTaggedBlock(raw, 'INNERVOICE') !== null) {
     return true
   }
-  // 检查是否匹配心声正则（支持未正确闭合的标签）
+  // \u68c0\u67e5\u662f\u5426\u5339\u914d\u5fc3\u58f0\u6b63\u5219\uff08\u652f\u6301\u672a\u6b63\u786e\u95ed\u5408\u7684\u6807\u7b7e\uff09
   if (INNER_VOICE_BLOCK_RE.test(raw)) {
     return true
   }
-  // 检查是否包含心声相关字段
+  // \u68c0\u67e5\u662f\u5426\u5305\u542b\u5fc3\u58f0\u76f8\u5173\u5b57\u6bb5
   const hasVoiceField = INNER_VOICE_FIELDS.some(field => 
-    new RegExp(`["'\\\\]+${field}["'\\\\]+\\s*[:：]`).test(raw)
+    new RegExp(`["'\\\\]+${field}["'\\\\]+\\s*[:\uff1a]`).test(raw)
   );
   if (hasVoiceField) return true;
   
-  // 检查是否有小的JSON对象（可能是AI忘写标签）
-  // 匹配 { ... } 模式，长度小于500，且能解析为有效JSON
+  // \u68c0\u67e5\u662f\u5426\u6709\u5c0f\u7684JSON\u5bf9\u8c61\uff08\u53ef\u80fd\u662fAI\u5fd8\u5199\u6807\u7b7e\uff09
+  // \u5339\u914d { ... } \u6a21\u5f0f\uff0c\u957f\u5ea6\u5c0f\u4e8e500\uff0c\u4e14\u80fd\u89e3\u6790\u4e3a\u6709\u6548JSON
   const smallJsonMatches = raw.match(/\{[\s\S]{10,500}\}/g);
   if (smallJsonMatches) {
     for (const match of smallJsonMatches) {
       try {
         const parsed = JSON.parse(match);
-        // 如果解析成功且是对象，认为是心声数据
+        // \u5982\u679c\u89e3\u6790\u6210\u529f\u4e14\u662f\u5bf9\u8c61\uff0c\u8ba4\u4e3a\u662f\u5fc3\u58f0\u6570\u636e
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           return true;
         }
       } catch (e) {
-        // 不是有效JSON，继续检查下一个
+        // \u4e0d\u662f\u6709\u6548JSON\uff0c\u7ee7\u7eed\u68c0\u67e5\u4e0b\u4e00\u4e2a
       }
     }
   }

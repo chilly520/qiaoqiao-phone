@@ -22,17 +22,17 @@
 
             <div class="flex-1 overflow-visible" @click="isMultiSelectMode ? $emit('toggle-select', msg.id) : null">
 
-                <!-- CASE 1: System / Recall Message -->
-                <div v-if="(msg.type === 'system' || msg.role === 'system') && getCleanContent(msg.content)"
-                    class="flex flex-col items-center my-2 w-full animate-fade-in"
+                <!-- CASE 1: System / Recall Message / Error -->
+                <div v-if="(msg.type === 'system' || msg.role === 'system' || msg.type === 'error') && getCleanContent(msg.content)"
+                    class="system-chip animate-fade-in"
+                    :class="{ 'chat-bg-dark': chatData?.bgTheme === 'dark' }"
                     @contextmenu.prevent="emitContextMenu">
-                    <span class="text-[11px] px-3 py-1 rounded font-songti select-none transition-colors duration-300"
-                        :class="[
-                            msg.isRecallTip ? 'cursor-pointer hover:bg-opacity-80 transition-colors' : '',
-                            chatData?.bgTheme === 'dark' ? 'bg-white/10 text-white/40' : 'bg-gray-200/50 text-gray-400'
-                        ]" @click="msg.isRecallTip && (localShowDetail = !localShowDetail)">
-                        {{ getCleanContent(msg.content) }}
-                    </span>
+                    <div class="system-chip-content"
+                        :class="[ msg.isRecallTip ? 'cursor-pointer hover:bg-opacity-80 transition-colors' : '' ]" 
+                        @click="msg.isRecallTip && (localShowDetail = !localShowDetail)">
+                        <i v-if="msg.type === 'error'" class="fa-solid fa-circle-info opacity-70 mr-1.5"></i>
+                        <span>{{ getCleanContent(msg.content) }}</span>
+                    </div>
                     <!-- Foldable Content -->
                     <div v-if="localShowDetail && msg.realContent"
                         class="mt-1.5 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-500 max-w-[80%] break-all shadow-sm animate-fade-in-down">
@@ -635,6 +635,27 @@
                                                 Date(favoriteCardData.savedAt).getMinutes().toString().padStart(2, '0')
                                             }}</span>
                                     </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CASE: Music Share Card (Listen Together) -->
+                        <div v-else-if="msg.type === 'music_share'" class="w-full max-w-[280px]"
+                            @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <div class="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-4 border border-blue-100 shadow-sm flex items-center gap-4 cursor-pointer active:scale-95 transition-all"
+                                @click="musicStore.togglePlayer()">
+                                <div class="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center relative overflow-hidden">
+                                     <i class="fa-solid fa-music text-blue-400 text-xl absolute z-10" :class="{ 'animate-pulse': musicStore.isPlaying }"></i>
+                                     <div v-if="musicStore.isPlaying" class="absolute inset-0 bg-blue-400/5 animate-pulse"></div>
+                                </div>
+                                <div class="flex-1 overflow-hidden">
+                                    <div class="text-[14px] font-bold text-slate-800 truncate">{{ msg.content }}</div>
+                                    <div class="text-[11px] text-slate-400 font-medium">正在一起听歌...</div>
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-white/50 flex items-center justify-center">
+                                     <i class="fa-solid text-blue-500 text-sm" :class="musicStore.isPlaying ? 'fa-pause' : 'fa-play'"></i>
                                 </div>
                             </div>
                         </div>
@@ -1295,6 +1316,7 @@ import { useChatStore } from '../../../stores/chatStore'
 import { useWalletStore } from '../../../stores/walletStore'
 import { useSettingsStore } from '../../../stores/settingsStore'
 import { useMusicBoxStore } from '../../../stores/musicBoxStore'
+import { useMusicStore } from '../../../stores/musicStore'
 import { parseWeChatEmojis } from '../../../utils/emojiParser'
 import {
     ensureMessageString,
@@ -1337,6 +1359,7 @@ const chatStore = useChatStore()
 const walletStore = useWalletStore()
 const settingsStore = useSettingsStore()
 const musicBoxStore = useMusicBoxStore()
+const musicStore = useMusicStore()
 const router = useRouter()
 const localShowDetail = ref(false)
 const localShowTranscript = ref(false)
@@ -1478,8 +1501,8 @@ const handleFamilyCardClick = () => {
 // Navigate to moment detail
 const navigateToMoment = (msg) => {
     try {
-        const data = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content
-        if (data.id) {
+        const data = momentDataValue.value
+        if (data && data.id) {
             router.push(`/wechat/moments/detail/${data.id}`)
         }
     } catch (e) {
@@ -1960,6 +1983,12 @@ const isMomentCard = computed(() => {
     return props.msg.type === 'moment_card' || /\[(?:MOMENT_SHARE|分享朋友圈)[:：]/.test(ensureString(props.msg.content))
 })
 
+const isTogetherListening = computed(() => {
+    const content = ensureString(props.msg.content)
+    return content.includes('[一起听歌:') || content.includes('<bgm>') || content.includes('[MUSIC:')
+})
+
+
 // 塔罗牌消息检测 - 支持 type: 'tarot'/'tarot_card'/'tarot_interpretation' 或内容包含塔罗标签
 const isTarotMsg = computed(() => {
     if (props.msg.type === 'tarot' || props.msg.type === 'tarot_card' || props.msg.type === 'tarot_interpretation') return true
@@ -2268,23 +2297,29 @@ function getCleanContent(contentRaw, isCard = false, role = null) {
     // 2. 彻底处理 INNER_VOICE 标签（只匹配闭合的标签）
     clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '');
 
-    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|更换头像|SET_AVATAR|MOMENT|朋友圈|MOMENT_SHARE|分享朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE|TAROT|塔罗牌|塔罗占卜|塔罗解牌)[:：]\s*[^\]]+\]/gi, '');
-    // 过滤 AI 描述的 [图片] 标签（只有带冒号的才保留，因为那可能是真正的图片 URL）
-    clean = clean.replace(/\[(?:图片|IMAGE|表情包|表情 - 包|STICKER)\]/gi, '');
-    clean = props.forceOffline ? getOfflineTextContent({ content: clean, mode: props.msg.mode }) : getOnlineTextContent({ content: clean, mode: props.msg.mode })
+    // Handle interactive cards: if the ONLY content is a tag, hide the bubble
+    const pureTrimmed = clean.trim()
+    const isOnlyMoment = /^\[(?:MOMENT_SHARE|分享朋友圈)[:：].*?\]$/i.test(pureTrimmed) || /^【\s*MOMENT_SHARE[:：].*?】$/i.test(pureTrimmed)
+    const isOnlyMusic = /^\[一起听歌:[^\]]+\]$/i.test(pureTrimmed) || /^<bgm>[\s\S]*?<\/bgm>$/i.test(pureTrimmed)
+    const isOnlyLS = /^[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]$/i.test(pureTrimmed)
+    const isOnlyDraw = /^\[DRAW[:：].*?\]$/i.test(pureTrimmed)
+
+    if (isOnlyMoment || isOnlyMusic || isOnlyLS || isOnlyDraw) return ''
+
+    clean = clean.replace(/\[(?:LIKE|COMMENT|REPLY|VOTE|CREATE_VOTE|RECALL|撤回|NUDGE|拍一拍|SET_PAT|UPDATE_BIO|BIO|更换头像|SET_AVATAR|MOMENT|朋友圈|SEARCH|ALMANAC|定时|在一起|分手|情侣空间|摇骰子|掷骰子|DICE|TAROT|塔罗牌|塔罗占卜|塔罗解牌)[:：]\s*[^\]]+\]/gi, '');
     clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '');
     clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '');
     clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '');
-    clean = clean.replace(/[\\[【]\s*MOMENT_SHARE[:：]?\s*[\s\S]*?[\]】]/gi, ''); // Explicitly handle longer share tags
     clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '');
     clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
     clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '');
+    clean = clean.replace(/\[(?:MOMENT_SHARE|分享朋友圈)[:：][^\]]+\]/gi, '');
     
     clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '');
     clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');
-    clean = clean.replace(/<(html|div|section|article|style|svg)[\s\S]*?<\/\1>/gi, ''); // Fixed back-reference \1
-    clean = clean.replace(/<[^>]+>/g, '');  // Strip remaining tags
+    clean = clean.replace(/<(html|div|section|article|style|svg)[\s\S]*?<\/\1>/gi, ''); 
+    clean = clean.replace(/<[^>]+>/g, '');
     
     clean = clean.replace(/@keyframes[\s\S]+?\}\s*\}/gi, ''); 
     clean = clean.replace(/@[a-z-]+\s*\{[\s\S]*?\}/gi, '');

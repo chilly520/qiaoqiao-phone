@@ -916,24 +916,30 @@ async function saveAll() {
       })
       chatId = created.id
     } else {
+      console.log('[GroupSettings] Updating existing chat:', chatId)
       chatStore.updateGroupProfile(chatId, {
         avatar: form.avatar,
         name: form.name.trim(),
         groupNo: form.groupNo,
         announcement: form.announcement
       })
-      chatStore.updateGroupParticipants(chatId, form.participants || [])
+      if (Array.isArray(form.participants)) {
+        chatStore.updateGroupParticipants(chatId, form.participants)
+      }
     }
 
+    if (!chatId) throw new Error('Failed to acquire valid chatId for saving')
+
+    console.log('[GroupSettings] Updating group settings and meta for:', chatId)
     chatStore.updateGroupSettings(chatId, {
       myAvatar: form.myAvatar,
       myNickname: form.myNickname,
       myPersona: form.myPersona,
       myRole: form.myRole,
       myCustomTitle: form.myCustomTitle,
-      levelTitles: [...form.levelTitles],
+      levelTitles: Array.isArray(form.levelTitles) ? [...form.levelTitles] : ['潜水', '冒泡', '吐槽', '活跃', '话痨', '传说'],
       groupPrompt: form.groupPrompt,
-      worldBookLinks: form.worldBookLinks,
+      worldBookLinks: form.worldBookLinks || [],
       timeAware: !!form.timeAware,
       timeSyncMode: form.timeSyncMode || 'system',
       virtualTime: form.virtualTime || '',
@@ -969,8 +975,13 @@ async function saveAll() {
       displayLimit: Number(form.contextDisplayCount || 50)
     })
 
-    chatStore.triggerToast('已保存', 'success')
-    openChatInWeChat(chatId)
+    chatStore.triggerToast('已保存并同步', 'success')
+    setTimeout(() => {
+        openChatInWeChat(chatId)
+    }, 100)
+  } catch (error) {
+    console.error('[GroupSettings] Error in saveAll:', error)
+    chatStore.triggerToast(`保存失败: ${error.message || '未知错误'}`, 'error')
   } finally {
     state.saving = false
   }

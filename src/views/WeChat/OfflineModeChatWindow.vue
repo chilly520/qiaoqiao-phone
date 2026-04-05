@@ -127,7 +127,13 @@
       </div>
     </div>
 
-    <div ref="msgContainer" class="offline-scroll flex-1 overflow-y-auto px-5 pt-1 pb-6 flex flex-col gap-1 relative" style="z-index: 30;" @scroll="handleScroll">
+    <div 
+      ref="msgContainer" 
+      class="offline-scroll flex-1 overflow-y-auto px-5 pt-1 pb-6 flex flex-col gap-1 relative" 
+      style="z-index: 30;" 
+      :style="{ '--offline-font-scale': settingsStore.fontScale || 1 }"
+      @scroll="handleScroll"
+    >
       
       <!-- 加载更早的记录 -->
       <div v-if="hasMoreMessages" class="w-full flex justify-center py-2 animate-fadeIn relative z-10">
@@ -139,14 +145,21 @@
       <div class="w-full max-w-[520px] mx-auto flex flex-col gap-1 relative z-10">
         <template v-for="(msg, index) in filteredDisplayMsgs" :key="msg.id">
           <!-- 区间选择虚线 (多选模式下显示在消息之间) -->
-          <div v-if="isMultiSelectMode && index > 0" 
-              class="relative h-6 flex items-center justify-center cursor-pointer group select-range-divider"
-              @click="selectRangeToIndex(index)">
-              <div class="w-full border-t border-dashed border-white/40 group-hover:border-amber-300/70 transition-colors"></div>
-              <div class="absolute bg-black/30 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] text-white/80 group-hover:text-amber-300 transition-colors">
-                  <i class="fa-solid fa-check-double mr-1"></i>选到这
+              <div v-if="isMultiSelectMode && index > 0" 
+                  class="relative h-6 flex items-center justify-center cursor-pointer group select-range-divider"
+                  @click="selectRangeToIndex(index)">
+                  <div class="w-full border-t border-dashed border-white/40 group-hover:border-amber-300/70 transition-colors"></div>
+                  <div class="absolute bg-black/30 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] text-white/80 group-hover:text-amber-300 transition-colors">
+                      <i class="fa-solid fa-check-double mr-1"></i>选到这
+                  </div>
               </div>
-          </div>
+
+              <!-- 时间戳分界线 (每轮对话或时间间隔较长时显示) -->
+              <div v-if="shouldShowTimestamp(msg, index)" class="w-full flex justify-center my-4 opacity-60">
+                 <div class="bg-black/10 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] text-gray-500 font-medium">
+                    <i class="fa-regular fa-clock mr-1"></i>{{ formatMessageTime(msg.timestamp) }}
+                 </div>
+              </div>
           <div :id="'msg-' + msg.id" class="w-full relative z-10">
             <div class="message-item w-full flex items-stretch mb-2" :class="{ 'pl-10': isMultiSelectMode }">
               
@@ -241,7 +254,7 @@
 
     <!-- 多选操作栏 -->
     <div v-if="isMultiSelectMode"
-        class="relative z-[40] h-[60px] bg-black/40 backdrop-blur-md border-t border-white/10 flex items-center justify-between px-8">
+        class="relative z-[40] h-[60px] bg-black/40 backdrop-blur-md border-t border-white/10 flex items-center justify-between px-8 text-white">
         <button @click="exitMultiSelectMode"
             class="flex flex-col items-center justify-center text-white/80 hover:text-white transition-colors">
             <i class="fa-solid fa-xmark text-lg"></i>
@@ -262,13 +275,29 @@
                 <span class="text-[10px] mt-0.5">收藏</span>
             </button>
             <button @click="deleteSelectedMessages"
-                class="flex flex-col items-center justify-center text-red-400 hover:text-red-300 transition-colors"
+                class="flex flex-col items-center justify-center text-red-100 hover:text-red-400 transition-colors"
                 :class="{ 'opacity-30': selectedMsgIds.size === 0 }">
                 <i class="fa-regular fa-trash-can text-lg"></i>
                 <span class="text-[10px] mt-0.5">删除</span>
             </button>
         </div>
         <div class="w-8"></div> <!-- Spacer -->
+    </div>
+
+    <!-- 自定义确认弹窗 (与线下模式风格统一) -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-fadeIn">
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-md" @click="cancelConfirm"></div>
+      <div class="relative w-full max-w-[300px] bg-white/90 backdrop-blur-xl border border-white/20 rounded-[32px] overflow-hidden shadow-2xl p-7 text-center">
+        <div class="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">
+          <i class="fa-solid fa-trash-can"></i>
+        </div>
+        <h3 class="text-lg font-bold text-gray-900 mb-2">{{ confirmTitle }}</h3>
+        <p class="text-sm text-gray-500 mb-8 leading-relaxed">{{ confirmMessage }}</p>
+        <div class="flex gap-3">
+          <button @click="cancelConfirm" class="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-sm active:scale-95 transition-transform border-none">取消</button>
+          <button @click="executeConfirm" class="flex-1 py-3.5 rounded-2xl bg-red-500 text-white font-bold text-sm shadow-lg shadow-red-200 active:scale-95 transition-transform border-none">确认删除</button>
+        </div>
+      </div>
     </div>
 
     <!-- 通用弹窗/功能区 (提高层级防止被背景遮挡) -->
@@ -472,11 +501,31 @@ const menuLock = ref(false)
 let longPressTimer = null
 let longPressPoint = null
 
-// Multi Select & Quote
-const isMultiSelectMode = ref(false)
-const selectedMsgIds = ref(new Set())
-const lastSelectedId = ref(null)
 const currentQuote = ref(null)
+
+// Confirmation Modal State
+const showConfirmModal = ref(false)
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+const confirmAction = ref(null)
+
+const openConfirm = (title, message, action) => {
+  confirmTitle.value = title
+  confirmMessage.value = message
+  confirmAction.value = action
+  showConfirmModal.value = true
+}
+
+const cancelConfirm = () => {
+  showConfirmModal.value = false
+  confirmAction.value = null
+}
+
+const executeConfirm = () => {
+  if (confirmAction.value) confirmAction.value()
+  showConfirmModal.value = false
+  confirmAction.value = null
+}
 
 // 切换消息选择状态
 const toggleMessageSelection = (msgId) => {
@@ -593,15 +642,22 @@ const favoriteSelectedMessages = () => {
 const deleteSelectedMessages = () => {
     if (selectedMsgIds.value.size === 0) return
     
-    const chatId = chatStore.currentChatId
-    if (!chatId) return
-    
-    selectedMsgIds.value.forEach(msgId => {
-        chatStore.deleteMessage(chatId, msgId)
-    })
-    
-    showToast(`已删除 ${selectedMsgIds.value.size} 条消息`, 'info')
-    exitMultiSelectMode()
+    const count = selectedMsgIds.value.size
+    openConfirm(
+      '批量删除', 
+      `确定要删除选中的 ${count} 条记录吗？此操作不可撤销。`, 
+      () => {
+        const chatId = chatStore.currentChatId
+        if (!chatId) return
+        
+        selectedMsgIds.value.forEach(msgId => {
+            chatStore.deleteMessage(chatId, msgId)
+        })
+        
+        showToast(`已删除 ${count} 条消息`, 'info')
+        exitMultiSelectMode()
+      }
+    )
 }
 
 // History Modal
@@ -692,7 +748,12 @@ const sceneStatusLabel = computed(() => (
     : '线下叙事模式'
 ))
 
-const sceneDisplayTitle = computed(() => `${sceneState.value.location} · ${scenePeriodLabel.value}`)
+const sceneDisplayTitle = computed(() => {
+  const loc = sceneState.value.location
+  const period = scenePeriodLabel.value
+  if (!loc || loc === '线下·未知位置' || loc === '未知') return `线下 · ${period}`
+  return `${loc} · ${period}`
+})
 
 // 背景图片样式
 const backgroundImageStyle = computed(() => {
@@ -764,6 +825,30 @@ const toggleAutoRead = () => {
   if (!autoRead.value && window.speechSynthesis) window.speechSynthesis.cancel()
 }
 
+const shouldShowTimestamp = (msg, index) => {
+  if (index === 0) return true
+  const prevMsg = filteredDisplayMsgs.value[index - 1]
+  if (!prevMsg) return true
+  
+  // Rule 1: Long time gap (> 5 minutes)
+  const timeGap = (msg.timestamp || 0) - (prevMsg.timestamp || 0)
+  if (timeGap > 5 * 60 * 1000) return true
+  
+  // Rule 2: New round (User changed to AI or reverse)
+  if (msg.role !== prevMsg.role) return true
+  
+  return false
+}
+
+const formatMessageTime = (ts) => {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  if (isToday) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return `${d.getMonth() + 1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 const toggleSettingsMenu = () => { showSettingsMenu.value = !showSettingsMenu.value }
 const openBackgroundModal = () => { showBackgroundModal.value = true }
 const toggleAIBackground = () => { 
@@ -812,11 +897,13 @@ const isMsgVisible = (msg) => {
   if (!msg) return false
   if (msg.hidden) return false
   
-  // Special card/interactive types should ALWAYS show in both modes (same as online)
+  // Special card/interactive types should ALWAYS show in both modes UNLESS explicitly tagged for other mode
   const specialTypes = ['gift', 'gift_claimed', 'dice_result', 'tarot', 'tarot_card', 'tarot_interpretation', 'order_share', 'html', 'card', 'redpacket', 'transfer', 'sticker', 'image', 'voice', 'music', 'moment_card']
   if (specialTypes.includes(msg.type)) {
     // Only filter out moment cards from chat (they appear in moments page)
     if (msg.type === 'moment_card' || msg.type === 'moment') return false
+    // Important Fix: If explicitly marked as online, hide it in this offline window
+    if (msg.mode === 'online') return false
     return true
   }
   
@@ -848,20 +935,36 @@ const ensureString = (val) => {
 const looksLikeMojibake = (value) => {
   const text = ensureString(value).trim()
   if (!text) return false
-  // 检测常见的乱码字符模式 ()
-  return /[\ufffd]/.test(text)
+  return /[\ufffd\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(text)
 }
 
 const hasInnerVoiceBlockInMsg = (msg) => hasInnerVoiceBlock(msg?.content, msg)
 
 const updateSceneState = () => {
-  const latestScene = extractLatestOfflineScene(filteredDisplayMsgs.value)
-  if (latestScene?.location && !looksLikeMojibake(latestScene.location)) {
-    sceneState.value.location = latestScene.location
-  } else {
+  // Search from the current visible dataset to find the most recent scene/location
+  let foundLocation = null
+  for (let i = filteredDisplayMsgs.value.length - 1; i >= 0; i--) {
+     const m = filteredDisplayMsgs.value[i]
+     const content = ensureString(m.content)
+     // Recognize 【XX】 or [XX] or 【地点：XX】 or [地点：XX]
+     // We specifically EXCLUDE '场景：' because that's for AI image generation, not a location
+     const match = content.match(/[\u3010\[](?:地点[:\uff1a])?\s*([^\]\u3011]+)[\u3011\]]/)
+     if (match) {
+        const loc = match[1].trim()
+        if (loc && !loc.startsWith('场景：') && !looksLikeMojibake(loc)) {
+          foundLocation = loc
+          break
+        }
+     }
+  }
+
+  if (foundLocation) {
+    sceneState.value.location = foundLocation
+  } else if (!sceneState.value.location || sceneState.value.location === '未知' || sceneState.value.location === '线下·未知位置') {
     sceneState.value.location = '线下·未知位置'
   }
 
+  // Expression/Status detection
   for (let index = filteredDisplayMsgs.value.length - 1; index >= 0; index -= 1) {
     const msg = filteredDisplayMsgs.value[index]
     const innerVoice = extractInnerVoiceData(msg?.content, msg)
@@ -954,6 +1057,15 @@ const openRedPacket = async () => {
     })
     msg.isClaimed = true
     chatStore.saveChats()
+    
+    // Add system notification for claiming
+    const sourceName = '我'
+    const targetName = chatData.value?.name || '对方'
+    chatStore.addMessage(chatStore.currentChatId, {
+      role: 'system',
+      content: `"${sourceName}" 领取了 "${targetName}" 的红包`,
+      mode: 'offline'
+    })
     
     currentPayResult.value = msg.amount || 0.01
   }, 800)
@@ -1094,7 +1206,7 @@ const startLongPress = (msg, event) => {
     setTimeout(() => { menuLock.value = false }, 500)
     longPressTimer = null
     longPressPoint = null
-  }, 650)
+  }, 1000) // Changed from 650 to 1000 for better scroll-safety
 }
 
 const handleTouchMove = (event) => {
@@ -1102,7 +1214,8 @@ const handleTouchMove = (event) => {
   const touch = event.touches[0]
   const dx = Math.abs((touch.clientX || 0) - longPressPoint.x)
   const dy = Math.abs((touch.clientY || 0) - longPressPoint.y)
-  if (dx > 30 || dy > 30) cancelLongPress()
+  // Tightened threshold from 30 to 10 to cancel faster on scroll
+  if (dx > 10 || dy > 10) cancelLongPress()
 }
 
 const cancelLongPress = () => {
@@ -1135,7 +1248,14 @@ const handleMenuAction = (action) => {
       showEditModal.value = true
       break
     case 'delete':
-      chatStore.deleteMessage(chatId, selectedMsg.value.id)
+      openConfirm(
+        '删除记录', 
+        '确定要删除这一段记录吗？删除后将无法恢复。', 
+        () => {
+          chatStore.deleteMessage(chatId, selectedMsg.value.id)
+          showToast('已删除')
+        }
+      )
       break
     case 'history':
       historyTargetId.value = selectedMsg.value.id
@@ -1300,6 +1420,11 @@ onUnmounted(() => {
 
 .animate-breathing-dot {
   animation: breathing-dot 1.5s ease-in-out infinite;
+}
+
+.offline-scroll {
+  font-size: calc(1rem * var(--offline-font-scale));
+  transition: font-size 0.2s ease;
 }
 
 .offline-stage {

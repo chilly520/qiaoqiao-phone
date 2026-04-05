@@ -1,64 +1,10 @@
 import { fileURLToPath, URL } from 'node:url'
-
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { VitePWA } from 'vite-plugin-pwa'
 
-
-// https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   plugins: [
-    vue(),
-    VitePWA({
-      disable: true, // 暂时全面禁用 PWA 以清理并规避严重的缓存及解析错误
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
-      manifest: {
-        name: "Chilly's Phone",
-        short_name: 'Chilly',
-        description: "Chilly's Exclusive Phone App",
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
-        display: 'standalone',
-        orientation: 'portrait',
-        start_url: '.',
-        icons: [
-          {
-            src: 'pwa-192x192.jpg',
-            sizes: '192x192',
-            type: 'image/jpeg'
-          },
-          {
-            src: 'pwa-512x512.jpg',
-            sizes: '512x512',
-            type: 'image/jpeg'
-          },
-          {
-            src: 'pwa-512x512.jpg',
-            sizes: '512x512',
-            type: 'image/jpeg',
-            purpose: 'any maskable'
-          }
-        ]
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg}'],
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.+/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'external-resources',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
-              }
-            }
-          }
-        ]
-      }
-    })
+    vue()
   ],
   server: {
     host: true,
@@ -98,6 +44,30 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  },
+  build: {
+    target: 'esnext',
+    minify: false,
+    chunkSizeWarningLimit: 5000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('vue') || id.includes('pinia')) return 'vue-vendor'
+            if (id.includes('localforage')) return 'storage-vendor'
+            if (id.includes('lodash') || id.includes('axios')) return 'common-vendor'
+            return 'vendor'
+          }
+          if (id.includes('src/stores/chatStore')) return 'chat-store'
+          if (id.includes('src/views/WeChat/OfflineModeChatWindow')) return 'offline-chat'
+          if (id.includes('src/views/WeChat/ChatWindow')) return 'chat-window'
+          if (id.includes('src/views/WeChat/components/ChatMessageItem')) return 'chat-item'
+          if (id.includes('src/views/WeChat')) return 'wechat-views'
+          if (id.includes('src/views/LoveSpace')) return 'love-views'
+          if (id.includes('src/utils')) return 'utils'
+        }
+      }
     }
   }
 }))
