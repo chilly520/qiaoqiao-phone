@@ -127,7 +127,7 @@ const getCleanContent = (contentRaw, isCard = false) => {
     clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '');
     
     // 过滤【场景：xxx】标签，线上模式不显示大段场景描述
-    clean = clean.replace(/[\\[【] 场景：[^\]】]*[\]】]/gi, '');
+    clean = clean.replace(/[\\[【]\s*场景：[^\]】]*[\]】]/gi, '');
     
     // 2. AGGRESSIVE: Remove style blocks and CSS fragments
     clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '');

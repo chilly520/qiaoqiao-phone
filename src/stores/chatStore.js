@@ -3147,17 +3147,15 @@ export const useChatStore = defineStore('chat', () => {
 
                     const trimmedPart = part.trim();
                     // V12: 扩展特殊指令检测 - 支持更多多媒体和交互指令
-                    const isSpecial = new RegExp("^(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|\\u7ea2\\u5305|\\u8f6c\\u8d26|REDPACKET|TRANSFER|\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305|STICKER|\\u56fe\\u7247|IMAGE|\\u8bed\\u97f3|VOICE|\\u8bed\\u97f3\\u901a\\u8bdd|\\u89c6\\u9891\\u901a\\u8bdd|\\u901a\\u8bdd|CALL|\\u7ed8\\u753b|\\u751f\\u6210\\u56fe\\u7247|\\u6f14\\u594f|\\u97f3\\u4e50|\\u9ab0\\u5b50|\\u63b7\\u9ab0\\u5b50|\\u5854\\u7f57|\\u5854\\u7f57\\u724c|FAMILY_CARD|\\u573a\\u666f|SCENE|LIKE|\\u70b9\\u8d5e|\\u559c\\u6b22|COMMENT|\\u8bc4\\u8bba|REPLY|\\u56de\\u590d|\\u4f4d\\u7f6e|LOCATION|\\u5730\\u56fe|MAP|SHARE|\\u5206\\u4eab|\\u8f6c\\u53d1|\\u6587\\u4ef6|FILE|LINK|\\u94fe\\u63a5|URL|SYSTEM|\\u7cfb\\u7edf|\\u901a\\u77e5|SET_AVATAR|SET_NAME|SET_PAT|\\u8bbe\\u7f6e\\u5934\\u50cf|\\u8bbe\\u7f6e\\u6635\\u79f0|\\u8bbe\\u7f6e\\u62cd\\u4e00\\u62cd|NUDGE|\\u6233\\u4e00\\u6233|\\u62cd\\u4e00\\u62cd|QUOTE|\\u5f15\\u7528|GIFT|\\u793c\\u7269|CARD|\\u5b9a\\u65f6|TIMER|REMIND|\\u63d0\\u9192|\\u641c\\u7d22|SEARCH|\\u67e5\\u627e|\\u9ec4\\u5386|ALMANAC|\\u8fd0\\u52bf)|\\(|\\uff08|\\u3010)").test(trimmedPart);
+                    // V15: Included theater markers (|| and \u2016) in isSpecial to ensure they break segments properly for card rendering
+                    const isSpecial = new RegExp("^(__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|\\u7ea2\\u5305|\\u8f6c\\u8d26|REDPACKET|TRANSFER|\\u8868\\u60c5\\u5305|\\u8868\\u60c5-\\u5305|STICKER|\\u56fe\\u7247|IMAGE|\\u8bed\\u97f3|VOICE|\\u8bed\\u97f3\\u901a\\u8bdd|\\u89c6\\u9891\\u901a\\u8bdd|\\u901a\\u8bdd|CALL|\\u7ed8\\u753b|\\u751f\\u6210\\u56fe\\u7247|\\u6f14\\u594f|\\u97f3\\u4e50|\\u9ab0\\u5b50|\\u63b7\\u9ab0\\u5b50|\\u5854\\u7f57|\\u5854\\u7f57\\u724c|FAMILY_CARD|\\u573a\\u666f|SCENE|LIKE|\\u70b9\\u8d5e|\\u559c\\u6b22|COMMENT|\\u8bc4\\u8bba|REPLY|\\u56de\\u590d|\\u4f4d\\u7f6e|LOCATION|\\u5730\\u56fe|MAP|SHARE|\\u5206\\u4eab|\\u8f6c\\u53d1|\\u6587\\u4ef6|FILE|LINK|\\u94fe\\u63a5|URL|SYSTEM|\\u7cfb\\u7edf|\\u901a\\u77e5|SET_AVATAR|SET_NAME|SET_PAT|\\u8bbe\\u7f6e\\u5934\\u50cf|\\u8bbe\\u7f6e\\u6635\\u79f0|\\u8bbe\\u7f6e\\u62cd\\u4e00\\u62cd|NUDGE|\\u6233\\u4e00\\u6233|\\u62cd\\u4e00\\u62cd|QUOTE|\\u5f15\\u7528|GIFT|\\u793c\\u7269|CARD|\\u5b9a\\u65f6|TIMER|REMIND|\\u63d0\\u9192|\\u641c\\u7d22|SEARCH|\\u67e5\\u627e|\\u9ec4\\u5386|ALMANAC|\\u8fd0\\u52bf)|\\(|\\uff08|\\u3010|\\|\\||\\u2016)").test(trimmedPart);
                     const isPunctuation = /^[!?;\u3002\uff01\uff1f\uff1b\u2026\r\n]+$/.test(part);
 
                     if (isSpecial) {
                         if (currentRawSegment) { rawSegments.push(currentRawSegment); currentRawSegment = ""; }
                         rawSegments.push(part);
-                    } else if (isPunctuation) {
-                        currentRawSegment += part;
-                        rawSegments.push(currentRawSegment);
-                        currentRawSegment = "";
                     } else {
+                        // V15: Stopped splitting on punctuation to avoid fragmented message bubbles
                         currentRawSegment += part;
                     }
                 }
@@ -3494,7 +3492,7 @@ export const useChatStore = defineStore('chat', () => {
                                     content: musicData,
                                     quote: i === 0 ? aiQuote : null,
                                     hidden: isCallMode,
-                                    mode: 'online'
+                                    mode: finalMode
                                 });
                             } else {
                                 // Listen Together Sync
@@ -3524,7 +3522,7 @@ export const useChatStore = defineStore('chat', () => {
                                     content: musicData,
                                     quote: i === 0 ? aiQuote : null,
                                     hidden: isCallMode,
-                                    mode: 'online'
+                                    mode: finalMode
                                 });
                                 
                                 // Add a system notification about listening together
@@ -3543,7 +3541,7 @@ export const useChatStore = defineStore('chat', () => {
                             content: content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: 'online'
+                            mode: finalMode
                         });
                     } else if (type === 'tarot') {
                         // 处理塔罗牌指令
@@ -3553,7 +3551,7 @@ export const useChatStore = defineStore('chat', () => {
                             content: content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: 'online'
+                            mode: finalMode
                         });
                     } else if (type === 'location') {
                         // 处理位置指令
@@ -3563,7 +3561,7 @@ export const useChatStore = defineStore('chat', () => {
                             content: content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: 'online'
+                            mode: finalMode
                         });
                     } else if (type === 'nudge') {
                         // 处理戳一戳/拍一拍
@@ -3576,7 +3574,7 @@ export const useChatStore = defineStore('chat', () => {
                             content: content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: 'online'
+                            mode: finalMode
                         });
                     } else if (type === 'system') {
                         // 系统通知
@@ -3584,7 +3582,7 @@ export const useChatStore = defineStore('chat', () => {
                             role: 'system',
                             content: content.replace(/^\[(?:系统|通知|SYSTEM)[:：]?\s*/, '').replace(/\]$/, ''),
                             hidden: isCallMode,
-                            mode: 'online'
+                            mode: finalMode
                         });
                     } else if (type === 'timer') {
                         // 处理定时提醒指令
@@ -3597,7 +3595,7 @@ export const useChatStore = defineStore('chat', () => {
                                 content: timerContent,
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
-                                mode: 'online'
+                                mode: finalMode
                             });
                             // 触发定时任务提示
                             setTimeout(() => {
@@ -3605,7 +3603,7 @@ export const useChatStore = defineStore('chat', () => {
                                     role: 'system',
                                     content: `⏰ 定时提醒: ${timerContent}`,
                                     hidden: false,
-                                    mode: 'online'
+                                    mode: finalMode
                                 });
                             }, 10000); // 10秒后触发（演示用）
                         }
@@ -3620,7 +3618,7 @@ export const useChatStore = defineStore('chat', () => {
                                 content: searchKeyword,
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
-                                mode: 'online'
+                                mode: finalMode
                             });
                         }
                     } else if (type === 'almanac') {
@@ -3634,7 +3632,7 @@ export const useChatStore = defineStore('chat', () => {
                                 content: almanacContent,
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
-                                mode: 'online'
+                                mode: finalMode
                             });
                         }
                     }

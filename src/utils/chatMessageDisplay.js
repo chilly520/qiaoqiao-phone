@@ -350,29 +350,50 @@ export function parseOfflineSegments(msg) {
   return segments
 }
 
-export function hasOfflineTheaterContent(content) {
-  const text = getOfflineTextContent(content)
-  if (!text) return false
+export function hasOfflineTheaterContent(msg) {
+  if (!msg) return false
   
-  // Quick explicit regex checks for robust identification without relying entirely on parser
-  return OFFLINE_SCENE_RE.test(text) || 
-         OFFLINE_ACTION_RE.test(text) || 
-         OFFLINE_NARRATION_RE.test(text) || 
-         OFFLINE_TAGGED_DIALOGUE_RE.test(text) || 
-         OFFLINE_QUOTED_DIALOGUE_RE.test(text) ||
-         OFFLINE_SPEAKER_DIALOGUE_RE.test(text) ||
-         (text.includes('\uff08') && text.includes('\uff09')) || 
-         (text.includes('(') && text.includes(')')) ||
-         /^\s*(\|\||\u2016)/.test(text) ||
-         parseOfflineSegments(text).length > 0
+  // 1. Explicit Mode Check
+  if (msg.mode === 'offline') return true
+  if (msg.mode === 'online') return false
+
+  // 2. Content-based detection (Fallback if mode not set or for mixed detection)
+  const raw = ensureMessageString(msg.content)
+  
+  // Explicit tags have highest authority
+  if (/\[OFFLINE\]/i.test(raw)) return true
+  if (/\[ONLINE\]/i.test(raw)) return false
+
+  // Detect theater markers
+  // Important: We check the RAW text here to catch messages before they are processed/split
+  return OFFLINE_SCENE_RE.test(raw) || 
+         OFFLINE_NARRATION_RE.test(raw) || 
+         raw.includes('\u2016') || 
+         raw.includes('||') ||
+         msg.type === 'location'
 }
 
 export function isOfflineTextMessage(msg) {
-  if (!msg || msg.hidden) return false
-  if (msg.role === 'system' || msg.type === 'system') return true
-  if (msg.type && msg.type !== 'text') return false
-  if (looksLikeHtmlCard(msg.content)) return false
-  return getOfflineTextContent(msg.content).length > 0
+  if (!msg) return false
+  const type = msg.type || 'text'
+  const role = msg.role || 'ai'
+  
+  // These types are always rendered as theater/offline components if they have valid theater content
+  const theaterTypes = ['text', 'location', 'scene', 'system']
+  if (!theaterTypes.includes(type)) return false
+
+  // User messages in offline are always bubbles? Or also theater? 
+  // User messages are typically bubbles unless they are part of a theater script
+  if (role === 'user') return true 
+  
+  const content = ensureMessageString(msg.content)
+  // If it's a location message or has theater markers, it's theater
+  if (type === 'location' || OFFLINE_SCENE_RE.test(content) || OFFLINE_NARRATION_RE.test(content) || content.includes('\u2016') || content.includes('||')) {
+    return true
+  }
+
+  // Fallback for regular text
+  return true
 }
 
 export function extractTaggedBlock(content, tag) {
@@ -388,66 +409,39 @@ export function extractTaggedBlock(content, tag) {
 }
 
 export function shouldShowInOfflineMode(msg) {
-  if (!msg || msg.hidden) return false
-  
+  if (!msg) return false
   const raw = ensureMessageString(msg.content)
 
-  // 1. If explicitly tagged for offline exclusively, show it
-  if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
-  
-  // 2. If explicitly tagged for online exclusively, hide it
-  if (/\[\s*ONLINE\s*\]/i.test(raw) && !/\[\s*OFFLINE\s*\]/i.test(raw)) return false
+  // 1. Check for explicit tags
+  if (/\[OFFLINE\]/i.test(raw)) return true
+  if (/\[ONLINE\]/i.test(raw) && !/\[OFFLINE\]/i.test(raw)) return false
 
-  // 3. Obey explicit mode flag from data structure (Highest Priority)
+  // 2. Check for theater markers
+  if (hasOfflineTheaterContent(msg)) return true
+
+  // 3. Obey explicit mode flag
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
-
-  // 4. For user messages, if mode not set, return false (online by default)
-  if (msg.role === 'user') return false
-
-  // 5. System messages: Show unless explicit mode says otherwise
-  if (msg.role === 'system') {
-    // Whitelist payment/gift notifications even if they might be tagged online
-    if (/[\u9886\u53d6\u9000\u56de]|[\u8f6c\u8d26\u5df2\u6536\u6536]|[\u4ed8\u6b3e]|[\u793c\u7269]/.test(raw)) return true
-    return true
-  }
-
-  // 6. Whitelist: Show interactive cards IF mode is undetermined
-  const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
-                         msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
-                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer' ||
-                         msg.type === 'family_card' || msg.type === 'gift_claimed';
-  if (isSpecialCard) return true;
-
-  // 7. Check partitioned content
-  const offlineBlock = getModePartitionedContent(raw, 'OFFLINE')
-  if (offlineBlock) return offlineBlock.trim().length > 0
-
-  return hasOfflineTheaterContent(raw)
+  
+  // Default: show in both if no indicators (or customize based on project preference)
+  return true
 }
 
 export function shouldShowInOnlineMode(msg) {
-  if (!msg || msg.hidden) return false
-  
+  if (!msg) return false
   const raw = ensureMessageString(msg.content)
 
-  // 1. If explicitly tagged for online, show it
-  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
-  
-  // 2. If explicitly tagged for offline exclusively, hide it
-  if (/\[\s*OFFLINE\s*\]/i.test(raw) && !/\[\s*ONLINE\s*\]/i.test(raw)) return false
+  // 1. Check for explicit tags (These are the ultimate authority)
+  if (/\[ONLINE\]/i.test(raw)) return true
+  if (/\[OFFLINE\]/i.test(raw) && !/\[ONLINE\]/i.test(raw)) return false
 
-  // 3. Obey explicit mode flag (Highest Priority)
+  // 2. Check for theater markers (These imply offline mode)
+  if (hasOfflineTheaterContent(msg)) return false
+
+  // 3. Obey explicit mode flag
   if (msg.mode === 'online') return true
   if (msg.mode === 'offline') return false
 
-  // 4. For user messages, default to true
-  if (msg.role === 'user') return true
-
-  // 5. System messages
-  if (msg.role === 'system') return true
-  
-  // 6. Whitelist: Always show interactive cards IF mode is undetermined
   const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
                          msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
                          msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer';
@@ -456,7 +450,7 @@ export function shouldShowInOnlineMode(msg) {
   if (getModePartitionedContent(raw, 'ONLINE').length > 0) return true
   if (getModePartitionedContent(raw, 'OFFLINE').length > 0) return false
 
-  return !hasOfflineTheaterContent(raw)
+  return !hasOfflineTheaterContent(msg)
 }
 
 export function extractLatestOfflineScene(messages = []) {
