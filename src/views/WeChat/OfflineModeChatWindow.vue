@@ -192,6 +192,7 @@
                       :msg="msg"
                       :chatData="chatData"
                       :suppressInitialAvatar="shouldSuppressInitialAvatar(index)"
+                      :suppressLocation="shouldSuppressLocation(index)"
                     />
                     <ChatMessageItem 
                       v-else
@@ -998,6 +999,24 @@ const shouldSuppressInitialAvatar = (index) => {
   const currentStartsWithDialogue = currentSegments[0]?.type === 'dialogue'
 
   return prevAllDialogue && currentStartsWithDialogue
+}
+
+const shouldSuppressLocation = (index) => {
+  const currentMsg = filteredDisplayMsgs.value[index]
+  if (!currentMsg || currentMsg.role !== 'ai') return false
+  
+  // Look backwards in the filtered list
+  for (let i = index - 1; i >= 0; i--) {
+     const m = filteredDisplayMsgs.value[i]
+     if (m.role !== 'ai') break // Stop when reach user or gap
+     
+     // Check if this previous message had a location/scene marker
+     const segments = parseOfflineSegments(m.content)
+     if (segments.some(s => s.type === 'location' || s.type === 'scene')) {
+        return true
+     }
+  }
+  return false
 }
 
 

@@ -75,6 +75,10 @@ const props = defineProps({
   suppressInitialAvatar: {
     type: Boolean,
     default: false
+  },
+  suppressLocation: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -123,18 +127,27 @@ const charAvatar = computed(() => (
 ))
 
 const renderedSegments = computed(() => {
-  // 每个对话 segment 都显示头像
-  return segments.value.map((segment) => {
-    if (segment.type !== 'dialogue') {
-      return segment
+  // Track if we've already displayed a location in this message object
+  // or if it was already displayed in a previous part of the turn (from parent)
+  let locationAlreadyShown = props.suppressLocation
+
+  return segments.value.reduce((acc, segment) => {
+    // 过滤掉重复的地标/地点卡片（每轮回复仅显示第一个）
+    if (segment.type === 'scene' || segment.type === 'location') {
+      if (locationAlreadyShown) return acc
+      locationAlreadyShown = true
     }
 
-    // 每个对话 segment 都显示头像
-    return {
-      ...segment,
-      showAvatar: true
+    if (segment.type === 'dialogue') {
+      acc.push({
+        ...segment,
+        showAvatar: true
+      })
+    } else {
+      acc.push(segment)
     }
-  })
+    return acc
+  }, [])
 })
 
 function isRightAligned(segment) {
