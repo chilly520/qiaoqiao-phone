@@ -186,7 +186,13 @@ export function getOfflineRenderableContent(msg) {
      if (!/\[\s*OFFLINE\s*\]/i.test(raw)) return false 
   }
 
-  return getModePartitionedContent(raw, 'OFFLINE')
+  const partitioned = getModePartitionedContent(raw, 'OFFLINE')
+  if (partitioned) return partitioned
+
+  const msgObj = typeof msg === 'string' ? { content: msg } : msg
+  if (msgObj?.role === 'user' || !/\[\s*ONLINE\s*\]/i.test(raw)) return raw
+
+  return partitioned
 }
 
 export function getOnlineRenderableContent(msg) {
@@ -202,7 +208,7 @@ export function getOnlineRenderableContent(msg) {
 }
 
 export function getOfflineTextContent(msg) {
-  return stripCardBlocks(stripInnerVoiceBlocks(getOfflineRenderableContent(msg))).trim()
+  return stripModeWrapperTags(stripCardBlocks(stripInnerVoiceBlocks(getOfflineRenderableContent(msg)))).trim()
 }
 
 export function getOnlineTextContent(msg) {
@@ -234,10 +240,10 @@ export function parseOfflineLine(line) {
     return { type: 'dialogue', speaker: match[1].trim(), content, speakerTagged: true }
   }
 
-  // 4b. \u7eaf\u53cc\u5f15\u53f7\u5bf9\u8bdd
+  // 4b. \u7eaf\u53cc\u5f15\u53f7\u5bf9\u8bdd \u2014 \u4fdd\u7559\u539f\u59cb\u5f15\u53f7
   match = value.match(OFFLINE_QUOTED_DIALOGUE_RE)
   if (match) {
-    const content = value.trim().replace(/^[\s"\u201c'\u2018\u201c\u2018]+|[\s"\u201d'\u2019\u201d\u2019]+$/g, '')
+    const content = value.trim()
     if (content) return { type: 'dialogue', content }
   }
 
@@ -354,16 +360,7 @@ export function parseOfflineSegments(msg) {
             if (msg?.role === 'system' || msg?.type === 'system') {
                 segments.push({ type: 'system', content: l })
             } else {
-                // Heuristic: If it lacks quotation marks and doesn't look like speaker text, treat as narration (if AI) or dialogue (if USER)
-                const hasDialogueMarkers = /["\u201c\u300c(\uFF08]/.test(l) || /[:\uff1a]/.test(l);
-                const actualType = hasDialogueMarkers ? 'dialogue' : (role === 'user' ? 'dialogue' : 'narration');
-                
-                // V16: Aggressive merge for short non-dialogue lines that look like extensions of previous narration
-                if (actualType === 'narration' && segments.length > 0 && segments[segments.length-1].type === 'narration' && l.length < 20) {
-                   segments[segments.length-1].content += ' ' + l
-                } else {
-                   segments.push({ type: actualType, content: l })
-                }
+                segments.push({ type: 'dialogue', content: l })
             }
           }
         }
@@ -395,6 +392,8 @@ export function hasOfflineTheaterContent(msg) {
   // Important: We check the RAW text here to catch messages before they are processed/split
   return OFFLINE_SCENE_RE.test(raw) || 
          OFFLINE_NARRATION_RE.test(raw) || 
+         OFFLINE_ACTION_RE.test(raw) ||
+         OFFLINE_QUOTED_DIALOGUE_RE.test(raw) ||
          raw.includes('\u2016') || 
          raw.includes('||') ||
          msg.type === 'location'
@@ -668,6 +667,9 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '')
   clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '')
   clean = clean.replace(/\[(?:MOMENT_SHARE|分享朋友圈)[:：][^\]]+\]/gi, '')
+  
+  // Strip 【系统提示】 prefix
+  clean = clean.replace(/^[【\[]?\s*系统提示\s*[】\]]?\s*[:：]?\s*/gi, '')
   
   // 4. Strip CARD blocks
   clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '')
