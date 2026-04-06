@@ -293,14 +293,14 @@ function formatTimestamp(timestamp) {
 .system-chip-content {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
+  gap: 4px;
+  padding: 2px 10px;
   background: rgba(0, 0, 0, 0.04);
   backdrop-filter: blur(4px);
   border-radius: 999px;
   color: #8a97a8;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 400;
   border: 1px solid rgba(0, 0, 0, 0.03);
 }
 

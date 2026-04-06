@@ -936,7 +936,7 @@ export const useChatStore = defineStore('chat', () => {
                     if (parsed.content && (parsed.imagePrompt || parsed.location || parsed.visibility)) {
                         console.log('[ChatStore] Valid moment JSON detected, converting to moment_card');
                         const momentData = {
-                            id: crypto.randomUUID(),
+                            id: parsed.id || crypto.randomUUID(),
                             content: parsed.content,
                             text: parsed.content,
                             author: chat.name,
@@ -954,6 +954,7 @@ export const useChatStore = defineStore('chat', () => {
                         
                         // Add system notification to chat
                         const momentResult = momentsStore.addMoment({
+                            id: momentData.id,
                             authorId: chatId,
                             content: momentData.text || momentData.content || '',
                             images: momentData.image ? [momentData.image] : (momentData.images || []),
@@ -1022,6 +1023,7 @@ export const useChatStore = defineStore('chat', () => {
                 
                 // Publish to moments feed so details are accessible and it shows in profile
                 const momentResult = momentsStore.addMoment({
+                    id: momentData.id,
                     authorId: chatId,
                     content: momentData.text || momentData.content || '',
                     images: momentData.image ? [momentData.image] : (momentData.images || []),

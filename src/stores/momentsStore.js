@@ -126,7 +126,7 @@ export const useMomentsStore = defineStore('moments', () => {
     // --- Actions ---
 
     function addMoment(data, options = {}) {
-        const id = 'm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+        const id = data.id || ('m-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5))
 
         // Resolve author name at creation time (cache it so UI doesn't depend on chatStore lookups)
         let resolvedAuthorName = data.authorName || ''
