@@ -446,9 +446,14 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         const cleaned = rawContent.replace(/\[(?:ONLINE|OFFLINE|INNER_VOICE|CARD|VOICE|CALL|STATUS|THINK)[:\s\S]*?\]/gi, '').trim()
         if (cleaned.length > 5) summary = cleaned.replace(/\n/g, ' ')
       }
+      
+      const settingsStore = useSettingsStore()
+      const userNickname = char.phoneData?.apps?.wechat?.remark || settingsStore.personalization?.userProfile?.name || '你'
+      
       return {
         id: m.id,
-        name: m.role === 'user' ? (chatStore.userProfile?.name || '你') : (char.userName || char.name || '我'),
+        // 在该角色的手机上，通话对象始终是“用户”
+        name: userNickname,
         type: isMissed ? 'missed' : (m.role === 'user' ? 'incoming' : 'outgoing'),
         time: formatDate(m.timestamp),
         duration: isMissed ? '' : (m.duration ? formatDuration(m.duration) : '通话完成'),
@@ -459,13 +464,20 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
     // 4. 钱包交易同步 (红包、转账)
     const walletTransactions = []
+    const settingsStore = useSettingsStore()
+    const userNickname = char.phoneData?.apps?.wechat?.remark || settingsStore.personalization?.userProfile?.name || '你'
+
     msgs.filter(m => ['redpacket', 'transfer'].includes(m.type)).forEach(m => {
+      const isIncome = (m.role === 'user') // 用户发给角色，对角色来说是收入
       walletTransactions.push({
         id: m.id,
-        title: m.type === 'redpacket' ? '发出的红包' : '转账给 TA',
-        amount: -Math.abs(m.amount || 0),
+        title: isIncome 
+          ? (m.type === 'redpacket' ? `收到${userNickname}的红包` : `来自${userNickname}的转账`)
+          : (m.type === 'redpacket' ? `发给${userNickname}的红包` : `转账给${userNickname}`),
+        amount: isIncome ? Math.abs(m.amount || 0) : -Math.abs(m.amount || 0),
         time: formatDate(m.timestamp),
-        detail: m.note || '恭喜发财'
+        detail: m.note || '恭喜发财',
+        type: isIncome ? 'income' : 'expense'
       })
     })
 
@@ -678,17 +690,31 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
     const char = chatStore.chats[charId]
     if (!char) return {}
 
-    // A. 基础联系人
+    // A. 基础联系人: 用户 (该手机的主人认为的用户)
     const settingsStore = useSettingsStore()
-    const contacts = [
-      {
-        id: 'user',
-        name: settingsStore.personalization?.userProfile?.name || '你',
-        avatar: settingsStore.personalization?.userProfile?.avatar || '/avatars/user.png',
-        remark: char.phoneData?.apps?.wechat?.remark || '笨蛋',
-        isTop: true
-      }
-    ]
+    const userRemark = char.phoneData?.apps?.wechat?.remark || '笨蛋'
+    const userName = settingsStore.personalization?.userProfile?.name || '你'
+    
+    const userContact = {
+      id: 'user',
+      name: userName,
+      avatar: settingsStore.personalization?.userProfile?.avatar || '/avatars/user.png',
+      remark: userRemark,
+      isTop: true
+    }
+    
+    // 获取所有角色作为联系人
+    const otherContacts = Object.values(chatStore.chats)
+      .filter(c => !c.isGroup && c.id !== charId) // 排除自己和群聊
+      .map(c => ({
+        id: c.id,
+        name: c.userName || c.name,
+        avatar: c.avatar || '/avatars/default.png',
+        remark: c.name,
+        isTop: false
+      }))
+
+    const contacts = [userContact, ...otherContacts]
 
     // B. 私聊记录镜像
     const userConversation = {
@@ -727,7 +753,11 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
           let from = 'other'
           if (m.role === 'user') from = 'user'
           else if (m.senderId === charId) from = 'char'
-          else from = m.senderId
+          else {
+            // 尝试识别群里的其他联系人
+            const isKnownContact = contacts.find(c => c.id === m.senderId)
+            from = isKnownContact ? m.senderId : 'other'
+          }
 
           return {
             id: m.id,
@@ -743,6 +773,16 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
         })
       }
     })
+
+    // B2. 私聊镜像（针对其他联系人也生成空的会话列表，显得真实）
+    const otherConvs = otherContacts.slice(0, 3).map(c => ({
+      id: c.id,
+      name: c.remark || c.name,
+      lastMsg: '最近没有消息',
+      time: '1天前',
+      unread: 0,
+      history: []
+    }))
 
     // D. 注入虚拟数据 (让手机显得更真实)
     const virtualContacts = [
@@ -768,8 +808,9 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
 
     return {
       currentUserId: 'me',
+      ownerName: char.userName || char.name, // 手机主人的真名
       contacts: [...contacts, ...virtualContacts],
-      conversations: [userConversation, ...groupConvs]
+      conversations: [userConversation, ...groupConvs, ...otherConvs]
     }
   }
 
