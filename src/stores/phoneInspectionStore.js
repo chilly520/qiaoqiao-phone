@@ -573,14 +573,16 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
     const userPrompt = `【角色档案】
 - 名称：${char.name}
-- 性格设定：${char.prompt || '温柔'}
+- 真名：${char.userName || char.name}
+- 身份设定：${char.bio || char.description || '未知'}
+- 性格：${char.prompt || '温柔'}
 - 标签：${char.tags ? char.tags.join('、') : '无'}
 - 与用户关系：用户叫"${userName}"
 
 【近期聊天记录（最近20条）】
 ${recentMessages || '暂无聊天记录'}
 
-【该角色手机中已存在的数据（近5次生成/积累的原始数据）】
+【该角色手机中已存在的数据（作为时间线续写参考）】
 ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapshot, null, 2) : '暂无历史数据'}
 
 请根据以上角色档案、聊天记录和已有数据，为该角色生成新鲜且连贯的手机应用数据：
@@ -766,8 +768,8 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
             senderName: m.senderName || chatStore.chats[m.senderId]?.name || '陌生人',
             senderAvatar: m.senderAvatar || chatStore.chats[m.senderId]?.avatar || '/avatars/default.png',
             content: m.content,
-            time: formatDate(m.timestamp),
-            timestamp: m.timestamp,
+            time: formatDate(m.timestamp || Date.now()),
+            timestamp: m.timestamp || Date.now(),
             type: m.type || 'text'
           }
         })
@@ -785,25 +787,47 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
     }))
 
     // D. 注入虚拟数据 (让手机显得更真实)
-    const virtualContacts = [
+    const bioText = (char.bio || char.description || char.prompt || char.tags?.join(' ') || '').toLowerCase()
+    const isOrphan = bioText.includes('孤儿') || bioText.includes('orphan') || bioText.includes('没有亲人') || bioText.includes('个人生活') || bioText.includes('独居')
+    
+    const virtualContacts = isOrphan ? [
+      { id: 'friend_1', name: '损友', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=friend1', remark: '坑货', isTop: false },
+      { id: 'work_1', name: '房东', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=landlord', remark: '房东(催租中)', isTop: false }
+    ] : [
       { id: 'mom', name: '妈妈', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mom', remark: '老妈', isTop: false },
       { id: 'bestie', name: '闺蜜喵', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bestie', remark: '臭宝', isTop: false }
     ]
 
     // 如果没有真实群聊，注入一个虚拟的
+    const now = Date.now()
     if (groupConvs.length === 0) {
-      groupConvs.push({
-        id: 'v_group_1',
-        isGroup: true,
-        name: '相亲相爱一家人',
-        ownerNickname: char.name,
-        lastMsg: '记得回来吃晚饭喵！',
-        time: '昨天',
-        history: [
-          { id: 'v_m1', from: 'mom', senderName: '妈', senderAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mom', content: '明晚回来吃饭不？', time: '昨天', type: 'text' },
-          { id: 'v_m2', from: 'char', content: '周末再说喵~', time: '昨天', type: 'text' }
-        ]
-      })
+      if (isOrphan) {
+        groupConvs.push({
+          id: 'v_group_1',
+          isGroup: true,
+          name: '深夜emo互助群',
+          ownerNickname: char.name,
+          lastMsg: '谁还没睡？出来聊两句。',
+          time: '1小时前',
+          history: [
+            { id: 'v_m1', from: 'other', senderId: 'friend_1', senderName: '损友', senderAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=friend1', content: '今天打游戏又不带我？', timestamp: now - 3600000, type: 'text' },
+            { id: 'v_m2', from: 'char', content: '下次一定喵。', timestamp: now - 1800000, type: 'text' }
+          ]
+        })
+      } else {
+        groupConvs.push({
+          id: 'v_group_1',
+          isGroup: true,
+          name: '相亲相爱一家人',
+          ownerNickname: char.name,
+          lastMsg: '记得回来吃晚饭喵！',
+          time: '昨天',
+          history: [
+            { id: 'v_m1', from: 'mom', senderName: '妈', senderAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mom', content: '明晚回来吃饭不？', timestamp: now - 86400000, type: 'text' },
+            { id: 'v_m2', from: 'char', content: '周末再说喵~', timestamp: now - 43200000, type: 'text' }
+          ]
+        })
+      }
     }
 
     return {
