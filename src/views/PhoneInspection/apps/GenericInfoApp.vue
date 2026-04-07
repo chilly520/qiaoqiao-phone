@@ -513,6 +513,16 @@ const getDetailTitle = computed(() => {
 const listData = computed(() => {
     // If we have real data from the store, use it!
     const realData = props.appData?.items || props.appData?.history || props.appData?.locations || props.appData?.posts || props.appData?.records || props.appData?.events || props.appData?.conversations
+    
+    if (Array.isArray(realData)) {
+        // 全局排序逻辑：最新的在前面
+        return [...realData].sort((a, b) => {
+            const timeA = a.timestamp || (a.time ? new Date(a.time).getTime() : 0)
+            const timeB = b.timestamp || (b.time ? new Date(b.time).getTime() : 0)
+            return timeB - timeA
+        })
+    }
+    
     return realData || []
 })
 

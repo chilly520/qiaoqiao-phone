@@ -120,6 +120,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useBackpackStore } from '@/stores/backpackStore'
+import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
 
 const props = defineProps({
     backpackData: Object
@@ -130,9 +131,15 @@ const emit = defineEmits(['back'])
 const activeCategory = ref('全部')
 const selectedItem = ref(null)
 const userBackpack = useBackpackStore()
+const phoneInspection = usePhoneInspectionStore()
 
 const items = computed(() => {
-    return props.backpackData?.items || []
+    const rawItems = props.backpackData?.items || []
+    return [...rawItems].sort((a, b) => {
+        const tA = a.timestamp || (a.time ? new Date(a.time).getTime() : 0)
+        const tB = b.timestamp || (b.time ? new Date(b.time).getTime() : 0)
+        return tB - tA
+    })
 })
 
 const filteredItems = computed(() => {
@@ -143,6 +150,7 @@ const filteredItems = computed(() => {
 function claimItem() {
     if (!selectedItem.value) return
 
+    // 1. 添加到用户主背包
     userBackpack.addItem({
         title: selectedItem.value.name,
         description: selectedItem.value.description,
@@ -151,7 +159,10 @@ function claimItem() {
         source: '角色手机'
     })
 
-    alert(`✨ 成功！"${selectedItem.value.name}" 已存入你的主界面背包喵~`)
+    // 2. 从角色手机背包中移除
+    phoneInspection.removeBackpackItem(phoneInspection.currentCharId, selectedItem.value.id)
+
+    alert(`✨ 成功！"${selectedItem.value.name}" 已从手机存入你的主背包喵~`)
     selectedItem.value = null
 }
 </script>

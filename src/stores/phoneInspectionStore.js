@@ -422,7 +422,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     // 1. 微信 (已有的镜像逻辑)
     const wechat = mirrorWeChatData(charId)
 
-    // 2. 背包与礼物同步 (镜像用户发送给角色的已领取礼物)
+    // 2. 背包与礼物同步 (按时间倒序)
     const backpackItems = []
     msgs.filter(m => m.type === 'gift' && m.status === 'claimed').forEach(m => {
       backpackItems.push({
@@ -433,9 +433,15 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         source: '用户赠送',
         description: m.giftNote || '笨蛋送我的礼物喵，会好好珍藏的。',
         icon: m.giftImage || 'https://cdn-icons-png.flaticon.com/128/3081/3081986.png',
+        timestamp: m.timestamp || Date.now(),
         time: formatDate(m.timestamp)
       })
     })
+
+    // 如果该角色手机里已经手动移除了某些背包项，进行过滤
+    const removedIds = char.phoneData?.apps?.backpack?._removedIds || []
+    const finalBackpack = backpackItems.filter(item => !removedIds.includes(item.id))
+      .sort((a, b) => b.timestamp - a.timestamp)
 
     // 3. 通话记录 (从 chatStore 中过滤 call 类型的消息)
     const callHistory = msgs.filter(m => m.type === 'voice' || m.type === 'call').map(m => {
@@ -494,11 +500,11 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     // 合并应用数据
     return {
       wechat,
-      backpack: { items: backpackItems.length > 0 ? backpackItems : (currentApps.backpack?.items || []) },
-      calls: { history: callHistory.length > 0 ? callHistory : (currentApps.calls?.history || []) },
+      backpack: { items: finalBackpack, _removedIds: removedIds },
+      calls: { history: callHistory.sort((a,b) => b.timestamp - a.timestamp) },
       wallet: {
         ...currentApps.wallet,
-        transactions: walletTransactions.length > 0 ? walletTransactions : (currentApps.wallet?.transactions || []),
+        transactions: walletTransactions.sort((a,b) => b.timestamp - a.timestamp),
         familyCards: mirrorFamilyCards(charId),
         balance: currentApps.wallet?.balance || 1314.52
       },
@@ -585,19 +591,27 @@ ${recentMessages || '暂无聊天记录'}
 【该角色手机中已存在的数据（作为时间线续写参考）】
 ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapshot, null, 2) : '暂无历史数据'}
 
-请根据以上角色档案、聊天记录和已有数据，为该角色生成新鲜且连贯的手机应用数据：
+请根据以上角色档案、聊天记录和已有数据，为该角色生成新鲜且连贯的手机应用数据。
+【重要要求】
+1. 所有带时间的数据（消息、动态、足迹、订单）必须按时间倒序排列（最新的在最前面）。
+2. 所有带图片的数据（购物、外卖、足迹、背包、相册）必须提供对应的 URL。
+   图片 URL 建议使用高质量静态资源或：https://images.unsplash.com/photo-<ID>?auto=format&fit=crop&q=80&w=800
+   或者：https://source.unsplash.com/featured/?<英文特征关键词>
+3. 数据必须极度符合角色当前的精神状态和人设背景（如孤儿设定下绝不出现亲属联系）。
+
+JSON 结构样例：
 {
-  "photos": [{"id": "p1", "url": "Unsplash图片URL", "note": "照片备注", "location": "地点", "date": "日期"}],
-  "messages": [{"sender": "发送者", "content": "内容", "time": "时间", "role": "sent 或 received (sent由机主本人视角发出)"}],
-  "footprints": [{"title": "地点", "location": "地址", "content": "心情", "image": "图片URL", "time": "日期"}],
-  "notes": [{"title": "标题", "content": "内容", "time": "时间"}],
-  "reminders": [{"title": "标题", "detail": "详情", "time": "时间"}],
-  "browser": [{"title": "搜索内容", "url": "", "time": "时间"}],
-  "music": [{"title": "歌名", "detail": "歌手", "time": "时长"}],
-  "forum": [{"title": "标题", "content": "内容", "category": "分类", "likes": 0, "comments": 0}],
-  "recorder": [{"title": "名称", "duration": "时长", "time": "时间"}],
-  "calendar": [{"title": "标题", "detail": "详情", "time": "日期"}],
-  "files": [{"fileName": "文件名", "size": "大小", "time": "时间"}],
+  "photos": [{"id": "p1", "url": "图片URL", "note": "照片备注", "location": "地点", "date": "日期", "timestamp": 12345678}],
+  "messages": [{"sender": "发送者", "content": "内容", "time": "时间", "role": "sent 或 received (sent由机主本人发出)", "timestamp": 12345678}],
+  "footprints": [{"title": "地点", "location": "地址", "content": "心情", "image": "高质量图片URL", "time": "日期", "timestamp": 12345678}],
+  "notes": [{"title": "标题", "content": "内容", "time": "时间", "timestamp": 12345678}],
+  "reminders": [{"title": "标题", "detail": "详情", "time": "时间", "timestamp": 12345678}],
+  "browser": [{"title": "搜索内容", "url": "", "time": "时间", "timestamp": 12345678}],
+  "music": [{"title": "歌名", "detail": "歌手", "time": "时长", "timestamp": 12345678}],
+  "forum": [{"title": "标题", "content": "内容", "category": "分类", "likes": 0, "comments": 0, "timestamp": 12345678}],
+  "recorder": [{"title": "名称", "duration": "时长", "time": "时间", "timestamp": 12345678}],
+  "calendar": [{"title": "标题", "detail": "详情", "time": "日期", "timestamp": 12345678}],
+  "files": [{"fileName": "文件名", "size": "大小", "time": "时间", "timestamp": 12345678}],
   "history": [{"title": "应用名", "detail": "使用时长", "time": "今天/昨天"}],
   "shopping": [{"item": "商品", "status": "状态", "price": 0, "time": "时间", "icon": ""}],
   "meituan": [{"item": "外卖", "status": "已送达", "price": 0, "time": "时间"}],
@@ -1678,6 +1692,26 @@ ${selectedPrompts}
        muttering: '碎碎念'
      }
      return names[appId] || appId
+  }
+
+  function removeBackpackItem(charId, itemId) {
+    const chatStore = useChatStore()
+    const char = chatStore.chats[charId]
+    if (!char || !char.phoneData) return
+
+    if (!char.phoneData.apps.backpack) char.phoneData.apps.backpack = { items: [], _removedIds: [] }
+    if (!char.phoneData.apps.backpack._removedIds) char.phoneData.apps.backpack._removedIds = []
+
+    char.phoneData.apps.backpack._removedIds.push(itemId)
+    
+    // 如果 items 中直接有此项，也移除它（针对 AI 生成的项）
+    if (char.phoneData.apps.backpack.items) {
+      char.phoneData.apps.backpack.items = char.phoneData.apps.backpack.items.filter(i => i.id !== itemId)
+    }
+    
+    chatStore.saveChats()
+    // 重新触发一次同步
+    syncAllAppData(charId)
   }
 
   return {
