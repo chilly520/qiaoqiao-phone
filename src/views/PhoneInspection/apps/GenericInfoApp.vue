@@ -52,41 +52,58 @@
                 <div
                     class="music-player-top bg-white rounded-3xl p-6 flex flex-col items-center shadow-lg border border-pink-50 mb-6">
                     <div
-                        class="record-disk w-40 h-40 rounded-full border-[12px] border-black shadow-2xl relative mb-6 animate-spin-slow">
+                        class="record-disk w-40 h-40 rounded-full border-[12px] border-black shadow-2xl relative mb-6"
+                        :class="{ 'animate-spin-slow': isPlaying }">
                         <div class="absolute inset-0 rounded-full border-2 border-gray-800"></div>
-                        <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=200"
-                            class="w-full h-full object-cover rounded-full opacity-80">
+                        <img :src="currentSongCover" class="w-full h-full object-cover rounded-full opacity-80">
                         <div
                             class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-[#F7F7F7] rounded-full border-4 border-black">
                         </div>
                     </div>
-                    <h3 class="text-lg font-black text-[#8F5E6E] mb-1">正在播放</h3>
-                    <p class="text-xs text-pink-300 font-bold mb-4">恋爱循环 - 花泽香菜</p>
-                    <div class="w-full h-1 bg-pink-100 rounded-full mb-6 relative">
-                        <div class="absolute top-0 left-0 h-full w-1/3 bg-pink-400 rounded-full"></div>
+                    <h3 class="text-lg font-black text-[#8F5E6E] mb-1">{{ isPlaying ? '正在播放' : '已暂停' }}</h3>
+                    <p class="text-xs text-pink-300 font-bold mb-4">{{ currentSongTitle }} - {{ currentSongArtist }}</p>
+                    
+                    <!-- Progress Bar -->
+                    <div class="w-full h-1 bg-pink-100 rounded-full mb-6 relative cursor-pointer" @click="seekMusic">
+                        <div class="absolute top-0 left-0 h-full bg-pink-400 rounded-full transition-all" :style="{ width: progress + '%' }"></div>
                         <div
-                            class="absolute top-1/2 left-1/3 -translate-y-1/2 w-3 h-3 bg-white border-2 border-pink-400 rounded-full shadow">
+                            class="absolute top-1/2 left-0 -translate-y-1/2 w-3 h-3 bg-white border-2 border-pink-400 rounded-full shadow transition-all"
+                            :style="{ left: progress + '%' }">
                         </div>
                     </div>
+                    
+                    <!-- Controls -->
                     <div class="flex items-center gap-8 text-2xl text-pink-400">
-                        <i class="fa-solid fa-backward-step"></i>
-                        <i class="fa-solid fa-pause text-4xl"></i>
-                        <i class="fa-solid fa-forward-step"></i>
+                        <i class="fa-solid fa-backward-step cursor-pointer active:scale-90 transition-transform" @click="prevSong"></i>
+                        <i 
+                            :class="isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play'"
+                            class="text-4xl cursor-pointer active:scale-90 transition-transform"
+                            @click="togglePlay"
+                        ></i>
+                        <i class="fa-solid fa-forward-step cursor-pointer active:scale-90 transition-transform" @click="nextSong"></i>
                     </div>
+                    
+                    <!-- Hidden Audio Element -->
+                    <audio ref="audioPlayer" :src="currentAudioUrl" @timeupdate="updateProgress" @ended="nextSong" @loadedmetadata="onAudioLoaded"></audio>
                 </div>
+                
+                <!-- Playlist -->
                 <div class="section-title text-[12px] font-black text-gray-400 px-1 mb-3">最近收听</div>
                 <div v-for="(item, idx) in listData" :key="idx"
-                    class="bg-white/60 p-4 rounded-2xl flex items-center justify-between mb-2">
+                    class="bg-white/60 p-4 rounded-2xl flex items-center justify-between mb-2 cursor-pointer active:scale-95 transition-transform"
+                    :class="{ 'ring-2 ring-pink-300': currentSongIndex === idx }"
+                    @click="playSong(idx)">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center text-pink-400">
-                            <i class="fa-solid fa-music"></i>
+                            <i v-if="currentSongIndex === idx && isPlaying" class="fa-solid fa-volume-high animate-pulse"></i>
+                            <i v-else class="fa-solid fa-music"></i>
                         </div>
                         <div class="flex flex-col">
                             <span class="text-sm font-bold text-[#8F5E6E]">{{ item.title }}</span>
                             <span class="text-xs text-gray-400">{{ item.detail }}</span>
                         </div>
                     </div>
-                    <i class="fa-solid fa-ellipsis-v text-gray-300"></i>
+                    <span class="text-xs text-gray-300">{{ item.time || '' }}</span>
                 </div>
             </template>
 
@@ -225,13 +242,23 @@
                                     class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">iMessage</span>
                             </div>
                         </div>
-                        <div class="flex justify-start mb-4">
+                        <!-- Message Bubbles -->
+                        <div v-if="selectedItem.sender === currentCharName || selectedItem.isMe || selectedItem.role === 'sent'" class="flex justify-end mb-4">
+                            <div
+                                class="bg-gradient-to-br from-green-400 to-green-500 rounded-2xl px-5 py-3 shadow-sm border border-green-300 max-w-[85%] relative animate-pop-in text-white">
+                                <p class="text-[16px] leading-relaxed font-bold">{{ selectedItem.content }}</p>
+                                <span class="text-[10px] text-white/60 font-black absolute bottom-[-20px] right-1">
+                                    {{ selectedItem.time }}
+                                </span>
+                            </div>
+                        </div>
+                        <div v-else class="flex justify-start mb-4">
                             <div
                                 class="bg-white rounded-2xl px-5 py-3 shadow-sm border border-gray-100 max-w-[85%] relative animate-pop-in">
-                                <p class="text-[16px] text-gray-800 leading-relaxed font-medium">{{ selectedItem.content
-                                    }}</p>
-                                <span class="text-[10px] text-gray-300 font-bold absolute bottom-[-20px] left-1">{{
-                                    selectedItem.time }}</span>
+                                <p class="text-[16px] text-gray-800 leading-relaxed font-medium">{{ selectedItem.content }}</p>
+                                <span class="text-[10px] text-gray-300 font-bold absolute bottom-[-20px] left-1">
+                                    {{ selectedItem.time }}
+                                </span>
                             </div>
                         </div>
                         <div class="mt-16 flex flex-col items-center opacity-30">
@@ -453,12 +480,20 @@ import { computed, ref } from 'vue'
 const props = defineProps({
     appId: String,
     appData: Object,
-    appTitle: String
+    appTitle: String,
+    currentCharName: String // The name of the mobile owner (character)
 })
 
 const emit = defineEmits(['back'])
 
 const selectedItem = ref(null)
+const audioPlayer = ref(null)
+
+// Music Player State
+const currentSongIndex = ref(0)
+const isPlaying = ref(false)
+const progress = ref(0)
+const duration = ref(0)
 
 const getDetailTitle = computed(() => {
     if (!selectedItem.value) return ''
@@ -481,6 +516,17 @@ const listData = computed(() => {
     return realData || []
 })
 
+// Music Player Computed
+const currentSong = computed(() => listData.value[currentSongIndex.value] || {})
+const currentSongTitle = computed(() => currentSong.value.title || '未知歌曲')
+const currentSongArtist = computed(() => currentSong.value.detail || '未知歌手')
+const currentAudioUrl = computed(() => {
+    // 使用免费音乐API或生成音频URL
+    const songName = encodeURIComponent(currentSongTitle.value)
+    return `https://music.163.com/song/media/outer/url?id=${currentSongIndex.value + 190000}.mp3`
+})
+const currentSongCover = computed(() => `https://picsum.photos/seed/${currentSongTitle.value}/200`)
+
 function getItemIcon(item) {
     if (props.appId === 'notes') return 'fa-regular fa-note-sticky'
     if (props.appId === 'files') return 'fa-regular fa-file'
@@ -495,6 +541,61 @@ function getItemIconForOther(item) {
     if (props.appId === 'messages') return 'fa-regular fa-comment'
     if (props.appId === 'calendar') return 'fa-regular fa-calendar-star'
     return 'fa-solid fa-smile'
+}
+
+// Music Player Functions
+function playSong(index) {
+    currentSongIndex.value = index
+    isPlaying.value = true
+    setTimeout(() => {
+        if (audioPlayer.value) {
+            audioPlayer.value.play().catch(() => {
+                console.log('Audio playback failed, using demo mode')
+                isPlaying.value = false
+            })
+        }
+    }, 100)
+}
+
+function togglePlay() {
+    if (!audioPlayer.value) return
+    if (isPlaying.value) {
+        audioPlayer.value.pause()
+        isPlaying.value = false
+    } else {
+        audioPlayer.value.play().catch(() => {
+            console.log('Playback failed')
+        })
+        isPlaying.value = true
+    }
+}
+
+function nextSong() {
+    const nextIdx = (currentSongIndex.value + 1) % listData.value.length
+    playSong(nextIdx)
+}
+
+function prevSong() {
+    const prevIdx = (currentSongIndex.value - 1 + listData.value.length) % listData.value.length
+    playSong(prevIdx)
+}
+
+function seekMusic(event) {
+    if (!audioPlayer.value || !duration.value) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const percent = (event.clientX - rect.left) / rect.width
+    audioPlayer.value.currentTime = percent * duration.value
+}
+
+function updateProgress() {
+    if (!audioPlayer.value || !duration.value) return
+    progress.value = (audioPlayer.value.currentTime / duration.value) * 100
+}
+
+function onAudioLoaded() {
+    if (audioPlayer.value) {
+        duration.value = audioPlayer.value.duration || 0
+    }
 }
 </script>
 

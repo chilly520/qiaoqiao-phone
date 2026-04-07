@@ -588,7 +588,7 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
 请根据以上角色档案、聊天记录和已有数据，为该角色生成新鲜且连贯的手机应用数据：
 {
   "photos": [{"id": "p1", "url": "Unsplash图片URL", "note": "照片备注", "location": "地点", "date": "日期"}],
-  "messages": [{"sender": "发送者", "content": "内容", "time": "时间"}],
+  "messages": [{"sender": "发送者", "content": "内容", "time": "时间", "role": "sent 或 received (sent由机主本人视角发出)"}],
   "footprints": [{"title": "地点", "location": "地址", "content": "心情", "image": "图片URL", "time": "日期"}],
   "notes": [{"title": "标题", "content": "内容", "time": "时间"}],
   "reminders": [{"title": "标题", "detail": "详情", "time": "时间"}],

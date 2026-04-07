@@ -23,10 +23,11 @@
 
       <SettingsApp v-else-if="appId === 'settings'" :settings-data="phoneData?.apps?.settings" @back="handleBack" />
 
-      <!-- Generic Info Driven Apps (Messages, Footprints, Notes, Browser, etc.) -->
       <GenericInfoApp
         v-else-if="['messages', 'footprints', 'notes', 'reminders', 'browser', 'history', 'music', 'calendar', 'forum', 'recorder', 'files'].includes(appId)"
-        :app-id="appId" :app-data="phoneData?.apps?.[appId]" :app-title="appTitle" @back="handleBack" />
+        :app-id="appId" :app-data="phoneData?.apps?.[appId]" :app-title="appTitle" 
+        :current-char-name="currentChar?.userName || currentChar?.name"
+        @back="handleBack" />
 
       <EmailApp v-else-if="appId === 'email'" :email-data="phoneData?.apps?.email" @back="handleBack" />
 
