@@ -19,6 +19,18 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   const mutteringQueue = ref([])         // 碎碎念队列
   const isDiscovered = ref(false)        // 是否被发现
 
+  // Custom Modal State
+  const modalState = ref({
+    show: false,
+    type: 'alert',
+    title: '系统提示',
+    message: '',
+    okText: '确定',
+    cancelText: '取消',
+    onConfirm: null,
+    onCancel: null
+  })
+
   // 壁纸与相框管理
   const wallpaperLibrary = ref([])
   const photoFrames = ref([
@@ -168,6 +180,11 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         // 锁定 5 分钟
         char.phoneData.password.lockedUntil = Date.now() + 5 * 60 * 1000
       }
+      triggerCustomModal({
+        type: 'error',
+        title: '密码错误',
+        message: '手机正在锁定中，请稍后再试或寻找正确密码喵~'
+      })
       return false
     }
   }
@@ -394,6 +411,10 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
     // D. 基础个性化设置同步
     if (!char.phoneData.password.code) char.phoneData.password.code = '1234'
+    if (!char.phoneData.password.enabled) char.phoneData.password.enabled = true
+    
+    // 初始化同步记录
+    if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
     if (!char.phoneData.desktopFrames) {
       char.phoneData.desktopFrames = [
         { id: 'f1', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=300', note: '心动瞬间' },
@@ -677,6 +698,17 @@ JSON 结构样例：
         }
       }
       if (seedData.moments) apps.moments = { posts: seedData.moments }
+
+      // C2. 记录同步历史 (仅保留最近 3 次)
+      if (char.phoneData) {
+        if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
+        char.phoneData.syncHistory.unshift({
+            timestamp: Date.now(),
+            appsGenerated: Object.keys(seedData),
+            summary: seedData.summary || 'AI 完成了手机数据生成'
+        })
+        char.phoneData.syncHistory = char.phoneData.syncHistory.slice(0, 3)
+      }
 
       console.log('[PhoneInspection] AI Full Generation Completed for:', char.name)
     } catch (e) {
@@ -1507,6 +1539,14 @@ ${selectedPrompts}
     } catch (e) {
       console.error('[PhoneInspection] Batch Generation Error:', e)
       return false
+    }
+  }
+
+  function triggerCustomModal(options) {
+    modalState.value = {
+      ...modalState.value,
+      ...options,
+      show: true
     }
   }
 

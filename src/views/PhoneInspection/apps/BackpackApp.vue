@@ -162,7 +162,11 @@ function claimItem() {
     // 2. 从角色手机背包中移除
     phoneInspection.removeBackpackItem(phoneInspection.currentCharId, selectedItem.value.id)
 
-    alert(`✨ 成功！"${selectedItem.value.name}" 已从手机存入你的主背包喵~`)
+    phoneInspection.triggerCustomModal({
+        type: 'success',
+        title: '领取成功 ✨',
+        message: `"${selectedItem.value.name}" 已存入你的主界面背包喵~`
+    })
     selectedItem.value = null
 }
 </script>

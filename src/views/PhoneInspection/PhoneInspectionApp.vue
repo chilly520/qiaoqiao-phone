@@ -59,6 +59,10 @@
 
     <!-- 被发现遮罩 -->
     <DiscoveredOverlay v-if="isDiscovered" :char-name="currentChar?.name" :char-avatar="currentChar?.avatar" />
+
+    <!-- 全局自定义弹窗 -->
+    <MessageModal v-model="modalState.show" v-bind="modalState" @confirm="modalState.onConfirm?.()"
+      @cancel="modalState.onCancel?.()" />
   </div>
 </template>
 
@@ -70,6 +74,7 @@ import StatusBar from './components/StatusBar.vue'
 import PhoneDesktop from './components/PhoneDesktop.vue'
 import PhoneAppView from './PhoneAppView.vue'
 import PasswordModal from './components/PasswordModal.vue'
+import MessageModal from './components/MessageModal.vue'
 import MutteringBubble from './components/MutteringBubble.vue'
 import DiscoveredOverlay from './components/DiscoveredOverlay.vue'
 
@@ -86,6 +91,7 @@ const mutteringQueue = computed(() => phoneInspection.mutteringQueue)
 const isDiscovered = computed(() => phoneInspection.isDiscovered)
 const currentWallpaper = computed(() => phoneInspection.currentWallpaper)
 const hasPermission = computed(() => phoneInspection.hasPermission)
+const modalState = computed(() => phoneInspection.modalState)
 
 const charName = computed(() => {
   const char = currentChar.value
@@ -94,11 +100,7 @@ const charName = computed(() => {
 
 // Methods
 function handleVerifyPassword(code) {
-  const success = phoneInspection.verifyPassword(code)
-  if (!success) {
-    // 显示错误提示
-    alert('密码错误！')
-  }
+  phoneInspection.verifyPassword(code)
 }
 
 function handleOpenApp(appId) {
