@@ -11,6 +11,7 @@ import { useSchedulerStore } from './schedulerStore'
 import { useCallStore } from './callStore'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
+import { usePhoneInspectionStore } from './phoneInspectionStore'
 import localforage from 'localforage'
 
 // Configure localforage
@@ -370,7 +371,9 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processTaskCommands(processedContent, chatId);
                 processedContent = processBioUpdate(processedContent, chatId);
                 
-                // === 0. Pre-processing: Detect raw JSON LS_JSON format (AI sometimes outputs JSON without tag)
+                // 处理手机指令 (允许/锁屏/JSON)
+                const phoneStore = usePhoneInspectionStore()
+                phoneStore.processHiddenCommand(msg, chatId)
                 // Check if content is a pure JSON object with LS_JSON-like structure
                 const trimmedContent = processedContent.trim();
                 if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
@@ -639,9 +642,12 @@ export const useChatStore = defineStore('chat', () => {
             }
             
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
-            // Use contentForDetection to support红包 inside [ONLINE]/[OFFLINE] tags
-            const tagMatch = contentForDetection.match(/^[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]$/i)
-
+            // For AI messages, use a more relaxed search to find embedded tags
+            const tagMatch = contentForDetection.match(/[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
+            
+            // Only consider it a "tag only" message if it starts and ends with the tag
+            const isTagOnly = /^[\[【].*[\]】]$/.test(contentForDetection.trim())
+            
             if (tagMatch) {
                 const tagType = tagMatch[1]
                 const val1 = (tagMatch[2] || '').trim()
@@ -653,14 +659,27 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.amount = parseFloat(val1) || 0
                     newMsg.note = val2 || '恭喜发财，大吉大利'
                     newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                    // Rewrite content with ID for AI context
-                    newMsg.content = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                    // Only rewrite entire content if it was a standalone tag
+                    if (isTagOnly) {
+                        newMsg.content = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                    } else {
+                        // Injection logic: replace the original tag with the one containing paymentId
+                        const tagToReplace = tagMatch[0]
+                        const newTag = `[红包:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                        newMsg.content = newMsg.content.replace(tagToReplace, newTag)
+                    }
                 } else if (tagType === '转账') {
                     newMsg.type = 'transfer'
                     newMsg.amount = parseFloat(val1) || 0
                     newMsg.note = val2 || '转账给您'
                     newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                    newMsg.content = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                    if (isTagOnly) {
+                        newMsg.content = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                    } else {
+                        const tagToReplace = tagMatch[0]
+                        const newTag = `[转账:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                        newMsg.content = newMsg.content.replace(tagToReplace, newTag)
+                    }
                 } else if (tagType === '图片' || tagType === 'DRAW') {
                     newMsg.type = 'image'
                 } else if (tagType === '语音') {

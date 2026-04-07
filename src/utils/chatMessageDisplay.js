@@ -510,7 +510,7 @@ const INNER_VOICE_FIELDS = [
   'status', '\u5fc3\u58f0', '\u7740\u88c5', 'thought', 'mood', 'emotion', 'feeling', 'spirit',
   '\u60f3\u6cd5', '\u5fc3\u60c5', '\u60c5\u7eea', '\u611f\u53d7', '\u601d\u8003', '\u5185\u5fc3', 'inner', '\u5fc3\u7406',
   'state', 'mind', 'mental', 'activity', 'behavior', '\u884c\u4e3a', 'heartRate', 'location', 'distance', 'stats',
-  'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'emotion', 'label', 'value'
+  'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'emotion', 'label', 'value', 'heart'
 ]
 
 export function extractInnerVoiceData(content, msg) {
@@ -673,6 +673,7 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   clean = clean.replace(protocolRe, '')
   
   clean = clean.replace(/\[TIMESTAMP:[^\]]+\]/gi, '')
+  clean = clean.replace(/\[(?:红包|转账|发红包)[:：][^\]]+\]/gi, '')
   clean = clean.replace(/\[领取(?:红包|转账|亲属卡):[^\]]+\]/gi, '')
   clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '')
   clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '')

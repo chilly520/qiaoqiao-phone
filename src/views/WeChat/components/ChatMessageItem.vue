@@ -1588,13 +1588,49 @@ const isPayCard = computed(() => {
     const content = ensureString(props.msg.content)
     // Check for redpacket/transfer type or tags in content
     // Support both [红包] and [红包：...] formats, including those inside [ONLINE]/[OFFLINE] tags
-    const hasRedPacket = /\[红包[:：\s\]]/.test(content) || content.includes('[发红包]')
-    const hasTransfer = /\[转账[:：\s\]]/.test(content)
-    return props.msg.type === 'redpacket' ||
-        props.msg.type === 'transfer' ||
-        hasRedPacket ||
-        hasTransfer
+    const hasRedPacket = /\[红包[:：\s\]]/.test(content) || content.includes('[发红包]') || props.msg.type === 'redpacket'
+    const hasTransfer = /\[转账[:：\s\]]/.test(content) || props.msg.type === 'transfer'
+    return hasRedPacket || hasTransfer
 })
+
+function getPayData(msg) {
+    if (!msg) return { type: 'unknown' }
+    const content = ensureString(msg.content)
+    
+    // Transfer check
+    const transferMatch = content.match(/\[转账[:：\s]?([^:：\]]*)(?:[:：\s]([^:：\]]*))?(?:[:：\s]([^\]]*))?\]/i)
+    if (msg.type === 'transfer' || transferMatch) {
+        let amount = msg.amount
+        let note = msg.note
+        if (transferMatch) {
+            if (transferMatch[1] && !isNaN(parseFloat(transferMatch[1]))) {
+                amount = transferMatch[1]
+                note = transferMatch[2]
+            } else if (transferMatch[1]) {
+                note = transferMatch[1]
+            }
+        }
+        return { type: 'transfer', amount: amount || '0.00', note: note || '转账给您' }
+    }
+
+    // Red Packet check
+    const redpacketMatch = content.match(/\[红包[:：\s]?([^:：\]]*)(?:[:：\s]([^:：\]]*))?(?:[:：\s]([^\]]*))?\]/i)
+    if (msg.type === 'redpacket' || redpacketMatch || content.includes('[发红包]')) {
+        let amount = msg.amount
+        let note = msg.note
+        if (redpacketMatch) {
+            if (redpacketMatch[1] && !isNaN(parseFloat(redpacketMatch[1]))) {
+                amount = redpacketMatch[1]
+                note = redpacketMatch[2]
+            } else if (redpacketMatch[1]) {
+                note = redpacketMatch[1]
+            }
+        }
+        return { type: 'redpacket', amount: amount || '0.00', note: note || '恭喜发财' }
+    }
+    
+    return { type: 'unknown' }
+}
 
 const cleanedContent = computed(() => getCleanContent(props.msg.content, isHtmlCard.value, props.msg.role))
 
@@ -3168,26 +3204,25 @@ function getDuration(msg) {
 }
 
 function getPayTitle(msg) {
-    const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
-    if (isTransfer) return `¥${msg.amount || '0.00'}`
-
-    // For Red Packet
-    return msg.note || '恭喜发财，大吉大利'
+    const data = getPayData(msg)
+    if (data.type === 'transfer') return `¥${data.amount}`
+    return data.note || '恭喜发财，大吉大利'
 }
 
 function getPayDesc(msg, chatData) {
-    const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
-    if (isTransfer) return msg.note || '转账给您'
+    const data = getPayData(msg)
+    if (data.type === 'transfer') return data.note || '转账给您'
 
-    // Private chat always shows '微信红包', group chat shows '微信手气红包' for lucky type
     if (chatData?.isGroup && msg.packetType === 'lucky') return '微信手气红包'
     return '微信红包'
 }
 
 function getPayStatusText(msg) {
     if (msg.isRejected) return '已拒收'
+    const data = getPayData(msg)
+    
     if (msg.isClaimed || msg.status === 'received') {
-        if (msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')) {
+        if (data.type === 'transfer') {
             return msg.role === 'user' ? '对方已收款' : '已收款'
         }
         return msg.role === 'user' ? '已被领取' : '已领取'
@@ -3195,14 +3230,13 @@ function getPayStatusText(msg) {
 
     if (msg.type === 'redpacket' && msg.remainingCount === 0) return '已领完'
 
-    const content = ensureString(msg.content)
-    if (msg.type === 'transfer' || content.includes('[转账]')) return '待收款'
+    if (data.type === 'transfer') return '待收款'
     return '待领取'
 }
 
 function getPayIcon(msg) {
-    const isTransfer = msg.type === 'transfer' || ensureString(msg.content).includes('[转账]')
-    if (isTransfer) return 'fa-solid fa-arrow-right-arrow-left'
+    const data = getPayData(msg)
+    if (data.type === 'transfer') return 'fa-solid fa-arrow-right-arrow-left'
     return 'fa-solid fa-envelope-open-text'
 }
 

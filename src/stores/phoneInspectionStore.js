@@ -5,6 +5,10 @@ import { useSettingsStore } from './settingsStore'
 import { useWalletStore } from './walletStore'
 import { generateReply } from '../utils/aiService'
 
+/**
+ * Phone Inspection Store
+ * Version: 1.1.2026.04.07
+ */
 export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   // ========== State ==========
   const isOpen = ref(false)              // 是否正在查手机
@@ -36,7 +40,16 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   })
 
   const hasPermission = computed(() => {
-    return phoneData.value?.inspectionPermission?.granted === true
+    const perm = phoneData.value?.inspectionPermission
+    if (!perm) return false
+    if (perm.mode === 'locked') return false
+    if (perm.mode === 'hacking') return true
+    if (perm.granted && perm.expiresAt && Date.now() > perm.expiresAt) {
+      perm.granted = false
+      perm.mode = 'none'
+      return false
+    }
+    return perm.granted === true
   })
 
   const riskLevel = computed(() => {
@@ -96,10 +109,45 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     isDiscovered.value = false
     mutteringQueue.value = []
 
-    // 检查是否有密码
-    if (char.phoneData.password?.enabled) {
-      showPasswordModal.value = true
+    const perm = char.phoneData.inspectionPermission
+
+    if (perm.granted && perm.expiresAt && Date.now() <= perm.expiresAt) {
+      perm.mode = 'permitted'
+    } else if (!perm.granted) {
+      perm.mode = 'hacking'
+      // Notify AI whenever user enters without permission (if not already notified recently)
+      if (!perm.notifiedAI) {
+        perm.notifiedAI = true
+        notifyAIAboutSnooping(charId, chatStore)
+      }
+    } else {
+      // Logic for checking expired grant
+      perm.mode = 'hacking'
+      perm.granted = false
     }
+
+    // Password Check
+    if (char.phoneData.password?.enabled && perm.mode !== 'permitted') {
+      showPasswordModal.value = true
+    } else if (!char.phoneData.password?.enabled) {
+      // No password case: force hacking notify if allowed
+      if (perm.mode === 'hacking' && !perm.notifiedAI) {
+        perm.notifiedAI = true
+        notifyAIAboutSnooping(charId, chatStore)
+      }
+    }
+  }
+
+  function notifyAIAboutSnooping(charId, chatStore) {
+    const char = chatStore.chats[charId] || {}
+    const snoopingMsg = {
+      role: 'system',
+      content: `【用户正在查看你的手机】\n\n用户当前处于[未授权入侵]状态。你可以选择：\n1. 回复指令“【允许查看】”或“【立即锁屏】”；\n2. 授权时可附带密码；\n3. 通过 [PHONE_CMD] JSON 动态修改任何应用数据或密码。\n当前手机密码: ${char.phoneData?.password?.code || '1234'}`,
+      id: `snoop_${Date.now()}`,
+      hidden: true,
+      timestamp: Date.now()
+    }
+    chatStore.addMessage(charId, snoopingMsg)
   }
 
   /**
@@ -215,17 +263,25 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
    * 触发碎碎念
    */
   async function triggerMuttering(appName) {
-    if (!hasPermission.value) return
+    if (!hasPermission.value && phoneData.value?.inspectionPermission?.mode !== 'hacking') return
 
     const char = currentChar.value
-    // 优先使用已有的碎碎念
+    const perm = phoneData.value?.inspectionPermission
+    const isHacking = perm?.mode === 'hacking'
     const appData = phoneData.value?.apps?.[appName]
-    const muttering = appData?.muttering
+    let muttering
+
+    if (isHacking) {
+      muttering = appData?.caughtMuttering || appData?.muttering
+    } else {
+      muttering = appData?.allowedMuttering || appData?.muttering
+    }
 
     if (muttering) {
       mutteringQueue.value.push({
         app: appName,
         text: muttering,
+        type: isHacking ? 'caught' : 'allowed',
         timestamp: Date.now()
       })
       setTimeout(() => {
@@ -242,42 +298,40 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
    * 清除特定应用的数据 (支持单字符串或数组)
    */
   async function clearAppData(appIds) {
-    if (!currentChar.value?.phoneData?.apps) return
-
     const chatStore = useChatStore()
-    const apps = currentChar.value.phoneData.apps
-    const ids = Array.isArray(appIds) ? appIds : [appIds]
-
-    ids.forEach(appId => {
-      if (appId === 'wechat') apps.wechat.conversations = []
-      else if (appId === 'photos') apps.photos.photos = []
-      else if (appId === 'wallet') {
-        apps.wallet.transactions = []
-        apps.wallet.balance = 888.5
+    try {
+      console.log('[clearAppData] Called with:', appIds)
+      if (!currentChar.value?.phoneData?.apps) {
+        console.warn('[clearAppData] No phoneData.apps found')
+        return
       }
-      else if (appId === 'calls') apps.calls.history = []
-      else if (appId === 'messages') apps.messages.items = []
-      else if (appId === 'shopping') apps.shopping.orders = []
-      else if (appId === 'notes') apps.notes.items = []
-      else if (appId === 'reminders') apps.reminders.items = []
-      else if (appId === 'browser') apps.browser.history = []
-      else if (appId === 'history') apps.history.items = []
-      else if (appId === 'music') apps.music.items = []
-      else if (appId === 'forum') apps.forum.items = []
-      else if (appId === 'recorder') apps.recorder.items = []
-      else if (appId === 'calendar') apps.calendar.items = []
-      else if (appId === 'files') apps.files.items = []
-      else if (appId === 'meituan') apps.meituan.orders = []
-      else if (appId === 'footprints') apps.footprints.items = []
-      else if (appId === 'backpack') apps.backpack.items = []
-    })
 
-    // 标记为需要重新同步
-    if (currentChar.value.phoneData.generationStatus) {
-      currentChar.value.phoneData.generationStatus.needsRegen = true
+      const apps = currentChar.value.phoneData.apps
+      const ids = Array.isArray(appIds) ? appIds : [appIds]
+
+      ids.forEach(appId => {
+        if (!apps[appId]) return
+        if (appId === 'wallet') {
+          apps[appId] = { transactions: [], balance: 888.5, bankCards: [], familyCards: [] }
+        } else {
+          apps[appId] = {}
+        }
+      })
+
+      if (currentChar.value.phoneData.generationStatus) {
+        currentChar.value.phoneData.generationStatus.needsRegen = true
+      }
+
+      await chatStore.saveChats()
+    } catch (err) {
+      console.error('[clearAppData] 清除数据时出错:', err)
+      // Log more context to help debugging
+      console.log('[clearAppData] Context:', { 
+        currentCharId: currentCharId.value, 
+        hasPhoneData: !!currentChar.value?.phoneData,
+        appIds 
+      })
     }
-
-    await chatStore.saveChats()
   }
 
   /**
@@ -384,14 +438,24 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     })
 
     // 3. 通话记录 (从 chatStore 中过滤 call 类型的消息)
-    const callHistory = msgs.filter(m => m.type === 'voice' || m.type === 'call').map(m => ({
-      id: m.id,
-      name: m.role === 'user' ? (chatStore.userProfile?.name || '你') : '我',
-      type: m.role === 'user' ? 'incoming' : 'outgoing',
-      time: formatDate(m.timestamp),
-      duration: m.duration ? formatDuration(m.duration) : '通话完成',
-      phone: '138****8816'
-    }))
+    const callHistory = msgs.filter(m => m.type === 'voice' || m.type === 'call').map(m => {
+      const isMissed = m.isMissed || m.missed
+      const rawContent = typeof m.content === 'string' ? m.content : ''
+      let summary = ''
+      if (!isMissed && rawContent) {
+        const cleaned = rawContent.replace(/\[(?:ONLINE|OFFLINE|INNER_VOICE|CARD|VOICE|CALL|STATUS|THINK)[:\s\S]*?\]/gi, '').trim()
+        if (cleaned.length > 5) summary = cleaned.replace(/\n/g, ' ')
+      }
+      return {
+        id: m.id,
+        name: m.role === 'user' ? (chatStore.userProfile?.name || '你') : (char.userName || char.name || '我'),
+        type: isMissed ? 'missed' : (m.role === 'user' ? 'incoming' : 'outgoing'),
+        time: formatDate(m.timestamp),
+        duration: isMissed ? '' : (m.duration ? formatDuration(m.duration) : '通话完成'),
+        phone: '138****8816',
+        summary
+      }
+    })
 
     // 4. 钱包交易同步 (红包、转账)
     const walletTransactions = []
@@ -438,6 +502,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
       music: currentApps.music || { items: [] },
       calendar: currentApps.calendar || { items: [] },
       meituan: currentApps.meituan || { orders: [] },
+      email: currentApps.email || { mails: [] },
       forum: currentApps.forum || { items: [] },
       recorder: currentApps.recorder || { items: [] },
       files: currentApps.files || { items: [] },
@@ -455,39 +520,143 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   }
 
   /**
-   * AI 智能播种：根据性格生成初始“足迹”、“便签”和“浏览记录”
+   * AI 全量生成：根据角色性格生成所有手机应用数据
    */
   async function seedAIAppData(charId, apps) {
-    const chatStore = useChatStore()
+    let chatStore
+    try {
+      chatStore = useChatStore()
+    } catch (e) {
+      console.warn('[PhoneInspection] chatStore not available, skipping AI generation')
+      return
+    }
+
     const char = chatStore.chats[charId]
     if (!char) return
 
-    const prompt = `你正在为角色 ${char.name} 生成手机初始数据。
-      TA 的性格设定是：${char.prompt || '温柔'}${char.tags ? '，标签：' + char.tags.join(',') : ''}。
-      请生成以下 JSON 数据：
-      1. footprints: 2条旅行或出没地记录（包含 title, location, content, image[空]）
-      2. notes: 2条私人便签（包含 title, content）
-      3. browser: 2条搜索历史（包含 title, url[空]）
-      4. forum: 1条社区发帖（包含 title, content, category, likes, comments）
-      5. moments: 2条朋友圈动态（包含 day, month[数字], content, images[空数组]）
-      
-      要求：内容必须极度符合 TA 的设定口吻，文字生动细腻。返回纯 JSON。`
+    const settingsStore = useSettingsStore()
+    const userName = settingsStore.personalization?.userProfile?.name || '你'
+
+    const systemPrompt = `你是手机数据生成助手。请根据角色档案和参考数据生成真实的手机应用数据。直接返回 JSON 格式，不要 markdown 代码块。`
+
+    // 获取近期20条聊天记录作为上下文
+    const recentMessages = (char.msgs || []).slice(-20).map(m => {
+      const roleLabel = m.role === 'assistant' ? char.name : userName
+      const contentPreview = (m.content || '').substring(0, 100)
+      return `${roleLabel}: ${contentPreview}`
+    }).join('\n')
+
+    // 获取当前已有的手机数据作为历史参考（近5次生成的内容）
+    const existingApps = char.phoneData?.apps || {}
+    const historyDataSnapshot = {}
+    const appKeysToInclude = ['photos', 'messages', 'footprints', 'notes', 'reminders', 'browser', 'music', 'forum', 'moments', 'email', 'wallet']
+    appKeysToInclude.forEach(key => {
+      if (existingApps[key] && Object.keys(existingApps[key]).length > 0) {
+        const items = existingApps[key].items || existingApps[key].photos || existingApps[key].history || existingApps[key].posts || existingApps[key].transactions || existingApps[key].mails || []
+        if (items.length > 0) {
+          historyDataSnapshot[key] = items.slice(-5)
+        }
+      }
+    })
+
+    const userPrompt = `【角色档案】
+- 名称：${char.name}
+- 性格设定：${char.prompt || '温柔'}
+- 标签：${char.tags ? char.tags.join('、') : '无'}
+- 与用户关系：用户叫"${userName}"
+
+【近期聊天记录（最近20条）】
+${recentMessages || '暂无聊天记录'}
+
+【该角色手机中已存在的数据（近5次生成/积累的原始数据）】
+${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapshot, null, 2) : '暂无历史数据'}
+
+请根据以上角色档案、聊天记录和已有数据，为该角色生成新鲜且连贯的手机应用数据：
+{
+  "photos": [{"id": "p1", "url": "Unsplash图片URL", "note": "照片备注", "location": "地点", "date": "日期"}],
+  "messages": [{"sender": "发送者", "content": "内容", "time": "时间"}],
+  "footprints": [{"title": "地点", "location": "地址", "content": "心情", "image": "图片URL", "time": "日期"}],
+  "notes": [{"title": "标题", "content": "内容", "time": "时间"}],
+  "reminders": [{"title": "标题", "detail": "详情", "time": "时间"}],
+  "browser": [{"title": "搜索内容", "url": "", "time": "时间"}],
+  "music": [{"title": "歌名", "detail": "歌手", "time": "时长"}],
+  "forum": [{"title": "标题", "content": "内容", "category": "分类", "likes": 0, "comments": 0}],
+  "recorder": [{"title": "名称", "duration": "时长", "time": "时间"}],
+  "calendar": [{"title": "标题", "detail": "详情", "time": "日期"}],
+  "files": [{"fileName": "文件名", "size": "大小", "time": "时间"}],
+  "history": [{"title": "应用名", "detail": "使用时长", "time": "今天/昨天"}],
+  "shopping": [{"item": "商品", "status": "状态", "price": 0, "time": "时间", "icon": ""}],
+  "meituan": [{"item": "外卖", "status": "已送达", "price": 0, "time": "时间"}],
+  "email": [{"sender": "发件人", "subject": "邮件主题", "preview": "预览内容", "content": "完整正文", "time": "时间", "read": false, "avatarColor": "#87CEEB", "tags": []}],
+  "wallet": {"balance": 1314.52, "transactions": [{"merchant": "具体商户名(如:全家便利店、星巴克、由于项目分红)", "amount": 数字(正数), "type": "expense或income", "category": "餐饮|购物|娱乐|交通|红包|转账|亲属卡|生活|充值", "time": "MM/DD HH:MM", "detail": "详细且具体的描述(买了什么、在哪家店、什么品牌)", "note": "备注"}], "bankCards": [{"bank": "银行名称", "cardLevel": "Platinum|Gold|Diamond|普通", "number": "16位卡号", "creditLimit": 数字, "validThru": "MM/YY", "transactions": [{"merchant": "具体商户", "amount": 数字, "type": "expense或income", "category": "分类", "time": "MM/DD HH:MM", "detail": "详情描述"}]}]},
+  "moments": [{"day": 1, "month": 1, "content": "文案", "images": []}]
+}
+
+要求：
+1. 内容符合角色性格和近期聊天情境，与已有数据保持连贯。
+2. 有个性，有故事感。不要生成重复单一的行为。
+3. **Wallet（重要）**：
+   - balance（余额）：根据角色财富值生成一个合理的数字。**严禁**使用复读机式数字（如88888.88、99999等占位符）。
+   - 每笔账单必须详细，merchant 应该具体到品牌或店名。
+   - 必须严格区分 type：如果是收到红包、工资、分红、奖励等，必须设为 "income"；购物、转账、支出则为 "expense"。
+   - amount 一律用正数，加减号由前端根据 type 决定。
+4. **bankCards**：生成1-3张卡，信用卡额度设置合理。卡内的 transactions 应与该角色消费习惯相符。`
 
     try {
-      const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true })
-      const seedData = JSON.parse(fixCommonJsonErrors(result.content))
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+      const result = await generateReply(messages, char, null, { isSimpleTask: true })
+      
+      if (!result || !result.content) {
+        console.warn('[PhoneInspection] AI returned empty response')
+        return
+      }
+      
+      // 清理可能的 markdown 包装
+      let content = result.content.trim()
+      if (content.startsWith('```json')) content = content.slice(7)
+      if (content.startsWith('```')) content = content.slice(3)
+      if (content.endsWith('```')) content = content.slice(0, -3)
+      
+      const seedData = JSON.parse(fixCommonJsonErrors(content))
 
-      if (seedData.footprints) apps.footprints.items = seedData.footprints
-      if (seedData.notes) apps.notes.items = seedData.notes
-      if (seedData.browser) apps.browser.history = seedData.browser
-      if (seedData.forum) apps.forum.items = seedData.forum
-      if (seedData.moments) apps.moments.posts = seedData.moments
+      if (seedData.photos) apps.photos = { photos: seedData.photos }
+      if (seedData.messages) apps.messages = { items: seedData.messages }
+      if (seedData.footprints) apps.footprints = { items: seedData.footprints }
+      if (seedData.notes) apps.notes = { items: seedData.notes }
+      if (seedData.reminders) apps.reminders = { items: seedData.reminders }
+      if (seedData.browser) apps.browser = { history: seedData.browser }
+      if (seedData.music) apps.music = { items: seedData.music }
+      if (seedData.forum) apps.forum = { items: seedData.forum }
+      if (seedData.recorder) apps.recorder = { items: seedData.recorder }
+      if (seedData.calendar) apps.calendar = { items: seedData.calendar }
+      if (seedData.files) apps.files = { items: seedData.files }
+      if (seedData.history) apps.history = { items: seedData.history }
+      if (seedData.shopping) apps.shopping = { orders: seedData.shopping }
+      if (seedData.meituan) apps.meituan = { orders: seedData.meituan }
+      if (seedData.email) apps.email = { mails: seedData.email }
+      if (seedData.wallet) {
+        if (seedData.wallet.balance !== undefined) apps.wallet = { ...apps.wallet, balance: seedData.wallet.balance }
+        if (seedData.wallet.transactions?.length) {
+          const existingTx = apps.wallet?.transactions || []
+          apps.wallet = { ...apps.wallet, transactions: [...existingTx, ...seedData.wallet.transactions] }
+        }
+        if (seedData.wallet.bankCards?.length) {
+          const existingCards = apps.wallet?.bankCards || []
+          apps.wallet = { ...apps.wallet, bankCards: [...existingCards, ...seedData.wallet.bankCards] }
+        }
+      }
+      if (seedData.moments) apps.moments = { posts: seedData.moments }
 
-      console.log('[PhoneInspection] AI Seeding Completed for:', char.name)
+      console.log('[PhoneInspection] AI Full Generation Completed for:', char.name)
     } catch (e) {
-      console.error('[PhoneInspection] AI Seeding Failed:', e)
+      console.error('[PhoneInspection] AI Full Generation Failed:', e.message || e)
     }
   }
+
+
 
   function formatDate(ts) {
     if (!ts) return '现在'
@@ -604,149 +773,8 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     }
   }
 
-  /**
-   * 模版 1：日常/温馨风
-   */
-  function getMockDailyTemplate(name) {
-    return {
-      password: { enabled: true, code: "1234", hint: "我的生日(?) 试试1234" },
-      wallpaper: { url: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1471", type: "static" },
-      inspectionPermission: { granted: true },
-      riskSystem: { currentRisk: 0, triggers: { stayTooLong: 5 }, charAttention: 'away' },
-      apps: {
-        wechat: {
-          currentUserId: 'me',
-          contacts: [
-            { id: 'user', name: '你', avatar: '/avatars/default.png', remark: '笨蛋', isTop: true },
-            { id: 'mom', name: '妈妈', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mom', isTop: false },
-            { id: 'boss', name: '老板', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=boss', isTop: false }
-          ],
-          conversations: [
-            {
-              id: 'user',
-              lastMsg: '笨蛋，万一下午下雨了呢。',
-              time: '09:06',
-              unread: 0,
-              history: [
-                { from: "char", content: "今天天气真好，记得带伞哦~", time: "09:00" },
-                { from: "user", content: "天气好为什么要带伞？", time: "09:05" },
-                { from: "char", content: "笨蛋，万一下午下雨了呢。", time: "09:06" }
-              ]
-            },
-            {
-              id: 'mom',
-              lastMsg: '记得按时吃饭。',
-              time: '昨天',
-              unread: 2,
-              history: [
-                { from: "char", content: "知道了啦。", time: "18:00" },
-                { from: "user", content: "记得按时吃饭。", time: "17:30" }
-              ]
-            }
-          ]
-        },
-        photos: {
-          photos: [
-            { id: "p1", url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?q=80&w=1000", note: "路边遇到的小橘猫。", location: "公园", date: "昨天", generated: true }
-          ]
-        },
-        calls: {
-          history: [
-            { name: '妈妈', type: 'incoming', time: '今天 10:30', duration: '05:20' },
-            { name: '顺丰快递', type: 'outgoing', time: '昨天 15:45', duration: '00:45' }
-          ]
-        },
-        shopping: {
-          orders: [
-            { id: 'O1', item: '可爱猫耳耳机', status: '待收货', price: 199.0 },
-            { id: 'O2', item: '抹茶味巧克力', status: '已完成', price: 45.0 }
-          ]
-        }
-      }
-    }
-  }
-
-  /**
-   * 模版 2：有点小秘密/神秘感
-   */
-  function getMockSecretTemplate(name) {
-    return {
-      password: { enabled: true, code: "1234", hint: "通用测试密码: 1234" },
-      wallpaper: { url: "https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?q=80&w=1471", type: "static" },
-      inspectionPermission: { granted: false },
-      riskSystem: { currentRisk: 20, triggers: { enterSensitiveApp: 20 }, charAttention: 'nearby' },
-      apps: {
-        wechat: {
-          currentUserId: 'me',
-          contacts: [
-            { id: 'user', name: '那个人', avatar: '/avatars/default.png', remark: '那个家伙' },
-            { id: 'admin', name: '系统管理员', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin' }
-          ],
-          conversations: [
-            {
-              id: 'user',
-              lastMsg: '你在写什么小说吗？',
-              time: '10:00',
-              history: [
-                { from: "char", content: "..计划顺利吗？", time: "昨天 23:59" },
-                { from: "user", content: "你在写什么小说吗？", time: "今天 10:00" }
-              ]
-            }
-          ]
-        },
-        calls: {
-          history: [
-            { name: '未知号码', type: 'missed', time: '凌晨 02:15', duration: '0' }
-          ]
-        },
-        browser: {
-          history: [
-            { title: '如何消失得无影无踪', url: 'https://example.com' },
-            { title: '加密通讯工具推荐', url: 'https://example.com' }
-          ]
-        }
-      }
-    }
-  }
-
-  /**
-   * 模版 3：暧昧
-   */
-  function getMockRomanticTemplate(name) {
-    return {
-      password: { enabled: true, code: "1234", hint: "想你就写 1234" },
-      wallpaper: { url: "https://images.unsplash.com/photo-1516589174184-c6852651428a?q=80&w=1287", type: "static" },
-      inspectionPermission: { granted: true },
-      apps: {
-        wechat: {
-          currentUserId: 'me',
-          contacts: [
-            { id: 'user', name: '亲爱的', avatar: '/avatars/default.png', remark: '❤ 亲爱的', isTop: true }
-          ],
-          conversations: [
-            {
-              id: 'user',
-              lastMsg: '不告诉你，反正脸红了。',
-              time: '08:15',
-              history: [
-                { from: "char", content: "梦到你了。", time: "01:20" },
-                { from: "user", content: "梦到我什么了？", time: "08:10" },
-                { from: "char", content: "不告诉你，反正脸红了。", time: "08:15" }
-              ]
-            }
-          ]
-        },
-        photos: {
-          photos: [
-            { id: "r1", url: "https://images.unsplash.com/photo-1471897488648-5eae4ac6686b?q=80&w=1000", note: "和你一起看过的夕阳。", location: "海边", date: "上周末", generated: true }
-          ]
-        }
-      }
-    }
-  }
-
-  /**
-   * 创建默认手机数据（当 AI 生成失败时）
+/**
+   * 创建默认手机数据（最小化结构，内容由 AI 生成）
    */
   function createDefaultPhoneData() {
     return {
@@ -758,11 +786,14 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         lockedUntil: null
       },
       inspectionPermission: {
-        granted: true,
+        granted: false,
         grantedAt: null,
         expiresAt: null,
         askedByAI: false,
-        discoveryMode: false
+        discoveryMode: false,
+        mode: 'none',           // 'permitted'(申请同意) | 'hacking'(破解) | 'locked'(被锁屏)
+        passwordShared: false,   // AI是否已通过卡片分享密码
+        notifiedAI: false        // 是否已通知AI用户正在查看
       },
       riskSystem: {
         currentRisk: 0,
@@ -781,137 +812,16 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         description: '默认壁纸',
         lastChanged: null
       },
-      apps: {
-        wechat: {
-          conversations: [
-            { id: 'user', lastMsg: '睡了吗喵？', time: '22:30', unread: 1, isTop: true, history: [] }
-          ],
-          contacts: [
-            { id: 'user', name: '你', remark: '⭐ 笨蛋 (置顶)', isTop: true }
-          ]
-        },
-        photos: {
-          photos: [
-            { id: 'm1', url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?q=80&w=300', note: '路边偶遇', date: '2026-03-05' },
-            { id: 'm2', url: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?q=80&w=300', note: '今天的心情', date: '2026-03-06' }
-          ]
-        },
-        wallet: {
-          balance: 1314.52,
-          bankCards: [{ id: 'bank1', name: '招商银行', lastFour: '8816', type: 'credit' }],
-          transactions: [
-            { id: 't1', title: '星巴克', amount: -32.0, time: '今天 09:30' },
-            { id: 't2', title: '工资收入', amount: 8000.0, time: '3月1日' }
-          ],
-          familyCards: [{ id: 'f1', name: '亲属卡-给笨蛋', limit: 1000 }]
-        },
-        calls: {
-          history: [
-            { id: 'c1', name: '妈妈', type: 'incoming', time: '10:00', duration: '12:05' },
-            { id: 'c2', name: '顺丰快递', type: 'outgoing', time: '昨天', duration: '00:45' },
-            { id: 'c3', name: '138****8888', type: 'missed', time: '周三', duration: '0' }
-          ]
-        },
-        messages: {
-          items: [
-            { id: 'm1', sender: '10086', content: '您本月话费余额为：15.5元。', time: '今天' },
-            { id: 'm2', sender: '工银信使', content: '您尾号8816卡片入账 8000.00元。', time: '3月1日' }
-          ]
-        },
-        shopping: {
-          orders: [
-            { id: 'O1', item: '可爱猫耳耳机', status: '待收货', price: 199.0, time: '03-06', icon: 'https://api.dicebear.com/7.x/icons/svg?seed=headset' },
-            { id: 'O2', item: '抹茶味巧克力', status: '已完成', price: 45.0, time: '03-05', icon: 'https://api.dicebear.com/7.x/icons/svg?seed=food' }
-          ]
-        },
-        meituan: {
-          orders: [
-            { id: 'mt1', item: '芝士厚乳拿铁', status: '已送达', price: 21.0, time: '14:20' },
-            { id: 'mt2', item: '麻辣香锅', status: '已送达', price: 35.5, time: '昨天' }
-          ]
-        },
-        footprints: {
-          items: [
-            { title: '打卡了这家猫咖', location: '朝阳区', time: '2026-03-04', image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?q=80&w=400', content: '小猫们太可爱了！' },
-            { title: '在海边看日落', location: '海滨大道', time: '2026-02-14', image: 'https://images.unsplash.com/photo-1516589174184-c6852651428a?q=80&w=400', content: '浪漫的一天~' }
-          ]
-        },
-        backpack: {
-          items: [
-            { id: 'i1', name: '心形锁扣', count: 1, description: 'TA 送我的第一个小礼物喵。' },
-            { id: 'i2', name: '治愈药水', count: 5, description: '生病的时候 TA 叮嘱我喝的。' }
-          ]
-        },
-        notes: {
-          items: [
-            { title: '待办清单', content: '1. 买猫粮 2. 给 TA 发早安 3. 洗衣服', time: '刚刚' },
-            { title: '想要去的远方', content: '冰岛、芬兰、还有你的心里喵~', time: '昨天' }
-          ]
-        },
-        reminders: {
-          items: [
-            { title: '记得喝水', detail: '每小时喝一次喵', time: '14:00' },
-            { title: '晚上 8 点视频', detail: '要穿那件漂亮的裙子', time: '20:00' }
-          ]
-        },
-        browser: {
-          history: [
-            { title: '如何搭配衣服更好看', url: 'https://style.com', time: '10:15' },
-            { title: '双人马代旅游攻略', url: 'https://travel.com', time: '昨天' }
-          ]
-        },
-        music: {
-          items: [
-            { title: '告白气球', detail: '周杰伦', time: '03:35', icon: 'fa-solid fa-music' },
-            { title: '恋爱循环', detail: '花泽香菜', time: '04:12', icon: 'fa-solid fa-compact-disc' }
-          ]
-        },
-        forum: {
-          items: [
-            { title: '救命！怎么跟喜欢的人开口？', content: '在线等，挺急的喵...', category: '情感天地', likes: 102, comments: 24 },
-            { title: '分享一下今天的穿搭', content: '尝试了小清新风格', category: '日常', likes: 55, comments: 12 }
-          ]
-        },
-        recorder: {
-          items: [
-            { title: '偷偷唱给 TA 的歌', duration: '02:45', time: '凌晨 01:20' },
-            { title: '灵感片段', duration: '00:30', time: '周一' }
-          ]
-        },
-        calendar: {
-          items: [
-            { title: '我们的纪念日', detail: '记得买花！', time: '3月20日' },
-            { title: 'Char 手机大扫除', detail: '清理多余垃圾', time: '每月末' }
-          ]
-        },
-        files: {
-          items: [
-            { fileName: '秘密小说.docx', size: '2.4MB', time: '昨天' },
-            { fileName: '合照压缩包.zip', size: '150MB', time: '2026-02-14' }
-          ]
-        },
-        history: {
-          items: [
-            { title: '微信', detail: '使用了 125 分钟', time: '今天' },
-            { title: '画廊', detail: '使用了 45 分钟', time: '今天' }
-          ]
-        },
-        settings: { theme: 'kawaii', notification: true }
-      },
+      apps: {},
       desktopFrames: [
-        { id: 'f1', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=300', note: '心动瞬间' },
-        { id: 'f2', url: null, note: '虚位以待' }
+        { id: 'f1', url: null, note: '左侧相框' },
+        { id: 'f2', url: null, note: '右侧相框' }
       ],
-      anniversary: {
-        title: '在一起',
-        date: '2026-02-14',
-        unit: '天',
-        desc: '心跳加速的频率，从来没有变过喵~'
-      },
+      anniversary: null,
       generationStatus: {
-        lastGenerated: Date.now(),
-        version: 'MOCK-1.0',
-        needsRegen: false
+        lastGenerated: null,
+        version: 'EMPTY-1.0',
+        needsRegen: true
       }
     }
   }
@@ -931,8 +841,6 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     }
     // 3. 修复末尾逗号
     cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1')
-    // 4. 修复由于引号嵌套导致的转义问题
-    cleaned = cleaned.replace(/\\"/g, '"').replace(/\\n/g, ' ')
     return cleaned
   }
 
@@ -940,13 +848,24 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
    * 请求查手机权限（在聊天中触发）
    */
   async function requestPermission(charId) {
-    const chatStore = useChatStore()
     const char = chatStore.chats[charId]
 
     if (!char) return { allowed: false, response: '角色不存在' }
 
-    // AI 决定是否允许
-    const prompt = `${char.name}，用户问："我可以看看你的手机吗？"。请根据你对用户的信任和当前心情，决定是否允许。如果允许，回复温暖的同意；如果不允许，找个合理的借口拒绝。（先回复，然后在最后用【】标注决定，例如【允许】或【拒绝】）`
+    const prompt = `${char.name}，用户问："我可以看看你的手机吗？"。请根据你对用户的信任和当前心情，决定是否允许。
+如果同意，请：
+1. 先用自然语言回复（傲娇/害羞/大方等性格）
+2. 然后发送一个手机访问卡片，格式如下：
+【查手机卡片】
+📱 手机访问权限已授权
+🔑 密码：${char.phoneData?.password?.value || '0817'}
+⏰ 有效期：60分钟内可随时查看
+💡 提示：点击"查手机"输入密码即可进入
+3. 最后标注【允许】
+
+如果不同意：
+1. 用自然语言拒绝（找个理由）
+2. 标注【拒绝】`
 
     try {
       const result = await generateReply(
@@ -955,22 +874,43 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         null
       )
 
-      const response = result.content
+      let response = result.content
       const isAllowed = response.includes('【允许】') || response.includes('[允许]')
 
-      // 发送回复到聊天
+      if (isAllowed && response.includes('【查手机卡片】')) {
+        const cardMatch = response.match(/【查手机卡片】[\s\S]*?((?=【)|$)/)
+        if (cardMatch) {
+          const cardContent = cardMatch[0].replace('【查手机卡片】', '').trim()
+          chatStore.addMessage(charId, {
+            role: 'assistant',
+            content: response.replace(/【查手机卡片】[\s\S]*?((?=【)|$)/, '').replace(/[\u3010\u3011\[\]]/g, ''),
+            id: `msg_${Date.now()}`,
+            type: 'card',
+            cardType: 'phone_access',
+            cardData: {
+              password: char.phoneData?.password?.code || '1234',
+              expiresIn: '60',
+              title: '手机访问授权'
+            }
+          })
+          char.phoneData.inspectionPermission.passwordShared = true
+          return { allowed: true, response }
+        }
+      }
+
       chatStore.addMessage(charId, {
         role: 'assistant',
         content: response.replace(/[\u3010\u3011\[\]]/g, ''),
         id: `msg_${Date.now()}`
       })
 
-      // 更新权限状态
       if (isAllowed) {
         char.phoneData.inspectionPermission.granted = true
         char.phoneData.inspectionPermission.grantedAt = Date.now()
-        char.phoneData.inspectionPermission.expiresAt = Date.now() + 5 * 60 * 1000 // 5 分钟有效期
+        char.phoneData.inspectionPermission.expiresAt = Date.now() + 60 * 60 * 1000
         char.phoneData.inspectionPermission.askedByAI = true
+        char.phoneData.inspectionPermission.mode = 'permitted'
+        char.phoneData.inspectionPermission.passwordShared = true
       }
 
       await chatStore.saveChats()
@@ -986,6 +926,149 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         response: '现在不太方便呢...'
       }
     }
+  }
+
+  async function processHiddenCommand(message, charId) {
+    const chatStore = useChatStore()
+    const text = message.content || ''
+    const perm = phoneData.value?.inspectionPermission
+
+    if (text.includes('【允许查看】') || text.includes('[允许查看]')) {
+      const pwMatch = text.match(/(?:密码|password|密码[：:]\s*)(\S+)/i)
+      const newPwd = pwMatch ? pwMatch[1] : (phoneData.value?.password?.code || '1234')
+      if (perm) {
+        perm.granted = true
+        perm.grantedAt = Date.now()
+        perm.expiresAt = Date.now() + 60 * 60 * 1000
+        perm.mode = 'permitted'
+        perm.passwordShared = true
+        perm.notifiedAI = false
+        if (newPwd && phoneData.value?.password) {
+          phoneData.value.password.code = newPwd
+        }
+        triggerToast('AI 已授权查看权限 🔓 (60 分钟内有效)')
+      }
+    }
+
+    if (text.includes('【立即锁屏】') || text.includes('[立即锁屏]') || text.includes('【锁屏】') || text.includes('[锁屏]')) {
+      if (perm) {
+        perm.mode = 'locked'
+        perm.granted = false
+        isOpen.value = false
+        currentCharId.value = null
+        triggerToast('手机已被 AI 远程锁屏 🔒')
+      }
+    }
+
+    // 处理 [PHONE_CMD] JSON 指令
+    const cmdMatch = text.match(/\[PHONE_CMD\]\s*({[\s\S]*?})\s*(?:\[\/PHONE_CMD\]|$)/i)
+    if (cmdMatch) {
+      try {
+        const cmdData = JSON.parse(cmdMatch[1])
+        const char = chatStore.chats[charId]
+        if (!char || !char.phoneData) return
+
+        // 1. 修改密码
+        if (cmdData.password) {
+           char.phoneData.password.code = String(cmdData.password)
+           console.log('[PhoneInspection] AI 修改了手机密码:', cmdData.password)
+        }
+
+        // 2. 更新应用数据 (注入/修改)
+        if (cmdData.apps) {
+           const appIds = Object.keys(cmdData.apps)
+           appIds.forEach(id => {
+              if (!char.phoneData.apps[id]) char.phoneData.apps[id] = {}
+              const target = char.phoneData.apps[id]
+              const data = cmdData.apps[id]
+
+              // 通用列表处理
+              const listKey = getAppListKey(id)
+              const listData = data[listKey] || data.items || data.list
+
+              if (Array.isArray(listData)) {
+                // 如果 AI 提供了列表，则追加或替换
+                if (data.mode === 'append') {
+                  target[listKey] = [...(target[listKey] || []), ...listData]
+                } else {
+                  target[listKey] = listData
+                }
+              }
+
+              // 处理碎碎念
+              if (data.allowedMuttering) target.allowedMuttering = data.allowedMuttering
+              if (data.caughtMuttering) target.caughtMuttering = data.caughtMuttering
+
+              // 处理其他字段 (如余额、余额等)
+              Object.keys(data).forEach(k => {
+                if (!['items', 'list', listKey, 'mode', 'allowedMuttering', 'caughtMuttering'].includes(k)) {
+                   target[k] = data[k]
+                }
+              })
+           })
+        }
+        await chatStore.saveChats()
+      } catch (e) {
+        console.error('[PhoneInspection] Failed to process PHONE_CMD:', e)
+      }
+    }
+  }
+
+  /**
+   * 生成 AI 系统提示词中的手机数据概要
+   */
+  function getAIPhoneContext(charId) {
+    const chatStore = useChatStore()
+    const char = chatStore.chats[charId]
+    if (!char || !char.phoneData) return ''
+
+    const phone = char.phoneData
+    const perm = phone.inspectionPermission
+    const pwd = phone.password
+
+    let ctx = `【${char.name} 的手机状态】\n`
+    ctx += `- 当前密码: ${pwd.code || '1234'}\n`
+    ctx += `- 访问模式: ${perm.mode || 'none'} (permitted=已授权, hacking=入侵, locked=锁死)\n`
+    
+    if (perm.expiresAt && Date.now() < perm.expiresAt) {
+      const remaining = Math.round((perm.expiresAt - Date.now()) / 60000)
+      ctx += `- 剩余授权时间: ${remaining} 分钟\n`
+    }
+
+    ctx += `- 应用数据摘要 (仅展示最近5条):\n`
+    Object.keys(phone.apps).forEach(appId => {
+      const appData = phone.apps[appId]
+      const listKey = getAppListKey(appId)
+      const list = appData[listKey] || []
+      const displayName = getAppDisplayName(appId)
+      
+      if (Array.isArray(list) && list.length > 0) {
+        const summary = list.slice(-5).map(item => {
+           if (typeof item === 'string') return item.substring(0, 30)
+           return item.title || item.content || item.item || item.subject || item.fileName || '条目'
+        }).join(', ')
+        ctx += `  * ${displayName} (${appId}): [${summary}]\n`
+      }
+    })
+
+    ctx += `\n【重要】AI可以通过回复 \`[PHONE_CMD] {"password": "新密码", "apps": {"appId": {"items": [...], "mode": "append/replace"}}} [/PHONE_CMD]\` 来动态修改手机。`
+
+    return ctx
+  }
+
+  function getAppListKey(appId) {
+    const map = {
+      calls: 'history',
+      browser: 'history',
+      shopping: 'orders',
+      meituan: 'orders',
+      photos: 'photos',
+      email: 'mails',
+      moments: 'posts',
+      wallet: 'transactions',
+      calendar: 'items'
+    }
+    return map[appId] || 'items'
   }
 
   // ========== 壁纸管理相关 Actions ==========
@@ -1170,64 +1253,190 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
     const appPrompts = {
       wechat: "生成一份针对用户的微信备注（一个词，如：笨蛋、主人、亲爱的）",
-      footprints: "2条最近去过的地方或旅行记录（包含 title, location, content, image[随机unsplash链接]）",
-      notes: "3条私密便签内容（包含 title, content, time）",
-      browser: "5条搜索记录（包含 title, url, time）",
-      forum: "2条社区发帖或评论（包含 title, content, category, likes, comments）",
-      moments: "3条朋友圈动态（包含 day, month[数字], content, images[图片链接数组]）",
+      calls: "5条通话记录，混合呼入/呼出/未接（包含 name, type[incoming/outgoing/missed], time, duration[如03:25], summary[仅已接通通话写通话概要描述，未接的不写此字段]）",
+      messages: "3条短信记录（包含 sender[发件人], content[完整内容], time, isRead[true/false]）",
+      wallet: "钱包数据（balance[余额数字], transactions[3条收支记录含type收入/支出,amount,category,time], bankCards[1张银行卡含bankName,lastFour,cardType,color]）",
       shopping: "3条最近的购物记录（包含 item, status[已收货], price, time, icon）",
-      meituan: "2条美团外卖记录（包含 item, status[已送达], price, time）",
+      photos: "6张相册照片描述（包含 image[随机unsplash图片链接], description[照片内容描述20字内], time, location[地点]）",
+      backpack: "背包物品列表（3个物品，包含 name, description[物品描述], icon[emoji], rarity[普通/稀有/史诗]）",
+      footprints: "2条最近去过的地方或旅行记录（包含 title, location, content[完整描述], image[随机unsplash链接]）",
+      notes: "3条私密便签内容（包含 title, content[完整内容], time）",
+      reminders: "2条备忘录提醒事项（包含 title, content[提醒详情], time, done[true/false]）",
+      browser: "5条搜索记录（包含 title, url, time）",
+      history: "3条浏览历史记录（包含 title, url, time, favicon）",
+      music: "4首最近播放的音乐（包含 title, artist, album, duration[如03:45], cover[随机unsplash图片链接]）",
+      calendar: "3条日历日程安排（包含 title, startTime, endTime, location[可选], type[工作/生活/社交]）",
+      meituan: "2条外卖记录（包含 item, status[已送达], price, time）",
+      forum: "2条社区发帖或评论（包含 title, content[完整正文], category, likes, comments）",
       recorder: "2条录音文件记录（包含 title, duration, time）",
+      email: "5条邮件记录，混合收件和发件（包含 subject[主题], sender[发件人], receiver[收件人], body[完整邮件正文], time, isRead[true/false], isUnread[true/false]）",
       files: "2个文件名及大小（包含 fileName, size, time）"
     }
 
-    const selectedPrompts = appIds.map(id => `- ${id}: ${appPrompts[id] || '生成 2 条相关内容'}`).join('\n')
+    const appPromptHints = {
+      wechat: "{\"remark\": \"...\"}",
+      calls: "{\"history\": [{\"name\": \"...\", \"type\": \"incoming\", \"time\": \"HH:MM\", \"duration\": \"...\", \"summary\": \"...\"}]}",
+      messages: "{\"items\": [{\"sender\": \"...\", \"content\": \"...\", \"time\": \"...\", \"isRead\": true}]}",
+      wallet: "{\"balance\": 888.5, \"transactions\": [{\"type\": \"收入/支出\", \"amount\": 0, \"category\": \"...\", \"time\": \"...\", \"detail\": \"...\"}]}",
+      shopping: "{\"orders\": [{\"item\": \"...\", \"status\": \"已收货\", \"price\": 0, \"time\": \"...\", \"icon\": \"...\"}]}",
+      photos: "{\"photos\": [{\"image\": \"...\", \"description\": \"...\", \"time\": \"...\", \"location\": \"...\"}]}",
+      backpack: "{\"items\": [{\"name\": \"...\", \"description\": \"...\", \"icon\": \"...\", \"rarity\": \"...\"}]}",
+      footprints: "{\"items\": [{\"title\": \"...\", \"location\": \"...\", \"content\": \"...\", \"image\": \"...\", \"time\": \"...\"}]}",
+      notes: "{\"items\": [{\"title\": \"...\", \"content\": \"...\", \"time\": \"...\"}]}",
+      reminders: "{\"items\": [{\"title\": \"...\", \"content\": \"...\", \"time\": \"...\", \"done\": false}]}",
+      browser: "{\"history\": [{\"title\": \"...\", \"url\": \"...\", \"time\": \"...\"}]}",
+      history: "{\"items\": [{\"title\": \"...\", \"url\": \"...\", \"time\": \"...\", \"favicon\": \"...\"}]}",
+      music: "{\"items\": [{\"title\": \"...\", \"artist\": \"...\", \"album\": \"...\", \"duration\": \"...\", \"cover\": \"...\"}]}",
+      calendar: "{\"items\": [{\"title\": \"...\", \"startTime\": \"...\", \"endTime\": \"...\", \"location\": \"...\", \"type\": \"...\"}]}",
+      meituan: "{\"orders\": [{\"item\": \"...\", \"status\": \"已送达\", \"price\": 0, \"time\": \"...\"}]}",
+      forum: "{\"items\": [{\"title\": \"...\", \"content\": \"...\", \"category\": \"...\", \"likes\": 0, \"comments\": 0}]}",
+      recorder: "{\"items\": [{\"title\": \"...\", \"duration\": \"...\", \"time\": \"...\"}]}",
+      email: "{\"mails\": [{\"subject\": \"...\", \"sender\": \"...\", \"receiver\": \"...\", \"body\": \"...\", \"time\": \"...\", \"isRead\": true}]}",
+      files: "{\"items\": [{\"fileName\": \"...\", \"size\": \"...\", \"time\": \"...\"}]}"
+    }
 
-    // 强制包含所有被选应用的碎碎念生成
-    const prompt = `你正在为角色 ${char.name} 模型化手机数据。
-      TA 的性格设定是：${char.prompt || char.bio?.description || '普通'}
-      
-      请一次性生成以下应用的数据：
-      ${selectedPrompts}
-      
-      此外，请为以下每个应用分别生成一句 ${char.name} 的“碎碎念”：
-      ${appIds.join(', ')}
-      碎碎念是用户点开该应用时 TA 的心理活动或口头禅（如：哎呀别乱看、那是给你的惊喜等），20字以内。
-      
-      请严格返回以下 JSON 格式：
-      {
-        "apps": {
-          "appId": { "items": [...], "muttering": "..." },
-          "wechat": { "remark": "...", "muttering": "..." }
+    const selectedPrompts = appIds.map(id => `- ${id}: ${appPrompts[id] || '生成相关内容'}。结构示例：${appPromptHints[id] || '{"items": []}'}`).join('\n')
+
+    const settingsStore = useSettingsStore()
+    const userProfile = settingsStore.personalization?.userProfile || {}
+    const userName = char.userName || userProfile.name || '你'
+    const userPersona = char.userPersona || ''
+    const userGender = char.userGender || '未知'
+    const userSig = userProfile.signature || ''
+
+    const recentMessages = (char.msgs || []).slice(-20).map(m => {
+      const roleLabel = m.role === 'assistant' ? char.name : userName
+      return `${roleLabel}: ${(m.content || '').substring(0, 80)}`
+    }).join('\n')
+
+    const existingApps = char.phoneData?.apps || {}
+    const historySnapshot = {}
+    appIds.forEach(key => {
+      if (existingApps[key]) {
+        const items = existingApps[key].items || existingApps[key].photos ||
+          existingApps[key].history || existingApps[key].posts ||
+          existingApps[key].transactions || existingApps[key].mails ||
+          existingApps[key].orders || existingApps[key].records || []
+        if (Array.isArray(items) && items.length > 0) {
+          historySnapshot[key] = items.slice(-3)
         }
       }
-      不要包含 markdown 代码块。返回最简洁的 JSON。`
+    })
+
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+    const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+    const weekday = ['日','一','二','三','四','五','六'][now.getDay()]
+
+    const prompt = `【系统时间】今天是 ${todayStr} 星期${weekday}，当前时间约 ${timeStr}。生成数据时请以此时间为基准。
+
+【角色信息】名称：${char.name}
+【用户（你）的信息】名字：${userName}，性别：${userGender}${userPersona ? '，性格/设定：' + userPersona : ''}${userSig ? '，签名：' + userSig : ''}
+
+【近期微信聊天记录（最近20条）】
+${recentMessages || '暂无'}
+
+【该角色手机中已有的数据（作为参考保持连贯性）】
+${Object.keys(historySnapshot).length > 0 ? JSON.stringify(historySnapshot, null, 2) : '暂无历史数据'}
+
+【生成任务】为以下${appIds.length}个应用生成完整的手机数据。每个应用的数据条目内容请精简（单条20-60字即可），确保所有应用都能生成完整。
+${selectedPrompts}
+
+【时间戳规范（必须严格遵守）】
+基准日期：${todayStr}
+- 今天的数据用 "HH:MM" 格式（如 "${timeStr}"、"09:30"）
+- 昨天的数据用 "昨天 HH:MM" 格式（如 "昨天 14:20"）
+- 更早的日期用 "MM-DD HH:MM" 格式（如 "${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()-2).padStart(2,'0')} 10:00"）
+- 时间应自然分布在最近7天内，符合该角色的生活作息
+- 每一条数据都必须 have time 字段！
+
+【碎碎念（每个应用必填）】
+- allowedMuttering: 允许查看时的反应（傲娇/害羞/得意等，15字内）
+- caughtMuttering: 被偷看发现的反应（震惊/愤怒/慌张等，15字内）
+
+【输出格式要求】返回纯JSON对象（不要markdown代码块\`\`\`），结构如下：
+{"apps":{"应用ID":{"数据字段":"值", "allowedMuttering":"...", "caughtMuttering":"..."}}}
+注意：如果是包含列表的应用，列表必须放在对应的键下（如 calls 用 history，messages 用 items 等，详见结构示例）。
+绝对保证：上述${appIds.length}个应用每一个都要有数据，一个都不能少！`
 
     try {
       const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true })
-      let content = fixCommonJsonErrors(result.content)
-      const data = JSON.parse(content)
+      const rawContent = result.content || ''
+      console.log('[BatchGenerate] Raw AI response length:', rawContent.length)
+      console.log('[BatchGenerate] Raw preview (first 300 chars):', rawContent.substring(0, 300))
+
+      let data = tryParseWithBraceCounting(rawContent, appIds)
+
+      if (!data || !data.apps) {
+        console.error('[BatchGenerate] All parse attempts failed. Raw (first 1000 chars):', rawContent.substring(0, 1000))
+        return false
+      }
+
+      const parsedAppIds = Object.keys(data.apps)
+      const missingApps = appIds.filter(id => !parsedAppIds.includes(id))
+      if (missingApps.length > 0) {
+        console.warn('[BatchGenerate] Missing apps:', missingApps, 'Attempting deep rescue...')
+        const rescued = deepPerAppRescue(rawContent, missingApps)
+        if (rescued) {
+          Object.assign(data.apps, rescued)
+          console.log('[BatchGenerate] Rescued apps:', Object.keys(rescued))
+        }
+      }
+
+      console.log('[BatchGenerate] ✅ Final apps:', Object.keys(data.apps),
+        'counts:', Object.fromEntries(
+          Object.entries(data.apps).map(([k,v]) => {
+            if (!v) return [k, 0]
+            const arr = v.items||v.posts||v.transactions||v.mails||v.orders||v.records||v.photos||v.history||v.events||v.conversations
+            return [k, Array.isArray(v) ? v.length : (Array.isArray(arr) ? arr.length : Object.keys(v||{}).length)]
+          })
+        )
+      )
 
       if (data.apps) {
+        const appToKeyMap = {
+          calls: 'history',
+          browser: 'history',
+          shopping: 'orders',
+          meituan: 'orders',
+          photos: 'photos',
+          email: 'mails',
+          moments: 'posts',
+          wallet: 'transactions',
+          calendar: 'items'
+        }
+
         Object.keys(data.apps).forEach(appId => {
-          const appData = data.apps[appId]
+          let appData = data.apps[appId]
           if (!char.phoneData.apps[appId]) char.phoneData.apps[appId] = {}
           const target = char.phoneData.apps[appId]
 
+          // 1. 如果 AI 直接返回了数组，我们需要根据类型将其归位
+          if (Array.isArray(appData)) {
+             const key = appToKeyMap[appId] || 'items'
+             target[key] = appData
+             return
+          }
+
+          // 2. 如果是对象，处理特殊字段和列表归位
           if (appId === 'wechat' && appData.remark) target.remark = appData.remark
+          
+          const listKey = appToKeyMap[appId] || 'items'
+          const possibleArr = appData[listKey] || appData.items || appData.list || appData.data
+          if (Array.isArray(possibleArr)) {
+             target[listKey] = possibleArr
+          }
 
-          // 通用字段合并
-          if (appData.items) target.items = appData.items
-          if (appData.posts) target.posts = appData.posts
-          if (appData.orders) target.orders = appData.orders
-          if (appData.photos) target.photos = appData.photos
-          if (appData.history) target.history = appData.history
+          Object.keys(appData).forEach(key => {
+            if (['remark', 'muttering', 'allowedMuttering', 'caughtMuttering', listKey, 'items', 'list', 'data'].includes(key)) return
+            if (appData[key] != null) target[key] = appData[key]
+          })
 
-          // ！！核心：同步存入碎碎念！！
-          if (appData.muttering) target.muttering = appData.muttering
+          if (appData.allowedMuttering) target.allowedMuttering = appData.allowedMuttering
+          if (appData.caughtMuttering) target.caughtMuttering = appData.caughtMuttering
+          if (appData.muttering && !target.allowedMuttering) target.allowedMuttering = appData.muttering
         })
       }
-
       await chatStore.saveChats()
       return true
     } catch (e) {
@@ -1236,8 +1445,188 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     }
   }
 
+  function fixCommonJsonErrors(raw) {
+    let s = raw.trim()
+    // 移除可能的 markdown 代码标记
+    s = s.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')
+    // 如果 AI 混入了一些像 "正在思考中..." 这样的语句，尝试定位真正的 JSON 开始位置
+    const firstBrace = s.indexOf('{')
+    if (firstBrace > 0) {
+      const prefix = s.substring(0, firstBrace)
+      if (prefix.includes('思考') || prefix.includes('解析') || prefix.includes('生成')) {
+        s = s.substring(firstBrace)
+      }
+    }
+    // 移除末尾多余逗号 (简单的行末修复)
+    s = s.replace(/,(\s*[}\]])/g, '$1')
+    return s
+  }
+
+  function tryParseWithBraceCounting(raw, appIds = []) {
+    const cleaned = fixCommonJsonErrors(raw)
+
+    try {
+      const parsed = JSON.parse(cleaned)
+      if (parsed && parsed.apps) {
+        console.log('[BatchGenerate] ✅ Direct JSON.parse succeeded')
+        return parsed
+      }
+    } catch(e) {
+      console.warn('[BatchGenerate] Direct parse failed:', e.message.substring(0, 80))
+    }
+
+    const appsObj = extractObjectByKey(cleaned, 'apps')
+    if (appsObj) {
+      try {
+        const result = { apps: JSON.parse(appsObj) }
+        console.log('[BatchGenerate] ✅ Extracted apps object via brace counting')
+        return result
+      } catch(e2) {
+        console.warn('[BatchGenerate] apps object JSON.parse failed, attempting fix:', e2.message.substring(0, 80))
+        const fixed = attemptFixTruncatedJson(appsObj)
+        if (fixed) {
+          try { return { apps: JSON.parse(fixed) } } catch(e3) {}
+        }
+      }
+    }
+
+    const topObj = extractTopLevelObject(cleaned)
+    if (topObj) {
+      try {
+        const d = JSON.parse(topObj)
+        if (d && d.apps) { console.log('[BatchGenerate] ✅ Top-level object has apps'); return d }
+      } catch(e4) {}
+    }
+
+    const allApps = {}
+    for (const appId of appIds) {
+      const appObj = extractObjectByKey(raw, appId)
+      if (appObj) {
+        try {
+          allApps[appId] = JSON.parse(appObj)
+          console.log(`[BatchGenerate] ✅ Direct extract: ${appId}`)
+        } catch(e5) {
+          const fixed = attemptFixTruncatedJson(appObj)
+          if (fixed) {
+            try { allApps[appId] = JSON.parse(fixed); console.log(`[BatchGenerate] ✅ Fixed extract: ${appId}`) } catch(e6) {}
+          }
+        }
+      }
+    }
+    if (Object.keys(allApps).length > 0) return { apps: allApps }
+
+    return null
+  }
+
+  function extractObjectByKey(text, key) {
+    const searchStr = '"' + key + '"'
+    let idx = text.indexOf(searchStr)
+    while (idx !== -1) {
+      const afterKey = text.substring(idx + searchStr.length)
+      const colonMatch = afterKey.match(/^\s*:\s*/)
+      if (!colonMatch) { idx = text.indexOf(searchStr, idx + 1); continue }
+
+      const objStart = idx + searchStr.length + colonMatch[0].length
+      const obj = extractJsonObject(text, objStart)
+      if (obj) return obj.content
+
+      idx = text.indexOf(searchStr, idx + 1)
+    }
+    return null
+  }
+
+  function extractJsonObject(text, startFrom) {
+    let i = startFrom
+    while (i < text.length && text[i] !== '{') i++
+    if (i >= text.length) return null
+
+    let depth = 0, inString = false, escapeNext = false, j = i
+    while (j < text.length) {
+      const ch = text[j]
+      if (escapeNext) { escapeNext = false; j++; continue }
+      if (ch === '\\') { escapeNext = true; j++; continue }
+      if (ch === '"') { inString = !inString; j++; continue }
+      if (!inString) {
+        if (ch === '{') depth++
+        else if (ch === '}') {
+          depth--
+          if (depth === 0) return { start: i, end: j + 1, content: text.substring(i, j + 1) }
+        }
+      }
+      j++
+    }
+    return null
+  }
+
+  function extractTopLevelObject(text) {
+    const obj = extractJsonObject(text, text.indexOf('{'))
+    return obj ? obj.content : null
+  }
+
+  function attemptFixTruncatedJson(jsonStr) {
+    let fixed = jsonStr
+    const obs = (fixed.match(/\{/g)||[]).length
+    const cbs = (fixed.match(/\}/g)||[]).length
+    if (cbs < obs) fixed += '}'.repeat(obs - cbs)
+    fixed = fixed.replace(/,(\s*[}\]])/g,'$1')
+    fixed = fixed.replace(/,\s*$/,'')
+    fixed = fixed.replace(/["'\\]*$/, '')
+    const reTryObs = (fixed.match(/\{/g)||[]).length
+    const reTryCbs = (fixed.match(/\}/g)||[]).length
+    if (reTryObs === reTryCbs) return fixed
+    return null
+  }
+
+  function deepPerAppRescue(rawContent, targetAppIds) {
+    const rescued = {}
+    for (const appId of targetAppIds) {
+      const appObj = extractObjectByKey(rawContent, appId)
+      if (appObj) {
+        try {
+          rescued[appId] = JSON.parse(appObj)
+          console.log(`[DeepRescue] ✅ ${appId}`)
+        } catch(e) {
+          const fixed = attemptFixTruncatedJson(appObj)
+          if (fixed) {
+            try { rescued[appId] = JSON.parse(fixed); console.log(`[DeepRescue] ✅ ${appId} (fixed)`) } catch(e2) {}
+          }
+        }
+      }
+      if (!rescued[appId]) {
+        const looseIdx = rawContent.indexOf('"' + appId + '"')
+        if (looseIdx !== -1) {
+          const afterColon = rawContent.substring(looseIdx).replace(/^[^:]*:/, '').trim()
+          if (afterColon.startsWith('{')) {
+            const partial = extractJsonObject(afterColon, 0)
+            if (partial) {
+              try { rescued[appId] = JSON.parse(partial.content); console.log(`[DeepRescue] ✅ ${appId} (loose)`) } catch(e3) {}
+            }
+          }
+        }
+      }
+    }
+    return Object.keys(rescued).length > 0 ? rescued : null
+  }
+
   function triggerToast(message, type = 'info') {
+    const chatStore = useChatStore()
     chatStore.triggerToast(message, type)
+  }
+
+  function getAppDisplayName(appId) {
+     const names = {
+       calls: '最近通话',
+       browser: '浏览器',
+       shopping: '购物商城',
+       meituan: '外卖记录',
+       photos: '相册内容',
+       email: '邮件往来',
+       moments: '朋友圈',
+       wallet: '我的钱包',
+       calendar: '日程表',
+       muttering: '碎碎念'
+     }
+     return names[appId] || appId
   }
 
   return {
@@ -1278,6 +1667,8 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     setFrameImage,
     updateAnniversary,
     batchGenerateAppData,
-    triggerToast
+    clearAppData,
+    triggerToast,
+    processHiddenCommand
   }
 })
