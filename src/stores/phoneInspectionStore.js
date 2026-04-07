@@ -787,7 +787,7 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
     }))
 
     // D. 注入虚拟数据 (让手机显得更真实)
-    const bioText = (char.bio || char.description || char.prompt || char.tags?.join(' ') || '').toLowerCase()
+    const bioText = String(char.bio || char.description || char.prompt || char.tags?.join?.(' ') || '').toLowerCase()
     const isOrphan = bioText.includes('孤儿') || bioText.includes('orphan') || bioText.includes('没有亲人') || bioText.includes('个人生活') || bioText.includes('独居')
     
     const virtualContacts = isOrphan ? [
