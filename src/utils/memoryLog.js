@@ -60,7 +60,7 @@ export async function recallOriginalMessages(charId, userMessage) {
 
   const keywords = extractKeywords(userMessage)
   const timeRange = parseTimeRange(userMessage)
-  let candidates = msgs.filter(m => m.role === 'user' && m.type !== 'system' && m.type !== 'favorite_card' && m.content)
+  let candidates = msgs.filter(m => m.type !== 'system' && m.type !== 'favorite_card' && m.content)
 
   if (timeRange) {
     candidates = candidates.filter(m => (m.timestamp || m.createdAt || 0) >= timeRange.from)
@@ -80,7 +80,8 @@ export async function recallOriginalMessages(charId, userMessage) {
     const ts = m.timestamp || m.createdAt || 0
     const timeStr = ts ? new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
     const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-    return `  [${timeStr}] 你: ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}`
+    const speaker = m.role === 'user' ? '你' : (m.role === 'ai' ? char?.name || 'TA' : '系统')
+    return `  [${timeStr}] ${speaker}: ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}`
   })
 
   return `\n\n[🔍 系统检索到相关记忆]\n${results.join('\n')}`
