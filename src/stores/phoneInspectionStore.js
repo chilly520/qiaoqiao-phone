@@ -705,16 +705,8 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
       isTop: true
     }
     
-    // 获取所有角色作为联系人
-    const otherContacts = Object.values(chatStore.chats)
-      .filter(c => !c.isGroup && c.id !== charId) // 排除自己和群聊
-      .map(c => ({
-        id: c.id,
-        name: c.userName || c.name,
-        avatar: c.avatar || '/avatars/default.png',
-        remark: c.name,
-        isTop: false
-      }))
+    // 仅保留用户自己作为联系人，不再抓取其他真实角色（避免串号感）
+    const otherContacts = [] 
 
     const contacts = [userContact, ...otherContacts]
 
@@ -776,15 +768,8 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
       }
     })
 
-    // B2. 私聊镜像（针对其他联系人也生成空的会话列表，显得真实）
-    const otherConvs = otherContacts.slice(0, 3).map(c => ({
-      id: c.id,
-      name: c.remark || c.name,
-      lastMsg: '最近没有消息',
-      time: '1天前',
-      unread: 0,
-      history: []
-    }))
+    // B2. 虚拟私聊会话（不再使用真实角色作为镜像）
+    const otherConvs = []
 
     // D. 注入虚拟数据 (让手机显得更真实)
     const bioText = String(char.bio || char.description || char.prompt || char.tags?.join?.(' ') || '').toLowerCase()
