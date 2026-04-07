@@ -63,7 +63,7 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     target: 'esnext',
-    minify: 'terser',
+    minify: 'esbuild',
     chunkSizeWarningLimit: 2000
   }
 }))
