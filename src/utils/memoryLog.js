@@ -80,7 +80,7 @@ export async function recallOriginalMessages(charId, userMessage) {
     const ts = m.timestamp || m.createdAt || 0
     const timeStr = ts ? new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
     const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-    const speaker = m.role === 'user' ? '你' : (m.role === 'ai' ? char?.name || 'TA' : '系统')
+    const speaker = m.role === 'user' ? (char?.userName || '你') : (m.role === 'ai' ? char?.name || 'TA' : '系统')
     return `  [${timeStr}] ${speaker}: ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}`
   })
 
