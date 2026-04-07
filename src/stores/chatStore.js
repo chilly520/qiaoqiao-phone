@@ -2311,7 +2311,9 @@ export const useChatStore = defineStore('chat', () => {
         else if (diffMinutes >= 1) {
             const last = mergedContext[mergedContext.length - 1];
             if (last && last.role === 'user') {
-                const timeStr = diffMinutes >= 60 ? `${Math.floor(diffMinutes / 60)}小时${diffMinutes % 60}分` : `${diffMinutes}分`;
+                const hours = Math.floor(diffMinutes / 60)
+                const mins = diffMinutes % 60
+                const timeStr = hours > 0 ? `${hours}小时${mins}分` : `${mins}分`;
                 const timeTag = (options.mode || 'online') === 'offline' ? 'OFFLINE' : 'ONLINE';
                 const wrappedTime = `[${timeTag}]\n【系统提示：当前时间为 ${currentVirtualTime}，距离上次互动已过去 ${timeStr}。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。】\n[/${timeTag}]`;
                 last.content += ` \n\n${wrappedTime}`;
