@@ -4097,6 +4097,33 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
+    // --- Missing Group Helper Functions (To prevent UI crashes) ---
+    function getMemberTitle(chatId, userId) {
+        if (!chatId || !userId) return ''
+        const chat = chats.value[chatId]
+        if (!chat) return ''
+        if (userId === 'user') return chat.groupSettings?.myTitle || ''
+        const p = chat.participants?.find(p => p.id === userId)
+        return p?.title || ''
+    }
+
+    function calculateMemberLevel(activity = 0) {
+        if (activity < 10) return 1
+        if (activity < 30) return 2
+        if (activity < 70) return 3
+        if (activity < 150) return 4
+        return 5
+    }
+
+    function castVote(chatId, msgId, userId, voteIndices) {
+        console.log('[ChatStore] Cast vote:', { chatId, msgId, userId, voteIndices })
+        // Implementation for later... for now just prevent error
+    }
+
+    function endVote(chatId, msgId) {
+        console.log('[ChatStore] End vote:', { chatId, msgId })
+    }
+
     return {
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
@@ -4108,6 +4135,7 @@ export const useChatStore = defineStore('chat', () => {
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
         getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
         isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings,
+        getMemberTitle, calculateMemberLevel, castVote, endVote,
         streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState
     }
 })
