@@ -448,7 +448,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
       }
       
       const settingsStore = useSettingsStore()
-      const userNickname = char.phoneData?.apps?.wechat?.remark || settingsStore.personalization?.userProfile?.name || '你'
+      const userNickname = char.phoneData?.apps?.wechat?.remark || char.userName || settingsStore.personalization?.userProfile?.name || '你'
       
       return {
         id: m.id,
@@ -465,7 +465,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     // 4. 钱包交易同步 (红包、转账)
     const walletTransactions = []
     const settingsStore = useSettingsStore()
-    const userNickname = char.phoneData?.apps?.wechat?.remark || settingsStore.personalization?.userProfile?.name || '你'
+    const userNickname = char.phoneData?.apps?.wechat?.remark || char.userName || settingsStore.personalization?.userProfile?.name || '你'
 
     msgs.filter(m => ['redpacket', 'transfer'].includes(m.type)).forEach(m => {
       const isIncome = (m.role === 'user') // 用户发给角色，对角色来说是收入
@@ -889,6 +889,7 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
    * 请求查手机权限（在聊天中触发）
    */
   async function requestPermission(charId) {
+    const chatStore = useChatStore()
     const char = chatStore.chats[charId]
 
     if (!char) return { allowed: false, response: '角色不存在' }
@@ -987,7 +988,7 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
         if (newPwd && phoneData.value?.password) {
           phoneData.value.password.code = newPwd
         }
-        triggerToast('AI 已授权查看权限 🔓 (60 分钟内有效)')
+        chatStore.triggerToast('AI 已授权查看权限 🔓 (60 分钟内有效)')
       }
     }
 
@@ -997,7 +998,7 @@ ${Object.keys(historyDataSnapshot).length > 0 ? JSON.stringify(historyDataSnapsh
         perm.granted = false
         isOpen.value = false
         currentCharId.value = null
-        triggerToast('手机已被 AI 远程锁屏 🔒')
+        chatStore.triggerToast('手机已被 AI 远程锁屏 🔒')
       }
     }
 

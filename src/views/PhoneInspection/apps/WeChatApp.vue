@@ -179,34 +179,44 @@ const userName = computed(() => {
 const userAvatar = computed(() => charChat.value?.userAvatarUrl || charChat.value?.userAvatar || settingsStore.personalization?.userProfile?.avatar || '')
 const defaultAvatar = computed(() => props.charAvatar || '')
 
-// ========== 聊天消息（镜像：从角色视角看，用户消息在左，角色自己的消息在右）==========
-// 同时过滤掉隐藏类消息（心声/system/recall等），避免残留空时间戳
+// ========== 聊天消息（路由分发）==========
 const chatMessages = computed(() => {
-    if (!charChat.value) return []
-    const msgs = charChat.value.msgs
-    if (!Array.isArray(msgs) || msgs.length === 0) return []
+    if (activeChatId.value === 'user') {
+        if (!charChat.value) return []
+        const msgs = charChat.value.msgs
+        if (!Array.isArray(msgs) || msgs.length === 0) return []
 
-    return msgs
-        .filter(msg => {
-            // 排除明确隐藏的
-            if (msg.hidden) return false
-            // 排除 system 类型（系统提示等）
-            if (msg.role === 'system' || msg.type === 'system') return false
-            // 排除已撤回
-            if (msg.isRecalled || msg.recalled) return false
-            // 排除心声/内心戏（包含 status/心声/着装 等JSON字段的）
-            const raw = String(msg.content || '')
-            if (/^\s*\{.*"(status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)"\s*:/.test(raw)) return false
-            // 排除纯标签无内容的
-            const cleaned = raw.replace(/\[([^\]]*)\]/g, '').trim()
-            if (!cleaned && !msg.image && !msg.type?.match(/^(image|voice|music|card|redpacket|transfer|gift)/)) return false
-            return true
+        return msgs
+            .filter(msg => {
+                if (msg.hidden) return false
+                if (msg.role === 'system' || msg.type === 'system') return false
+                if (msg.isRecalled || msg.recalled) return false
+                const raw = String(msg.content || '')
+                if (/^\s*\{.*"(status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)"\s*:/.test(raw)) return false
+                const cleaned = raw.replace(/\[([^\]]*)\]/g, '').trim()
+                if (!cleaned && !msg.image && !msg.type?.match(/^(image|voice|music|card|redpacket|transfer|gift)/)) return false
+                return true
+            })
+            .map((msg, idx) => {
+                const isFromUser = msg.role === 'user'
+                const mirroredRole = isFromUser ? 'ai' : 'user'
+                return { ...msg, id: msg.id || ('msg-' + idx), timestamp: msg.timestamp || Date.now(), role: mirroredRole }
+            })
+    } else {
+        // 非用户私聊的对话（如群聊、其他联系人），使用其自带的 history
+        const conv = otherFullConvs.value.find(c => c.id === activeChatId.value)
+        const msgs = conv?.history || []
+        
+        return msgs.map(m => {
+            // 在查手机视角下，from 为 'char' 的消息应该作为“我(即手机机主)”发出，角色设为 user
+            // 其他人发出的消息 role 设为 ai
+            const isMe = m.from === 'char'
+            return {
+                ...m,
+                role: isMe ? 'user' : 'ai'
+            }
         })
-        .map((msg, idx) => {
-            const isFromUser = msg.role === 'user'
-            const mirroredRole = isFromUser ? 'ai' : 'user'
-            return { ...msg, id: msg.id || ('msg-' + idx), timestamp: msg.timestamp || Date.now(), role: mirroredRole }
-        })
+    }
 })
 
 // ========== 最后一条消息预览 ==========
@@ -270,20 +280,23 @@ const activeChat = computed(() => {
 const activeChatName = computed(() => activeChat.value?.name || '')
 
 // ========== ChatMessageItem需要的chatData ==========
-const chatDataForItem = computed(() => ({
-    id: resolvedCharKey.value,
-    name: props.charName || '',
-    // 镜像模式：交换头像，让翻转role后头像位置正确
-    // ChatMessageItem: 左边显示avatar(对方), 右边显示userAvatar(自己)
-    // 角色视角: 左边=用户(应显示userAvatar), 右边=角色(应显示charAvatar) → 交换！
-    avatar: userAvatar.value,
-    isGroup: false,
-    bgTheme: 'light',
-    avatarShape: 'rounded',
-    userAvatarFrame: null,
-    avatarFrame: null,
-    userAvatar: props.charAvatar || ''
-}))
+const chatDataForItem = computed(() => {
+    const isMainChat = activeChatId.value === 'user'
+    
+    return {
+        id: activeChatId.value,
+        name: activeChatName.value,
+        // 如果是主私聊，头像逻辑：左边显示用户头像，右边显示角色头像
+        // 如果是群聊/其他私聊：左边显示发件人头像，右边显示角色头像
+        avatar: isMainChat ? userAvatar.value : (activeChat.value?.avatar || ''),
+        isGroup: activeChat.value?.isGroup || false,
+        bgTheme: 'light',
+        avatarShape: 'rounded',
+        userAvatarFrame: null,
+        avatarFrame: null,
+        userAvatar: props.charAvatar || ''
+    }
+})
 
 // ========== 方法 ==========
 function enterMoments() {
