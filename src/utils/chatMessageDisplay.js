@@ -91,6 +91,10 @@ export function stripInnerVoiceBlocks(content) {
   // Cleanup potentially empty mode tags
   cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
 
+  // Aggressively remove metadata lines that might have been leaked
+  const metaLinesRegex = new RegExp(`^\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:\uff1a][^\\n]*$`, 'gim')
+  cleaned = cleaned.replace(metaLinesRegex, '').trim()
+
   return cleaned
 }
 
@@ -503,9 +507,10 @@ export function extractLatestOfflineScene(messages = []) {
 
 // \u5fc3\u58f0\u76f8\u5173\u7684\u5b57\u6bb5\u540d\uff08\u7528\u4e8e\u8bc6\u522b\u65e0\u6807\u7b7e\u7684JSON\uff09
 const INNER_VOICE_FIELDS = [
-  'status', '\u5fc3\u58f0', '\u7740\u88c5', 'thought', 'mood', 'emotion', 'feeling',
+  'status', '\u5fc3\u58f0', '\u7740\u88c5', 'thought', 'mood', 'emotion', 'feeling', 'spirit',
   '\u60f3\u6cd5', '\u5fc3\u60c5', '\u60c5\u7eea', '\u611f\u53d7', '\u601d\u8003', '\u5185\u5fc3', 'inner', '\u5fc3\u7406',
-  'state', 'mind', 'mental', 'activity', 'behavior', '\u884c\u4e3a'
+  'state', 'mind', 'mental', 'activity', 'behavior', '\u884c\u4e3a', 'heartRate', 'location', 'distance', 'stats',
+  'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'emotion', 'label', 'value'
 ]
 
 export function extractInnerVoiceData(content, msg) {
@@ -582,15 +587,23 @@ export function extractInnerVoiceData(content, msg) {
     const jsonStr = block.trim().replace(/^[^\{]*/, '').replace(/[^\}]*$/, '')
     if (jsonStr) {
       const parsed = JSON.parse(jsonStr)
-      return parsed
+      // Extract nested fields if they exist (stats -> heartRate, etc)
+      const flattened = { ...parsed }
+      if (parsed.stats) Object.assign(flattened, parsed.stats)
+      if (parsed.emotion) Object.assign(flattened, parsed.emotion)
+      return flattened
     }
   } catch (e) {
     // \u964d\u7ea7\uff1a\u6309\u884c\u89e3\u6790\u952e\u503c\u5bf9
     const data = {}
-    block.split(/\n+/).forEach(line => {
-      const kv = line.split(/[:\uff1a]/)
+    // Support "spirit:xxx", "mood:yyy" or quoted JSON fragments
+    block.split(/\n|,/).forEach(line => {
+      const cleanLine = line.trim().replace(/^"|",?$/g, '')
+      const kv = cleanLine.split(/[:\uff1a]/)
       if (kv.length >= 2) {
-        data[kv[0].trim()] = kv.slice(1).join(':').trim()
+        const key = kv[0].trim().replace(/^["']|["']$/g, '')
+        const val = kv.slice(1).join(':').trim().replace(/^["']|["']$/g, '')
+        if (key && val) data[key] = val
       }
     })
     return Object.keys(data).length ? data : { content: block.trim() }
@@ -711,6 +724,10 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       }
       clean = removeJsonWithKeywords(clean)
       
+      // Remove loose lines like "spirit: calm"
+      const looseMetaRegex = new RegExp(`^\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:\uff1a][^\\n]*$`, 'gim')
+      clean = clean.replace(looseMetaRegex, '').trim()
+
       // Final cosmetic cleanup
       clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces
       clean = clean.replace(/[\}\{"]+/g, (m) => m.trim().length === 0 ? '' : m) // Remove dangling JSON chars

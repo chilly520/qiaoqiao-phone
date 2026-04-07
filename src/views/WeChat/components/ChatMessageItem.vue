@@ -1083,9 +1083,18 @@
 
                             <!-- 0. Inner Voice Block -->
                             <div v-if="parsedInnerVoice" class="w-full mb-1">
-                                <div class="bg-gray-50/50 rounded-xl p-3 border border-pink-100 flex items-start gap-2 shadow-inner" style="backdrop-filter: blur(4px);">
-                                    <i class="fa-solid fa-heart-pulse text-pink-400 mt-0.5 text-xs animate-pulse"></i>
-                                    <div class="text-[12px] text-gray-500 italic leading-relaxed break-words">
+                                <div class="bg-gray-50/50 rounded-xl p-3 border border-pink-100 flex flex-col gap-1 shadow-inner" style="backdrop-filter: blur(4px);">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <i class="fa-solid fa-heart-pulse text-pink-400 text-xs animate-pulse"></i>
+                                        <span class="text-[9px] font-bold text-pink-300 uppercase tracking-widest">Inner State</span>
+                                    </div>
+                                    <div v-if="typeof parsedInnerVoice === 'object'" class="flex flex-col gap-1">
+                                        <div v-for="(val, key) in parsedInnerVoice" :key="key" class="flex items-baseline gap-2">
+                                            <span v-if="!['date', 'time', 'stats', 'emotion'].includes(key)" class="text-[10px] font-bold text-gray-400 capitalize shrink-0">{{ key }}:</span>
+                                            <span v-if="!['date', 'time', 'stats', 'emotion'].includes(key)" class="text-[12px] text-gray-500 italic leading-relaxed break-words font-medium">{{ val }}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-[12px] text-gray-500 italic leading-relaxed break-words font-medium">
                                         {{ parsedInnerVoice }}
                                     </div>
                                 </div>
@@ -1327,7 +1336,8 @@ import {
     parseOfflineSegments,
     shouldShowInOnlineMode,
     shouldShowInOfflineMode,
-    getUnifiedCleanContent
+    getUnifiedCleanContent,
+    extractInnerVoiceData
 } from '../../../utils/chatMessageDisplay'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
@@ -1362,6 +1372,7 @@ const settingsStore = useSettingsStore()
 const musicBoxStore = useMusicBoxStore()
 const musicStore = useMusicStore()
 const router = useRouter()
+const phoneInspectionStore = usePhoneInspectionStore()
 const localShowDetail = ref(false)
 const localShowTranscript = ref(false)
 const familyCardModal = ref(null)
@@ -1673,34 +1684,29 @@ const diceTotalValue = computed(() => {
     return diceResultsValue.value.reduce((a, b) => a + b, 0);
 })
 
-// Parse Inner Voice dynamically just like the legacy 0104 version did, so they don't appear as empty placeholders!
+// Parse Inner Voice dynamically to extract all parameters
 const parsedInnerVoice = computed(() => {
     if (!props.msg) return null;
-    let content = ensureString(props.msg.content);
-
-    // 1. Check for valid JSON format of inner voice
-    let innerText = '';
-    const isInnerVoiceJson = /"(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)"/.test(content) ||
-                             /\{\s*(?:status|心声|着装|环境|行为|stats|mind|outfit|scene|action|thoughts)\s*[:：]/i.test(content);
-                             
-    if (isInnerVoiceJson) {
-        try {
-            const jsonText = content.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
-            const data = JSON.parse(jsonText);
-            if (data.status || data.心声 || data.mind || data.thoughts) {
-                 innerText = data.心声 || data.status || data.mind || data.thoughts;
-            }
-        } catch(e) {}
-    } else {
-        // 2. Check for explicit [INNER_VOICE]...[/INNER_VOICE] formatting
-        const voicePattern = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/i;
-        const match = content.match(voicePattern);
-        if (match && match[1]) {
-            innerText = match[1].trim();
-        }
+    const data = extractInnerVoiceData(props.msg.content, props.msg);
+    if (!data) return null;
+    
+    // If it's just a single field we care about, return the string for simplicity
+    const keys = Object.keys(data);
+    if (keys.length === 1 && !['心声', 'status', 'mind', 'thoughts', 'content'].includes(keys[0])) {
+        // Even if it's just one field like spirit: calm, we want to show it as "Spirit: calm"
+        // But if it's a "known" main text field, just show the text.
     }
     
-    return innerText ? innerText : null;
+    // Check if it's fundamentally just a string disguised as an object {content: '...'}
+    if (keys.length === 1 && keys[0] === 'content') return data.content;
+
+    // Filter out internal fields for the preview string if returning a string
+    const mainFields = ['心声', 'status', 'mind', 'thoughts'];
+    for (const f of mainFields) {
+        if (data[f] && keys.length === 1) return data[f];
+    }
+    
+    return data;
 });
 
 const hasHtmlContent = computed(() => {
