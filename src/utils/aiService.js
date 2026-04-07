@@ -4,6 +4,8 @@ import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
 import { useCalendarStore } from '../stores/calendarStore'
+import { useChatStore } from '../stores/chatStore'
+import { usePhoneInspectionStore } from '../stores/phoneInspectionStore'
 
 import { useWalletStore } from '../stores/walletStore'
 import { weatherService } from './weatherService'
@@ -828,8 +830,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Remove pruning for proactive call to keep identity intact
         const prunedChar = { ...char }
 
-        const pinia = getActivePinia()
-        const chatStore = pinia ? pinia._s.get('chat') : null
+        const chatStore = useChatStore()
+        const phoneStore = usePhoneInspectionStore()
+        const phoneContext = (phoneStore && char.id) ? phoneStore.getAIPhoneContext(char.id) : ''
 
         const runtimeGroupCtx = char.isGroup ? {
             isGroup: true,
@@ -2248,7 +2251,7 @@ export async function generateBatchMomentsWithInteractions(options) {
     const { characters, worldContext, customPrompt, userProfile, historicalMoments = [], count = 3 } = options
 
     // 1. Build character list with recent chat snippets for context
-    // 鉁?浼樺寲锛氳〃鎯呭寘鏀逛负鍏ㄥ眬缁熶竴澹版槑锛岄伩鍏嶅湪姣忎釜瑙掕壊鍚庨噸澶嶆氮璐?token
+    // 全局统一声明表情列表（节省 token）
     const allEmojis = new Set()
        
     const charList = characters.map((c, idx) => {
@@ -2262,18 +2265,18 @@ export async function generateBatchMomentsWithInteractions(options) {
         const chatText = c.recentChats ? `\n   最近 15 条聊天碎片：${c.recentChats.substring(0, 1000)}` : ''
         const personalHistoryText = c.personalHistory ? `\n   TA 最近发过：${c.personalHistory}` : ''
    
-        // 鉁?鏀堕泦鎵€鏈夎〃鎯呭寘锛堝幓閲嶏級锛屼笉鍐嶅湪姣忎釜瑙掕壊鍚庨噸澶?
+        // 收集所有表情包（去重），不在每个角色后重复
         if (c.emojis && c.emojis.length > 0) {
             c.emojis.forEach(e => allEmojis.add(e.name))
         }
    
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
-   鏍稿績浜鸿锛?{c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}
+   核心人设：{c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}
    --- 
    当前与用户关系：${c.name} 称呼用户为"${userSpecificName}"${chatText}${personalHistoryText}`
     }).join('\n\n')
        
-    // 鉁?鍏ㄥ眬缁熶竴澹版槑琛ㄦ儏鍖呭垪琛紙鑺傜渷 token锛?
+    // 全局统一声明表情列表（节省 token）
     const globalEmojiList = allEmojis.size > 0
         ? `\n\n【通用表情包池】（所有角色都可使用，格式：[表情包：名字]）\n${Array.from(allEmojis).map(name => `  - "${name}"`).join('\n')}`
         : ''
@@ -2284,13 +2287,12 @@ export async function generateBatchMomentsWithInteractions(options) {
 
     // 2. Build explicit recent history to allow "Ecosystem Interactions"
     const historyText = historicalMoments.length > 0
-        ? "\n銆愭渶杩?20 鏉℃湅鍙嬪湀鐜扮姸锛堣鍒嗘瀽鍚庡喅瀹氭槸鍚﹁繘琛屼簰鍔紝濡傚洖澶嶈瘎璁恒€佽ˉ璧炪€丂-鐢ㄦ埛鐐硅禐绛夛級銆慭n" + historicalMoments.map(m => {
+        ? "\n【最近20条朋友圈现状（请分析后决定是否进行互动，如回复评论、补赞、用户点赞等）】\n" + historicalMoments.map(m => {
             const commentsStr = (m.comments || []).map(c => `   - [评论] ${c.authorName}: ${c.content}`).join('\n')
             const likesStr = (m.likes || []).join(', ')
             return `动态ID: ${m.id}
-浣滆€? ${m.authorName}
+作者：${m.authorName}
 内容: ${m.content}
-点赞: [${likesStr}]
 评论区:
 ${commentsStr || '   (暂无评论)'}`
         }).join('\n\n')
@@ -2310,6 +2312,14 @@ ${commentsStr || '   (暂无评论)'}`
 
     const systemPrompt = `你现在是“朋友圈拟真生态引擎”。当前虚拟时间：${currentVirtualTime}。
 
+【⚠️ 核心规则：多身份用户隔离模式】
+1. 每个角色都有自己独立的"用户"（即与该角色聊天的人），这些"用户"虽然可能同名，但是完全不同的独立个体
+2. 角色A的"用户"和角色B的"用户"不是同一个人，他们之间互不认识、互不关联
+3. 严禁让不同角色的"用户"出现在同一条动态或评论中
+4. 每个角色只能看到自己对应的"用户"的互动，不能跨角色互动
+5. 即使多个角色的"用户"名字相同（例如都叫"小明"），他们也必须是不同的平行世界个体
+
+
 【备选发帖角色】
 ${charList}
 ${globalEmojiList}
@@ -2322,7 +2332,7 @@ ${historyText}
 
 ${userContextText}
 
-銆愯緭鍑烘牸寮忋€戝繀椤绘槸涓€涓?JSON 瀵硅薄锛屼弗绂佸寘鍚换浣?ID 浣滀负灞曠ず鍚嶇О锛?
+【输出格式要求】必须是一个 JSON 对象，禁止包含任何 ID 作为展示名称。
 ${"```"}json
 {
     "newMoments": [
@@ -2355,16 +2365,17 @@ ${"```"}
 【角色互动准则】
 1. **真实好友互动**：凡是备选角色列表中的人，必须使用其对应的 authorId 和 authorName。严禁在展示用的 authorName 中填入 char_xxx 这种内部 ID。
 2. **回复逻辑**：如果旧动态下有用户的评论，对应的动态作者角色必须进行回复。
-3. **提及与召唤**：鼓励在评论中使用 @${userProfile?.name || '用户'} 来吸引注意。
+3. **提及与召唤**：鼓励在评论中使用 @对应角色的独立用户名 来吸引注意（注意每个角色有自己的用户名）。
 4. **强制数量准则**：每生成一条新的动态，【必须】为其生成 3-8 条评论回复等互动信息以及 3-8 个点赞信息，两者缺一不可。
-5. **🚫 严禁扮演用户**：**绝对禁止**生成任何以用户身份（${userProfile?.name || '用户'}）发布的动态、评论或点赞。用户的行为只能由真实用户自己操作，AI 只能生成 NPC 角色的互动。
+5. **🚫 严禁扮演用户**：**绝对禁止**生成任何以用户身份发布的动态、评论或点赞。用户的行为只能由真实用户自己操作，AI 只能生成 NPC 角色的互动。
+6. **🔒 隔离原则**：角色A的动态只能被角色A自己的"用户"或独立第三方 NPC 互动，其他备选角色不应参与。严禁制造"大杂烩"式社交场景。
 
 【生成细节指南】
 1. **多图配比**：根据动态内容决定图片数量（常见配图数为 0, 1, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。
 2. **图文契合**：每一张图片的 imagePrompts 都要与 content 紧密相关且风格统一。
 3. **表情包融入**：优先使用角色资料中提供的“可用表情包”，格式为 [表情包：名称]。**必须确保名称与提供的列表完全一致**。
 4. **@-提及**：在 content 或评论中合适的位置使用 @名字。
-5. **用户身份禁令**：再次强调，严禁在 newMoments 或 ecosystemUpdates 中生成任何 authorName 为 ${userProfile?.name || '用户'} 的互动。所有互动必须来自 NPC 角色或虚构第三方人物。`
+5. **用户身份禁令**：再次强调，严禁在 newMoments 或 ecosystemUpdates 中生成任何 authorName 为全局用户名的互动。所有互动必须来自该角色对应的独立用户或虚构第三方人物。`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 

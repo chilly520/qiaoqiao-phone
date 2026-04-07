@@ -152,9 +152,12 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
   function notifyAIAboutSnooping(charId, chatStore) {
     const char = chatStore.chats[charId] || {}
+    const history = (char.phoneData?.syncHistory || []).slice(0, 3)
+    const historyStr = history.length > 0 ? history.map(h => `[${h.time}] ${h.summary}`).join('; ') : '暂无近期的同步记录喵~'
+    
     const snoopingMsg = {
       role: 'system',
-      content: `【用户正在查看你的手机】\n\n用户当前处于[未授权入侵]状态。你可以选择：\n1. 回复指令“【允许查看】”或“【立即锁屏】”；\n2. 授权时可附带密码；\n3. 通过 [PHONE_CMD] JSON 动态修改任何应用数据或密码。\n当前手机密码: ${char.phoneData?.password?.code || '1234'}`,
+      content: `【用户正在查看你的手机】\n\n用户当前处于[未授权入侵]状态。你可以选择：\n1. 回复指令“【允许查看】”或“【立即锁屏】”；\n2. 授权时可附带密码；\n3. 通过 [PHONE_CMD] JSON 动态修改任何应用数据或密码。\n当前手机密码: ${char.phoneData?.password?.code || '1234'}\n最近 3 次同步记录: ${historyStr}`,
       id: `snoop_${Date.now()}`,
       hidden: true,
       timestamp: Date.now()
@@ -410,27 +413,23 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     }
 
     // D. 基础个性化设置同步
-    if (!char.phoneData.password.code) char.phoneData.password.code = '1234'
     if (!char.phoneData.password.enabled) char.phoneData.password.enabled = true
     
-    // 初始化同步记录
-    if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
-    if (!char.phoneData.password.enabled) char.phoneData.password.enabled = true
-    
-    // 初始化同步记录
-    if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
     if (!char.phoneData.desktopFrames) {
       char.phoneData.desktopFrames = [
         { id: 'f1', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=300', note: '心动瞬间' },
         { id: 'f2', url: null, note: '虚位以待' }
       ]
     }
-    if (!char.phoneData.anniversary) {
-      char.phoneData.anniversary = {
-        title: '相识第', date: '2026-01-01', unit: '天',
-        desc: '遇见后的每个瞬间都闪闪发光喵~'
-      }
-    }
+    
+    // E. 记录同步历史
+    if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
+    char.phoneData.syncHistory.unshift({
+      id: Date.now(),
+      time: new Date().toLocaleString(),
+      summary: isInitial ? '初始数据建立成功喵~' : '手机数据实时同步完成。'
+    })
+    char.phoneData.syncHistory = char.phoneData.syncHistory.slice(0, 5) // 保留最近5条
 
     await chatStore.saveChats()
     return char.phoneData
@@ -518,6 +517,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
       item: m.itemName || '神秘商品',
       status: '已完成',
       price: m.amount || 0,
+      timestamp: m.timestamp || 0,
       time: formatDate(m.timestamp),
       icon: m.image
     }))
@@ -533,21 +533,21 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         familyCards: mirrorFamilyCards(charId),
         balance: currentApps.wallet?.balance || 1314.52
       },
-      shopping: { orders: shoppingOrders.length > 0 ? shoppingOrders : (currentApps.shopping?.orders || []) },
-      // 以下暂时保留现有数据或等待 AI Seeding
-      photos: currentApps.photos || { photos: [] },
-      messages: currentApps.messages || { items: [] },
-      footprints: currentApps.footprints || { items: [] },
-      notes: currentApps.notes || { items: [] },
-      reminders: currentApps.reminders || { items: [] },
-      browser: currentApps.browser || { history: [] },
-      history: currentApps.history || { items: [] },
-      music: currentApps.music || { items: [] },
-      calendar: currentApps.calendar || { items: [] },
-      meituan: currentApps.meituan || { orders: [] },
-      email: currentApps.email || { mails: [] },
-      forum: currentApps.forum || { items: [] },
-      recorder: currentApps.recorder || { items: [] },
+      shopping: { orders: shoppingOrders.sort((a,b) => b.timestamp - a.timestamp) },
+      // 这里的各类数据也要确保新的在前面（如果有 time/timestamp 字段的话）
+      photos: sortListNewestFirst(currentApps.photos || { photos: [] }, 'timestamp'),
+      messages: sortListNewestFirst(currentApps.messages || { items: [] }, 'timestamp'),
+      footprints: sortListNewestFirst(currentApps.footprints || { items: [] }, 'timestamp'),
+      notes: sortListNewestFirst(currentApps.notes || { items: [] }, 'timestamp'),
+      reminders: sortListNewestFirst(currentApps.reminders || { items: [] }, 'timestamp'),
+      browser: sortListNewestFirst(currentApps.browser || { history: [] }, 'timestamp'),
+      history: sortListNewestFirst(currentApps.history || { items: [] }, 'timestamp'),
+      music: sortListNewestFirst(currentApps.music || { items: [] }, 'timestamp'),
+      calendar: sortListNewestFirst(currentApps.calendar || { items: [] }, 'timestamp'),
+      meituan: sortListNewestFirst(currentApps.meituan || { orders: [] }, 'timestamp'),
+      email: sortListNewestFirst(currentApps.email || { mails: [] }, 'timestamp'),
+      forum: sortListNewestFirst(currentApps.forum || { items: [] }, 'timestamp'),
+      recorder: sortListNewestFirst(currentApps.recorder || { items: [] }, 'timestamp'),
       files: currentApps.files || { items: [] },
       settings: currentApps.settings || { theme: 'kawaii' },
       moments: currentApps.moments || { posts: [] }
@@ -675,33 +675,33 @@ JSON 结构样例：
       
       const seedData = JSON.parse(fixCommonJsonErrors(content))
 
-      if (seedData.photos) apps.photos = { photos: seedData.photos }
-      if (seedData.messages) apps.messages = { items: seedData.messages }
-      if (seedData.footprints) apps.footprints = { items: seedData.footprints }
-      if (seedData.notes) apps.notes = { items: seedData.notes }
-      if (seedData.reminders) apps.reminders = { items: seedData.reminders }
-      if (seedData.browser) apps.browser = { history: seedData.browser }
-      if (seedData.music) apps.music = { items: seedData.music }
-      if (seedData.forum) apps.forum = { items: seedData.forum }
-      if (seedData.recorder) apps.recorder = { items: seedData.recorder }
-      if (seedData.calendar) apps.calendar = { items: seedData.calendar }
-      if (seedData.files) apps.files = { items: seedData.files }
-      if (seedData.history) apps.history = { items: seedData.history }
-      if (seedData.shopping) apps.shopping = { orders: seedData.shopping }
-      if (seedData.meituan) apps.meituan = { orders: seedData.meituan }
-      if (seedData.email) apps.email = { mails: seedData.email }
+      if (seedData.photos) apps.photos = sortListNewestFirst({ photos: seedData.photos })
+      if (seedData.messages) apps.messages = sortListNewestFirst({ items: seedData.messages })
+      if (seedData.footprints) apps.footprints = sortListNewestFirst({ items: seedData.footprints })
+      if (seedData.notes) apps.notes = sortListNewestFirst({ items: seedData.notes })
+      if (seedData.reminders) apps.reminders = sortListNewestFirst({ items: seedData.reminders })
+      if (seedData.browser) apps.browser = sortListNewestFirst({ history: seedData.browser })
+      if (seedData.music) apps.music = sortListNewestFirst({ items: seedData.music })
+      if (seedData.forum) apps.forum = sortListNewestFirst({ items: seedData.forum })
+      if (seedData.recorder) apps.recorder = sortListNewestFirst({ items: seedData.recorder })
+      if (seedData.calendar) apps.calendar = sortListNewestFirst({ items: seedData.calendar })
+      if (seedData.files) apps.files = sortListNewestFirst({ items: seedData.files })
+      if (seedData.history) apps.history = sortListNewestFirst({ items: seedData.history })
+      if (seedData.shopping) apps.shopping = sortListNewestFirst({ orders: seedData.shopping })
+      if (seedData.meituan) apps.meituan = sortListNewestFirst({ orders: seedData.meituan })
+      if (seedData.email) apps.email = sortListNewestFirst({ mails: seedData.email })
       if (seedData.wallet) {
         if (seedData.wallet.balance !== undefined) apps.wallet = { ...apps.wallet, balance: seedData.wallet.balance }
         if (seedData.wallet.transactions?.length) {
           const existingTx = apps.wallet?.transactions || []
-          apps.wallet = { ...apps.wallet, transactions: [...existingTx, ...seedData.wallet.transactions] }
+          apps.wallet = sortListNewestFirst({ ...apps.wallet, transactions: [...existingTx, ...seedData.wallet.transactions] })
         }
         if (seedData.wallet.bankCards?.length) {
           const existingCards = apps.wallet?.bankCards || []
           apps.wallet = { ...apps.wallet, bankCards: [...existingCards, ...seedData.wallet.bankCards] }
         }
       }
-      if (seedData.moments) apps.moments = { posts: seedData.moments }
+      if (seedData.moments) apps.moments = sortListNewestFirst({ posts: seedData.moments })
 
       // C2. 记录同步历史 (仅保留最近 3 次)
       if (char.phoneData) {
@@ -1543,6 +1543,9 @@ ${selectedPrompts}
           if (appData.allowedMuttering) target.allowedMuttering = appData.allowedMuttering
           if (appData.caughtMuttering) target.caughtMuttering = appData.caughtMuttering
           if (appData.muttering && !target.allowedMuttering) target.allowedMuttering = appData.muttering
+          
+          // 4. 最终排序 (根据时间戳倒序，最新的在前面)
+          sortListNewestFirst(target)
         })
       }
       await chatStore.saveChats()
@@ -1556,9 +1559,74 @@ ${selectedPrompts}
   function triggerCustomModal(options) {
     modalState.value = {
       ...modalState.value,
+      type: 'alert', // Default
+      okText: '确定',
+      cancelText: '取消',
+      onConfirm: null,
+      onCancel: null,
       ...options,
       show: true
     }
+  }
+
+  function triggerAlert(title, message, onConfirm = null) {
+    triggerCustomModal({
+      type: 'alert',
+      title,
+      message,
+      onConfirm: () => {
+        modalState.value.show = false
+        if (onConfirm) onConfirm()
+      }
+    })
+  }
+
+  function triggerConfirm(title, message, onConfirm, onCancel = null) {
+    triggerCustomModal({
+      type: 'confirm',
+      title,
+      message,
+      onConfirm: () => {
+        modalState.value.show = false
+        if (onConfirm) onConfirm()
+      },
+      onCancel: () => {
+        modalState.value.show = false
+        if (onCancel) onCancel()
+      }
+    })
+  }
+
+  /**
+   * Helper to ensure specific lists are sorted newest first
+   */
+  function sortListNewestFirst(appObj, timeKey = 'timestamp') {
+    if (!appObj) return appObj
+    // 识别常见列表键：items, orders, history, photos, transactions, mails, posts, records
+    const commonListKeys = ['items', 'orders', 'history', 'photos', 'transactions', 'mails', 'posts', 'records', 'notifications']
+    
+    commonListKeys.forEach(listKey => {
+      if (appObj[listKey] && Array.isArray(appObj[listKey])) {
+        appObj[listKey].sort((a, b) => {
+          const valA = a[timeKey] || (a.time ? new Date(a.time).getTime() : 0) || 0
+          const valB = b[timeKey] || (b.time ? new Date(b.time).getTime() : 0) || 0
+          return valB - valA
+        })
+      }
+    })
+    
+    // 如果没找到通用键，尝试找任何数组
+    if (!commonListKeys.some(k => appObj[k])) {
+      const listKey = Object.keys(appObj).find(k => Array.isArray(appObj[k]))
+      if (listKey && Array.isArray(appObj[listKey])) {
+        appObj[listKey].sort((a, b) => {
+          const valA = a[timeKey] || (a.time ? new Date(a.time).getTime() : 0) || 0
+          const valB = b[timeKey] || (b.time ? new Date(b.time).getTime() : 0) || 0
+          return valB - valA
+        })
+      }
+    }
+    return appObj
   }
 
   function fixCommonJsonErrors(raw) {
@@ -1804,6 +1872,10 @@ ${selectedPrompts}
     updateAnniversary,
     batchGenerateAppData,
     clearAppData,
+    modalState,
+    triggerCustomModal,
+    triggerAlert,
+    triggerConfirm,
     triggerToast,
     processHiddenCommand
   }

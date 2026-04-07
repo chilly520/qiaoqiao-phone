@@ -12,6 +12,7 @@ import { useCallStore } from './callStore'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
 import { usePhoneInspectionStore } from './phoneInspectionStore'
+import { setupFinancialLogic } from './chatModules/chatFinancial'
 import localforage from 'localforage'
 
 // Configure localforage
@@ -643,7 +644,7 @@ export const useChatStore = defineStore('chat', () => {
             
             // Match the tag ONLY if it is the entire content (minus whitespace/inner voice)
             // For AI messages, use a more relaxed search to find embedded tags
-            const tagMatch = contentForDetection.match(/[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
+            const tagMatch = contentForDetection.match(/[\[【](发红包|红包|转账|图片|表情包|DRAW|语音|演奏|MUSIC|VIDEO|FILE|LOCATION|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|申请亲属卡|拒绝亲属卡|赠送亲属卡|礼物|GIFT)\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
             
             // Only consider it a "tag only" message if it starts and ends with the tag
             const isTagOnly = /^[\[【].*[\]】]$/.test(contentForDetection.trim())
@@ -710,10 +711,54 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.note = val2 || '我的钱就是你的钱'
                     newMsg.paymentId = val3 || `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
                     newMsg.content = `[亲属卡:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
+                } else if (tagType === '礼物' || tagType.toUpperCase() === 'GIFT') {
+                    newMsg.type = 'gift'
+                    newMsg.giftName = val1 || '礼物'
+                    
+                    // 鲁棒性解析：处理 [GIFT:名称:数量:备注] 或 [GIFT:名称:备注]
+                    if (val3) {
+                        newMsg.giftQuantity = parseInt(val2) || 1
+                        newMsg.giftNote = val3
+                    } else if (val2) {
+                        const q = parseInt(val2)
+                        // 如果 val2 是纯数字，视为数量；否则视为备注
+                        if (!isNaN(q) && /^\d+$/.test(val2)) {
+                            newMsg.giftQuantity = q
+                            newMsg.giftNote = ''
+                        } else {
+                            newMsg.giftQuantity = 1
+                            newMsg.giftNote = val2
+                        }
+                    } else {
+                        newMsg.giftQuantity = 1
+                        newMsg.giftNote = ''
+                    }
+
+                    newMsg.giftId = `GIFT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                    
+                    // 处理礼物中的 DRAW: 生图指令 (支持在备注中包含)
+                    if (newMsg.giftNote && newMsg.giftNote.includes('DRAW:')) {
+                        const parts = newMsg.giftNote.split('DRAW:')
+                        newMsg.giftNote = parts[0].trim()
+                        const prompt = parts[1].trim()
+                        if (prompt) {
+                            console.log('[ChatStore] GIFT DRAW detected, generating image for gift:', newMsg.giftName);
+                            import('@/utils/aiService').then(m => {
+                                m.generateImage(prompt).then(url => {
+                                    newMsg.giftImage = url
+                                    saveChats()
+                                })
+                            })
+                        }
+                    }
+                    
+                    if (isTagOnly) {
+                        newMsg.content = `[礼物:${newMsg.giftName}:${newMsg.giftQuantity}:${newMsg.giftNote}:${newMsg.giftId}]`
+                    }
                 }
             } else {
                 // 2.1 Fallback: Loose Parsing for User Inputs like "[转账] 520元" or "[红包] 恭喜发财"
-                const looseMatch = detectionContent.match(/^[\[【](发红包|红包|转账|亲属卡|申请亲属卡)[\]】]\s*(.*)/i);
+                const looseMatch = detectionContent.match(/^[\[【](发红包|红包|转账|亲属卡|申请亲属卡|礼物|GIFT)[\]】]\s*(.*)/i);
                 if (looseMatch) {
                     const tagType = looseMatch[1];
                     const rawText = looseMatch[2].trim();
@@ -740,6 +785,12 @@ export const useChatStore = defineStore('chat', () => {
                         newMsg.note = note || '我的钱就是你的钱';
                         newMsg.paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
                         newMsg.content = `[亲属卡:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`;
+                    } else if (tagType === '礼物' || tagType === 'GIFT') {
+                        newMsg.type = 'gift';
+                        newMsg.giftName = rawText || '礼物';
+                        newMsg.giftQuantity = 1;
+                        newMsg.giftId = `GIFT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                        newMsg.content = `[礼物:${newMsg.giftName}:1::${newMsg.giftId}]`;
                     } else {
                         if (!note) note = tagType === '转账' ? '转账给您' : '恭喜发财';
                         newMsg.type = (tagType === '发红包' || tagType === '红包') ? 'redpacket' : 'transfer';
@@ -4123,8 +4174,10 @@ export const useChatStore = defineStore('chat', () => {
     function endVote(chatId, msgId) {
         console.log('[ChatStore] End vote:', { chatId, msgId })
     }
+    const financial = setupFinancialLogic(chats, addMessage, saveChats, (sound) => console.log(`[ChatStore] Play sound: ${sound}`))
 
     return {
+        ...financial,
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         groupNpcs, pendingRequests, acceptPendingRequest, rejectPendingRequest,

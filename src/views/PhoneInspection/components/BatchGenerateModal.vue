@@ -64,14 +64,23 @@ const props = defineProps({
         type: Array,
         default: () => [
             { id: 'wechat', name: '微信', icon: 'fa-brands fa-weixin', color: '#BDECB6' },
+            { id: 'calls', name: '通话', icon: 'fa-solid fa-phone', color: '#FFD1DC' },
+            { id: 'messages', name: '短信', icon: 'fa-solid fa-envelope', color: '#C1E1C1' },
+            { id: 'wallet', name: '钱包', icon: 'fa-solid fa-wallet', color: '#FDFD96' },
+            { id: 'shopping', name: '市集', icon: 'fa-solid fa-basket-shopping', color: '#FFB7CE' },
+            { id: 'photos', name: '画廊', icon: 'fa-solid fa-camera-retro', color: '#B2E2F2' },
+            { id: 'backpack', name: '背包', icon: 'fa-solid fa-briefcase', color: '#FFD700' },
             { id: 'footprints', name: '足迹', icon: 'fa-solid fa-shoe-prints', color: '#AEEEEE' },
             { id: 'notes', name: '碎片', icon: 'fa-solid fa-pen-nib', color: '#C5A3FF' },
+            { id: 'reminders', name: '备忘录', icon: 'fa-solid fa-check-double', color: '#98FB98' },
             { id: 'browser', name: '探索', icon: 'fa-solid fa-paper-plane', color: '#A0E7E5' },
-            { id: 'forum', name: '树洞', icon: 'fa-solid fa-comment-dots', color: '#D4F1F4' },
-            { id: 'moments', name: '朋友圈', icon: 'fa-solid fa-camera', color: '#F87171' },
-            { id: 'shopping', name: '市集', icon: 'fa-solid fa-basket-shopping', color: '#FFB7CE' },
+            { id: 'history', name: '回忆', icon: 'fa-solid fa-clock-rotate-left', color: '#FFC0CB' },
+            { id: 'music', name: '音符', icon: 'fa-solid fa-music', color: '#E0BBE4' },
+            { id: 'calendar', name: '时光', icon: 'fa-solid fa-calendar-days', color: '#FEC8D8' },
             { id: 'meituan', name: '便当', icon: 'fa-solid fa-cookie-bite', color: '#FFE5B4' },
+            { id: 'forum', name: '树洞', icon: 'fa-solid fa-comment-dots', color: '#D4F1F4' },
             { id: 'recorder', name: '留声', icon: 'fa-solid fa-microphone-lines', color: '#FFA07A' },
+            { id: 'email', name: '邮件', icon: 'fa-solid fa-envelope', color: '#87CEEB' },
             { id: 'files', name: '宝库', icon: 'fa-solid fa-folder-open', color: '#B0C4DE' }
         ]
     }

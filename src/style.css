@@ -221,12 +221,12 @@ body {
 .system-chip-content {
     background: rgba(0, 0, 0, 0.05); /* Light translucent grey */
     color: #708090; /* Slate grey */
-    font-size: 0.85em;
-    padding: 4px 14px;
+    font-size: 11px;
+    padding: 3px 12px;
     border-radius: 999px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
     border: 1px solid rgba(0, 0, 0, 0.03);

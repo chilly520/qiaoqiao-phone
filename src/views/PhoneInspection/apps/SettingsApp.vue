@@ -80,6 +80,30 @@
                 </div>
             </section>
 
+            <!-- Section: Password (New!) -->
+            <section class="settings-section">
+                <h3 class="flex items-center text-[#8F5E6E] font-bold mb-3 px-2">
+                    <i class="fa-solid fa-lock mr-2"></i> 手机访问码
+                </h3>
+                <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-50 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-black text-gray-700">启用访问码</span>
+                        <div class="w-12 h-6 rounded-full bg-pink-100 relative cursor-pointer" @click="togglePassword">
+                            <div class="absolute w-5 h-5 bg-white rounded-full transition-all duration-300 shadow-sm"
+                                :class="passwordEnabled ? 'translate-x-6' : 'translate-x-0'" style="top: 2px; left: 2px;"></div>
+                        </div>
+                    </div>
+                    <div v-if="passwordEnabled" class="flex flex-col gap-1 pt-2 animate-fade-in">
+                        <label class="text-[10px] font-black text-gray-300 uppercase tracking-widest">设置 4 位访问码 (当前: {{ currentCharCode }})</label>
+                        <div class="flex gap-2">
+                             <input v-model="newPassword" placeholder="输入 4 位数字..." maxlength="4"
+                                class="flex-1 px-4 py-3 bg-gray-50 rounded-xl text-sm font-black text-[#8F5E6E] outline-none border border-transparent focus:border-pink-100">
+                             <button @click="updatePassword" class="px-4 py-2 bg-pink-400 text-white rounded-xl font-bold active:scale-95 transition-transform text-xs shadow-md shadow-pink-100">修改</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Section: Desktop Frames -->
             <section class="settings-section">
                 <h3 class="flex items-center text-[#8F5E6E] font-bold mb-3 px-2">
@@ -142,6 +166,35 @@
             <input type="file" ref="fileInput" class="hidden" @change="handleFileUpload" accept="image/*">
             <input type="file" ref="frameInput" class="hidden" @change="handleFrameFileUpload" accept="image/*">
         </div>
+
+        <!-- Custom Confirm Dialog -->
+        <Teleport to="body">
+            <Transition name="fade">
+                <div v-if="showConfirmDialog"
+                    class="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm"
+                    @click.self="cancelClear">
+                    <div class="bg-white rounded-2xl w-full max-w-[280px] p-6 shadow-2xl animate-pop-in text-center">
+                        <div class="w-12 h-12 mx-auto mb-3 bg-pink-50 rounded-full flex items-center justify-center">
+                            <i class="fa-solid fa-triangle-exclamation text-lg text-pink-400"></i>
+                        </div>
+                        <p class="text-sm font-bold text-gray-700 mb-1">确认清除数据</p>
+                        <p class="text-xs text-gray-400 mb-5 leading-relaxed">
+                            确定要清除这 {{ selectedApps.length }} 个应用的数据吗？<br>此操作不可撤销
+                        </p>
+                        <div class="flex gap-3">
+                            <button @click="cancelClear"
+                                class="flex-1 py-2.5 bg-gray-100 text-gray-500 rounded-xl font-black text-sm active:scale-95 transition-transform">
+                                取消
+                            </button>
+                            <button @click="confirmClear"
+                                class="flex-1 py-2.5 bg-[#FC6C9C] text-white rounded-xl font-black text-sm shadow-md shadow-pink-100 active:scale-95 transition-transform">
+                                确认清除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </div>
 </template>
 
@@ -174,11 +227,30 @@ const anniversaryDate = ref(anniversaryData.value.date)
 
 const fileInput = ref(null)
 const frameInput = ref(null)
-const showUrlInput = ref(false)
 const urlInput = ref('')
 const activeFrameId = ref(null)
 
+const newPassword = ref('')
+const passwordEnabled = computed(() => phoneStore.phoneData?.password?.enabled)
+const currentCharCode = computed(() => phoneStore.phoneData?.password?.code || '1234')
+
+function togglePassword() {
+    phoneStore.phoneData.password.enabled = !phoneStore.phoneData.password.enabled
+    phoneStore.triggerToast(phoneStore.phoneData.password.enabled ? '访问码已启用' : '访问码已关闭')
+}
+
+function updatePassword() {
+    if (newPassword.value.length !== 4 || isNaN(newPassword.value)) {
+        phoneStore.triggerAlert('错误', '访问码必须为 4 位数字喵~')
+        return
+    }
+    phoneStore.phoneData.password.code = newPassword.value
+    newPassword.value = ''
+    phoneStore.triggerAlert('成功', '手机访问码已更新 🔒')
+}
+
 const selectedApps = ref([])
+const showConfirmDialog = ref(false)
 const selectableApps = [
     { id: 'wechat', name: '微信' },
     { id: 'calls', name: '通话' },
@@ -196,6 +268,7 @@ const selectableApps = [
     { id: 'meituan', name: '便当' },
     { id: 'forum', name: '树洞' },
     { id: 'recorder', name: '留声' },
+    { id: 'email', name: '邮件' },
     { id: 'files', name: '宝库' }
 ]
 
@@ -210,11 +283,18 @@ function handleClearAll() {
 }
 
 function clearSelectedData() {
-    if (confirm(`确定要清除这 ${selectedApps.value.length} 个应用的数据吗喵？`)) {
-        phoneStore.clearAppData(selectedApps.value)
-        selectedApps.value = []
-        alert('这些应用已经干干净净啦喵~ ✨')
-    }
+    if (selectedApps.value.length === 0) return
+    showConfirmDialog.value = true
+}
+
+function confirmClear() {
+    phoneStore.clearAppData(selectedApps.value)
+    selectedApps.value = []
+    showConfirmDialog.value = false
+}
+
+function cancelClear() {
+    showConfirmDialog.value = false
 }
 
 function triggerUpload() { fileInput.value.click() }
@@ -248,12 +328,12 @@ function saveAnniversary() {
         title: anniversaryTitle.value,
         date: anniversaryDate.value
     })
-    alert('纪念日已永久封存喵~ 💖')
+    phoneStore.triggerAlert('成功', '纪念日已永久封存喵~ 💖')
 }
 
 function generateAIAnniversary() {
     // This is a UI trigger, real logic would involve AI calling the tool
-    alert('✨ AI 正在努力分析你们的回忆... 请稍候再试 (或对我说：帮我规划纪念日)')
+    phoneStore.triggerAlert('魔法预警', '✨ AI 正在努力分析你们的回忆... 请稍候再试 (或对我说：帮我规划纪念日)')
 }
 
 function readFileAsBase64(file) {
@@ -294,5 +374,14 @@ function readFileAsBase64(file) {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.animate-pop-in { animation: pop-in 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+@keyframes pop-in {
+    from { opacity: 0; transform: scale(0.9) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
 }
 </style>

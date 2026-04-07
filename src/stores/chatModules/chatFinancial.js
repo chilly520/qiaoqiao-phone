@@ -193,8 +193,9 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
                     image: msg.giftImage,
                     description: msg.giftNote || '对方送来的礼物。',
                     source: `好友赠送`,
-                    category: 'all'
-                }, msg.giftQuantity || 1)
+                    category: 'gift', // Using 'gift' category instead of 'all' for better organization
+                    quantity: msg.giftQuantity || 1
+                })
             } catch (e) { console.error('Failed to add item to backpack:', e) }
         } else {
             // Try to find in participants (group chat) or use chat info (private chat)

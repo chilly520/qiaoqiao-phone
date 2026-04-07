@@ -1,7 +1,7 @@
-﻿﻿﻿﻿﻿﻿﻿/**
+﻿﻿﻿﻿﻿/**
  * AI Private Chat System Prompt Template
  */
-export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '') {
+export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '') {
     const charName = String(char.name || 'AI');
     const charGender = String(char.gender || '未知');
     const charDesc = String(char.description || char.prompt || '无');
@@ -281,5 +281,6 @@ ${finalMoments ? `\n\n----- 【参考资料·近期动态】（朋友圈/情侣�
 ${locationContext ? `\n\n----- 【参考资料·环境感知】 -----\n${locationContext}` : ''}
 ${linkedGroupMemory ? `\n\n----- 【参考资料·关联记忆】 -----\n${linkedGroupMemory}` : ''}
 ${contactList ? `\n\n----- 【参考资料·通讯录】 -----\n${contactList}` : ''}
-${calendarContext ? `\n\n----- 【参考资料·日历】 -----\n${calendarContext}` : ''}`;
+${calendarContext ? `\n\n----- 【参考资料·日历】 -----\n${calendarContext}` : ''}
+${phoneContext ? `\n\n----- 【参考资料·手机内容】 -----\n${phoneContext}` : ''}`;
 }

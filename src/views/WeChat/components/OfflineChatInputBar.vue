@@ -19,6 +19,9 @@
       <button class="toolbar-icon" @click.stop="$emit('regenerate')" title="重新生成">
         <i class="fa-solid fa-rotate-right"></i>
       </button>
+      <button class="toolbar-icon" @click.stop="$emit('request-phone')" title="查手机申请">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+      </button>
       <button
         v-if="showScrollToBottom"
         class="toolbar-icon active animate-bounce-subtle"

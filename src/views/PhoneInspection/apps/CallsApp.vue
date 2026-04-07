@@ -69,18 +69,15 @@
                         <p class="text-xs text-gray-400 font-bold uppercase tracking-widest">Mobile • 中国</p>
 
                         <div class="flex gap-4 mt-8 w-full">
-                            <a :href="'tel:' + (selectedCall.phone || '10086')"
-                                class="flex-1 bg-blue-500 text-white p-4 rounded-2xl flex flex-col items-center font-black">
+                            <div class="flex-1 bg-blue-500 text-white p-4 rounded-2xl flex flex-col items-center font-black">
                                 <i class="fa-solid fa-phone mb-1"></i>
                                 <span class="text-[10px]">呼叫</span>
-                            </a>
-                            <div
-                                class="flex-1 bg-blue-500 text-white p-4 rounded-2xl flex flex-col items-center font-black">
+                            </div>
+                            <div class="flex-1 bg-green-500 text-white p-4 rounded-2xl flex flex-col items-center font-black">
                                 <i class="fa-solid fa-message mb-1"></i>
                                 <span class="text-[10px]">信息</span>
                             </div>
-                            <div
-                                class="flex-1 bg-blue-500 text-white p-4 rounded-2xl flex flex-col items-center font-black">
+                            <div class="flex-1 bg-purple-500 text-white p-4 rounded-2xl flex flex-col items-center font-black">
                                 <i class="fa-solid fa-video mb-1"></i>
                                 <span class="text-[10px]">视频</span>
                             </div>
@@ -96,6 +93,10 @@
                                     '未接' : '已接通' }}</span>
                             </div>
                             <span class="text-sm font-bold text-gray-400">{{ selectedCall.duration }}</span>
+                        </div>
+                        <div v-if="selectedCall.summary && selectedCall.type !== 'missed'" class="mt-4 pt-4 border-t border-gray-50">
+                            <h3 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">通话概要</h3>
+                            <p class="text-[13px] text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-4">{{ selectedCall.summary }}</p>
                         </div>
                     </div>
                 </div>

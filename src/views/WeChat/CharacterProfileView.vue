@@ -359,32 +359,20 @@ const triggerAvatarUpload = () => {
 const handleAvatarUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
-  
+
   try {
-    // 压缩图片
-    const compressed = await compressImage(file, 0.7)
-    
-    // 转换为 base64
-    const base64 = await new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = (e) => resolve(e.target.result)
-      reader.readAsDataURL(compressed)
-    })
-    
-    // 更新角色头像
+    const base64 = await compressImage(file, { maxWidth: 400, quality: 0.7 })
+
     await chatStore.updateCharacter(charId, { avatar: base64 })
-    
-    // 同时更新 chatStore 中的聊天对象
+
     if (chatStore.chats[charId]) {
       chatStore.chats[charId].avatar = base64
     }
-    
-    // 同时更新 character 对象
+
     character.value.avatar = base64
-    
+
     chatStore.triggerToast('头像已更新', 'success')
-    
-    // 清空 input，允许重复上传同一文件
+
     event.target.value = ''
   } catch (error) {
     console.error('上传头像失败:', error)

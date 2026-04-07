@@ -248,6 +248,7 @@
         @toggleSearch="toggleSearch"
         @toggle-offline-mode="toggleOfflineMode"
         @regenerate="regenerateAIResponse"
+        @request-phone="handleRequestPhone"
       />
       </div>
     </div>
@@ -422,6 +423,7 @@ import ChatMessageItem from './components/ChatMessageItem.vue'
 import TheaterMessageRenderer from './components/TheaterMessageRenderer.vue'
 import { useStickerStore } from '../../stores/stickerStore'
 import OfflineChatInputBar from './components/OfflineChatInputBar.vue'
+import { usePhoneInspectionStore } from '../../stores/phoneInspectionStore'
 import ChatInnerVoiceCard from './modals/ChatInnerVoiceCard.vue'
 import BackgroundUploadModal from './modals/BackgroundUploadModal.vue'
 import ChatActionPanel from './ChatActionPanel.vue'
@@ -463,6 +465,7 @@ const musicStore = useMusicStore()
 const callStore = useCallStore()
 const walletStore = useWalletStore()
 const worldLoopStore = useWorldLoopStore()
+const phoneInspectionStore = usePhoneInspectionStore()
 
 const DEFAULT_BACKGROUND = 'https://files.catbox.moe/e95o2s.jpg'
 
@@ -689,6 +692,12 @@ const showDiceModal = ref(false)
 const showTarotModal = ref(false)
 const showBackpackModal = ref(false)
 const showMissionScheduler = ref(false)
+
+const handleRequestPhone = async () => {
+  if (!chatStore.currentChatId) return
+  const result = await phoneInspectionStore.requestPermission(chatStore.currentChatId)
+  console.log('[PhoneRequest] Result:', result)
+}
 
 const chatData = computed(() => chatStore.currentChat)
 const msgs = computed(() => chatStore.currentChat?.msgs || [])

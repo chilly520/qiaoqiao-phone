@@ -114,8 +114,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
-import { useCalendarStore } from '@/stores/calendarStore'
+import { usePhoneInspectionStore } from '../../../stores/phoneInspectionStore'
+import { useCalendarStore } from '../../../stores/calendarStore'
 import BatchGenerateModal from './BatchGenerateModal.vue'
 
 const props = defineProps({
@@ -129,6 +129,12 @@ const props = defineProps({
 })
 
 const phoneStore = usePhoneInspectionStore()
+if (!phoneStore) {
+  console.error('[PhoneDesktop] CRITICAL: usePhoneInspectionStore() returned null/undefined!')
+}
+
+console.log('[PhoneDesktop] Store initialized:', !!phoneStore)
+
 const calendarStore = useCalendarStore()
 const emit = defineEmits(['open-app'])
 
@@ -257,10 +263,11 @@ const page2Apps = [
   { id: 'browser', name: '探索', icon: 'fa-solid fa-paper-plane', color: '#A0E7E5', textColor: '#4F8A88' },
   { id: 'history', name: '回忆', icon: 'fa-solid fa-clock-rotate-left', color: '#FFC0CB', textColor: '#D02090' },
   { id: 'music', name: '音符', icon: 'fa-solid fa-music', color: '#E0BBE4', textColor: '#7C5D81' },
-  { id: 'calendar', name: '时光', icon: 'fa-solid fa-calendar-heart', color: '#FEC8D8', textColor: '#8F5E6E' },
+  { id: 'calendar', name: '时光', icon: 'fa-solid fa-calendar-days', color: '#FEC8D8', textColor: '#8F5E6E' },
   { id: 'meituan', name: '便当', icon: 'fa-solid fa-cookie-bite', color: '#FFE5B4', textColor: '#8B6A47' },
   { id: 'forum', name: '树洞', icon: 'fa-solid fa-comment-dots', color: '#D4F1F4', textColor: '#58888C' },
   { id: 'recorder', name: '留声', icon: 'fa-solid fa-microphone-lines', color: '#FFA07A', textColor: '#B22222' },
+  { id: 'email', name: '邮件', icon: 'fa-solid fa-paper-plane', color: '#BFEFFF', textColor: '#4682B4' },
   { id: 'files', name: '宝库', icon: 'fa-solid fa-folder-open', color: '#B0C4DE', textColor: '#4682B4' }
 ]
 
@@ -307,9 +314,14 @@ function handleOpenApp(appId) {
 
 async function handleBatchGenerate(selectedIds) {
   if (!phoneStore.currentCharId) return
+  phoneStore.triggerToast('正在生成数据，请稍候~', 'info')
   const success = await phoneStore.batchGenerateAppData(phoneStore.currentCharId, selectedIds)
   if (success) {
-    phoneStore.triggerToast('数据同步成功喵~', 'success')
+    phoneStore.triggerToast('数据生成完成喵~', 'success')
+    // 触发碎碎念：优先使用第一个生成的应用作为碎碎念来源
+    if (selectedIds && selectedIds.length > 0) {
+      phoneStore.triggerMuttering(selectedIds[0])
+    }
   } else {
     phoneStore.triggerToast('生成失败，请重试', 'error')
   }

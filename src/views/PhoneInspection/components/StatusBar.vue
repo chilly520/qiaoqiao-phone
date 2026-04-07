@@ -95,7 +95,7 @@ onUnmounted(() => {
   z-index: 1000;
   pointer-events: auto;
   font-family: 'Outfit', sans-serif;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), transparent);
+  background: transparent;
 }
 
 .left-side,

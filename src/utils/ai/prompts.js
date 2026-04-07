@@ -10,11 +10,11 @@ import { GROUP_PROMPT_TEMPLATE } from './prompts_group';
 /**
  * Main System Prompt Selector
  */
-export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, groupContext = null, linkedGroupMemory = '', contactList = '', calendarContext = '') {
+export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, groupContext = null, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '') {
   if (groupContext && groupContext.isGroup) {
     return GROUP_PROMPT_TEMPLATE(char, user, stickers, worldInfo, memoryText, patSettings, locationContext, momentsText, bio, groupContext, linkedGroupMemory, contactList, calendarContext);
   } else {
-    return PRIVATE_PROMPT_TEMPLATE(char, user, stickers, worldInfo, memoryText, patSettings, locationContext, momentsText, bio, linkedGroupMemory, contactList, calendarContext);
+    return PRIVATE_PROMPT_TEMPLATE(char, user, stickers, worldInfo, memoryText, patSettings, locationContext, momentsText, bio, linkedGroupMemory, contactList, calendarContext, phoneContext);
   }
 }
 
