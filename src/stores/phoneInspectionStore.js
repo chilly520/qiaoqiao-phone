@@ -4,6 +4,7 @@ import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWalletStore } from './walletStore'
 import { generateReply } from '../utils/aiService'
+import { searchMemoryLog, appendLog } from '../utils/memoryLog'
 
 /**
  * Phone Inspection Store
@@ -1418,18 +1419,33 @@ JSON 结构样例：
     }).join('\n')
 
     const existingApps = char.phoneData?.apps || {}
-    const historySnapshot = {}
-    appIds.forEach(key => {
-      if (existingApps[key]) {
-        const items = existingApps[key].items || existingApps[key].photos ||
-          existingApps[key].history || existingApps[key].posts ||
-          existingApps[key].transactions || existingApps[key].mails ||
-          existingApps[key].orders || existingApps[key].records || []
-        if (Array.isArray(items) && items.length > 0) {
-          historySnapshot[key] = items.slice(-3)
-        }
+    const appSummary = []
+    const selectedAppData = {}
+    Object.keys(existingApps).forEach(appId => {
+      if (!existingApps[appId] || Object.keys(existingApps[appId]).length === 0) return
+      const isSelected = appIds.includes(appId)
+      const items = existingApps[appId].items || existingApps[appId].photos ||
+        existingApps[appId].history || existingApps[appId].posts ||
+        existingApps[appId].transactions || existingApps[appId].mails ||
+        existingApps[appId].orders || existingApps[appId].records ||
+        existingApps[appId].calls || existingApps[appId].messages || []
+      const balance = existingApps[appId].balance
+      const remark = existingApps[appId].remark
+      const count = Array.isArray(items) ? items.length : 0
+      if (isSelected) {
+        let data = { count }
+        if (count > 0) data.recent = items.slice(-3)
+        if (balance != null) data.balance = balance
+        if (remark) data.remark = remark
+        selectedAppData[appId] = data
+      } else {
+        const names = { wechat:'微信', calls:'通话', messages:'短信', wallet:`钱包(余额${balance||'?'})`, shopping:'市集', photos:'画廊', backpack:'背包', footprints:'足迹', notes:'碎片', reminders:'备忘录', browser:'探索', history:'回忆', music:'音符', calendar:'时光', meituan:'便当', forum:'树洞', recorder:'留声', email:'邮件', files:'宝库' }
+        const label = names[appId] || appId
+        appSummary.push(`${label}: ${count}条${remark ? `，备注"${remark}"` : ''}`)
       }
     })
+
+    const memoryEvents = searchMemoryLog(char.id, { limit: 15, source: ['查手机','市集','便当','🛒','💰'] })
 
     const now = new Date()
     const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
@@ -1444,8 +1460,14 @@ JSON 结构样例：
 【近期微信聊天记录（最近20条）】
 ${recentMessages || '暂无'}
 
-【该角色手机中已有的数据（作为参考保持连贯性）】
-${Object.keys(historySnapshot).length > 0 ? JSON.stringify(historySnapshot, null, 2) : '暂无历史数据'}
+【角色记忆日志（跨应用事件摘要）】
+${memoryEvents.length > 0 ? memoryEvents.join('\n') : '暂无'}
+
+【本次要更新的应用 - 完整历史数据（保持连贯性）】
+${Object.keys(selectedAppData).length > 0 ? JSON.stringify(selectedAppData, null, 2) : '全部为空，首次生成'}
+
+【其他应用状态索引（无需生成，仅供参考）】
+${appSummary.length > 0 ? appSummary.join('\n') : '暂无'}
 
 【生成任务】为以下${appIds.length}个应用生成完整的手机数据。每个应用的数据条目内容请精简（单条20-60字即可），确保所有应用都能生成完整。
 ${selectedPrompts}
@@ -1549,6 +1571,32 @@ ${selectedPrompts}
         })
       }
       await chatStore.saveChats()
+
+      const generatedAppIds = Object.keys(data.apps || {})
+      if (generatedAppIds.length > 0) {
+        const logEntries = []
+        generatedAppIds.forEach(appId => {
+          const appData = data.apps[appId]
+          const names = { wechat:'微信', calls:'通话', messages:'短信', wallet:'钱包', shopping:'市集', photos:'画廊', backpack:'背包', footprints:'足迹', notes:'碎片', reminders:'备忘录', browser:'探索', history:'回忆', music:'音符', calendar:'时光', meituan:'便当', forum:'树洞', recorder:'留声', email:'邮件', files:'宝库' }
+          const label = names[appId] || appId
+          const items = appData.items || appData.posts || appData.transactions || appData.mails || appData.orders || appData.records || appData.photos || appData.history || appData.calls || appData.messages
+          const count = Array.isArray(items) ? items.length : Object.keys(appData).length
+          if (count > 0) {
+            let sample = ''
+            if (Array.isArray(items) && items[0]) {
+              sample = typeof items[0] === 'string' ? items[0].substring(0, 60) : JSON.stringify(items[0]).substring(0, 80)
+            } else if (appData.balance != null) {
+              sample = `余额${appData.balance}`
+            } else if (appData.remark) {
+              sample = appData.remark
+            }
+            logEntries.push(`[📱 查手机:${label}] 新增${count}条${sample ? '，如：'+sample : ''}`)
+          }
+        })
+        logEntries.forEach(entry => appendLog(char.id, entry))
+        await chatStore.saveChats()
+      }
+
       return true
     } catch (e) {
       console.error('[PhoneInspection] Batch Generation Error:', e)

@@ -1,6 +1,7 @@
 import { useSettingsStore } from '../settingsStore'
 import { useLoggerStore } from '../loggerStore'
 import { generateReply } from '../../utils/aiService'
+import { appendLog } from '../../utils/memoryLog'
 
 export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats) => {
     async function summarizeHistory(chatId, options = {}) {
@@ -161,6 +162,7 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
             if (lastMem !== newMem) {
                 latestChat.memory.push(newMem)
+                appendLog(latestChat.id, `[💬 聊天总结] ${response.content.substring(0, 120)}`)
 
                 // Limit memory count based on settings
                 const contextLimit = parseInt(latestChat.contextLimit) || 20

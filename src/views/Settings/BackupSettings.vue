@@ -359,22 +359,38 @@ const selectionState = ref({
   wallet: true,
   weibo: true,
   music: true,
-  logs: true
+  forum: true,
+  shopping: true,
+  lovespace: true,
+  phoneinspection: true,
+  calendar: true,
+  backpack: true,
+  avatarframe: false,
+  mahjong: false,
+  worldloop: false
 })
 
 // --- Computed ---
 const exportOptionList = computed(() => [
   { id: 'chats', name: '角色与聊天', desc: `${Object.keys(chatStore.chats || {}).length} 个联系人及其历史`, icon: 'fa-solid fa-comments', color: 'bg-emerald-100 text-emerald-600', enabled: selectionState.value.chats },
   { id: 'moments', name: '朋友圈动态', desc: `${(momentsStore.moments || []).length} 条朋友圈及评论`, icon: 'fa-solid fa-camera-retro', color: 'bg-orange-100 text-orange-600', enabled: selectionState.value.moments },
-  { id: 'settings', name: '系统核心配置', desc: 'API设置、音量及天气参数', icon: 'fa-solid fa-screwdriver-wrench', color: 'bg-blue-100 text-blue-600', enabled: selectionState.value.settings },
-  { id: 'decoration', name: '美化与自定义', desc: '壁纸、图标映及全局CSS', icon: 'fa-solid fa-wand-magic-sparkles', color: 'bg-purple-100 text-purple-600', enabled: selectionState.value.decoration },
+  { id: 'settings', name: '系统核心配置', desc: 'API设置、音量、天气、绘图及字体参数', icon: 'fa-solid fa-screwdriver-wrench', color: 'bg-blue-100 text-blue-600', enabled: selectionState.value.settings },
+  { id: 'decoration', name: '美化与自定义', desc: '壁纸、图标、全局CSS与主题', icon: 'fa-solid fa-wand-magic-sparkles', color: 'bg-purple-100 text-purple-600', enabled: selectionState.value.decoration },
   { id: 'worldbook', name: '世界书设定', desc: `${worldBookStore.books?.length || 0} 个词库词条`, icon: 'fa-solid fa-book-sparkles', color: 'bg-indigo-100 text-indigo-600', enabled: selectionState.value.worldbook },
   { id: 'stickers', name: '表情包图库', desc: `${stickerStore.stickers?.length || 0} 个收藏表情资源`, icon: 'fa-solid fa-face-laugh-squint', color: 'bg-amber-100 text-amber-600', enabled: selectionState.value.stickers },
-  { id: 'favorites', name: '我的收藏', desc: '收藏的消息、网页与卡片', icon: 'fa-solid fa-star', color: 'bg-yellow-100 text-yellow-600', enabled: selectionState.value.favorites },
-  { id: 'wallet', name: '钱包资产', desc: '虚拟零钱、银行卡记录', icon: 'fa-solid fa-wallet', color: 'bg-red-100 text-red-600', enabled: selectionState.value.wallet },
-  { id: 'weibo', name: '微博数据', desc: '微博账号及浏览记录', icon: 'fa-solid fa-share-nodes', color: 'bg-rose-100 text-rose-600', enabled: selectionState.value.weibo },
-  { id: 'music', name: '音乐记录', desc: '播放历史及同步听歌状态', icon: 'fa-solid fa-music', color: 'bg-cyan-100 text-cyan-600', enabled: selectionState.value.music },
-  { id: 'logs', name: '系统运行日志', desc: '便于迁移后排查问题', icon: 'fa-solid fa-list-ul', color: 'bg-gray-200 text-gray-600', enabled: selectionState.value.logs }
+  { id: 'favorites', name: '我的收藏', desc: `${(chatStore.favorites || []).length} 条收藏内容`, icon: 'fa-solid fa-star', color: 'bg-yellow-100 text-yellow-600', enabled: selectionState.value.favorites },
+  { id: 'wallet', name: '钱包资产', desc: '零钱余额、银行卡与亲情卡记录', icon: 'fa-solid fa-wallet', color: 'bg-red-100 text-red-600', enabled: selectionState.value.wallet },
+  { id: 'weibo', name: '微博数据', desc: '微博账号、博文与私信记录', icon: 'fa-solid fa-share-nodes', color: 'bg-rose-100 text-rose-600', enabled: selectionState.value.weibo },
+  { id: 'music', name: '音乐记录', desc: '播放列表与听歌状态', icon: 'fa-solid fa-music', color: 'bg-cyan-100 text-cyan-600', enabled: selectionState.value.music },
+  { id: 'forum', name: '论坛数据', desc: '社区帖子、评论与点赞', icon: 'fa-solid fa-comments-dollar', color: 'bg-teal-100 text-teal-600', enabled: selectionState.value.forum },
+  { id: 'shopping', name: '购物数据', desc: '订单、购物车、地址与优惠券', icon: 'fa-solid fa-cart-shopping', color: 'bg-lime-100 text-lime-600', enabled: selectionState.value.shopping },
+  { id: 'lovespace', name: '情侣空间', desc: '日记、情书、相册与纪念日', icon: 'fa-solid fa-heart', color: 'bg-pink-100 text-pink-600', enabled: selectionState.value.lovespace },
+  { id: 'phoneinspection', name: '查手机数据', desc: '壁纸库与相框数据', icon: 'fa-solid fa-mobile-screen-button', color: 'bg-violet-100 text-violet-600', enabled: selectionState.value.phoneinspection },
+  { id: 'calendar', name: '日历日程', desc: '日程安排与事件记录', icon: 'fa-solid fa-calendar-days', color: 'bg-sky-100 text-sky-600', enabled: selectionState.value.calendar },
+  { id: 'backpack', name: '背包物品', desc: '收集的道具与物品', icon: 'fa-solid fa-backpack', color: 'bg-orange-100 text-orange-700', enabled: selectionState.value.backpack },
+  { id: 'avatarframe', name: '头像框', desc: '自定义头像框配置', icon: 'fa-solid fa-border-all', color: 'bg-fuchsia-100 text-fuchsia-600', enabled: selectionState.value.avatarframe },
+  { id: 'mahjong', name: '麻将战绩', desc: '豆子、积分与胜负记录', icon: 'fa-solid fa-dice', color: 'bg-stone-100 text-stone-600', enabled: selectionState.value.mahjong },
+  { id: 'worldloop', name: '世界循环', desc: '世界循环存档数据', icon: 'fa-solid fa-rotate', color: 'bg-zinc-100 text-zinc-600', enabled: selectionState.value.worldloop }
 ])
 
 const chatCount = computed(() => Object.keys(chatStore.chats || {}).length)
@@ -511,8 +527,20 @@ async function handlePushToCloud() {
     uploadProgress.value = 20
     chatStore.triggerToast('正在聚合系统数据...', 'info')
     
-    // FETCH FULL DATA INSTEAD OF JUST CHATS
-    const backupData = await settingsStore.exportFullData() 
+    const allSelected = {}
+    Object.keys(selectionState.value).forEach(k => { allSelected[k] = true })
+    
+    const injectedData = {
+        chats: JSON.parse(JSON.stringify(chatStore.chats || {})),
+        moments: JSON.parse(JSON.stringify(momentsStore.moments || [])),
+        momentsTop: JSON.parse(JSON.stringify(momentsStore.topMoments || [])),
+        momentsNotifications: JSON.parse(JSON.stringify(momentsStore.notifications || [])),
+        worldbook: JSON.parse(JSON.stringify(worldBookStore.books || [])),
+        stickers: JSON.parse(JSON.stringify(stickerStore.stickers || [])),
+        favorites: JSON.parse(JSON.stringify(chatStore.favorites || []))
+    }
+    
+    const backupData = await settingsStore.exportFullData(allSelected, injectedData) 
     
     uploadProgress.value = 50
     const backupService = new GitHubBackup(githubConfig.value)

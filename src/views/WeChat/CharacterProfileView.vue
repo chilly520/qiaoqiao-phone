@@ -212,6 +212,11 @@
     <div
       class="absolute bottom-0 left-0 right-0 p-8 pt-4 pb-10 bg-white/95 backdrop-blur-md border-t border-gray-100 z-50">
       <div class="flex items-center justify-center gap-4">
+        <button @click="showMemoryLog = true"
+          class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight active:bg-gray-50">
+          <span>🧠 MEMORY</span>
+          <span class="text-[9px] font-normal tracking-tight opacity-50">记忆</span>
+        </button>
         <button @click="$router.push({ path: '/wechat/moments', query: { author: charId } })"
           class="flex-1 h-12 border border-black text-black font-bold text-[10px] tracking-[0.2em] uppercase transition-all flex flex-col items-center justify-center leading-tight active:bg-gray-50">
           <span>MOMENTS</span>
@@ -223,6 +228,29 @@
           <span class="text-[9px] font-normal tracking-tight opacity-50">发消息</span>
         </button>
       </div>
+
+    <Teleport to="body">
+      <div v-if="showMemoryLog" class="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4" @click.self="showMemoryLog = false">
+        <div class="bg-white w-full max-w-md max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl animate-fade-in" @click.stop>
+          <div class="sticky top-0 bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between z-10">
+            <h3 class="font-bold text-base">🧠 {{ char?.name || '' }}的记忆日志</h3>
+            <button @click="showMemoryLog = false" class="w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all">×</button>
+          </div>
+          <div class="p-4 overflow-y-auto max-h-[60vh] space-y-2 text-xs">
+            <div v-if="memoryLogs.length === 0" class="text-center text-gray-400 py-8">暂无记忆记录</div>
+            <div v-for="(log, i) in memoryLogs" :key="i"
+              class="p-2.5 rounded-xl bg-gray-50/80 leading-relaxed text-gray-700 break-words">{{ log }}</div>
+          </div>
+          <div v-if="Object.keys(memoryFacts).length > 0" class="px-4 pb-4 border-t border-gray-100 pt-3">
+            <h4 class="text-[11px] font-bold text-gray-400 mb-2 tracking-wider">👤 关键事实</h4>
+            <div class="flex flex-wrap gap-1.5">
+              <span v-for="(v, k) in memoryFacts" :key="k"
+                class="px-2 py-1 rounded-full bg-pink-50 text-pink-600 text-[10px] font-medium">{{ k }}: {{ v }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
     </div>
   </div>
 </template>
@@ -233,6 +261,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { compressImage } from '@/utils/imageUtils'
+import { searchMemoryLog, getFacts } from '@/utils/memoryLog'
 
 const route = useRoute()
 const router = useRouter()
@@ -242,6 +271,9 @@ const settingsStore = useSettingsStore()
 const charId = route.params.charId
 const isAnalysisTyping = computed(() => !!chatStore.isProfileProcessing[charId])
 const avatarFileInput = ref(null)
+const showMemoryLog = ref(false)
+const memoryLogs = computed(() => searchMemoryLog(charId, { limit: 100 }))
+const memoryFacts = computed(() => getFacts(charId))
 
 const character = computed(() => {
   if (charId === 'user') {

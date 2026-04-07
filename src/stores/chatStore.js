@@ -1493,6 +1493,10 @@ export const useChatStore = defineStore('chat', () => {
 
         const settingsStore = useSettingsStore();
         const userProfile = settingsStore.personalization.userProfile;
+        const userName = chat.userName || userProfile.name || '你';
+        const userGender = chat.userGender || userProfile.gender || '未知';
+        const userPersona = chat.userPersona || userProfile.persona || '';
+        const userSig = typeof userProfile.signature === 'string' ? userProfile.signature : '';
 
         // No toast or system message here as requested by user - let the UI spinner handle it
         typingStatus.value[chatId] = true;
@@ -1501,8 +1505,7 @@ export const useChatStore = defineStore('chat', () => {
         try {
             // Source Data Collection - As requested by user
             const charPrompt = chat.prompt || '暂无详细设定';
-            const userPersona = chat.userPersona || userProfile.persona || '无';
-            const userContext = `姓名：${userProfile.name} | 性别：${userProfile.gender || '未知'} | 个性：${userProfile.signature || ''} | 针对性设定：${userPersona}`;
+            const userContext = `姓名：${userName} | 性别：${userGender} | 个性：${userSig} | 针对性设定：${userPersona}`;
 
             // Full Memory Bank (Latest Summary + Historical Summaries)
             const latestSummary = chat.summary || '';
@@ -1513,11 +1516,11 @@ export const useChatStore = defineStore('chat', () => {
             const contextLimit = parseInt(chat.contextLimit) || 30;
             const contextMsgs = chat.msgs.slice(-contextLimit)
                 .filter(m => m.role !== 'system')
-                .map(m => `${m.role === 'user' ? userProfile.name : chat.name}: ${m.content}`)
+                .map(m => `${m.role === 'user' ? userName : chat.name}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
                 .join('\n');
 
             const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称“我”的视角补齐你自己的「灵魂档案」(Personal Profile)。
-档案内容必须完全符合你的性格、语气和对 ${userProfile.name} 的情感底色。不要以分析师的口吻说话。
+档案内容必须完全符合你的性格、语气和对 ${userName} 的情感底色。不要以分析师的口吻说话。
 
 【输出规范】
 你必须且只能使用 [BIO:键:值] 格式输出以下字段，不要输出任何开场白或解释。
@@ -1544,7 +1547,7 @@ export const useChatStore = defineStore('chat', () => {
    [BIO:Routine_deep:深夜独处时的思绪或习惯] 
 
 5. **灵魂羁绊 (Soul Ties)**：
-   [BIO:SoulBond_实际标签:你与 ${userProfile.name} 的深层情感纽带简述] 
+   [BIO:SoulBond_实际标签:你与 ${userName} 的深层情感纽带简述] 
 
 6. **爱之物 (Items of Love)**：
    [BIO:LoveItem_1_物品名:英文生图Prompt (描述该物品，包含意境、质感、电影级光影)] 
@@ -1553,7 +1556,7 @@ export const useChatStore = defineStore('chat', () => {
 
 【源数据库】
 1. 角色设定 (${chat.name}): ${charPrompt}
-2. 用户背景 (${userProfile.name}): ${userContext}
+2. 用户背景 (${userName}): ${userContext}
 3. 记忆库摘要: ${fullMemoryLibrary}
 4. 对话片段 (参考语气): \n${contextMsgs}`;
 

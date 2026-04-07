@@ -774,7 +774,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const worldBookStore = useWorldBookStore()
 
         const data = {
-            version: '2.0.0',
+            version: '3.0.0',
             timestamp: new Date().toISOString(),
             selection: selectionState
         }
@@ -789,6 +789,13 @@ export const useSettingsStore = defineStore('settings', () => {
         }
         if (selectionState.settings) {
             data.settings = JSON.parse(JSON.stringify(personalization.value))
+            data.apiConfigs = JSON.parse(JSON.stringify(apiConfigs.value))
+            data.currentConfigIndex = currentConfigIndex.value
+            data.voice = JSON.parse(JSON.stringify(voice.value))
+            data.weather = JSON.parse(JSON.stringify(weather.value))
+            data.drawing = JSON.parse(JSON.stringify(drawing.value))
+            data.compressQuality = compressQuality.value
+            data.fontScale = fontScale.value
         }
         if (selectionState.worldbook) {
             data.worldbook = injectedData.worldbook || JSON.parse(JSON.stringify(worldBookStore.books || []))
@@ -800,16 +807,64 @@ export const useSettingsStore = defineStore('settings', () => {
             data.favorites = injectedData.favorites || JSON.parse(JSON.stringify(chatStore.favorites || []))
         }
         if (selectionState.wallet) {
-            data.wallet = { balance: 0, records: [] }
+            try { const { useWalletStore } = await import('./walletStore'); const ws = useWalletStore()
+                data.wallet = { balance: ws.balance, transactions: ws.transactions, bankCards: ws.bankCards, familyCards: ws.familyCards, paymentSettings: ws.paymentSettings }
+            } catch(e) { data.wallet = { balance: 0, transactions: [], bankCards: [], familyCards: [], paymentSettings: { priority:['balance','family','bank'] }}}
         }
         if (selectionState.weibo) {
-            data.weibo = { account: null, history: [] }
+            try { const { useWeiboStore } = await import('./weiboStore'); const wb = useWeiboStore()
+                data.weibo = { user: wb.user, settings: wb.settings, posts: wb.posts, dmMessages: wb.dmMessages }
+            } catch(e) { data.weibo = null }
         }
         if (selectionState.music) {
-            data.music = { playHistory: [], favorites: [] }
+            try { const { useMusicStore } = await import('./musicStore'); const ms = useMusicStore()
+                data.music = { playlist: ms.playlist, currentIndex: ms.currentIndex, isShuffling: ms.isShuffling, repeatMode: ms.repeatMode }
+            } catch(e) { data.music = null }
         }
-        if (selectionState.logs) {
-            data.logs = []
+        if (selectionState.forum) {
+            try { const { useForumStore } = await import('./forumStore'); const fs = useForumStore()
+                data.forum = { forums: fs.forums, alts: fs.alts, posts: fs.posts, comments: fs.comments, likedPosts: fs.likedPosts, moderators: fs.moderators }
+            } catch(e) { data.forum = null }
+        }
+        if (selectionState.shopping) {
+            try { const { useShoppingStore } = await import('./shoppingStore'); const ss = useShoppingStore()
+                data.shopping = { products: ss.products, cart: ss.cart, orders: ss.orders, logistics: ss.logistics, addresses: ss.addresses, favorites: ss.favorites, coupons: ss.coupons, points: ss.points, reviews: ss.reviews }
+            } catch(e) { data.shopping = null }
+        }
+        if (selectionState.lovespace) {
+            try { const { useLoveSpaceStore } = await import('./loveSpaceStore'); const ls = useLoveSpaceStore()
+                data.lovespace = { spaces: ls.spaces, currentPartnerId: ls.currentPartnerId }
+            } catch(e) { data.lovespace = null }
+        }
+        if (selectionState.phoneinspection) {
+            try { const { usePhoneInspectionStore } = await import('./phoneInspectionStore'); const ps = usePhoneInspectionStore()
+                data.phoneinspection = { wallpaperLibrary: ps.wallpaperLibrary, photoFrames: ps.photoFrames }
+            } catch(e) { data.phoneinspection = null }
+        }
+        if (selectionState.calendar) {
+            try { const { default: calStore } = await import('./calendarStore'); const saved = localStorage.getItem('calendar_data')
+                data.calendar = saved ? JSON.parse(saved) : null
+            } catch(e) { data.calendar = null }
+        }
+        if (selectionState.backpack) {
+            try { const { useBackpackStore } = await import('./backpackStore'); const bs = useBackpackStore()
+                data.backpack = bs.items
+            } catch(e) { data.backpack = null }
+        }
+        if (selectionState.avatarframe) {
+            try { const { useAvatarFrameStore } = await import('./avatarFrameStore'); const afs = useAvatarFrameStore()
+                data.avatarframe = afs.frames
+            } catch(e) { data.avatarframe = null }
+        }
+        if (selectionState.mahjong) {
+            try { const { useMahjongStore } = await import('./mahjongStore'); const mjs = useMahjongStore()
+                data.mahjong = { beans: mjs.beans, score: mjs.score, rank: mjs.rank, wins: mjs.wins, losses: mjs.losses }
+            } catch(e) { data.mahjong = null }
+        }
+        if (selectionState.worldloop) {
+            try { const { useWorldLoopStore } = await import('./worldLoopStore'); const wls = useWorldLoopStore()
+                data.worldloop = wls.loops
+            } catch(e) { data.worldloop = null }
         }
 
         return data
@@ -836,6 +891,16 @@ export const useSettingsStore = defineStore('settings', () => {
                 personalization.value = { ...personalization.value, ...remoteData.settings }
                 saveToStorage()
             }
+            if (remoteData.apiConfigs && Array.isArray(remoteData.apiConfigs)) {
+                apiConfigs.value = remoteData.apiConfigs
+                if (typeof remoteData.currentConfigIndex === 'number') currentConfigIndex.value = remoteData.currentConfigIndex
+                saveToStorage()
+            }
+            if (remoteData.voice) voice.value = { ...voice.value, ...remoteData.voice }
+            if (remoteData.weather) weather.value = { ...weather.value, ...remoteData.weather }
+            if (remoteData.drawing) drawing.value = { ...drawing.value, ...remoteData.drawing }
+            if (typeof remoteData.compressQuality === 'number') compressQuality.value = remoteData.compressQuality
+            if (typeof remoteData.fontScale === 'number') fontScale.value = remoteData.fontScale
             if (remoteData.worldbook) {
                 worldBookStore.books = remoteData.worldbook
                 worldBookStore.saveEntries?.()
@@ -847,6 +912,86 @@ export const useSettingsStore = defineStore('settings', () => {
             if (remoteData.favorites) {
                 chatStore.favorites = remoteData.favorites
                 chatStore.saveFavorites?.()
+            }
+            if (remoteData.wallet) {
+                try { const { useWalletStore } = await import('./walletStore'); const ws = useWalletStore()
+                    if (remoteData.wallet.balance !== undefined) ws.balance = remoteData.wallet.balance
+                    if (remoteData.wallet.transactions) ws.transactions = remoteData.wallet.transactions
+                    if (remoteData.wallet.bankCards) ws.bankCards = remoteData.wallet.bankCards
+                    if (remoteData.wallet.familyCards) ws.familyCards = remoteData.wallet.familyCards
+                    if (remoteData.wallet.paymentSettings) ws.paymentSettings = { ...ws.paymentSettings, ...remoteData.wallet.paymentSettings }
+                    localStorage.setItem('qiaoqiao_wallet', JSON.stringify({ balance: ws.balance, transactions: ws.transactions, bankCards: ws.bankCards, familyCards: ws.familyCards, paymentSettings: ws.paymentSettings }))
+                } catch(e) { console.warn('[Import] wallet restore failed', e)}
+            }
+            if (remoteData.weibo) {
+                try { const { useWeiboStore } = await import('./weiboStore'); const wb = useWeiboStore()
+                    if (remoteData.weibo.user) wb.user = { ...wb.user, ...remoteData.weibo.user }
+                    if (remoteData.weibo.settings) wb.settings = { ...wb.settings, ...remoteData.weibo.settings }
+                    if (remoteData.weibo.posts) wb.posts = remoteData.weibo.posts
+                    if (remoteData.weibo.dmMessages) wb.dmMessages = remoteData.weibo.dmMessages
+                    localforage.setItem('weibo_data', { user: wb.user, settings: wb.settings, posts: wb.posts, hotSearch: wb.hotSearch, dmMessages: wb.dmMessages })
+                } catch(e) { console.warn('[Import] weibo restore failed', e)}
+            }
+            if (remoteData.music) {
+                try { const ms = (await import('./musicStore')).useMusicStore()
+                    if (remoteData.music.playlist) ms.playlist = remoteData.music.playlist
+                    if (typeof remoteData.music.currentIndex === 'number') ms.currentIndex = remoteData.music.currentIndex
+                    localStorage.setItem('musicPlaylist', JSON.stringify({ playlist: ms.playlist, currentIndex: ms.currentIndex, timestamp: Date.now() }))
+                } catch(e) { console.warn('[Import] music restore failed', e)}
+            }
+            if (remoteData.forum) {
+                try { const { useForumStore } = await import('./forumStore'); const fs = useForumStore()
+                    if (remoteData.forum.forums) fs.forums = remoteData.forum.forums
+                    if (remoteData.forum.alts) fs.alts = remoteData.forum.alts
+                    if (remoteData.forum.posts) fs.posts = remoteData.forum.posts
+                    if (remoteData.forum.comments) fs.comments = remoteData.forum.comments
+                    if (remoteData.forum.likedPosts) fs.likedPosts = remoteData.forum.likedPosts
+                    localforage.setItem('forum_store_v2', { forums: fs.forums, alts: fs.alts, posts: fs.posts, comments: fs.comments, likedPosts: fs.likedPosts, moderators: fs.moderators })
+                } catch(e) { console.warn('[Import] forum restore failed', e)}
+            }
+            if (remoteData.shopping) {
+                try { const { useShoppingStore } = await import('./shoppingStore'); const ss = useShoppingStore()
+                    const keys = ['products','cart','orders','logistics','addresses','favorites','coupons','points','reviews']
+                    keys.forEach(k => { if (remoteData.shopping[k]) ss[k] = remoteData.shopping[k] })
+                    localforage.setItem('shopping_store_v2', { products: ss.products, cart: ss.cart, orders: ss.orders, logistics: ss.logistics, addresses: ss.addresses, favorites: ss.favorites, coupons: ss.coupons, points: ss.points, reviews: ss.reviews })
+                } catch(e) { console.warn('[Import] shopping restore failed', e)}
+            }
+            if (remoteData.lovespace) {
+                try { const { useLoveSpaceStore } = await import('./loveSpaceStore'); const ls = useLoveSpaceStore()
+                    if (remoteData.lovespace.spaces) ls.spaces = remoteData.lovespace.spaces
+                    if (remoteData.lovespace.currentPartnerId) ls.currentPartnerId = remoteData.lovespace.currentPartnerId
+                } catch(e) { console.warn('[Import] lovespace restore failed', e)}
+            }
+            if (remoteData.phoneinspection) {
+                try { const { usePhoneInspectionStore } = await import('./phoneInspectionStore'); const ps = usePhoneInspectionStore()
+                    if (remoteData.phoneinspection.wallpaperLibrary) ps.wallpaperLibrary = remoteData.phoneinspection.wallpaperLibrary
+                    if (remoteData.phoneinspection.photoFrames) ps.photoFrames = remoteData.phoneinspection.photoFrames
+                } catch(e) { console.warn('[Import] phoneinspection restore failed', e)}
+            }
+            if (remoteData.calendar) {
+                try { localStorage.setItem('calendar_data', JSON.stringify(remoteData.calendar)) } catch(e) {}
+            }
+            if (remoteData.backpack) {
+                try { const { useBackpackStore } = await import('./backpackStore'); const bs = useBackpackStore()
+                    bs.items = remoteData.backpack; localStorage.setItem('qiaoqiao_backpack', JSON.stringify(bs.items))
+                } catch(e) { console.warn('[Import] backpack restore failed', e)}
+            }
+            if (remoteData.avatarframe) {
+                try { const { useAvatarFrameStore } = await import('./avatarFrameStore'); const afs = useAvatarFrameStore()
+                    afs.frames = remoteData.avatarframe; localStorage.setItem('avatar_frames', JSON.stringify(afs.frames))
+                } catch(e) { console.warn('[Import] avatarframe restore failed', e)}
+            }
+            if (remoteData.mahjong) {
+                try { const { useMahjongStore } = await import('./mahjongStore'); const mjs = useMahjongStore()
+                    if (remoteData.mahjong.beans !== undefined) mjs.beans = remoteData.mahjong.beans
+                    if (remoteData.mahjong.score !== undefined) mjs.score = remoteData.mahjong.score
+                    localStorage.setItem('mahjong_stats', JSON.stringify({ beans: mjs.beans, score: mjs.score, rank: mjs.rank, wins: mjs.wins, losses: mjs.losses }))
+                } catch(e) { console.warn('[Import] mahjong restore failed', e)}
+            }
+            if (remoteData.worldloop) {
+                try { const { useWorldLoopStore } = await import('./worldLoopStore'); const wls = useWorldLoopStore()
+                    wls.loops = remoteData.worldloop; wls.saveLoops?.()
+                } catch(e) { console.warn('[Import] worldloop restore failed', e)}
             }
             return true
         } catch (err) {

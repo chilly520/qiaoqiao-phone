@@ -12,6 +12,7 @@ import { weatherService } from './weatherService'
 import { batteryMonitor } from './batteryMonitor'
 
 import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from './ai/prompts'
+import { recallOriginalMessages, getMemorySummary } from './memoryLog'
 import { RequestQueue } from './ai/requestQueue'
 
 const apiQueue = new RequestQueue(10, 60000); // Strict: 10 requests per 60 seconds as requested by the user
@@ -300,62 +301,45 @@ export function generateContextPreview(chatId, char) {
     const globalStickers = stickerStore.getStickers('global')
     const charStickers = chatId ? stickerStore.getStickers(chatId) : []
     const stickers = [...globalStickers, ...charStickers].filter(s => s && s.name)
-    // World Book (Simulate Trigger)
-    // We scan the LAST few messages to trigger world book
+    // World Book: 常驻 + 关键词触发扫描（与 _generateReplyInternal 逻辑一致）
     const limit = char.contextLimit || 20
     const recentMsgs = (char.msgs || []).slice(-limit)
-    const combinedText = recentMsgs.map(m => m.content).join('\n')
-    // Manually trigger world book
+    const combinedText = recentMsgs.map(m => {
+        let c = m && m.content ? m.content : ''
+        return typeof c === 'string' ? c : JSON.stringify(c)
+    }).join('\n')
+    const lowerCombinedText = combinedText.toLowerCase()
     const activeBookIds = char.worldBookLinks || char.tags || []
-    // 2. Collect entries
     let activeEntries = []
     if (activeBookIds.length > 0 && worldBookStore && worldBookStore.books) {
-        activeBookIds.forEach(entryId => {
-            // First, try to find the entry directly in all books
-            let foundEntry = null
-            // Search all books for this entry ID
-            for (const book of worldBookStore.books) {
-                if (book.entries) {
-                    const entry = book.entries.find(e => e.id === entryId)
-                    if (entry) {
-                        foundEntry = entry
-                        break
-                    }
-                }
+        const allEntries = worldBookStore.books.flatMap(b => (b && b.entries) ? b.entries : [])
+        const boundEntries = allEntries.filter(e => e && e.id && activeBookIds.includes(e.id))
+        boundEntries.forEach(entry => {
+            if (!entry) return
+            const normalizedKeys = Array.isArray(entry.keys)
+                ? entry.keys
+                : (typeof entry.keys === 'string' ? entry.keys.split(/[\s,，]+/).filter(k => k && k.trim()) : [])
+            if (!normalizedKeys || normalizedKeys.length === 0) {
+                activeEntries.push({ entry, type: '常驻' })
+                return
             }
-            if (foundEntry) {
-                activeEntries.push(foundEntry)
-            } else {
-                // Fallback: Try to find book by ID and include all its entries
-                const book = worldBookStore.books.find(b => b.id === entryId)
-                if (book && book.entries) {
-                    book.entries.forEach(entry => {
-                        activeEntries.push(entry)
-                    })
-                } else {
-                    // Fallback: Try to find book by name
-                    const bookByName = worldBookStore.books.find(b => b.name === entryId)
-                    if (bookByName && bookByName.entries) {
-                        bookByName.entries.forEach(entry => {
-                            activeEntries.push(entry)
-                        })
-                    }
-                }
+            const isHit = normalizedKeys.some(key => {
+                if (!key) return false
+                return lowerCombinedText.includes(String(key).toLowerCase())
+            })
+            if (isHit) {
+                activeEntries.push({ entry, type: '触发' })
             }
         })
     }
-    // If no entries found, check if we need to load world book data first
+    // ... 现有代码保留 ...
     if (activeEntries.length === 0 && worldBookStore && typeof worldBookStore.loadEntries === 'function') {
-        // Try to load entries synchronously if possible
-        // Note: loadEntries is async, but we'll try to use the data that's already loaded
-        // The actual loading will happen in the background
         worldBookStore.loadEntries().then(() => {
-            // This will run in the background, but won't affect the current preview
             console.log('[AI Service] World book entries loaded in background')
         })
     }
     const worldInfoText = activeEntries.length > 0
-        ? activeEntries.map(e => `[${e.keys[0] || e.name || '条目'}]: ${e.content}`).join('\n')
+        ? activeEntries.map(({ entry, type }) => `[${type}] ${entry.name || '未命名'}: ${entry.content || ''}`).join('\n')
         : '（未触发关键词）'
     // Memory
     let memoryText = ''
@@ -542,6 +526,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     // Attempt to get ID from char object (Chat object)
     const charId = char.id || char.uuid || char.charId
     const charStickers = charId ? stickerStore.getStickers(charId, char.emojis || []) : []
+    let memoryText = ''
+
+    if (charId && !isSimpleTask && !isCommandTask) {
+        const lastUserMsg = [...(messages || [])].reverse().find(m => m.role === 'user')
+        if (lastUserMsg?.content) {
+            const recallResult = await recallOriginalMessages(charId, String(lastUserMsg.content))
+            if (recallResult) {
+                lastUserMsg.content += recallResult
+            }
+        }
+        const memorySummary = getMemorySummary(charId)
+        if (memorySummary) {
+            memoryText = memorySummary
+        }
+    }
 
     // Merge valid stickers and filter empty names
     const availableStickers = [
@@ -607,30 +606,44 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const allEntries = books.flatMap(b => (b && b.entries) ? b.entries : [])
             const boundEntries = allEntries.filter(e => e && e.id && char.worldBookLinks.includes(e.id))
 
-            const contextText = (messages || []).map(m => {
+            const rawContextText = (messages || []).map(m => {
                 let c = m && m.content ? m.content : ''
-                // Include giftId in context for gift messages
                 if (m && m.type === 'gift' && m.giftId) {
                     c = `[GIFT:${m.giftName || '礼物'}:${m.giftQuantity || 1}:${m.giftNote || ''}](ID:${m.giftId})`
                 }
                 return typeof c === 'string' ? c : JSON.stringify(c)
             }).join('\n')
-
+            const contextText = rawContextText.replace(/\[(?:ONLINE|OFFLINE)\][\s\S]*?\[\/(?:ONLINE|OFFLINE)\]/g, '')
             const lowerContext = contextText.toLowerCase()
+
+            console.log('[WorldBook] 扫描开始:', {
+                boundCount: boundEntries.length,
+                contextLen: contextText.length,
+                contextPreview: contextText.slice(0, 200),
+                links: char.worldBookLinks
+            })
+
             boundEntries.forEach(entry => {
                 if (!entry) return
-                if (!entry.keys || (Array.isArray(entry.keys) && entry.keys.length === 0)) {
+                const normalizedKeys = Array.isArray(entry.keys)
+                    ? entry.keys
+                    : (typeof entry.keys === 'string' ? entry.keys.split(/[\s,，]+/).filter(k => k && k.trim()) : [])
+                if (!normalizedKeys || normalizedKeys.length === 0) {
                     activeEntries.push(`[常驻] ${entry.name || '未命名'}: ${entry.content || ''} `)
+                    console.log('[WorldBook] 常驻:', entry.name)
                     return
                 }
-                const isHit = Array.isArray(entry.keys) && entry.keys.some(key => {
+                const isHit = normalizedKeys.some(key => {
                     if (!key) return false
                     return lowerContext.includes(String(key).toLowerCase())
                 })
+                console.log('[WorldBook] 关键词检测:', entry.name, { keys: normalizedKeys, isHit })
                 if (isHit) {
                     activeEntries.push(`[触发] ${entry.name || '未命名'}: ${entry.content || ''} `)
                 }
             })
+
+            console.log('[WorldBook] 扫描结果:', { constant: activeEntries.filter(e => e.includes('[常驻]')).length, triggered: activeEntries.filter(e => e.includes('[触发]')).length })
 
             if (activeEntries.length > 0) {
                 worldInfoText = activeEntries.join('\n\n')
@@ -667,8 +680,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
     // 构建 System Message
     // Memory Logic
-    let memoryText = ''
-    if (char && char.memory && Array.isArray(char.memory) && char.memory.length > 0) {
+    if (!memoryText && char && char.memory && Array.isArray(char.memory) && char.memory.length > 0) {
         // Take top 10 recent memories
         const recentMemories = char.memory.slice(0, 10)
         memoryText = recentMemories.map(m => {
@@ -2546,6 +2558,42 @@ ${"```"}
     }
 }
 
+async function _persistImageUrl(url) {
+    if (!url || url.startsWith('data:')) return url
+    try {
+        const resp = await fetch(url, { signal: AbortSignal.timeout(30000) })
+        if (!resp.ok) { console.warn('[AI Image] Persist fetch failed, returning raw URL'); return url }
+        const blob = await resp.blob()
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+                const base64 = reader.result
+                if (base64.length > 500 * 1024) {
+                    const img = new Image()
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas')
+                        const maxDim = 800
+                        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1)
+                        canvas.width = Math.round(img.width * scale)
+                        canvas.height = Math.round(img.height * scale)
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+                        resolve(canvas.toDataURL('image/jpeg', 0.7))
+                    }
+                    img.onerror = () => resolve(base64)
+                    img.src = base64
+                } else {
+                    resolve(base64)
+                }
+            }
+            reader.onerror = () => { console.warn('[AI Image] FileReader failed, returning raw URL'); resolve(url) }
+            reader.readAsDataURL(blob)
+        })
+    } catch(e) {
+        console.warn('[AI Image] Persist conversion failed, using raw URL:', e.message)
+        return url
+    }
+}
+
 /**
  * 统一生图接口 (Supports Pollinations standard, SiliconFlow, and API Key) - QUEUED
  * @param {String} prompt 提示词
@@ -2804,7 +2852,7 @@ async function _generateImageInternal(prompt, options = {}) {
                 provider,
                 hasUrl: !!imageUrl
             })
-            return imageUrl
+            return await _persistImageUrl(imageUrl)
         } catch (e) {
             console.error('Drawing API failed:', e)
             useLoggerStore().addLog('ERROR', `图片生成失败 (${provider})`, e.message)
@@ -2818,8 +2866,9 @@ async function _generateImageInternal(prompt, options = {}) {
         }
     }
 
-    // Default Fallback
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=${width}&height=${height}&nologo=true&seed=${seed}`
+    const result = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=${width}&height=${height}&nologo=true&seed=${seed}`
+
+    return await _persistImageUrl(result)
 }
 
 /**
