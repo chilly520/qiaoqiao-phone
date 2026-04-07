@@ -60,9 +60,17 @@
     <!-- 被发现遮罩 -->
     <DiscoveredOverlay v-if="isDiscovered" :char-name="currentChar?.name" :char-avatar="currentChar?.avatar" />
 
-    <!-- 全局自定义弹窗 -->
-    <MessageModal v-model="modalState.show" v-bind="modalState" @confirm="modalState.onConfirm?.()"
-      @cancel="modalState.onCancel?.()" />
+    <!-- 全局自定义通知/确认弹窗 -->
+    <MessageModal
+      v-model="modalState.show"
+      :type="modalState.type"
+      :title="modalState.title"
+      :message="modalState.message"
+      :ok-text="modalState.okText"
+      :cancel-text="modalState.cancelText"
+      @confirm="modalState.onConfirm && modalState.onConfirm()"
+      @cancel="modalState.onCancel && modalState.onCancel()"
+    />
   </div>
 </template>
 

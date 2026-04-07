@@ -165,7 +165,7 @@ function claimItem() {
     phoneInspection.triggerCustomModal({
         type: 'success',
         title: '领取成功 ✨',
-        message: `"${selectedItem.value.name}" 已存入你的主界面背包喵~`
+        message: `"${selectedItem.value.name}" 已从手机存入你的主背包喵~ 快去看看吧！`
     })
     selectedItem.value = null
 }

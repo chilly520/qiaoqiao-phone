@@ -415,6 +415,10 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     
     // 初始化同步记录
     if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
+    if (!char.phoneData.password.enabled) char.phoneData.password.enabled = true
+    
+    // 初始化同步记录
+    if (!char.phoneData.syncHistory) char.phoneData.syncHistory = []
     if (!char.phoneData.desktopFrames) {
       char.phoneData.desktopFrames = [
         { id: 'f1', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=300', note: '心动瞬间' },
@@ -1148,8 +1152,15 @@ JSON 结构样例：
       }
     })
 
-    ctx += `\n【重要】AI可以通过回复 \`[PHONE_CMD] {"password": "新密码", "apps": {"appId": {"items": [...], "mode": "append/replace"}}} [/PHONE_CMD]\` 来动态修改手机。`
+    if (phone.syncHistory && phone.syncHistory.length > 0) {
+      ctx += `\n- 最近 3 次数据同步历史:\n`
+      phone.syncHistory.forEach((h, i) => {
+        ctx += `  ${i+1}. [${new Date(h.timestamp).toLocaleTimeString()}] ${h.summary} (应用: ${h.appsGenerated.join(',')})\n`
+      })
+    }
 
+    ctx += `\n【重要指令】你可以随时在回复中使用 [PHONE_CMD] { "apps": { "app_id": { "mode": "append", "items": [...] } }, "password": "新的密码" } [/PHONE_CMD] 来实时更新你的手机内容或密码。你的手机初始默认密码为 1234。`
+    
     return ctx
   }
 
