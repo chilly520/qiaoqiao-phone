@@ -1,4 +1,4 @@
-const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
+const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]{8,}?)\u3011\s*$/
 // \u52a8\u4f5c\uff1a\u652f\u6301 (\u5185\u5bb9) \u6216 \uff08\u5185\u5bb9\uff09\u683c\u5f0f\uff0c\u4e5f\u652f\u6301\u672a\u95ed\u5408\u7684\u62ec\u53f7\uff08\u5982\u5185\u5bb9\u8de8\u884c\uff09
 const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)(?:[\)\uFF09]\s*)?$/
 const OFFLINE_NARRATION_RE = /^\s*(?:\|\||\u2016)([\s\S]+?)(?:\|\||\u2016)?\s*$/
@@ -407,23 +407,27 @@ export function isOfflineTextMessage(msg) {
   if (!msg) return false
   const type = msg.type || 'text'
   const role = msg.role || 'ai'
-  
+
+  // Explicit mode check - online messages should never be treated as offline
+  if (msg.mode === 'online') return false
+  if (msg.mode === 'offline') return true
+
   // These types are always rendered as theater/offline components if they have valid theater content
   const theaterTypes = ['text', 'location', 'scene', 'system']
   if (!theaterTypes.includes(type)) return false
 
-  // User messages in offline are always bubbles? Or also theater? 
+  // User messages in offline are always bubbles? Or also theater?
   // User messages are typically bubbles unless they are part of a theater script
-  if (role === 'user') return true 
-  
+  if (role === 'user') return true
+
   const content = ensureMessageString(msg.content)
   // If it's a location message or has theater markers, it's theater
-  if (type === 'location' || OFFLINE_SCENE_RE.test(content) || OFFLINE_NARRATION_RE.test(content) || content.includes('\u2016') || content.includes('||')) {
+  if (type === 'location' || OFFLINE_SCENE_RE.test(content) || OFFLINE_NARRATION_RE.test(content) || OFFLINE_ACTION_RE.test(content) || OFFLINE_QUOTED_DIALOGUE_RE.test(content)) {
     return true
   }
 
-  // Fallback for regular text
-  return true
+  // Fallback: only treat as offline if has actual theater markers, NOT all text
+  return false
 }
 
 export function extractTaggedBlock(content, tag) {

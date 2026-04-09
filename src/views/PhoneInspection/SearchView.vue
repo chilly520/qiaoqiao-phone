@@ -409,4 +409,83 @@ watch(allChats, () => {
     transform: scale(1.1);
   }
 }
+
+@media (max-width: 480px) {
+  .kawaii-header {
+    padding: 24px 0 12px;
+  }
+  .icon-bubble {
+    width: 52px;
+    height: 52px;
+    border-radius: 20px;
+    font-size: 26px;
+    box-shadow: 0 4px 0 #FFF, 0 10px 20px rgba(0, 0, 0, 0.08);
+  }
+  .kawaii-title {
+    font-size: 28px;
+    text-shadow: 2px 2px 0 rgba(143, 94, 110, 0.15);
+  }
+  .kawaii-subtitle {
+    font-size: 12px;
+    padding: 3px 12px;
+  }
+  .kawaii-search-container {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    margin-bottom: 12px !important;
+  }
+  .kawaii-search-bar {
+    padding: 10px 14px;
+    border-radius: 20px;
+    box-shadow: 0 6px 0 #E3F2FD, 0 12px 24px rgba(0, 0, 0, 0.04);
+    border: 2px solid #FFF;
+  }
+  .kawaii-search-bar input {
+    font-size: 14px;
+  }
+  .kawaii-list {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: 100px !important;
+  }
+  .kawaii-item {
+    border-radius: 20px;
+    padding: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 0 #F0F0F0;
+    border: 2px solid transparent;
+  }
+  .avatar-ring {
+    width: 48px;
+    height: 48px;
+    margin-right: 12px;
+    border-radius: 16px;
+    padding: 2px;
+  }
+  .avatar-ring img {
+    border-radius: 11px;
+  }
+  .status-dot {
+    width: 12px;
+    height: 12px;
+    border: 3px solid white;
+  }
+  .info .name {
+    font-size: 15px;
+  }
+  .info .remark {
+    font-size: 11px;
+  }
+  .kawaii-footer {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 8px));
+  }
+  .kawaii-back-btn {
+    padding: 12px;
+    border-radius: 22px;
+    font-size: 15px;
+    border: 3px solid #F0F0F0;
+    box-shadow: 0 6px 0 #F0F0F0;
+  }
+}
 </style>

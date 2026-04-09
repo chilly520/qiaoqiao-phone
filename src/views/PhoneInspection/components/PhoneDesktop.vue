@@ -709,4 +709,78 @@ onMounted(() => {
 .app-grid-container::-webkit-scrollbar {
   display: none;
 }
+
+@media (max-width: 480px) {
+  .kawaii-clock {
+    margin-top: 16px;
+    z-index: 10;
+  }
+  .time {
+    font-size: 36px;
+    text-shadow: 2px 2px 0 rgba(255, 182, 193, 0.3);
+  }
+  .date-bubble {
+    font-size: 11px;
+    padding: 2px 8px;
+  }
+  .photo-frames-container {
+    gap: 8px !important;
+    margin-top: 12px !important;
+  }
+  .frame-border {
+    padding: 3px;
+  }
+  .frame-label {
+    font-size: 8px;
+    padding: 1px 5px;
+    border-radius: 6px;
+  }
+  .app-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px 4px;
+    margin-top: 16px !important;
+  }
+  .app-icon-container {
+    width: 46px;
+    height: 46px;
+  }
+  .app-icon {
+    font-size: 18px;
+    border-radius: 16px;
+  }
+  .app-label {
+    font-size: 9px;
+    margin-top: 4px;
+  }
+  .desktop-page {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  .paging-dots {
+    bottom: 90px !important;
+  }
+  .kawaii-dock-area {
+    height: 70px;
+    padding-bottom: env(safe-area-inset-bottom, 8px);
+  }
+  .dock-cloud {
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 28px;
+  }
+  .dock-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    font-size: 18px;
+  }
+  .anniversary-widget {
+    padding: 12px !important;
+    border-radius: 18px !important;
+    margin-top: 12px !important;
+  }
+  .anniversary-widget .text-4xl {
+    font-size: 28px !important;
+  }
+}
 </style>
