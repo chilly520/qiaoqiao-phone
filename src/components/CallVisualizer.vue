@@ -235,7 +235,13 @@ const initRecognition = () => {
         }
 
         recognition.onerror = (event) => {
-            console.error('Speech recognition error', event.error)
+            // no-speech and network are NORMAL during calls - use warn not error
+            const isNormal = event.error === 'no-speech' || event.error === 'network' || event.error === 'aborted'
+            if (isNormal) {
+                console.warn(`[STT] ${event.error} (normal)`)
+            } else {
+                console.error('Speech recognition error', event.error)
+            }
             if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                  chatStore.triggerToast('麦克风权限被拒绝或不可用，请在浏览器地址栏左侧开启权限。', 'warning')
                  isListening.value = false
@@ -375,6 +381,8 @@ const stopListening = () => {
 
 // Watch mute state changes from store (e.g. if toggled elsewhere)
 watch(() => callStore.isMuted, (newVal) => {
+    // FIX: Only stop listening when explicitly muted (user clicked mute button)
+    // Don't stop on initial value changes during call setup
     if (newVal && isListening.value) {
         stopListening()
     }
@@ -390,9 +398,16 @@ watch(() => callStore.status, (newStatus, oldStatus) => {
     }
     // Auto-start voice recognition when any call becomes active
     if (newStatus === 'active' && oldStatus !== 'active') {
-        if (callStore.isMuted) {
-            startListening()
+        // FIX: Always try to start STT when call connects
+        // Previously only started when isMuted=true (default is false, so never started!)
+        // Now: init recognition immediately so user can speak right away
+        if (!recognition) {
+            initRecognition()
         }
+        // Small delay to ensure DOM/call state is ready
+        setTimeout(() => {
+            try { startListening() } catch(e) { console.warn('Auto-start STT failed:', e) }
+        }, 500)
     }
     // Stop camera and listening when call ends
     if (newStatus === 'none' || newStatus === 'ended') {
@@ -514,6 +529,10 @@ watch(() => callStore.transcript.length, () => {
       <div v-if="callStore.type === 'voice' || status === 'incoming'" class="call-background">
         <img :src="partner?.avatar" class="bg-image" alt="Background">
         <div class="bg-overlay"></div>
+        <!-- Decorative cute elements -->
+        <div class="cute-decor cute-decor-1">♡</div>
+        <div class="cute-decor cute-decor-2">✿</div>
+        <div class="cute-decor cute-decor-3">♪</div>
       </div>
 
       <!-- Header (Status & Partner) -->
@@ -541,30 +560,33 @@ watch(() => callStore.transcript.length, () => {
       <!-- Main Visual Area -->
       <div class="visual-area" :class="callStore.type">
         
-        <!-- CASE 1: Voice Call Layout -->
+        <!-- CASE 1: Voice Call Layout (Cute & Compact) -->
         <template v-if="callStore.type === 'voice'">
             <div class="voice-layout-container">
-               <div class="avatar-wrapper">
-                   <div class="voice-aura">
-                        <div class="wave wave1"></div>
-                        <div class="wave wave2"></div>
-                        <div class="wave wave3"></div>
+               <!-- Cute compact avatar at top -->
+               <div class="avatar-wrapper-cute">
+                   <div class="avatar-ring">
+                       <div class="sparkle sparkle-1">✦</div>
+                       <div class="sparkle sparkle-2">✧</div>
+                       <div class="sparkle sparkle-3">★</div>
+                       <img :src="partner?.avatar" class="avatar-cute" :class="{ 'speaking': callStore.isSpeaking }">
                    </div>
-                   <img :src="partner?.avatar" class="avatar-large" :class="{ 'speaking': callStore.isSpeaking }">
+                   <!-- Status badge under avatar -->
+                   <div v-if="status === 'active'" class="avatar-status-badge animate-fade-in">
+                       <span class="pulse-dot"></span> 通话中
+                   </div>
+                   <div v-else-if="status === 'dialing'" class="avatar-status-badge dialing-badge animate-fade-in">
+                       呼叫中...
+                   </div>
+                   <div v-else-if="status === 'incoming'" class="avatar-status-badge incoming-badge animate-fade-in">
+                       {{ partner?.name }} 来电 ♡
+                   </div>
                </div>
-               <div class="voice-status-labels">
-                   <div v-if="status === 'active'" class="active-status-label animate-fade-in">正在通话...</div>
-                   <div v-else-if="status === 'dialing'" class="dialing-status-label animate-fade-in">正在呼叫对方...</div>
-                   <div v-else-if="status === 'incoming'" class="incoming-status-label animate-fade-in">
-                       <div>{{ partner?.name }}正在呼叫...</div>
-                       <div class="call-type">{{ callStore.type === 'video' ? '视频通话' : '语音通话' }}</div>
-                   </div>
-                   
-                   <!-- Real-time STT display bubble -->
-                   <div v-if="isListening && interimTranscript" class="stt-feedback-bubble animate-fade-in">
-                       <i class="fa-solid fa-microphone text-green-400 mr-2"></i>
-                       {{ interimTranscript }}
-                   </div>
+               
+               <!-- STT feedback bubble (compact) -->
+               <div v-if="isListening && interimTranscript" class="stt-bubble-cute animate-fade-in">
+                   <div class="stt-icon-wrap"><i class="fa-solid fa-microphone"></i></div>
+                   <span>{{ interimTranscript }}</span>
                </div>
             </div>
         </template>
@@ -622,63 +644,67 @@ watch(() => callStore.transcript.length, () => {
                 </div>
             </div>
 
-            <!-- Active Call Controls -->
+            <!-- Active Call Controls: 4 buttons in ONE ROW (Cute style) -->
             <div v-else>
-                <!-- Main Controls -->
-                <div class="control-row main-controls">
+                <div class="control-row main-controls cute-row">
                     
                     <!-- Mic / STT -->
-                    <button class="control-btn" 
+                    <button class="cute-control-btn mic-btn" 
                             :class="{ 
                                 active: isListening, 
                                 'is-listening': isListening,
-                                'is-muted-active': callStore.isMuted 
+                                muted: callStore.isMuted 
                             }" 
                             @click="toggleMic">
-                        <i class="fa-solid" :class="callStore.isMuted ? 'fa-microphone-slash' : 'fa-microphone'"></i>
-                        <span>{{ callStore.isMuted ? '已静音' : '听得见' }}</span>
+                        <div class="btn-icon-circle">
+                            <i class="fa-solid" :class="callStore.isMuted ? 'fa-microphone-slash' : 'fa-microphone'"></i>
+                        </div>
+                        <span class="btn-label">{{ callStore.isMuted ? '静音' : '麦克风' }}</span>
                     </button>
 
-
-                    <!-- Speaker (Visual Toggle) -->
-                    <button class="control-btn" :class="{ active: callStore.isSpeakerOn }" @click="toggleSpeaker">
-                        <i class="fa-solid" :class="callStore.isSpeakerOn ? 'fa-volume-high' : 'fa-ear-listen'"></i>
-                        <span>{{ callStore.isSpeakerOn ? '免提' : '听筒' }}</span>
+                    <!-- Speaker Toggle -->
+                    <button class="cute-control-btn speaker-btn" :class="{ active: callStore.isSpeakerOn }" @click="toggleSpeaker">
+                        <div class="btn-icon-circle">
+                            <i class="fa-solid" :class="callStore.isSpeakerOn ? 'fa-volume-high' : 'fa-headphones-simple'"></i>
+                        </div>
+                        <span class="btn-label">{{ callStore.isSpeakerOn ? '免提' : '听筒' }}</span>
                     </button>
 
-                    <!-- Video Toggles (Only show for video call) -->
+                    <!-- Video Toggles (Only for video calls) -->
                     <template v-if="callStore.type === 'video'">
-                        <!-- Camera Toggle -->
-                        <button class="control-btn" :class="{ active: !callStore.isCameraOff }" @click="toggleCameraFunc">
-                            <i class="fa-solid" :class="!callStore.isCameraOff ? 'fa-video' : 'fa-video-slash'"></i>
-                            <span>{{ !callStore.isCameraOff ? '视频中' : '摄像头' }}</span>
+                        <button class="cute-control-btn camera-btn" :class="{ active: !callStore.isCameraOff }" @click="toggleCameraFunc">
+                            <div class="btn-icon-circle">
+                                <i class="fa-solid" :class="!callStore.isCameraOff ? 'fa-video' : 'fa-video-slash'"></i>
+                            </div>
+                            <span class="btn-label">摄像头</span>
                         </button>
 
-                        <!-- Virtual Avatar Toggle -->
-                        <button class="control-btn" :class="{ 'active': callStore.virtualAvatarMode > 0 }" @click="toggleVirtualAvatar">
-                            <i v-if="callStore.virtualAvatarMode === 1" class="fa-solid fa-users"></i>
-                            <i v-else-if="callStore.virtualAvatarMode === 2" class="fa-solid fa-user-tie"></i>
-                            <i v-else class="fa-solid fa-image"></i>
-                            <span>
-                                {{ 
-                                    callStore.virtualAvatarMode === 1 ? '两人形象' : 
-                                    callStore.virtualAvatarMode === 2 ? '对方形象' : 
-                                    '虚拟形象' 
-                                }}
-                            </span>
+                        <button class="cute-control-btn avatar-toggle-btn" :class="{ active: callStore.virtualAvatarMode > 0 }" @click="toggleVirtualAvatar">
+                            <div class="btn-icon-circle">
+                                <i v-if="callStore.virtualAvatarMode === 1" class="fa-solid fa-users"></i>
+                                <i v-else-if="callStore.virtualAvatarMode === 2" class="fa-solid fa-wand-magic-sparkles"></i>
+                                <i v-else class="fa-solid fa-image"></i>
+                            </div>
+                            <span class="btn-label">虚拟形象</span>
                         </button>
                     </template>
 
-                     <!-- Keyboard Toggle -->
-                    <button class="control-btn" :class="{ active: isKeyboardVisible }" @click="toggleKeyboard">
-                        <i class="fa-solid fa-keyboard"></i>
-                        <span>键盘</span>
-                    </button>
+                    <!-- Keyboard Toggle (Voice calls only) -->
+                    <template v-else>
+                        <button class="cute-control-btn keyboard-btn" :class="{ active: isKeyboardVisible }" @click="toggleKeyboard">
+                            <div class="btn-icon-circle">
+                                <i class="fa-solid fa-keyboard"></i>
+                            </div>
+                            <span class="btn-label">键盘</span>
+                        </button>
+                    </template>
 
                     <!-- Hangup -->
-                    <button class="control-btn hangup-control-btn" @click="handleHangup">
-                        <i class="fa-solid fa-phone-slash"></i>
-                        <span>挂断</span>
+                    <button class="cute-control-btn hangup-btn" @click="handleHangup">
+                        <div class="btn-icon-circle hangup-icon-circle">
+                            <i class="fa-solid fa-phone-slash"></i>
+                        </div>
+                        <span class="btn-label hangup-label">挂断</span>
                     </button>
 
                 </div>
@@ -729,10 +755,29 @@ watch(() => callStore.transcript.length, () => {
 .call-background {
   position: absolute;
   inset: 0;
-  z-index: -2; /* Behind the video background (which is -1 or 0) */
-  background: linear-gradient(135deg, rgba(100, 200, 255, 0.9), rgba(60, 180, 255, 1));
+  z-index: -2;
+  /* Soft pastel gradient - cute & fresh */
+  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 40%, #fbc2eb 70%, #a6c1ee 100%);
   backdrop-filter: blur(10px);
   overflow: hidden;
+}
+
+/* Cute floating decorations */
+.cute-decor {
+  position: absolute;
+  font-size: 20px;
+  opacity: 0.25;
+  animation: floatDecor 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+.cute-decor-1 { top: 15%; left: 10%; font-size: 28px; animation-delay: 0s; }
+.cute-decor-2 { top: 60%; right: 12%; font-size: 22px; animation-delay: 1.5s; }
+.cute-decor-3 { bottom: 25%; left: 18%; font-size: 18px; animation-delay: 0.8s; }
+
+@keyframes floatDecor {
+  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.25; }
+  50% { transform: translateY(-15px) rotate(8deg); opacity: 0.45; }
 }
 
 .call-background::before {
@@ -957,17 +1002,41 @@ watch(() => callStore.transcript.length, () => {
     margin-top: 4px;
 }
 
-.stt-feedback-bubble {
-    background: rgba(7, 193, 96, 0.2);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(7, 193, 96, 0.4);
-    padding: 10px 20px;
-    border-radius: 20px;
+/* Cute compact STT bubble */
+.stt-bubble-cute {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.25);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 8px 16px;
+    border-radius: 24px;
     color: #fff;
-    font-size: 15px;
-    max-width: 80%;
-    text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    font-size: 13.5px;
+    max-width: 85%;
+    text-align: left;
+    box-shadow: 
+        0 4px 15px rgba(0,0,0,0.1),
+        inset 0 1px 2px rgba(255,255,255,0.3);
+}
+
+.stt-icon-wrap {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #55efc4, #00b894);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 10px rgba(85, 239, 196, 0.35);
+    animation: stt-pulse 1.5s infinite;
+}
+@keyframes stt-pulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 2px 10px rgba(85, 239, 196, 0.35); }
+    50% { transform: scale(1.08); box-shadow: 0 2px 18px rgba(85, 239, 196, 0.6); }
 }
 
 .incoming-controls {
@@ -1121,69 +1190,216 @@ watch(() => callStore.transcript.length, () => {
     font-style: italic;
 }
 
+/* ========================================
+   🌸 KAWAII CONTROL BUTTONS - 小清新可爱风格
+   ======================================== */
+
+/* Control container */
 .call-controls-container {
-  padding: 30px 20px 50px;
+  padding: 16px 12px 32px;
   display: flex;
   flex-direction: column;
-  gap: 25px;
-  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+  gap: 12px;
   position: relative;
   z-index: 20;
 }
 
-.main-controls {
-  display: flex;
-  justify-content: space-evenly;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 15px;
+/* Row layout - force horizontal */
+.cute-row {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    padding: 4px 8px;
 }
 
-.control-btn {
-  background: none;
-  border: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  color: white;
-  cursor: pointer;
-  width: 64px;
-  transition: all 0.2s ease;
+/* Each button - soft pill shape, not boring circle! */
+.cute-control-btn {
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    padding: 8px 6px;
+    border-radius: 18px;
+    min-width: 62px;
 }
 
-.control-btn i {
-  width: 48px;  /* Shrink from 54px */
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px; /* Shrink from 22px */
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.1);
+.cute-control-btn:hover { transform: translateY(-4px) scale(1.05); }
+.cute-control-btn:active { transform: scale(0.92) translateY(0); }
+
+/* Icon capsule - soft pastel pill shape */
+.btn-icon-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px; /* Squircle - softer than perfect circle */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Default: warm white glassmorphism */
+    background: linear-gradient(145deg, rgba(255,255,255,0.45), rgba(255,255,255,0.2));
+    backdrop-filter: blur(14px);
+    border: 1.5px solid rgba(255,255,255,0.4);
+    box-shadow:
+        0 4px 15px rgba(0,0,0,0.08),
+        0 1px 3px rgba(0,0,0,0.05),
+        inset 0 1px 2px rgba(255,255,255,0.6);
+    color: #555;
 }
 
-.control-btn.active i {
-  background: #07c160;
-  box-shadow: 0 0 15px rgba(7, 193, 96, 0.5);
+/* Label text */
+.btn-label {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.8px;
+    opacity: 0.6;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
-.control-btn.active.is-listening i {
-    animation: pulse-mic 1.5s infinite;
+/* ========================================
+   🎤 MIC BUTTON - Mint Green (薄荷绿)
+   ======================================== */
+.mic-btn .btn-icon-circle {
+    background: linear-gradient(145deg, #a8e6cf, #88d8b0);
+    box-shadow:
+        0 4px 16px rgba(134, 216, 176, 0.4),
+        0 1px 3px rgba(0,0,0,0.06),
+        inset 0 1px 2px rgba(255,255,255,0.5);
+    color: #1a5c42;
+    border-color: rgba(255,255,255,0.45);
+}
+.mic-btn .btn-label { color: #a8e6cf; opacity: 0.9; }
+
+.mic-btn.active .btn-icon-circle,
+.mic-btn.is-listening .btn-icon-circle {
+    background: linear-gradient(145deg, #55efc4, #00b894);
+    box-shadow:
+        0 6px 24px rgba(85, 239, 196, 0.5),
+        0 0 40px rgba(85, 239, 196, 0.15),
+        inset 0 1px 2px rgba(255,255,255,0.4);
+    color: white;
+}
+.mic-btn.active .btn-label { color: #55efc4; opacity: 1; font-weight: 700; }
+
+.mic-btn.muted .btn-icon-circle {
+    background: linear-gradient(145deg, #ffcfcf, #fab1a0);
+    box-shadow: 0 4px 16px rgba(250, 177, 160, 0.35), inset 0 1px 2px rgba(255,255,255,0.4);
+    color: #a33;
+}
+.mic-btn.muted .btn-label { color: #fab1a0; }
+
+.mic-btn.is-listening .btn-icon-circle {
+    animation: mic-breathe 2s ease-in-out infinite;
+}
+@keyframes mic-breathe {
+    0%, 100% { box-shadow: 0 6px 24px rgba(85, 239, 196, 0.5), 0 0 40px rgba(85, 239, 196, 0.15); }
+    50% { box-shadow: 0 6px 28px rgba(85, 239, 196, 0.7), 0 0 50px rgba(85, 239, 196, 0.25); transform: scale(1.03); }
 }
 
-@keyframes pulse-mic {
-    0% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0.7); }
-    70% { box-shadow: 0 0 0 12px rgba(7, 193, 96, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0); }
+/* ========================================
+   🔊 SPEAKER BUTTON - Sky Blue (天空蓝)
+   ======================================== */
+.speaker-btn .btn-icon-circle {
+    background: linear-gradient(145deg, #a8d8ea, #88c8dc);
+    box-shadow: 0 4px 16px rgba(136, 200, 220, 0.4), inset 0 1px 2px rgba(255,255,255,0.5);
+    color: #1a4c5c;
+    border-color: rgba(255,255,255,0.45);
+}
+.speaker-btn .btn-label { color: #a8d8ea; opacity: 0.9; }
+
+.speaker-btn.active .btn-icon-circle {
+    background: linear-gradient(145deg, #74b9ff, #0984e3);
+    box-shadow: 0 6px 24px rgba(116, 185, 255, 0.5), 0 0 30px rgba(116,185,255,0.15);
+    color: white;
+}
+.speaker-btn.active .btn-label { color: #74b9ff; opacity: 1; font-weight: 700; }
+
+/* ========================================
+   ⌨️ KEYBOARD BUTTON - Lavender (薰衣草紫)
+   ======================================== */
+.keyboard-btn .btn-icon-circle {
+    background: linear-gradient(145deg, #d4bbff, #c4a7e8);
+    box-shadow: 0 4px 16px rgba(196, 167, 232, 0.4), inset 0 1px 2px rgba(255,255,255,0.5);
+    color: #3c1e5c;
+    border-color: rgba(255,255,255,0.45);
+}
+.keyboard-btn .btn-label { color: #d4bbff; opacity: 0.9; }
+
+.keyboard-btn.active .btn-icon-circle {
+    background: linear-gradient(145deg, #a29bfe, #6c5ce7);
+    box-shadow: 0 6px 24px rgba(162, 155, 254, 0.5), 0 0 30px rgba(162,155,254,0.15);
+    color: white;
+}
+.keyboard-btn.active .btn-label { color: #a29bfe; opacity: 1; font-weight: 700; }
+
+/* ========================================
+   📹 CAMERA BUTTON - Warm Yellow (暖阳黄)
+   ======================================== */
+.camera-btn .btn-icon-circle {
+    background: linear-gradient(145deg, #ffeaa7, #fdcb6e);
+    box-shadow: 0 4px 16px rgba(253, 203, 110, 0.35), inset 0 1px 2px rgba(255,255,255,0.5);
+    color: #8a6d20;
+    border-color: rgba(255,255,255,0.45);
+}
+.camera-btn.active .btn-icon-circle {
+    background: linear-gradient(145deg, #ffd93d, #f0b429);
+    box-shadow: 0 6px 20px rgba(240, 180, 41, 0.45);
+    color: #5c4300;
 }
 
-.control-btn span {
-  font-size: 11px;
-  opacity: 0.8;
-  font-weight: 500;
+/* Avatar toggle */
+.avatar-toggle-btn .btn-icon-circle {
+    background: linear-gradient(145deg, #f8b4d4, #f093c2);
+    box-shadow: 0 4px 16px rgba(240, 147, 194, 0.35), inset 0 1px 2px rgba(255,255,255,0.5);
+    color: #5c1e3c;
+}
+.avatar-toggle-btn.active .btn-icon-circle {
+    background: linear-gradient(145deg, #fd79a8, #e84393);
+    box-shadow: 0 6px 22px rgba(232, 67, 147, 0.45);
+    color: white;
+}
+
+/* ========================================
+   📞 HANGUP BUTTON - Coral Rose (珊瑚红)
+   ======================================== */
+.hangup-btn { margin-top: 0; }
+.hangup-btn .btn-icon-circle {
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important; /* Circle for hangup - universal symbol */
+    background: linear-gradient(145deg, #ff7675, #d63031) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow:
+        0 5px 20px rgba(214, 48, 49, 0.4),
+        0 0 35px rgba(214, 48, 49, 0.12) !important;
+    animation: hangup-soft-glow 2.5s ease-in-out infinite;
+}
+.hangup-btn:hover .btn-icon-circle {
+    transform: scale(1.08);
+    box-shadow:
+        0 8px 28px rgba(214, 48, 49, 0.5),
+        0 0 45px rgba(214, 48, 49, 0.2) !important;
+}
+.hangup-btn:active .btn-icon-circle {
+    transform: scale(0.92);
+}
+.hangup-label {
+    color: #ff7675 !important;
+    opacity: 0.95 !important;
+    font-weight: 700 !important;
+}
+@keyframes hangup-soft-glow {
+    0%, 100% { box-shadow: 0 5px 20px rgba(214, 48, 49, 0.4), 0 0 35px rgba(214, 48, 49, 0.12); }
+    50% { box-shadow: 0 5px 24px rgba(214, 48, 49, 0.52), 0 0 42px rgba(214, 48, 49, 0.18); }
 }
 
 .hangup-row {
@@ -1191,41 +1407,7 @@ watch(() => callStore.transcript.length, () => {
   justify-content: center;
 }
 
-.hangup-btn {
-  width: 72px;
-  height: 72px;
-  background: #ff4d4f;
-  border: none;
-  border-radius: 50%;
-  color: white;
-  font-size: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 8px 25px rgba(255, 77, 79, 0.4);
-  transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
-  position: relative;
-}
-
-.hangup-btn:hover {
-    transform: scale(1.1) rotate(-10deg);
-    box-shadow: 0 12px 35px rgba(255, 77, 79, 0.5);
-    background: #ff7875;
-}
-
-.hangup-btn:active {
-    transform: scale(0.9);
-}
-
-.hangup-btn::before {
-    content: '';
-    position: absolute;
-    inset: -4px;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 77, 79, 0.3);
-    animation: hangup-ping 2s infinite;
-}
+/* (hangup-btn old large-circle styles removed - now using cute-control-btn.hangup-btn) */
 
 @keyframes hangup-ping {
     0% { transform: scale(1); opacity: 0.8; }
@@ -1265,59 +1447,108 @@ watch(() => callStore.transcript.length, () => {
 .generate-btn { background: #10b981; }
 
 .voice-layout-container {
-    flex: 0.6; /* Balanced ratio to give transcript box more room */
+    flex: 0 0 auto; /* Don't take up too much space - let transcript have room */
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 12px; /* Tighter gap */
-    margin-top: 10px;
+    justify-content: flex-start; /* Align to top */
+    gap: 8px;
+    padding-top: 5px;
 }
 
-
-.avatar-wrapper {
+/* Cute compact avatar */
+.avatar-wrapper-cute {
     position: relative;
-    width: 120px; 
-    height: 120px;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    gap: 6px;
 }
 
-.avatar-large {
-  width: 80px; 
-  height: 80px;
-  border-radius: 50%;
-  box-shadow: 0 0 30px rgba(7, 193, 96, 0.4);
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  z-index: 10;
-  position: relative;
-  transition: all 0.3s ease;
-  object-fit: cover;
-}
-
-.avatar-large.speaking {
-  box-shadow: 0 0 50px rgba(7, 193, 96, 0.8);
-  transform: scale(1.05);
-}
-
-.voice-aura {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.wave {
-    position: absolute;
-    width: 80px; 
-    height: 80px;
+.avatar-ring {
+    position: relative;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
-    background: rgba(7, 193, 96, 0.2);
-    animation: wave-ping 3s infinite ease-out;
+    background: rgba(255,255,255,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 
+        0 4px 20px rgba(253, 121, 168, 0.35),
+        0 0 40px rgba(253, 121, 168, 0.15),
+        inset 0 2px 10px rgba(255,255,255,0.5);
+}
+
+.avatar-cute {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,0.7);
+    object-fit: cover;
+    /* Now positioned inside ring via flex center */
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+
+.avatar-cute.speaking {
+    animation: cute-bounce 1.6s infinite ease-in-out;
+    box-shadow: 
+        0 0 20px rgba(253, 148, 178, 0.6),
+        0 0 40px rgba(253, 148, 178, 0.25);
+}
+
+@keyframes cute-bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+}
+
+/* Sparkles around avatar */
+.sparkle {
+    position: absolute;
+    font-size: 14px;
+    color: #ffd700;
+    animation: sparkle-twinkle 2s ease-in-out infinite;
+    z-index: 3;
+}
+.sparkle-1 { top: -4px; right: 2px; font-size: 16px; animation-delay: 0s; }
+.sparkle-2 { bottom: 2px; left: -4px; font-size: 13px; animation-delay: 0.7s; }
+.sparkle-3 { top: 50%; right: -6px; font-size: 11px; animation-delay: 1.4s; }
+
+@keyframes sparkle-twinkle {
+    0%, 100% { opacity: 0.3; transform: scale(0.8) rotate(0deg); }
+    50% { opacity: 1; transform: scale(1.2) rotate(18deg); }
+}
+
+/* Status badge under avatar */
+.avatar-status-badge {
+    font-size: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, #fd79a8 0%, #e84393 100%);
+    padding: 3px 14px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 10px rgba(232, 67, 147, 0.3);
+    white-space: nowrap;
+}
+.dialing-badge { background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 100%); }
+.incoming-badge { background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%); }
+
+.pulse-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fff;
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: dot-pulse 1.5s infinite;
+}
+@keyframes dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
 }
 
 /* Fix squashed buttons in input bar */

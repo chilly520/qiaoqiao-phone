@@ -2339,6 +2339,7 @@ export const useChatStore = defineStore('chat', () => {
                 gender: chat.gender || '无',
                 description: (chat.prompt || '') + momentsAwareness,
                 memory: chat.memory || [],
+                msgs: chat.msgs || [],  // ← 关键！对话阶段检测依赖此字段
                 userName: chat.userName || '用户',
                 userGender: chat.userGender || '无',
                 userPersona: chat.userPersona || '',
@@ -3342,9 +3343,10 @@ export const useChatStore = defineStore('chat', () => {
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
 
-                // V16: Added holistic theater block matching to preventing internal splitting.
-                // Removed punctuation from splitRegex to stop fragmented narration.
-                // V17: Added \r?\n to splitRegex to allow splitting bubbles by newlines
+                // V16-V17: Split logic
+                // DEFENSE: Wrap in try-catch to prevent Vite-minified TDZ errors ("Cannot access 'Xe'")
+                let finalSegments = [];
+                try {
                 const splitRegex = new RegExp("(\\r?\\n|__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09)");
                 const rawParts = processedContent.split(splitRegex);
 
@@ -3383,7 +3385,7 @@ export const useChatStore = defineStore('chat', () => {
                 if (currentRawSegment) rawSegments.push(currentRawSegment);
 
                 // --- Restoring Card Blocks and Filtering Content ---
-                let finalSegments = [];
+                // (finalSegments declared above at line ~3349 before try block)
                 let activeMode = null;
                 for (const seg of rawSegments) {
                     let content = seg;
@@ -3511,12 +3513,19 @@ export const useChatStore = defineStore('chat', () => {
                         }
                     }
 
+                } // END for (const seg of rawSegments)
+
                     // Assign activeMode to any newly added segments
                     for (let j = prevLength; j < finalSegments.length; j++) {
                         if (!finalSegments[j].mode && activeMode) {
                             finalSegments[j].mode = activeMode;
                         }
                     }
+                } catch (tdzError) {
+                    // DEFENSE: Catch Vite-minified TDZ errors ("Cannot access 'Xe' before initialization")
+                    console.error('[ChatStore] Split/Segment TDZ error, falling back to raw text:', tdzError.message);
+                    useLoggerStore().addLog('ERROR', '分割处理TDZ错误', tdzError.message);
+                    finalSegments = [{ type: 'text', content: processedContent.trim(), mode: null }];
                 }
 
                 // --- 4. Sequential Delivery ---
