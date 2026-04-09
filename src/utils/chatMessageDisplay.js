@@ -1,4 +1,4 @@
-const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]{8,}?)\u3011\s*$/
+const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
 // \u52a8\u4f5c\uff1a\u652f\u6301 (\u5185\u5bb9) \u6216 \uff08\u5185\u5bb9\uff09\u683c\u5f0f\uff0c\u4e5f\u652f\u6301\u672a\u95ed\u5408\u7684\u62ec\u53f7\uff08\u5982\u5185\u5bb9\u8de8\u884c\uff09
 const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)(?:[\)\uFF09]\s*)?$/
 const OFFLINE_NARRATION_RE = /^\s*(?:\|\||\u2016)([\s\S]+?)(?:\|\||\u2016)?\s*$/
@@ -6,7 +6,7 @@ const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d\u3010\[]+)\s*[:\uF
 const OFFLINE_QUOTED_DIALOGUE_RE = /^\s*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d|\"[\s\S]*?\")\s*$/
 const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:\uff1a\uFF1A\n\u2016\u2016\u201c"\u300c\u3010\[\s]{1,16})\s*[:\uff1a\uFF1A]\s*([\s\S]+?)$/
 
-const INNER_VOICE_BLOCK_RE = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?VOICE|VOICE)\s*\]|$)/i
+const INNER_VOICE_BLOCK_RE = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
 const ONLINE_BLOCK_RE = /\[\s*\/?\s*ONLINE\s*\]/gi
 const OFFLINE_BLOCK_RE = /\[\s*\/?\s*OFFLINE\s*\]/gi
@@ -43,11 +43,9 @@ export function ensureMessageString(value) {
 
 export function stripInnerVoiceBlocks(content) {
   let cleaned = ensureMessageString(content)
-    .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]/gi, '')
-    .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?\[\/\s*INNER[-_ ]?VOICE\s*\]/gi, '')
-    .replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*$/i, '')
-    .replace(/\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]/gi, '') // Proactive closing tag cleanup
-    .replace(/\[\s*INNER[-_ ]?VOICE\s*\]/gi, '')
+    .replace(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/gi, '')
+    .replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '') // Proactive closing tag cleanup
+    .replace(/\[\s*INNER[\s-_]*VOICE\s*\]/gi, '')
     
   // Balanced brace matcher for raw JSON
   const braceStarts = [];
@@ -181,17 +179,14 @@ export function getOfflineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
   
-  // Detection with robust tags
-  if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
-  if (/\[\s*ONLINE\s*\]/i.test(raw)) {
-     // If it has BOTH, it's mixed, so we can't just return false.
-     // But usually this function is used to decide if the WHOLE message is theater.
-     // If it's mixed, we rely on partitioning.
-     if (!/\[\s*OFFLINE\s*\]/i.test(raw)) return false 
-  }
-
+  // Detection with robust tags - Removed incorrect 'return true' which caused "true" bubbles
   const partitioned = getModePartitionedContent(raw, 'OFFLINE')
-  if (partitioned) return partitioned
+  if (partitioned) {
+    return partitioned
+      .replace(/\[\s*LS_JSON[:：]?\s*\{[\s\S]*?\}\s*\]/gi, '')
+      .replace(/\{[\s\S]*?"type"\s*:\s*"html"[\s\S]*?\}/gi, '')
+      .trim();
+  }
 
   const msgObj = typeof msg === 'string' ? { content: msg } : msg
   if (msgObj?.role === 'user' || !/\[\s*ONLINE\s*\]/i.test(raw)) return raw
@@ -203,10 +198,8 @@ export function getOnlineRenderableContent(msg) {
   const content = typeof msg === 'string' ? msg : (msg?.content || '');
   const raw = ensureMessageString(content)
 
-  if (/\[\s*ONLINE\s*\]/i.test(raw)) return true
-  if (/\[\s*OFFLINE\s*\]/i.test(raw)) {
-     if (!/\[\s*ONLINE\s*\]/i.test(raw)) return false
-  }
+  const partitioned = getModePartitionedContent(raw, 'ONLINE')
+  if (partitioned) return partitioned;
 
   return getModePartitionedContent(raw, 'ONLINE')
 }
@@ -377,48 +370,53 @@ export function parseOfflineSegments(msg) {
 
 export function hasOfflineTheaterContent(msg) {
   if (!msg) return false
-
+  
   // Explicit Mode Check
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
 
   const raw = ensureMessageString(msg.content)
 
-  // Explicit Mode Tags
+  // Detection with robust tags
   if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
-  if (/\[\s*ONLINE\s*\]/i.test(raw) && !/\[\s*OFFLINE\s*\]/i.test(raw)) return false
+  if (/\[\s*ONLINE\s*\]/i.test(raw)) {
+     // If it has both, we check if there are theater markers in the offline portion
+     // but for simplicity, we return false here as it's primarily a "should I use the theater renderer" check.
+     if (!/\[\s*OFFLINE\s*\]/i.test(raw)) return false
+  }
 
-  // Detect theater markers within the text:
-  // 1. Scene tag: 【 ... 】 but MUST be at least 5 chars inside to avoid common chat brackets like 【大宝贝】
-  const hasScene = /\u3010[\s\S]{5,}\u3011/.test(raw)
-  // 2. Narration: || ... || or ‖ ... ‖
-  const hasNarration = /(\|\||\u2016)[\s\S]*?(\|\||\u2016)/.test(raw)
-  // 3. Action: ( ... ) at the start of a line
-  const hasAction = /^[\s]*[\(\uFF08][\s\S]+?[\)\uFF09]\s*$/m.test(raw)
-  // 4. Quoted dialogue: "..." covering the whole line
-  const hasQuote = /^[\s]*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d|\"[\s\S]*?\")\s*$/m.test(raw)
-
-  return hasScene || hasNarration || hasAction || hasQuote || msg.type === 'location'
+  // Detect theater markers
+  // Important: We check the RAW text here to catch messages before they are processed/split
+  return OFFLINE_SCENE_RE.test(raw) || 
+         OFFLINE_NARRATION_RE.test(raw) || 
+         OFFLINE_ACTION_RE.test(raw) ||
+         OFFLINE_QUOTED_DIALOGUE_RE.test(raw) ||
+         raw.includes('\u2016') || 
+         raw.includes('||') ||
+         msg.type === 'location'
 }
 
 export function isOfflineTextMessage(msg) {
   if (!msg) return false
   const type = msg.type || 'text'
   const role = msg.role || 'ai'
-
-  // Explicit mode check
-  if (msg.mode === 'online') return false
-  if (msg.mode === 'offline') return true
-
-  // These types are processed via Theater Renderer
+  
+  // These types are always rendered as theater/offline components if they have valid theater content
   const theaterTypes = ['text', 'location', 'scene', 'system']
   if (!theaterTypes.includes(type)) return false
 
-  // User messages are typically bubbles unless they are tagged as part of a theater script
-  if (role === 'user') return false
+  // User messages in offline are always bubbles? Or also theater? 
+  // User messages are typically bubbles unless they are part of a theater script
+  if (role === 'user') return true 
+  
+  const content = ensureMessageString(msg.content)
+  // If it's a location message or has theater markers, it's theater
+  if (type === 'location' || OFFLINE_SCENE_RE.test(content) || OFFLINE_NARRATION_RE.test(content) || content.includes('\u2016') || content.includes('||')) {
+    return true
+  }
 
-  // Use the robust content detector
-  return hasOfflineTheaterContent(msg)
+  // Fallback for regular text
+  return true
 }
 
 export function extractTaggedBlock(content, tag) {
@@ -435,7 +433,6 @@ export function extractTaggedBlock(content, tag) {
 
 export function shouldShowInOfflineMode(msg) {
   if (!msg) return false
-  const role = msg.role || 'ai'
   const raw = ensureMessageString(msg.content)
 
   // 1. Check for explicit tags
@@ -449,11 +446,8 @@ export function shouldShowInOfflineMode(msg) {
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
   
-  // 4. Fallback:
-  // User messages show in both windows by default
-  if (role === 'user') return true
-  // AI messages without theater markers are HIDDEN in offline mode (prevent online chat leaking)
-  return false
+  // Default: show in both if no indicators (or customize based on project preference)
+  return true
 }
 
 export function shouldShowInOnlineMode(msg) {

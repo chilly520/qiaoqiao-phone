@@ -91,16 +91,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   color: #A66D7A;
-  /* Softer brown-pink */
   z-index: 1000;
-  pointer-events: auto;
+  pointer-events: none; /* Allow clicks to pass through to underlying elements */
   font-family: 'Outfit', sans-serif;
   background: transparent;
 }
 
 .left-side,
 .right-side {
-  pointer-events: auto;
+  pointer-events: auto; /* Re-enable clicks for the actual status items */
 }
 
 .time-bubble {

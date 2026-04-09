@@ -28,7 +28,24 @@ const iframeRef = ref(null)
 
 const sanitizedContent = computed(() => {
   if (!props.content) return ''
-  return typeof props.content === 'string' ? props.content : JSON.stringify(props.content)
+  let c = String(props.content || '').trim()
+  
+  // Try to clean up markdown backticks for HTML/JSON blocks
+  c = c.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+
+  // If it's a JSON string, try to extract the 'html' or 'card' field
+  if (c.startsWith('{') && c.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(c)
+      if (parsed.html) return parsed.html
+      if (parsed.card) return parsed.card
+      if (parsed.content) return parsed.content
+    } catch (e) {
+      // Not valid JSON or failed to parse, proceed with raw string
+    }
+  }
+
+  return c
 })
 
 const isInteractive = computed(() => {

@@ -113,6 +113,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { getUnifiedCleanContent } from '@/utils/chatMessageDisplay'
 
 const props = defineProps({
     isVisible: Boolean,
@@ -131,14 +132,8 @@ const cleanDialogue = computed(() => {
     const content = props.latestMessage?.content || ''
     if (typeof content !== 'string') return content
     
-    // Clean Protocol Tags
-    let clean = content
-        .replace(/\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi, '')
-        .replace(/\[\s*CARD\s*\][\s\S]*?(?:\[\/\s*CARD\s*\]|$)/gi, '')
-        .replace(/\[(?:图片|IMAGE|表情包|STICKER)[:：].*?\]/gi, '[Media Link]')
-        .replace(/\{[\s\S]*?"html"\s*:[\s\S]*?\}/gi, '') // Remove JSON HTML
-        .replace(/<[^>]+>/g, '') // Remove HTML tags
-        .trim();
+    // Use centralized cleaner
+    const clean = getUnifiedCleanContent(content, false, props.latestMessage?.role || 'ai')
         
     return clean || (content.includes('[CARD]') ? '[Interactive UI Card - Click to View in Online Mode]' : '...')
 })

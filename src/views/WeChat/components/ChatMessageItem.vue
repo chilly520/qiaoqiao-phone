@@ -1074,6 +1074,37 @@
                             <MomentShareCard :data="momentDataValue" />
                         </div>
 
+                        <!-- CASE: Location / Scene Tag (Premium Glassmorphism) -->
+                        <div v-else-if="msg.type === 'location'"
+                            class="w-full flex justify-center my-6 px-4 animate-scale-in"
+                            @contextmenu.prevent="emitContextMenu">
+                            <div class="relative group max-w-[90%]">
+                                <!-- Ambient Glow -->
+                                <div class="absolute inset-0 bg-indigo-500/10 blur-[40px] rounded-full opacity-60 group-hover:opacity-100 transition-opacity duration-1000"></div>
+                                <!-- Main Glass Backdrop -->
+                                <div class="relative bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl px-10 py-5 flex flex-col items-center gap-2.5 shadow-[0_12px_48px_rgba(0,0,0,0.4)] ring-1 ring-white/10 transition-all hover:bg-white/10 hover:border-white/20">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-1.5 h-7 bg-gradient-to-b from-indigo-400 via-purple-500 to-indigo-600 rounded-full shadow-[0_0_15px_rgba(129,140,248,0.6)]"></div>
+                                        <span class="text-[10px] font-black text-indigo-300/80 uppercase tracking-[0.4em] select-none">Theater Locale</span>
+                                    </div>
+                                    <h4 class="text-xl md:text-2xl font-black text-white/95 text-center leading-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] tracking-widest font-songti">
+                                        {{ formatLocation(msg.content) }}
+                                    </h4>
+                                    <div class="flex items-center gap-2.5 mt-1.5">
+                                        <div class="flex gap-1">
+                                            <span class="w-1 h-3 bg-indigo-400/40 rounded-full animate-pulse"></span>
+                                            <span class="w-1 h-4 bg-indigo-400/60 rounded-full animate-pulse [animation-delay:0.2s]"></span>
+                                            <span class="w-1 h-3 bg-indigo-400/40 rounded-full animate-pulse [animation-delay:0.4s]"></span>
+                                        </div>
+                                        <span class="text-[8px] text-white/20 font-bold uppercase tracking-[0.2em] select-none">Environment Active</span>
+                                    </div>
+                                </div>
+                                <!-- Subtle Corner Accents -->
+                                <div class="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-white/5 rounded-tr-lg"></div>
+                                <div class="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-white/5 rounded-bl-lg"></div>
+                            </div>
+                        </div>
+
                         <!-- Universal Mixed Content Wrapper (Image / HTML / Text) -->
                         <div v-else class="flex flex-col gap-2"
                             :class="[
@@ -2341,8 +2372,11 @@ function getPureHtml(content) {
     const str = ensureString(content)
     let trimmed = str.trim()
     
-    // 安全移除外层的 [CARD] 标签（可能包含由于双重包裹出现的转义斜杠），以便后续能准确识别 JSON 前缀 {
+    // 安全移除外层的 [CARD] 标签（可能包含由于双重包裹出现的转义斜杠）
     trimmed = trimmed.replace(/\[\s*\/?CARD\s*\]/gi, '').trim()
+    
+    // Pass: Strip Markdown Backticks (AI tend to wrap code in them)
+    trimmed = trimmed.replace(/^```(?:html|json|xml)?\s*|```$/gi, '').trim();
     
     // 快速检查：如果内容包含常见的 HTML 标签且不包含 JSON 结构，直接返回（已经是纯 HTML）
     const hasHtmlTag = /<[a-zA-Z][^>]*>/.test(trimmed);
@@ -3067,9 +3101,9 @@ function formatMessageContent(msg) {
     
     let text = ensureString(msg.content)
 
-    // Clear AI status tags
-    text = text.replace(/\[STATUS[:：][\s\S]*?\]/gi, '')
-               .replace(/\[THINK[:：][\s\S]*?\]/gi, '')
+    // Strip protocol tags and common AI leakage fields
+    text = text.replace(/\[(?:STATUS|THINK|INNER|GIFT|红包|REDPACKET|LOCATION|SCENE)[:：][\s\S]*?\]/gi, '')
+               .replace(/^\s*(?:心声|内心|心里|想|着装|环境|行为|场景|地点|状态|mood|thoughts|mind|outfit|status)[:：].*$/gim, '')
                .trim();
 
     if (props.forceOffline) {
@@ -3184,14 +3218,39 @@ function formatMessageContent(msg) {
     return parseWeChatEmojis(html);
 }
 
+function formatLocation(content) {
+    if (!content) return ''
+    return ensureString(content)
+        .replace(/[\\\[【（]\s*(?:位置|地图|MAP|LOCATION|场景|地点|SCENE|THINK|STATUS|INNER|心里|内心|心声)[:：]?\s*/i, '')
+        .replace(/[\]】）\)\s]+$/, '')
+        .replace(/^[\s/\\•·-]+/, '')
+        .replace(/(?:OFFLINE|ONLINE|线下|线上)/gi, '')
+        .replace(/^[\s•·-]+/, '')
+        .trim()
+}
+
 // Render a single segment of content (for multi-paragraph bubble splitting)
 function renderSegment(segment) {
     if (!segment) return ''
     
+    // Aggressive cleaning for metadata keys that might leak into split segments
+    const metaKeywords = [
+        '心声', '内心', '着装', '环境', '行为', '场景', '地点', '状态', '心里',
+        'type', 'card', 'html', 'json', 'status', 'speech', 'thought', 'thinking', 'conclusion', 'mood'
+    ]
+    let cleanSegment = segment
+    metaKeywords.forEach(key => {
+        const regex = new RegExp(`^\\s*${key}\\s*[:：].*$`, 'gim')
+        cleanSegment = cleanSegment.replace(regex, '')
+    })
+    
+    cleanSegment = cleanSegment.trim()
+    if (!cleanSegment) return ''
+
     // Create a temporary message object with just this segment's content
     const tempMsg = {
         ...props.msg,
-        content: segment
+        content: cleanSegment
     }
     
     return formatMessageContent(tempMsg)

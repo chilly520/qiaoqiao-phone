@@ -38,9 +38,9 @@ export function initMemoryLog(char) {
   return char
 }
 
-export function appendLog(charId, entry) {
-  const chatStore = awaitImportChatStore()
-  const char = chatStore?.chats?.[charId]
+export function appendLog(charId, entry, providedChar = null) {
+  const chatStore = !providedChar ? useChatStoreSync() : null
+  const char = providedChar || chatStore?.chats?.[charId]
   if (!char) return
   initMemoryLog(char)
   const logEntry = typeof entry === 'string'
@@ -142,6 +142,26 @@ export function getFacts(charId) {
   const chatStore = useChatStoreSync()
   const char = chatStore?.chats?.[charId]
   return char?.memoryFacts || {}
+}
+
+export function rebuildMemoryLog(charId) {
+  const chatStore = useChatStoreSync()
+  const char = chatStore?.chats?.[charId]
+  if (!char || !char.msgs?.length) return []
+  
+  initMemoryLog(char)
+  char.memoryLog = [] // Reset
+  
+  char.msgs.forEach(m => {
+    if (m.role === 'user' || m.role === 'ai') {
+      const preview = typeof m.content === 'string' ? m.content.substring(0, 100) : JSON.stringify(m.content).substring(0, 100)
+      const logEntry = `[${formatTime(new Date(m.timestamp || Date.now()))}] [${m.role === 'user' ? '💬' : '🗣️'}] ${preview}`
+      char.memoryLog.push(logEntry)
+    }
+  })
+  
+  if (char.memoryLog.length > 2000) char.memoryLog = char.memoryLog.slice(-1500)
+  return char.memoryLog.slice(-8)
 }
 
 function formatTime(d) {

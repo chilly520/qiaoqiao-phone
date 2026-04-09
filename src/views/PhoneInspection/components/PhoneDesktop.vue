@@ -712,7 +712,7 @@ onMounted(() => {
 
 @media (max-width: 480px) {
   .kawaii-clock {
-    margin-top: 16px;
+    margin-top: 54px;
     z-index: 10;
   }
   .time {
@@ -737,8 +737,8 @@ onMounted(() => {
   }
   .app-grid {
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px 4px;
-    margin-top: 16px !important;
+    gap: 16px 4px;
+    margin-top: 20px !important;
   }
   .app-icon-container {
     width: 46px;
@@ -775,12 +775,25 @@ onMounted(() => {
     font-size: 18px;
   }
   .anniversary-widget {
-    padding: 12px !important;
-    border-radius: 18px !important;
-    margin-top: 12px !important;
+    padding: 10px !important;
+    border-radius: 16px !important;
+    margin-top: 8px !important;
   }
   .anniversary-widget .text-4xl {
-    font-size: 28px !important;
+    font-size: 24px !important;
+  }
+  .paging-dots {
+    bottom: 85px !important;
+  }
+  .kawaii-dock-area {
+    height: 85px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 8px));
+  }
+  .dock-cloud {
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 24px;
+    box-shadow: 0 4px 0 #F0F0F0, 0 10px 20px rgba(0, 0, 0, 0.05);
   }
 }
 </style>

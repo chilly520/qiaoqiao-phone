@@ -33,7 +33,7 @@
 
       <!-- Generic Fallback for Other Apps -->
       <div v-else class="generic-app-container">
-        <div class="app-header !pt-16 !h-auto pb-4">
+        <div class="app-header !pt-14 !h-auto pb-4">
           <button class="back-btn" @click="handleBack">
             <i class="fa-solid fa-chevron-left"></i>
           </button>

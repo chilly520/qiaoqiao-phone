@@ -25,7 +25,7 @@
     </div>
 
     <!-- Header -->
-    <div class="kawaii-header">
+    <div class="kawaii-header pt-20 md:pt-40">
       <div class="icon-bubble animate-bounce-soft">
         <i class="fa-solid fa-paw"></i>
       </div>
@@ -203,6 +203,11 @@ watch(allChats, () => {
   padding: 12px 24px;
   color: #8F5E6E;
   font-weight: 900;
+  pointer-events: none;
+}
+
+.kawaii-status-bar > * {
+  pointer-events: auto;
 }
 
 .time-bubble {
@@ -412,7 +417,8 @@ watch(allChats, () => {
 
 @media (max-width: 480px) {
   .kawaii-header {
-    padding: 24px 0 12px;
+    padding: 24px 0 8px;
+    margin-top: 40px;
   }
   .icon-bubble {
     width: 52px;
@@ -446,7 +452,7 @@ watch(allChats, () => {
   .kawaii-list {
     padding-left: 12px !important;
     padding-right: 12px !important;
-    padding-bottom: 100px !important;
+    padding-bottom: 120px !important;
   }
   .kawaii-item {
     border-radius: 20px;

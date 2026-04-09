@@ -258,23 +258,19 @@ function formatTimestamp(timestamp) {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: #5a6a7a;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(245, 247, 250, 0.95);
+  color: #7a8a9a;
   font-size: 11px;
-  font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .night-mode .scene-chip {
-  background: rgba(30, 40, 55, 0.7);
-  color: #a0b0c5;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  background: rgba(40, 45, 55, 0.95);
+  color: #9aa5b5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .scene-icon {

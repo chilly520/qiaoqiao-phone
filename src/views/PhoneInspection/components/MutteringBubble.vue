@@ -1,45 +1,36 @@
 <template>
   <div class="muttering-bubble">
-    <transition-group name="mutter-list">
-      <div 
-        v-for="(mutter, index) in queue.slice(0, 3)" 
-        :key="mutter.timestamp"
-        class="mutter-item"
-        :style="{ 
-          opacity: 1 - (index * 0.3)
-        }"
-      >
+    <TransitionGroup name="mutter">
+      <div v-for="mutter in mutteringList" :key="mutter.id" class="mutter-item">
         <div class="avatar">
-          <img :src="charAvatar" :alt="charName" />
+          <img :src="charAvatar" />
         </div>
         <div class="bubble">
           {{ mutter.text }}
-          <div class="arrow"></div>
+          <div class="tip">想对你说...</div>
         </div>
       </div>
-    </transition-group>
+    </TransitionGroup>
   </div>
 </template>
 
 <script setup>
-const props = defineProps({
-  queue: {
-    type: Array,
-    default: () => []
-  },
-  charAvatar: String
-})
+import { computed } from 'vue'
+import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
 
-const charName = 'Char'
+const phoneStore = usePhoneInspectionStore()
+const mutteringList = computed(() => phoneStore.mutteringList)
+const charAvatar = computed(() => phoneStore.currentChar?.avatar || '')
 </script>
 
 <style scoped>
 .muttering-bubble {
   position: fixed;
-  bottom: 140px;
+  /* top: 100px; Moved to bottom to avoid blocking top headers */
+  bottom: 120px;
   left: 20px;
   right: 20px;
-  z-index: 99;
+  z-index: 2000;
   pointer-events: none;
 }
 
@@ -54,16 +45,15 @@ const charName = 'Char'
 .avatar {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   flex-shrink: 0;
 }
 
 .avatar img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
 .bubble {
@@ -80,40 +70,44 @@ const charName = 'Char'
   animation: bubblePop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
-.arrow {
+.tip {
+  font-size: 10px;
+  color: #FD70A1;
+  font-weight: bold;
+  margin-top: 4px;
+  opacity: 0.6;
+}
+
+.bubble::before {
+  content: '';
   position: absolute;
-  bottom: 6px;
-  left: -6px;
-  width: 12px;
-  height: 12px;
-  background: inherit;
-  transform: rotate(45deg);
-  clip-path: polygon(0 0, 50% 50%, 100% 0);
+  left: -8px;
+  bottom: 12px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid rgba(255, 255, 255, 0.95);
+}
+
+/* Transitions */
+.mutter-enter-active {
+  animation: mutterIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mutter-leave-active {
+  animation: mutterOut 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes mutterIn {
+  from { opacity: 0; transform: translateX(-20px) scale(0.9); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes mutterOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.9); }
 }
 
 @keyframes bubblePop {
-  from {
-    opacity: 0;
-    transform: scale(0.8) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.mutter-list-enter-active,
-.mutter-list-leave-active {
-  transition: all 0.5s ease;
-}
-
-.mutter-list-enter-from {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.mutter-list-leave-to {
-  opacity: 0;
-  transform: translateX(-20px);
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 </style>

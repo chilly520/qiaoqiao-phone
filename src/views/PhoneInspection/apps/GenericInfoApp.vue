@@ -2,7 +2,7 @@
     <div class="generic-info-app flex flex-col h-full bg-[#FAFAFA]">
         <!-- Header -->
         <div
-            class="app-header px-4 pt-16 pb-4 bg-white border-b border-gray-100 flex items-center justify-between shadow-sm">
+            class="app-header px-4 pt-14 pb-4 bg-white border-b border-gray-100 flex items-center justify-between shadow-sm">
             <button @click="$emit('back')" class="text-xl text-[#8F5E6E]">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>

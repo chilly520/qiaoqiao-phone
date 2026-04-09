@@ -3,7 +3,6 @@ import { ref, computed, watch } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useAITaskStore } from './aiTaskStore'
 import { useLoggerStore } from './loggerStore'
-import { appendLog } from '../utils/memoryLog'
 import { useWorldBookStore } from './worldBookStore'
 import { useMomentsStore } from './momentsStore'
 import { useSettingsStore } from './settingsStore'
@@ -1398,13 +1397,6 @@ export const useChatStore = defineStore('chat', () => {
         if (!chat.msgs) chat.msgs = []
         chat.msgs.push(newMsg)
 
-        if (newMsg.role === 'user' || newMsg.role === 'ai') {
-            try {
-                const preview = typeof newMsg.content === 'string' ? newMsg.content.substring(0, 100) : JSON.stringify(newMsg.content).substring(0, 100)
-                appendLog(chatId, `[${newMsg.role === 'user' ? '💬' : '🗣️'}] ${preview}`)
-            } catch(e) {}
-        }
-
         // 4.1 Insert pending system messages (if any)
         if (newMsg._pendingSystemMessages && newMsg._pendingSystemMessages.length > 0) {
             chat.msgs.push(...newMsg._pendingSystemMessages)
@@ -2657,7 +2649,7 @@ export const useChatStore = defineStore('chat', () => {
                 // Stop at closing tag, OR start of another command, OR end of file.
                 // NOTE: We do NOT use Lookahead for Newline+Bracket as strict delimiter here, to allow AI to continue comfortably.
                 // The explicit closing tag is preferred, but we must stop if we see another major system tag.
-                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\[)|$)/gi;
+                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/gi;
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
@@ -2677,11 +2669,11 @@ export const useChatStore = defineStore('chat', () => {
 
                             // If it's not caught by the regex, it's likely untagged JSON in the text
                             // We need to find and remove it from pureDialogue
-                            if (pureDialogue.includes('{') && (pureDialogue.includes('"status"') || pureDialogue.includes('"心声"') || pureDialogue.includes('"type"') || pureDialogue.includes('"html"'))) {
+                            if (pureDialogue.includes('{') && (pureDialogue.includes('"status"') || pureDialogue.includes('"心声"'))) {
                                 const blocks = [...pureDialogue.matchAll(/\{[\s\S]*?\}/g)]
                                 for (let i = blocks.length - 1; i >= 0; i--) {
                                     const block = blocks[i][0]
-                                    if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || block.includes('"type"') || block.includes('"html"')) {
+                                    if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"')) {
                                         pureDialogue = pureDialogue.replace(block, '').trim()
                                         break
                                     }
@@ -2690,7 +2682,7 @@ export const useChatStore = defineStore('chat', () => {
                         } catch (e) {
                             console.error('[ChatStore] Failed to reconstruct Inner Voice', e);
                         }
-                    } else if (fullContent.includes('{') && (fullContent.includes('"status"') || fullContent.includes('"心声"') || fullContent.includes('"type"') || fullContent.includes('"html"'))) {
+                    } else if (fullContent.includes('{') && (fullContent.includes('"status"') || fullContent.includes('"心声"'))) {
                         // Case B: AI Service didn't catch it, and it's not in result, but looks like JSON is there.
                         try {
                             const braceStarts = [];
@@ -2718,7 +2710,7 @@ export const useChatStore = defineStore('chat', () => {
 
                                 if (endPos !== -1) {
                                     const candidate = fullContent.substring(startIdx, endPos + 1);
-                                    if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"') || candidate.includes('"type"') || candidate.includes('"html"')) {
+                                    if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
                                         console.log('[ChatStore] Found raw JSON block in balanced fallback, treating as Inner Voice');
                                         innerVoiceBlock = `\n[INNER_VOICE]\n${candidate}\n[/INNER_VOICE]`;
                                         pureDialogue = pureDialogue.replace(candidate, '').trim();

@@ -53,7 +53,7 @@
         <div v-else class="flex-1 flex flex-col overflow-hidden">
 
             <!-- 顶部导航栏 -->
-            <div class="px-4 pt-12 pb-2 bg-[#EDEDED] flex items-center gap-3">
+            <div class="px-4 pt-14 pb-2 bg-[#EDEDED] flex items-center gap-3">
                 <button @click="$emit('back')" class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-black/5 active:bg-black/10 transition-colors -ml-1">
                     <i class="fa-solid fa-chevron-left text-base text-black"></i>
                 </button>

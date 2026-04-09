@@ -233,11 +233,19 @@
       <div v-if="showMemoryLog" class="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4" @click.self="showMemoryLog = false">
         <div class="bg-white w-full max-w-md max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl animate-fade-in" @click.stop>
           <div class="sticky top-0 bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between z-10">
-            <h3 class="font-bold text-base">🧠 {{ char?.name || '' }}的记忆日志</h3>
+            <h3 class="font-bold text-base">🧠 {{ character?.name || '' }}的记忆日志</h3>
             <button @click="showMemoryLog = false" class="w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all">×</button>
           </div>
           <div class="p-4 overflow-y-auto max-h-[60vh] space-y-2 text-xs">
-            <div v-if="memoryLogs.length === 0" class="text-center text-gray-400 py-8">暂无记忆记录</div>
+            <div v-if="memoryLogs.length === 0" class="text-center py-8">
+              <p class="text-gray-400 mb-4">暂无记忆记录</p>
+              <button 
+                v-if="character.msgs?.length"
+                @click="rebuildMemory"
+                class="px-4 py-2 border border-purple-200 text-purple-500 rounded-full text-[10px] font-bold tracking-widest hover:bg-purple-50 transition-colors">
+                从聊天记录中同步记录
+              </button>
+            </div>
             <div v-for="(log, i) in memoryLogs" :key="i"
               class="p-2.5 rounded-xl bg-gray-50/80 leading-relaxed text-gray-700 break-words">{{ log }}</div>
           </div>
@@ -261,7 +269,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { compressImage } from '@/utils/imageUtils'
-import { searchMemoryLog, getFacts } from '@/utils/memoryLog'
+import { searchMemoryLog, getFacts, rebuildMemoryLog } from '@/utils/memoryLog'
 
 const route = useRoute()
 const router = useRouter()
@@ -274,6 +282,12 @@ const avatarFileInput = ref(null)
 const showMemoryLog = ref(false)
 const memoryLogs = computed(() => searchMemoryLog(charId, { limit: 100 }))
 const memoryFacts = computed(() => getFacts(charId))
+
+const rebuildMemory = () => {
+  rebuildMemoryLog(charId)
+  chatStore.triggerToast('记忆同步工作已完成', 'success')
+  chatStore.saveChats()
+}
 
 const character = computed(() => {
   if (charId === 'user') {
