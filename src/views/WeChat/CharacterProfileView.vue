@@ -321,8 +321,6 @@ const character = computed(() => {
     }
   }
   const charData = chatStore.chats[charId]
-  console.log('[CharacterProfileView] charId:', charId)
-  console.log('[CharacterProfileView] chatStore.chats[charId]:', charData)
   return charData || { name: '未知', avatar: '' }
 })
 
@@ -334,7 +332,7 @@ const itemRotations = ['rotate-[-3deg]', 'rotate-[2deg] z-10', 'rotate-[-1deg]']
 
 const mbtiName = (code) => {
   const mapping = {
-    'ENTJ': '指挥官', 'INTJ': '建筑师', 'ENPJ': '辩论家', 'INTP': '逻辑学家',
+    'ENTJ': '指挥官', 'INTJ': '建筑师', 'ENTP': '辩论家', 'INTP': '逻辑学家',
     'ENFJ': '主人公', 'INFJ': '提倡者', 'ENFP': '竞选者', 'INFP': '调解员',
     'ESTJ': '总经理', 'ISTJ': '物流师', 'ESFJ': '执政官', 'ISFJ': '守卫者',
     'ESTP': '企业家', 'ISTP': '鉴赏家', 'ESFP': '表演者', 'ISFP': '探险家'

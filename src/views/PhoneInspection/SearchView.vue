@@ -37,7 +37,7 @@
     <div class="kawaii-search-container px-6 mb-6">
       <div class="kawaii-search-bar">
         <i class="fa-solid fa-heart mr-3 text-pink-300"></i>
-        <input v-model="searchQuery" type="text" placeholder="找找谁的小秘密..." @input="filterChats" />
+        <input v-model="searchQuery" type="text" placeholder="找找谁的小秘密..." @input="debouncedFilterChats" />
         <button v-if="searchQuery" @click="clearSearch" class="close-search">
           <i class="fa-solid fa-circle-xmark"></i>
         </button>
@@ -91,6 +91,16 @@ const searchQuery = ref('')
 const filteredChats = ref([])
 const currentTime = ref('')
 
+// 搜索防抖：避免频繁过滤
+let debounceTimer = null
+function debouncedFilterChats() {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    filterChats()
+    debounceTimer = null
+  }, 150)
+}
+
 const allChats = computed(() => {
   if (!chatStore.chats) return []
   // 使用更稳妥的映射方式
@@ -98,7 +108,7 @@ const allChats = computed(() => {
   for (const [id, chat] of Object.entries(chatStore.chats)) {
     if (!chat || chat.isGroup) continue
 
-    // 强制解析一个“绝对存在”的名字
+    // 强制解析一个"绝对存在"的名字
     const charName = (chat.name || chat.displayName || (chat.bio && chat.bio.name) || chat.remark || id).trim() || id
 
     list.push({
@@ -159,11 +169,16 @@ function updateTime() {
   currentTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+let timer = null
+
 onMounted(() => {
   filterChats()
   updateTime()
-  const timer = setInterval(updateTime, 1000)
-  onUnmounted(() => clearInterval(timer))
+  timer = setInterval(updateTime, 1000)
+})
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
 })
 
 // 监听数据变化，确保初始化时（如从本地存储加载）能及时显示
@@ -304,9 +319,15 @@ watch(allChats, () => {
   display: flex;
   align-items: center;
   box-shadow: 0 8px 0 #F0F0F0;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   cursor: pointer;
   border: 3px solid transparent;
+}
+
+.kawaii-item:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 20px rgba(143, 94, 110, 0.08);
+  border-color: #FFB7CE;
 }
 
 .kawaii-item:active {

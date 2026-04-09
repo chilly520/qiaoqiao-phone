@@ -689,6 +689,22 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       clean = clean.replace(/<(html|div|section|article|style|svg)[\s\S]*?<\/\1>/gi, '') 
       clean = clean.replace(/<[^>]+>/g, '')
       
+      // === 新增：清洗剥离HTML标签后残留的CSS属性文本 ===
+      // 移除内联style属性的残留 (style="...")
+      clean = clean.replace(/style\s*=\s*['"][^'"]*['"]/gi, '')
+      // 移除裸露的CSS属性键值对
+      .replace(/\b(?:color|background|font-size|font-weight|line-height|margin|padding|border|width|height|display|flex|align-items|text-align|animation|animation-name|animation-duration|opacity|box-shadow|border-radius|overflow|position|top|left|right|bottom|cursor|pointer-events|outline|outline-none|white-space|letter-spacing|word-spacing|text-decoration|vertical-align|z-index|transform|transition|filter|backdrop-filter|background-color|background-image|object-fit|font-family|text-overflow|user-select|will-change|contain|content|visibility|float|clear|box-sizing|min-width|max-width|min-height|max-height)\s*[:：]\s*[^;{}()\n]+[;]?/gi, '')
+      // 移除CSS代码块 { ... } （特别是短块如动画帧、样式片段）
+      .replace(/\{[^{}]{0,200}\}/g, (match) => {
+          // 只移除包含CSS属性名的短代码块
+          if (/\b(?:color|font-size|opacity|width|height|margin|padding|display|background|border|transform|animation)\b/i.test(match)) return ''
+          return match
+      })
+      // 移除 @keyframes 动画定义
+      .replace(/@keyframes[\s\S]{5,}?\}\s*/g, '')
+      // 清理多余空格和空白行
+      .replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n')
+      
       // Strip naked JSON blocks containing specific keywords (e.g. status cards)
       const removeJsonWithKeywords = (str) => {
           let result = ''

@@ -111,7 +111,7 @@
             <template v-else-if="appId === 'calendar'">
                 <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-50 mb-6">
                     <div class="flex justify-between items-center mb-6 px-1">
-                        <span class="font-black text-[#8F5E6E] text-lg">2026年3月</span>
+                        <span class="font-black text-[#8F5E6E] text-lg">{{ calendarLabel }}</span>
                         <div class="flex gap-4 text-pink-300">
                             <i class="fa-solid fa-chevron-left"></i>
                             <i class="fa-solid fa-chevron-right"></i>
@@ -121,9 +121,12 @@
                         <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
                     </div>
                     <div class="grid grid-cols-7 gap-2 text-center">
-                        <div v-for="day in 31" :key="day"
+                        <!-- 空白占位：月初偏移 -->
+                        <div v-for="pad in calendarData.firstDayOfWeek" :key="'pad-' + pad" class="h-9"></div>
+                        <!-- 实际日期 -->
+                        <div v-for="day in calendarData.daysInMonth" :key="day"
                             class="h-9 flex items-center justify-center text-sm font-bold rounded-lg relative"
-                            :class="day === 7 ? 'bg-pink-400 text-white shadow-pink' : 'text-[#8F5E6E]'">
+                            :class="day === new Date().getDate() && calendarData.month === new Date().getMonth() ? 'bg-pink-400 text-white shadow-pink' : 'text-[#8F5E6E]'">
                             {{ day }}
                             <div v-if="[5, 12, 20].includes(day)"
                                 class="absolute bottom-1.5 w-1 h-1 bg-pink-300 rounded-full"></div>
@@ -495,6 +498,20 @@ const isPlaying = ref(false)
 const progress = ref(0)
 const duration = ref(0)
 
+// 动态日历数据
+const calendarData = computed(() => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth() // 0-indexed
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const firstDayOfWeek = new Date(year, month, 1).getDay() // 0=Sun
+    return { year, month, daysInMonth, firstDayOfWeek }
+})
+
+const calendarLabel = computed(() => {
+    return `${calendarData.value.year}年${calendarData.value.month + 1}月`
+})
+
 const getDetailTitle = computed(() => {
     if (!selectedItem.value) return ''
     const titles = {
@@ -684,5 +701,29 @@ function onAudioLoaded() {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* 补充缺失的工具类 */
+.animate-pop-in {
+  animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes pop-in {
+  from {
+        transform: scale(0.9);
+        opacity: 0;
+  }
+  to {
+        transform: scale(1);
+        opacity: 1;
+  }
+}
+
+.shadow-up {
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.shadow-inner-sm {
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 </style>

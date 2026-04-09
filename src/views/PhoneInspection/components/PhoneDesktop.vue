@@ -133,8 +133,6 @@ if (!phoneStore) {
   console.error('[PhoneDesktop] CRITICAL: usePhoneInspectionStore() returned null/undefined!')
 }
 
-console.log('[PhoneDesktop] Store initialized:', !!phoneStore)
-
 const calendarStore = useCalendarStore()
 const emit = defineEmits(['open-app'])
 
@@ -355,6 +353,8 @@ function getSparkleStyle(n) {
   }
 }
 
+let timer = null
+
 function updateTime() {
   const now = new Date()
   currentTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -364,8 +364,11 @@ function updateTime() {
 
 onMounted(() => {
   updateTime()
-  const timer = setInterval(updateTime, 60000)
-  onUnmounted(() => clearInterval(timer))
+  timer = setInterval(updateTime, 60000)
+})
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
 })
 </script>
 
@@ -385,6 +388,7 @@ onMounted(() => {
   inset: 0;
   background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 192, 203, 0.1) 100%);
   pointer-events: none;
+  transition: opacity 0.5s ease;
 }
 
 /* Photo Frames */
@@ -621,12 +625,16 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   font-size: 24px;
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease;
   cursor: pointer;
 }
 
 .app-icon:active {
-  transform: translateY(4px);
+  transform: translateY(4px) scale(0.95);
+}
+
+.app-item:hover .app-icon {
+  transform: translateY(-3px) scale(1.05);
 }
 
 .app-label {
@@ -688,6 +696,11 @@ onMounted(() => {
   justify-content: center;
   font-size: 22px;
   cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.dock-item:hover .dock-icon {
+  transform: translateY(-8px) scale(1.1);
 }
 
 .animate-bounce-soft {
@@ -781,9 +794,6 @@ onMounted(() => {
   }
   .anniversary-widget .text-4xl {
     font-size: 24px !important;
-  }
-  .paging-dots {
-    bottom: 85px !important;
   }
   .kawaii-dock-area {
     height: 85px;

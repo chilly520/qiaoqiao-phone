@@ -3175,6 +3175,22 @@ function formatMessageContent(msg) {
     text = text.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
     text = text.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '').trim();
 
+    // === 增强清洗：移除残留的CSS属性和代码片段 ===
+    // 移除内联style属性
+    text = text.replace(/style\s*=\s*['"][^'"]*['"]/gi, '')
+    // 移除残留的CSS属性键值对 (如 color: #xxx, font-size: 12px 等)
+    .replace(/\b(?:color|background|font-size|font-weight|line-height|margin|padding|border|width|height|display|flex|align-items|text-align|animation|opacity|box-shadow|border-radius|overflow|position|top|left|right|bottom|cursor|pointer-events|outline|background-color|letter-spacing)\s*[:：]\s*[^;{}()\n]+[;]?/gi, '')
+    // 移除CSS代码块 { ... } （特别是动画keyframes和短代码块）
+    .replace(/\{[^{}]*(?:opacity|transform|animation)[^{}]*\}/gi, '')
+    .replace(/@keyframes[\s\S]{5,}?\}\s*/g, '')
+    // 移除裸露的HTML标签属性（标签已被getCleanContent剥离，但属性文本可能残留）
+    .replace(/\b(?:class|id|src|alt|href|title|target|rel|type|value|name|placeholder|disabled|readonly|required|checked|selected|autofocus|autocomplete|role|aria-\w+|data-\w+)\s*=\s*['"][^'"]*['"]\s*/gi, ' ')
+    // 移除残留的自闭合或孤立HTML标签（防御性）
+    .replace(/<\/?(?:span|div|p|br|hr|img|a|b|i|u|em|strong|small|big|sub|sup|code|pre|details|summary|section|article|header|footer|nav|main|aside|figure|figcaption|picture|source|video|audio|track|canvas|svg|path|circle|rect|text|tspan|g|defs|use|linearGradient|stop|filter|fe[\w]+|clipPath|mask|pattern|symbol|animate|set|animateTransform|animateMotion)\b[^>]*>/gi, '')
+    // 清理多余空格和空白行
+    .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n')
+    .trim();
+
     // Protocol Badges
     text = text.replace(/\[DRAW:\s*([\s\S]*?)\]/gi, (match, prompt) => {
         const truncated = prompt.trim().length > 30 ? prompt.trim().substring(0, 30) + '...' : prompt.trim()

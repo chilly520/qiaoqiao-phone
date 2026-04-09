@@ -207,13 +207,38 @@ const extractInnerVoice = (content) => {
     return null
 }
 
-// Clean Message Helper (Reusable)
+// Clean Message Helper (Reusable) - 增强版
 const cleanMessage = (content) => {
     if (!content) return ''
+    let cleaned = content
+    
+    // 先提取并剥离INNER_VOICE块
     if (extractInnerVoice(content)) {
-        return content.replace(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i, '').trim()
+        cleaned = content.replace(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i, '').trim()
     }
-    return content
+    
+    // 清洗残留的CSS/HTML代码片段（与ChatMessageItem保持一致）
+    if (typeof cleaned === 'string') {
+        cleaned = cleaned
+            // 转义 \n 字面量
+            .replace(/\\n/g, '\n')
+            // 移除内联style属性
+            .replace(/style\s*=\s*['"][^'"]*['"]/gi, '')
+            // 移除残留的CSS属性键值对
+            .replace(/\b(?:color|background|font-size|font-weight|line-height|margin|padding|border|width|height|display|flex|align-items|text-align|animation|opacity|box-shadow|border-radius|overflow|position|top|left|right|bottom|cursor|pointer-events|outline)\s*[:：]\s*[^;{}()\n]+[;]?/gi, '')
+            // 移除CSS代码块
+            .replace(/\{[^{}]*(?:opacity|transform|animation)[^{}]*\}/gi, '')
+            .replace(/@keyframes[\s\S]{5,}?\}\s*/g, '')
+            // 移除HTML标签属性
+            .replace(/\b(?:class|id|src|alt|href|title|type|value|name|placeholder)\s*=\s*['"][^'"]*['"]\s*/gi, ' ')
+            // 移除裸露的HTML标签
+            .replace(/<\/?(?:span|div|p|br|hr|img|a|b|i|u|em|strong|code|pre|details|summary|section|article|header|footer|nav|main|svg)[^>]*>/gi, '')
+            // 清理多余空白
+            .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n')
+            .trim()
+    }
+    
+    return cleaned
 }
 
 // Single Item Computeds (Using Helpers)
@@ -324,14 +349,24 @@ const chatsList = computed(() => {
 })
 
 const renderMarkdown = (text) => {
+    if (!text) return ''
+    // 预处理：在交给marked之前先清洗残留代码
+    let preprocessed = text
+        .replace(/\\n/g, '\n')
+        .replace(/style\s*=\s*['"][^'"]*['"]/gi, '')
+        .replace(/\b(?:color|background|font-size|font-weight|line-height|margin|padding|border|width|height|display|flex|opacity|box-shadow)\s*[:：]\s*[^;{}()\n]+[;]?/gi, '')
+        .replace(/\{[^{}]*(?:opacity|animation)[^{}]*\}/gi, '')
+        .replace(/<\/?(?:span|div|p|br|style)[^>]*>/gi, '')
+        .trim()
+    
     try {
         if (typeof marked.parse === 'function') {
-            return marked.parse(text)
+            return marked.parse(preprocessed)
         }
-        return marked(text)
+        return marked(preprocessed)
     } catch (e) {
         console.error('Markdown render error:', e)
-        return text
+        return preprocessed
     }
 }
 

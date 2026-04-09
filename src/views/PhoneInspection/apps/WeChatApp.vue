@@ -58,7 +58,7 @@
                     <i class="fa-solid fa-chevron-left text-base text-black"></i>
                 </button>
                 <div class="flex-1 h-8 bg-white/90 backdrop-blur-sm rounded-md px-3 flex items-center shadow-sm">
-                    <i class="fa-solid fa-magnifying-glass text-gray-350 text-xs mr-2"></i>
+                    <i class="fa-solid fa-magnifying-glass text-gray-400 text-xs mr-2"></i>
                     <span class="text-xs text-gray-400">搜索</span>
                 </div>
                 <button class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-black/5 active:bg-black/10 transition-colors">

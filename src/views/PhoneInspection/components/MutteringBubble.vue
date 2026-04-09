@@ -19,7 +19,7 @@ import { computed } from 'vue'
 import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
 
 const phoneStore = usePhoneInspectionStore()
-const mutteringList = computed(() => phoneStore.mutteringList)
+const mutteringList = computed(() => phoneStore.mutteringQueue)
 const charAvatar = computed(() => phoneStore.currentChar?.avatar || '')
 </script>
 

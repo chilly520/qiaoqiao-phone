@@ -22,7 +22,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   charName: String,
@@ -31,14 +31,23 @@ const props = defineProps({
 
 const countdown = ref(3)
 const message = '你怎么能这样！我讨厌你！'
+let timer = null
 
 onMounted(() => {
-  const timer = setInterval(() => {
+  timer = setInterval(() => {
     countdown.value--
     if (countdown.value <= 0) {
       clearInterval(timer)
+      timer = null
     }
   }, 1000)
+})
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
 })
 </script>
 
