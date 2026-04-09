@@ -1515,7 +1515,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   padding: 6px 4px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .scene-loc-icon {
@@ -1529,10 +1529,6 @@ onUnmounted(() => {
   font-weight: 700;
   color: #21354d;
   letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 160px;
 }
 
 .night-mode .scene-title-text {
@@ -1553,10 +1549,6 @@ onUnmounted(() => {
   font-size: 11px;
   color: #5a6a7a;
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 0;
 }
 
 .offline-input-dock {
