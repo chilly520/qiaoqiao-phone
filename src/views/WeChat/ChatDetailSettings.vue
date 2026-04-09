@@ -348,28 +348,87 @@
                         :class="localData.locationSync ? 'left-[22px]' : 'left-[2px]'"></div>
                 </div>
             </div>
-            <div v-if="localData.locationSync" class="mb-4 animate-fade-in transition-all">
+            <div v-if="localData.locationSync" class="mb-4 animate-fade-in transition-all space-y-2">
+                <!-- 城市映射编辑区 -->
                 <div class="text-xs bg-blue-50/50 p-3 rounded border border-blue-100/50 space-y-2">
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-location-dot text-blue-600"></i>
-                        <span class="font-medium"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-200' : 'text-gray-800'">
-                            {{ locationInfo?.realCity || '获取中...' }}
-                            <span class="text-gray-500">→</span>
-                            {{ locationInfo?.virtualCity || '...' }}
-                        </span>
+                    <!-- 真实城市（天气API查询用） -->
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-gray-500 flex items-center gap-1">
+                            <i class="fa-solid fa-globe text-blue-500"></i>真实城市（获取天气）
+                            <span class="text-gray-400 font-normal">— 输入英文或拼音</span>
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input 
+                                type="text" 
+                                v-model="charLocationEdit.realCity" 
+                                placeholder="如：Shenzhen, Tokyo, London..."
+                                class="flex-1 text-xs px-2 py-1.5 rounded bg-white dark:bg-gray-800 border border-blue-200 focus:border-blue-500 outline-none transition-colors"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-200' : 'text-gray-700'"
+                                @blur="onCharLocationChange"
+                            />
+                            <!-- 快捷城市选择 -->
+                            <div class="relative">
+                                <button @click="showCityPicker = !showCityPicker" 
+                                    class="px-2 py-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] whitespace-nowrap transition-colors">
+                                    选择 ▾
+                                </button>
+                                <div v-if="showCityPicker" 
+                                    class="absolute right-0 top-full mt-1 w-36 max-h-40 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-100 z-50">
+                                    <div v-for="city in popularCitiesList" :key="city.real"
+                                        @click="selectPopularCity(city.real); showCityPicker = false"
+                                        class="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors"
+                                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">
+                                        {{ city.display }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div v-if="locationInfo?.weather" class="text-[10px] space-y-0.5"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-600'">
-                        <div>☁️ {{ locationInfo.weather.weather }} | 🌡️ {{ typeof locationInfo.weather.temperature ===
-                            'string' ? locationInfo.weather.temperature.replace('°', '') :
-                            locationInfo.weather.temperature }}°C</div>
-                        <div v-if="locationInfo.weather.windDirection">💨 {{ locationInfo.weather.windDirection }}
-                            {{ locationInfo.weather.windPower }}级</div>
+
+                    <!-- 虚拟城市（显示名称） -->
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-gray-500 flex items-center gap-1">
+                            <i class="fa-solid fa-wand-magic-sparkles text-purple-500"></i>虚拟城市（AI看到的名字）
+                            <span class="text-gray-400 font-normal">— 可自定义，如：云城、哥谭市</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            v-model="charLocationEdit.virtualCity" 
+                            placeholder="如：云城、司荔庄园、东京..."
+                            class="w-full text-xs px-2 py-1.5 rounded bg-white dark:bg-gray-800 border border-purple-200 focus:border-purple-500 outline-none transition-colors"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-200' : 'text-gray-700'"
+                            @blur="onCharLocationChange"
+                        />
                     </div>
-                    <button @click="refreshLocation" class="text-[10px] text-blue-600 hover:underline">
-                        <i class="fa-solid fa-arrows-rotate mr-1"></i>刷新定位
-                    </button>
+
+                    <!-- 天气信息展示 -->
+                    <div class="pt-1 border-t border-blue-100/50">
+                        <div class="flex items-center gap-2 mb-1">
+                            <i class="fa-solid fa-location-dot text-blue-600"></i>
+                            <span class="font-medium text-xs"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-200' : 'text-gray-800'">
+                                {{ charLocationEdit.realCity || '未设置' }}
+                                <span class="text-gray-400 mx-0.5">→</span>
+                                <span :class="charLocationEdit.virtualCity ? '' : 'italic text-gray-400'">
+                                    {{ charLocationEdit.virtualCity || '(同真实城市)' }}
+                                </span>
+                            </span>
+                        </div>
+                        <div v-if="locationInfo?.weather" class="text-[10px] space-y-0.5"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-600'">
+                            <div>☁️ {{ locationInfo.weather.weather }} | 🌡️ {{ typeof locationInfo.weather.temperature ===
+                                'string' ? locationInfo.weather.temperature.replace('°', '') :
+                                locationInfo.weather.temperature }}°C</div>
+                        </div>
+                        <div class="flex items-center justify-between pt-1">
+                            <span class="text-[9px] text-gray-400">
+                                💡 每个角色可设不同城市，支持异地恋场景
+                            </span>
+                            <button @click="refreshLocation" class="text-[10px] text-blue-600 hover:underline">
+                                <i class="fa-solid fa-arrows-rotate mr-1"></i>刷新天气
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1259,7 +1318,7 @@ import { useSchedulerStore } from '../../stores/schedulerStore'
 import { useAvatarFrameStore } from '../../stores/avatarFrameStore'
 import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
 import AvatarCropper from '../../components/AvatarCropper.vue'
-import { weatherService } from '../../utils/weatherService'
+import { weatherService, POPULAR_CITIES } from '../../utils/weatherService'
 
 const props = defineProps({
     chatData: {
@@ -1317,6 +1376,54 @@ const globalBgStyle = computed(() => {
 // Location Sync Logic
 const locationInfo = ref(null)
 
+// 角色独立的城市映射编辑数据
+const charLocationEdit = ref({ realCity: '', virtualCity: '' })
+const showCityPicker = ref(false)
+const popularCitiesList = POPULAR_CITIES
+
+// 初始化角色城市映射（从 props.chatData 读取已有配置或回退到全局）
+const initCharLocation = () => {
+    const chat = props.chatData
+    if (chat.charLocation && chat.charLocation.realCity) {
+        charLocationEdit.value = { ...chat.charLocation }
+    } else {
+        // 回退到全局天气配置
+        const globalWeather = settingsStore.weather
+        charLocationEdit.value = {
+            realCity: globalWeather.realLocation || '',
+            virtualCity: globalWeather.virtualLocation || ''
+        }
+    }
+}
+
+// 初始化
+initCharLocation()
+
+// 选择热门城市
+const selectPopularCity = (realName) => {
+    charLocationEdit.value.realCity = realName
+    onCharLocationChange()
+}
+
+// 角色城市映射变更 → 更新 localData + 刷新天气
+const onCharLocationChange = async () => {
+    // 同步到 localData（保存时写入 char）
+    localData.value.charLocation = { ...charLocationEdit.value }
+    
+    // 如果有真实城市，刷新天气
+    if (charLocationEdit.value.realCity) {
+        try {
+            await weatherService.fetchWeatherForCity(charLocationEdit.value.realCity)
+            locationInfo.value = weatherService.getLocationInfo(localData.value.charLocation)
+        } catch (e) {
+            console.warn('[Settings] 天气获取失败', e)
+            locationInfo.value = weatherService.getLocationInfo(localData.value.charLocation)
+        }
+    } else {
+        locationInfo.value = null
+    }
+}
+
 const toggleLocationSync = async () => {
     if (!localData.value.locationSync) {
         // Enabling
@@ -1326,11 +1433,28 @@ const toggleLocationSync = async () => {
         try {
             const result = await weatherService.enableLocationSync()
             if (result.success) {
-                locationInfo.value = weatherService.getLocationInfo()
-                if (locationInfo.value) {
-                    showToast(`定位成功: ${locationInfo.value.realCity} → ${locationInfo.value.virtualCity}`)
+                // 使用角色独立的位置信息
+                initCharLocation()
+                if (charLocationEdit.value.realCity) {
+                    await weatherService.fetchWeatherForCity(charLocationEdit.value.realCity)
+                    localData.value.charLocation = { ...charLocationEdit.value }
+                    locationInfo.value = weatherService.getLocationInfo(localData.value.charLocation)
+                    
+                    if (locationInfo.value) {
+                        showToast(`定位成功: ${locationInfo.value.realCity} → ${locationInfo.value.virtualCity}`)
+                    } else {
+                        showToast('定位成功')
+                    }
                 } else {
-                    showToast('定位成功')
+                    locationInfo.value = weatherService.getLocationInfo()
+                    if (locationInfo.value) {
+                        // 用全局数据填充输入框
+                        charLocationEdit.value.realCity = locationInfo.value.realCity || ''
+                        charLocationEdit.value.virtualCity = locationInfo.value.virtualCity || ''
+                        showToast(`定位成功: ${locationInfo.value.realCity} → ${locationInfo.value.virtualCity}`)
+                    } else {
+                        showToast('定位成功')
+                    }
                 }
             } else {
                 showToast('定位失败，已使用默认城市')
@@ -1343,6 +1467,7 @@ const toggleLocationSync = async () => {
     } else {
         // Disabling
         localData.value.locationSync = false
+        localData.value.charLocation = null
         weatherService.disableLocationSync()
         locationInfo.value = null
         showToast('已关闭定位同步')
@@ -1352,8 +1477,14 @@ const toggleLocationSync = async () => {
 const refreshLocation = async () => {
     showToast('刷新中...')
     try {
-        await weatherService.refreshWeather()
-        locationInfo.value = weatherService.getLocationInfo()
+        if (charLocationEdit.value.realCity) {
+            await weatherService.refreshWeatherForCity(charLocationEdit.value.realCity)
+        } else {
+            await weatherService.refreshWeather()
+        }
+        locationInfo.value = weatherService.getLocationInfo(
+            charLocationEdit.value.realCity ? localData.value.charLocation : null
+        )
         showToast('刷新成功')
     } catch (error) {
         showToast('刷新失败')
@@ -1714,6 +1845,7 @@ const localData = ref({
     timeSyncMode: 'system',
     virtualTime: '',
     locationSync: false, // Location sync toggle
+    charLocation: null, // 角色独立城市映射 { realCity, virtualCity }
     activeChat: false,
     activeInterval: 30,
     proactiveChat: false,
@@ -2239,6 +2371,7 @@ const handleExportCard = () => {
 
                 // World Sync
                 locationSync: localData.value.locationSync,
+                charLocation: localData.value.charLocation,  // 角色独立城市映射
                 timeAware: localData.value.timeAware,
                 timeSyncMode: localData.value.timeSyncMode,
                 virtualTime: localData.value.virtualTime,

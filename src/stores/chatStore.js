@@ -2351,7 +2351,8 @@ export const useChatStore = defineStore('chat', () => {
                 canDraw: true,
                 searchEnabled: aiOptions.searchEnabled,
                 userLocation: chat.userLocation,
-                locationSync: chat.locationSync
+                locationSync: chat.locationSync,
+                charLocation: chat.charLocation || null
             }
 
             // Inject Drawing Capability Hint globally if not explicitly disabled
@@ -2439,6 +2440,7 @@ export const useChatStore = defineStore('chat', () => {
             // 3. 添加 AI 回复 (拆分消息 - Data Level Splitting)
             if (result.content) {
                 let fullContent = result.content;
+                let _pendingMomentCardData = null;  // Track MOMENT_SHARE data to attach as moment_card
 
                 setStreamingMessage(chatId, null, fullContent, options.mode || 'online')
 
@@ -2669,11 +2671,16 @@ export const useChatStore = defineStore('chat', () => {
 
                             // If it's not caught by the regex, it's likely untagged JSON in the text
                             // We need to find and remove it from pureDialogue
-                            if (pureDialogue.includes('{') && (pureDialogue.includes('"status"') || pureDialogue.includes('"心声"'))) {
+                            if (pureDialogue.includes('{') && (
+                                pureDialogue.includes('"status"') || pureDialogue.includes('"心声"') ||
+                                pureDialogue.includes('"VOICE"') || pureDialogue.includes('"mind"') ||
+                                pureDialogue.includes('"stats"') || pureDialogue.includes('"heartRate"')
+                            )) {
                                 const blocks = [...pureDialogue.matchAll(/\{[\s\S]*?\}/g)]
                                 for (let i = blocks.length - 1; i >= 0; i--) {
                                     const block = blocks[i][0]
-                                    if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"')) {
+                                    if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || 
+                                        block.includes('"VOICE"') || block.includes('"mind"') || block.includes('"heartRate"')) {
                                         pureDialogue = pureDialogue.replace(block, '').trim()
                                         break
                                     }
@@ -2710,7 +2717,20 @@ export const useChatStore = defineStore('chat', () => {
 
                                 if (endPos !== -1) {
                                     const candidate = fullContent.substring(startIdx, endPos + 1);
-                                    if (candidate.includes('"status"') || candidate.includes('"心声"') || candidate.includes('"着装"')) {
+                                    // Enhanced check: Look for inner voice markers at ANY nesting level
+                                    // Supports: {"status":...}, {"VOICE":{"status":...}}, {"inner_voice":{...}}, etc.
+                                    const hasVoiceMarker = (
+                                        candidate.includes('"status"') || candidate.includes('"心声"') ||
+                                        candidate.includes('"着装"') || candidate.includes('"环境"') ||
+                                        candidate.includes('"行为"') || candidate.includes('"渴望"') ||
+                                        candidate.includes('"结论"') || candidate.includes('"心情"') ||
+                                        candidate.includes('"mind"') || candidate.includes('"mood"') ||
+                                        candidate.includes('"stats"') || candidate.includes('"heartRate"') ||
+                                        candidate.includes('"VOICE"') || candidate.includes('"voice"') ||
+                                        candidate.includes('"INNER_VOICE"') || candidate.includes('"inner_voice"') ||
+                                        candidate.includes('"speech"') || candidate.includes('"thought"')
+                                    );
+                                    if (hasVoiceMarker) {
                                         console.log('[ChatStore] Found raw JSON block in balanced fallback, treating as Inner Voice');
                                         innerVoiceBlock = `\n[INNER_VOICE]\n${candidate}\n[/INNER_VOICE]`;
                                         pureDialogue = pureDialogue.replace(candidate, '').trim();
@@ -2721,16 +2741,19 @@ export const useChatStore = defineStore('chat', () => {
 
                                         // Parse it to update status immediately
                                         try {
-                                            const ivObj = JSON.parse(candidate);
-                                            if (ivObj.status || ivObj.状态 || ivObj["心声"]) {
-                                                const newStatus = ivObj.status || ivObj.状态 || (typeof ivObj["心声"] === 'string' ? ivObj["心声"] : null);
-                                                if (newStatus && chat) {
-                                                    chat.statusText = String(newStatus).substring(0, 30);
-                                                    chat.isOnline = true;
-                                                }
-                                                charInfo.mindscape = ivObj;
-                                                useLoggerStore().debug('Successfully updated Mindscape from balanced fallback', ivObj);
+                                            let ivObj = JSON.parse(candidate);
+                                            // Handle nested VOICE wrapper: {"VOICE": {...}}
+                                            if (ivObj.VOICE) ivObj = ivObj.VOICE;
+                                            if (ivObj.inner_voice) ivObj = ivObj.inner_voice;
+                                            
+                                            const newStatus = ivObj.status || ivObj.状态 || 
+                                                (typeof ivObj["心声"] === 'string' ? ivObj["心声"] : null);
+                                            if (newStatus && chat) {
+                                                chat.statusText = String(newStatus).substring(0, 30);
+                                                chat.isOnline = true;
                                             }
+                                            charInfo.mindscape = ivObj;
+                                            useLoggerStore().debug('Successfully updated Mindscape from balanced fallback', ivObj);
                                         } catch (parseErr) {
                                             console.warn('[ChatStore] Fallback balanced JSON parse failed', candidate.substring(0, 50));
                                         }
@@ -2879,15 +2902,11 @@ export const useChatStore = defineStore('chat', () => {
                 if (momentMatch) {
                     try {
                         let jsonStr = momentMatch[1].trim()
-                        // ESCAPE FIX: Handle AI's tendency to escape quotes in JSON
                         jsonStr = jsonStr.replace(/\\"/g, '"');
-
-                        // If it's not a full JSON but looks like it starts with {, try to close it if missing
                         if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
 
                         let momentData = JSON.parse(jsonStr)
 
-                        // Mapping Chinese Keys to English (Safety Net)
                         const content = momentData.content || momentData.内容
                         const interactions = momentData.interactions || momentData.互动 || []
                         const imagePrompt = momentData.imagePrompt || momentData.配图 || momentData.图片
@@ -2896,7 +2915,7 @@ export const useChatStore = defineStore('chat', () => {
                             const newMoment = {
                                 authorId: chatId,
                                 content: content,
-                                html: momentData.html, // Add HTML support
+                                html: momentData.html,
                                 images: [],
                                 imageDescriptions: [],
                                 interactions: interactions.map(i => ({
@@ -2908,7 +2927,6 @@ export const useChatStore = defineStore('chat', () => {
                             }
 
                             if (imagePrompt) {
-                                // If it's already a URL (AI might pass existing URL), use it
                                 if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
                                     newMoment.images.push(imagePrompt)
                                 } else {
@@ -2922,11 +2940,65 @@ export const useChatStore = defineStore('chat', () => {
                             addMessage(chatId, {
                                 type: 'system',
                                 content: `"${chat.name}" 发布了一条朋友圈`,
-                                _momentReferenceId: momentResult.id  // Store reference for follow-up
+                                _momentReferenceId: momentResult.id
                             });
                         }
                     } catch (e) {
                         console.error('[ChatStore] Failed to parse [MOMENT]', e)
+                    }
+                }
+
+                // --- Handle [MOMENT_SHARE] / [分享朋友圈] Command ---
+                // AI uses this format to share moments inline within conversation
+                const momentShareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[[A-Z_]|【|\[INNER_VOICE|\[\/\w|$))/i;
+                const momentShareMatch = properlyOrderedContent.match(momentShareRegex);
+                if (momentShareMatch) {
+                    try {
+                        let shareJsonStr = momentShareMatch[1].trim();
+                        shareJsonStr = shareJsonStr.replace(/\\"/g, '"');
+                        if (shareJsonStr.startsWith('{') && !shareJsonStr.endsWith('}')) shareJsonStr += '}';
+
+                        const shareMomentData = JSON.parse(shareJsonStr);
+
+                        const shareContent = shareMomentData.content || shareMomentData.内容 || '';
+                        const shareImagePrompt = shareMomentData.imagePrompt || shareMomentData.配图 || '';
+                        const shareLocation = shareMomentData.location || '';
+
+                        if (shareContent || shareMomentData.html) {
+                            const newShareMoment = {
+                                id: shareMomentData.id || crypto.randomUUID(),
+                                authorId: chatId,
+                                content: shareContent,
+                                text: shareContent,
+                                author: chat.name,
+                                avatar: chat.avatar,
+                                location: shareLocation,
+                                visibility: shareMomentData.visibility || 'public',
+                                images: [],
+                                imageDescriptions: [],
+                                html: shareMomentData.html
+                            };
+
+                            if (shareImagePrompt) {
+                                if (typeof shareImagePrompt === 'string' && (shareImagePrompt.startsWith('http') || shareImagePrompt.startsWith('data:'))) {
+                                    newShareMoment.images.push(shareImagePrompt);
+                                } else {
+                                    const shareImageUrl = await generateImage(String(shareImagePrompt));
+                                    newShareMoment.images.push(shareImageUrl);
+                                }
+                            }
+
+                            const shareMomentResult = momentsStore.addMoment(newShareMoment);
+                            console.log('[ChatStore] MOMENT_SHARE published to moments feed:', shareMomentResult.id);
+
+                            // Mark this message as a moment_card so UI renders it properly
+                            properlyOrderedContent = properlyOrderedContent.replace(momentShareRegex, '');
+                            
+                            // Track that we have a pending moment_card to attach to the message
+                            _pendingMomentCardData = { ...newShareMoment, _momentReferenceId: shareMomentResult.id };
+                        }
+                    } catch (e) {
+                        console.error('[ChatStore] Failed to parse [MOMENT_SHARE]', e);
                     }
                 }
 
@@ -3510,6 +3582,22 @@ export const useChatStore = defineStore('chat', () => {
                             msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: finalMode });
                         } else {
                             // Text Message Delivery
+                            // Check if we have a pending MOMENT_SHARE card to deliver
+                            if (_pendingMomentCardData && (!msgContent.trim() || i === 0)) {
+                                // Attach moment_card to this message (or create one if no content)
+                                msgAdded = addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'moment_card',
+                                    momentData: _pendingMomentCardData,
+                                    content: JSON.stringify(_pendingMomentCardData),
+                                    _momentReferenceId: _pendingMomentCardData._momentReferenceId,
+                                    quote: i === 0 ? aiQuote : null,
+                                    mode: finalMode
+                                });
+                                _pendingMomentCardData = null; // Consume it
+                                continue; // Skip normal text delivery
+                            }
+
                             const rpMatch = msgContent.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
                             let msgType = 'text', amount = null, note = null;
                             if (rpMatch) {
@@ -3791,6 +3879,20 @@ export const useChatStore = defineStore('chat', () => {
                     // Sequential Delay
                     const delay = Math.min(2000, Math.max(600, (content?.length || 10) * 80));
                     await new Promise(resolve => setTimeout(resolve, delay));
+                }
+
+                // Fallback: If we still have a pending moment_card (no text segments consumed it), deliver it now
+                if (_pendingMomentCardData) {
+                    addMessage(chatId, {
+                        role: 'ai',
+                        type: 'moment_card',
+                        momentData: _pendingMomentCardData,
+                        content: JSON.stringify(_pendingMomentCardData),
+                        _momentReferenceId: _pendingMomentCardData._momentReferenceId,
+                        mode: options.mode || 'online'
+                    });
+                    console.log('[ChatStore] Fallback MOMENT_SHARE delivered as moment_card');
+                    _pendingMomentCardData = null;
                 }
             }
         } catch (e) {

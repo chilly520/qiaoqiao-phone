@@ -348,9 +348,10 @@ export function generateContextPreview(chatId, char) {
     }
     // Pat Settings
     const patSettings = { action: char.patAction, suffix: char.patSuffix }
-    // Location Context
+    // Location Context — 优先使用角色独立城市映射，回退到全局配置
+    const charLocation = char.locationSync ? (char.charLocation || null) : null
     const locationContext = char.locationSync
-        ? weatherService.getLocationContextText()
+        ? weatherService.getLocationContextText(charLocation)
         : ''
         
     // 读取用户位置：优先读取角色独立位置，其次读取全局用户位置，最后读取虚拟地点
@@ -706,8 +707,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         const patSettings = { action: char.patAction, suffix: char.patSuffix }
 
         // Environmental Context (Location & Battery)
+        const charLocation2 = char.locationSync ? (char.charLocation || null) : null
         const locationContext = char.locationSync
-            ? weatherService.getLocationContextText()
+            ? weatherService.getLocationContextText(charLocation2)
             : ''
 
         // --- Linked Group Memory Retrieval (Memory Interoperability) ---
@@ -912,24 +914,47 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     }
 
     // Process messages for Vision API (Multimodal)
-    // Convert [鍥剧墖:URL] or [琛ㄦ儏鍖?鍚嶇О] to { type: "image_url", image_url: { url: "..." } }
-    // OPTIMIZATION: Only send the LAST 5 images to the AI to prevent massive payloads.
+    // Convert [图片:URL] or [表情包:名称] to { type: "image_url", image_url: { url: "..." } }
+    //
+    // SMART VISION STRATEGY:
+    // - Find where the LAST assistant (AI) reply is in the conversation
+    // - ALL user images AFTER that point = "unseen" → ALWAYS sent to Vision (user just sent them!)
+    // - Images BEFORE that point = "already seen by AI" → subject to visionLimit for context saving
+    // This way, if you send 5 photos at once, AI sees all 5. After AI replies, they become "old".
 
-    // 1. First, count total images to determine the cutoff index
     let totalImagesCount = 0
-    const visionLimit = 2 // Updated from 5 to 2 to minimize context length
+    const visionLimit = 5 // Max historical (already-replied) images to include for context
     const imageRegex = /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]|\[(?:表情包|STICKER)[:：]([^\]]+)\]/gi
 
+    // Find the index of the LAST assistant message — everything after is "new/unseen"
+    let lastAssistantIndex = -1
+    messages.forEach((msg, idx) => {
+        if (msg && msg.role === 'assistant') lastAssistantIndex = idx
+    })
+
+    // Collect IDs of all "unseen" user images (images sent AFTER the last AI reply)
+    const unseenUserImageIds = new Set()
+    messages.forEach((msg, idx) => {
+        if (!msg || msg.role !== 'user' || idx <= lastAssistantIndex) return
+        // This is a user message after the last AI reply → it's "unseen"
+        if (msg.image || (typeof msg.content === 'string' && msg.content.startsWith('data:image/'))) {
+            unseenUserImageIds.add(msg.id)
+        } else if (typeof msg.content === 'string' && imageRegex.test(msg.content)) {
+            unseenUserImageIds.add(msg.id)
+            // Reset regex lastIndex since we used test()
+            imageRegex.lastIndex = 0
+        }
+    })
+
+    // Count total images & track which ones are user's
     messages.forEach(msg => {
         if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) return
 
-        // 1. Explicit image property (New standard)
         if (msg.image) {
             totalImagesCount++
             return
         }
 
-        // 2. Look for images/stickers in content (Legacy/Inline)
         const content = msg.content || ''
         if (typeof content === 'string') {
             if (content.startsWith('data:image/')) {
@@ -941,8 +966,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
     })
 
-    // The index of the first image that should be sent to Vision (0-based global image index)
-    // e.g. if Total=6, Limit=5, Start=1. Image #0 is skipped, Images #1-5 are sent.
+    console.log(`[aiService Vision] Total images: ${totalImagesCount}, limit: ${visionLimit}, lastAssistantIdx: ${lastAssistantIndex}, unseenImageIds: [...${unseenUserImageIds.size} items]`)
+
+    // The index of the first historical (already-replied) image that should be sent to Vision
+    // Unseen images (after last AI reply) bypass this limit entirely
     const visionStartIndex = Math.max(0, totalImagesCount - visionLimit)
     let currentImageIndex = 0
 
@@ -964,7 +991,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
             // 1. Priority: msg.image property (New standard)
             if (msg.image) {
-                const isVisionEnabled = currentImageIndex >= visionStartIndex
+                // Unseen user images (sent after last AI reply) are ALWAYS sent to Vision
+                const isUnseenUserImage = unseenUserImageIds.has(msg.id)
+                const isVisionEnabled = isUnseenUserImage || currentImageIndex >= visionStartIndex
                 currentImageIndex++
 
                 if (isVisionEnabled) {
@@ -995,7 +1024,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
             // 2. Fallback: Check if the content is a raw base64 image string (untagged)
             if (typeof content === 'string' && content.startsWith('data:image/')) {
-                const isVisionEnabled = currentImageIndex >= visionStartIndex
+                // Unseen user images are ALWAYS sent to Vision
+                const isUnseenUserImage = unseenUserImageIds.has(msg.id)
+                const isVisionEnabled = isUnseenUserImage || currentImageIndex >= visionStartIndex
                 currentImageIndex++
 
                 if (isVisionEnabled) {

@@ -287,12 +287,12 @@
         </div>
         <h3 class="text-xl font-black text-gray-900 mb-3 tracking-tight">{{ confirmTitle }}</h3>
         <p class="text-[13px] text-gray-500/90 mb-9 leading-relaxed px-2 font-medium">{{ confirmMessage }}</p>
-        <div class="flex flex-col gap-3">
-          <button @click="executeConfirm" class="w-full py-4.5 rounded-[22px] bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-sm shadow-[0_12px_24px_-8px_rgba(244,63,94,0.4)] active:scale-95 transition-all border-none">
-            确认删除
-          </button>
-          <button @click="cancelConfirm" class="w-full py-4.5 rounded-[22px] bg-gray-50 text-gray-500 font-bold text-sm hover:bg-gray-100 active:scale-95 transition-all border-none">
+        <div class="flex flex-row gap-3">
+          <button @click="cancelConfirm" class="flex-1 py-3 rounded-[20px] bg-gray-100/80 text-gray-600 font-bold text-sm hover:bg-gray-200 active:scale-95 transition-all border-none">
             取消
+          </button>
+          <button @click="executeConfirm" class="flex-1 py-3 rounded-[20px] bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-sm shadow-[0_8px_16px_-6px_rgba(244,63,94,0.35)] active:scale-95 transition-all border-none">
+            确认删除
           </button>
         </div>
       </div>
@@ -649,16 +649,17 @@ const deleteSelectedMessages = () => {
     if (selectedMsgIds.value.size === 0) return
     
     const count = selectedMsgIds.value.size
+    const idsToDelete = [...selectedMsgIds.value]
+    
     openConfirm(
-      '批量删除', 
-      `确定要删除选中的 ${count} 条记录吗？此操作不可撤销。`, 
+      '删除记录', 
+      `确定要删除这一段记录吗？删除后将无法恢复。`, 
       () => {
         const chatId = chatStore.currentChatId
         if (!chatId) return
         
-        selectedMsgIds.value.forEach(msgId => {
-            chatStore.deleteMessage(chatId, msgId)
-        })
+        // 使用批量删除：一次 filter + 一次 saveChats，不再逐条循环
+        chatStore.deleteMessages(chatId, idsToDelete)
         
         showToast(`已删除 ${count} 条消息`, 'info')
         exitMultiSelectMode()
