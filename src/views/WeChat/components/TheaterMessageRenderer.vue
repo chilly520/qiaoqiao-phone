@@ -443,14 +443,17 @@ function formatTimestamp(timestamp) {
   text-align: right;
 }
 
-/* NPC 对话居中显示 */
+/* NPC 对话 - 横排：名字标签在左上，气泡在右 */
 .dialogue-row.is-npc {
-  justify-content: center;
+  justify-content: flex-start;
+  align-items: flex-start;
 }
 
 .dialogue-row.is-npc .dialogue-content {
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
+  flex-direction: row !important;
+  gap: 6px;
 }
 
 .dialogue-avatar {
@@ -504,15 +507,28 @@ function formatTimestamp(timestamp) {
   color: #7dd3a0;
 }
 
-/* NPC 名字 - 居中 */
+/* NPC 名字 - 横排标签，与气泡同行 */
 .dialogue-name.npc-speaker {
-  color: #9a7a5a;
-  text-align: center;
-  font-style: italic;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b08860;
+  margin-bottom: 0;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(255, 243, 220, 0.9), rgba(255, 235, 200, 0.85));
+  border-radius: 6px;
+  border: 1px solid rgba(200, 160, 100, 0.25);
+  letter-spacing: 0.04em;
+  box-shadow: 0 1px 4px rgba(180, 140, 80, 0.1);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .night-mode .dialogue-name.npc-speaker {
-  color: #e8c8a0;
+  color: #e0c8a0;
+  background: linear-gradient(135deg, rgba(80, 65, 45, 0.6), rgba(70, 55, 35, 0.55));
+  border-color: rgba(180, 140, 80, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* 对话气泡基础样式 */
@@ -556,12 +572,12 @@ function formatTimestamp(timestamp) {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* NPC 气泡 - 居中淡金 */
+/* NPC 气泡 - 左对齐淡金，无斜体 */
 .dialogue-bubble.npc-bubble {
   background: linear-gradient(135deg, rgba(255, 248, 235, 0.95), rgba(252, 242, 225, 0.95));
   color: #5a4a3a;
-  border-radius: 12px;
-  font-style: italic;
+  border-radius: 16px;
+  font-style: normal;
   box-shadow: 0 2px 10px rgba(200, 160, 100, 0.15);
 }
 

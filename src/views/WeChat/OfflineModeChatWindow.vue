@@ -111,18 +111,11 @@
           </div>
         </div>
 
-        <div class="scene-header-card">
-          <h1 class="scene-heading">{{ sceneDisplayTitle }}</h1>
-          <div class="scene-meta-row">
-            <span class="scene-meta-item">
-              <i class="fa-regular fa-calendar-days"></i>
-              <span>{{ currentDateLabel }}</span>
-            </span>
-            <span class="scene-meta-item">
-              <i class="fa-regular fa-clock"></i>
-              <span>{{ currentTime }}</span>
-            </span>
-          </div>
+        <div class="scene-header-inline">
+          <i class="fa-solid fa-location-dot scene-loc-icon"></i>
+          <span class="scene-title-text">{{ sceneDisplayTitle }}</span>
+          <span class="scene-sep">·</span>
+          <span class="scene-meta-inline">{{ currentDateLabel }} {{ currentTime }}</span>
         </div>
       </div>
     </div>
@@ -969,16 +962,26 @@ const updateSceneState = () => {
      if (i === 0) latestTurnStartIndex = 0
   }
 
-  // 2. 在这轮对话中，从前往后找第一个【地点】
+  // 2. 在这轮对话中，从前往后找第一个中文【地点描写】
+  // 只匹配中文【】，不匹配英文[]
+  // 排除心声中的【线上/线下】【ONLINE】【OFFLINE】等非地点内容
   let foundLocation = null
   if (latestTurnStartIndex !== -1) {
     for (let i = latestTurnStartIndex; i < visibleMsgs.length; i++) {
         const content = ensureString(visibleMsgs[i].content)
-        const match = content.match(/[\u3010\[](?:地点[:\uff1a])?\s*([^\]\u3011]+)[\u3011\]]/)
+        // 只匹配中文【...】格式，且内容不能是模式标签或非地点描述
+        const match = content.match(/\u3010([^\u3011]+)\u3011/)
         if (match) {
            const loc = match[1].trim()
-           // 排除带有“场景”字样的指令（用于AI生成的描述，不是实时位置名）
-           if (loc && !loc.startsWith('场景：') && !looksLikeMojibake(loc)) {
+           // 排除非地点内容
+           if (loc
+               && !loc.startsWith('场景：')
+               && !loc.startsWith('场景:')
+               && !/^(线上|线下|ONLINE|OFFLINE|INNER_VOICE|INNERVOICE)$/i.test(loc)
+               && !/^(线上|线下)[\/／](线上|线下)$/.test(loc)
+               && !looksLikeMojibake(loc)
+               && loc.length <= 30 // 地点描写不应过长
+           ) {
               foundLocation = loc
               break 
            }
@@ -986,15 +989,22 @@ const updateSceneState = () => {
     }
   }
 
-  // 3. 如果这一轮里没找到，我们就回溯查找以前的消息，找到最近的一个位置状态
+  // 3. 如果这一轮里没找到，回溯查找以前的消息中的地点
   if (!foundLocation) {
     for (let i = visibleMsgs.length - 1; i >= 0; i--) {
        const m = visibleMsgs[i]
        const content = ensureString(m.content)
-       const match = content.match(/[\u3010\[](?:地点[:\uff1a])?\s*([^\]\u3011]+)[\u3011\]]/)
+       const match = content.match(/\u3010([^\u3011]+)\u3011/)
        if (match) {
           const loc = match[1].trim()
-          if (loc && !loc.startsWith('场景：') && !looksLikeMojibake(loc)) {
+          if (loc
+              && !loc.startsWith('场景：')
+              && !loc.startsWith('场景:')
+              && !/^(线上|线下|ONLINE|OFFLINE|INNER_VOICE|INNERVOICE)$/i.test(loc)
+              && !/^(线上|线下)[\/／](线上|线下)$/.test(loc)
+              && !looksLikeMojibake(loc)
+              && loc.length <= 30
+          ) {
              foundLocation = loc
              break
           }
@@ -1499,54 +1509,54 @@ onUnmounted(() => {
   transform: scale(0.96);
 }
 
-.scene-header-card {
-  margin-top: 20px;
-  background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  padding: 20px 24px;
-  border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
-}
-
-.night-mode .scene-header-card {
-  background: rgba(30, 41, 59, 0.45);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-}
-
-.scene-kicker {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: #8a97a8;
-  margin-bottom: 6px;
-}
-
-.scene-heading {
-  margin: 0;
-  color: #21354d;
-  font-size: clamp(22px, 4vw, 28px);
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-}
-
-.scene-meta-row {
+/* 地点栏 - 紧凑内联风格（不再使用大椭圆卡片） */
+.scene-header-inline {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  margin-top: 10px;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 4px;
+  flex-wrap: nowrap;
 }
 
-.scene-meta-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #6f7f93;
-  font-size: 12px;
-  font-weight: 600;
+.scene-loc-icon {
+  font-size: 11px;
+  color: #6a7a8a;
+  flex-shrink: 0;
+}
+
+.scene-title-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #21354d;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.night-mode .scene-title-text {
+  color: #e2e8f0;
+}
+
+.scene-sep {
+  color: #8a9aaa;
+  font-weight: 300;
+  flex-shrink: 0;
+}
+
+.night-mode .scene-sep {
+  color: #4a5568;
+}
+
+.scene-meta-inline {
+  font-size: 11px;
+  color: #5a6a7a;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .offline-input-dock {
@@ -1834,16 +1844,8 @@ onUnmounted(() => {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
 }
 
-.night-mode .scene-heading {
-  color: #e2e8f0;
-}
-
-.night-mode .scene-kicker {
-  color: #64748b;
-}
-
-.night-mode .scene-meta-item {
-  color: #94a3b8;
+.night-mode .scene-meta-inline {
+  color: #9aa5b8;
 }
 
 /* 夜间模式 - 底部输入区域暗色 */
