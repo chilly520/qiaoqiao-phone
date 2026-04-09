@@ -1500,7 +1500,20 @@ onUnmounted(() => {
 }
 
 .scene-header-card {
-  margin-top: 14px;
+  margin-top: 20px;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 20px 24px;
+  border-radius: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
+}
+
+.night-mode .scene-header-card {
+  background: rgba(30, 41, 59, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
 .scene-kicker {

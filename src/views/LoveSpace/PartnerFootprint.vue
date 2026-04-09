@@ -485,11 +485,16 @@ async function generateFootprint() {
 }
 
 .footprint-footer {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  color: #94a3b8;
+  font-size: 10px;
+  color: #818cf8;
+  background: #f0f4ff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  margin-top: 8px;
 }
 
 .empty-state {
