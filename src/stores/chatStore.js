@@ -3387,6 +3387,7 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Restoring Card Blocks and Filtering Content ---
                 // (finalSegments declared above at line ~3349 before try block)
                 let activeMode = null;
+                let prevLength = finalSegments.length;
                 for (const seg of rawSegments) {
                     let content = seg;
                     const trimmedContent = content.trim();
@@ -3397,7 +3398,7 @@ export const useChatStore = defineStore('chat', () => {
                     if (/^\[\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = 'offline'; continue; }
                     if (/^\[\/\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = null; continue; }
 
-                    const prevLength = finalSegments.length;
+                    prevLength = finalSegments.length;
                     const placeholderMatch = content.match(/__CARD_PLACEHOLDER_(\d+)__/);
 
                     if (placeholderMatch) {
