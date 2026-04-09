@@ -377,30 +377,28 @@ export function parseOfflineSegments(msg) {
 
 export function hasOfflineTheaterContent(msg) {
   if (!msg) return false
-  
+
   // Explicit Mode Check
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
 
   const raw = ensureMessageString(msg.content)
 
-  // Detection with robust tags
+  // Explicit Mode Tags
   if (/\[\s*OFFLINE\s*\]/i.test(raw)) return true
-  if (/\[\s*ONLINE\s*\]/i.test(raw)) {
-     // If it has both, we check if there are theater markers in the offline portion
-     // but for simplicity, we return false here as it's primarily a "should I use the theater renderer" check.
-     if (!/\[\s*OFFLINE\s*\]/i.test(raw)) return false
-  }
+  if (/\[\s*ONLINE\s*\]/i.test(raw) && !/\[\s*OFFLINE\s*\]/i.test(raw)) return false
 
-  // Detect theater markers
-  // Important: We check the RAW text here to catch messages before they are processed/split
-  return OFFLINE_SCENE_RE.test(raw) || 
-         OFFLINE_NARRATION_RE.test(raw) || 
-         OFFLINE_ACTION_RE.test(raw) ||
-         OFFLINE_QUOTED_DIALOGUE_RE.test(raw) ||
-         raw.includes('\u2016') || 
-         raw.includes('||') ||
-         msg.type === 'location'
+  // Detect theater markers within the text:
+  // 1. Scene tag: 【 ... 】 but MUST be at least 5 chars inside to avoid common chat brackets like 【大宝贝】
+  const hasScene = /\u3010[\s\S]{5,}\u3011/.test(raw)
+  // 2. Narration: || ... || or ‖ ... ‖
+  const hasNarration = /(\|\||\u2016)[\s\S]*?(\|\||\u2016)/.test(raw)
+  // 3. Action: ( ... ) at the start of a line
+  const hasAction = /^[\s]*[\(\uFF08][\s\S]+?[\)\uFF09]\s*$/m.test(raw)
+  // 4. Quoted dialogue: "..." covering the whole line
+  const hasQuote = /^[\s]*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d|\"[\s\S]*?\")\s*$/m.test(raw)
+
+  return hasScene || hasNarration || hasAction || hasQuote || msg.type === 'location'
 }
 
 export function isOfflineTextMessage(msg) {
@@ -408,26 +406,19 @@ export function isOfflineTextMessage(msg) {
   const type = msg.type || 'text'
   const role = msg.role || 'ai'
 
-  // Explicit mode check - online messages should never be treated as offline
+  // Explicit mode check
   if (msg.mode === 'online') return false
   if (msg.mode === 'offline') return true
 
-  // These types are always rendered as theater/offline components if they have valid theater content
+  // These types are processed via Theater Renderer
   const theaterTypes = ['text', 'location', 'scene', 'system']
   if (!theaterTypes.includes(type)) return false
 
-  // User messages in offline are always bubbles? Or also theater?
-  // User messages are typically bubbles unless they are part of a theater script
-  if (role === 'user') return true
+  // User messages are typically bubbles unless they are tagged as part of a theater script
+  if (role === 'user') return false
 
-  const content = ensureMessageString(msg.content)
-  // If it's a location message or has theater markers, it's theater
-  if (type === 'location' || OFFLINE_SCENE_RE.test(content) || OFFLINE_NARRATION_RE.test(content) || OFFLINE_ACTION_RE.test(content) || OFFLINE_QUOTED_DIALOGUE_RE.test(content)) {
-    return true
-  }
-
-  // Fallback: only treat as offline if has actual theater markers, NOT all text
-  return false
+  // Use the robust content detector
+  return hasOfflineTheaterContent(msg)
 }
 
 export function extractTaggedBlock(content, tag) {
@@ -444,6 +435,7 @@ export function extractTaggedBlock(content, tag) {
 
 export function shouldShowInOfflineMode(msg) {
   if (!msg) return false
+  const role = msg.role || 'ai'
   const raw = ensureMessageString(msg.content)
 
   // 1. Check for explicit tags
@@ -457,8 +449,11 @@ export function shouldShowInOfflineMode(msg) {
   if (msg.mode === 'offline') return true
   if (msg.mode === 'online') return false
   
-  // Default: show in both if no indicators (or customize based on project preference)
-  return true
+  // 4. Fallback:
+  // User messages show in both windows by default
+  if (role === 'user') return true
+  // AI messages without theater markers are HIDDEN in offline mode (prevent online chat leaking)
+  return false
 }
 
 export function shouldShowInOnlineMode(msg) {
