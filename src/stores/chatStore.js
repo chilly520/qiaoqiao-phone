@@ -3306,7 +3306,13 @@ export const useChatStore = defineStore('chat', () => {
                 // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
                 // This version is greedy and handles leading emojis/text often found in AI-generated "status cards".
                 // Notice this now runs on processedContent so it doesn't corrupt extracted JSON blocks!
-                processedContent = processedContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[\s\S]*?)?(<(html|div|section|article|style|svg)[\s\S]+?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
+                // CRITICAL FIX: HTML match must NOT cross [OFFLINE]/[ONLINE]/[/OFFLINE]/[/ONLINE] mode control tags
+                // Use a custom replacer that validates the match doesn't span across mode boundaries
+                processedContent = processedContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[^<]*)?(<(html|div|section|article|style|svg)[^]*?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
+                    // GUARD: If match contains a mode boundary tag, skip it to preserve [OFFLINE]/[ONLINE] integrity
+                    if (/\[\s*\/?\s*(?:OFFLINE|ONLINE)\s*\]/i.test(match)) {
+                        return match;
+                    }
                     const html = htmlContent.trim();
                     if (html.length > 20 || html.includes('style=')) {
                         const fullMatch = match.trim();
@@ -3397,6 +3403,35 @@ export const useChatStore = defineStore('chat', () => {
                     if (/^\[\/\s*ONLINE\s*\]$/i.test(trimmedContent)) { activeMode = null; continue; }
                     if (/^\[\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = 'offline'; continue; }
                     if (/^\[\/\s*OFFLINE\s*\]$/i.test(trimmedContent)) { activeMode = null; continue; }
+
+                    // SAFETY NET: If a non-tag segment still contains mode control tags (edge case from HTML extraction),
+                    // extract the mode from the tag and strip it from content.
+                    // This handles cases where [OFFLINE] got stuck inside content due to HTML block extraction.
+                    if (/\[\s*OFFLINE\s*\]/i.test(trimmedContent) && !/\[\s*ONLINE\s*\]/i.test(trimmedContent)) {
+                        activeMode = 'offline';
+                        content = content.replace(/\[\s*\/?OFFLINE\s*\]/gi, '').trim();
+                        if (!content) { prevLength = finalSegments.length; continue; }
+                    } else if (/\[\s*ONLINE\s*\]/i.test(trimmedContent) && !/\[\s*OFFLINE\s*\]/i.test(trimmedContent)) {
+                        activeMode = 'online';
+                        content = content.replace(/\[\s*\/?ONLINE\s*\]/gi, '').trim();
+                        if (!content) { prevLength = finalSegments.length; continue; }
+                    } else if (/\[\/\s*OFFLINE\s*\]/i.test(trimmedContent)) {
+                        // [/OFFLINE] residue in content — strip it and reset mode after this segment
+                        content = content.replace(/\[\/\s*OFFLINE\s*\]/gi, '').trim();
+                        if (!content) { activeMode = null; prevLength = finalSegments.length; continue; }
+                        // Push current content with offline mode, then reset
+                        prevLength = finalSegments.length;
+                        if (content) finalSegments.push({ type: 'text', content, mode: 'offline' });
+                        activeMode = null;
+                        continue;
+                    } else if (/\[\/\s*ONLINE\s*\]/i.test(trimmedContent)) {
+                        content = content.replace(/\[\/\s*ONLINE\s*\]/gi, '').trim();
+                        if (!content) { activeMode = null; prevLength = finalSegments.length; continue; }
+                        prevLength = finalSegments.length;
+                        if (content) finalSegments.push({ type: 'text', content, mode: 'online' });
+                        activeMode = null;
+                        continue;
+                    }
 
                     prevLength = finalSegments.length;
                     const placeholderMatch = content.match(/__CARD_PLACEHOLDER_(\d+)__/);
