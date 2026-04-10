@@ -1778,9 +1778,25 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // 行为: 肢体动作
             const m5 = text.match(/["']?行为["']?\s*[:：]\s*["「]([\s\S]*?)["」]/i);
             if (m5) { result['行为'] = m5[1].trim(); foundCount++; }
-            // stats: 尝试解析嵌套的简单JSON对象
-            const m6 = text.match(/["']?stats["']?\s*[:：]\s*(\{[^{}]+\})/);
-            if (m6) { try { result.stats = JSON.parse(m6[1]); foundCount++; } catch (e) {} }
+            // stats: 支持嵌套JSON的平衡花括号提取（AI返回的 emotion/spirit/mood 都是对象）
+            const m6 = text.match(/["']?stats["']?\s*[:：]\s*(\{)/);
+            if (m6) {
+                const startIdx = text.indexOf('{', m6.index);
+                if (startIdx !== -1) {
+                    let depth = 0;
+                    let endIdx = startIdx;
+                    for (let i = startIdx; i < text.length; i++) {
+                        if (text[i] === '{') depth++;
+                        else if (text[i] === '}') {
+                            depth--;
+                            if (depth === 0) { endIdx = i + 1; break; }
+                        }
+                    }
+                    if (endIdx > startIdx + 1) {
+                        try { result.stats = JSON.parse(text.substring(startIdx, endIdx)); foundCount++; } catch (e) {}
+                    }
+                }
+            }
             return foundCount > 0 ? result : null;
         }
 
