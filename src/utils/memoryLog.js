@@ -152,15 +152,52 @@ export function rebuildMemoryLog(charId) {
   initMemoryLog(char)
   char.memoryLog = [] // Reset
   
+  // Extract meaningful content from chat messages
   char.msgs.forEach(m => {
-    if (m.role === 'user' || m.role === 'ai') {
-      const preview = typeof m.content === 'string' ? m.content.substring(0, 100) : JSON.stringify(m.content).substring(0, 100)
-      const logEntry = `[${formatTime(new Date(m.timestamp || Date.now()))}] [${m.role === 'user' ? '💬' : '🗣️'}] ${preview}`
-      char.memoryLog.push(logEntry)
+    if (m.role !== 'ai' || !m.content) return
+    
+    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    
+    // Skip system messages, placeholders, and very short content
+    if (content.length < 5 || content.startsWith('__CARD') || m.type === 'system' || m.type === 'favorite_card') return
+    
+    // Extract theater/scene content (‖...‖ blocks) — these are the most meaningful
+    const theaterMatches = content.match(/‖([\s\S]{10,200}?)‖/g)
+    if (theaterMatches) {
+      theaterMatches.forEach(t => {
+        appendLog(charId, { type: '🎬', content: t.replace(/‖/g, '').trim().substring(0, 150), time: m.timestamp })
+      })
+      return
+    }
+    
+    // Extract dialogue in parentheses (角色对话/独白)
+    const dialogueMatches = content.match(/（([\s\S]{15,250}?）)/g)
+    if (dialogueMatches) {
+      dialogueMatches.forEach(d => {
+        appendLog(charId, { type: '💬', content: d.replace(/[（）]/g, '').trim().substring(0, 150), time: m.timestamp })
+      })
+      return
+    }
+    
+    // Extract 【location】blocks
+    const locMatch = content.match(/【([^】]+)】/)
+    if (locMatch && locMatch[1].length > 4) {
+      appendLog(charId, { type: '📍', content: locMatch[1].substring(0, 80), time: m.timestamp })
+      return
+    }
+    
+    // Fallback: take meaningful text (skip short responses)
+    const cleanContent = content
+      .replace(/\[(ONLINE|OFFLINE|INNER_VOICE|\/INNER_VOICE|表情包|图片)\][\s]*/gi, '')
+      .replace(/__CARD_PLACEHOLDER_\d+__/gi, '[卡片]')
+      .trim()
+    if (cleanContent.length > 20) {
+      appendLog(charId, { type: '📝', content: cleanContent.substring(0, 120), time: m.timestamp })
     }
   })
   
   if (char.memoryLog.length > 2000) char.memoryLog = char.memoryLog.slice(-1500)
+  console.log(`[MemoryLog] Rebuilt ${char.memoryLog.length} entries for character ${charId}`)
   return char.memoryLog.slice(-8)
 }
 

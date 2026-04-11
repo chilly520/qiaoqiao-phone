@@ -1811,17 +1811,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
         }
 
-        // Strategy 2: full-text scan (CSS/HTML will NEVER contain Chinese keywords like 着装/心声!)
-        if (!innerVoice && !isCallProtocol && !isCommandTask && !isSimpleTask) {
-            innerVoice = tryExtractInnerVoice(content);
-            if (innerVoice) {
-                console.log('[AI Service] 心声提取成功（全文扫描）', Object.keys(innerVoice));
-                // Remove matched fields from display text so they don't leak into chat bubbles
-                const pats = [
-                    /[\r\n\s]*["']?(?:status|心心声|心声|着装|环境|行为|stats)["']?\s*[:：]\s*["\{][\s\S]*?["」}\]]?\s*/gi,
-                    /\{[\s\S]*?"(?:心声|着装|环境|行为)"[\s\S]*?\}\s*/g,
-                ];
-                for (const pat of pats) content = content.replace(pat, '');
+        // Strategy 2: ALWAYS run as supplement — merge missing fields (especially stats which AI often puts outside [INNER_VOICE])
+        if (!isCallProtocol && !isCommandTask && !isSimpleTask) {
+            const supplement = tryExtractInnerVoice(content);
+            if (supplement) {
+                // Merge into existing innerVoice (or create new)
+                if (!innerVoice) innerVoice = {};
+                for (const [key, val] of Object.entries(supplement)) {
+                    // Only fill missing keys — don't overwrite Strategy 1's results
+                    if (innerVoice[key] === undefined || innerVoice[key] === null) {
+                        innerVoice[key] = val;
+                    }
+                }
+                console.log('[AI Service] 心声补充提取（全文扫描）', Object.keys(supplement), '→ 合并后', Object.keys(innerVoice));
+                // Remove matched fields (stats, etc.) from display text so they don't leak into chat
+                content = content.replace(/[\r\n\s]*["']?stats["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n]+)/g, '');
                 content = content.trim();
             }
         }

@@ -32,7 +32,15 @@ export const useBackpackStore = defineStore('backpack', () => {
     }
 
     const saveStore = () => {
-        localStorage.setItem('qiaoqiao_backpack', JSON.stringify(items.value))
+        try {
+            localStorage.setItem('qiaoqiao_backpack', JSON.stringify(items.value))
+        } catch (e) {
+            if (e.name === 'QuotaExceededError' || e.code === 22) {
+                console.warn('[BackpackStore] localStorage 配额已满，无法保存背包数据')
+            } else {
+                console.error('[BackpackStore] saveStore failed', e)
+            }
+        }
     }
 
     const addItem = (item) => {

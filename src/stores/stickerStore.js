@@ -29,7 +29,23 @@ export const useStickerStore = defineStore('sticker', () => {
 
     // Save Global Stickers
     function saveStickers() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stickers.value))
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(stickers.value))
+        } catch (e) {
+            if (e.name === 'QuotaExceededError' || e.code === 22) {
+                console.warn('[StickerStore] localStorage 配额已满，无法保存表情数据（表情数量过多）')
+                // 尝试只保存最近 200 个表情
+                try {
+                    const trimmed = stickers.value.slice(-200)
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
+                    console.warn('[StickerStore] 已裁剪至最近 200 个表情保存')
+                } catch (e2) {
+                    console.error('[StickerStore] 即使裁剪后仍无法保存', e2)
+                }
+            } else {
+                console.error('[StickerStore] saveStickers failed', e)
+            }
+        }
     }
 
     // Get specific list based on scope ('global' or a stickers list)

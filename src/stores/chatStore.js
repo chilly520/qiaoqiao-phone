@@ -12,6 +12,7 @@ import { useCallStore } from './callStore'
 import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
 import { usePhoneInspectionStore } from './phoneInspectionStore'
+import { appendLog } from '../utils/memoryLog'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
 import localforage from 'localforage'
 
@@ -2644,6 +2645,22 @@ export const useChatStore = defineStore('chat', () => {
                         chat.statusText = String(newStatus).substring(0, 30); // Limit length
                         chat.isOnline = true; // AI is active
                     }
+
+                    // Auto-write to Memory Log from Inner Voice data
+                    const iv = result.innerVoice
+                    if (iv['心声']) appendLog(chat.id, { type: '💭', content: iv['心声'].substring(0, 200), time: Date.now() })
+                    if (iv['着装'] && iv['着装'] !== '上装：日常穿搭 下装：休闲裤 鞋子：小白鞋 装饰：无') {
+                        appendLog(chat.id, { type: '👔', content: iv['着装'], time: Date.now() })
+                    }
+                    if (iv['环境']) appendLog(chat.id, { type: '📍', content: iv['环境'].substring(0, 100), time: Date.now() })
+                    if (iv['行为'] && !iv['行为'].includes('正拿着手机回复')) {
+                        appendLog(chat.id, { type: '🎭', content: iv['行为'].substring(0, 200), time: Date.now() })
+                    }
+
+                    // Write key facts (persistent attributes)
+                    if (iv.stats?.emotion?.label) {
+                        appendLog(chat.id, { type: '😊', content: `心情: ${iv.stats.emotion.label} (${iv.stats.emotion.value}%)`, time: Date.now() })
+                    }
                 }
 
                 // Clean content by removing ALL inner voice blocks for display/splitting
@@ -3542,7 +3559,7 @@ export const useChatStore = defineStore('chat', () => {
                             if (isPunctuationOnly || isTrashMetadata || (filtered.length < 30 && containsMetadata)) {
                                 console.log('[ChatStore] Swallowed trash or metadata segment:', filtered);
                             } else if (!isLeakedVoice) {
-                                finalSegments.push({ type: 'text', content: filtered });
+                                finalSegments.push({ type: 'text', content: filtered, mode: activeMode });
                             } else {
                                 console.log('[ChatStore] Swallowed leaked voice segment:', filtered);
                             }
