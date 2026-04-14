@@ -3267,7 +3267,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Pass 1.5: Catch emoji-prefixed metadata (e.g., "😡 心情：", "🥺 渴望：")
                 // We do this before HTML extraction so it doesn't get tangled
-                cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status)\s*[:：].*?(?:\n|$)/gm, '');
+                cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
 
                 // Pass 2: Extraction using robust brace matcher (The Protectors)
                 // Aggressively match anything starting with [CARD]{, [INNER_VOICE]{, { "type":, or type: html {
@@ -3348,7 +3348,7 @@ export const useChatStore = defineStore('chat', () => {
                 });
 
                 // Pass 3.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
-                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking';
+                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking|spirit|location|distance|energy|stress|intimacy';
                 const metaLinePattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\n\\[\\<{]*`, 'gim');
                 processedContent = processedContent.replace(metaLinePattern, '').trim();
                 
@@ -3358,6 +3358,11 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Pass 3.7: Final stubborn cleanup for dangling card keys
                 processedContent = processedContent.replace(/^\s*(?:type|card|json|html|content)\s*[:：]\s*(?:html|card|{)?\s*$/gim, '');
+
+                // Pass 3.8: Remove leaked stats field lines (spirit:/mood:/heartRate:/location:/distance: appearing as standalone text)
+                // These are AI-generated stats data that leaked out of [INNER_VOICE] tags
+                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/gi, '\n');
+                processedContent = processedContent.replace(/\n{2,}/g, '\n').trim();
 
 
                 // Pass 4: Clean up image tags & Hallucination Cleanup

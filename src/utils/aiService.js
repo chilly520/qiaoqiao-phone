@@ -1758,11 +1758,48 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         /**
          * 字段级心声提取 v2 — 不依赖花括号计数，直接搜关键字
          * 原理: "着装"、"心声"、"行为"、"环境" 在正常聊天中绝不会出现
+         * 同时支持英文字段名（spirit/mood/heartRate/location/distance 等）
          * 逐字段正则匹配，提取到哪个写进哪个，CSS/HTML天然不干扰
          */
         function tryExtractInnerVoice(text) {
             const result = {};
             let foundCount = 0;
+
+            // ====== 英文字段检测：识别并移除裸露的 stats 子字段 ======
+            // AI 经常把 spirit/mood/heartRate/location/distance 写在 [INNER_VOICE] 外面
+            // 这些字段在正常聊天文本中绝对不会作为独立行出现
+            const nakedStatsPattern = /(?:^|\n)\s*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][ \t]*[\s\S]*?(?=\n\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|status|stats|emotion|speech|action|behavior|outfit|environment|mind|thought)["']?\s*[:：]|\n\s*[\/\[{\"]|$)/gi;
+            const nakedStatsMatches = [...text.matchAll(nakedStatsPattern)];
+            if (nakedStatsMatches.length >= 2) {
+                // 至少匹配到2个字段 → 很可能是泄漏的 stats 数据块，整体提取到 stats 对象中
+                let statsObj = {};
+                let hasNakedStats = false;
+                for (const nm of nakedStatsMatches) {
+                    try {
+                        const fieldName = nm[1];
+                        let fieldValue = nm[0].trim().replace(new RegExp(`^\\s*["']?${fieldName}["']?\\s*[:：]\\s*`, ''), '');
+                        // 尝试解析值（可能是数字、字符串、或简单对象）
+                        fieldValue = fieldValue.trim().replace(/[,\}]?\s*$/, '');
+                        if ((fieldValue.startsWith('"') && fieldValue.endsWith('"')) ||
+                            (fieldValue.startsWith("'") && fieldValue.endsWith("'"))) {
+                            fieldValue = fieldValue.slice(1, -1); // 脱引号的字符串
+                        } else if (/^-?\d+(\.\d+)?$/.test(fieldValue)) {
+                            fieldValue = parseFloat(fieldValue); // 数字
+                        } else if (fieldValue.startsWith('{')) {
+                            try { fieldValue = JSON.parse(fieldValue.replace(/,\s*$/, '')); } catch(e) {}
+                        }
+                        statsObj[fieldName] = fieldValue;
+                        hasNakedStats = true;
+                    } catch(e) {}
+                }
+                if (hasNakedStats && Object.keys(statsObj).length >= 2) {
+                    result.stats = { ...result.stats, ...statsObj };
+                    foundCount++;
+                    // 从原文本中删除这些裸露的字段行
+                    text = text.replace(nakedStatsPattern, '\n').replace(/\n{2,}/g, '\n').trim();
+                }
+            }
+
             // status: 状态栏短文案
             const m1 = text.match(/["']?status["']?\s*[:：]\s*["「]([^"\n」]+)["」]/i);
             if (m1) { result.status = m1[1].trim(); foundCount++; }
@@ -1824,8 +1861,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     }
                 }
                 console.log('[AI Service] 心声补充提取（全文扫描）', Object.keys(supplement), '→ 合并后', Object.keys(innerVoice));
-                // Remove matched fields (stats, etc.) from display text so they don't leak into chat
+                // Remove matched fields (stats, spirit, mood, heartRate, etc.) from display text so they don't leak into chat
                 content = content.replace(/[\r\n\s]*["']?stats["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n]+)/g, '');
+                // Also remove leaked individual stats fields (spirit, mood, heartRate, location, distance, energy, stress, intimacy, trust, temperature)
+                content = content.replace(/[\r\n\s]*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/g, '');
                 content = content.trim();
             }
         }
