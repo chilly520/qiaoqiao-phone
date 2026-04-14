@@ -687,7 +687,35 @@ const getPreviewText = (contentRaw) => {
     clean = clean.replace(/\[(?:MOMENT|朋友圈)\][\s\S]*?(?:\[\/(?:MOMENT|朋友圈)\]|$)/gi, '')
 
     // Strip raw Inner Voice JSON blocks (without tags) — e.g. { "status": "xxx", "着装": "..." }
-    clean = clean.replace(/\{[^{}]*(?:"status"|"心声"|"着装"|"状态")[^{}]*\}/gi, '')
+    // 支持嵌套花括号：用平衡计数法匹配完整JSON对象
+    clean = clean.replace(/\{/g, (match, offset) => {
+        // 从这个 { 开始尝试匹配完整的JSON对象
+        let depth = 0
+        let endPos = offset
+        const str = clean
+        for (let i = offset; i < str.length; i++) {
+            if (str[i] === '{') depth++
+            else if (str[i] === '}') {
+                depth--
+                if (depth === 0) {
+                    endPos = i
+                    // 检查提取的内容是否为心声JSON（包含关键字）
+                    const candidate = str.substring(offset, endPos + 1)
+                    if (/("status"|"心声"|"着装"|"环境"|"行为"|"stats"|"speech"|"thought")/i.test(candidate)) {
+                        return ' '.repeat(candidate.length) // 用空格替换，保持其他文本位置不变
+                    }
+                    return '{' // 不是心声JSON，保留原字符
+                }
+            }
+        }
+        return '{'
+    })
+
+    // 兜底：如果清洗后仍以 { 开头且包含心声字段 → 整行替换为占位符
+    clean = clean.trim()
+    if (clean.startsWith('{') && /("status"|"心声"|"着装"|"环境"|"behavior")/i.test(clean)) {
+        clean = '[内心独白]'
+    }
 
     clean = clean.trim()
 

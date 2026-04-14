@@ -427,9 +427,24 @@ onMounted(() => {
 
 <style scoped>
 .love-schedule {
-  min-height: 100vh;
+  height: 100vh;
   background: linear-gradient(135deg, #fdf2f8 0%, #fef3c7 100%);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 日程详情区 - 确保可滚动且不被日历挤占 */
+.schedule-details {
+  background: white;
+  margin: 0 8px 8px;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  min-height: 120px;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .header {

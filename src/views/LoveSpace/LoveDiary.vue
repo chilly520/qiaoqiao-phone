@@ -164,10 +164,14 @@ function onTouchEnd(e) {
   const touchEndX = e.changedTouches[0].screenX
   const swipeDistance = touchStartX - touchEndX
   
-  if (swipeDistance > 50) {
-    nextPage()
-  } else if (swipeDistance < -50) {
-    prevPage()
+  // 防止误触翻页（需要足够大的滑动距离）
+  if (Math.abs(swipeDistance) > 50) {
+    if (swipeDistance > 0) {
+      nextPage()
+    } else {
+      prevPage()
+    }
+    e.preventDefault()
   }
 }
 
@@ -249,11 +253,24 @@ async function addComment() {
   })
   
   newComment.value = ''
+  
+  // 触发 AI 回复（异步，不阻塞 UI）
+  loveSpaceStore.generateDiaryComment({
+    ...entry,
+    comments: entry.comments || []
+  }).catch(err => console.error('[LoveDiary] generateDiaryComment error:', err))
 }
 </script>
 
 <style scoped>
+/* 外部字体：优先加载，失败时有优雅降级 */
 @import url("https://fontsapi.zeoseven.com/223/main/result.css");
+
+/* 手写体降级：外部字体加载失败时使用系统楷体 */
+@font-face {
+  font-family: "huangkaihuaLawyerfont";
+  src: local("黄凯华律师体"), local("楷体"), local("KaiTi"), local("STKaiti");
+}
 
 .love-diary {
   height: 100vh;
@@ -375,6 +392,9 @@ h2 {
   margin: 10px 20px 30px 30px;
   perspective: 1500px;
   display: flex;
+  /* 关键修复：阻止容器自身滚动，让触摸事件完全交给翻页手势 */
+  overflow: hidden;
+  touch-action: pan-y;
 }
 
 .book-spine {
@@ -439,7 +459,12 @@ h2 {
   height: 100%;
   display: flex;
   flex-direction: column;
+  /* 修复：允许长日记内容完整显示，不被裁切 */
+  overflow-y: visible;
+  /* 但限制在页面边界内 */
+  max-height: calc(100% - 60px);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .page-number {

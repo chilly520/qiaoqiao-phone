@@ -152,7 +152,7 @@ const switchToOfflineMode = () => {
         const offlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'offline' && m.role === 'ai')
         if (offlineMsgs && offlineMsgs.length > 0) {
             const lastMsg = offlineMsgs[offlineMsgs.length - 1]
-            localStorage.setItem(`lastReadOffline_${chatData.value.id}`, lastMsg.id)
+            try { localStorage.setItem(`lastReadOffline_${chatData.value.id}`, lastMsg.id) } catch (e) {}
         }
         // 切换到线下模式
         worldLoopStore.toggleMode(chatData.value.loopId)
@@ -166,7 +166,7 @@ const markOfflineMessagesAsRead = () => {
         const offlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'offline' && m.role === 'ai')
         if (offlineMsgs && offlineMsgs.length > 0) {
             const lastMsg = offlineMsgs[offlineMsgs.length - 1]
-            localStorage.setItem(`lastReadOffline_${chatData.value.id}`, lastMsg.id)
+            try { localStorage.setItem(`lastReadOffline_${chatData.value.id}`, lastMsg.id) } catch (e) {}
             console.log('[ChatWindow] Marked offline messages as read:', lastMsg.id)
         }
     }
@@ -1533,6 +1533,44 @@ const handleTarotInterpretationShare = (data) => {
         tarotInterpretation: data.interpretation
     })
     scrollToBottom(true)
+}
+
+// 代付响应处理
+const handlePaymentResponse = async (payload) => {
+    if (!payload || !payload.requestId) return
+    const { requestId, accepted } = payload
+
+    try {
+        const { useShoppingStore } = await import('../../stores/shoppingStore')
+        const shoppingStore = useShoppingStore()
+        const result = shoppingStore.handlePaymentResponse(requestId, accepted)
+
+        // 余额不足
+        if (result && !result.success && result.reason === 'insufficient_balance') {
+            showToast(`💸 余额不足，还差 ¥${(result.amount || 0).toFixed(2)} 呢`, 'error')
+            return
+        }
+
+        // 更新消息状态
+        if (accepted) {
+            const targetMsg = msgs.value.find(m => m.paymentRequestId === requestId)
+            if (targetMsg) {
+                targetMsg.status = 'accepted'
+                chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'accepted' })
+            }
+            showToast('💕 已帮TA付好啦~', 'success')
+        } else {
+            const targetMsg = msgs.value.find(m => m.paymentRequestId === requestId)
+            if (targetMsg) {
+                targetMsg.status = 'rejected'
+                chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'rejected' })
+            }
+            showToast('已婉拒代付请求~', 'info')
+        }
+    } catch(e) {
+        console.error('[ChatWindow] handlePaymentResponse error:', e)
+        showToast('操作失败，请重试', 'error')
+    }
 }
 
 // Handle Family Card Action Selection
@@ -3420,7 +3458,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         :shakingAvatars="shakingAvatars" @click-avatar="handleAvatarClick" @dblclick-avatar="handlePat"
                         @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
                         @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
-                        @play-voice="handleVoiceClick" @show-rank="handleShowRank" />
+                        @play-voice="handleVoiceClick" @show-rank="handleShowRank"
+                        @payment-response="handlePaymentResponse" />
                 </template>
 
 

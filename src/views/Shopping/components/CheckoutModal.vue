@@ -119,21 +119,30 @@
             </div>
 
             <!-- 底部支付栏 -->
-            <div class="p-6 pt-2 flex items-center justify-between sticky bottom-0 bg-white border-t">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <p class="text-[10px] text-gray-400 uppercase tracking-widest font-bold">应付金额</p>
-                        <span v-if="discountAmount > 0" class="text-[8px] bg-red-100 text-red-500 px-1 rounded">已减 ¥{{
-                            discountAmount }}</span>
+            <div class="p-6 pt-2 sticky bottom-0 bg-white border-t">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <p class="text-[10px] text-gray-400 uppercase tracking-widest font-bold">应付金额</p>
+                            <span v-if="discountAmount > 0" class="text-[8px] bg-red-100 text-red-500 px-1 rounded">已减 ¥{{
+                                discountAmount }}</span>
+                        </div>
+                        <p class="text-2xl font-black text-red-600">¥{{ finalTotal.toFixed(2) }}</p>
                     </div>
-                    <p class="text-2xl font-black text-red-600">¥{{ finalTotal.toFixed(2) }}</p>
                 </div>
-                <button @click="submitOrder" :disabled="!canPay" :class="['px-10 py-4 rounded-full font-black text-sm shadow-xl transition-all active:scale-95',
-                    !canPay
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
-                        : 'bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-orange-500/30']">
-                    {{ canPay ? '立即支付' : '无法支付' }}
-                </button>
+                <!-- 按钮组：代付 + 立即支付 -->
+                <div class="flex items-center gap-3">
+                    <button @click="requestPaymentHelp"
+                        class="flex-1 py-4 rounded-full font-bold text-sm border-2 border-indigo-300 text-indigo-500 bg-white active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm hover:bg-indigo-50">
+                        💳 找人代付
+                    </button>
+                    <button @click="submitOrder" :disabled="!canPay" :class="['flex-[2] py-4 rounded-full font-black text-sm shadow-xl transition-all active:scale-95',
+                        !canPay
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                            : 'bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-orange-500/30']">
+                        {{ canPay ? '立即支付' : '无法支付' }}
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -151,6 +160,58 @@
                     class="flex-1 py-3 bg-orange-500 text-white rounded-xl text-sm font-bold">保存地址</button>
             </div>
         </div>
+
+        <!-- 代付好友选择器 -->
+        <div v-if="showPaymentSelector"
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            @click="showPaymentSelector = false">
+            <div class="bg-white w-full max-w-sm mx-4 rounded-3xl max-h-[80vh] overflow-hidden animate-scale-in"
+                @click.stop>
+                <!-- 头部 -->
+                <div class="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 text-white text-center">
+                    <h3 class="text-base font-bold mb-1">选择代付好友</h3>
+                    <p class="text-xs opacity-80">{{ props.cart[0]?.title }} · ¥{{ finalTotal.toFixed(2) }}</p>
+                </div>
+
+                <!-- 好友列表 -->
+                <div class="p-4 overflow-y-auto max-h-[60vh]">
+                    <!-- 搜索框 -->
+                    <div class="relative mb-4">
+                        <input v-model="searchPaymentFriend" type="text" placeholder="搜索好友..."
+                            class="w-full bg-slate-100 rounded-2xl px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div v-for="friend in filteredPaymentFriends" :key="friend.id"
+                            @click="sendPaymentRequestToFriend(friend)"
+                            class="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 active:bg-slate-100 cursor-pointer transition-colors">
+                            <img :src="friend.avatar" class="w-12 h-12 rounded-2xl object-cover bg-gray-100">
+                            <div class="flex-1 min-w-0">
+                                <h4 class="text-sm font-bold text-slate-800 truncate">{{ friend.remark || friend.name }}</h4>
+                                <p class="text-xs text-slate-400 mt-0.5">点击发送代付请求</p>
+                            </div>
+                            <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-sm shrink-0">
+                                →
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="filteredPaymentFriends.length === 0" class="text-center py-12 text-slate-400">
+                        <p class="text-4xl mb-2">😕</p>
+                        <p class="text-xs">没有找到好友</p>
+                    </div>
+                </div>
+
+                <!-- 取消按钮 -->
+                <div class="p-4 border-t">
+                    <button @click="showPaymentSelector = false"
+                        class="w-full py-3 bg-gray-100 rounded-2xl text-sm font-bold text-gray-600 active:bg-gray-200 transition-colors">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -158,6 +219,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useShoppingStore } from '@/stores/shoppingStore'
 import { useWalletStore } from '@/stores/walletStore'
+import { useChatStore } from '@/stores/chatStore'
 
 const props = defineProps({
     cart: Array,
@@ -167,12 +229,17 @@ const props = defineProps({
 const emit = defineEmits(['close', 'submit'])
 const store = useShoppingStore()
 const walletStore = useWalletStore()
+const chatStore = useChatStore()
 
 const remark = ref('')
 const selectedAddressId = ref(store.addresses[0]?.id || '')
 const showAddAddress = ref(false)
 const selectedCouponId = ref(null)
 const selectedPaymentMethod = ref('balance')
+
+// 代付相关
+const showPaymentSelector = ref(false)
+const searchPaymentFriend = ref('')
 
 const newAddr = ref({ name: '', phone: '', detail: '', region: '广东省 深圳市' })
 
@@ -230,6 +297,74 @@ const submitOrder = () => {
         paymentMethod: selectedPaymentMethod.value
     })
 }
+
+// ============ 代付功能（确认订单页）============
+
+const allFriends = computed(() => {
+    return chatStore.contactList?.filter(c => !c.isGroup) || []
+})
+
+const filteredPaymentFriends = computed(() => {
+    const list = allFriends.value.filter(f => f.id !== chatStore.currentChatId)
+    if (!searchPaymentFriend.value) return list
+    return list.filter(f =>
+        (f.name && f.name.toLowerCase().includes(searchPaymentFriend.value.toLowerCase())) ||
+        (f.remark && f.remark.toLowerCase().includes(searchPaymentFriend.value.toLowerCase()))
+    )
+})
+
+const requestPaymentHelp = () => {
+    showPaymentSelector.value = true
+}
+
+const sendPaymentRequestToFriend = async (friend) => {
+    // 构建临时订单数据（还没创建订单，用购物车数据）
+    const tempOrderData = {
+        items: props.cart.map(i => ({ title: i.title, price: i.price, quantity: i.quantity, image: i.image })),
+        total: finalTotal.value,
+        id: 'pending_' + Date.now()
+    }
+
+    // 创建代付卡片消息
+    const paymentCard = {
+        role: 'user',
+        type: 'payment_request',
+        content: `[代付请求] ${props.cart[0]?.title || '商品'} ¥${finalTotal.value.toFixed(2)}`,
+        orderId: null, // 订单尚未创建，支付后由对方确认
+        amount: finalTotal.value,
+        items: tempOrderData.items,
+        timestamp: Date.now(),
+        status: null,          // null = 等待对方处理
+        isPrePay: true,        // 标记为预支付请求
+        paymentRequestId: tempOrderData.id  // 关联 paymentRequest 记录
+    }
+
+    try {
+        const result = await chatStore.addMessage(friend.id, paymentCard)
+        if (result === false) {
+            const targetChat = Object.values(chatStore.chats).find(
+                c => c.name === friend.name || c.remark === friend.name
+            )
+            if (targetChat) await chatStore.addMessage(targetChat.id, paymentCard)
+        }
+
+        const toast = document.createElement('div')
+        toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-4 rounded-2xl text-sm font-bold z-[200] shadow-xl'
+        toast.textContent = `💳 已向 ${friend.name || friend.remark} 发送代付请求`
+        document.body.appendChild(toast)
+        setTimeout(() => toast.remove(), 2000)
+
+        showPaymentSelector.value = false
+        emit('close') // 关闭弹窗，回到购物车
+    } catch(e) {
+        console.error('[CheckoutModal] sendPaymentRequest failed:', e)
+        const toast = document.createElement('div')
+        toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-6 py-4 rounded-2xl text-sm font-bold z-[200]'
+        toast.textContent = '❌ 发送失败，请重试'
+        document.body.appendChild(toast)
+        setTimeout(() => toast.remove(), 2000)
+    }
+}
 </script>
 
 <style scoped>
@@ -261,5 +396,20 @@ const submitOrder = () => {
 
 .animate-fade-in {
     animation: fade-in 0.2s ease-out;
+}
+
+@keyframes scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-scale-in {
+    animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 </style>

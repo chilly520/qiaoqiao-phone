@@ -186,14 +186,15 @@
                       :chatData="chatData"
                       :suppressInitialAvatar="shouldSuppressInitialAvatar(index)"
                     />
-                    <ChatMessageItem 
+                    <ChatMessageItem
                       v-else
                       class="offline-special-message"
-                      :msg="msg" 
-                      :prevMsg="filteredDisplayMsgs[index - 1]" 
+                      :msg="msg"
+                      :prevMsg="filteredDisplayMsgs[index - 1]"
                       :chatData="chatData"
                       :forceOffline="true"
                       @click-pay="handlePayClick"
+                      @payment-response="handlePaymentResponse"
                     />
                     <button v-if="hasInnerVoiceBlockInMsg(msg) && !isMultiSelectMode" 
                       @click.stop="openInnerVoiceFromMsg(msg)"
@@ -734,7 +735,7 @@ const switchToOnlineMode = () => {
     const onlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'online' && m.role === 'ai')
     if (onlineMsgs && onlineMsgs.length > 0) {
       const lastMsg = onlineMsgs[onlineMsgs.length - 1]
-      localStorage.setItem(`lastReadOnline_${chatData.value.id}`, lastMsg.id)
+      try { localStorage.setItem(`lastReadOnline_${chatData.value.id}`, lastMsg.id) } catch (e) {}
     }
     // 切换到线上模式
     worldLoopStore.toggleMode(chatData.value.loopId)
@@ -877,8 +878,7 @@ const toggleOfflineMode = () => {
     const onlineMsgs = chatData.value.msgs?.filter(m => m.mode === 'online' && m.role === 'ai')
     if (onlineMsgs && onlineMsgs.length > 0) {
       const lastMsg = onlineMsgs[onlineMsgs.length - 1]
-      localStorage.setItem(`lastReadOnline_${chatData.value.id}`, lastMsg.id)
-      console.log('[OfflineModeChatWindow] Marked online messages as read:', lastMsg.id)
+      try { localStorage.setItem(`lastReadOnline_${chatData.value.id}`, lastMsg.id) } catch (e) {}
     }
   }
   settingsStore.toggleOfflineMode()
@@ -1092,6 +1092,40 @@ const handlePayClick = (msg) => {
     // 转账
     showTransferModal.value = true
   }
+}
+
+// 代付响应处理（线下模式）
+const handlePaymentResponse = async (payload) => {
+    if (!payload || !payload.requestId) return
+    const { requestId, accepted } = payload
+    try {
+        const { useShoppingStore } = await import('../../stores/shoppingStore')
+        const shoppingStore = useShoppingStore()
+        const result = shoppingStore.handlePaymentResponse(requestId, accepted)
+
+        // 余额不足
+        if (result && !result.success && result.reason === 'insufficient_balance') {
+            showToast('💸 余额不足呢', 'error')
+            return
+        }
+
+        // 更新消息状态
+        if (accepted) {
+            const targetMsg = msgs.value.find(m => m.paymentRequestId === requestId)
+            if (targetMsg) {
+                targetMsg.status = 'accepted'
+                chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'accepted' })
+            }
+        } else {
+            const targetMsg = msgs.value.find(m => m.paymentRequestId === requestId)
+            if (targetMsg) {
+                targetMsg.status = 'rejected'
+                chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'rejected' })
+            }
+        }
+    } catch(e) {
+        console.error('[OfflineModeChatWindow] handlePaymentResponse error:', e)
+    }
 }
 
 const openRedPacket = async () => {

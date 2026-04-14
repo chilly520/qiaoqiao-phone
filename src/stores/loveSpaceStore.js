@@ -472,6 +472,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         ...letter, 
         isRead: letter.isRead !== undefined ? letter.isRead : (letter.author === 'partner' ? false : true),
         comments: [],
+        paperIndex: letter.paperIndex !== undefined ? letter.paperIndex : Math.floor(Math.random() * 13),
         createdAt: new Date().toISOString() 
       })
       await this.saveToStorage()
@@ -558,13 +559,15 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!this.currentPartnerId) return
       const charId = this.currentPartnerId
       
+      console.log('[LoveSpaceStore] generateQuestionReply starting for question:', questionData.id, 'text:', questionData.text?.substring(0, 50))
+      
       const chatStore = (await import('./chatStore.js')).useChatStore()
       const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
       const { generateReply } = await import('../utils/aiService.js')
       const { generateQuestionReplyPrompt } = await import('../utils/ai/prompts_love_single.js')
       
       const chat = chatStore.chats[charId]
-      if (!chat) return
+      if (!chat) { console.error('[LoveSpaceStore] generateQuestionReply: no chat found for', charId); return }
 
       const userProfile = settingsStore.personalization.userProfile
       const recentChats = (chat.msgs || []).slice(-15).map(m => ({ 
@@ -586,11 +589,149 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
 
       try {
         const aiResponse = await generateReply(messages, charId, null, { isCommandTask: true })
-        if (aiResponse) {
-          await this.executeSpaceCommands(aiResponse)
+        console.log('[LoveSpaceStore] generateQuestionReply AI response:', aiResponse?.content?.substring(0, 200))
+        if (aiResponse && aiResponse.content) {
+          await this.executeSpaceCommands(aiResponse.content)
+        } else {
+          console.warn('[LoveSpaceStore] generateQuestionReply: empty AI response')
         }
       } catch (err) {
         console.error('[LoveSpaceStore] generateQuestionReply error:', err)
+        // Fallback: set a generic partnerAnswer so UI doesn't hang
+        try {
+          const q = this.currentSpace.questions.find(q => q.id === questionData.id)
+          if (q && !q.partnerAnswer) {
+            q.partnerAnswer = '(TA似乎陷入了沉思，暂时没有回应...)'
+            q.partnerAnswerAt = new Date().toISOString()
+            await this.saveToStorage()
+          }
+        } catch (e2) {
+          console.error('[LoveSpaceStore] generateQuestionReply fallback failed:', e2)
+        }
+      }
+    },
+
+    // 单独为信件评论生成 AI 回复
+    async generateLetterComment(letterData) {
+      if (!this.currentPartnerId) return
+      const charId = this.currentPartnerId
+      
+      console.log('[LoveSpaceStore] generateLetterComment starting for letter:', letterData.id, 'title:', letterData.title)
+      
+      // 检查是否已有 partner 的回复（防止重复）
+      const existingPartnerComment = (letterData.comments || []).find(c => c.authorId === 'partner' || c.author === 'partner')
+      if (existingPartnerComment) {
+        console.log('[LoveSpaceStore] generateLetterComment: partner already commented, skipping')
+        return
+      }
+      
+      const chatStore = (await import('./chatStore.js')).useChatStore()
+      const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
+      const { generateReply } = await import('../utils/aiService.js')
+      const { generateLetterCommentPrompt } = await import('../utils/ai/prompts_love_single.js')
+      
+      const chat = chatStore.chats[charId]
+      if (!chat) { console.error('[LoveSpaceStore] generateLetterComment: no chat found for', charId); return }
+
+      const userProfile = settingsStore.personalization.userProfile
+      const recentChats = (chat.msgs || []).slice(-15).map(m => ({ 
+        role: m.role === 'ai' ? 'assistant' : 'user', 
+        content: m.content 
+      }))
+
+      // 构建包含当前评论的 letterData（确保 prompt 能看到最新留言）
+      const letterWithComments = {
+        ...letterData,
+        comments: letterData.comments || []
+      }
+
+      const prompt = generateLetterCommentPrompt(
+        this.partner?.name || 'TA',
+        userProfile.name || '我',
+        userProfile,
+        recentChats,
+        letterWithComments
+      )
+
+      const messages = [
+        { role: 'system', content: prompt }
+      ]
+
+      try {
+        const aiResponse = await generateReply(messages, charId, null, { isCommandTask: true })
+        console.log('[LoveSpaceStore] generateLetterComment AI response:', aiResponse?.content?.substring(0, 200))
+        if (aiResponse && aiResponse.content) {
+          await this.executeSpaceCommands(aiResponse.content)
+        } else {
+          console.warn('[LoveSpaceStore] generateLetterComment: empty AI response')
+        }
+      } catch (err) {
+        console.error('[LoveSpaceStore] generateLetterComment error:', err)
+        // Fallback: 添加一条默认回复，不让评论区空着
+        try {
+          await this.addLetterComment(letterData.id, { 
+            content: '(读完你的留言，TA的心里暖暖的，一时不知该如何回应...)', 
+            author: 'partner' 
+          })
+        } catch (e2) {
+          console.error('[LoveSpaceStore] generateLetterComment fallback failed:', e2)
+        }
+      }
+    },
+
+    // 日记评论区：用户留言后 AI 回复
+    async generateDiaryComment(diaryData) {
+      if (!this.currentPartnerId || !diaryData) return
+
+      const charId = this.currentPartnerId
+      
+      const chatStore = (await import('./chatStore.js')).useChatStore()
+      const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
+      const { generateReply } = await import('../utils/aiService.js')
+
+      const chat = chatStore.chats[charId]
+      if (!chat) {
+        console.warn('[LoveSpaceStore] generateDiaryComment: no chat found for', charId)
+        return
+      }
+
+      const userProfile = settingsStore.personalization.userProfile
+      const partnerName = this.partner?.name || 'TA'
+      const userName = userProfile.name || '我'
+      const recentChats = (chat.msgs || []).slice(-10).map(m => ({
+        role: m.role === 'ai' ? 'assistant' : 'user',
+        content: m.content || ''
+      }))
+
+      console.log('[LoveSpaceStore] generateDiaryComment for diary:', diaryData.id)
+
+      const { generateDiaryCommentPrompt } = await import('../utils/ai/prompts_love_single.js')
+
+      const prompt = generateDiaryCommentPrompt(partnerName, userName, userProfile, recentChats, diaryData)
+
+      const messages = [
+        { role: 'system', content: prompt }
+      ]
+
+      try {
+        const aiResponse = await generateReply(messages, this.currentPartnerId, null, { isCommandTask: true })
+        console.log('[LoveSpaceStore] generateDiaryComment AI response:', aiResponse?.content?.substring(0, 200))
+        if (aiResponse && aiResponse.content) {
+          await this.executeSpaceCommands(aiResponse.content)
+        } else {
+          console.warn('[LoveSpaceStore] generateDiaryComment: empty AI response')
+        }
+      } catch (err) {
+        console.error('[LoveSpaceStore] generateDiaryComment error:', err)
+        try {
+          await this.addDiaryComment(diaryData.id, { 
+            content: '(看完你的留言，TA嘴角微微上扬，似乎有很多话想说...)', 
+            author: 'partner',
+            authorName: partnerName 
+          })
+        } catch (e2) {
+          console.error('[LoveSpaceStore] generateDiaryComment fallback failed:', e2)
+        }
       }
     },
 
@@ -761,8 +902,23 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         unansweredLetters: (this.currentSpace.letters || [])
           .filter(l => l.author === 'user' && !l.comments?.length)
           .slice(-3)
-          .map(l => `【用户来信】《${l.title}》: ${l.content}`)
+          .map(l => `【用户来信】《${l.title}》(ID:${l.id}): ${l.content}`)
           .join('\n---\n') || '暂无',
+        // 有用户评论但AI尚未回复的信件
+        uncommentedLetters: (this.currentSpace.letters || [])
+          .filter(l => {
+            const hasUserComment = (l.comments || []).some(c => c.authorId === 'user' || c.author === 'user')
+            const hasPartnerComment = (l.comments || []).some(c => c.authorId === 'partner' || c.author === 'partner')
+            return hasUserComment && !hasPartnerComment
+          })
+          .slice(-3)
+          .map(l => {
+            const userComments = (l.comments || [])
+              .filter(c => c.authorId === 'user' || c.author === 'user')
+              .map(c => `${c.authorName || '?'}: ${c.text || c.content}`).join(' | ')
+            return `【信件《${l.title}》(ID:${l.id})】用户留言: ${userComments}`
+          })
+          .join('\n') || '暂无',
         // 最近的相册
         recentAlbum: (this.currentSpace.album || []).slice(-5).map(a => `${a.title}${a.desc ? ': ' + a.desc : ''}`)
       }
@@ -849,7 +1005,8 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
           anniversary: '纪念日',
           house: '爱巢',
           sticky: '便利贴',
-          schedule: '日程'
+          schedule: '日程',
+          letterComment: '信件评论'
         }
         return names[type] || type
       }
@@ -900,6 +1057,16 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
           break
         case 'schedule':
           featureHistory = (this.currentSpace.schedules || []).slice(-5)
+          break
+        case 'letterComment':
+          // 获取有用户评论但AI尚未回复的信件
+          featureHistory = (this.currentSpace.letters || [])
+            .filter(l => {
+              const hasUserComment = (l.comments || []).some(c => c.authorId === 'user' || c.author === 'user')
+              const hasPartnerComment = (l.comments || []).some(c => c.authorId === 'partner' || c.author === 'partner')
+              return hasUserComment && !hasPartnerComment
+            })
+            .slice(-5)
           break
       }
       
@@ -1132,11 +1299,15 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
               await this.updateStartDate(startDate)
               toastQueue.push({ message: '💕 情侣空间正式开通！', type: 'success' })
             } else if (type === 'footprint') {
-              // Duplicate check for footprint
-              const isDup = (this.currentSpace.footprints || []).some(f => f.content === cmd.content && f.location === cmd.location)
-              if (isDup) {
-                console.log('[LoveSpaceStore] Skipping duplicate footprint:', cmd.content)
-              } else {
+              // Support both single footprint and footprints array
+              const footprintItems = cmd.footprints ? cmd.footprints : [cmd]
+              
+              for (const fpCmd of footprintItems) {
+                // Duplicate check for footprint
+                const isDup = (this.currentSpace.footprints || []).some(f => f.content === fpCmd.content && f.location === fpCmd.location)
+                if (isDup) {
+                  console.log('[LoveSpaceStore] Skipping duplicate footprint:', fpCmd.content)
+                } else {
                 const baseTime = targetDate ? new Date(targetDate) : new Date()
                 let createdAt = baseTime.toISOString()
                 if (cmd.time) {
@@ -1154,9 +1325,10 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                   d.setMinutes(d.getMinutes() - jitterMinutes)
                   createdAt = d.toISOString()
                 }
-                await this.addFootprint({ content: cmd.content, location: cmd.location || '未知', createdAt })
+                await this.addFootprint({ content: fpCmd.content, location: fpCmd.location || '未知', createdAt })
                 toastQueue.push({ message: '👣 足迹已生成', type: 'success' })
-              }
+                }
+              } // end for footprintItems
             } else if (type === 'diary') {
               // Duplicate check for diary
               const isDup = (this.currentSpace.diary || []).some(d => d.title === cmd.title && d.content === cmd.content)
@@ -1213,7 +1385,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                 content: finalContent, 
                 author: 'partner',
                 isRead: false,
-                paperIndex: cmd.paperIndex || cmd.paperId || Math.floor(Math.random() * 12)
+                paperIndex: cmd.paperIndex !== undefined ? cmd.paperIndex : Math.floor(Math.random() * 13)
               })
               toastQueue.push({ message: '💌 信件已收到', type: 'success' })
             } else if (type === 'question') {

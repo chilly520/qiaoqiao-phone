@@ -13,7 +13,7 @@ export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceH
 
 【任务描述】
 根据你们共同的记忆、角色设定、最近的聊天记录，以及情侣空间的动态轨迹，发动你的恋爱魔法，主动创造更新。
-你必须输出符合以下协议的 JSON 数组。你这次生成必须涵盖以下 **所有 11 个功能模块**,保持空间的全面活跃。
+你必须输出符合以下协议的 JSON 数组。你这次生成必须涵盖以下 **所有 12 个功能模块**,保持空间的全面活跃。
 
 【各模块详细要求】
 1. **交换日记 (diary)**：
@@ -82,6 +82,11 @@ export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceH
 11. **角色日程 (schedule)**:
     - 为 ${dateStr} 生成该日的详细日程安排 (3-5 个事件)。
     - 格式：{ "date": "YYYY-MM-DD", "time": "HH:mm", "title": "...", "description": "...", "eventType": "daily|work|romantic|special", "location": "...", "mood": "happy|busy|romantic|normal" }。
+12. **信件评论互动 (letterComment)**:
+    - 【重要】如果用户在某封信下留了言但你还没有回复（见下方【待回复的信件评论】），**必须回复**！
+    - 针对用户的留言内容进行真诚回应，就像在信件评论区互动一样（50-100 字）
+    - 如果没有待回复的留言，则跳过此模块
+    - 格式：{ "type": "letterComment", "letterId": 信件ID, "content": "回复内容" }
 
 【情侣空间现状】
 - 目标生成日期：${dateStr}
@@ -91,6 +96,7 @@ export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceH
 - 用户最近留言：${spaceHistory.recentUserMessages.split('; ').slice(-3).join('; ') || '暂无（若有，请回复）'}
 - 你最近留的言：${spaceHistory.recentPartnerMessages.split('; ').slice(-2).join('; ') || '暂无'}
 - **用户来信**（未回的信）：${spaceHistory.unansweredLetters || '暂无'}
+- **待回复的信件评论**（用户留了言但你还没回）：${spaceHistory.uncommentedLetters || '暂无（若无则跳过letterComment模块）'}
 - 你们共同的相册：${spaceHistory.recentAlbum.slice(-2).join('; ') || '暂无'}
 
 【JSON 指令规范】
@@ -128,7 +134,10 @@ export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceH
     { "type": "house", "action": "...", "comfortIncrease": 15 },
     
     // 11. 日程
-    { "type": "schedule", "date": "2024-06-01", "time": "09:00", "title": "...", "description": "...", "eventType": "work", "location": "...", "mood": "busy" }
+    { "type": "schedule", "date": "2024-06-01", "time": "09:00", "title": "...", "description": "...", "eventType": "work", "location": "...", "mood": "busy" },
+    
+    // 12. 信件评论（如果有用户留言未回复）
+    { "type": "letterComment", "letterId": 信件ID, "content": "看到你的留言了，心里好暖..." }
   ]
 }]
 

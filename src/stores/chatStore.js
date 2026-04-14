@@ -176,6 +176,7 @@ export const useChatStore = defineStore('chat', () => {
             return {
                 id: key,
                 ...chat,
+                displayName: chat.remark?.trim() ? chat.remark.trim() : (chat.name || '未命名'),
                 unreadCount: chat.unreadCount || 0,
                 lastMsg: (chat.msgs || []).slice(-1)[0] || null
             }
@@ -242,7 +243,7 @@ export const useChatStore = defineStore('chat', () => {
                 id: chatId,
                 name,
                 avatar: options.avatar || getRandomAvatar(),
-                userAvatar: options.userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=Me`,
+                userAvatar: options.userAvatar || getRandomAvatar(),
                 remark: '',
                 prompt: options.prompt || '你是一个友好的人。',
                 msgs: [],
@@ -556,6 +557,10 @@ export const useChatStore = defineStore('chat', () => {
             // --- Order fields ---
             orderId: msg.orderId || null,
             orderData: msg.orderData || null,
+            // --- Payment Request fields (代付) ---
+            paymentRequestId: msg.paymentRequestId || null,
+            items: msg.items || null,           // 代付商品列表
+            isPrePay: msg.isPrePay || false,    // 预支付标记
         }
         
         // Debug: 记录 HTML 消息
@@ -2217,6 +2222,8 @@ export const useChatStore = defineStore('chat', () => {
                 role: m.role === 'ai' ? 'assistant' : 'user',
                 content: content,
                 image: m.image,
+                id: m.id,              // 保留消息ID，供aiService Vision策略判断"未读"状态 + 生成正确的图片引用ID
+                type: m.type,          // 保留类型，区分image/sticker等
                 mode: m.mode || 'online'  // 保留模式信息用于后续统一包裹
             }
         })
@@ -3582,6 +3589,12 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- 4. Sequential Delivery ---
+                // Pre-compute group chat sender identity (used by ALL message types in the loop)
+                const groupSenderInfo = (chat.isGroup && chat.participants?.length > 0) ? (() => {
+                    const npc = chat.participants.find(p => p.id !== 'user' && p.id !== chat.id);
+                    return npc ? { senderId: npc.id, senderName: npc.nickname || npc.name, senderAvatar: npc.avatar } : {};
+                })() : {};
+
                 for (let i = 0; i < finalSegments.length; i++) {
                     if (!typingStatus.value[chatId]) break;
 
@@ -3684,6 +3697,7 @@ export const useChatStore = defineStore('chat', () => {
                                 msgContent += (msgContent ? '\n\n' : '') + innerVoiceBlock;
                             }
 
+                            // For group chats: use pre-computed sender identity
                             msgAdded = await addMessage(chatId, {
                                 role: 'ai',
                                 type: msgType,
@@ -3692,7 +3706,8 @@ export const useChatStore = defineStore('chat', () => {
                                 note,
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
-                                mode: finalMode
+                                mode: finalMode,
+                                ...groupSenderInfo
                             });
                         }
 
@@ -3709,10 +3724,11 @@ export const useChatStore = defineStore('chat', () => {
                             content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: finalMode
+                            mode: finalMode,
+                            ...groupSenderInfo
                         });
                     } else if (type === 'voice') {
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: finalMode });
+                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: finalMode, ...groupSenderInfo });
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
@@ -3727,7 +3743,8 @@ export const useChatStore = defineStore('chat', () => {
                                 type: 'text',
                                 content: '🎨 正在根据灵感绘图...',
                                 quote: i === 0 ? aiQuote : null,
-                                mode: finalMode
+                                mode: finalMode,
+                                ...groupSenderInfo
                             });
 
                             // Safe ID retrieval - Now safe because we awaited addMessage
@@ -3862,7 +3879,8 @@ export const useChatStore = defineStore('chat', () => {
                             content: content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: finalMode
+                            mode: finalMode,
+                            ...groupSenderInfo
                         });
                     } else if (type === 'nudge') {
                         // 处理戳一戳/拍一拍
@@ -3875,7 +3893,8 @@ export const useChatStore = defineStore('chat', () => {
                             content: content,
                             quote: i === 0 ? aiQuote : null,
                             hidden: isCallMode,
-                            mode: finalMode
+                            mode: finalMode,
+                            ...groupSenderInfo
                         });
                     } else if (type === 'system') {
                         // 系统通知

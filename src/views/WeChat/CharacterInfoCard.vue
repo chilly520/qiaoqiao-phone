@@ -1,7 +1,7 @@
 <template>
   <div class="h-full flex flex-col bg-[#f5f5f5] overflow-hidden font-sans">
-    <!-- 1. Top Header Area (Dark + Avatar Background) -->
-    <div class="relative h-[42%] shrink-0">
+    <!-- 1. Top Header Area (Dark + Avatar Background) — fixed height, not scrollable -->
+    <div class="relative h-[38%] shrink-0">
       <!-- Background Image -->
       <div class="absolute inset-0">
         <img :src="character.avatar" class="w-full h-full object-cover">
@@ -17,22 +17,22 @@
       </div>
 
       <!-- User Info (Absolute Positioning) -->
-      <div class="absolute bottom-[40px] left-6 right-6 z-20">
+      <div class="absolute bottom-[30px] left-6 right-6 z-20">
         <!-- Name -->
         <h1 class="text-[32px] font-bold text-white leading-tight mb-1 shadow-sm tracking-wide">
           {{ character.name }}
         </h1>
-        
+
         <!-- ID & Signature Pill Row -->
         <div class="flex items-center flex-wrap gap-3">
           <span class="text-gray-300 text-sm font-medium tracking-wide opacity-90">微信号: {{ character.id || 'wxid_ai_generated' }}</span>
-          
+
           <!-- Location Pill -->
           <div v-if="virtualCityDisplay" class="px-3 py-1 rounded-full bg-blue-500/30 backdrop-blur-md border border-blue-200/20 text-[11px] text-blue-50 flex items-center gap-1 shadow-sm">
             <i class="fa-solid fa-location-dot text-[10px]"></i>
             {{ virtualCityDisplay }}
           </div>
-          
+
           <!-- Signature Pill (Glassmorphism) -->
           <div class="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md border border-white/10 text-[11px] text-white/90 flex items-center">
             {{ momentsSignature }}
@@ -41,49 +41,53 @@
       </div>
     </div>
 
-    <!-- 2. Floating Action Card (Overlapping Header) -->
-    <div class="relative z-30 -mt-6 mx-4 bg-white rounded-[24px] shadow-[0_8px_20px_rgba(0,0,0,0.06)] p-5 flex flex-col gap-6">
-      
-      <!-- Moments Entry (Styled as a block) -->
-      <div @click="goToMoments"
-           class="bg-[#f9f9f9] rounded-2xl p-4 flex items-center justify-between active:scale-[0.98] transition-transform cursor-pointer border border-gray-50">
-        <div class="flex items-center gap-4">
-          <!-- Icon -->
-          <div class="w-12 h-12 rounded-[14px] bg-[#ffecd2] flex items-center justify-center shrink-0">
-            <i class="fa-solid fa-camera text-[#ff9638] text-xl transform -rotate-6"></i>
+    <!-- 2. Unified Scrollable Area (Actions + Bio together) -->
+    <div class="flex-1 overflow-y-auto scroll-hide">
+      <!-- Action Card (overlaps header slightly) -->
+      <div class="relative z-30 -mt-5 mx-4 bg-white rounded-[24px] shadow-[0_8px_20px_rgba(0,0,0,0.06)] p-5 flex flex-col gap-4">
+
+        <!-- Moments + SendMsg in one row -->
+        <div class="flex items-center gap-3">
+          <!-- Moments Entry -->
+          <div @click="goToMoments"
+               class="flex-1 bg-[#f9f9f9] rounded-2xl p-3.5 flex items-center gap-3 active:scale-[0.98] transition-transform cursor-pointer border border-gray-50">
+            <div class="w-10 h-10 rounded-[12px] bg-[#ffecd2] flex items-center justify-center shrink-0">
+              <i class="fa-solid fa-camera text-[#ff9638] text-lg transform -rotate-6"></i>
+            </div>
+            <div class="flex flex-col min-w-0">
+              <span class="text-[#1a1a1a] font-bold text-[15px]">朋友圈</span>
+              <span class="text-gray-400 text-[11px]">查看Ta的历史动态</span>
+            </div>
+            <i class="fa-solid fa-chevron-right text-gray-300 text-xs shrink-0"></i>
           </div>
-          <!-- Text -->
-          <div class="flex flex-col">
-            <span class="text-[#1a1a1a] font-bold text-[17px]">朋友圈</span>
-            <span class="text-gray-400 text-xs mt-0.5">查看Ta的历史动态</span>
+
+          <!-- Send Message Button (compact circle) -->
+          <button @click="handleSendMessage"
+                  class="w-[56px] h-[56px] shrink-0 rounded-full bg-[#07c160] hover:bg-[#06ad56] active:bg-[#05984b] text-white flex items-center justify-center shadow-lg shadow-green-500/20 active:scale-95 transition-all">
+            <i class="fa-solid fa-comment-dots text-xl transform scale-x-[-1]"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. Bio Section (inline, same scroll area) -->
+      <div class="px-6 pt-5 pb-8">
+        <div class="flex items-center gap-2 mb-3 px-1">
+           <span class="text-xs font-bold text-gray-400">个性签名 / 设定</span>
+           <div class="h-[1px] flex-1 bg-gray-200"></div>
+        </div>
+
+        <!-- Bio Card -->
+        <div class="relative bg-white rounded-2xl p-4 shadow-sm">
+          <i class="fa-solid fa-quote-left text-gray-200 text-3xl absolute -top-2 -left-2 z-0"></i>
+
+          <div class="relative z-10 text-[14px] text-[#4a4a4a] leading-relaxed font-medium pl-3 pt-2 line-clamp-6">
+              {{ characterIntro }}
           </div>
         </div>
-        <!-- Arrow -->
-        <i class="fa-solid fa-chevron-right text-gray-300 text-sm"></i>
-      </div>
 
-      <!-- Send Message Button (WeChat Green) -->
-      <button @click="handleSendMessage"
-              class="w-full bg-[#07c160] hover:bg-[#06ad56] active:bg-[#05984b] text-white h-[56px] rounded-full flex items-center justify-center gap-2 shadow-lg shadow-green-500/20 active:scale-[0.98] transition-all">
-        <i class="fa-solid fa-comment-dots text-xl transform scale-x-[-1]"></i>
-        <span class="text-[17px] font-bold tracking-wide">发消息</span>
-      </button>
-    </div>
-
-    <!-- 3. Bottom Bio Section -->
-    <div class="flex-1 overflow-y-auto px-6 py-6">
-      <div class="flex items-center gap-2 mb-3 px-1">
-         <span class="text-xs font-bold text-gray-400">简介</span>
-         <div class="h-[1px] flex-1 bg-gray-200"></div>
-      </div>
-      
-      <!-- Bio Card -->
-      <div class="relative">
-        <!-- Quote Icon -->
-        <i class="fa-solid fa-quote-left text-gray-200 text-3xl absolute -top-2 -left-2 z-0"></i>
-        
-        <div class="relative z-10 text-[15px] text-[#4a4a4a] leading-relaxed font-medium pl-3 pt-2">
-            {{ characterIntro }}
+        <!-- Scroll hint (subtle) -->
+        <div class="flex justify-center mt-4 opacity-30">
+          <div class="w-8 h-1 rounded-full bg-gray-400 animate-pulse"></div>
         </div>
       </div>
     </div>

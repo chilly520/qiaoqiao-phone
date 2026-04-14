@@ -20,6 +20,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     const logistics = ref([])
     const chatMessages = ref({}) // 按店铺 ID 分组的消息 { shopId: [] }
     const activeShopId = ref('platform') // 当前对话的店铺
+    const paymentRequests = ref([]) // 代付请求记录
 
     // 用户扩容数据
     const addresses = ref([
@@ -465,6 +466,7 @@ export const useShoppingStore = defineStore('shopping', () => {
             reviews.value = saved.reviews || {}
             subscribedShops.value = saved.subscribedShops || []
             useFantasyCities.value = saved.useFantasyCities || false
+            paymentRequests.value = saved.paymentRequests || []
 
             // 检查是否有进行中的物流，如果有则启动定时器
             const hasActiveLogistics = logistics.value.some(l =>
@@ -485,7 +487,8 @@ export const useShoppingStore = defineStore('shopping', () => {
             footprints: footprints.value, coupons: coupons.value,
             points: points.value, reviews: reviews.value,
             subscribedShops: subscribedShops.value,
-            useFantasyCities: useFantasyCities.value, // 保存城市偏好
+            useFantasyCities: useFantasyCities.value,
+            paymentRequests: paymentRequests.value, // 保存代付请求
             lastUpdateTime: Date.now() // 保存最后更新时间
         }
         
@@ -709,7 +712,12 @@ export const useShoppingStore = defineStore('shopping', () => {
         }
 
         // 尝试从钱包扣款
-        const paySuccess = walletStore.decreaseBalance(total, `购物: ${items[0].title}${items.length > 1 ? '等' : ''}`, paymentMethod)
+        let paySuccess = false
+        try {
+            paySuccess = walletStore.decreaseBalance(total, `购物: ${items[0].title}${items.length > 1 ? '等' : ''}`, paymentMethod)
+        } catch (err) {
+            console.error('[ShoppingStore] Payment error:', err)
+        }
 
         if (!paySuccess) {
             alert('余额不足，支付失败！')
@@ -729,7 +737,6 @@ export const useShoppingStore = defineStore('shopping', () => {
         }
 
         orders.value.unshift(order)
-        generateLogistics(order.id)
 
         // 增加积分
         points.value += Math.floor(total / 10)
@@ -739,10 +746,109 @@ export const useShoppingStore = defineStore('shopping', () => {
             cart.value = cart.value.filter(c => c.cartId !== item.cartId)
         })
 
+        // 异步生成物流（不阻塞订单创建）
+        setTimeout(() => {
+            generateLogistics(order.id)
+        }, 100)
+
         saveStore()
         return order
     }
 
+    // ============ 代付功能 ============
+
+    // 发起代付请求
+    const requestPaymentForOrder = (orderId, targetFriendId) => {
+        const order = orders.value.find(o => o.id === orderId)
+        if (!order) return null
+
+        // 检查是否已有进行中的代付请求
+        const existing = paymentRequests.value.find(r =>
+            r.orderId === orderId && r.targetFriendId === targetFriendId && !r.status
+        )
+        if (existing) return existing
+
+        const request = {
+            id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            orderId,
+            targetFriendId,
+            amount: order.total,
+            items: order.items.map(i => ({ title: i.title, price: i.price, quantity: i.quantity, image: i.image })),
+            status: null, // null=待处理, true=已同意, false=已拒绝
+            createdAt: new Date().toISOString()
+        }
+
+        paymentRequests.value.push(request)
+        saveStore()
+        return request
+    }
+
+    // 处理代付响应（同意/拒绝）
+    const handlePaymentResponse = (requestId, accepted) => {
+        const req = paymentRequests.value.find(r => r.id === requestId)
+        if (!req || req.status !== null) return { success: false, reason: 'not_found' }
+
+        if (accepted) {
+            try {
+                // 代付人扣款
+                const paySuccess = walletStore.decreaseBalance(req.amount, `代付: ${req.items?.[0]?.title || '商品'}`)
+                if (!paySuccess) {
+                    console.error('[ShoppingStore] Payment failed - insufficient balance')
+                    return { success: false, reason: 'insufficient_balance', amount: req.amount }
+                }
+
+                // 如果有订单ID → 更新订单状态 + 生成物流
+                if (req.orderId && !req.orderId.startsWith('pending_')) {
+                    const order = orders.value.find(o => o.id === req.orderId)
+                    if (order) {
+                        order.status = 'paid'
+                        order.paidAt = new Date().toISOString()
+                        points.value += Math.floor(req.amount / 10)
+
+                        setTimeout(() => generateLogistics(order.id), 100)
+                    }
+                } else {
+                    // 预付款请求（CheckoutModal 发的，还没创建订单）
+                    // 标记为已支付，由发起方后续创建实际订单
+                    req.isPrePayFulfilled = true
+                }
+            } catch (e) {
+                console.error('[ShoppingStore] handlePaymentResponse wallet error:', e)
+                return { success: false, reason: 'wallet_error', error: e.message }
+            }
+        }
+
+        req.status = accepted ? true : false
+        req.respondedAt = new Date().toISOString()
+        saveStore()
+
+        // 通知发起方
+        setTimeout(async () => {
+            try {
+                const cs = await import('./chatStore.js')
+                const chatStore = cs.useChatStore()
+                const statusText = accepted ? '同意了你的代付请求，已帮你完成支付！' : '拒绝了你的代付请求。'
+                Object.keys(chatStore.chats).forEach(chatId => {
+                    const msgs = chatStore.chats[chatId].msgs || []
+                    const hasRequest = msgs.some(m => m.type === 'payment_request' && m.paymentRequestId === req.id)
+                    if (hasRequest) {
+                        chatStore.addMessage(chatId, { role: 'system', content: `[代付通知] ${statusText}` })
+                    }
+                })
+            } catch(e) { console.error('[ShoppingStore] notify failed:', e) }
+        }, 500)
+
+        return { success: true, accepted }
+    }
+
+    // 获取某人的待处理代付请求
+    const getPendingPaymentRequests = (targetFriendId) => {
+        return paymentRequests.value.filter(
+            r => r.targetFriendId === targetFriendId && r.status === null
+        )
+    }
+
+    // 确认收货（将商品加入背包）
     const confirmReceipt = (orderId) => {
         const order = orders.value.find(o => o.id === orderId)
         if (order && order.status !== 'completed') {
@@ -1048,7 +1154,7 @@ export const useShoppingStore = defineStore('shopping', () => {
         products, cart, orders, logistics, chatMessages, activeShopId,
         addresses, favorites, footprints, coupons, points, reviews, subscribedShops,
         currentCategory, searchQuery, loading, currentView,
-        exchangeHistory, weeklyReport, useFantasyCities,
+        exchangeHistory, weeklyReport, useFantasyCities, paymentRequests,
         // Getters
         categories, currentUser, filteredProducts, cartCount, cartTotal, pendingOrders,
         // Actions
@@ -1057,6 +1163,7 @@ export const useShoppingStore = defineStore('shopping', () => {
         addToCart, removeFromCart, createOrder, addToFavorites, removeFavorite, addFootprint,
         followShop, unfollowShop, confirmReceipt, deleteOrder, hastenLogistics,
         exchangeReward, generateWeeklyReport, toggleFantasyCities,
+        requestPaymentForOrder, handlePaymentResponse, getPendingPaymentRequests,
         switchView: (v) => currentView.value = v,
         setCategory: (c) => currentCategory.value = c,
         setSearchQuery: (q) => searchQuery.value = q,

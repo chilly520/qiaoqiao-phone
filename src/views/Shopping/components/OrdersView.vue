@@ -265,6 +265,45 @@
                 </div>
             </div>
         </div>
+
+        <!-- 代付好友选择器弹窗 -->
+        <div v-if="showPaymentSelector"
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            @click="showPaymentSelector = false">
+            <div class="bg-white w-full max-w-sm mx-4 rounded-3xl max-h-[80vh] overflow-hidden animate-scale-in"
+                @click.stop>
+                <!-- 头部 -->
+                <div class="bg-gradient-to-br from-blue-500 to-indigo-600 p-5 text-white text-center">
+                    <h3 class="text-base font-bold mb-1">选择代付人</h3>
+                    <p class="text-xs opacity-80">请好友帮忙支付 ¥{{ payingOrder?.total }}</p>
+                    <p class="text-[10px] mt-1 opacity-60">{{ payingOrder?.items?.[0]?.title }}</p>
+                </div>
+
+                <!-- 好友列表 -->
+                <div class="p-4 overflow-y-auto max-h-[55vh]">
+                    <input v-model="searchPaymentFriend" type="text" placeholder="搜索好友..."
+                        class="w-full bg-slate-100 rounded-2xl px-4 py-2.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 mb-4">
+                    <span class="absolute left-3.5 top-[calc(50%+80px)] text-slate-400 text-sm">🔍</span>
+
+                    <div class="space-y-2">
+                        <div v-for="friend in filteredPaymentFriends" :key="friend.id" @click="sendPaymentRequest(friend)"
+                            class="flex items-center gap-3 p-3 rounded-2xl hover:bg-blue-50 active:bg-blue-100 cursor-pointer transition-colors">
+                            <img :src="friend.avatar" class="w-12 h-12 rounded-2xl object-cover">
+                            <div class="flex-1 min-w-0">
+                                <h4 class="text-sm font-bold text-slate-800">{{ friend.name }}</h4>
+                                <p class="text-xs text-blue-500 mt-0.5">请求代付 ¥{{ payingOrder?.total }}</p>
+                            </div>
+                            <span class="text-blue-500 text-lg">💳</span>
+                        </div>
+                    </div>
+
+                    <div v-if="filteredPaymentFriends.length === 0" class="text-center py-12 text-slate-400">
+                        <p class="text-4xl mb-2">🤷</p>
+                        <p class="text-xs">没有找到好友</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -294,6 +333,11 @@ const showFriendSelector = ref(false)
 const sharingOrder = ref(null)
 const searchFriend = ref('')
 
+// 代付相关
+const showPaymentSelector = ref(false)
+const payingOrder = ref(null)
+const searchPaymentFriend = ref('')
+
 // 从微信 store 获取好友列表
 const allFriends = computed(() => {
     // 获取所有好友（从微信通讯录，排除群聊）
@@ -304,7 +348,17 @@ const filteredFriends = computed(() => {
     if (!searchFriend.value) return allFriends.value
     return allFriends.value.filter(f =>
         f.name.toLowerCase().includes(searchFriend.value.toLowerCase()) ||
-        (f.nickname && f.nickname.toLowerCase().includes(searchFriend.value.toLowerCase()))
+        (f.remark && f.remark.toLowerCase().includes(searchFriend.value.toLowerCase()))
+    )
+})
+
+// 代付好友列表（排除自己）
+const filteredPaymentFriends = computed(() => {
+    const list = allFriends.value.filter(f => f.id !== chatStore.currentChatId)
+    if (!searchPaymentFriend.value) return list
+    return list.filter(f =>
+        f.name.toLowerCase().includes(searchPaymentFriend.value.toLowerCase()) ||
+        (f.remark && f.remark.toLowerCase().includes(searchPaymentFriend.value.toLowerCase()))
     )
 })
 
@@ -314,33 +368,97 @@ const shareOrder = (order) => {
 }
 
 const selectFriend = async (friend) => {
-    console.log('分享订单数据:', sharingOrder.value)
-
     // 创建订单卡片消息（用户视角发送）
     const orderCard = {
         role: 'user',
         type: 'order_share',
+        content: `[订单分享] ${sharingOrder.value.items[0]?.title || '商品'} ¥${sharingOrder.value.total}`,
         orderId: sharingOrder.value.id,
         orderData: JSON.parse(JSON.stringify(sharingOrder.value)),
         timestamp: Date.now()
     }
 
-    console.log('发送的订单卡片:', orderCard)
-
     try {
         const result = await chatStore.addMessage(friend.id, orderCard)
-        console.log('addMessage 返回结果:', result)
-        if (result) {
-            console.log('订单卡片发送成功')
-        } else {
-            console.error('订单卡片发送失败，addMessage 返回 false')
+        if (result === false) {
+            // fallback：尝试通过 name 查找
+            const targetChat = Object.values(chatStore.chats).find(
+                c => c.name === friend.name || c.remark === friend.name || c.displayName === friend.name
+            )
+            if (targetChat) {
+                await chatStore.addMessage(targetChat.id, orderCard)
+            }
         }
+
+        // 显示成功提示
+        const toast = document.createElement('div')
+        toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-green-600 text-white px-6 py-4 rounded-2xl text-sm font-bold z-[200] shadow-xl'
+        toast.textContent = `✅ 已分享给 ${friend.name}`
+        document.body.appendChild(toast)
+        setTimeout(() => toast.remove(), 2000)
     } catch (error) {
-        console.error('发送订单卡片失败:', error)
+        console.error('[OrdersView] 分享订单失败:', error)
+        const toast = document.createElement('div')
+        toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-6 py-4 rounded-2xl text-sm font-bold z-[200]'
+        toast.textContent = '❌ 分享失败，请重试'
+        document.body.appendChild(toast)
+        setTimeout(() => toast.remove(), 2000)
     }
 
     showFriendSelector.value = false
     showShareCard.value = false
+}
+
+// 代付：打开选择器
+const requestPayment = (order) => {
+    payingOrder.value = order
+    showPaymentSelector.value = true
+}
+
+// 代付：发送请求给好友
+const sendPaymentRequest = async (friend) => {
+    if (!payingOrder.value || !friend.id) return
+
+    // 创建代付记录
+    const paymentReq = store.requestPaymentForOrder(payingOrder.value.id, friend.id)
+    if (!paymentReq) {
+        alert('创建代付请求失败')
+        return
+    }
+
+    // 创建代付卡片消息发送给好友
+    const paymentCard = {
+        role: 'user',
+        type: 'payment_request',
+        content: `[代付请求] ${payingOrder.value.items[0]?.title} ¥${payingOrder.value.total}`,
+        paymentRequestId: paymentReq.id,
+        orderId: payingOrder.value.id,
+        amount: payingOrder.value.total,
+        items: payingOrder.value.items.map(i => ({ title: i.title, price: i.price, quantity: i.quantity, image: i.image })),
+        timestamp: Date.now(),
+        status: null  // null = 等待对方处理 | true = 已接受 | false = 已拒绝
+    }
+
+    try {
+        const result = await chatStore.addMessage(friend.id, paymentCard)
+        if (result === false) {
+            const targetChat = Object.values(chatStore.chats).find(
+                c => c.name === friend.name || c.remark === friend.name
+            )
+            if (targetChat) await chatStore.addMessage(targetChat.id, paymentCard)
+        }
+
+        const toast = document.createElement('div')
+        toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-6 py-4 rounded-2xl text-sm font-bold z-[200]'
+        toast.textContent = `💳 已向 ${friend.name} 发送代付请求`
+        document.body.appendChild(toast)
+        setTimeout(() => toast.remove(), 2000)
+    } catch(e) {
+        console.error('[OrdersView] sendPaymentRequest failed:', e)
+    }
+
+    showPaymentSelector.value = false
+    payingOrder.value = null
 }
 
 // 显示商品详情

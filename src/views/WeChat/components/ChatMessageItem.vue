@@ -257,6 +257,105 @@
                             </div>
                         </div>
 
+                        <!-- CASE 3.1: Payment Request (代付) Card — 小清新风格 -->
+                        <div v-else-if="msg.type === 'payment_request'"
+                            class="group relative w-[276px] overflow-hidden rounded-2xl shadow-sm transition-all active:scale-[0.98] select-none"
+                            :class="[
+                                msg.role === 'user' ? 'mr-1' : 'ml-1',
+                                msg.status === 'accepted' ? 'opacity-55' :
+                                msg.status === 'rejected' ? 'opacity-45 grayscale' : ''
+                            ]">
+                            <!-- 头部 — 樱花粉渐变 -->
+                            <div class="px-4 pt-4 pb-3 flex items-center gap-3 relative overflow-hidden rounded-t-2xl text-white"
+                                :class="[
+                                    msg.status === 'accepted' ? 'bg-gradient-to-br from-emerald-300 to-teal-400' :
+                                    msg.status === 'rejected' ? 'bg-gradient-to-br from-gray-200 to-gray-300' :
+                                    'bg-gradient-to-br from-pink-300 via-rose-200 to-orange-100'
+                                ]"
+                                @click.stop="togglePaymentDetail(msg)"
+                                style="cursor: pointer;">
+                                <!-- 装饰泡泡 -->
+                                <div class="absolute -top-4 -right-4 w-16 h-16 bg-white/20 rounded-full"></div>
+                                <div class="absolute bottom-2 left-8 w-10 h-10 bg-white/15 rounded-full"></div>
+                                <!-- 图标 -->
+                                <div class="w-11 h-11 rounded-xl bg-white/40 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-sm z-10 relative">
+                                    <span class="text-lg">{{ msg.status === 'accepted' ? '🌸' : msg.status === 'rejected' ? '💫' : '💝' }}</span>
+                                </div>
+                                <div class="flex-1 min-w-0 z-10 relative pr-1">
+                                    <div class="text-[11px] font-bold uppercase tracking-wide opacity-70 mb-0.5" style="color: rgba(255,255,255,0.85);">
+                                        {{ msg.status === 'accepted' ? '代付成功~' : msg.status === 'rejected' ? '已拒绝啦' : '代付请求 ✧' }}
+                                    </div>
+                                    <div class="text-[13px] font-semibold truncate drop-shadow-sm leading-tight" style="color: #5c3d2e;">
+                                        {{ msg.items?.[0]?.title || '帮我付一下嘛' }}
+                                        <span v-if="(msg.items||[]).length > 1" class="text-[11px] opacity-75">等{{ (msg.items||[]).length }}件</span>
+                                    </div>
+                                </div>
+                                <!-- 价格 -->
+                                <div v-if="msg.status !== 'accepted' && msg.status !== 'rejected'" class="z-10 relative text-base font-black shrink-0" style="color: #e85a71; text-shadow: 0 1px 2px rgba(255,255,255,0.7);">
+                                    ¥{{ msg.amount || '?' }}
+                                </div>
+                                <!-- 状态图标 -->
+                                <i v-else class="fas fa-check-circle z-10 relative text-base"></i>
+                            </div>
+
+                            <!-- 内容区 — 白底圆角 -->
+                            <div class="bg-white px-4 pb-3.5 pt-2.5 rounded-b-2xl border-x border-b border-pink-50/80">
+                                <!-- 收起态：简略商品 -->
+                                <div v-if="!expandedPaymentId || expandedPaymentId !== msg.id" class="flex items-center gap-2.5">
+                                    <img v-if="msg.items?.[0]?.image" :src="msg.items[0].image" class="w-12 h-12 rounded-xl object-cover bg-pink-50/50 shadow-inner">
+                                    <div v-else class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-50 to-orange-50 flex items-center justify-center text-xl">🎁</div>
+                                    <div class="flex-1 min-w-0">
+                                        <h4 class="text-[13px] font-semibold text-slate-700 line-clamp-1">{{ msg.items?.[0]?.title || '商品' }}</h4>
+                                        <p v-if="(msg.items||[]).length > 1" class="text-[11px] text-slate-400 mt-0.5">+{{ (msg.items||[]).length - 1 }} 件商品</p>
+                                        <p class="text-[11px] text-slate-400 mt-0.5">x{{ msg.items?.[0]?.quantity || 1 }} · ¥{{ msg.items?.[0]?.price || '?' }}</p>
+                                    </div>
+                                    <i class="fas fa-chevron-down text-[10px] text-pink-300 transition-transform duration-200" :class="{ 'rotate-180': expandedPaymentId === msg.id }"></i>
+                                </div>
+
+                                <!-- 展开态：完整商品详情 -->
+                                <div v-else class="space-y-2.5 pb-1 animate-fade-in">
+                                    <!-- 商品列表 -->
+                                    <div class="space-y-2 max-h-[160px] overflow-y-auto scroll-hide">
+                                        <div v-for="(item, idx) in (msg.items || [])" :key="idx" class="flex items-center gap-2.5 p-2 rounded-xl bg-gradient-to-r from-pink-50/60 to-orange-50/30 border border-pink-50/60">
+                                            <img :src="item.image" class="w-14 h-14 rounded-xl object-cover bg-white shadow-sm">
+                                            <div class="flex-1 min-w-0">
+                                                <h4 class="text-[13px] font-medium text-slate-700 line-clamp-2 leading-snug">{{ item.title }}</h4>
+                                                <p class="text-[11px] text-pink-400 mt-0.5">x{{ item.quantity }}</p>
+                                            </div>
+                                            <span class="text-[13px] font-bold text-pink-500 whitespace-nowrap">¥{{ item.price }}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 合计金额条 -->
+                                    <div class="flex items-center justify-between py-2 px-3 bg-gradient-to-r from-pink-100 to-orange-100 rounded-xl border border-pink-100/80">
+                                        <span class="text-[12px] font-medium text-slate-600">共 {{ (msg.items||[]).length }} 件</span>
+                                        <span class="text-[17px] font-black" style="color: #e85a71;">¥{{ msg.amount || calculatePaymentTotal(msg) }}</span>
+                                    </div>
+                                </div>
+
+                                <!-- 操作按钮区 -->
+                                <div v-if="msg.status === null && msg.role !== 'user'" class="flex gap-2.5 mt-2.5 pt-2.5 border-t border-pink-50">
+                                    <button @click.stop="$emit('payment-response', { requestId: msg.paymentRequestId, accepted: true })"
+                                        class="flex-1 py-2.5 bg-gradient-to-r from-pink-300 to-rose-300 text-white text-xs font-bold rounded-xl active:scale-95 transition-transform shadow-md shadow-pink-200/40 hover:shadow-lg">
+                                        💕 帮TA付
+                                    </button>
+                                    <button @click.stop="$emit('payment-response', { requestId: msg.paymentRequestId, accepted: false })"
+                                        class="flex-1 py-2.5 bg-slate-100 text-slate-450 text-xs font-bold rounded-xl hover:bg-slate-150 active:scale-95 transition-colors">
+                                        🙅 不太好意思
+                                    </button>
+                                </div>
+                                <div v-else-if="msg.status === 'accepted'" class="text-center py-2.5 mt-1.5 text-[12px] font-medium rounded-xl bg-emerald-50 text-emerald-600">
+                                    🌸 好哒，已经帮对方付好啦~
+                                </div>
+                                <div v-else-if="msg.status === 'rejected'" class="text-center py-2.5 mt-1.5 text-[12px] font-medium rounded-xl bg-slate-50 text-slate-400">
+                                    💫 对方婉拒了这次代付呢
+                                </div>
+                                <div v-else class="text-center py-2 text-[11px] text-pink-400 font-medium">
+                                    点上方查看详情 👆
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- CASE 2.1: Gift Claimed Card -->
                         <div v-else-if="msg.type === 'gift_claimed'"
                             class="group relative w-[240px] overflow-hidden rounded-2xl shadow-md transition-all active:scale-[0.98] select-none cursor-pointer"
@@ -1393,7 +1492,8 @@ const props = defineProps({
 
 const emit = defineEmits([
     'click-avatar', 'dblclick-avatar', 'context-menu', 'avatar-longpress',
-    'toggle-select', 'click-pay', 'play-voice', 'click-gift'
+    'toggle-select', 'click-pay', 'play-voice', 'click-gift',
+    'payment-response' // 代付响应（同意/拒绝）
 ])
 
 const stickerStore = useStickerStore()
@@ -1409,6 +1509,22 @@ const familyCardModal = ref(null)
 const familyDetailModal = ref(null)
 const isPressing = ref(false)
 const pressTimer = ref(null)
+const expandedPaymentId = ref(null) // 代付卡片展开状态
+
+// 代付卡片：切换展开/收起
+const togglePaymentDetail = (msg) => {
+    if (expandedPaymentId.value === msg.id) {
+        expandedPaymentId.value = null
+    } else {
+        expandedPaymentId.value = msg.id
+    }
+}
+
+// 代付卡片：计算总金额（fallback）
+const calculatePaymentTotal = (msg) => {
+    if (!msg.items) return '?'
+    return msg.items.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0).toFixed(2)
+}
 
 // --- Group Roles & Titles ---
 const senderActivity = computed(() => {
@@ -1816,7 +1932,9 @@ const isValidMessage = computed(() => {
                          isFavoriteCard.value || isMomentCard.value || isWeiboCard.value || 
                          isForumCard.value || isLoveSpaceInvite.value || isLoveSpaceContract.value || 
                          props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || 
-                         props.msg.type === 'card' || props.msg.type === 'order_share' || isDiceMsg.value || isTarotMsg.value ||
+                         props.msg.type === 'card' || props.msg.type === 'order_share' ||
+                         props.msg.type === 'payment_request' || // 代付请求
+                         isDiceMsg.value || isTarotMsg.value ||
                          parsedInnerVoice.value !== null
 
     if (isSpecialType) {

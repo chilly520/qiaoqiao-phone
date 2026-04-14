@@ -83,13 +83,36 @@ export const useWalletStore = defineStore('wallet', () => {
     }
 
     function save() {
-        localStorage.setItem('qiaoqiao_wallet', JSON.stringify({
-            balance: balance.value,
-            transactions: transactions.value,
-            bankCards: bankCards.value,
-            familyCards: familyCards.value,
-            paymentSettings: paymentSettings.value
-        }))
+        try {
+            localStorage.setItem('qiaoqiao_wallet', JSON.stringify({
+                balance: balance.value,
+                transactions: transactions.value,
+                bankCards: bankCards.value,
+                familyCards: familyCards.value,
+                paymentSettings: paymentSettings.value
+            }))
+        } catch (e) {
+            if (e.name === 'QuotaExceededError' || e.code === 22) {
+                // 配额溢出时裁剪交易记录（只保留最近200条）
+                console.warn('[WalletStore] localStorage quota exceeded, trimming transactions')
+                try {
+                    const trimmed = transactions.value.slice(0, 200)
+                    localStorage.setItem('qiaoqiao_wallet', JSON.stringify({
+                        balance: balance.value,
+                        transactions: trimmed,
+                        bankCards: bankCards.value,
+                        familyCards: familyCards.value,
+                        paymentSettings: paymentSettings.value
+                    }))
+                    transactions.value = trimmed
+                } catch (e2) {
+                    // 再不行只保留核心数据
+                    console.error('[WalletStore] Failed even after trim:', e2)
+                }
+            } else {
+                throw e
+            }
+        }
     }
 
     // Money Operations

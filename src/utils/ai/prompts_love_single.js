@@ -23,7 +23,7 @@ ${recentChats.slice(-15).map(m => `${m.role === 'assistant' ? charName : userNam
 【⚠️ 绝对禁止事项 ⚠️】
 1. **严禁使用任何表情包语法**：禁止输出任何类似 [表情包:名字]、[STICKER:...] 的内容。
 2. **严禁输出解释或独白**：只需要输出 JSON 块。
-3. **内容风格**：发布的留言或日记应具有“空间动态”的质感，带点仪式感或温情，不要像简短、急促的 IM 对话。
+3. **内容风格**：发布的留言或日记应具有"空间动态"的质感，带点仪式感或温情，不要像简短、急促的 IM 对话。
 `;
 }
 
@@ -69,10 +69,15 @@ export function generateMessagePrompt(charName, userName, userProfile, recentCha
   
   return `${commonContext}
 【任务：在留言板发布留言】
-这类似于在对方的“空间留言板”留言，而不是发送即时消息。语气应带有留念、关怀或逗趣。
+这类似于在对方的"空间留言板"留言，而不是发送即时消息。语气应带有留念、关怀或逗趣。
 
 【留言板历史 (最后 5 条)】
-${recentMessages.slice(-5).map(m => `[ID:${m.id}] ${m.senderName}: ${m.content}`).join('\n') || '（留言板暂无记录）'}
+${recentMessages.slice(-5).map(m => `[ID:${m.id}${m.replyToId ? ' →回复→'+m.replyToId : ''}] ${m.senderName}: ${m.content}`).join('\n') || '（留言板暂无记录）'}
+
+【⚠️ 重要规则】
+1. **不要重复回复已回复过的留言**：如果某条留言已经有 replyToId（说明已被回复过），不要再对它进行二次回复
+2. **优先发布新留言**：除非有非常强的理由要回复某条未回复留言，否则请直接发布一条全新的独立留言（replyToId 设为 null）
+3. **内容差异化**：查看历史留言，确保你写的内容和之前的不重复
 
 【输出格式】
 [LS_JSON: {
@@ -82,7 +87,7 @@ ${recentMessages.slice(-5).map(m => `[ID:${m.id}] ${m.senderName}: ${m.content}`
 }]
 
 【专项要求】
-1. **去即时化**：回复内容要像一段完整的“小贴士”或“一段心意”，不要回复“在干嘛？”这种需要对方立刻回话的聊天词。
+1. **去即时化**：回复内容要像一段完整的"小贴士"或"一段心意"，不要回复"在干嘛？"这种需要对方立刻回话的聊天词。
 2. **空间感**：把这里当成是你们两人的秘密基地。
 3. **严禁任何 [表情包:xxx] 内容**。
 `;
@@ -97,28 +102,36 @@ export function generateFootprintPrompt(charName, userName, userProfile, recentC
   
   return `${commonContext}
 【任务：记录今日角色足迹】
-为你自己 (${charName}) 的今天记录下 2-3 条动态，让 ${userName} 知道你在忙什么或想分享什么瞬间。
+为你自己 (${charName}) 的今天记录下 **3~4 条动态**，覆盖从早晨到当前时间的生活动线，让 ${userName} 了解你今天的一天。
 
 【时间范围】
-- 从今天 00:00 到当前时间 (${currentTime})
+- 从今天 06:00 到当前时间 (${currentTime})
 - 如果历史记录中已有足迹，则从最后一条足迹的时间继续往后添加
-- 以 15-30-60 分钟为间隔节点，不要过于密集
+- 每条间隔 20~40 分钟，模拟真实生活动线（起床→出门→工作/学习→午休→下午→傍晚→晚间）
+- **必须输出 3~4 条完整的足迹**，不要只输出 1 条
 
 【今日已发布足迹】
 ${todayFootprints.map(f => `${f.time}: ${f.content} (@${f.location})`).join('\n') || '（今日暂无足迹记录）'}
 
-【输出格式】
+【输出格式（必须输出3~4条）】
 [LS_JSON: {
   "type": "footprint",
-  "time": "HH:mm",
-  "location": "地点名 (如：公司茶歇间 / 街角花店 / 书房)",
-  "content": "简短的一段话描述当时的动作或心情"
+  "footprints": [
+    {"time": "HH:mm", "location": "地点", "content": "描述"},
+    {"time": "HH:mm", "location": "地点", "content": "描述"},
+    {"time": "HH:mm", "location": "地点", "content": "描述"},
+    {"time": "HH:mm", "location": "地点", "content": "描述"}
+  ]
 }]
 
+或者如果只能输出单条，也请输出：
+[LS_JSON: { "type": "footprint", "time": "HH:mm", "location": "地点", "content": "描述" }]
+
 【专项要求】
-1. **时间逻辑**：新足迹的时间必须在 00:00~${currentTime} 之间，且如果已有足迹，要在最后一条时间之后
-2. **间隔合理**：每条足迹间隔 15-30-60 分钟，模拟真实生活动线
-3. **严禁任何 [表情包:xxx] 内容**。
+1. **时间逻辑**：新足迹的时间必须在 06:00~${currentTime} 之间，且如果已有足迹，要在最后一条时间之后
+2. **间隔合理**：每条足迹间隔 20-40 分钟，模拟真实生活动线
+3. **生活化**：足迹内容要具体生动（不是"在上班"而是"在工位上啃着三明治改PPT"）
+4. **严禁任何 [表情包:xxx] 内容**。
 `;
 }
 
@@ -151,7 +164,7 @@ export function generateLetterPrompt(charName, userName, userProfile, recentChat
   
   return `${commonContext}
 【任务：写一封正式情书】
-在“空间信箱”里为对方投递一封沉甸甸的长信。
+在"空间信箱"里为对方投递一封沉甸甸的长信。
 
 【最近信件历史】
 ${recentLetters.slice(-3).map(l => `《${l.title}》- ${l.content.substring(0, 50)}...`).join('\n') || '（信箱暂空）'}
@@ -161,8 +174,13 @@ ${recentLetters.slice(-3).map(l => `《${l.title}》- ${l.content.substring(0, 5
   "type": "letter",
   "title": "充满美感的信件标题",
   "content": "800 字以上的极长篇幅，排版错落有致，语言极尽柔情",
-  "paperIndex": 1 
+  "paperIndex": 0-12之间的任意整数（每封信随机选择不同信纸）
 }]
+
+【⚠️ 重要规则】
+1. **不要重复回复已存在的信件**：历史中的信件只是让你了解通信风格和进度，不要在内容中逐一回应或提到它们
+2. **paperIndex 必须每次随机选一个 0~12 的数字**，不要总是返回相同的数字，否则所有信件看起来一样
+3. 这是一封**全新的独立信件**，不是对任何一封旧信的回复
 
 【格式要求】
 1. **正式书信格式**：开头要有称呼 (如"亲爱的 xxx:")，顶格写
@@ -265,7 +283,7 @@ ${houseState.lastAction ? `最后一次动作：${houseState.lastAction}` : '（
 【输出格式】
 [LS_JSON: {
   "type": "house",
-  "action": "极具画面感的装修或日常清扫描写，强调‘我们’共同维护家的感觉",
+  "action": "极具画面感的装修或日常清扫描写，强调'我们'共同维护家的感觉",
   "comfortIncrease": 10
 }]
 
@@ -361,23 +379,33 @@ ${responder} 刚刚回答了这个问题："${answerText}"。
 export function generateLetterCommentPrompt(charName, userName, userProfile, recentChats, letterData) {
   const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
   
+  // 提取用户在信件下的最新留言（用于回复）
+  const userComments = (letterData.comments || [])
+    .filter(c => c.authorId === 'user' || c.author === 'user' || c.authorName !== charName)
+    .map(c => `【${c.authorName || userName}】: ${c.text || c.content}`)
+    .join('\n') || '（暂无用户留言）'
+  
   return `${commonContext}
-【任务：评论 ${userName} 的来信】
+【任务：回复 ${userName} 在信件下的留言】
 ${userName} 给你写了一封信《${letterData.title}》。
 信件内容："${letterData.content.substring(0, 200)}${letterData.content.length > 200 ? '...' : ''}"
 
-请你以 ${charName} 的身份，在信件下方写一条评论，表达你读后的感受。
+【信件下的用户留言】
+${userComments}
+
+请你以 ${charName} 的身份，针对 ${userName} 的**留言内容**进行回复。就像在信件评论区互动一样。
 
 【输出格式】
 [LS_JSON: {
   "type": "letterComment",
   "letterId": ${letterData.id},
-  "content": "50-100 字的评论，要真诚地表达读后感受"
+  "content": "50-100 字的回复，要真诚回应对方的留言内容"
 }]
 
 【专项要求】
-1. **真情实感**：针对信件内容表达具体感受，不要泛泛而谈
-2. **严禁任何 [表情包:xxx] 内容**。
+1. **针对性回复**：必须针对上方用户的留言内容进行回应，不要泛泛而谈
+2. **真情实感**：结合信件内容和留言，表达具体感受
+3. **严禁任何 [表情包:xxx] 内容**。
 `;
 }
 
@@ -409,22 +437,32 @@ ${userName} 上传了一张照片《${photoData.title}》。
 export function generateDiaryCommentPrompt(charName, userName, userProfile, recentChats, diaryData) {
   const commonContext = buildCommonContext(charName, userName, userProfile, recentChats);
   
+  // 提取用户在日记下的最新留言（用于回复）
+  const userComments = (diaryData.comments || [])
+    .filter(c => c.authorId === 'user' || c.author === 'user' || c.authorName !== charName)
+    .map(c => `【${c.authorName || userName}】: ${c.text || c.content}`)
+    .join('\n') || '（暂无用户留言）'
+  
   return `${commonContext}
-【任务：评论 ${userName} 的日记】
-${userName} 写了一篇日记《${diaryData.title}》。
-日记内容："${diaryData.content.substring(0, 150)}${diaryData.content.length > 150 ? '...' : ''}"
+【任务：回复 ${userName} 在日记下的留言】
+${userName} 写了一篇日记《${diaryData.title || '无题'}》。
+日记内容："${(diaryData.content || '').substring(0, 150)}${(diaryData.content || '').length > 150 ? '...' : ''}"
 
-请你以 ${charName} 的身份，在日记下方写一条评论，表达你的共鸣或关心。
+【日记下的用户留言】
+${userComments}
+
+请你以 ${charName} 的身份，针对 ${userName} 的**留言内容**进行回复。就像在日记评论区互动一样。
 
 【输出格式】
 [LS_JSON: {
   "type": "diaryComment",
   "diaryId": ${diaryData.id},
-  "content": "40-100 字的评论，表达共鸣、关心或想说的话"
+  "content": "50-100 字的回复，要真诚回应对方的留言内容"
 }]
 
 【专项要求】
-1. **温暖贴心**：像恋人之间的互动，表达理解和关心
-2. **严禁任何 [表情包:xxx] 内容**。
+1. **针对性回复**：必须针对上方用户的留言内容进行回应，不要泛泛而谈
+2. **温暖贴心**：像恋人之间的互动，表达理解和关心
+3. **严禁任何 [表情包:xxx] 内容**。
 `;
 }

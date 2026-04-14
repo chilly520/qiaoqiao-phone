@@ -218,11 +218,13 @@ const loadOrderData = (orderId) => {
 // 获取物流状态文本
 const getLogisticsStatusText = (status) => {
     const statusMap = {
+        'picked': '已揽收',
         'pending': '待发货',
         'paid': '已付款',
-        'shipped': '已发货',
+        'shipped': '运输中',
         'shipping': '运输中',
         'delivering': '派送中',
+        'delivered': '待签收',
         'completed': '已签收',
         'cancelled': '已取消'
     }

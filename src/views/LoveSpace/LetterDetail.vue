@@ -178,6 +178,9 @@ async function addComment() {
   })
   
   newComment.value = ''
+  
+  // 用户留言后触发 AI 回复（仅对用户自己的留言触发）
+  loveSpaceStore.generateLetterComment(letter.value)
 }
 
 function confirmDelete() {
