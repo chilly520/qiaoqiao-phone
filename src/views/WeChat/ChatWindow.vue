@@ -958,17 +958,48 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
             }
 
             // 4. 更换头像
-            // 更宽松的正则表达式，处理可能被截断的URL，支持跨行匹配
             const avatarMatch = contentStr.match(/\[更换头像:\s*([\s\S]*?)\]/i)
             if (avatarMatch) {
                 let url = avatarMatch[1].trim()
-                // 处理可能被截断的URL，确保是有效的URL格式
-                if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-                    console.log('更换头像指令被触发:', url)
+                // 支持图片ID：在消息中查找对应图片的URL
+                if (url && !url.startsWith('http') && !url.startsWith('data:image')) {
+                    console.log('[更换头像] 收到图片ID，尝试查找对应图片:', url)
+                    // 查找该ID对应的聊天消息中的图片
+                    const targetMsg = msgs.value.find(m =>
+                        m.id === url || (m.id && url.includes(m.id))
+                    )
+                    if (targetMsg) {
+                        // 消息本身就是图片类型
+                        if (targetMsg.type === 'image' && targetMsg.content) {
+                            url = targetMsg.content
+                            console.log('[更换头像] 从图片消息找到URL')
+                        } else {
+                            // 从文本消息中提取内嵌图片URL
+                            const embedded = targetMsg.content?.match(/\[(?:图片|IMAGE)[:：]\s*((?:https?:\/\/|data:image\/)[^\]]+)\]/i)
+                            if (embedded) {
+                                url = embedded[1]
+                                console.log('[更换头像] 从消息内容提取到图片URL')
+                            }
+                        }
+                    }
+                    // 如果还没找到，回退到最近一张图片
+                    if (!url || (!url.startsWith('http') && !url.startsWith('data:image'))) {
+                        for (let i = msgs.value.length - 1; i >= 0; i--) {
+                            const m = msgs.value[i]
+                            if (m.type === 'image' && m.content && (m.content.startsWith('http') || m.content.startsWith('data:image'))) {
+                                url = m.content
+                                console.log('[更换头像] 回退到最近图片:', url.substring(0, 50))
+                                break
+                            }
+                        }
+                    }
+                }
+                if (url && (url.startsWith('http') || url.startsWith('https:') || url.startsWith('data:image'))) {
+                    console.log('更换头像指令被触发:', url?.substring(0, 60) + '...')
                     handleChangeAvatar(url)
                 } else {
-                    console.log('无效的头像URL:', url)
-                    showToast('无效的头像URL格式', 'error')
+                    console.log('无效的头像URL或未找到对应图片:', avatarMatch[1].trim())
+                    showToast('找不到对应的图片哦', 'error')
                 }
             } else {
                 // 尝试从消息内容中提取URL，即使没有[更换头像:]标签
