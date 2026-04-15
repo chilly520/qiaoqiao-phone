@@ -532,6 +532,9 @@ export const useChatStore = defineStore('chat', () => {
             isClaimed: msg.isClaimed || false,
             claimedBy: msg.claimedBy || null,
             claimTime: msg.claimTime || null,
+            // --- Red Packet fields ---
+            claims: msg.claims || [],              // 已领取记录
+            remainingCount: msg.remainingCount !== undefined ? msg.remainingCount : (msg.type === 'redpacket' ? (msg.count || 1) : undefined),
             duration: msg.duration || 0,
             quote: msg.quote || null,
             paymentId: msg.paymentId || null, // Initialize paymentId
@@ -1432,6 +1435,11 @@ export const useChatStore = defineStore('chat', () => {
                     content: newMsg.type === 'family_card' ? '[亲属卡]' : (newMsg.type === 'image' ? '[图片]' : (newMsg.content || '[消息]')),
                     timestamp: Date.now()
                 }
+            }
+
+            // 收到红包/转账时播放音效
+            if (newMsg.type === 'redpacket' || newMsg.type === 'transfer') {
+                playSound('notification')
             }
         }
 
@@ -4412,7 +4420,24 @@ export const useChatStore = defineStore('chat', () => {
     function endVote(chatId, msgId) {
         console.log('[ChatStore] End vote:', { chatId, msgId })
     }
-    const financial = setupFinancialLogic(chats, addMessage, saveChats, (sound) => console.log(`[ChatStore] Play sound: ${sound}`))
+
+    // 音效播放函数
+    function playSound(soundName) {
+        const soundMap = {
+            'coins': '/sounds/wechat/coins.mp3',
+            'notification': '/sounds/wechat/notification.mp3'
+        }
+        const src = soundMap[soundName]
+        if (!src) return
+        try {
+            const audio = new Audio(src)
+            audio.play().catch(e => console.log('[ChatStore] 音效播放失败:', e))
+        } catch (e) {
+            console.log('[ChatStore] 音效加载失败:', e)
+        }
+    }
+
+    const financial = setupFinancialLogic(chats, addMessage, saveChats, playSound)
 
     return {
         ...financial,
