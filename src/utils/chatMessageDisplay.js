@@ -674,6 +674,7 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '')
   clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '')
   clean = clean.replace(/\[(?:MOMENT_SHARE|分享朋友圈)[:：][^\]]+\]/gi, '')
+  clean = clean.replace(/\[PHONE_CMD\][\s\S]*?\[\/PHONE_CMD\]/gi, '')
   
   // Strip 【系统提示】 prefix
   clean = clean.replace(/^[【\[]?\s*系统提示\s*[】\]]?\s*[:：]?\s*/gi, '')

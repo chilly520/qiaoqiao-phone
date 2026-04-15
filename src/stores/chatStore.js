@@ -113,7 +113,8 @@ export const useChatStore = defineStore('chat', () => {
     const toastEvent = ref(null) // Event: { message, type: 'info'|'success'|'error' }
     const confirmEvent = ref(null) // Event: { title, message, onConfirm, onCancel, confirmText, cancelText }
     const promptEvent = ref(null) // Event: { title, message, placeholder, defaultValue, onConfirm, onCancel }
-    // const momentsStore = useMomentsStore() // Removed to prevent circular instantiation loop
+    // momentsStore: lazily resolved inside functions to avoid circular instantiation
+    const getMomentsStore = () => useMomentsStore()
 
     // Pagination State
     const messagePageSize = ref(50) // 每页显示50条消息
@@ -1029,7 +1030,7 @@ export const useChatStore = defineStore('chat', () => {
                         newMsg.content = JSON.stringify(momentData);
                         
                         // Add system notification to chat
-                        const momentResult = momentsStore.addMoment({
+                        const momentResult = getMomentsStore().addMoment({
                             id: momentData.id,
                             authorId: chatId,
                             content: momentData.text || momentData.content || '',
@@ -1040,7 +1041,7 @@ export const useChatStore = defineStore('chat', () => {
                             role: 'system',
                             type: 'system',
                             content: `${chat.name} 发布了一条朋友圈`,
-                            _momentReferenceId: momentResult.id
+                            _momentReferenceId: momentResult?.id
                         });
                     }
                 } catch (e) {
@@ -1098,14 +1099,14 @@ export const useChatStore = defineStore('chat', () => {
                 newMsg.content = JSON.stringify(momentData); 
                 
                 // Publish to moments feed so details are accessible and it shows in profile
-                const momentResult = momentsStore.addMoment({
+                const momentResult = getMomentsStore().addMoment({
                     id: momentData.id,
                     authorId: chatId,
                     content: momentData.text || momentData.content || '',
                     images: momentData.image ? [momentData.image] : (momentData.images || []),
                 });
 
-                newMsg._momentReferenceId = momentResult.id;
+                newMsg._momentReferenceId = momentResult?.id;
                 
                 // Add system notification to chat using helper to ensure mode inheritance
                 addMessage(chatId, {
@@ -1148,15 +1149,15 @@ export const useChatStore = defineStore('chat', () => {
                 const authorName = momentMatch[1].trim();
                 const postText = momentMatch[2].trim();
 
-                const { useMomentsStore } = await import('./momentsStore');
-                const momentsStore = useMomentsStore();
-
-                // Find author for avatar
-                const authorChar = Object.values(chats.value).find(c => c.name === authorName);
+                // Find author for avatar and authorId
+                const authorEntry = Object.entries(chats.value).find(([, c]) => c.name === authorName);
+                const authorId = authorEntry ? authorEntry[0] : chatId;
+                const authorChar = authorEntry ? authorEntry[1] : null;
 
                 setTimeout(() => {
-                    momentsStore.addPost({
-                        author: authorName,
+                    getMomentsStore().addMoment({
+                        authorId,
+                        authorName,
                         avatar: authorChar?.avatar || '/avatars/default.png',
                         content: postText,
                         images: []
@@ -1164,6 +1165,7 @@ export const useChatStore = defineStore('chat', () => {
                     triggerToast(`${authorName} 发布了新动态`, 'info');
                 }, 2000);
             }
+
 
             // 3. [好友申请: 角色名]
             const friendRequestRegex = /\[(?:好友申请|FRIEND_REQUEST):\s*([^\]]+)\]/gi;
@@ -1363,7 +1365,8 @@ export const useChatStore = defineStore('chat', () => {
                 /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
                 /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
                 /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
-                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi
+                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi,
+                /\[PHONE_CMD\][\s\S]*?\[\/PHONE_CMD\]/gi
             ];
 
             let displayTest = content;
@@ -3979,6 +3982,8 @@ export const useChatStore = defineStore('chat', () => {
                                 type: rpType,
                                 amount: rpAmount,
                                 note: rpNote,
+                                // remainingCount: 1 ensures the "開" button shows (not "红包已被领光")
+                                remainingCount: rpType === 'redpacket' ? 1 : undefined,
                                 content: content.trim(),
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,

@@ -41,7 +41,9 @@
 
                     <!-- Open Button -->
                     <div class="z-20 mt-auto mb-[80px] flex flex-col items-center">
-                        <div v-if="packet?.remainingCount > 0"
+                        <!-- 私聊：始终显示「開」按钮（不存在已抢完状态） -->
+                        <!-- 群聊：remainingCount > 0 才显示「開」，否则已抢完 -->
+                        <div v-if="!chatData?.isGroup || packet?.remainingCount > 0"
                             class="w-24 h-24 bg-[#EBC88E] rounded-full flex items-center justify-center shadow-[0_10px_25px_rgba(0,0,0,0.4)] cursor-pointer transition-all active:scale-95 border-4 border-[#CF3B32]/30 hover:brightness-110"
                             style="perspective: 1000px;" :class="{ 'animate-spinning-3d': isOpening }"
                             @click="$emit('open')">
