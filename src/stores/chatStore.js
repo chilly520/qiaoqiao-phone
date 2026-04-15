@@ -3269,9 +3269,18 @@ export const useChatStore = defineStore('chat', () => {
                 // We do this before HTML extraction so it doesn't get tangled
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
 
+                // Pass 1.8: Protect [INNER_VOICE] blocks from being swallowed by the card extractor below.
+                // Replace [INNER_VOICE]...[/INNER_VOICE] with a temporary placeholder so Pass 2 won't match them.
+                const innerVoicePlaceholders = [];
+                cleanContent = cleanContent.replace(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, (match) => {
+                    innerVoicePlaceholders.push(match);
+                    return ` __IV_PLACEHOLDER_${innerVoicePlaceholders.length - 1}__ `;
+                });
+
                 // Pass 2: Extraction using robust brace matcher (The Protectors)
-                // Aggressively match anything starting with [CARD]{, [INNER_VOICE]{, { "type":, or type: html {
-                const cardStartRegex = /(?:\[\s*(?:CARD|LS_JSON|JSON|INNER[-_ ]?VOICE)\s*\]\s*\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)|(?:type\s*[:：]\s*html[\s\S]*?\{)/gi;
+                // Aggressively match anything starting with [CARD]{, { "type":, or type: html {
+                // NOTE: INNER_VOICE intentionally excluded — handled by Pass 1.8 placeholder above
+                const cardStartRegex = /(?:\[\s*(?:CARD|LS_JSON|JSON)\s*\]\s*\{)|(?:\{\s*\\?["'][^"']+\\?["']\s*[:：]\s*)|(?:type\s*[:：]\s*html[\s\S]*?\{)/gi;
                 let cardMatch;
                 const cardPositions = [];
 
@@ -3324,6 +3333,18 @@ export const useChatStore = defineStore('chat', () => {
                     const contentToStore = pos.isNaked ? ('[CARD]' + pos.content) : pos.content;
                     cardBlocks.push(contentToStore);
                     processedContent = processedContent.substring(0, pos.start) + ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ ` + processedContent.substring(pos.end);
+                }
+
+                // Pass 2.5: Restore [INNER_VOICE] placeholders BEFORE Pass 3 (which processes processedContent)
+                // so that the segment splitter can later detect and skip them correctly.
+                if (innerVoicePlaceholders.length > 0) {
+                    processedContent = processedContent.replace(/__IV_PLACEHOLDER_(\d+)__/g, (_, idx) => {
+                        return innerVoicePlaceholders[parseInt(idx)] || '';
+                    });
+                    // Also restore in cleanContent in case any later pass reads it
+                    cleanContent = cleanContent.replace(/__IV_PLACEHOLDER_(\d+)__/g, (_, idx) => {
+                        return innerVoicePlaceholders[parseInt(idx)] || '';
+                    });
                 }
 
                 // Pass 3: Handle naked <html>...</html> or large <div> blocks anywhere in the message
@@ -3944,6 +3965,25 @@ export const useChatStore = defineStore('chat', () => {
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
                                 mode: finalMode
+                            });
+                        }
+                    } else if (type === 'payment') {
+                        // 处理红包/转账指令（AI 发起）
+                        const rpMatch = content.match(/\[(红包|转账)\s*[:：]\s*([0-9.]+)\s*[:：]\s*(.*?)\]/);
+                        if (rpMatch) {
+                            const rpType = rpMatch[1] === '红包' ? 'redpacket' : 'transfer';
+                            const rpAmount = parseFloat(rpMatch[2]) || 1.0;
+                            const rpNote = rpMatch[3] ? rpMatch[3].trim() : (rpType === 'redpacket' ? '恭喜发财，大吉大利' : '转账给您');
+                            msgAdded = await addMessage(chatId, {
+                                role: 'ai',
+                                type: rpType,
+                                amount: rpAmount,
+                                note: rpNote,
+                                content: content.trim(),
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode,
+                                mode: finalMode,
+                                ...groupSenderInfo
                             });
                         }
                     } else if (type === 'almanac') {
