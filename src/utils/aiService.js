@@ -1765,6 +1765,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const result = {};
             let foundCount = 0;
 
+            // ====== 预处理：处理双重转义的 JSON 字符串 ======
+            // AI 有时返回 "status": "..." 这种转义格式，需要双重 unescape
+            // 检测特征：文本中包含 \" 或 \\n 等双重转义序列
+            if (text.includes('\\"') || text.includes('\\n') || text.includes('\\t')) {
+                try {
+                    // 尝试作为 JSON 字符串解析（会自动处理双重转义）
+                    const unescaped = JSON.parse('"' + text.replace(/"/g, '\\"') + '"');
+                    if (unescaped && typeof unescaped === 'string') {
+                        text = unescaped;
+                    }
+                } catch (e) {
+                    // 解析失败，保持原文本
+                }
+            }
+
             // ====== 英文字段检测：识别并移除裸露的 stats 子字段 ======
             // AI 经常把 spirit/mood/heartRate/location/distance 写在 [INNER_VOICE] 外面
             // 这些字段在正常聊天文本中绝对不会作为独立行出现
