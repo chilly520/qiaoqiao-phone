@@ -1019,15 +1019,25 @@
                                     <!-- 塔罗牌展示 -->
                                     <div v-if="tarotDataValue?.cards && tarotDataValue.cards.length > 0" class="flex justify-center gap-2 mb-3 flex-wrap">
                                         <div v-for="(card, i) in tarotDataValue.cards.slice(0, 5)" :key="i"
-                                            class="w-10 h-14 rounded-lg border border-purple-400/50 flex flex-col items-center justify-center"
-                                            :class="getTarotCardColorClass(card)"
+                                            class="flex flex-col items-center gap-1"
                                             :style="{ animationDelay: (i * 100) + 'ms' }">
-                                            <span class="text-sm">{{ getTarotCardIcon(card) }}</span>
-                                            <span v-if="card.isReversed" class="text-[6px] text-white/70">逆</span>
+                                            <!-- 牌面 -->
+                                            <div class="w-10 h-14 rounded-lg border border-purple-400/50 flex flex-col items-center justify-center"
+                                                :class="getTarotCardColorClass(card)">
+                                                <span class="text-sm">{{ getTarotCardIcon(card) }}</span>
+                                                <span v-if="card.isReversed" class="text-[6px] text-white/70">逆</span>
+                                            </div>
+                                            <!-- 牌名 -->
+                                            <span class="text-[9px] text-purple-200 text-center max-w-[50px] leading-tight">
+                                                {{ card.name }}{{ card.isReversed ? '(逆)' : '' }}
+                                            </span>
                                         </div>
                                         <div v-if="tarotDataValue.cards.length > 5"
-                                            class="w-10 h-14 rounded-lg border border-purple-400/30 bg-white/10 flex items-center justify-center">
-                                            <span class="text-xs text-white/70">+{{ tarotDataValue.cards.length - 5 }}</span>
+                                            class="flex flex-col items-center gap-1">
+                                            <div class="w-10 h-14 rounded-lg border border-purple-400/30 bg-white/10 flex items-center justify-center">
+                                                <span class="text-xs text-white/70">+{{ tarotDataValue.cards.length - 5 }}</span>
+                                            </div>
+                                            <span class="text-[9px] text-purple-200">更多</span>
                                         </div>
                                     </div>
 

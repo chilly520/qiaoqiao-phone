@@ -1440,7 +1440,7 @@ const handleImport = async (e) => {
                                 :class="!expandGroupChats ? '-rotate-90' : ''"></i>
                         </div>
                         <div v-if="expandGroupChats">
-                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && !c.loopId)"
+                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && !c.loopId && !c.isDissolved)"
                                 :key="chat.id"
                                 class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer prevent-select"
                                 @click="openChat(chat.id)" @contextmenu.prevent="openContextMenu('group', chat, $event)"
@@ -1457,7 +1457,7 @@ const handleImport = async (e) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="chatStore.contactList.filter(c => c.isGroup && !c.loopId).length === 0"
+                            <div v-if="chatStore.contactList.filter(c => c.isGroup && !c.loopId && !c.isDissolved).length === 0"
                                 class="py-4 text-center text-xs text-gray-400">
                                 暂无群聊
                             </div>

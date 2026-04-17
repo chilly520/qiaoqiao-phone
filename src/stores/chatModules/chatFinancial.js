@@ -42,6 +42,12 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         const msg = chat.msgs.find(m => m.id === messageId);
         if (!msg || msg.type !== 'redpacket') return null;
 
+        // 防御性字段初始化（兼容旧存档/未经 addMessage 标准化的消息）
+        if (!Array.isArray(msg.claims)) msg.claims = [];
+        if (msg.remainingCount === undefined || msg.remainingCount === null) {
+            msg.remainingCount = parseInt(msg.count) || 1;
+        }
+
         // Critical: Initialize the distribution amounts if not present BEFORE claim
         if (!msg.amounts || msg.amounts.length === 0) {
             const total = parseFloat(msg.amount) || 0
@@ -49,7 +55,7 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
             if (msg.packetType === 'lucky' && count > 1) {
                 msg.amounts = _splitRedPacket(total, count)
             } else {
-                msg.amounts = Array(count).fill(total)
+                msg.amounts = Array(count).fill(parseFloat(total.toFixed(2)))
             }
             console.log(`[RP_SAFETY_INIT] ID=${msg.id} Total=${total} Count=${count} Amounts=`, msg.amounts)
         }

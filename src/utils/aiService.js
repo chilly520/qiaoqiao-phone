@@ -1765,19 +1765,15 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const result = {};
             let foundCount = 0;
 
-            // ====== 预处理：处理双重转义的 JSON 字符串 ======
-            // AI 有时返回 "status": "..." 这种转义格式，需要双重 unescape
-            // 检测特征：文本中包含 \" 或 \\n 等双重转义序列
-            if (text.includes('\\"') || text.includes('\\n') || text.includes('\\t')) {
-                try {
-                    // 尝试作为 JSON 字符串解析（会自动处理双重转义）
-                    const unescaped = JSON.parse('"' + text.replace(/"/g, '\\"') + '"');
-                    if (unescaped && typeof unescaped === 'string') {
-                        text = unescaped;
-                    }
-                } catch (e) {
-                    // 解析失败，保持原文本
-                }
+            // ====== 预处理：将 AI 返回的转义字符串还原为真实字符 ======
+            // AI 经常输出 \"status\": \"...\",\n  \"着装\": \"...\" 这种形式
+            // 即 backslash + quote 和 backslash + n 作为真实字符存在于字符串中
+            // 需要将它们还原，让后续正则能正常匹配
+            if (text.includes('\\"') || text.includes('\\n')) {
+                text = text
+                    .replace(/\\"/g, '"')   // \" → "
+                    .replace(/\\n/g, '\n')  // \n → 换行
+                    .replace(/\\t/g, '  ')  // \t → 空格
             }
 
             // ====== 英文字段检测：识别并移除裸露的 stats 子字段 ======

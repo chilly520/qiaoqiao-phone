@@ -77,50 +77,44 @@ export function useChatTransaction() {
         }
     }
 
-    const openRedPacket = () => {
-        if (isOpening.value) return
+    const openRedPacket = async () => {
+        if (isOpening.value || !currentRedPacket.value) return
         isOpening.value = true
 
+        let result = null
+        try {
+            result = await chatStore.claimRedPacket(chatStore.currentChatId, currentRedPacket.value.id, 'user')
+        } catch (e) {
+            console.error('[useChatTransaction] claimRedPacket 抛出异常:', e)
+            result = null
+        }
+
         setTimeout(() => {
-            // Race condition check
-            if (!currentRedPacket.value || currentRedPacket.value.isRejected) {
-                isOpening.value = false
+            isOpening.value = false
+            if (!result) {
+                showResult.value = false
                 return
             }
-
-            isOpening.value = false
-            showResult.value = true
-
-            const amount = parseFloat(currentRedPacket.value.amount || (Math.random() * 100).toFixed(2))
-            resultAmount.value = amount
-
-            // Add to Wallet
-            walletStore.increaseBalance(amount, '微信红包', `领取红包: ${currentRedPacket.value.note || ''}`)
-
-            // Update State
-            updateMessageState({
-                isClaimed: true,
-                claimTime: Date.now()
-            })
-
-            // Add System Message
-            const chat = chatStore.chats[chatStore.currentChatId]
-            if (chat) {
-                // In group chats, use the sender info from the message itself
-                const senderName = currentRedPacket.value?.senderName || chat.remark || chat.name
-                const userName = useSettingsStore().personalization?.userProfile?.name || '我'
-                chatStore.addMessage(chat.id, {
-                    role: 'system',
-                    type: 'system',
-                    content: `${userName}领取了${senderName}的红包`
-                })
-                chatStore.saveChats()
+            if (result.already) {
+                showResult.value = true
+                resultAmount.value = result.item?.amount ?? 0
+            } else if (result.claimed) {
+                showResult.value = true
+                resultAmount.value = result.amount ?? 0
+            } else if (result.empty) {
+                showResult.value = true
+                resultAmount.value = 0
             }
-
         }, 1000)
     }
 
     const confirmTransfer = () => {
+        if (!currentRedPacket.value) return
+        // 防重：已领取过不再重复记账
+        if (currentRedPacket.value.isClaimed) {
+            showTransferModal.value = false
+            return
+        }
         const amount = parseFloat(currentRedPacket.value.amount || 0)
         walletStore.increaseBalance(amount, '微信转账', `收到转账: ${currentRedPacket.value.note || ''}`)
 

@@ -45,7 +45,7 @@ export const useChatStore = defineStore('chat', () => {
     const isProfileProcessing = ref({}) // track if a specific character's archive is being analyzed
     
     // Streaming message persistence state
-    const streamingState = ref({}) // { chatId: { msgId, content, startTime, mode } }
+    const streamingState = ref({}) // { chatId: { msgId, content, startTime, mode, context, options, isUserTriggered } }
     
     async function saveStreamingState() {
         try {
@@ -75,12 +75,15 @@ export const useChatStore = defineStore('chat', () => {
         await saveStreamingState()
     }
     
-    function setStreamingMessage(chatId, msgId, content, mode = 'online') {
+    function setStreamingMessage(chatId, msgId, content, mode = 'online', context = null, options = null, isUserTriggered = false) {
         streamingState.value[chatId] = {
             msgId,
             content,
             startTime: Date.now(),
             mode,
+            context, // 保存上下文以便恢复时继续生成
+            options, // 保存生成选项
+            isUserTriggered, // 标记是否是用户点击打断的
             isComplete: false
         }
         saveStreamingState()
@@ -93,10 +96,11 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
     
-    function markStreamingComplete(chatId) {
+    function markStreamingComplete(chatId, isUserTriggered = false) {
         if (streamingState.value[chatId]) {
             streamingState.value[chatId].isComplete = true
             streamingState.value[chatId].completeTime = Date.now()
+            streamingState.value[chatId].isUserTriggered = isUserTriggered
         }
         clearStreamingState(chatId)
     }
@@ -144,9 +148,14 @@ export const useChatStore = defineStore('chat', () => {
         promptEvent.value = { id: Date.now(), title, message, placeholder, defaultValue, onConfirm, onCancel }
     }
 
-    function stopGeneration(silent = false, chatId = null) {
+    function stopGeneration(silent = false, chatId = null, isUserTriggered = true) {
         const id = chatId || currentChatId.value
         if (!id) return
+
+        // 标记为用户触发的打断
+        if (streamingState.value[id]) {
+            streamingState.value[id].isUserTriggered = isUserTriggered
+        }
 
         if (abortControllers[id]) {
             abortControllers[id].abort()
@@ -155,10 +164,15 @@ export const useChatStore = defineStore('chat', () => {
 
         if (typingStatus.value[id]) {
             typingStatus.value[id] = false
-            console.log(`[ChatStore] AI Generation for ${id} stopped.`)
+            console.log(`[ChatStore] AI Generation for ${id} stopped. User triggered: ${isUserTriggered}`)
             if (!silent) {
                 triggerToast('已中断生成', 'info')
             }
+        }
+        
+        // 如果是用户触发的打断，清除流式状态
+        if (isUserTriggered) {
+            markStreamingComplete(id, true)
         }
     }
 
@@ -181,7 +195,7 @@ export const useChatStore = defineStore('chat', () => {
                 unreadCount: chat.unreadCount || 0,
                 lastMsg: (chat.msgs || []).slice(-1)[0] || null
             }
-        }).filter(c => c.inChatList !== false).sort((a, b) => {
+        }).filter(c => c.inChatList !== false && !c.isDissolved).sort((a, b) => {
             // Sort by Pinned First
             if (a.isPinned && !b.isPinned) return -1
             if (!a.isPinned && b.isPinned) return 1
@@ -565,6 +579,34 @@ export const useChatStore = defineStore('chat', () => {
             paymentRequestId: msg.paymentRequestId || null,
             items: msg.items || null,           // 代付商品列表
             isPrePay: msg.isPrePay || false,    // 预支付标记
+            // --- Inner Voice field ---
+            // 优先使用传入的 innerVoice 对象（aiService 解析结果）
+            // 若无，则尝试从 content 字符串中提取 [INNER_VOICE]...json...[/INNER_VOICE]
+            innerVoice: msg.innerVoice || null,
+        }
+
+        // 1.00 INNER_VOICE EXTRACTION: 在 protocolTags 清理之前，先从 content 提取心声数据
+        // 这样即使 content 里的 [INNER_VOICE] 标签被清掉，心声数据也安全保存在 newMsg.innerVoice
+        if (!newMsg.innerVoice && typeof newMsg.content === 'string') {
+            const ivExtractRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/i;
+            const ivExtractMatch = newMsg.content.match(ivExtractRegex);
+            if (ivExtractMatch && ivExtractMatch[1]) {
+                try {
+                    let jsonStr = ivExtractMatch[1].trim()
+                        .replace(/```json/gi, '').replace(/```/g, '')
+                        .replace(/\\"/g, '"').replace(/\\n/g, '\n')
+                        .replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
+                    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0])
+                        if (parsed && typeof parsed === 'object') {
+                            newMsg.innerVoice = parsed
+                        }
+                    }
+                } catch (e) {
+                    // 解析失败不影响消息存储
+                }
+            }
         }
         
         // Debug: 记录 HTML 消息
@@ -2102,6 +2144,14 @@ export const useChatStore = defineStore('chat', () => {
             return
         }
 
+        // --- 处理继续生成的情况（页面刷新后自动恢复）---
+        if (options._isContinuation && options._partialContent) {
+            console.log('[ChatStore] Continuing generation after page refresh...')
+            // 在系统提示中添加继续生成的指令
+            aiOptions._continuationMode = true
+            aiOptions._partialContent = options._partialContent
+        }
+
         typingStatus.value[chatId] = true
 
         // --- 时间感知逻辑 ---
@@ -2160,6 +2210,22 @@ export const useChatStore = defineStore('chat', () => {
                     content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: ${data.fullContent || data.preview || '暂无内容'}`
                     if (data.image) m.image = data.image;
                 } catch (e) { content = '[收藏内容]' }
+            } else if (m.type === 'tarot_card' || m.type === 'tarot_interpretation') {
+                // 塔罗牌分享：将牌面和解析详情发送到AI上下文
+                try {
+                    const cards = m.tarotCards || [];
+                    const question = m.tarotQuestion || '';
+                    const spread = m.tarotSpread?.name || '塔罗牌阵';
+                    const interpretation = m.tarotInterpretation || '';
+                    
+                    const cardNames = cards.map(c => `${c.name}${c.isReversed ? '(逆位)' : '(正位)'}`).join('、');
+                    
+                    if (m.type === 'tarot_interpretation' && interpretation) {
+                        content = `[塔罗解牌分享] 问题: ${question || '未指定'} | 牌阵: ${spread} | 牌面: ${cardNames} | 解析: ${interpretation.substring(0, 200)}${interpretation.length > 200 ? '...' : ''}`;
+                    } else {
+                        content = `[塔罗占卜分享] 问题: ${question || '未指定'} | 牌阵: ${spread} | 牌面: ${cardNames}`;
+                    }
+                } catch (e) { content = '[塔罗牌分享]' }
             } else if (m.type === 'voice') {
                 content = `[语音消息:${content}]`
             } else if (m.type === 'sticker') {
@@ -2339,6 +2405,18 @@ export const useChatStore = defineStore('chat', () => {
             }
         }
 
+        // --- 处理继续生成模式（页面刷新后自动恢复）---
+        if (options._continuationMode && options._partialContent) {
+            const last = mergedContext[mergedContext.length - 1];
+            const continuationHint = `[系统提示：由于页面刷新，之前的回复被中断。已生成的内容："${options._partialContent.substring(0, 100)}${options._partialContent.length > 100 ? '...' : ''}" 请继续完成剩余内容，不要重复已生成的部分。]`;
+            
+            if (last && last.role === 'user') {
+                last.content += `\n\n${continuationHint}`;
+            } else {
+                mergedContext.push({ role: 'user', content: continuationHint });
+            }
+        }
+
         const context = mergedContext;
 
 
@@ -2346,7 +2424,7 @@ export const useChatStore = defineStore('chat', () => {
         try {
             // Stop any previous generation for THIS specific chat
             if (abortControllers[chatId]) {
-                stopGeneration(true, chatId)
+                stopGeneration(true, chatId, false) // 标记为非用户触发的打断
             }
             abortControllers[chatId] = new AbortController()
             const signal = abortControllers[chatId].signal
@@ -3561,9 +3639,12 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'text', content: content.replace(/\[\s*OFFLINE\s*\]|\[\/\s*OFFLINE\s*\]/gi, '').trim(), mode: 'offline' });
                     } else if (content.startsWith('[ONLINE]')) {
                         finalSegments.push({ type: 'text', content: content.replace(/\[\s*ONLINE\s*\]|\[\/\s*ONLINE\s*\]/gi, '').trim(), mode: 'online' });
-                    } else if (content.trim().startsWith('【') && content.trim().endsWith('】')) {
-                        // Theater style location/scene marker - always offline
+                    } else if (/^【(?:地点|场景|位置|LOCATION|SCENE)[：:]/.test(content.trim())) {
+                        // Theater style location/scene marker - always offline (only match specific prefixes)
                         finalSegments.push({ type: 'location', content: content.trim(), mode: 'offline' });
+                    } else if (content.trim().startsWith('【') && content.trim().endsWith('】')) {
+                        // Other 【...】 content (like tarot card names) - treat as normal text with current mode
+                        finalSegments.push({ type: 'text', content: content.trim(), mode: activeMode });
                     } else {
                         // Standard Text
                         const toxicKeywords = ['border-radius', 'box-shadow', 'background-color', 'background-image', 'linear-gradient', 'isplay: flex', 'justify-content', 'align-items', 'min-width', 'max-width', 'min-height', 'z-index', 'overflow', 'position: relative', 'position: absolute', 'padding', 'margin', 'font-size', 'font-weight', 'text-align', 'line-height', 'left:', 'top:', 'right:', 'bottom:', 'width:', 'height:', 'filter:', 'blur(', 'opacity', 'border: 3px solid', 'border: 1px solid', 'font-family:', 'animation:', 'keyframes'];
@@ -3744,6 +3825,8 @@ export const useChatStore = defineStore('chat', () => {
                                 quote: i === 0 ? aiQuote : null,
                                 hidden: isCallMode,
                                 mode: finalMode,
+                                // 最后一段附带心声数据（直接保存对象，不依赖从content字符串提取）
+                                innerVoice: (i === finalSegments.length - 1 && result.innerVoice) ? result.innerVoice : undefined,
                                 ...groupSenderInfo
                             });
                         }
@@ -4285,21 +4368,58 @@ export const useChatStore = defineStore('chat', () => {
                 console.log(`[ChatStore] Recovering interrupted streaming message for chat: ${chatId}`)
                 const chat = chats.value[chatId]
                 if (chat) {
-                    const recoveredMsg = {
-                        role: 'ai',
-                        type: 'text',
-                        content: state.content,
-                        mode: state.mode || 'online',
-                        timestamp: state.startTime || Date.now(),
-                        _recovered: true
-                    }
-                    
-                    const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
-                    if (!existingMsg) {
-                        addMessage(chatId, recoveredMsg)
+                    // 检查是否是用户触发的打断
+                    if (state.isUserTriggered) {
+                        // 用户主动打断，保存已生成的内容作为完整消息
+                        const recoveredMsg = {
+                            role: 'ai',
+                            type: 'text',
+                            content: state.content,
+                            mode: state.mode || 'online',
+                            timestamp: state.startTime || Date.now(),
+                            _recovered: true
+                        }
+                        
+                        const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
+                        if (!existingMsg) {
+                            addMessage(chatId, recoveredMsg)
+                        }
+                        clearStreamingState(chatId)
+                    } else {
+                        // 页面刷新导致的打断，自动继续生成
+                        console.log(`[ChatStore] Page refresh detected, auto-continuing generation for chat: ${chatId}`)
+                        
+                        // 先保存已生成的内容
+                        const partialMsg = {
+                            role: 'ai',
+                            type: 'text',
+                            content: state.content,
+                            mode: state.mode || 'online',
+                            timestamp: state.startTime || Date.now(),
+                            _recovered: true,
+                            _partial: true // 标记为部分生成的消息
+                        }
+                        
+                        const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
+                        if (!existingMsg) {
+                            addMessage(chatId, partialMsg)
+                        }
+                        
+                        // 清除流式状态
+                        clearStreamingState(chatId)
+                        
+                        // 延迟后自动继续生成（等待页面完全加载）
+                        setTimeout(() => {
+                            console.log(`[ChatStore] Auto-continuing generation for chat: ${chatId}`)
+                            // 使用 regenerate 模式继续生成
+                            sendMessageToAI(chatId, { 
+                                mode: state.mode || 'online',
+                                _isContinuation: true, // 标记为继续生成
+                                _partialContent: state.content // 已生成的内容
+                            })
+                        }, 2000)
                     }
                 }
-                clearStreamingState(chatId)
             }
         })
     }).catch(err => {

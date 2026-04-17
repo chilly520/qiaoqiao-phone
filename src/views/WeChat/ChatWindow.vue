@@ -2675,7 +2675,7 @@ const rejectPayment = () => {
         msg.rejectTime = Date.now()
         // In group chats, use the sender info from the message itself
         const senderName = msg.senderName || chat.remark || chat.name || '对方'
-        const typeStr = (msg.type === 'transfer' || msg.content.includes('转账')) ? '转账' : '红包'
+        const typeStr = (msg.type === 'transfer' || ensureString(msg.content).includes('转账')) ? '转账' : '红包'
         chatStore.addMessage(chat.id, {
             role: 'system',
             content: `你拒收了${senderName}的${typeStr}`
@@ -2688,19 +2688,33 @@ const openRedPacket = async () => {
     if (isOpening.value || !currentRedPacket.value) return
     isOpening.value = true
 
-    const result = await chatStore.claimRedPacket(chatStore.currentChatId, currentRedPacket.value.id, 'user')
+    let result = null
+    try {
+        result = await chatStore.claimRedPacket(chatStore.currentChatId, currentRedPacket.value.id, 'user')
+    } catch (e) {
+        console.error('[openRedPacket] claimRedPacket 抛出异常:', e)
+        result = null
+    }
 
     setTimeout(() => {
         isOpening.value = false
-        if (result && result.claimed) {
+        if (!result) {
+            showToast('领取失败，请重试', 'error')
+            return
+        }
+        // result.already=true 时 claimed 也是 true，需先判断 already
+        if (result.already) {
+            // 已经领取过，直接展示结果
             showResult.value = true
-            resultAmount.value = result.amount
-        } else if (result && result.already) {
+            resultAmount.value = result.item?.amount ?? 0
+        } else if (result.claimed) {
+            // 首次成功领取
             showResult.value = true
-            resultAmount.value = result.item.amount
-        } else if (result && result.empty) {
+            resultAmount.value = result.amount ?? 0
+        } else if (result.empty) {
             showToast('手慢了，红包派完了', 'info')
             showResult.value = true
+            resultAmount.value = 0
         } else {
             showToast('领取失败', 'error')
         }

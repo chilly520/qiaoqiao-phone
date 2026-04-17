@@ -1350,14 +1350,20 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
               }
             } else if (type === 'message') {
               console.log('[LoveSpaceStore] Processing message command:', cmd)
+              // 修复：检查 content 是否为空或无效
+              const messageContent = cmd.content?.trim?.() || cmd.text?.trim?.() || '';
+              if (!messageContent) {
+                console.warn('[LoveSpaceStore] Skipping empty message command:', cmd);
+                continue;
+              }
               // Duplicate check for space messages
-              const isDup = (this.currentSpace.messages || []).some(m => m.content === cmd.content)
+              const isDup = (this.currentSpace.messages || []).some(m => m.content === messageContent)
               if (isDup) {
-                console.log('[LoveSpaceStore] Skipping duplicate space message:', cmd.content)
+                console.log('[LoveSpaceStore] Skipping duplicate space message:', messageContent)
               } else {
-                console.log('[LoveSpaceStore] Adding message:', cmd.content)
+                console.log('[LoveSpaceStore] Adding message:', messageContent)
                 await this.addMessage({ 
-                  content: cmd.content, senderId: 'partner',
+                  content: messageContent, senderId: 'partner',
                   senderName: partnerName, replyToId: cmd.replyToId
                 })
                 console.log('[LoveSpaceStore] Message added successfully')
