@@ -3547,8 +3547,11 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processedContent.replace(/^\s*(?:type|card|json|html|content)\s*[:：]\s*(?:html|card|{)?\s*$/gim, '');
 
                 // Pass 3.8: Remove leaked stats field lines (spirit:/mood:/heartRate:/location:/distance: appearing as standalone text)
-                // These are AI-generated stats data that leaked out of [INNER_VOICE] tags
-                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/gi, '\n');
+                // Remove multi-line block leaks first:
+                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+                // Remove single-line leaks:
+                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats)["']?\s*[:：][^\n]*/gi, '\n');
+                
                 processedContent = processedContent.replace(/\n{2,}/g, '\n').trim();
 
 

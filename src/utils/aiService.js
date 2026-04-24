@@ -1887,6 +1887,23 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const ivMatch = content.match(ivPattern);
             if (ivMatch) {
                 innerVoice = tryExtractInnerVoice(ivMatch[1]);
+                
+                // Fallback: If AI leaked stats outside the [INNER_VOICE] tag, try to recover them from rawContent
+                if (!innerVoice || !innerVoice.stats || (!innerVoice.spirit && !innerVoice.emotion && !innerVoice.mood)) {
+                     const fallbackVoice = tryExtractInnerVoice(rawContent);
+                     if (fallbackVoice && Object.keys(fallbackVoice).length > 0) {
+                          innerVoice = innerVoice || {};
+                          // Merge properties, prioritizing naked stats regex recovery if deeply missing
+                          innerVoice = { ...fallbackVoice, ...innerVoice }; 
+                          if (fallbackVoice.stats && innerVoice.stats) {
+                              innerVoice.stats = { ...fallbackVoice.stats, ...innerVoice.stats };
+                          } else if (fallbackVoice.stats) {
+                              innerVoice.stats = fallbackVoice.stats;
+                          }
+                          console.log('[AI Service] 从标签外部找回泄露的心声字段/Stats:', Object.keys(fallbackVoice));
+                     }
+                }
+
                 // ⚠️ 无条件剔除标签块，防止由于解析失败导致的原样代码外漏
                 content = content.replace(ivMatch[0], '').trim();
                 if (innerVoice) {

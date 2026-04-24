@@ -89,7 +89,10 @@ export function stripInnerVoiceBlocks(content) {
   // Cleanup potentially empty mode tags
   cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
 
-  // Aggressively remove metadata lines that might have been leaked
+  // Aggressively remove multi-line naked JSON stat objects that got leaked outside tags
+  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+
+  // Aggressively remove single-line metadata that might have been leaked
   const metaLinesRegex = new RegExp(`^\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:\uff1a][^\\n]*$`, 'gim')
   cleaned = cleaned.replace(metaLinesRegex, '').trim()
 

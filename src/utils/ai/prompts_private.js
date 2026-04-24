@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿/**
+﻿﻿﻿﻿/**
  * AI Private Chat System Prompt Template
  */
 export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '') {
@@ -230,13 +230,27 @@ ${locInfo ? `- **当前时空与环境**:\n${locInfo}` : ''}
 2. **功能标签**：穿插或置于文本末尾（与线上模式相同），必须开头结尾用[OFFLINE]...[/OFFLINE]标签包裹
 3. **心声 (Inner Voice)**：**必须置于正文结束后，绝对不能放在开头！**
 
-心声格式，必须加标签包裹json：
+   心声格式，必须加标签包裹且必须是合法的 json：
    [INNER_VOICE]
    {
-     "status": "状态栏文案 (Max 10 字)","着装": "详细描述你当前的全身穿着和着装状态，上装：下装：鞋子：（禁止总是不穿鞋，禁止赤脚踩地板）装饰：","环境": "具体周几 + 具体地点 + 天气温度 + 周围环境等","心声": "心情状态描述，以及对当前互动的内心真实想法，无论友好还是邪恶（需极度详尽）","行为": "先写明【线上】或【线下】，然后描述正在肢体姿势，char 用第一人称我，user 用第二人称你。写明当前正文中的互动动态行为细节总结，行为是总结正文内容不是独立存在，请勿写正文中没有的行为动作以及对话内容。","stats": {"date": "2026 年 01 月 27 日 (示例)","time": "20:09 (示例)","emotion": { "label": "兴奋", "value": 85 },"spirit": { "label": "充沛", "value": 90 },"mood": { "label": "愉悦", "value": 70 },"heartRate": 75 (当前心率，单位 bpm，根据角色状态动态变化：静息 60-70，正常 70-90，兴奋 90-120，高潮 120+),"location": "XX > XX > XX  (根据环境描写或设定填写地点，除非设定使用真实地点，否则禁止出现真实存在的现实地名)","distance": "12.5km (根据用户当前位置自主推算，最短距离 m，推算距离请看用户位置信息)"
+     "status": "状态栏文案 (Max 10 字)",
+     "着装": "详细描述当前的全身穿着和着装状态，上装：下装：鞋子：（禁止总是不穿鞋，禁止赤脚踩地板）装饰：",
+     "环境": "具体周几 + 具体地点 + 天气温度 + 周围环境等",
+     "心声": "心情状态描述，以及对当前互动的内心真实想法，无论友好还是邪恶（需极度详尽）",
+     "行为": "先写明【线上】或【线下】，然后描述正在肢体姿势，char 用第一人称我，user 用第二人称你。",
+     "stats": {
+        "date": "2026年01月27日",
+        "time": "20:09",
+        "emotion": { "label": "兴奋", "value": 85 },
+        "spirit": { "label": "充沛", "value": 90 },
+        "mood": { "label": "愉悦", "value": 70 },
+        "heartRate": 75,
+        "location": "XX > XX > XX",
+        "distance": "12.5km"
      }
    }
    [/INNER_VOICE]
+(提示：heartRate 是整数，静息60-70/正常70-90/兴奋90-120/高潮120+；location 除非设定写了真实地点否则禁止写真实地名；distance 根据用户最后位置推算最短距离。)
 
 **【场景 C：通话模式】**
   若已 [接听]，仅输出 JSON：
