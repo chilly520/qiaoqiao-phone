@@ -1879,36 +1879,72 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             return foundCount > 0 ? result : null;
         }
 
-        // Strategy 1: [INNER_VOICE] tag extraction
-        const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/i;
-        const ivMatch = content.match(ivPattern);
-        if (ivMatch && !isCallProtocol && !isCommandTask && !isSimpleTask) {
-            innerVoice = tryExtractInnerVoice(ivMatch[1]);
-            if (innerVoice) {
-                console.log('[AI Service] 心声提取成功（标签模式）', Object.keys(innerVoice));
-                content = content.replace(ivMatch[0], '').trim();
-            }
-        }
-
-        // Strategy 2: ALWAYS run as supplement — merge missing fields (especially stats which AI often puts outside [INNER_VOICE])
+        // ======== 核心提取与无情剥离流程 ========
         if (!isCallProtocol && !isCommandTask && !isSimpleTask) {
+            
+            // 模式 1: 规范情况，含 [INNER_VOICE] 标签
+            const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/i;
+            const ivMatch = content.match(ivPattern);
+            if (ivMatch) {
+                innerVoice = tryExtractInnerVoice(ivMatch[1]);
+                // ⚠️ 无条件剔除标签块，防止由于解析失败导致的原样代码外漏
+                content = content.replace(ivMatch[0], '').trim();
+                if (innerVoice) {
+                    console.log('[AI Service] 心声提取成功（标签模式）', Object.keys(innerVoice));
+                } else {
+                    console.warn('[AI Service] 心声块存在但解析失败，已将乱码块从聊天内容中移除');
+                }
+            } else {
+                // 模式 2: AI 忘记标签，直接输出裸露的 JSON 对象 `{ "status": ... }`
+                const firstBrace = content.indexOf('{');
+                if (firstBrace !== -1) {
+                    let depth = 0;
+                    let endIdx = -1;
+                    for (let i = firstBrace; i < content.length; i++) {
+                        if (content[i] === '{') depth++;
+                        else if (content[i] === '}') {
+                            depth--;
+                            if (depth === 0) { endIdx = i + 1; break; }
+                        }
+                    }
+                    if (endIdx > firstBrace + 1) {
+                        const jsonStr = content.substring(firstBrace, endIdx);
+                        const strippedJsonObj = tryExtractInnerVoice(jsonStr);
+                        if (strippedJsonObj) {
+                            innerVoice = strippedJsonObj;
+                            console.log('[AI Service] 心声提取成功（裸露 JSON 对象模式）', Object.keys(innerVoice));
+                            // 🎉 既然提取出有效心声，就把这个 JSON 大块从聊天框彻底抹去！
+                            content = content.substring(0, firstBrace) + content.substring(endIdx);
+                            content = content.trim();
+                        }
+                    }
+                }
+            }
+
+            // 模式 3: 漏网之鱼字段扫描（AI 把 stats 或其他字段扔在结构外）
             const supplement = tryExtractInnerVoice(content);
             if (supplement) {
-                // Merge into existing innerVoice (or create new)
                 if (!innerVoice) innerVoice = {};
                 for (const [key, val] of Object.entries(supplement)) {
-                    // Only fill missing keys — don't overwrite Strategy 1's results
                     if (innerVoice[key] === undefined || innerVoice[key] === null) {
                         innerVoice[key] = val;
                     }
                 }
-                console.log('[AI Service] 心声补充提取（全文扫描）', Object.keys(supplement), '→ 合并后', Object.keys(innerVoice));
-                // Remove matched fields (stats, spirit, mood, heartRate, etc.) from display text so they don't leak into chat
-                content = content.replace(/[\r\n\s]*["']?stats["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n]+)/g, '');
-                // Also remove leaked individual stats fields (spirit, mood, heartRate, location, distance, energy, stress, intimacy, trust, temperature)
-                content = content.replace(/[\r\n\s]*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/g, '');
-                content = content.trim();
+                console.log('[AI Service] 心声补充提取（残兵败将扫描合并）', Object.keys(supplement), '→ 合并后', Object.keys(innerVoice));
             }
+            
+            // 🗑️ 统一清洁工：拔除哪怕一点点外泄可能存在的残留结构
+            // 清理裸露的 stats 块和散落的英文属性行
+            content = content.replace(/[\r\n\s]*["']?stats["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n]+)/g, '');
+            content = content.replace(/[\r\n\s]*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/gi, '');
+            
+            // 对散落的中文特征属性，进行安全、保守行清理（仅当以"key": "value"开头单独占行时清理）
+            const chineseKeys = ['status', 'state', '心声', '心心声', '着装', '环境', '行为'];
+            chineseKeys.forEach(key => {
+                const garbageReg = new RegExp(`^[\\r\\n\\s]*["']?${key}["']?\\s*[:：]\\s*["「].*?["」]`, 'gm');
+                content = content.replace(garbageReg, '');
+            });
+            content = content.trim();
         }
 
         // Clean up residual tags from display text
