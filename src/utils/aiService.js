@@ -1749,53 +1749,69 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         const isCallProtocol = content.includes('[CALL_START]') && content.includes('[CALL_END]')
 
-        // ===========================
-        // 🧠 心声提取 v2 — 字段级正则（不依赖花括号计数）
-        // 核心思路："着装"、"心声"、"行为" 这些关键字在正常聊天中绝不会出现
-        // 所以直接逐字段正则提取，提取到哪个就写进卡片
-        // ===========================
-        
         /**
-         * 字段级心声提取 v2 — 不依赖花括号计数，直接搜关键字
-         * 原理: "着装"、"心声"、"行为"、"环境" 在正常聊天中绝不会出现
-         * 同时支持英文字段名（spirit/mood/heartRate/location/distance 等）
-         * 逐字段正则匹配，提取到哪个写进哪个，CSS/HTML天然不干扰
+         * 心声提取 v3
+         * 策略 A: JSON.parse  — AI 通常输出标准 JSON，直接解析最可靠
+         * 策略 B: 字段级正则  — JSON 格式不合法时的兜底
          */
         function tryExtractInnerVoice(text) {
             const result = {};
             let foundCount = 0;
 
-            // ====== 预处理：将 AI 返回的转义字符串还原为真实字符 ======
-            // AI 经常输出 \"status\": \"...\",\n  \"着装\": \"...\" 这种形式
-            // 即 backslash + quote 和 backslash + n 作为真实字符存在于字符串中
-            // 需要将它们还原，让后续正则能正常匹配
+            // ====== 预处理：还原转义字符 ======
             if (text.includes('\\"') || text.includes('\\n')) {
                 text = text
-                    .replace(/\\"/g, '"')   // \" → "
-                    .replace(/\\n/g, '\n')  // \n → 换行
-                    .replace(/\\t/g, '  ')  // \t → 空格
+                    .replace(/\\"/g, '"')
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '  ')
             }
 
-            // ====== 英文字段检测：识别并移除裸露的 stats 子字段 ======
-            // AI 经常把 spirit/mood/heartRate/location/distance 写在 [INNER_VOICE] 外面
-            // 这些字段在正常聊天文本中绝对不会作为独立行出现
-            const nakedStatsPattern = /(?:^|\n)\s*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][ \t]*[\s\S]*?(?=\n\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|status|stats|emotion|speech|action|behavior|outfit|environment|mind|thought)["']?\s*[:：]|\n\s*[\/\[{\"]|$)/gi;
+            // ====== 策略 A：整体 JSON.parse（最高优先级）======
+            // 用平衡括号法找到最外层 {} 块
+            const firstBrace = text.indexOf('{');
+            if (firstBrace !== -1) {
+                let depth = 0;
+                let endIdx = -1;
+                for (let i = firstBrace; i < text.length; i++) {
+                    if (text[i] === '{') depth++;
+                    else if (text[i] === '}') {
+                        depth--;
+                        if (depth === 0) { endIdx = i + 1; break; }
+                    }
+                }
+                if (endIdx > firstBrace + 1) {
+                    try {
+                        const parsed = JSON.parse(text.substring(firstBrace, endIdx));
+                        // 确认是心声 JSON（含已知中文字段或 stats/status）
+                        const knownKeys = ['status', '心声', '着装', '环境', '行为', 'stats'];
+                        if (knownKeys.some(k => parsed[k] !== undefined)) {
+                            console.log('[AI Service] 心声 JSON.parse 成功', Object.keys(parsed));
+                            return parsed; // ✅ 直接返回，无需正则
+                        }
+                    } catch (e) {
+                        console.log('[AI Service] JSON.parse 失败，回落到字段正则', e.message?.substring(0, 80));
+                    }
+                }
+            }
+
+            // ====== 策略 B：字段级正则（兜底）======
+
+            // 裸露英文 stats 子字段检测
+            const nakedStatsPattern = /(?:^|\n)\s*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][ \t]*[\s\S]*?(?=\n\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|status|stats|emotion|speech|action|behavior|outfit|environment|mind|thought)["']?\s*[:：]|\n\s*[\/\[{"']|$)/gi;
             const nakedStatsMatches = [...text.matchAll(nakedStatsPattern)];
             if (nakedStatsMatches.length >= 2) {
-                // 至少匹配到2个字段 → 很可能是泄漏的 stats 数据块，整体提取到 stats 对象中
                 let statsObj = {};
                 let hasNakedStats = false;
                 for (const nm of nakedStatsMatches) {
                     try {
                         const fieldName = nm[1];
-                        let fieldValue = nm[0].trim().replace(new RegExp(`^\\s*["']?${fieldName}["']?\\s*[:：]\\s*`, ''), '');
-                        // 尝试解析值（可能是数字、字符串、或简单对象）
+                        let fieldValue = nm[0].trim().replace(new RegExp(`^\\s*["']?${fieldName}["']?\\s*[:：]\\s*`), '');
                         fieldValue = fieldValue.trim().replace(/[,\}]?\s*$/, '');
                         if ((fieldValue.startsWith('"') && fieldValue.endsWith('"')) ||
                             (fieldValue.startsWith("'") && fieldValue.endsWith("'"))) {
-                            fieldValue = fieldValue.slice(1, -1); // 脱引号的字符串
+                            fieldValue = fieldValue.slice(1, -1);
                         } else if (/^-?\d+(\.\d+)?$/.test(fieldValue)) {
-                            fieldValue = parseFloat(fieldValue); // 数字
+                            fieldValue = parseFloat(fieldValue);
                         } else if (fieldValue.startsWith('{')) {
                             try { fieldValue = JSON.parse(fieldValue.replace(/,\s*$/, '')); } catch(e) {}
                         }
@@ -1806,26 +1822,41 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 if (hasNakedStats && Object.keys(statsObj).length >= 2) {
                     result.stats = { ...result.stats, ...statsObj };
                     foundCount++;
-                    // 从原文本中删除这些裸露的字段行
                     text = text.replace(nakedStatsPattern, '\n').replace(/\n{2,}/g, '\n').trim();
                 }
             }
 
-            // status: 状态栏短文案
-            const m1 = text.match(/["']?status["']?\s*[:：]\s*["「]([^"\n」]+)["」]/i);
-            if (m1) { result.status = m1[1].trim(); foundCount++; }
-            // 心声/心心声: 内心独白（最重要）
-            const m2 = text.match(/["']?(?:心心声|心声)["']?\s*[:：]\s*["「]([\s\S]*?)["」]/i);
-            if (m2) { result['心声'] = m2[1].trim(); foundCount++; }
-            // 着装: 穿搭描述
-            const m3 = text.match(/["']?着装["']?\s*[:：]\s*["「]([^"\n」]+)["」]/i);
-            if (m3) { result['着装'] = m3[1].trim(); foundCount++; }
-            // 环境: 场景信息
-            const m4 = text.match(/["']?环境["']?\s*[:：]\s*["「]([^"\n」]+)["」]/i);
-            if (m4) { result['环境'] = m4[1].trim(); foundCount++; }
-            // 行为: 肢体动作
-            const m5 = text.match(/["']?行为["']?\s*[:：]\s*["「]([\s\S]*?)["」]/i);
-            if (m5) { result['行为'] = m5[1].trim(); foundCount++; }
+            // 通用字段提取器：匹配到下一个已知字段名为止，完美兼容多行和内嵌引号
+            function extractField(keyRegexStr, sourceText) {
+                // 停止词前瞻：匹配到下一个 key，或花括号/字符串结束
+                const nextKeyLookahead = `(?:["']?,?\\s*\\n\\s*["']?(?:status|state|心声|心心声|着装|环境|行为|stats|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\\s*[:：]|["']?\\s*[\\}]+?\\s*$|$)`;
+                const regex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*["「]?([\\s\\S]*?)${nextKeyLookahead}`, 'i');
+                const match = sourceText.match(regex);
+                if (match) {
+                    // 清理头尾的多余引号、逗号和换行
+                    let val = match[1].trim();
+                    val = val.replace(/^["「]/, '').replace(/["」]$/, '');
+                    // 再次清理可能的尾部逗号和引号
+                    val = val.replace(/[,"\\]+$/, '').trim(); 
+                    return val;
+                }
+                return null;
+            }
+
+            const m_status = extractField('status|state', text);
+            if (m_status) { result.status = m_status; foundCount++; }
+
+            const m_voice = extractField('心心声|心声', text);
+            if (m_voice) { result['心声'] = m_voice; foundCount++; }
+
+            const m_outfit = extractField('着装', text);
+            if (m_outfit) { result['着装'] = m_outfit; foundCount++; }
+
+            const m_env = extractField('环境', text);
+            if (m_env) { result['环境'] = m_env; foundCount++; }
+
+            const m_action = extractField('行为', text);
+            if (m_action) { result['行为'] = m_action; foundCount++; }
             // stats: 支持嵌套JSON的平衡花括号提取（AI返回的 emotion/spirit/mood 都是对象）
             const m6 = text.match(/["']?stats["']?\s*[:：]\s*(\{)/);
             if (m6) {
