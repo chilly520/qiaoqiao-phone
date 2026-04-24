@@ -88,6 +88,25 @@ export const useChatStore = defineStore('chat', () => {
         }
         saveStreamingState()
     }
+
+    // 在发起 API 请求前持久化请求状态（页面刷新恢复用）
+    async function markRequestPending(chatId, mode) {
+        try {
+            const pending = (await localforage.getItem('qiaoqiao_pending_ai_requests')) || {}
+            pending[chatId] = { chatId, mode, startTime: Date.now() }
+            await localforage.setItem('qiaoqiao_pending_ai_requests', pending)
+        } catch (e) {
+            console.warn('[ChatStore] Failed to mark request pending:', e)
+        }
+    }
+
+    async function clearRequestPending(chatId) {
+        try {
+            const pending = (await localforage.getItem('qiaoqiao_pending_ai_requests')) || {}
+            delete pending[chatId]
+            await localforage.setItem('qiaoqiao_pending_ai_requests', pending)
+        } catch (e) {}
+    }
     
     function updateStreamingContent(chatId, content) {
         if (streamingState.value[chatId]) {
@@ -2154,6 +2173,9 @@ export const useChatStore = defineStore('chat', () => {
 
         typingStatus.value[chatId] = true
 
+        // 🔑 在发起请求前立即持久化，页面刷新后能检测到并重发
+        markRequestPending(chatId, options.mode || 'online')
+
         // --- 时间感知逻辑 ---
         const now = Date.now()
         // 查找 AI 的最后一条消息，以此计算时隔多久回复
@@ -2524,6 +2546,7 @@ export const useChatStore = defineStore('chat', () => {
 
             // Clear controller on success
             delete abortControllers[chatId]
+            clearRequestPending(chatId) // 请求已完成，清除 pending 状态
 
             if (result.error) {
                 // Ignore abort errors which happen on hangup
@@ -4120,6 +4143,7 @@ export const useChatStore = defineStore('chat', () => {
         } catch (e) {
             typingStatus.value[chatId] = false;
             delete abortControllers[chatId];
+            clearRequestPending(chatId)
             if (e.name === 'AbortError' || e.message === 'Aborted') return;
             useLoggerStore().addLog('ERROR', 'AI响应处理失败', e.message);
             if (!(e.name === 'QuotaExceededError' || e.code === 22)) {
@@ -4130,6 +4154,7 @@ export const useChatStore = defineStore('chat', () => {
             callStore.isSpeaking = false;
             delete abortControllers[chatId];
             markStreamingComplete(chatId);
+            clearRequestPending(chatId) // 确保任何情况下都清除 pending
         }
     }
 
@@ -4421,6 +4446,37 @@ export const useChatStore = defineStore('chat', () => {
                 }
             }
         })
+
+        // 🔄 检查刷新前正在等待 API 响应的请求（刷新发生在 API 返回之前）
+        // 此时 streamingState 里没有记录，但 pending_ai_requests 里有
+        try {
+            const pendingRequests = await localforage.getItem('qiaoqiao_pending_ai_requests') || {}
+            const pendingEntries = Object.entries(pendingRequests)
+            if (pendingEntries.length > 0) {
+                console.log(`[ChatStore] Found ${pendingEntries.length} pending AI request(s) from before refresh`)
+                // 清除旧的 pending 记录（避免无限循环）
+                await localforage.setItem('qiaoqiao_pending_ai_requests', {})
+                
+                pendingEntries.forEach(([chatId, req]) => {
+                    // 跳过已经被 streamingState 恢复的（避免双发）
+                    if (streamingState.value[chatId]) return
+                    
+                    const chat = chats.value[chatId]
+                    if (!chat) return
+                    
+                    // 检查最后一条消息是否是用户消息（确认是等待 AI 回复的状态）
+                    const lastMsg = (chat.msgs || []).filter(m => !m.hidden).slice(-1)[0]
+                    if (!lastMsg || lastMsg.role !== 'user') return
+                    
+                    console.log(`[ChatStore] Re-sending AI request for chat: ${chatId} (mode: ${req.mode})`)
+                    setTimeout(() => {
+                        sendMessageToAI(chatId, { mode: req.mode || 'online' })
+                    }, 2500) // 比 streamingState 恢复稍晚一点（2s）
+                })
+            }
+        } catch (e) {
+            console.warn('[ChatStore] Failed to check pending requests:', e)
+        }
     }).catch(err => {
         console.error('[Storage] Crucial load failure:', err)
         isLoaded.value = true // Still mark as loaded to allow UI recovery
