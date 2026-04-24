@@ -4370,52 +4370,48 @@ export const useChatStore = defineStore('chat', () => {
                 if (chat) {
                     // 检查是否是用户触发的打断
                     if (state.isUserTriggered) {
-                        // 用户主动打断，保存已生成的内容作为完整消息
-                        const recoveredMsg = {
-                            role: 'ai',
-                            type: 'text',
-                            content: state.content,
-                            mode: state.mode || 'online',
-                            timestamp: state.startTime || Date.now(),
-                            _recovered: true
-                        }
-                        
-                        const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
-                        if (!existingMsg) {
-                            addMessage(chatId, recoveredMsg)
+                        // 用户主动打断，保存已生成的内容作为完整消息（仅当内容足够长时）
+                        if (state.content.trim().length >= 5) {
+                            const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
+                            if (!existingMsg) {
+                                addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'text',
+                                    content: state.content,
+                                    mode: state.mode || 'online',
+                                    timestamp: state.startTime || Date.now(),
+                                    _recovered: true
+                                })
+                            }
                         }
                         clearStreamingState(chatId)
                     } else {
-                        // 页面刷新导致的打断，自动继续生成
-                        console.log(`[ChatStore] Page refresh detected, auto-continuing generation for chat: ${chatId}`)
+                        // 页面刷新导致的打断 → 静默重新生成，不展示残缺片段
+                        console.log(`[ChatStore] Page refresh detected, silently regenerating for chat: ${chatId}`)
                         
-                        // 先保存已生成的内容
-                        const partialMsg = {
-                            role: 'ai',
-                            type: 'text',
-                            content: state.content,
-                            mode: state.mode || 'online',
-                            timestamp: state.startTime || Date.now(),
-                            _recovered: true,
-                            _partial: true // 标记为部分生成的消息
-                        }
-                        
-                        const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
-                        if (!existingMsg) {
-                            addMessage(chatId, partialMsg)
+                        // 移除最后一条未完成的 AI 消息（若存在且是由本次 streaming 产生的）
+                        if (state.msgId) {
+                            const msgIdx = chat.msgs?.findIndex(m => m.id === state.msgId)
+                            if (msgIdx !== -1) {
+                                chat.msgs.splice(msgIdx, 1)
+                            }
+                        } else {
+                            // 没有 msgId 时：如果最后一条是 AI 消息且内容极短（可能是残缺片段），删除它
+                            const lastMsg = chat.msgs?.[chat.msgs.length - 1]
+                            if (lastMsg && lastMsg.role === 'ai' && lastMsg._partial) {
+                                chat.msgs.splice(chat.msgs.length - 1, 1)
+                            }
                         }
                         
                         // 清除流式状态
                         clearStreamingState(chatId)
                         
-                        // 延迟后自动继续生成（等待页面完全加载）
+                        // 延迟后重新生成（等待页面完全加载）
                         setTimeout(() => {
-                            console.log(`[ChatStore] Auto-continuing generation for chat: ${chatId}`)
-                            // 使用 regenerate 模式继续生成
+                            console.log(`[ChatStore] Auto-regenerating for chat: ${chatId}`)
                             sendMessageToAI(chatId, { 
-                                mode: state.mode || 'online',
-                                _isContinuation: true, // 标记为继续生成
-                                _partialContent: state.content // 已生成的内容
+                                mode: state.mode || 'online'
+                                // 不再传 _isContinuation，直接重新生成完整回复
                             })
                         }, 2000)
                     }
