@@ -4386,34 +4386,37 @@ export const useChatStore = defineStore('chat', () => {
                         }
                         clearStreamingState(chatId)
                     } else {
-                        // 页面刷新导致的打断 → 静默重新生成，不展示残缺片段
-                        console.log(`[ChatStore] Page refresh detected, silently regenerating for chat: ${chatId}`)
+                        // 页面刷新导致的打断
+                        console.log(`[ChatStore] Page refresh detected, recovering for chat: ${chatId}`)
+                        console.log(`[ChatStore] Partial content length: ${state.content?.length || 0}`)
                         
-                        // 移除最后一条未完成的 AI 消息（若存在且是由本次 streaming 产生的）
-                        if (state.msgId) {
-                            const msgIdx = chat.msgs?.findIndex(m => m.id === state.msgId)
-                            if (msgIdx !== -1) {
-                                chat.msgs.splice(msgIdx, 1)
-                            }
-                        } else {
-                            // 没有 msgId 时：如果最后一条是 AI 消息且内容极短（可能是残缺片段），删除它
-                            const lastMsg = chat.msgs?.[chat.msgs.length - 1]
-                            if (lastMsg && lastMsg.role === 'ai' && lastMsg._partial) {
-                                chat.msgs.splice(chat.msgs.length - 1, 1)
-                            }
-                        }
+                        const existingMsg = chat.msgs?.find(m => m.id === state.msgId)
                         
-                        // 清除流式状态
-                        clearStreamingState(chatId)
+                        // 内容足够充分（AI 已经完整返回过，只是 addMessage 没执行）
+                        // 阈值：10 个字符以上认为是有效的完整内容
+                        const hasSubstantialContent = state.content && state.content.trim().length >= 10
                         
-                        // 延迟后重新生成（等待页面完全加载）
-                        setTimeout(() => {
-                            console.log(`[ChatStore] Auto-regenerating for chat: ${chatId}`)
-                            sendMessageToAI(chatId, { 
-                                mode: state.mode || 'online'
-                                // 不再传 _isContinuation，直接重新生成完整回复
+                        if (hasSubstantialContent && !existingMsg) {
+                            // ✅ 直接把已生成的完整内容添加为 AI 消息，不重新生成
+                            console.log(`[ChatStore] Restoring complete AI response (${state.content.length} chars)`)
+                            addMessage(chatId, {
+                                role: 'ai',
+                                type: 'text',
+                                content: state.content,
+                                mode: state.mode || 'online',
+                                timestamp: state.startTime || Date.now(),
+                                _recovered: true
                             })
-                        }, 2000)
+                            clearStreamingState(chatId)
+                        } else {
+                            // ❌ 内容残缺（如"喘"这种单字）或消息已存在 → 丢弃并重新生成
+                            console.log(`[ChatStore] Content too short or already exists, regenerating...`)
+                            clearStreamingState(chatId)
+                            setTimeout(() => {
+                                console.log(`[ChatStore] Auto-regenerating for chat: ${chatId}`)
+                                sendMessageToAI(chatId, { mode: state.mode || 'online' })
+                            }, 2000)
+                        }
                     }
                 }
             }
