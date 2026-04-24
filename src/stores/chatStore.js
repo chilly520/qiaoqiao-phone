@@ -2568,11 +2568,6 @@ export const useChatStore = defineStore('chat', () => {
                     
                     if (full.includes('[/INNER_VOICE]') || full.includes('}')) {
                          // Once closed, try to use the actual cleaned text
-                         try {
-                             const { useChatMessageDisplay } = import('../../utils/chatMessageDisplay');
-                             // We avoid doing complex cleanup if not strictly needed in the fast loop, 
-                             // but we can trust the cleaned output once the tag is fully closed
-                         } catch (e) {}
                     }
 
                     // Only update the message visually
