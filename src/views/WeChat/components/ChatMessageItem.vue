@@ -428,7 +428,7 @@
 
                             <!-- Top Area -->
                             <div class="p-3 flex items-center gap-3 transition-colors" :class="[
-                                (msg.type === 'transfer' || ensureString(msg.content).includes('转账')) ? 'bg-[#f79c1f]' : 'bg-[#fa9d3b]',
+                                (msg.type === 'transfer' || ensureString(msg.content).includes('转账')) ? 'bg-[#f79c1f]' : 'bg-[#D04035]',
                                 (msg.isClaimed || msg.isRejected) && 'opacity-70'
                             ]">
                                 <div class="w-10 h-10 rounded-lg bg-black/10 flex items-center justify-center shrink-0">

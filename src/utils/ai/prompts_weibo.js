@@ -181,6 +181,40 @@ export function WEIBO_DM_PROMPT(dmName, context = {}) {
 请直接输出JSON数组，不要任何解释。`
 }
 
+export function WEIBO_DM_CHAT_REPLY_PROMPT(contactName, recentMessages, context = {}) {
+    const { boundChars = [], worldBookContent = '' } = context
+    const msgHistory = recentMessages.map(m => {
+        const role = m.isMine ? 'Chilly(我)' : contactName
+        return `- ${role}: ${m.content}`
+    }).join('\n')
+
+    let charContext = ''
+    if (boundChars.length > 0) {
+        charContext = `\n【当前绑定角色】\n${boundChars.map(c => `${c.name}：${c.prompt || '无描述'}`).join('\n')}`
+    }
+
+    return `你正在扮演微博用户「${contactName}」与 Chilly 进行私信对话。
+
+${charContext}
+${worldBookContent ? `\n【世界书设定】\n${worldBookContent}` : ''}
+
+【最近聊天记录（最新的几条）】
+${msgHistory || '(这是第一条消息，自然地打招呼或回应)'}
+
+【回复规则】
+1. 以「${contactName}」的身份回复，语气要符合角色设定
+2. 回复要简短、自然、口语化（像微信聊天，不超过50字）
+3. 可以适当使用 emoji 表达情绪
+4. 根据上下文内容进行有意义的回应，不要泛泛而谈
+
+【输出格式 - 纯JSON对象】
+{
+  "reply": "你的回复内容"
+}
+
+请直接输出JSON对象，不要任何解释。`
+}
+
 export function WEIBO_TOPIC_POST_PROMPT(topicTitle, context = {}) {
     const { boundChars = [], worldBookContent = '' } = context
     

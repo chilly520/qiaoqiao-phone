@@ -7,7 +7,7 @@
         <div class="w-[320px] h-[520px] rounded-[12px] relative overflow-hidden shadow-2xl transition-all duration-500"
             :class="[
                 !showResult ? 'bg-[#CF3B32]' : 'bg-[#f5f5f5]',
-                isOpening ? 'animate-vibrate' : ''
+                isOpening ? 'animate-opening-pulse' : ''
             ]">
 
             <Transition name="packet-flip" mode="out-in">
@@ -245,8 +245,10 @@ const formatTime = (ts) => {
 
 /* 3D Coin Spinning Animation */
 .animate-spinning-3d {
-    animation: spinCoin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    animation: spinCoin 0.9s ease-in-out infinite;
     transform-style: preserve-3d;
+    will-change: transform;
+    backface-visibility: hidden;
 }
 
 @keyframes spinCoin {
@@ -255,7 +257,7 @@ const formatTime = (ts) => {
     }
 
     50% {
-        transform: rotateY(180deg) scale(1.1);
+        transform: rotateY(180deg) scale(1.08);
     }
 
     100% {
@@ -266,6 +268,22 @@ const formatTime = (ts) => {
 /* Vibrate Animation for the whole card */
 .animate-vibrate {
     animation: vibrate 0.1s linear infinite;
+}
+
+/* Opening Pulse - gentle scale, doesn't prevent button clicking */
+.animate-opening-pulse {
+    animation: openingPulse 0.6s ease-in-out infinite;
+}
+
+@keyframes openingPulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    }
 }
 
 @keyframes vibrate {

@@ -1,6 +1,6 @@
 const OFFLINE_SCENE_RE = /^\s*\u3010([\s\S]+?)\u3011\s*$/
 // \u52a8\u4f5c\uff1a\u652f\u6301 (\u5185\u5bb9) \u6216 \uff08\u5185\u5bb9\uff09\u683c\u5f0f\uff0c\u4e5f\u652f\u6301\u672a\u95ed\u5408\u7684\u62ec\u53f7\uff08\u5982\u5185\u5bb9\u8de8\u884c\uff09
-const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)(?:[\)\uFF09]\s*)?$/
+const OFFLINE_ACTION_RE = /^\s*[\(\uFF08]([\s\S]+?)[\)\uFF09]\s*$/
 const OFFLINE_NARRATION_RE = /^\s*(?:\|\||\u2016)([\s\S]+?)(?:\|\||\u2016)?\s*$/
 const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d\u3010\[]+)\s*[:\uFF1A]\s*([\s\S]+?)\s*\u300d/
 const OFFLINE_QUOTED_DIALOGUE_RE = /^\s*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d|\"[\s\S]*?\")\s*$/

@@ -1129,7 +1129,7 @@ const handlePaymentResponse = async (payload) => {
 }
 
 const openRedPacket = async () => {
-  if (!currentPayMsg.value) return
+  if (!currentPayMsg.value || isOpeningPay.value) return  // 防重锁
   isOpeningPay.value = true
   
   // 模拟开红包动画

@@ -59,47 +59,51 @@ onMounted(async () => {
     })
   }
 
-  // FORCE DEMO: Integrate comments into existing post 
-  // (We always overwrite for this session to show new features)
+  // 仅当第一条帖子没有评论时，才注入演示评论（避免每次覆写用户数据）
   if (weiboStore.posts.length > 0) {
     const firstPost = weiboStore.posts[0]
-
-    firstPost.comments = [
-      {
-        author: '吃瓜少女',
-        avatar: '/avatars/小猫吃草莓.jpg',
-        content: '捉住Chilly！今天也太可爱了吧！🥰',
-        time: Date.now() - 3600000,
-        likes: 52,
-        isVip: true,
-        isLiked: false,
-        replies: [
-          { author: 'Chilly', content: '嘿嘿，被发现了！🐱', isVip: true, isAuthor: true },
-          { author: '路人甲', content: '羡慕前排！', isVip: false }
-        ]
-      },
-      {
-        author: '表情包大户',
-        avatar: '/avatars/小猫坏笑.jpg',
-        content: '', // Sticker only
-        sticker: 'https://api.iconify.design/noto:cat-face-with-wry-smile.svg',
-        time: Date.now() - 1800000,
-        likes: 28,
-        isVip: false,
-        isLiked: false
-      },
-      {
-        author: '摄影师',
-        avatar: '/avatars/小猫开心.jpg',
-        content: '上次拍的照片还没发呢！',
-        image: 'https://picsum.photos/seed/pic_comment/300/200',
-        time: Date.now() - 900000,
-        likes: 45,
-        isVip: true,
-        isLiked: true
-      }
-    ]
-    if (firstPost.stats && firstPost.stats.comment < 3) firstPost.stats.comment = 3
+    if (!firstPost.comments || firstPost.comments.length === 0) {
+      firstPost.comments = [
+        {
+          id: 'demo_c1',
+          author: '吃瓜少女',
+          avatar: '/avatars/小猫吃草莓.jpg',
+          content: '捉住Chilly！今天也太可爱了吧！🥰',
+          time: Date.now() - 3600000,
+          likes: 52,
+          isVip: true,
+          isLiked: false,
+          replies: [
+            { author: 'Chilly', content: '嘿嘿，被发现了！🐱', isVip: true, isAuthor: true },
+            { author: '路人甲', content: '羡慕前排！', isVip: false }
+          ]
+        },
+        {
+          id: 'demo_c2',
+          author: '表情包大户',
+          avatar: '/avatars/小猫坏笑.jpg',
+          content: '',
+          sticker: 'https://api.iconify.design/noto:cat-face-with-wry-smile.svg',
+          time: Date.now() - 1800000,
+          likes: 28,
+          isVip: false,
+          isLiked: false
+        },
+        {
+          id: 'demo_c3',
+          author: '摄影师',
+          avatar: '/avatars/小猫开心.jpg',
+          content: '上次拍的照片还没发呢！',
+          image: 'https://picsum.photos/seed/pic_comment/300/200',
+          time: Date.now() - 900000,
+          likes: 45,
+          isVip: true,
+          isLiked: true
+        }
+      ]
+      if (firstPost.stats && firstPost.stats.comment < 3) firstPost.stats.comment = 3
+      weiboStore.saveData()
+    }
   }
 })
 
@@ -107,11 +111,44 @@ onMounted(async () => {
 const activeView = ref('home')
 const activeSearchSub = ref('hot')
 const showPostModal = ref(false)
+const isRefreshing = ref(false)
+const isPulling = ref(false)
+const pullDistance = ref(0)
 
 const showSettingsModal = ref(false)
 const showShareModal = ref(false)
 const selectedPostToShare = ref(null)
 const activeCommentPostId = ref(null) // ID of the post with expanded comments
+
+// 转发相关状态
+const showRepostModal = ref(false)
+const repostTargetPost = ref(null)
+const repostCommentText = ref('')
+
+// 分享面板搜索过滤
+const shareContactSearch = ref('')
+
+// 最近联系人（根据私信对话记录排序）
+const sortedShareContacts = computed(() => {
+  const allContacts = Object.entries(chatStore.chats || {}).map(([id, chat]) => ({
+    id,
+    name: chat.remark || chat.name,
+    avatar: chat.avatar,
+    // 最近联系时间：从私信对话中取最后一条消息时间
+    lastActive: weiboStore.getDMChatMessages(chat.name || chat.re)?.length > 0
+      ? Math.max(...weiboStore.getDMChatMessages(chat.name || chat.re).map(m => m.time || 0))
+      : 0
+  }))
+  // 按搜索关键词过滤
+  if (shareContactSearch.value.trim()) {
+    const term = shareContactSearch.value.toLowerCase()
+    return allContacts.filter(c =>
+      c.name.toLowerCase().includes(term)
+    )
+  }
+  // 有最近对话的排前面
+  return allContacts.sort((a, b) => b.lastActive - a.lastActive)
+})
 
 const postText = ref('')
 const searchText = ref('Chilly')
@@ -120,14 +157,13 @@ const activeReplyCommentId = ref(null) // ID of comment being replied to (if nul
 const activeReplyUser = ref(null) // User object being replied to
 
 function setReplyTarget(post, comment, replyUser = null) {
-  activeReplyCommentId.value = comment ? comment : null // If null, commenting on post
+  // 存储评论的 id 而非对象引用，避免刷新后引用失效
+  activeReplyCommentId.value = comment ? (comment.id || comment) : null
   activeReplyUser.value = replyUser || (comment ? { name: comment.author } : null)
 
   // Focus input (simulate)
   const input = document.querySelector(`.post-${post.id}-comment-input`)
   if (input) input.focus()
-
-  // Update placeholder text handled in template
 }
 
 function sendComment(postId) {
@@ -138,11 +174,24 @@ function sendComment(postId) {
 
   // If replying to a comment (Threading)
   if (activeReplyCommentId.value) {
-    // Find the parent comment
-    // Implementation detail: mock comments doesn't have IDs, using object ref or index might be tricky
-    // For this mock, let's just push to the LAST comment or matched comment
-    // We need to pass index or object reference. Let's assume activeReplyCommentId is the comment Object for simplicity in this mock
-    const parentComment = activeReplyCommentId.value
+    // 通过 id 或对象引用查找父评论（兼容新旧数据）
+    const targetId = typeof activeReplyCommentId.value === 'string'
+      ? activeReplyCommentId.value
+      : activeReplyCommentId.value?.id
+    let parentComment = null
+
+    if (targetId) {
+      parentComment = post.comments.find(c => c.id === targetId)
+    }
+    // 回退：如果通过 id 找不到，尝试用引用匹配
+    if (!parentComment && typeof activeReplyCommentId.value === 'object') {
+      parentComment = post.comments.find(c => c === activeReplyCommentId.value)
+    }
+
+    if (!parentComment) {
+      // 最终回退：使用第一条评论
+      parentComment = post.comments[0]
+    }
     if (!parentComment.replies) parentComment.replies = []
 
     let content = commentInputText.value
@@ -189,9 +238,107 @@ const settingsForm = ref({})
 const settingsTab = ref('profile') // profile, binding, data
 
 // Temp state for other views
-const viewedUserProfile = ref({ name: '', avatar: '' }) // For viewing others
+const viewedUserProfile = ref({ name: '', avatar: '' })
+
+const profileActiveTab = ref('all')
+// 搜索历史使用 store 中的持久化数据（不再硬编码）
+const activeSearchResultTab = ref('posts')
+
+const dmInputText = ref('')
+const dmMessagesContainer = ref(null)
+// 使用 store 中的持久化私信对话消息（不再用本地 ref）
+// 切换联系人时从 store 加载对应聊天记录
+
+const currentDMMessages = computed(() => {
+  return weiboStore.getDMChatMessages(dmChat.value.name) || []
+})
+
+function sendDMMessage() {
+  if (!dmInputText.value.trim()) return
+  const name = dmChat.value.name
+  const now = new Date()
+  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+  // 通过 store 持久化发送消息
+  weiboStore.addDMChatMessage(name, {
+    content: dmInputText.value,
+    isMine: true,
+    time: Date.now(),
+    timeStr
+  })
+  dmInputText.value = ''
+  scrollToBottom()
+  // 使用 AI 生成回复（自动带上最近聊天记录作为上下文）
+  setTimeout(async () => {
+    const recentMsgs = weiboStore.getDMChatMessages(name).slice(-6) // 取最近6条作为上下文
+    const reply = await weiboStore.generateDMChatReply(name, recentMsgs)
+    if (reply) {
+      const replyTime = new Date()
+      const senderDM = weiboStore.dmMessages.find(d => d.sender === name)
+      weiboStore.addDMChatMessage(name, {
+        content: reply,
+        isMine: false,
+        avatar: senderDM?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + name,
+        time: Date.now(),
+        timeStr: `${replyTime.getHours().toString().padStart(2, '0')}:${replyTime.getMinutes().toString().padStart(2, '0')}`
+      })
+      scrollToBottom()
+    }
+  }, 1000 + Math.random() * 2000)
+}
+
+function scrollToBottom() {
+  setTimeout(() => {
+    if (dmMessagesContainer.value) {
+      dmMessagesContainer.value.scrollTop = dmMessagesContainer.value.scrollHeight
+    }
+  }, 100)
+}
 
 // --- Navigation Methods ---
+
+// 下拉刷新
+async function handleRefresh() {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  // 模拟刷新：重新加载 store 数据 + 触发一次 AI 生成
+  await weiboStore.initStore()
+  setTimeout(() => {
+    isRefreshing.value = false
+    chatStore.triggerToast('刷新完成', 'success')
+  }, 800)
+}
+
+// 触摸事件处理（下拉检测）
+let touchStartY = 0
+
+function onTouchStart(e) {
+  touchStartY = e.touches[0].clientY
+  const feedEl = document.querySelector('.feed')
+  if (feedEl && feedEl.scrollTop <= 0) {
+    isPulling.value = true
+  }
+}
+
+function onTouchMove(e) {
+  if (!isPulling.value || isRefreshing.value) return
+  const deltaY = e.touches[0].clientY - touchStartY
+  if (deltaY > 0) {
+    const feedEl = document.querySelector('.feed')
+    if (feedEl && feedEl.scrollTop <= 0) {
+      pullDistance.value = Math.min(deltaY * 0.5, 80)
+      e.preventDefault()
+    }
+  }
+}
+
+function onTouchEnd() {
+  if (pullDistance.value > 50 && !isRefreshing.value) {
+    handleRefresh()
+  }
+  isPulling.value = false
+  pullDistance.value = 0
+}
+
 function switchView(viewName) {
   activeView.value = viewName
 }
@@ -256,18 +403,18 @@ function closePostModal() {
 
 
 // --- Share Logic ---
+const showShareContactList = ref(false)
+
 function openShareModal(post) {
   selectedPostToShare.value = post
+  showShareContactList.value = false
   showShareModal.value = true
 }
 
 function sharePostTo(contactId) {
   if (!selectedPostToShare.value) return
-
   const post = selectedPostToShare.value
   const chatName = chatStore.chats[contactId]?.name || '好友'
-
-  // Create Post Snippet for the card
   const cardContent = JSON.stringify({
     postId: post.id,
     author: post.author,
@@ -276,19 +423,207 @@ function sharePostTo(contactId) {
     image: post.images && post.images.length > 0 ? post.images[0] : null,
     summary: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : '')
   })
-
   chatStore.addMessage(contactId, {
-    role: 'user', // User is sharing it
-    type: 'weibo_card', // New type
+    role: 'user',
+    type: 'weibo_card',
     content: cardContent
   })
-
-  // Toast / Feeback
   chatStore.triggerToast(`已分享给 ${chatName}`, 'success')
-  showShareModal.value = false
-  weiboStore.toggleLike(post.id) // Optional: Auto-like when sharing? Maybe not.
-  // Increment share count locally for effect
+  closeShareModal()
   if (post.stats) post.stats.share++
+}
+
+function shareToMoments() {
+  if (!selectedPostToShare.value) return
+  const post = selectedPostToShare.value
+  const momentsStore = window.useMomentsStore?.()
+  if (momentsStore) {
+    momentsStore.addMoment({
+      authorId: 'user',
+      content: post.content,
+      images: post.images || []
+    })
+    chatStore.triggerToast('已分享到朋友圈', 'success')
+  } else {
+    chatStore.triggerToast('朋友圈模块未加载', 'warning')
+  }
+  closeShareModal()
+  if (post.stats) post.stats.share++
+}
+
+async function copyShareLink() {
+  if (!selectedPostToShare.value) return
+  const post = selectedPostToShare.value
+  const link = `${window.location.origin}/weibo/post/${post.id}`
+  let success = false
+  try {
+    await navigator.clipboard.writeText(link)
+    success = true
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = link
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    success = true
+  }
+  if (success) {
+    chatStore.triggerToast('链接已复制到剪贴板', 'success')
+    if (post.stats) post.stats.share++
+  }
+  closeShareModal()
+}
+
+function generateShareImage() {
+  if (!selectedPostToShare.value) return
+  const post = selectedPostToShare.value
+  chatStore.triggerToast('截图分享功能开发中', 'info')
+  // 即使功能未完成，分享操作已触发，应计入统计
+  if (post.stats) post.stats.share++
+  closeShareModal()
+}
+
+function showContactList() {
+  showShareContactList.value = true
+}
+
+function backToShareOptions() {
+  showShareContactList.value = false
+}
+
+function closeShareModal() {
+  showShareModal.value = false
+  showShareContactList.value = false
+  selectedPostToShare.value = null
+}
+
+// --- 转发功能 ---
+function openRepostModal(post) {
+  repostTargetPost.value = post
+  repostCommentText.value = ''
+  showRepostModal.value = true
+}
+
+function closeRepostModal() {
+  showRepostModal.value = false
+  repostTargetPost.value = null
+  repostCommentText.value = ''
+}
+
+function handleRepost(post) {
+  if (!repostCommentText.value.trim()) {
+    // 直接转发（无评论文案）
+    weiboStore.repost(post.id)
+    chatStore.triggerToast('转发成功', 'success')
+  } else {
+    // 带评论转发
+    weiboStore.repost(post.id, repostCommentText.value)
+    chatStore.triggerToast('转发成功', 'success')
+    repostCommentText.value = ''
+  }
+  closeRepostModal()
+}
+
+const myPostsCount = computed(() => weiboStore.posts.filter(p => p.authorId === 'me').length)
+
+const filteredMyPosts = computed(() => {
+  const posts = weiboStore.posts.filter(p => p.authorId === 'me')
+  if (profileActiveTab.value === 'original') return posts
+  if (profileActiveTab.value === 'video') return posts.filter(p => p.content.includes('视频') || (p.images && p.images.length > 0))
+  return posts
+})
+
+const searchResults = computed(() => {
+  if (!searchText.value.trim()) return []
+  const term = searchText.value.toLowerCase()
+  return weiboStore.posts.filter(p =>
+    p.content.toLowerCase().includes(term) ||
+    p.author.toLowerCase().includes(term)
+  )
+})
+
+const searchResultUsers = computed(() => {
+  if (!searchText.value.trim()) return []
+  const term = searchText.value.toLowerCase()
+  const uniqueAuthors = new Set()
+  const users = []
+  weiboStore.posts.forEach(p => {
+    if (!uniqueAuthors.has(p.author) && p.author.toLowerCase().includes(term)) {
+      uniqueAuthors.add(p.author)
+      users.push({
+        name: p.author,
+        avatar: p.avatar,
+        bio: '微博达人',
+        fans: '10万+',
+        isVip: p.isVip
+      })
+    }
+  })
+  const mockUsers = [
+    { name: '数码快报', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=TechDaily', bio: '科技资讯第一线', fans: '120万', isVip: true },
+    { name: '日常碎片收集', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Daily', bio: '记录生活中的小确幸', fans: '5.2万', isVip: false },
+  ]
+  mockUsers.forEach(u => {
+    if (!uniqueAuthors.has(u.name) && u.name.toLowerCase().includes(term)) {
+      users.push(u)
+      uniqueAuthors.add(u.name)
+    }
+  })
+  return users
+})
+
+const searchResultTopics = computed(() => {
+  if (!searchText.value.trim()) return []
+  const term = searchText.value.toLowerCase()
+  const mockTopics = [
+    { title: 'Chilly的手机', image: 'https://picsum.photos/seed/topic1/100/100', reading: '1.2亿', discussion: '50万' },
+    { title: 'Antigravity生态', image: 'https://picsum.photos/seed/topic2/100/100', reading: '8500万', discussion: '12万' },
+    { title: '日常碎片', image: 'https://picsum.photos/seed/topic3/100/100', reading: '3200万', discussion: '8万' },
+    { title: 'Chilly的假期', image: 'https://picsum.photos/seed/topic4/100/100', reading: '6800万', discussion: '15万' },
+  ]
+  return mockTopics.filter(t => t.title.toLowerCase().includes(term))
+})
+
+const emptyStateText = computed(() => {
+  if (profileActiveTab.value === 'video') return '还没有发布过视频微博哦~'
+  if (profileActiveTab.value === 'original') return '还没有发布过原创微博哦~'
+  return '还没有发布过微博哦，去记录生活吧~'
+})
+
+const viewedUserPosts = computed(() => {
+  return weiboStore.posts.filter(p => p.author === viewedUserProfile.value.name)
+})
+
+const viewedUserPostCount = computed(() => viewedUserPosts.value.length)
+
+// 生成稳定的随机数（基于用户名hash），避免每次渲染都变
+function stableRandom(name, min, max) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) - hash) + name.charCodeAt(i)
+    hash |= 0
+  }
+  const seed = Math.abs(hash) % 10000 / 10000
+  return (min + seed * (max - min)).toFixed(1)
+}
+
+const viewedUserFollowing = computed(() => stableRandom(viewedUserProfile.value.name || 'x', 0.5, 2.5))
+const viewedUserFans = computed(() => stableRandom(viewedUserProfile.value.name || 'y', 5, 15))
+
+function performSearch() {
+  if (!searchText.value.trim()) return
+  weiboStore.addSearchHistory(searchText.value)
+  switchView('search-results')
+}
+
+function clearSearchHistory() {
+  weiboStore.clearSearchHistory()
+}
+
+function searchFromHistory(term) {
+  searchText.value = term
+  performSearch()
 }
 
 function openSearchResults() {
@@ -530,7 +865,14 @@ async function handleGenerateDM(dmName) {
           <span class="active">推荐</span>
         </div>
       </header>
-      <main class="feed">
+      <main class="feed" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+        <!-- 下拉刷新指示器 -->
+        <div class="pull-refresh-indicator" :class="{ active: isRefreshing, pulling: pullDistance > 0 }"
+          :style="{ transform: `translateY(${isRefreshing ? 40 : pullDistance}px)`, opacity: isRefreshing ? 1 : Math.min(pullDistance / 50, 1) }">
+          <i class="fa-solid fa-rotate" :class="{ 'fa-spin': isRefreshing }" style="color: #ff8200; font-size: 18px;"></i>
+          <span v-if="!isRefreshing">下拉刷新</span>
+          <span v-else>正在刷新...</span>
+        </div>
         <article v-for="post in weiboStore.posts" :key="post.id" class="post-card">
           <div class="post-header">
             <div class="user-info" @click="onAvatarClick(post.author, post.avatar)">
@@ -571,10 +913,19 @@ async function handleGenerateDM(dmName) {
             v-if="post.images && post.images.length" @click="openPostDetail(post)">
             <img v-for="(img, idx) in post.images" :key="idx" :src="img">
           </div>
+          <!-- 转发卡片：展示被转发的原帖 -->
+          <div class="post-repost-card" v-if="post.repostFrom" @click="openPostDetail(weiboStore.posts.find(p => p.id === post.repostFrom.id))">
+            <div class="post-repost-author">{{ post.repostFrom.author }}</div>
+            <div class="post-repost-content">{{ post.repostFrom.content }}</div>
+            <div class="post-repost-images" v-if="post.repostFrom.images && post.repostFrom.images.length">
+              <img v-for="(img, rIdx) in post.repostFrom.images.slice(0, 3)" :key="'r'+rIdx" :src="img">
+            </div>
+          </div>
 
           <div class="post-actions" v-if="post.stats">
             <div class="action-item" @click.stop="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{
               weiboStore.formatNumber(post.stats.share) }}</div>
+            <div class="action-item" @click.stop="openRepostModal(post)"><i class="fa-solid fa-retweet"></i> 转发</div>
             <div class="action-item" @click.stop="toggleComments(post.id)"
               :class="{ 'active-action': activeCommentPostId === post.id }">
               <i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}
@@ -678,8 +1029,9 @@ async function handleGenerateDM(dmName) {
           <!-- Full Post Actions -->
           <div class="post-actions" v-if="activePostDetail.stats"
             style="margin-top:10px; border-bottom:1px solid #f0f0f0; padding-bottom:10px;">
-            <div class="action-item"><i class="fa-solid fa-share-nodes"></i> {{
+            <div class="action-item" @click.stop="openShareModal(activePostDetail)"><i class="fa-solid fa-share-nodes"></i> {{
               weiboStore.formatNumber(activePostDetail.stats.share) }}</div>
+            <div class="action-item" @click.stop="openRepostModal(activePostDetail)"><i class="fa-solid fa-retweet"></i> 转发</div>
             <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{
               weiboStore.formatNumber(activePostDetail.stats.comment) }}</div>
             <div class="action-item" :class="{ 'liked': activePostDetail.isLiked }"
@@ -770,25 +1122,25 @@ async function handleGenerateDM(dmName) {
           <div class="hot-item" @click="onTopicClick('Chilly的手机正式上线')">
             <span class="hot-rank top">1</span>
             <span class="hot-title">Chilly的手机正式上线</span>
-            <span class="hot-tag">爆</span>
+            <span class="hot-tag bao">爆</span>
             <span class="hot-meta">450万</span>
           </div>
           <div class="hot-item" @click="onTopicClick('如何评价 Antigravity 的 UI 设计')">
             <span class="hot-rank top">2</span>
             <span class="hot-title">如何评价 Antigravity 的 UI 设计</span>
-            <span class="hot-tag">新</span>
+            <span class="hot-tag xin">新</span>
             <span class="hot-meta">320万</span>
           </div>
           <div class="hot-item" @click="onTopicClick('大熊猫成功接机Chilly')">
             <span class="hot-rank top">3</span>
             <span class="hot-title">大熊猫成功接机Chilly</span>
-            <span class="hot-tag">热</span>
+            <span class="hot-tag re">热</span>
             <span class="hot-meta">280万</span>
           </div>
           <div class="hot-item" @click="onTopicClick('成都今日气温回升')">
             <span class="hot-rank">4</span>
             <span class="hot-title">成都今日气温回升</span>
-            <span class="hot-tag new">新</span>
+            <span class="hot-tag xin">新</span>
             <span class="hot-meta">150万</span>
           </div>
         </main>
@@ -854,19 +1206,19 @@ async function handleGenerateDM(dmName) {
           <div class="hot-item" @click="onTopicClick('某知名影星新戏开机')">
             <span class="hot-rank top">1</span>
             <span class="hot-title">某知名影星新戏开机</span>
-            <span class="hot-tag">热</span>
+            <span class="hot-tag re">热</span>
             <span class="hot-meta">220万</span>
           </div>
           <div class="hot-item" @click="onTopicClick('年度最佳单曲奖项公布')">
             <span class="hot-rank top">2</span>
             <span class="hot-title">年度最佳单曲奖项公布</span>
-            <span class="hot-tag">新</span>
+            <span class="hot-tag xin">新</span>
             <span class="hot-meta">180万</span>
           </div>
           <div class="hot-item" @click="onTopicClick('综艺《Chilly的假期》路透')">
             <span class="hot-rank top">3</span>
             <span class="hot-title">综艺《Chilly的假期》路透</span>
-            <span class="hot-tag">荐</span>
+            <span class="hot-tag jian">荐</span>
             <span class="hot-meta">150万</span>
           </div>
         </main>
@@ -880,29 +1232,95 @@ async function handleGenerateDM(dmName) {
         <div
           style="flex: 1; background: #f2f2f2; border-radius: 20px; padding: 5px 15px; font-size: 14px; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-search" style="color: #999;"></i>
-          <input type="text" v-model="searchText"
-            style="border: none; background: transparent; outline: none; width: 100%;">
+          <input type="text" v-model="searchText" @keyup.enter="performSearch"
+            style="border: none; background: transparent; outline: none; width: 100%;" placeholder="输入关键词搜索">
+          <button v-if="searchText" class="search-go-btn" @click="performSearch">搜索</button>
         </div>
       </div>
       <main class="feed">
-        <div style="padding: 12px 15px; color: var(--wb-text-sub); font-size: 13px;">相关微博</div>
-        <article class="post-card">
-          <div class="post-header">
-            <div class="user-info"
-              @click="onAvatarClick('数码爱好者', 'https://api.dicebear.com/7.x/avataaars/svg?seed=SearchUser1')">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=SearchUser1" class="user-avatar">
-              <div>
-                <div class="user-name">数码爱好者</div>
-                <div class="user-meta">1小时前</div>
-              </div>
+        <div v-if="!searchText" class="search-history-section">
+          <div class="search-history-header">
+            <span><i class="fa-solid fa-clock-rotate-left"></i> 搜索历史</span>
+            <span class="search-clear-btn" @click="clearSearchHistory"><i class="fa-solid fa-trash-can"></i> 清空</span>
+          </div>
+          <div class="search-history-list">
+            <div class="search-history-item" v-for="(term, idx) in weiboStore.searchHistory" :key="idx"
+              @click="searchFromHistory(term)">
+              <i class="fa-solid fa-clock-rotate-left history-icon"></i>
+              <span>{{ term }}</span>
             </div>
           </div>
-          <div class="post-content">刚才搜了一下关于 <span style="color: var(--wb-orange)">{{ searchText }}</span> 的消息，发现动态还挺多的。
+        </div>
+        <template v-else>
+          <div class="search-sub-tabs">
+            <span class="search-sub-tab" :class="{ active: activeSearchResultTab === 'posts' }" @click="activeSearchResultTab = 'posts'">微博</span>
+            <span class="search-sub-tab" :class="{ active: activeSearchResultTab === 'users' }" @click="activeSearchResultTab = 'users'">用户</span>
+            <span class="search-sub-tab" :class="{ active: activeSearchResultTab === 'topics' }" @click="activeSearchResultTab = 'topics'">话题</span>
           </div>
-          <div class="post-actions">
-            <div class="action-item"><i class="fa-solid fa-heart"></i> 12</div>
+          <div v-show="activeSearchResultTab === 'posts'" class="search-tab-content">
+            <div style="padding: 12px 15px 5px; color: var(--wb-text-sub); font-size: 13px;">
+              <i class="fa-solid fa-search" style="margin-right: 4px;"></i> "{{ searchText }}" 的相关微博
+            </div>
+            <article v-for="post in searchResults" :key="post.id" class="post-card">
+              <div class="post-header">
+                <div class="user-info" @click="onAvatarClick(post.author, post.avatar)">
+                  <img :src="post.avatar" class="user-avatar">
+                  <div>
+                    <div class="user-name" :class="{ 'vip-name': post.isVip }">{{ post.author }}</div>
+                    <div class="user-meta">{{ post.time }} · {{ post.device || 'Weibo Client' }}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="post-content" @click="openPostDetail(post)">{{ post.content }}</div>
+              <div class="post-images" :class="'grid-' + (post.images ? post.images.length : 0)" v-if="post.images && post.images.length" @click="openPostDetail(post)">
+                <img v-for="(img, idx) in post.images" :key="idx" :src="img">
+              </div>
+              <div class="post-actions" v-if="post.stats">
+                <div class="action-item" @click.stop="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{ weiboStore.formatNumber(post.stats.share) }}</div>
+                <div class="action-item" @click.stop="openRepostModal(post)"><i class="fa-solid fa-retweet"></i> 转发</div>
+                <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}</div>
+                <div class="action-item" :class="{ 'liked': post.isLiked }" @click.stop="likePost(post.id)"><i class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
+              </div>
+            </article>
+            <div v-if="searchResults.length === 0" class="search-empty-state">
+              <i class="fa-regular fa-face-frown text-3xl mb-3"></i>
+              <p>没有找到与 "{{ searchText }}" 相关的微博</p>
+            </div>
           </div>
-        </article>
+          <div v-show="activeSearchResultTab === 'users'" class="search-tab-content">
+            <div style="padding: 12px 15px 5px; color: var(--wb-text-sub); font-size: 13px;">
+              <i class="fa-solid fa-users" style="margin-right: 4px;"></i> "{{ searchText }}" 的相关用户
+            </div>
+            <div v-for="user in searchResultUsers" :key="user.name" class="search-user-result" @click="enterUserProfile(user.name, user.avatar)">
+              <img :src="user.avatar" class="search-user-avatar">
+              <div class="search-user-info">
+                <div class="search-user-name" :class="{ 'vip-name': user.isVip }">{{ user.name }}</div>
+                <div class="search-user-meta">{{ user.bio || '暂无简介' }} · {{ user.fans }} 粉丝</div>
+              </div>
+              <button class="search-follow-btn"><i class="fa-solid fa-plus"></i> 关注</button>
+            </div>
+            <div v-if="searchResultUsers.length === 0" class="search-empty-state">
+              <i class="fa-solid fa-user-slash text-3xl mb-3"></i>
+              <p>没有找到与 "{{ searchText }}" 相关的用户</p>
+            </div>
+          </div>
+          <div v-show="activeSearchResultTab === 'topics'" class="search-tab-content">
+            <div style="padding: 12px 15px 5px; color: var(--wb-text-sub); font-size: 13px;">
+              <i class="fa-solid fa-hashtag" style="margin-right: 4px;"></i> "{{ searchText }}" 的相关话题
+            </div>
+            <div v-for="topic in searchResultTopics" :key="topic.title" class="search-topic-result" @click="enterTopicDetail(topic.title)">
+              <img :src="topic.image" class="search-topic-avatar">
+              <div class="search-topic-info">
+                <div class="search-topic-name">#{{ topic.title }}#</div>
+                <div class="search-topic-meta">{{ topic.reading }} 阅读 · {{ topic.discussion }} 讨论</div>
+              </div>
+            </div>
+            <div v-if="searchResultTopics.length === 0" class="search-empty-state">
+              <i class="fa-solid fa-hashtag text-3xl mb-3"></i>
+              <p>没有找到与 "{{ searchText }}" 相关的话题</p>
+            </div>
+          </div>
+        </template>
       </main>
     </div>
 
@@ -950,8 +1368,6 @@ async function handleGenerateDM(dmName) {
         <div class="profile-main">
           <div class="avatar-wrapper">
             <img :src="userProfile.avatar" class="profile-avatar">
-            <!-- Verification Badge Below Avatar -->
-            <!-- Verification Badge Below Avatar -->
             <img v-if="userProfile.verified && userProfile.verifyType === '微博个人认证'"
               src="/icons/weibo_verify_individual.png" class="verify-badge-avatar-img">
             <img
@@ -960,7 +1376,6 @@ async function handleGenerateDM(dmName) {
           </div>
           <div class="profile-name" :class="{ 'vip-name': userProfile.vipLevel > 0 }">
             {{ userProfile.name }}
-            <!-- VIP Crown Next to Name -->
             <span v-if="userProfile.vipLevel > 0" class="vip-crown" :class="'level-' + userProfile.vipLevel">
               <i class="fa-solid fa-crown"></i>
               <span class="vip-level-num">{{ userProfile.vipLevel }}</span>
@@ -968,9 +1383,7 @@ async function handleGenerateDM(dmName) {
           </div>
           <div class="profile-id">{{ userProfile.bio }}</div>
           <div class="profile-stats">
-            <div class="stat-item"><span class="stat-num">
-                {{weiboStore.posts.filter(p => p.authorId === 'me').length}}
-              </span><span class="stat-label">微博</span></div>
+            <div class="stat-item"><span class="stat-num">{{ myPostsCount }}</span><span class="stat-label">微博</span></div>
             <div class="stat-item" @click="openFollowing"><span class="stat-num">{{
               weiboStore.formatNumber(userProfile.following) }}</span><span class="stat-label">关注</span></div>
             <div class="stat-item"><span class="stat-num">{{ weiboStore.formatNumber(userProfile.fans) }}</span><span
@@ -978,24 +1391,129 @@ async function handleGenerateDM(dmName) {
           </div>
         </div>
       </div>
-      <div class="post-card" style="margin-top: 10px; text-align: center; color: #999; padding: 40px 20px;">
-        <i class="fa-solid fa-feather-pointed"
-          style="font-size: 30px; margin-bottom: 10px; display: block; opacity: 0.3;"></i>
-        <p>还没有发布过微博哦，去记录生活吧~</p>
+      <div class="profile-tabs">
+        <div class="profile-tab" :class="{ active: profileActiveTab === 'all' }" @click="profileActiveTab = 'all'">
+          <i class="fa-solid fa-list"></i> 全部
+        </div>
+        <div class="profile-tab" :class="{ active: profileActiveTab === 'original' }" @click="profileActiveTab = 'original'">
+          <i class="fa-solid fa-pen-nib"></i> 原创
+        </div>
+        <div class="profile-tab" :class="{ active: profileActiveTab === 'video' }" @click="profileActiveTab = 'video'">
+          <i class="fa-solid fa-video"></i> 视频
+        </div>
+      </div>
+      <div class="my-posts-container">
+        <article v-for="post in filteredMyPosts" :key="post.id" class="post-card">
+          <div class="post-header">
+            <div class="user-info">
+              <div class="avatar-container" style="position: relative; display: inline-block;">
+                <img :src="post.avatar" class="user-avatar">
+              </div>
+              <div>
+                <div class="user-name" :class="{ 'vip-name': userProfile.vipLevel > 0 }">{{ post.author }}
+                  <span v-if="userProfile.vipLevel > 0" class="vip-crown" :class="'level-' + userProfile.vipLevel">
+                    <i class="fa-solid fa-crown"></i>
+                    <span class="vip-level-num">{{ userProfile.vipLevel }}</span>
+                  </span>
+                </div>
+                <div class="user-meta">{{ post.time }} · {{ post.device || 'iPhone 16 Pro Max' }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="post-content" @click="openPostDetail(post)">{{ post.content }}</div>
+          <div class="post-images" :class="'grid-' + (post.images ? post.images.length : 0)" v-if="post.images && post.images.length" @click="openPostDetail(post)">
+            <img v-for="(img, idx) in post.images" :key="idx" :src="img">
+          </div>
+          <div class="post-actions" v-if="post.stats">
+            <div class="action-item" @click.stop="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{ weiboStore.formatNumber(post.stats.share) }}</div>
+            <div class="action-item" @click.stop="openRepostModal(post)"><i class="fa-solid fa-retweet"></i> 转发</div>
+            <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}</div>
+            <div class="action-item" :class="{ 'liked': post.isLiked }" @click.stop="likePost(post.id)"><i class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
+          </div>
+        </article>
+        <div v-if="filteredMyPosts.length === 0" class="profile-empty-state">
+          <i class="fa-solid fa-feather-pointed text-3xl mb-3"></i>
+          <p>{{ emptyStateText }}</p>
+        </div>
       </div>
     </div>
 
     <!-- Share Modal -->
-    <div class="share-modal-overlay" v-if="showShareModal" @click.self="showShareModal = false">
+    <div class="share-modal-overlay" v-if="showShareModal" @click.self="closeShareModal">
       <div class="share-sheet">
-        <div class="share-header">分享给好友</div>
-        <div class="share-targets">
-          <div class="share-target-item" v-for="(chat, id) in chatStore.chats" :key="id" @click="sharePostTo(id)">
-            <img :src="chat.avatar" class="share-avatar">
-            <span class="share-name">{{ chat.name }}</span>
+        <template v-if="!showShareContactList">
+          <div class="share-header">分享微博</div>
+          <div class="share-preview">
+            <div class="share-preview-avatar">
+              <img :src="selectedPostToShare?.avatar" class="share-preview-avatar-img">
+            </div>
+            <div class="share-preview-content">
+              <div class="share-preview-author">{{ selectedPostToShare?.author }}</div>
+              <div class="share-preview-text">{{ selectedPostToShare?.content?.substring(0, 60) }}...</div>
+            </div>
           </div>
-        </div>
-        <div class="share-cancel" @click="showShareModal = false">取消</div>
+          <div class="share-options">
+            <div class="share-option" @click="showContactList">
+              <div class="share-option-icon" style="background: linear-gradient(135deg, #4cd964, #2ecc71);">
+                <i class="fa-solid fa-paper-plane"></i>
+              </div>
+              <span>分享给好友</span>
+            </div>
+            <div class="share-option" @click="shareToMoments">
+              <div class="share-option-icon" style="background: linear-gradient(135deg, #34c759, #30b350);">
+                <i class="fa-solid fa-circle-nodes"></i>
+              </div>
+              <span>朋友圈</span>
+            </div>
+            <div class="share-option" @click="copyShareLink">
+              <div class="share-option-icon" style="background: linear-gradient(135deg, #5ac8fa, #007aff);">
+                <i class="fa-solid fa-link"></i>
+              </div>
+              <span>复制链接</span>
+            </div>
+            <div class="share-option" @click="generateShareImage">
+              <div class="share-option-icon" style="background: linear-gradient(135deg, #ff9500, #ff3b30);">
+                <i class="fa-solid fa-image"></i>
+              </div>
+              <span>生成海报</span>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <div class="share-header share-header-back">
+            <div class="share-back-btn" @click="backToShareOptions">
+              <i class="fa-solid fa-chevron-left"></i>
+            </div>
+            <span>选择好友</span>
+            <div style="width: 24px;"></div>
+          </div>
+          <!-- 联系人搜索框 -->
+          <div class="share-contact-search">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" v-model="shareContactSearch" placeholder="搜索联系人..." class="share-search-input">
+            <i v-if="shareContactSearch" class="fa-solid fa-xmark clear-icon" @click="shareContactSearch = ''"></i>
+          </div>
+          <!-- 最近联系人标记 + 列表 -->
+          <div class="share-targets" :class="{ 'has-recent': !shareContactSearch }">
+            <template v-if="!shareContactSearch && sortedShareContacts.length > 0 && sortedShareContacts[0].lastActive > 0">
+              <div class="recent-label"><i class="fa-solid fa-clock"></i> 最近联系</div>
+            </template>
+            <div class="share-target-item"
+              v-for="contact in sortedShareContacts"
+              :key="contact.id"
+              @click="sharePostTo(contact.id)"
+              :class="{ 'is-recent': !shareContactSearch && contact.lastActive > 0 }">
+              <img :src="contact.avatar" class="share-avatar">
+              <span class="share-name">{{ contact.name }}</span>
+              <span class="recent-dot" v-if="!shareContactSearch && contact.lastActive > 0"></span>
+            </div>
+            <div v-if="sortedShareContacts.length === 0" class="share-empty-contacts">
+              <i class="fa-solid fa-user-group" style="font-size: 32px; color: #ddd; margin-bottom: 8px;"></i>
+              <p>没有找到联系人</p>
+            </div>
+          </div>
+        </template>
+        <div class="share-cancel" @click="closeShareModal">取消</div>
       </div>
     </div>
 
@@ -1020,6 +1538,36 @@ async function handleGenerateDM(dmName) {
           </div>
           <div class="option-chip"><i class="fa-solid fa-mobile-screen-button"></i><input type="text"
               placeholder="机型: iPhone 16 Pro Max"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Repost Modal (转发弹窗) -->
+    <div class="repost-modal-overlay" v-if="showRepostModal" @click.self="closeRepostModal">
+      <div class="repost-sheet slideUp">
+        <div class="repost-header">
+          <span @click="closeRepostModal" style="cursor: pointer; color: #999; font-size: 14px;">取消</span>
+          <span style="font-weight: bold; font-size: 17px;">转发微博</span>
+          <button class="repost-send-btn" :class="{ active: true }" @click="handleRepost(repostTargetPost)">发送</button>
+        </div>
+        <!-- 原帖预览 -->
+        <div class="repost-original-card" v-if="repostTargetPost">
+          <div class="repost-original-header">
+            <img :src="repostTargetPost.avatar" class="repost-avatar">
+            <span class="repost-author">{{ repostTargetPost.author }}</span>
+            <span class="repost-time">{{ repostTargetPost.time }}</span>
+          </div>
+          <div class="repost-original-content">{{ repostTargetPost.content }}</div>
+          <div class="repost-original-images" v-if="repostTargetPost.images && repostTargetPost.images.length">
+            <img v-for="(img, idx) in repostTargetPost.images.slice(0, 3)" :key="idx" :src="img" class="repost-thumb-img">
+          </div>
+        </div>
+        <!-- 转发评论文本框 -->
+        <div class="repost-input-area">
+          <textarea class="repost-textarea" v-model="repostCommentText" placeholder="说说分享心得..." maxlength="200"></textarea>
+          <div class="repost-input-footer">
+            <span class="char-count" :class="{ warn: repostCommentText.length > 180 }">{{ repostCommentText.length }}/200</span>
+          </div>
         </div>
       </div>
     </div>
@@ -1119,21 +1667,52 @@ async function handleGenerateDM(dmName) {
       <div class="profile-header">
         <div class="profile-bg" style="background: linear-gradient(to bottom, #4d73a1, #5ac8fa);"></div>
         <div class="profile-main">
-          <img :src="userProfile.avatar" class="profile-avatar">
-          <div class="profile-name">{{ userProfile.name }}</div>
-          <div class="profile-id">ID: 10293847 | 官方认证</div>
+          <img :src="viewedUserProfile.avatar" class="profile-avatar">
+          <div class="profile-name">{{ viewedUserProfile.name }}</div>
+          <div class="profile-id">微博达人 · 热爱生活</div>
           <div class="user-profile-actions">
-            <button class="btn-follow">已关注</button>
-            <button class="btn-chat" @click="enterDMChat(userProfile.name)">私信</button>
+            <button class="btn-follow">+ 关注</button>
+            <button class="btn-chat" @click="enterDMChat(viewedUserProfile.name)">私信</button>
           </div>
           <div class="profile-stats">
-            <div class="stat-item"><span class="stat-num">8.2k</span><span class="stat-label">微博</span></div>
-            <div class="stat-item"><span class="stat-num">1.2k</span><span class="stat-label">关注</span></div>
-            <div class="stat-item"><span class="stat-num">500k</span><span class="stat-label">粉丝</span></div>
+            <div class="stat-item"><span class="stat-num">{{ viewedUserPostCount }}</span><span class="stat-label">微博</span></div>
+            <div class="stat-item"><span class="stat-num">{{ viewedUserFollowing }}k</span><span class="stat-label">关注</span></div>
+            <div class="stat-item"><span class="stat-num">{{ viewedUserFans }}k</span><span class="stat-label">粉丝</span></div>
           </div>
         </div>
       </div>
-      <div style="padding: 15px; font-weight: bold;">Ta的微博</div>
+      <div class="viewed-user-posts">
+        <div class="user-posts-header">
+          <i class="fa-solid fa-feather-pointed"></i> Ta的微博
+        </div>
+        <article v-for="post in viewedUserPosts" :key="post.id" class="post-card">
+          <div class="post-header">
+            <div class="user-info">
+              <img :src="post.avatar" class="user-avatar">
+              <div>
+                <div class="user-name" :class="{ 'vip-name': post.isVip }">{{ post.author }}
+                  <span v-if="post.isVip" class="vip-crown level-5"><i class="fa-solid fa-crown"></i></span>
+                </div>
+                <div class="user-meta">{{ post.time }} · {{ post.device || 'Weibo Client' }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="post-content" @click="openPostDetail(post)">{{ post.content }}</div>
+          <div class="post-images" :class="'grid-' + (post.images ? post.images.length : 0)" v-if="post.images && post.images.length" @click="openPostDetail(post)">
+            <img v-for="(img, idx) in post.images" :key="idx" :src="img">
+          </div>
+          <div class="post-actions" v-if="post.stats">
+            <div class="action-item" @click.stop="openShareModal(post)"><i class="fa-solid fa-share-nodes"></i> {{ weiboStore.formatNumber(post.stats.share) }}</div>
+            <div class="action-item" @click.stop="openRepostModal(post)"><i class="fa-solid fa-retweet"></i> 转发</div>
+            <div class="action-item"><i class="fa-solid fa-comment-dots"></i> {{ weiboStore.formatNumber(post.stats.comment) }}</div>
+            <div class="action-item" :class="{ 'liked': post.isLiked }" @click.stop="likePost(post.id)"><i class="fa-solid fa-heart"></i> {{ weiboStore.formatNumber(post.stats.like) }}</div>
+          </div>
+        </article>
+        <div v-if="viewedUserPosts.length === 0" class="profile-empty-state">
+          <i class="fa-solid fa-wind text-3xl mb-3"></i>
+          <p>暂无微博</p>
+        </div>
+      </div>
     </div>
 
     <!-- View: DM Chat Window -->
@@ -1143,16 +1722,28 @@ async function handleGenerateDM(dmName) {
           <i class="fa-solid fa-chevron-left back-btn" @click="hideDMChat"></i>
           <div style="font-weight: bold; font-size: 17px;">{{ dmChat.name }}</div>
         </div>
-        <div class="chat-messages">
-          <div class="bubble received">你好呀！最近怎么样？</div>
-          <div class="bubble sent">我也很挺好的，刚才看到你发的微博了。</div>
-          <div class="bubble received">哈哈，谢谢关注任务！</div>
+        <div class="chat-messages" ref="dmMessagesContainer">
+          <div v-for="(dm, idx) in currentDMMessages" :key="idx" class="bubble" :class="dm.isMine ? 'sent' : 'received'">
+            <div class="bubble-avatar" v-if="!dm.isMine">
+              <img :src="dm.avatar" class="bubble-avatar-img">
+            </div>
+            <div class="bubble-content">
+              {{ dm.content }}
+              <div class="bubble-time">{{ dm.timeStr }}</div>
+            </div>
+          </div>
+          <div v-if="currentDMMessages.length === 0" class="chat-empty">
+            <i class="fa-regular fa-comments text-3xl mb-2"></i>
+            <p>开始你们的对话吧</p>
+          </div>
         </div>
         <div class="chat-footer">
-          <i class="fa-solid fa-microphone" style="font-size: 20px; color: #666;"></i>
-          <input type="text" class="chat-input" placeholder="输入消息...">
-          <i class="fa-solid fa-face-smile" style="font-size: 20px; color: #666;"></i>
-          <i class="fa-solid fa-plus" style="font-size: 20px; color: #666;"></i>
+          <i class="fa-solid fa-microphone" style="font-size: 20px; color: #666; cursor: pointer;"></i>
+          <input type="text" class="chat-input" v-model="dmInputText" placeholder="输入消息..." @keyup.enter="sendDMMessage">
+          <i class="fa-solid fa-face-smile" style="font-size: 20px; color: #666; cursor: pointer;"></i>
+          <button class="dm-send-btn" :class="{ active: dmInputText.trim().length > 0 }" @click="sendDMMessage">
+            <i class="fa-solid fa-paper-plane"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -1525,39 +2116,155 @@ header {
   gap: 5px;
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
 .action-item:hover {
   color: var(--wb-orange);
+  transform: scale(1.05);
 }
 
+/* 点赞状态 — 心跳+红色 */
 .action-item.liked {
   color: #fe2c55;
 }
 
-.action-item.liked i {
+.action-item.liked i.fa-heart {
   color: #fe2c55;
-  animation: heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: heartBurst 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-@keyframes heartPop {
-  0% {
-    transform: scale(1);
-  }
+/* 点赞时的心形爆发动画 */
+@keyframes heartBurst {
+  0% { transform: scale(1); }
+  15% { transform: scale(1.4) rotate(-5deg); }
+  30% { transform: scale(1.2) rotate(3deg); }
+  45% { transform: scale(1.35) rotate(-2deg); }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
 
-  50% {
-    transform: scale(1.4);
-  }
+/* 分享按钮点击弹跳 */
+.action-item:active i.fa-share-nodes {
+  animation: shareBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
 
-  100% {
-    transform: scale(1);
-  }
+@keyframes shareBounce {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.3) translateY(-3px) rotate(8deg); }
+  50% { transform: scale(1.1) translateY(-1px) rotate(-3deg); }
+  70% { transform: scale(1.2) translateY(-2px) rotate(2deg); }
+  100% { transform: scale(1) translateY(0) rotate(0); }
+}
+
+/* 评论按钮激活时的抖动效果 */
+.action-item.active-action {
+  color: #ff8200;
+}
+
+.action-item.active-action i.fa-comment-dots {
+  animation: commentWiggle 0.4s ease-in-out;
+}
+
+@keyframes commentWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-12deg) scale(1.15); }
+  40% { transform: rotate(10deg) scale(1.1); }
+  60% { transform: rotate(-6deg) scale(1.05); }
+  80% { transform: rotate(3deg); }
+}
+
+/* 点赞数字滚动效果 */
+.action-item.liked + .action-item span,
+.action-item.liked span {
+  font-weight: 600;
+}
+
+/* 点赞时的心形粒子爆发（伪元素实现） */
+.action-item.liked::before,
+.action-item.liked::after {
+  content: '❤';
+  position: absolute;
+  font-size: 10px;
+  color: #fe2c55;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.action-item.liked::before {
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: floatUp1 0.7s ease-out forwards;
+}
+
+.action-item.liked::after {
+  bottom: -5px;
+  left: 55%;
+  animation: floatUp2 0.6s ease-out 0.1s forwards;
+}
+
+@keyframes floatUp1 {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(0.8); }
+  100% { opacity: 0; transform: translateX(-60%) translateY(-25px) scale(1.3) rotate(15deg); }
+}
+
+@keyframes floatUp2 {
+  0% { opacity: 1; transform: translateY(0) scale(0.8); }
+  100% { opacity: 0; transform: translateX(10px) translateY(-18px) scale(1.1) rotate(-12deg); }
+}
+
+/* ===== 下拉刷新 ===== */
+.pull-refresh-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  font-size: 13px;
+  color: #999;
+}
+
+.pull-refresh-indicator.active {
+  height: 40px !important;
+  opacity: 1 !important;
+}
+
+.pull-refresh-indicator.pulling {
+  height: 40px;
+}
+
+main.feed {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* iOS 惯性滚动 */
 }
 
 /* Hot List */
 .hot-list {
   background: white;
   padding: 0 15px;
+}
+
+/* 热搜数字滚动效果（每次热搜更新时触发） */
+.hot-meta {
+  display: inline-block;
+  transition: all 0.4s ease-out;
+}
+
+.hot-item {
+  position: relative;
+}
+
+.hot-item .hot-meta.animate-in {
+  animation: countUp 0.5s ease-out;
+}
+
+@keyframes countUp {
+  0% { opacity: 0; transform: translateY(8px); }
+  60% { transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 .hot-item {
@@ -1592,11 +2299,36 @@ header {
   padding: 1px 4px;
   border-radius: 3px;
   color: white;
-  background: #fe2d46;
+  font-weight: 600;
+  min-width: 18px;
+  text-align: center;
 }
 
-.hot-tag.new {
-  background: #ffb11a;
+.hot-tag.hot {
+  background: #ff4d4f;
+}
+
+.hot-tag.bao {
+  background: linear-gradient(135deg, #ff3b30, #ff6b6b);
+  box-shadow: 0 1px 3px rgba(255, 59, 48, 0.4);
+}
+
+.hot-tag.xin {
+  background: linear-gradient(135deg, #ff9500, #ffb11a);
+  box-shadow: 0 1px 3px rgba(255, 149, 0, 0.4);
+}
+
+.hot-tag.re {
+  background: linear-gradient(135deg, #fe2d46, #ff6b6b);
+  box-shadow: 0 1px 3px rgba(254, 45, 70, 0.3);
+}
+
+.hot-tag.jian {
+  background: #5ac8fa;
+}
+
+.hot-tag.zhi {
+  background: #34c759;
 }
 
 .hot-meta {
@@ -1691,12 +2423,12 @@ nav.bottom-nav {
 /* Modals */
 .post-modal {
   position: fixed;
-  top: 0;
+  top: 28px;
   left: 0;
   right: 0;
   bottom: 0;
   background: white;
-  z-index: 1000;
+  z-index: 2000;
   display: none;
   flex-direction: column;
   animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1722,12 +2454,14 @@ nav.bottom-nav {
   align-items: center;
   padding: 15px;
   border-bottom: 1px solid var(--wb-divider);
+  flex-shrink: 0;
 }
 
 .modal-content {
   flex: 1;
   padding: 15px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .post-textarea {
@@ -1791,6 +2525,188 @@ nav.bottom-nav {
 
 .send-btn.ready {
   opacity: 1;
+}
+
+/* ===== 转发弹窗 ===== */
+.repost-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2001;
+  display: flex;
+  align-items: flex-end;
+}
+
+.repost-sheet {
+  width: 100%;
+  max-height: 80vh;
+  background: white;
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.repost-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.repost-send-btn {
+  padding: 5px 16px;
+  border-radius: 16px;
+  background: #ff8200;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.repost-send-btn:hover { opacity: 0.85; }
+
+/* 原帖预览卡片 */
+.repost-original-card {
+  margin: 12px 15px;
+  padding: 10px 12px;
+  background: #f8f8f8;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.repost-original-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.repost-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.repost-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.repost-time {
+  font-size: 11px;
+  color: #999;
+  margin-left: auto;
+}
+
+.repost-original-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #333;
+  word-break: break-all;
+}
+
+.repost-original-images {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.repost-thumb-img {
+  width: 70px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+/* 转发输入区 */
+.repost-input-area {
+  padding: 10px 15px 15px;
+}
+
+.repost-textarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 120px;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.repost-input-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 5px;
+}
+
+.char-count {
+  font-size: 11px;
+  color: #ccc;
+}
+
+.char-count.warn { color: #ff8200; }
+
+/* 转发微博卡片（信息流中展示） */
+.post-repost-card {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  position: relative;
+}
+
+.post-repost-card::before {
+  content: '';
+  position: absolute;
+  left: 24px;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  background: #fafafa;
+  border-left: 1px solid #f0f0f0;
+  border-top: 1px solid #f0f0f0;
+  transform: rotate(45deg);
+}
+
+.post-repost-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: #576b95;
+  margin-bottom: 4px;
+}
+
+.post-repost-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #333;
+  word-break: break-all;
+}
+
+.post-repost-images {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.post-repost-images img {
+  width: 90px;
+  height: 65px;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 .search-sub-view {
@@ -3102,6 +4018,76 @@ input:checked+.slider:before {
   text-overflow: ellipsis;
 }
 
+/* ===== 分享面板增强：搜索 + 最近联系人 ===== */
+.share-contact-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 15px 5px;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-radius: 20px;
+}
+
+.search-icon { font-size: 13px; color: #999; }
+
+.share-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: #333;
+}
+
+.clear-icon {
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+  padding: 2px;
+}
+
+.clear-icon:hover { color: #999; }
+
+.recent-label {
+  width: 100%;
+  padding: 8px 0 4px;
+  font-size: 12px;
+  color: #999;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-bottom: none;
+}
+
+.share-targets.has-recent {
+  flex-wrap: wrap; /* 让列表可以换行显示 */
+  justify-content: flex-start;
+}
+
+.share-target-item.is-recent {
+  position: relative;
+}
+
+.recent-dot {
+  position: absolute;
+  top: 2px;
+  right: calc(50% - 28px);
+  width: 8px;
+  height: 8px;
+  background: #ff8200;
+  border-radius: 50%;
+  border: 1.5px solid white;
+}
+
+.share-empty-contacts {
+  width: 100%;
+  padding: 40px 15px;
+  text-align: center;
+  color: #bbb;
+  font-size: 13px;
+}
+
 .share-cancel {
   background: white;
   padding: 16px;
@@ -3495,5 +4481,518 @@ input:checked+.slider:before {
 .dark-mode ::-webkit-scrollbar-thumb {
   background: #334155;
   border-color: #0f172a;
+}
+
+.profile-tabs {
+  display: flex;
+  background: white;
+  border-bottom: 1px solid var(--wb-divider);
+  padding: 0 15px;
+}
+
+.profile-tab {
+  flex: 1;
+  text-align: center;
+  padding: 14px 0;
+  font-size: 14px;
+  color: var(--wb-text-sub);
+  cursor: pointer;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-bottom: 2px solid transparent;
+}
+
+.profile-tab.active {
+  color: var(--wb-text-main);
+  font-weight: 600;
+  border-bottom-color: var(--wb-orange);
+}
+
+.profile-tab i {
+  font-size: 13px;
+}
+
+.my-posts-container {
+  min-height: 300px;
+}
+
+.profile-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #999;
+  background: white;
+  margin-top: 10px;
+  border-radius: 8px;
+}
+
+.search-history-section {
+  padding: 15px;
+  background: white;
+  margin-top: 10px;
+}
+
+.search-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wb-text-main);
+}
+
+.search-clear-btn {
+  font-size: 12px;
+  color: #999;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.search-history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.search-history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #f2f2f2;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #555;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.search-history-item:active {
+  background: #e8e8e8;
+}
+
+.search-history-item .history-icon {
+  font-size: 12px;
+  color: #999;
+}
+
+.search-go-btn {
+  background: var(--wb-orange);
+  color: white;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.search-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: #999;
+  background: white;
+  margin-top: 10px;
+  border-radius: 8px;
+}
+
+.share-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  background: white;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.share-preview-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f0f0f0;
+}
+
+.share-preview-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.share-preview-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-preview-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.share-preview-text {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.share-options {
+  padding: 20px 15px;
+  background: white;
+  display: flex;
+  justify-content: space-around;
+  gap: 10px;
+}
+
+.share-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 12px;
+  transition: background 0.2s;
+  min-width: 64px;
+}
+
+.share-option:active {
+  background: #f0f0f0;
+}
+
+.share-option-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.share-option span {
+  font-size: 11px;
+  color: #333;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.share-header-back {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 15px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: none;
+}
+
+.share-back-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #007aff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.share-targets {
+  padding: 20px;
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  background: white;
+  margin-bottom: 8px;
+}
+
+.share-targets::-webkit-scrollbar {
+  display: none;
+}
+
+.share-target-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.share-name {
+  font-size: 12px;
+  color: #333;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dm-send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #e0e0e0;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.dm-send-btn.active {
+  background: var(--wb-orange);
+}
+
+.dm-send-btn:active {
+  transform: scale(0.9);
+}
+
+.bubble-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.bubble-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bubble-time {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-top: 2px;
+  text-align: right;
+}
+
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  color: #ccc;
+  font-size: 14px;
+}
+
+.search-sub-tabs {
+  display: flex;
+  background: white;
+  padding: 0 15px;
+  border-bottom: 1px solid var(--wb-divider);
+}
+
+.search-sub-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  font-size: 14px;
+  color: var(--wb-text-sub);
+  cursor: pointer;
+  transition: color 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.search-sub-tab.active {
+  color: var(--wb-text-main);
+  font-weight: 600;
+  border-bottom-color: var(--wb-orange);
+}
+
+.search-tab-content {
+  background: var(--wb-bg);
+  min-height: 300px;
+}
+
+.search-user-result {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  gap: 12px;
+  background: white;
+  border-bottom: 1px solid var(--wb-divider);
+  cursor: pointer;
+}
+
+.search-user-result:last-child {
+  border-bottom: none;
+}
+
+.search-user-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.search-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-user-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--wb-text-main);
+}
+
+.search-user-meta {
+  font-size: 12px;
+  color: var(--wb-text-sub);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-follow-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--wb-orange);
+  color: var(--wb-orange);
+  background: transparent;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.search-follow-btn:active {
+  background: var(--wb-orange);
+  color: white;
+}
+
+.search-topic-result {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  gap: 12px;
+  background: white;
+  border-bottom: 1px solid var(--wb-divider);
+  cursor: pointer;
+}
+
+.search-topic-result:last-child {
+  border-bottom: none;
+}
+
+.search-topic-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.search-topic-info {
+  flex: 1;
+}
+
+.search-topic-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--wb-orange);
+  margin-bottom: 4px;
+}
+
+.search-topic-meta {
+  font-size: 12px;
+  color: var(--wb-text-sub);
+}
+
+.viewed-user-posts {
+  background: var(--wb-bg);
+  min-height: 200px;
+}
+
+.user-posts-header {
+  padding: 15px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--wb-text-main);
+  background: white;
+  border-bottom: 1px solid var(--wb-divider);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-posts-header i {
+  color: var(--wb-orange);
+}
+
+.user-profile-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 15px;
+}
+
+.btn-follow {
+  padding: 8px 24px;
+  background: var(--wb-orange);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-follow:active {
+  opacity: 0.8;
+}
+
+.btn-chat {
+  padding: 8px 24px;
+  background: white;
+  color: var(--wb-orange);
+  border: 1px solid var(--wb-orange);
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-chat:active {
+  background: #f0f0f0;
 }
 </style>
