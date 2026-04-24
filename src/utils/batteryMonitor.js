@@ -101,6 +101,13 @@ class BatteryMonitor {
 
     onLowBattery(callback) {
         this.callbacks.onLowBattery.push(callback)
+        // 返回清理函数
+        return () => {
+            const index = this.callbacks.onLowBattery.indexOf(callback)
+            if (index > -1) {
+                this.callbacks.onLowBattery.splice(index, 1)
+            }
+        }
     }
 
     getBatteryInfo() {

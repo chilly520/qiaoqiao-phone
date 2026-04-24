@@ -2527,19 +2527,68 @@ export const useChatStore = defineStore('chat', () => {
             // Track if we are in a call to handle message shadowing/hiding
             const isCallMode = callStore.status !== 'none';
 
-            // Streaming handler for calls
+            // Streaming handler for ALL modes (Fixes stuttering/lag)
             let hasAddedCallLine = false;
-            const onChunk = isCallActive ? (delta, full) => {
-                // ... (existing chunk logic) ...
-            } : null;
+            let currentMessageId = null;
+            
+            const onChunk = (delta, full) => {
+                const finalMode = options.mode || 'online';
+                
+                // --- Safe UI Streaming Update ---
+                if (!currentMessageId) {
+                    currentMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    // Inject a placeholder message to DOM immediately to avoid sudden mount stuttering
+                    addMessage(chatId, { 
+                        id: currentMessageId, 
+                        role: 'ai', 
+                        content: '', 
+                        _isStreaming: true, 
+                        mode: finalMode 
+                    });
+                }
+                
+                if (isCallActive) {
+                    // Call mode specific streaming
+                    if (full.includes('"speech"') && !hasAddedCallLine) {
+                        hasAddedCallLine = true;
+                    }
+                } else {
+                    // Normal mode streaming: update the placeholder message directly
+                    // To prevent JSON leakage during streaming, we apply a strict guard:
+                    // If it looks like raw JSON without closing brace, we don't show the text yet
+                    let safeContent = full;
+                    
+                    // Simple partial JSON guard: if it contains an unclosed brace block that has inner voice keys
+                    if (safeContent.includes('{') || safeContent.includes('[')) {
+                         safeContent = '...思考中...';
+                    } else {
+                         // Only show if it's clearly clean text
+                         safeContent = full.replace(/\[\s*INNER[\s-_]*VOICE\s*\][\s\S]*/i, '...思考中...');
+                    }
+                    
+                    if (full.includes('[/INNER_VOICE]') || full.includes('}')) {
+                         // Once closed, try to use the actual cleaned text
+                         try {
+                             const { useChatMessageDisplay } = import('../../utils/chatMessageDisplay');
+                             // We avoid doing complex cleanup if not strictly needed in the fast loop, 
+                             // but we can trust the cleaned output once the tag is fully closed
+                         } catch (e) {}
+                    }
 
-            // FOR CALLS: Disable streaming to ensure complete JSON blocks are received,
-            // as partial JSON is harder to parse reliably for voice.
+                    // Only update the message visually
+                    updateMessage(chatId, currentMessageId, {
+                        content: safeContent,
+                        _isStreaming: true
+                    });
+                }
+            };
+
+            // Force streaming for ALL interactions to improve perceived performance
             const result = await generateReply(context, charInfo, signal, {
                 ...aiOptions,
-                isCall: isCallContext, // Only use call prompt when status is 'active'
-                stream: isCallContext ? false : undefined, // Force non-streaming for calls
-                onChunk: isCallActive ? onChunk : null
+                isCall: isCallContext,
+                stream: true, // ENFORCE STREAMING FOR FLUID UX
+                onChunk: onChunk
             })
 
 
@@ -2547,6 +2596,11 @@ export const useChatStore = defineStore('chat', () => {
             // Clear controller on success
             delete abortControllers[chatId]
             clearRequestPending(chatId) // 请求已完成，清除 pending 状态
+            
+            // --- Remove Streaming Placeholder ---
+            if (currentMessageId) {
+                deleteMessage(chatId, currentMessageId);
+            }
 
             if (result.error) {
                 // Ignore abort errors which happen on hangup

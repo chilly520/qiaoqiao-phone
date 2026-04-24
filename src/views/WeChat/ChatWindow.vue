@@ -192,6 +192,7 @@ const virtualListContainer = ref(null)
 const isMsgVisible = (msg) => {
     if (!msg) return false
     if (msg.hidden) return false
+    if (msg._isStreaming) return true
 
     // 1. Use shared utility for online mode filtering (handles robust [ONLINE]/[OFFLINE] tags)
     if (!shouldShowInOnlineMode(msg)) return false
@@ -507,17 +508,19 @@ onMounted(async () => {
     }
 
     // Battery Initialization
+    let unsubCharge = null
+    let unsubLow = null
     const initialized = await batteryMonitor.init()
     if (initialized) {
         batteryInitialized.value = true
         const info = batteryMonitor.getBatteryInfo()
         batteryLevel.value = info.level
         batteryCharging.value = info.charging
-        batteryMonitor.onChange((info) => {
+        unsubCharge = batteryMonitor.onChange((info) => {
             batteryLevel.value = info.level
             batteryCharging.value = info.charging
         })
-        batteryMonitor.onLowBattery((info) => {
+        unsubLow = batteryMonitor.onLowBattery((info) => {
             if (!chatData.value || info.charging) return
             const systemMsg = {
                 id: `sys_battery_${Date.now()}`,
@@ -538,7 +541,8 @@ onUnmounted(() => {
         resizeObserver = null
     }
     if (batteryInitialized.value) {
-        batteryMonitor.destroy()
+        if (typeof unsubCharge === 'function') unsubCharge()
+        if (typeof unsubLow === 'function') unsubLow()
     }
     delete window.qiaoqiao_receiveFamilyCard
 })

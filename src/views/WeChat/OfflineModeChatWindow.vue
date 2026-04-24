@@ -22,18 +22,29 @@
 
     <div class="sticky top-0 px-5 pt-5 pb-3 shrink-0 offline-top-shell" style="z-index: 50;">
       <div class="max-w-[520px] mx-auto">
-        <div class="flex items-center justify-between gap-3">
-          <button @click="emit('back')" class="offline-lite-icon-btn">
-            <i class="fa-solid fa-arrow-left text-[15px]"></i>
-          </button>
+        <div class="flex items-center justify-between gap-2">
+          
+          <div class="flex items-center overflow-hidden flex-1 max-w-[65%]">
+            <button @click="emit('back')" class="offline-lite-icon-btn shrink-0 mr-2">
+              <i class="fa-solid fa-arrow-left text-[14px]"></i>
+            </button>
+            
+            <div class="scene-header-inline flex-col items-start gap-0.5 overflow-hidden flex-1 pt-0.5">
+              <div class="flex items-center gap-1.5 w-full">
+                <i class="fa-solid fa-location-dot scene-loc-icon text-[12px] text-sky-500"></i>
+                <span class="scene-title-text truncate text-[14px] leading-tight">{{ sceneDisplayTitle }}</span>
+              </div>
+              <span class="scene-meta-inline text-[10px] pl-4 truncate w-full leading-none opacity-80">{{ currentDateLabel }} {{ currentTime }}</span>
+            </div>
+          </div>
 
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 shrink-0">
             <!-- 切换到线上模式按钮 -->
             <button 
               @click="switchToOnlineMode"
               class="offline-lite-icon-btn relative"
               title="切换到线上模式">
-              <i class="fa-solid fa-comments text-[14px] text-sky-500"></i>
+              <i class="fa-solid fa-comments text-[13px] text-sky-500"></i>
               <!-- 小红点和呼吸灯 -->
               <div v-if="hasUnreadOnlineMessages" 
                 class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white/80 shadow-sm animate-breathing-dot">
@@ -41,7 +52,7 @@
             </button>
 
             <button @click="openInnerVoice" class="offline-lite-icon-btn">
-              <i class="fa-solid fa-heart text-[14px]"></i>
+              <i class="fa-solid fa-heart text-[13px]"></i>
             </button>
 
             <div class="relative" @click.stop>
@@ -109,13 +120,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="scene-header-inline">
-          <i class="fa-solid fa-location-dot scene-loc-icon"></i>
-          <span class="scene-title-text">{{ sceneDisplayTitle }}</span>
-          <span class="scene-sep">·</span>
-          <span class="scene-meta-inline">{{ currentDateLabel }} {{ currentTime }}</span>
         </div>
       </div>
     </div>
@@ -909,6 +913,7 @@ const isMsgVisible = (msg) => {
   // 线下模式消息过滤逻辑
   if (!msg) return false
   if (msg.hidden) return false
+  if (msg._isStreaming) return true
   
   // Special card/interactive types should ALWAYS show in both modes UNLESS explicitly tagged for other mode
   const specialTypes = ['gift', 'gift_claimed', 'dice_result', 'tarot', 'tarot_card', 'tarot_interpretation', 'order_share', 'html', 'card', 'redpacket', 'transfer', 'sticker', 'image', 'voice', 'music', 'moment_card']
@@ -1527,8 +1532,8 @@ onUnmounted(() => {
 }
 
 .offline-lite-icon-btn {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   display: flex;
   align-items: center;
@@ -1547,10 +1552,8 @@ onUnmounted(() => {
 /* 地点栏 - 紧凑内联风格（不再使用大椭圆卡片） */
 .scene-header-inline {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 4px;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  padding: 0;
 }
 
 .scene-loc-icon {
