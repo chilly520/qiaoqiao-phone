@@ -260,8 +260,8 @@ export const useMomentsStore = defineStore('moments', () => {
             topMoments.value = topMoments.value.filter(tid => tid !== id)
             return false // Unpinned
         } else {
-            // Pin limit: 3. FIFO if exceeded.
-            if (topMoments.value.length >= 3) {
+            // Pin limit: 9. FIFO if exceeded.
+            if (topMoments.value.length >= 9) {
                 topMoments.value.shift()
             }
             topMoments.value.push(id)

@@ -6,6 +6,7 @@ import MomentsNotifications from './MomentsNotifications.vue'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import MomentItem from '../../components/MomentItem.vue'
+import MomentImagePreview from '../../components/MomentImagePreview.vue'
 import EmojiPicker from './EmojiPicker.vue'
 import { useStickerStore } from '../../stores/stickerStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
@@ -113,6 +114,15 @@ const tempLocation = ref('')
 const isAIImageLoading = ref(false)
 const aiImagePreview = ref(null)
 const showAIImageConfirm = ref(false)
+const selectedImageStyle = ref('realistic')
+const aiImageRetryCount = ref(0)
+
+const imageStyles = [
+    { id: 'realistic', name: '写实风格', icon: 'fa-solid fa-camera', color: '#34c759' },
+    { id: 'anime', name: '动漫风格', icon: 'fa-solid fa-star', color: '#ff9500' },
+    { id: 'watercolor', name: '水彩风格', icon: 'fa-solid fa-palette', color: '#5ac8fa' },
+    { id: 'pixel', name: '像素风格', icon: 'fa-solid fa-gamepad', color: '#af52de' },
+]
 const showSignatureModal = ref(false)
 const signatureInput = ref('')
 const showGenChoiceModal = ref(false)
@@ -123,6 +133,13 @@ const genChoiceForm = ref({
 const clearMyConfirmMode = ref(false)
 const clearConfirmMode = ref(false)
 const confirmClearCharId = ref(null)
+
+const isPullingDown = ref(false)
+const pullDistance = ref(0)
+const isRefreshing = ref(false)
+const pullStartY = ref(0)
+const pullCurrentY = ref(0)
+const scrollContainerRef = ref(null)
 
 const openSignatureModal = () => {
     signatureInput.value = userProfile.value.signature || ''
@@ -178,6 +195,9 @@ const backgroundUrl = computed(() => momentsStore.backgroundUrl)
 const showBackgroundModal = ref(false)
 const backgroundInput = ref('')
 const backgroundFileInput = ref(null)
+const showBgPreviewConfirm = ref(false)
+const bgPreviewUrl = ref('')
+const pendingBgUrl = ref('')
 
 // Flatten all entries from all books for selection
 const allWorldBookEntries = computed(() => {
@@ -466,19 +486,65 @@ const handleAIImageGenerate = async () => {
         const englishPrompt = await translateToEnglish(postForm.value.imageDescription)
         console.log('[AI Image] Translated Prompt:', englishPrompt)
 
-        // 2. Generate
-        const imageUrl = await generateImage(englishPrompt)
+        // 2. Append style modifier based on selected style
+        const styleModifiers = {
+            realistic: 'photorealistic, high detail, natural lighting, 4k',
+            anime: 'anime style, vibrant colors, cel shading, Studio Ghibli inspired',
+            watercolor: 'watercolor painting style, soft colors, artistic, gentle brushstrokes',
+            pixel: 'pixel art style, 16-bit retro game aesthetic, crisp pixels'
+        }
+        const styledPrompt = `${englishPrompt}, ${styleModifiers[selectedImageStyle.value] || styleModifiers.realistic}`
+        console.log('[AI Image] Styled Prompt:', styledPrompt)
 
-        // 3. Show Preview
+        // 3. Generate with retry mechanism (max 2 attempts)
+        let imageUrl = null
+        let lastError = null
+        const maxRetries = 2
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                imageUrl = await generateImage(styledPrompt)
+                if (imageUrl) break
+                console.warn(`[AI Image] Attempt ${attempt} returned empty, retrying...`)
+            } catch (err) {
+                lastError = err
+                console.error(`[AI Image] Attempt ${attempt} failed:`, err)
+                if (attempt < maxRetries) {
+                    chatStore.triggerToast(`生成失败，正在重试 (${attempt}/${maxRetries - 1})...`, 'warning')
+                    await new Promise(resolve => setTimeout(resolve, 1000))
+                }
+            }
+        }
+
+        if (!imageUrl) {
+            throw lastError || new Error('生成失败')
+        }
+
+        // 4. Show Preview
         aiImagePreview.value = imageUrl
         showAIImageConfirm.value = true
+        aiImageRetryCount.value = 0
         chatStore.triggerToast('生成成功', 'success')
     } catch (e) {
         console.error('[AI Image] Error:', e)
-        chatStore.triggerToast(`生成失败: ${e.message}`, 'error')
+        aiImageRetryCount.value++
+        if (aiImageRetryCount.value >= 3) {
+            chatStore.triggerToast(`生成失败次数过多，请稍后重试`, 'error')
+            aiImageRetryCount.value = 0
+        } else {
+            chatStore.triggerToast(`生成失败: ${e.message || '未知错误'}`, 'error')
+        }
     } finally {
         isAIImageLoading.value = false
     }
+}
+
+const regenerateAIImage = async () => {
+    if (!postForm.value.imageDescription.trim()) return
+    chatStore.triggerToast('正在重新生成...', 'info')
+    aiImagePreview.value = null
+    showAIImageConfirm.value = false
+    await handleAIImageGenerate()
 }
 
 const useAIImage = () => {
@@ -659,6 +725,52 @@ const openBackgroundModal = () => {
     showBackgroundModal.value = true
 }
 
+const previewBackgroundFromUrl = () => {
+    if (!backgroundInput.value.trim()) return
+    bgPreviewUrl.value = backgroundInput.value.trim()
+    showBgPreviewConfirm.value = true
+}
+
+const previewBackgroundFromFile = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    if (file.size > 10 * 1024 * 1024) {
+        chatStore.triggerToast('图片太大 (限制10MB)', 'error')
+        event.target.value = ''
+        return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+        bgPreviewUrl.value = e.target.result
+        showBgPreviewConfirm.value = true
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ''
+}
+
+const applyBgPreview = () => {
+    const newUrl = bgPreviewUrl.value
+    if (viewingProfile.value.isMe) {
+        momentsStore.backgroundUrl = newUrl
+    } else if (filterAuthorId.value) {
+        if (chatStore.chats[filterAuthorId.value]) {
+            chatStore.chats[filterAuthorId.value].momentsBackground = newUrl
+            chatStore.saveToStorage()
+        }
+    }
+
+    cancelBgPreview()
+    showBackgroundModal.value = false
+    chatStore.triggerToast('背景图已更新', 'success')
+}
+
+const cancelBgPreview = () => {
+    showBgPreviewConfirm.value = false
+    bgPreviewUrl.value = ''
+}
+
 const setBackgroundFromUrl = () => {
     if (backgroundInput.value.trim()) {
         const newUrl = backgroundInput.value.trim()
@@ -666,10 +778,9 @@ const setBackgroundFromUrl = () => {
         if (viewingProfile.value.isMe) {
             momentsStore.backgroundUrl = newUrl
         } else if (filterAuthorId.value) {
-            // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
                 chatStore.chats[filterAuthorId.value].momentsBackground = newUrl
-                chatStore.saveToStorage() // Ensure persistence
+                chatStore.saveToStorage()
             }
         }
 
@@ -694,7 +805,6 @@ const handleBackgroundFileUpload = (event) => {
         if (viewingProfile.value.isMe) {
             momentsStore.backgroundUrl = newUrl
         } else if (filterAuthorId.value) {
-            // Update character background
             if (chatStore.chats[filterAuthorId.value]) {
                 chatStore.chats[filterAuthorId.value].momentsBackground = newUrl
                 chatStore.saveToStorage()
@@ -705,7 +815,7 @@ const handleBackgroundFileUpload = (event) => {
         chatStore.triggerToast('背景图已更新', 'success')
     }
     reader.readAsDataURL(file)
-    event.target.value = '' // Reset
+    event.target.value = ''
 }
 
 
@@ -723,13 +833,68 @@ const scrollContainer = ref(null)
 const showBackToTop = ref(false)
 
 const handleScroll = (e) => {
-    // Show back to top button if scrolled more than 500px down
     showBackToTop.value = e.target.scrollTop > 500
+    if (e.target.scrollTop === 0) {
+        pullCurrentY.value = 0
+    }
 }
 
 const scrollToTop = () => {
     if (scrollContainer.value) {
         scrollContainer.value.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+}
+
+const handleTouchStart = (e) => {
+    if (scrollContainer.value && scrollContainer.value.scrollTop === 0 && !isRefreshing.value) {
+        pullStartY.value = e.touches[0].clientY
+        isPullingDown.value = true
+    }
+}
+
+const handleTouchMove = (e) => {
+    if (!isPullingDown.value || isRefreshing.value) return
+    const currentY = e.touches[0].clientY
+    const diff = currentY - pullStartY.value
+    if (diff > 0 && scrollContainer.value && scrollContainer.value.scrollTop <= 0) {
+        e.preventDefault()
+        pullDistance.value = Math.min(diff * 0.5, 80)
+        pullCurrentY.value = diff
+    }
+}
+
+const handleTouchEnd = () => {
+    if (!isPullingDown.value || isRefreshing.value) {
+        isPullingDown.value = false
+        return
+    }
+    isPullingDown.value = false
+    if (pullDistance.value >= 50) {
+        triggerPullToRefresh()
+    } else {
+        pullDistance.value = 0
+        pullCurrentY.value = 0
+    }
+}
+
+const triggerPullToRefresh = async () => {
+    if (isRefreshing.value) return
+    isRefreshing.value = true
+    pullDistance.value = 60
+
+    try {
+        chatStore.triggerToast('正在刷新朋友圈...', 'info')
+        await momentsStore.batchGenerateAIMoments(1)
+        chatStore.triggerToast('刷新成功，发现新动态', 'success')
+    } catch (e) {
+        console.error('[Pull Refresh] Error:', e)
+        chatStore.triggerToast('刷新失败，请稍后重试', 'error')
+    } finally {
+        setTimeout(() => {
+            isRefreshing.value = false
+            pullDistance.value = 0
+            pullCurrentY.value = 0
+        }, 500)
     }
 }
 
@@ -877,7 +1042,22 @@ onMounted(() => {
         </div>
 
         <!-- Scrollable Content -->
-        <div ref="scrollContainer" class="flex-1 overflow-y-auto no-scrollbar scroll-smooth" @scroll="handleScroll">
+        <div ref="scrollContainer" class="flex-1 overflow-y-auto no-scrollbar scroll-smooth"
+            @scroll="handleScroll"
+            @touchstart="handleTouchStart"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd">
+            <!-- Pull-to-Refresh Indicator -->
+            <div class="pull-refresh-container" :style="{ height: `${pullDistance}px` }">
+                <div class="pull-refresh-spinner" :class="{ refreshing: isRefreshing }">
+                    <i v-if="isRefreshing" class="fa-solid fa-spinner fa-spin text-blue-500 text-xl"></i>
+                    <i v-else-if="pullDistance >= 50" class="fa-solid fa-arrow-up text-green-500 text-xl"></i>
+                    <i v-else class="fa-solid fa-arrow-down text-gray-400 text-xl"></i>
+                    <span v-if="isRefreshing" class="pull-refresh-text">刷新中...</span>
+                    <span v-else-if="pullDistance >= 50" class="pull-refresh-text">松开刷新</span>
+                    <span v-else-if="pullDistance > 0" class="pull-refresh-text">下拉刷新</span>
+                </div>
+            </div>
             <!-- Back to Top Button -->
             <div v-show="showBackToTop"
                 class="absolute bottom-20 right-6 w-11 h-11 bg-white/95 backdrop-blur-sm shadow-xl shadow-black/10 border border-gray-100 rounded-full flex items-center justify-center cursor-pointer z-50 active:scale-95 transition-all text-gray-500 will-change-transform"
@@ -1109,16 +1289,28 @@ onMounted(() => {
                             <i class="fa-solid fa-wand-magic-sparkles text-blue-400"></i>
                             <span>AI 画面灵感（支持中文描述出图）</span>
                         </div>
-                        <button @click="handleAIImageGenerate"
-                            :disabled="isAIImageLoading || !postForm.imageDescription.trim()"
-                            class="text-[10px] bg-blue-50 text-blue-500 px-3 py-1 rounded-full border border-blue-100 font-bold active:scale-95 transition-all disabled:opacity-50">
-                            <i :class="['fa-solid', isAIImageLoading ? 'fa-spinner fa-spin' : 'fa-paint-brush']"
-                                class="mr-1"></i>
-                            {{ isAIImageLoading ? '正在创作...' : '绘制图片' }}
-                        </button>
                     </div>
                     <textarea v-model="postForm.imageDescription" placeholder="描述你想要生成的画面内容，例如：一个在樱花树下喝下午茶的少女..."
-                        class="w-full bg-gray-50 px-3 py-3 rounded-xl outline-none text-sm h-20 resize-none border border-gray-100 focus:border-blue-200 transition-colors"></textarea>
+                        class="w-full bg-gray-50 px-3 py-3 rounded-xl outline-none text-sm h-20 resize-none border border-gray-100 focus:border-blue-200 transition-colors mb-3"></textarea>
+                    <!-- Style Selector -->
+                    <div class="style-selector">
+                        <div class="style-option" v-for="style in imageStyles" :key="style.id"
+                            :class="{ active: selectedImageStyle === style.id }"
+                            @click="selectedImageStyle = style.id">
+                            <div class="style-icon" :style="{ background: style.color }">
+                                <i :class="style.icon"></i>
+                            </div>
+                            <span>{{ style.name }}</span>
+                        </div>
+                    </div>
+                    <button @click="handleAIImageGenerate"
+                        :disabled="isAIImageLoading || !postForm.imageDescription.trim()"
+                        class="ai-generate-btn"
+                        :class="{ loading: isAIImageLoading }">
+                        <i :class="['fa-solid', isAIImageLoading ? 'fa-spinner fa-spin' : 'fa-paint-brush']"
+                            class="mr-1"></i>
+                        {{ isAIImageLoading ? '正在创作...' : '绘制图片' }}
+                    </button>
                 </div>
 
                 <!-- AI Generated Image Preview / Satisfaction Check -->
@@ -1411,9 +1603,10 @@ onMounted(() => {
                             <input v-model="backgroundInput" type="text" placeholder="https://example.com/image.jpg"
                                 class="w-full bg-gray-50 px-4 py-3 rounded-xl outline-none border border-gray-100">
                             <button
-                                class="w-full mt-2 py-2 bg-blue-500 text-white rounded-lg font-bold text-sm active:bg-blue-600"
-                                @click="setBackgroundFromUrl">
-                                使用此URL
+                                class="w-full mt-2 py-2 bg-blue-500 text-white rounded-lg font-bold text-sm active:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                :disabled="!backgroundInput.trim()"
+                                @click="previewBackgroundFromUrl">
+                                <i class="fa-solid fa-eye mr-1"></i>预览效果
                             </button>
                         </div>
 
@@ -1424,7 +1617,7 @@ onMounted(() => {
                             <label
                                 class="text-xs text-gray-400 block mb-2 font-bold uppercase tracking-wider">本地上传</label>
                             <input type="file" ref="backgroundFileInput" class="hidden" accept="image/*"
-                                @change="handleBackgroundFileUpload">
+                                @change="previewBackgroundFromFile">
                             <button
                                 class="w-full py-3 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 text-gray-600 active:bg-gray-100"
                                 @click="backgroundFileInput.click()">
@@ -1439,6 +1632,37 @@ onMounted(() => {
                         @click="showBackgroundModal = false">
                         取消
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Background Preview Confirmation Modal -->
+        <div v-if="showBgPreviewConfirm"
+            class="absolute inset-0 z-[115] bg-black/80 flex items-center justify-center"
+            @click.self="cancelBgPreview">
+            <div class="bg-white w-full max-w-[360px] rounded-2xl overflow-hidden shadow-2xl animate-scale-up mx-4">
+                <div class="relative h-[40vh] bg-gray-900">
+                    <img :src="bgPreviewUrl" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+                </div>
+                <div class="p-5">
+                    <div class="font-bold text-gray-800 text-center mb-1">设置为朋友圈背景？</div>
+                    <div class="text-[10px] text-gray-400 text-center mb-6">不满意可以重新选择哦</div>
+
+                    <div class="flex gap-3">
+                        <button
+                            class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold text-sm active:scale-95 transition-all"
+                            @click="cancelBgPreview">
+                            <i class="fa-solid fa-xmark mr-1"></i>
+                            换一张
+                        </button>
+                        <button
+                            class="flex-1 py-3 rounded-xl bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-200 active:scale-95 transition-all"
+                            @click="applyBgPreview">
+                            <i class="fa-solid fa-check mr-1"></i>
+                            确认使用
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1662,41 +1886,12 @@ onMounted(() => {
         </div>
     </div>
 
-    <!-- Fullscreen Image Preview Overlay (移到最外层避免 overflow 限制) -->
-    <div v-if="showImagePreview"
-        class="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center pt-10"
-        @click="closePreview">
-        <!-- Close btn -->
-        <div class="absolute top-10 right-6 text-white text-3xl z-[100000] p-4 cursor-pointer"
-            @click.stop="closePreview">
-            <i class="fa-solid fa-xmark drop-shadow-lg"></i>
-        </div>
-    
-        <!-- Main Image -->
-        <div class="flex-1 w-full flex items-center justify-center p-2 relative">
-            <!-- Nav buttons if multiple -->
-            <div v-if="previewImages.length > 1"
-                class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
-                @click.stop="prevPreview">
-                <i class="fa-solid fa-chevron-left text-xl"></i>
-            </div>
-            <div v-if="previewImages.length > 1"
-                class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center bg-white/20 hover:bg-white/30 rounded-full text-white cursor-pointer z-20"
-                @click.stop="nextPreview">
-                <i class="fa-solid fa-chevron-right text-xl"></i>
-            </div>
-    
-            <img :src="previewImages[previewIndex]"
-                class="max-w-full max-h-[90vh] object-contain shadow-2xl transition-all duration-300"
-                @click.stop />
-        </div>
-    
-        <!-- Footer / Counter -->
-        <div v-if="previewImages.length > 1"
-            class="h-20 flex flex-col items-center text-white/80 text-lg font-bold">
-            <span>{{ previewIndex + 1 }} / {{ previewImages.length }}</span>
-        </div>
-    </div>
+    <MomentImagePreview
+        :show="showImagePreview"
+        :images="previewImages"
+        :initial-index="previewIndex"
+        @close="closePreview"
+    />
 </template>
 
 
@@ -1797,50 +1992,69 @@ onMounted(() => {
     }
 }
 
-/* --- Dark Mode Adaptation for MomentsView --- */
+/* --- Dark Mode Adaptation using CSS Variables --- */
+.moments-view {
+    --mv-bg-primary: #ffffff;
+    --mv-bg-secondary: #f3f3f3;
+    --mv-bg-overlay: rgba(255, 255, 255, 0.8);
+    --mv-bg-overlay-strong: rgba(255, 255, 255, 0.6);
+    --mv-bg-modal: #ffffff;
+    --mv-bg-blue-tint: rgba(239, 246, 255, 0.5);
+    --mv-bg-green-tint: rgba(240, 253, 244, 0.4);
+    --mv-border-primary: #ffffff;
+    --mv-border-secondary: #f9fafb;
+    --mv-border-blue-tint: rgba(219, 234, 254, 0.5);
+    --mv-text-primary: #111827;
+    --mv-text-secondary: #1f2937;
+    --mv-text-tertiary: #374151;
+    --mv-text-muted: #6b7280;
+    --mv-text-subtle: #9ca3af;
+}
+
+[data-theme='dark'] .moments-view {
+    --mv-bg-primary: #111111;
+    --mv-bg-secondary: #191919;
+    --mv-bg-overlay: rgba(30, 30, 30, 0.8);
+    --mv-bg-overlay-strong: rgba(35, 35, 35, 0.6);
+    --mv-bg-modal: #1c1c1c;
+    --mv-bg-blue-tint: rgba(30, 41, 59, 0.5);
+    --mv-bg-green-tint: rgba(20, 83, 45, 0.2);
+    --mv-border-primary: #333333;
+    --mv-border-secondary: #222222;
+    --mv-border-blue-tint: rgba(30, 58, 138, 0.5);
+    --mv-text-primary: #eeeeee;
+    --mv-text-secondary: #e0e0e0;
+    --mv-text-tertiary: #d0d0d0;
+    --mv-text-muted: #b0b0b0;
+    --mv-text-subtle: #888888;
+}
+
 [data-theme='dark'] .bg-f3f3f3,
-[data-theme='dark'] .bg-\[\#f3f3f3\],
+[data-theme='dark'] .bg-\[\#f3f3f3\] {
+    background-color: var(--mv-bg-primary);
+}
+
 [data-theme='dark'] .bg-white {
-    background-color: #111111;
-}
-
-[data-theme='dark'] .text-gray-900 {
-    color: #eeeeee;
-}
-
-[data-theme='dark'] .text-gray-800 {
-    color: #e0e0e0;
-}
-
-[data-theme='dark'] .text-gray-700 {
-    color: #d0d0d0;
-}
-
-[data-theme='dark'] .text-gray-600 {
-    color: #b0b0b0;
-}
-
-[data-theme='dark'] .text-gray-400 {
-    color: #888888;
+    background-color: var(--mv-bg-secondary);
 }
 
 [data-theme='dark'] .bg-white\/80,
 [data-theme='dark'] .bg-white\\\/80 {
-    background-color: rgba(30, 30, 30, 0.8);
+    background-color: var(--mv-bg-overlay);
 }
 
 [data-theme='dark'] .bg-white\/60,
 [data-theme='dark'] .bg-white\\\/60 {
-    background-color: rgba(35, 35, 35, 0.6);
+    background-color: var(--mv-bg-overlay-strong);
 }
 
 [data-theme='dark'] .border-white {
-    border-color: #333333;
+    border-color: var(--mv-border-primary);
 }
 
 [data-theme='dark'] .border-gray-50,
 [data-theme='dark'] .border-gray-100 {
-    border-color: #222222;
+    border-color: var(--mv-border-secondary);
 }
 
 [data-theme='dark'] .bg-gray-50 {
@@ -1854,62 +2068,285 @@ onMounted(() => {
 [data-theme='dark'] .modal-content,
 [data-theme='dark'] .bg-white.rounded-3xl,
 [data-theme='dark'] .bg-white.rounded-2xl {
-    background-color: #1c1c1c;
+    background-color: var(--mv-bg-modal);
 }
 
 [data-theme='dark'] .bg-blue-50\/50,
 [data-theme='dark'] .bg-blue-50\\\/50 {
-    background-color: rgba(30, 41, 59, 0.5);
+    background-color: var(--mv-bg-blue-tint);
 }
 
 [data-theme='dark'] .bg-green-50\/40,
 [data-theme='dark'] .bg-green-50\\\/40 {
-    background-color: rgba(20, 83, 45, 0.2);
+    background-color: var(--mv-bg-green-tint);
 }
 
 [data-theme='dark'] .border-blue-100\/50,
 [data-theme='dark'] .border-blue-100\\\/50 {
-    border-color: rgba(30, 58, 138, 0.5);
-}
-
-/* --- Added Dark Mode Fixes --- */
-[data-theme='dark'] .moments-view {
-    background-color: #111 !important;
-}
-
-
-
-[data-theme='dark'] .bg-white {
-    background-color: #191919 !important;
+    border-color: var(--mv-border-blue-tint);
 }
 
 [data-theme='dark'] .moments-view .bg-white.pb-4.mb-2 {
-    background-color: #191919 !important;
+    background-color: var(--mv-bg-secondary);
     border-bottom: 1px solid #252525;
 }
 
-[data-theme='dark'] .bg-white,
 [data-theme='dark'] .feed-container {
-    background-color: #191919 !important;
+    background-color: var(--mv-bg-secondary);
 }
 
 [data-theme='dark'] .moment-item {
-    background-color: transparent !important;
-    border-bottom: 1px solid #252525 !important;
+    background-color: transparent;
+    border-bottom: 1px solid #252525;
 }
 
 [data-theme='dark'] .interaction-area {
-    background-color: #222 !important;
+    background-color: #222;
 }
 
 [data-theme='dark'] .px-3.py-1\.5.border-b.border-gray-200,
 [data-theme='dark'] .px-3.py-1\.5.space-y-1 {
-    background-color: #252525 !important;
-    border-color: #333 !important;
+    background-color: #252525;
+    border-color: #333;
 }
 
-[data-theme='dark'] .text-gray-900,
+[data-theme='dark'] .text-gray-900 {
+    color: var(--mv-text-primary);
+}
+
+[data-theme='dark'] .text-gray-800 {
+    color: var(--mv-text-secondary);
+}
+
 [data-theme='dark'] .text-gray-700 {
-    color: #e0e0e0 !important;
+    color: var(--mv-text-tertiary);
+}
+
+[data-theme='dark'] .text-gray-600 {
+    color: var(--mv-text-muted);
+}
+
+[data-theme='dark'] .text-gray-400 {
+    color: var(--mv-text-subtle);
+}
+
+.style-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    padding: 2px;
+}
+
+.style-selector::-webkit-scrollbar {
+    display: none;
+}
+
+.style-option {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 6px;
+    background: #f7f7f7;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+}
+
+.style-option.active {
+    border-color: #576b95;
+    background: #eef2ff;
+}
+
+.style-option:active {
+    transform: scale(0.95);
+}
+
+.style-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 14px;
+}
+
+.style-option span {
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+.style-option.active span {
+    color: #576b95;
+    font-weight: 600;
+}
+
+.ai-generate-btn {
+    width: 100%;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, #5ac8fa, #007aff);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-generate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ai-generate-btn:not(:disabled):active {
+    transform: scale(0.98);
+}
+
+.ai-generate-btn.loading {
+    background: linear-gradient(135deg, #999, #666);
+}
+
+.moment-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.preview-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: white;
+    font-size: 12px;
+}
+
+.preview-overlay .spinner {
+    font-size: 24px;
+}
+
+.preview-actions {
+    padding: 20px;
+}
+
+.preview-question {
+    font-weight: bold;
+    color: #333;
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+.preview-hint {
+    font-size: 10px;
+    color: #999;
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.preview-btns {
+    display: flex;
+    gap: 12px;
+}
+
+.preview-btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: none;
+}
+
+.preview-btn.regenerate {
+    background: #f0f0f0;
+    color: #666;
+}
+
+.preview-btn.regenerate:active {
+    transform: scale(0.95);
+}
+
+.preview-btn.use {
+    background: #576b95;
+    color: white;
+    box-shadow: 0 4px 12px rgba(87, 107, 149, 0.3);
+}
+
+.preview-btn.use:active {
+    transform: scale(0.95);
+}
+
+.preview-cancel {
+    width: 100%;
+    margin-top: 16px;
+    font-size: 12px;
+    color: #999;
+    padding: 8px;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.pull-refresh-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: height 0.1s ease-out;
+    width: 100%;
+}
+
+.pull-refresh-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 60px;
+    width: 100%;
+}
+
+.pull-refresh-spinner.refreshing {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.pull-refresh-text {
+    font-size: 13px;
+    color: #666;
+    font-weight: 500;
+}
+
+.feed-container {
+    position: relative;
+    z-index: 1;
 }
 </style>

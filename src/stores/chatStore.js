@@ -405,6 +405,7 @@ export const useChatStore = defineStore('chat', () => {
         if (msg.role === 'ai') {
             let processedContent = msg.content;
             if (typeof processedContent === 'string') {
+                processedContent = processedContent.replace(/\[done\]$/gi, '').trim();
                 processedContent = processTaskCommands(processedContent, chatId);
                 processedContent = processBioUpdate(processedContent, chatId);
                 
@@ -3409,6 +3410,7 @@ export const useChatStore = defineStore('chat', () => {
                     // Strip system context hints parrotted by AI
                     .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE|心声|INNER[-_ ]?VOICE)消息[\]\)]?/gi, '')
                     .replace(/\[(?:图片消息|语音消息|心声数据)\]/gi, '')
+                    .replace(/\[done\]$/gi, '')
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
@@ -3467,12 +3469,12 @@ export const useChatStore = defineStore('chat', () => {
                         endPos++;
                     }
 
-                    if (braceCount === 0) {
+                    if (braceCount === 0 || endPos === cleanContent.length) {
                         let totalEnd = endPos;
                         const remaining = cleanContent.substring(endPos);
                         
                         // Consume trailing whitespace and optional CLOSING bracket if we started with an OPENING bracket [
-                        if (cardMatch[0].trim().startsWith('[')) {
+                        if (braceCount === 0 && cardMatch[0].trim().startsWith('[')) {
                             const trailingBracketMatch = remaining.match(/^\s*\]/);
                             if (trailingBracketMatch) totalEnd += trailingBracketMatch[0].length;
                         }
@@ -4325,43 +4327,63 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
-    async function saveChats() {
+    let saveTimeout = null;
+    let savePromise = null;
+    let saveResolve = null;
+
+    function saveChats() {
         if (!isLoaded.value) {
             console.warn('[Storage] saveChats ignored: data not yet loaded from DB.');
-            return false;
+            return Promise.resolve(false);
         }
 
-        // LAST LINE OF DEFENSE: Filter JSON fragments before saving
-        Object.values(chats.value).forEach(chat => {
-            if (chat.msgs && Array.isArray(chat.msgs)) {
-                chat.msgs = chat.msgs.filter(m => {
-                    if (!m.content || typeof m.content !== 'string') return true;
-                    const trimmed = m.content.trim();
-                    const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
-                    if (headerPattern.test(trimmed)) return false;
-                    if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
-                    return true;
-                });
-            }
-        });
+        if (saveTimeout) clearTimeout(saveTimeout);
+        
+        if (!savePromise) {
+            savePromise = new Promise(resolve => {
+                saveResolve = resolve;
+            });
+        }
 
-        try {
-            // Use IndexedDB for large data
-            await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
-            await localforage.setItem('qiaoqiao_pending_requests', JSON.parse(JSON.stringify(pendingRequests.value)));
-            // Small marker in localStorage to trigger 'storage' events for cross-tab sync if needed
-            localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
-            return true
-        } catch (e) {
-            console.error('[Storage] localforage save failed:', e);
-            // Fallback for extreme cases
+        saveTimeout = setTimeout(async () => {
+            const resolveCurrent = saveResolve;
+            savePromise = null;
+            saveResolve = null;
+
+            // LAST LINE OF DEFENSE: Filter JSON fragments before saving
+            Object.values(chats.value).forEach(chat => {
+                if (chat.msgs && Array.isArray(chat.msgs)) {
+                    chat.msgs = chat.msgs.filter(m => {
+                        if (!m.content || typeof m.content !== 'string') return true;
+                        const trimmed = m.content.trim();
+                        const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
+                        if (headerPattern.test(trimmed)) return false;
+                        if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
+                        return true;
+                    });
+                }
+            });
+
             try {
-                localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value));
-            } catch (innerE) {
-                vacuumStorage();
+                // Use IndexedDB for large data (Debounced to prevent OOM / tab crashing)
+                await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
+                await localforage.setItem('qiaoqiao_pending_requests', JSON.parse(JSON.stringify(pendingRequests.value)));
+                // Small marker in localStorage to trigger 'storage' events for cross-tab sync if needed
+                localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
+                if (resolveCurrent) resolveCurrent(true);
+            } catch (e) {
+                console.error('[Storage] localforage save failed:', e);
+                // Fallback for extreme cases
+                try {
+                    localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value));
+                } catch (innerE) {
+                    vacuumStorage();
+                }
+                if (resolveCurrent) resolveCurrent(false);
             }
-            return false
-        }
+        }, 1500);
+
+        return savePromise;
     }
 
     async function loadChats() {

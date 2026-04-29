@@ -104,14 +104,17 @@ const updateCompressQuality = () => {
 const compressImages = async () => {
     chatStore.triggerConfirm('图片压缩', '这将重新压缩所有现有的聊天图片，可能会略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
         chatStore.triggerToast('正在压缩图片，请稍候...', 'info')
+        await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
         let count = 0
         let savedSize = 0
+        let loopCounter = 0
 
         // Process
         const chats = chatStore.chats
         for (const chatId in chats) {
             const msgs = chats[chatId].msgs || []
             for (const msg of msgs) {
+                if (loopCounter++ % 100 === 0) await new Promise(r => setTimeout(r, 0)) // Yield event loop
                 if (msg.content && typeof msg.content === 'string') {
                     // Match all [图片:...] tags
                     const imgRegex = /\[图片:([^\]]+)\]/g
@@ -195,14 +198,18 @@ const reCompressBase64 = (base64, quality) => {
 }
 
 const cleanAllImages = () => {
-    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n此操作不可撤销！', () => {
+    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n此操作不可撤销！', async () => {
+        chatStore.triggerToast('正在清理图片，请稍候...', 'info')
+        await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
         let count = 0
         let savedSize = 0
+        let loopCounter = 0
 
         const chats = chatStore.chats
         for (const chatId in chats) {
             const msgs = chats[chatId].msgs || []
             for (const msg of msgs) {
+                if (loopCounter++ % 1000 === 0) await new Promise(r => setTimeout(r, 0)) // Yield event loop
                 // Check for image content or raw Base64 blocks
                 if (msg.content && typeof msg.content === 'string') {
                     if (msg.content.includes('[图片:data:image')) {
@@ -225,8 +232,10 @@ const cleanAllImages = () => {
 const compressAIImages = async () => {
     chatStore.triggerConfirm('AI 图片压缩', '这将压缩所有 AI 生成的图片（朋友圈、论坛、相册、情侣空间等），可能略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
         chatStore.triggerToast('正在压缩 AI 图片，请稍候...', 'info')
+        await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
         let count = 0
         let savedSize = 0
+        let loopCounter = 0
 
         try {
             // 1. 压缩聊天中的 AI 生图（最主要占用空间）
@@ -234,6 +243,7 @@ const compressAIImages = async () => {
             for (const chatId in chats) {
                 const msgs = chats[chatId].msgs || []
                 for (const msg of msgs) {
+                    if (loopCounter++ % 100 === 0) await new Promise(r => setTimeout(r, 0)) // Yield event loop
                     // 处理 AI 生成的图片（包括 URL 和 base64 格式）
                     if (msg.image && typeof msg.image === 'string' && (msg.image.startsWith('http') || msg.image.startsWith('data:image'))) {
                         try {
@@ -258,6 +268,7 @@ const compressAIImages = async () => {
             const momentsStore = (await import('../../stores/momentsStore.js')).useMomentsStore()
             const allMoments = momentsStore.moments || []
             for (const moment of allMoments) {
+                if (loopCounter++ % 100 === 0) await new Promise(r => setTimeout(r, 0))
                 if (moment.images && Array.isArray(moment.images)) {
                     for (let i = 0; i < moment.images.length; i++) {
                         const imgUrl = moment.images[i]
@@ -283,6 +294,7 @@ const compressAIImages = async () => {
             for (const forumKey in forumData) {
                 const posts = forumData[forumKey]?.posts || []
                 for (const post of posts) {
+                    if (loopCounter++ % 100 === 0) await new Promise(r => setTimeout(r, 0))
                     if (post.image && typeof post.image === 'string' && (post.image.includes('pollinations') || post.image.startsWith('data:image'))) {
                         try {
                             const compressed = await reCompressBase64FromUrl(post.image, compressQuality.value)
@@ -304,6 +316,7 @@ const compressAIImages = async () => {
                 const char = chats[charId]
                 const photos = char.phoneData?.apps?.photos?.photos || []
                 for (const photo of photos) {
+                    if (loopCounter++ % 50 === 0) await new Promise(r => setTimeout(r, 0))
                     if (photo.url && typeof photo.url === 'string' && (photo.url.includes('pollinations') || photo.url.startsWith('data:image'))) {
                         try {
                             const compressed = await reCompressBase64FromUrl(photo.url, compressQuality.value)
@@ -327,6 +340,7 @@ const compressAIImages = async () => {
                 // Album
                 const album = space.album || []
                 for (const photo of album) {
+                    if (loopCounter++ % 50 === 0) await new Promise(r => setTimeout(r, 0))
                     const imgUrl = photo.url || photo.imageUrl || photo.image
                     if (imgUrl && typeof imgUrl === 'string' && (imgUrl.includes('pollinations') || imgUrl.startsWith('data:image'))) {
                         try {

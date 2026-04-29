@@ -19,6 +19,8 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: none;
 }
 
 /* Base safe area support */

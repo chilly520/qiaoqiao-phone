@@ -1,4 +1,4 @@
-﻿﻿﻿﻿/**
+﻿﻿﻿/**
  * AI Private Chat System Prompt Template
  */
 export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '') {
@@ -251,6 +251,7 @@ ${locInfo ? `- **当前时空与环境**:\n${locInfo}` : ''}
    }
    [/INNER_VOICE]
 (提示：heartRate 是整数，静息60-70/正常70-90/兴奋90-120/高潮120+；location 除非设定写了真实地点否则禁止写真实地名；distance 根据用户最后位置推算最短距离。)
+【严重警告】必须且只能输出如上完整结构的 JSON！绝对严禁将内部的 emotion、spirit 等字段或者花括号裸露在 [INNER_VOICE] 标签外部！
 
 **【场景 C：通话模式】**
   若已 [接听]，仅输出 JSON：
