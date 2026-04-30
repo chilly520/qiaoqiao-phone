@@ -2347,8 +2347,8 @@ const favoriteCardData = computed(() => {
             return JSON.parse(content)
         }
         
-        // 3. 从 [收藏:...] 或 [FAVORITE:...] 标签中解析
-        const match = content.match(/[\[【](?:收藏|FAVORITE)[:：]\s*([\s\S]*?)[\]】]/i)
+        // 3. 从 [收藏:...] 或 [FAVORITE:...] 标签中解析 (使用贪婪匹配直到最后一个反括号)
+        const match = content.match(/[\[【](?:收藏|FAVORITE)[:：]\s*([\s\S]*)[\]】]/i)
         if (match) {
             const dataStr = match[1].trim()
             if (dataStr.startsWith('{')) {

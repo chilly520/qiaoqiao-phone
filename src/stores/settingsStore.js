@@ -344,12 +344,23 @@ export const useSettingsStore = defineStore('settings', () => {
             fontScale: fontScale.value
         }
         try {
-            // DEEP CLONE to avoid Proxy DataCloneError (Pinia state is Proxy-based)
-            const cleanData = JSON.parse(JSON.stringify(data))
+            // USE toRaw to strip Vue/Pinia proxies safely
+            // This is better than JSON.parse(JSON.stringify) which can fail on circular refs
+            const cleanData = {
+                apiConfigs: toRaw(apiConfigs.value),
+                currentConfigIndex: toRaw(currentConfigIndex.value),
+                personalization: toRaw(personalization.value),
+                voice: toRaw(voice.value),
+                weather: toRaw(weather.value),
+                compressQuality: toRaw(compressQuality.value),
+                drawing: toRaw(drawing.value),
+                chatOfflineModes: toRaw(chatOfflineModes.value),
+                fontScale: toRaw(fontScale.value)
+            }
             
             // Save to IndexedDB (localforage)
             await settingsDB.setItem('qiaoqiao_settings_v2', cleanData)
-            console.log('[SettingsStore] Saved to localforage. Cleaned size:', JSON.stringify(cleanData).length)
+            console.log('[SettingsStore] Saved to localforage.')
             
             // Success - check if we need to remove from LS
             // } else {

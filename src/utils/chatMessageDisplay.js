@@ -44,8 +44,7 @@ export function ensureMessageString(value) {
     str = String(value || '')
   }
   
-  // REGEX FIX: Global unescape for literal \n and \t
-  return str.replace(/\\n/g, '\n').replace(/\\t/g, ' ')
+  return str
 }
 
 export function stripInnerVoiceBlocks(content) {
