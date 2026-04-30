@@ -212,7 +212,7 @@ const openRenameModal = (image) => {
 }
 
 // 确认重命名
-const confirmRename = () => {
+const confirmRename = async () => {
   if (renameImage.value && newImageName.value.trim()) {
     renameImage.value.name = newImageName.value.trim()
     renameImage.value.groupId = newImageGroup.value
@@ -229,7 +229,7 @@ const openAddGroupModal = () => {
 }
 
 // 确认添加分组
-const confirmAddGroup = () => {
+const confirmAddGroup = async () => {
   if (newGroupName.value.trim()) {
     const newGroup = {
       id: `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -291,7 +291,7 @@ const toggleImageSelection = (imageId) => {
 }
 
 // 删除选中图片
-const deleteSelectedImages = () => {
+const deleteSelectedImages = async () => {
   if (selectedImages.value.length === 0) return
 
   const deleteCount = selectedImages.value.length
@@ -303,7 +303,7 @@ const deleteSelectedImages = () => {
 }
 
 // 扫描所有图片
-const scanImages = () => {
+const scanImages = async () => {
   // 从聊天记录中重新提取所有图片
   const existingImageUrls = new Set(galleryData.value.images.map(img => img.url))
   let scanCount = 0
