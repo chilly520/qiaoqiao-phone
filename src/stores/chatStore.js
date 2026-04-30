@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, toRaw } from 'vue'
 import { generateReply, generateSummary, generateImage, generateContextPreview } from '../utils/aiService'
 import { useAITaskStore } from './aiTaskStore'
 import { useLoggerStore } from './loggerStore'
@@ -21,6 +21,25 @@ localforage.config({
     name: 'qiaoqiao-phone',
     storeName: 'chats'
 });
+
+// [FIX] Define ensureString helper to prevent 'ensureString is not defined' errors
+// when processing AI responses or message recalls.
+const ensureString = (val) => {
+    if (typeof val === 'string') return val;
+    if (Array.isArray(val)) {
+        return val.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') {
+                return part.text || part.content || '';
+            }
+            return '';
+        }).join('');
+    }
+    if (val && typeof val === 'object') {
+        return val.text || val.content || JSON.stringify(val);
+    }
+    return String(val || '');
+}
 
 const DEFAULT_AVATARS = [
     '/avatars/小猫举爪.jpg',
@@ -49,11 +68,17 @@ export const useChatStore = defineStore('chat', () => {
     
     async function saveStreamingState() {
         try {
-            await localforage.setItem('qiaoqiao_streaming_state', JSON.parse(JSON.stringify(streamingState.value)))
+            await localforage.setItem('qiaoqiao_streaming_state', JSON.parse(JSON.stringify(toRaw(streamingState.value))))
         } catch (e) {
             console.warn('[ChatStore] Failed to save streaming state:', e)
         }
     }
+
+    // [V3] Enhanced Storage Strategy: Per-chat message keys
+    // This prevents memory crashes when saving/loading massive chat histories
+    const METADATA_KEY = 'qiaoqiao_chats_metadata'
+    const MSGS_KEY_PREFIX = 'qiaoqiao_chat_msgs_'
+    const V3_MIGRATED_KEY = 'qiaoqiao_chats_v3_migrated'
     
     async function loadStreamingState() {
         try {
@@ -412,21 +437,34 @@ export const useChatStore = defineStore('chat', () => {
                 // 处理手机指令 (允许/锁屏/JSON)
                 const phoneStore = usePhoneInspectionStore()
                 phoneStore.processHiddenCommand(msg, chatId)
-                // Check if content is a pure JSON object with LS_JSON-like structure
+                // === 关键修复：增强对“裸露”情侣空间指令的自动补全与提取 ===
+                // AI 有时会忘记写 [LS_JSON:] 标签，或者只输出了裸露的 JSON 块
                 const trimmedContent = processedContent.trim();
+                const looseLSPattern = /\{[^{}]*?(?:"type"|type)\s*[:：]\s*["']?(?:diary|footprint|message|sticky|anniversary|letter|question|album|house|gacha|schedule|commands)["']?[\s\S]*?\}/gi;
+                
                 if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
                     try {
-                        const parsed = JSON.parse(trimmedContent);
-                        // Validate it has LS_JSON structure: { "commands": [...] }
-                        if (parsed.commands && Array.isArray(parsed.commands) && 
-                            parsed.commands.length > 0 && 
-                            ['diary', 'footprint', 'message', 'sticky', 'anniversary', 'letter', 'question', 'album', 'house', 'gacha', 'schedule'].includes(parsed.commands[0].type)) {
+                        const parsed = JSON.parse(trimmedContent.replace(/['"]/g, '"')); // Simple fix for unquoted keys
+                        if (parsed.commands || (parsed.type && ['diary', 'footprint', 'message', 'sticky', 'anniversary', 'letter', 'question', 'album', 'house', 'gacha', 'schedule'].includes(parsed.type))) {
                             console.log('[ChatStore] Detected raw JSON LS_JSON format, wrapping with tag...');
-                            // Wrap with LS_JSON tag for processing
                             processedContent = `[LS_JSON:${trimmedContent}]`;
                         }
                     } catch (e) {
-                        // Not valid LS_JSON JSON, ignore
+                        // If it looks like LS JSON but failed parsing, still try to wrap it
+                        if (looseLSPattern.test(trimmedContent)) {
+                            processedContent = `[LS_JSON:${trimmedContent}]`;
+                        }
+                    }
+                } else if (!processedContent.includes('LS_JSON')) {
+                    // 如果在正文中发现了裸露的指令块，尝试给它们补全标签
+                    const matches = [...processedContent.matchAll(looseLSPattern)];
+                    if (matches.length > 0) {
+                        console.log('[ChatStore] 发现正文中的裸露指令，正在补全 [LS_JSON:] 标签...');
+                        // 按倒序替换，防止索引偏移
+                        for (let i = matches.length - 1; i >= 0; i--) {
+                            const m = matches[i];
+                            processedContent = processedContent.substring(0, m.index) + `[LS_JSON:${m[0]}]` + processedContent.substring(m.index + m[0].length);
+                        }
                     }
                 }
                 
@@ -497,7 +535,13 @@ export const useChatStore = defineStore('chat', () => {
                     // Strip blocks from display content (backwards to keep indices intact)
                     for (let i = foundBlocks.length - 1; i >= 0; i--) {
                         const block = foundBlocks[i];
-                        processedContent = processedContent.substring(0, block.start) + processedContent.substring(block.end);
+                        let pre = processedContent.substring(0, block.start);
+                        let post = processedContent.substring(block.end);
+                        
+                        // 🗑️ 增强清理：剔除指令前残留的逗号、冒号、空格或换行
+                        pre = pre.replace(/[,，:：\s\r\n]+$/, '');
+                        
+                        processedContent = pre + post;
                     }
                     processedContent = processedContent.trim();
                     
@@ -1562,7 +1606,11 @@ export const useChatStore = defineStore('chat', () => {
 
 
         checkAutoSummary(chatId)
-        saveChats()
+        
+        // [FIX] Force immediate save for critical messages (images, red packets, transfers)
+        // to prevent data loss if the tab crashes shortly after (common with base64 images).
+        const isCritical = newMsg.type === 'image' || newMsg.image || newMsg.type === 'redpacket' || newMsg.type === 'transfer';
+        await saveChats(isCritical)
         return newMsg
     }
 
@@ -2066,11 +2114,11 @@ export const useChatStore = defineStore('chat', () => {
 
 
 
-    function deleteMessage(chatId, msgId) {
+    async function deleteMessage(chatId, msgId) {
         const chat = chats.value[chatId]
         if (!chat) return
         chat.msgs = chat.msgs.filter(m => m.id !== msgId)
-        saveChats()
+        await saveChats()
     }
 
 
@@ -2085,7 +2133,7 @@ export const useChatStore = defineStore('chat', () => {
 
 
 
-    function updateMessage(chatId, msgId, updates) {
+    async function updateMessage(chatId, msgId, updates) {
         console.log('[ChatStore updateMessage] START:', { chatId, msgId, updates })
         const chat = chats.value[chatId]
         if (!chat) {
@@ -2122,11 +2170,11 @@ export const useChatStore = defineStore('chat', () => {
         chats.value[chatId] = { ...chat, msgs: newMsgs }
         chats.value = { ...chats.value }
 
-        saveChats()
+        await saveChats()
         console.log('[ChatStore updateMessage] COMPLETE. State flushed 3x.')
     }
 
-    function deleteMessages(chatId, msgIds) {
+    async function deleteMessages(chatId, msgIds) {
         const chat = chats.value[chatId]
         if (!chat) return
 
@@ -2137,7 +2185,7 @@ export const useChatStore = defineStore('chat', () => {
         chat.msgs = chat.msgs.filter(m => !idsToRemove.has(m.id))
 
         if (chat.msgs.length !== originalCount) {
-            saveChats()
+            await saveChats()
             return true
         }
         return false
@@ -3410,6 +3458,8 @@ export const useChatStore = defineStore('chat', () => {
                     // Strip system context hints parrotted by AI
                     .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE|心声|INNER[-_ ]?VOICE)消息[\]\)]?/gi, '')
                     .replace(/\[(?:图片消息|语音消息|心声数据)\]/gi, '')
+                    // Aggressively remove residual JSON markers often leaked by AI
+                    .replace(/(?:^|\n)\s*["']?(?:type|data|commands|inner_voice|status|innerVoice)["']?\s*[:：]\s*$/gim, '')
                     .replace(/\[done\]$/gi, '')
                     .trim();
 
@@ -3746,19 +3796,19 @@ export const useChatStore = defineStore('chat', () => {
                         }).join('\n').trim();
 
                         if (filtered) {
-                        // Filtered out trash segments like residual brackets or punctuation
+                            // Filtered out trash segments like residual brackets or punctuation
                             const isLeakedVoice = /^[\(（].*?[\)）]$/.test(filtered.trim()) && 
                                                (filtered.length < 50 || /尴尬|白团|思考|想着|犹豫|惊讶|开心|难过|宠溺|无奈|沉默|心跳/.test(filtered));
                             
                             // Aggressively catch card metadata remnants (e.g., "type: html, html:")
                             // MULTILINE SUPPORT: Catch keys even if they contain some values within the segment
                             // STRENGTHENED: Catch any segment that only contains brackets, braces, commas, dots or metadata keys
-                            // NEW: Use multiline global test to catch internal metadata keys
-                            const isTrashMetadata = /^\s*(?:type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking)\s*[:：]/i.test(filtered.trim());
-                            const containsMetadata = /(?:type|card|html|json)\s*[:：]/i.test(filtered);
+                            // NEW: Catch comma-prefixed fragments like ", {type:footprint" (Screenshot 2 fix)
+                            const isTrashMetadata = /^\s*[,，]?\s*["']?(?:type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking|data|commands|postId|interactions)["']?\s*[:：]/i.test(filtered.trim());
+                            const containsMetadata = /(?:type|card|html|json|data|commands)\s*[:：]/i.test(filtered);
                             const isPunctuationOnly = /^[\[\]\{\}\(\)（）\s、,，.。:：\d\|\/\\_-]+$/.test(filtered.trim());
 
-                            if (isPunctuationOnly || isTrashMetadata || (filtered.length < 30 && containsMetadata)) {
+                            if (isPunctuationOnly || isTrashMetadata || (filtered.length < 40 && containsMetadata)) {
                                 console.log('[ChatStore] Swallowed trash or metadata segment:', filtered);
                             } else if (!isLeakedVoice) {
                                 finalSegments.push({ type: 'text', content: filtered, mode: activeMode });
@@ -3849,13 +3899,13 @@ export const useChatStore = defineStore('chat', () => {
                         
                             console.log('[ChatStore] Adding HTML card message');
                             // Use type: 'card' for maximum compatibility with template conditions
-                            msgAdded = addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: finalMode });
+                            msgAdded = await addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: finalMode });
                         } else {
                             // Text Message Delivery
                             // Check if we have a pending MOMENT_SHARE card to deliver
                             if (_pendingMomentCardData && (!msgContent.trim() || i === 0)) {
                                 // Attach moment_card to this message (or create one if no content)
-                                msgAdded = addMessage(chatId, {
+                                msgAdded = await addMessage(chatId, {
                                     role: 'ai',
                                     type: 'moment_card',
                                     momentData: _pendingMomentCardData,
@@ -3908,14 +3958,16 @@ export const useChatStore = defineStore('chat', () => {
                             });
                         }
 
-                        pendingSystemMsgs.forEach(txt => addMessage(chatId, { role: 'system', content: txt, mode: finalMode }));
+                        for (const txt of pendingSystemMsgs) {
+                            await addMessage(chatId, { role: 'system', content: txt, mode: finalMode });
+                        }
 
                     } else if (type === 'sticker') {
                         // Ensure sticker content is just the name/filename if needed, or keeping full tag if components handle it
                         // The store usually expects just the name or url depending on implementation. 
                         // Based on ChatMessageItem, type 'sticker' usually expects content to be the sticker name or url.
                         // We stripped the brackets in the segmenting phase above.
-                        msgAdded = addMessage(chatId, {
+                        msgAdded = await addMessage(chatId, {
                             role: 'ai',
                             type: 'sticker',
                             content,
@@ -3925,7 +3977,7 @@ export const useChatStore = defineStore('chat', () => {
                             ...groupSenderInfo
                         });
                     } else if (type === 'voice') {
-                        msgAdded = addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: finalMode, ...groupSenderInfo });
+                        msgAdded = await addMessage(chatId, { role: 'ai', type: 'voice', content, duration: Math.ceil(content.length / 3) || 1, mode: finalMode, ...groupSenderInfo });
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
@@ -4001,7 +4053,7 @@ export const useChatStore = defineStore('chat', () => {
                             
                             if (isScore) {
                                 // Instrumental Performance
-                                addMessage(chatId, {
+                                await addMessage(chatId, {
                                     role: 'ai',
                                     type: 'music',
                                     content: musicData,
@@ -4031,7 +4083,7 @@ export const useChatStore = defineStore('chat', () => {
                                     }
                                 });
 
-                                addMessage(chatId, {
+                                await addMessage(chatId, {
                                     role: 'ai',
                                     type: 'music_share', // Using a distinct type for Listen Together
                                     content: musicData,
@@ -4041,7 +4093,7 @@ export const useChatStore = defineStore('chat', () => {
                                 });
                                 
                                 // Add a system notification about listening together
-                                addMessage(chatId, {
+                                await addMessage(chatId, {
                                     role: 'system',
                                     type: 'system',
                                     content: `${chat.name} 发起了一起听歌`
@@ -4050,7 +4102,7 @@ export const useChatStore = defineStore('chat', () => {
                         }
                     } else if (type === 'dice') {
                         // 处理骰子指令
-                        addMessage(chatId, {
+                        await addMessage(chatId, {
                             role: 'ai',
                             type: 'dice',
                             content: content,
@@ -4060,7 +4112,7 @@ export const useChatStore = defineStore('chat', () => {
                         });
                     } else if (type === 'tarot') {
                         // 处理塔罗牌指令
-                        addMessage(chatId, {
+                        await addMessage(chatId, {
                             role: 'ai',
                             type: 'tarot',
                             content: content,
@@ -4070,7 +4122,7 @@ export const useChatStore = defineStore('chat', () => {
                         });
                     } else if (type === 'location') {
                         // 处理位置指令
-                        addMessage(chatId, {
+                        await addMessage(chatId, {
                             role: 'ai',
                             type: 'location',
                             content: content,
@@ -4084,7 +4136,7 @@ export const useChatStore = defineStore('chat', () => {
                         triggerPatEffect(chatId, 'user');
                     } else if (type === 'gift') {
                         // 处理礼物
-                        addMessage(chatId, {
+                        await addMessage(chatId, {
                             role: 'ai',
                             type: 'gift',
                             content: content,
@@ -4095,7 +4147,7 @@ export const useChatStore = defineStore('chat', () => {
                         });
                     } else if (type === 'system') {
                         // 系统通知
-                        addMessage(chatId, {
+                        await addMessage(chatId, {
                             role: 'system',
                             content: content.replace(/^\[(?:系统|通知|SYSTEM)[:：]?\s*/, '').replace(/\]$/, ''),
                             hidden: isCallMode,
@@ -4106,7 +4158,7 @@ export const useChatStore = defineStore('chat', () => {
                         const timerMatch = content.match(/\[(?:定时|定时提醒|TIMER|REMIND)[:：]\s*(.+?)\]/i);
                         if (timerMatch) {
                             const timerContent = timerMatch[1].trim();
-                            addMessage(chatId, {
+                            await addMessage(chatId, {
                                 role: 'ai',
                                 type: 'timer',
                                 content: timerContent,
@@ -4129,7 +4181,7 @@ export const useChatStore = defineStore('chat', () => {
                         const searchMatch = content.match(/\[(?:搜索|SEARCH|查找)[:：]\s*(.+?)\]/i);
                         if (searchMatch) {
                             const searchKeyword = searchMatch[1].trim();
-                            addMessage(chatId, {
+                            await addMessage(chatId, {
                                 role: 'ai',
                                 type: 'search',
                                 content: searchKeyword,
@@ -4164,7 +4216,7 @@ export const useChatStore = defineStore('chat', () => {
                         const almanacMatch = content.match(/\[(?:黄历|ALMANAC|运势|今日运势)[:：]?\s*(.*?)\]/i);
                         if (almanacMatch) {
                             const almanacContent = almanacMatch[1] ? almanacMatch[1].trim() : '今日运势';
-                            addMessage(chatId, {
+                            await addMessage(chatId, {
                                 role: 'ai',
                                 type: 'almanac',
                                 content: almanacContent,
@@ -4182,7 +4234,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Fallback: If we still have a pending moment_card (no text segments consumed it), deliver it now
                 if (_pendingMomentCardData) {
-                    addMessage(chatId, {
+                    await addMessage(chatId, {
                         role: 'ai',
                         type: 'moment_card',
                         momentData: _pendingMomentCardData,
@@ -4331,7 +4383,7 @@ export const useChatStore = defineStore('chat', () => {
     let savePromise = null;
     let saveResolve = null;
 
-    function saveChats() {
+    async function saveChats(force = false) {
         if (!isLoaded.value) {
             console.warn('[Storage] saveChats ignored: data not yet loaded from DB.');
             return Promise.resolve(false);
@@ -4339,105 +4391,158 @@ export const useChatStore = defineStore('chat', () => {
 
         if (saveTimeout) clearTimeout(saveTimeout);
         
+        const performSave = async (resolve) => {
+            try {
+                const deepToRaw = (obj) => {
+                    const raw = toRaw(obj);
+                    if (raw === null || typeof raw !== 'object') return raw;
+                    if (Array.isArray(raw)) return raw.map(deepToRaw);
+                    const result = {};
+                    for (const key of Object.keys(raw)) {
+                        result[key] = deepToRaw(raw[key]);
+                    }
+                    return result;
+                };
+
+                // 1. Prepare and Save Metadata (everything except messages)
+                const metadata = {};
+                for (const chatId of Object.keys(chats.value)) {
+                    const chat = chats.value[chatId];
+                    const { msgs, ...meta } = chat;
+                    metadata[chatId] = deepToRaw(meta);
+                }
+                await localforage.setItem(METADATA_KEY, metadata);
+
+                // 2. Save Pending Requests
+                const plainRequests = deepToRaw(pendingRequests.value);
+                await localforage.setItem('qiaoqiao_pending_requests', plainRequests);
+
+                // 3. Save messages ONE BY ONE to avoid memory peak
+                for (const chatId of Object.keys(chats.value)) {
+                    const msgs = chats.value[chatId].msgs;
+                    if (msgs && Array.isArray(msgs)) {
+                        // LAST LINE OF DEFENSE: Filter JSON fragments before saving
+                        const filteredMsgs = msgs.filter(m => {
+                            if (!m.content || typeof m.content !== 'string') return true;
+                            const trimmed = m.content.trim();
+                            const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*:\s*$/;
+                            if (headerPattern.test(trimmed)) return false;
+                            if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
+                            return true;
+                        });
+                        
+                        // Save current chat messages
+                        await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, deepToRaw(filteredMsgs));
+                        // Small delay to allow GC if needed
+                        if (filteredMsgs.length > 100) {
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+                }
+
+                // Also update legacy key as fallback but with EMPTY messages to keep it small if someone downgrades
+                // Actually, let's not fill v2 with empty data yet to avoid confusion.
+                
+                localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
+                localStorage.setItem(V3_MIGRATED_KEY, 'true');
+                
+                if (resolve) resolve(true);
+                return true;
+            } catch (e) {
+                console.error('[Storage] Per-chat save failed:', e);
+                // Fallback to legacy single-key save if absolutely necessary
+                try {
+                    await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
+                    if (resolve) resolve(true);
+                    return true;
+                } catch (innerE) {
+                    console.error('[Storage] Critical storage failure:', innerE);
+                    vacuumStorage();
+                    if (resolve) resolve(false);
+                    return false;
+                }
+            }
+        };
+
+        if (force) {
+            savePromise = null;
+            saveResolve = null;
+            return await performSave();
+        }
+
         if (!savePromise) {
             savePromise = new Promise(resolve => {
                 saveResolve = resolve;
             });
         }
 
-        saveTimeout = setTimeout(async () => {
-            const resolveCurrent = saveResolve;
+        saveTimeout = setTimeout(() => {
+            const res = saveResolve;
             savePromise = null;
             saveResolve = null;
-
-            // LAST LINE OF DEFENSE: Filter JSON fragments before saving
-            Object.values(chats.value).forEach(chat => {
-                if (chat.msgs && Array.isArray(chat.msgs)) {
-                    chat.msgs = chat.msgs.filter(m => {
-                        if (!m.content || typeof m.content !== 'string') return true;
-                        const trimmed = m.content.trim();
-                        const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
-                        if (headerPattern.test(trimmed)) return false;
-                        if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
-                        return true;
-                    });
-                }
-            });
-
-            try {
-                // Use IndexedDB for large data (Debounced to prevent OOM / tab crashing)
-                await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
-                await localforage.setItem('qiaoqiao_pending_requests', JSON.parse(JSON.stringify(pendingRequests.value)));
-                // Small marker in localStorage to trigger 'storage' events for cross-tab sync if needed
-                localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
-                if (resolveCurrent) resolveCurrent(true);
-            } catch (e) {
-                console.error('[Storage] localforage save failed:', e);
-                // Fallback for extreme cases
-                try {
-                    localStorage.setItem('qiaoqiao_chats', JSON.stringify(chats.value));
-                } catch (innerE) {
-                    vacuumStorage();
-                }
-                if (resolveCurrent) resolveCurrent(false);
-            }
-        }, 1500);
+            performSave(res);
+        }, 500); // Increased debounce for better performance
 
         return savePromise;
     }
 
     async function loadChats() {
         try {
-            // 1. Try modern IndexedDB first
-            let saved = await localforage.getItem('qiaoqiao_chats_v2');
+            // 1. Try V3 Schema (Per-chat)
+            const isV3 = localStorage.getItem(V3_MIGRATED_KEY) === 'true';
+            let metadata = await localforage.getItem(METADATA_KEY);
+            
+            if (isV3 && metadata) {
+                console.log('[Storage] Loading V3 storage...');
+                const loadedChats = {};
+                for (const chatId of Object.keys(metadata)) {
+                    const msgs = await localforage.getItem(`${MSGS_KEY_PREFIX}${chatId}`) || [];
+                    loadedChats[chatId] = { ...metadata[chatId], msgs };
+                }
+                chats.value = loadedChats;
+                pendingRequests.value = await localforage.getItem('qiaoqiao_pending_requests') || [];
+            } else {
+                // 2. Migration from V2 (Single Key)
+                console.log('[Storage] V3 not found or not migrated. Checking V2...');
+                let saved = await localforage.getItem('qiaoqiao_chats_v2');
 
-            // 2. Migration from old localStorage (Improved: attempt recovery if not yet marked as migrated)
-            const isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
-            if (!isMigrated) {
-                const legacy = localStorage.getItem('qiaoqiao_chats');
-                if (legacy) {
-                    console.log('[Storage] Found legacy data. Performing migration/recovery...');
-                    try {
-                        const legacyData = JSON.parse(legacy);
-                        // MERGE logic: If we have existing data (like accidental demo data), 
-                        // we merge them, prioritizing legacy data for matching IDs to recover lost history.
-                        saved = { ...(saved || {}), ...legacyData };
-                        await localforage.setItem('qiaoqiao_chats_v2', saved);
-                        localStorage.setItem('qiaoqiao_migrated', 'true');
-                        console.log('[Storage] Migration/Recovery completed successfully.');
-                    } catch (err) {
-                        console.error('[Storage] Legacy parse failed during recovery:', err);
+                // 3. Migration from old localStorage (Legacy)
+                const isMigrated = localStorage.getItem('qiaoqiao_migrated') === 'true';
+                if (!isMigrated) {
+                    const legacy = localStorage.getItem('qiaoqiao_chats');
+                    if (legacy) {
+                        try {
+                            const legacyData = JSON.parse(legacy);
+                            saved = { ...(saved || {}), ...legacyData };
+                            localStorage.setItem('qiaoqiao_migrated', 'true');
+                        } catch (err) {}
                     }
+                }
+
+                if (saved) {
+                    chats.value = saved;
+                    pendingRequests.value = await localforage.getItem('qiaoqiao_pending_requests') || [];
+                    
+                    // Trigger immediate migration to V3
+                    console.log('[Storage] Migrating to V3 schema...');
+                    await saveChats(true);
                 }
             }
 
-            if (saved) {
-                chats.value = saved;
-                pendingRequests.value = await localforage.getItem('qiaoqiao_pending_requests') || [];
-
-                // --- DATA SANITIZER ---
+            // --- DATA SANITIZER & DEFAULTS (Run for all loaded data) ---
+            if (chats.value) {
                 Object.values(chats.value).forEach(c => {
                     if (c.msgs && Array.isArray(c.msgs)) {
                         c.msgs = c.msgs.filter(m => {
                             if (!m.content) return true;
                             if (m.type === 'html' || m.type === 'image' || m.type === 'sticker') return true;
                             const s = String(m.content).trim();
-
-                            // Protection: Allow valid [CARD] blocks even if they contain common CSS properties (for sharing)
-                            if (s.includes('[CARD]') || s.includes('[/CARD]')) return true;
-
-                            // Filter toxic leftovers (AI hallucinated code fragments)
                             const headerPattern = /^\{\s*["']type["']\s*:\s*["']html["']\s*,\s*["']html["']\s*:\s*["']\s*$/;
                             if (headerPattern.test(s)) return false;
                             if (s === '"' || s === '"}' || s === '" }' || s === "'}'" || s === "' }") return false;
-
-                            // Only reject display:flex if NOT in a card block (likely a hallucination fragment)
-                            if (s.includes('display:') && s.includes('flex') && !s.includes('<div')) return false;
-
                             return true;
                         });
                     }
-
                     // Defaults
                     if (c.autoSummary === undefined) c.autoSummary = false;
                     if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0;

@@ -1475,7 +1475,7 @@ const handlePanelAction = (type) => {
 }
 
 // Handle Dice Roll
-const handleDiceRoll = (diceCount, results, total) => {
+const handleDiceRoll = async (diceCount, results, total) => {
     const diceEmojis = {
         1: '⚀', 2: '⚁', 3: '⚂', 4: '⚃', 5: '⚄', 6: '⚅'
     }
@@ -1500,7 +1500,7 @@ const handleDiceRoll = (diceCount, results, total) => {
     }
 
     // Add message to chat with dice_result type
-    chatStore.addMessage(chatStore.currentChatId, {
+    await chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'dice_result',
         content: '[摇骰子]',
@@ -1545,8 +1545,8 @@ const handleBackpackSendCard = (payload) => {
 }
 
 // Handle Tarot Share
-const handleTarotShare = (data) => {
-    chatStore.addMessage(chatStore.currentChatId, {
+const handleTarotShare = async (data) => {
+    await chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'tarot_card',
         content: '[塔罗占卜]',
@@ -1557,8 +1557,8 @@ const handleTarotShare = (data) => {
     scrollToBottom(true)
 }
 
-const handleTarotInterpretationShare = (data) => {
-    chatStore.addMessage(chatStore.currentChatId, {
+const handleTarotInterpretationShare = async (data) => {
+    await chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'tarot_interpretation',
         content: '[塔罗解牌]',
@@ -1591,14 +1591,14 @@ const handlePaymentResponse = async (payload) => {
             const targetMsg = msgs.value.find(m => m.paymentRequestId === requestId)
             if (targetMsg) {
                 targetMsg.status = 'accepted'
-                chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'accepted' })
+                await chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'accepted' })
             }
             showToast('💕 已帮TA付好啦~', 'success')
         } else {
             const targetMsg = msgs.value.find(m => m.paymentRequestId === requestId)
             if (targetMsg) {
                 targetMsg.status = 'rejected'
-                chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'rejected' })
+                await chatStore.updateMessage(chatData.value.id, targetMsg.id, { status: 'rejected' })
             }
             showToast('已婉拒代付请求~', 'info')
         }
@@ -1941,7 +1941,7 @@ const handleGiftClick = (msg) => {
     })
 }
 
-const handleImgUpload = (event) => {
+const handleImgUpload = async (event) => {
     const file = event.target.files[0]
     if (!file) return
 
@@ -1951,24 +1951,23 @@ const handleImgUpload = (event) => {
         return
     }
 
-    // 2. Compress & Send
-    compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 })
-        .then(base64 => {
-            chatStore.addMessage(chatStore.currentChatId, {
-                role: 'user',
-                type: 'image',
-                content: '[图片]',
-                image: base64
-            })
-            showActionPanel.value = false
-            scrollToBottom()
-            // REMOVED: Trigger AI (Manual Send Only)
+    // 2. Compress & Send (aggressive compression for storage survival)
+    try {
+        const base64 = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.6 })
+        await chatStore.addMessage(chatStore.currentChatId, {
+            role: 'user',
+            type: 'image',
+            content: '[图片]',
+            image: base64
         })
-        .catch(err => {
-            console.error('Compression failed', err)
-            const reader = new FileReader()
-            reader.onload = (e) => {
-                chatStore.addMessage(chatStore.currentChatId, {
+        showActionPanel.value = false
+        scrollToBottom()
+    } catch (err) {
+        console.error('Compression failed or send failed', err)
+        const reader = new FileReader()
+        reader.onload = async (e) => {
+            try {
+                await chatStore.addMessage(chatStore.currentChatId, {
                     role: 'user',
                     type: 'image',
                     content: '[图片]',
@@ -1976,9 +1975,12 @@ const handleImgUpload = (event) => {
                 })
                 showActionPanel.value = false
                 scrollToBottom()
+            } catch (innerErr) {
+                showToast('发送失败', 'error')
             }
-            reader.readAsDataURL(file)
-        })
+        }
+        reader.readAsDataURL(file)
+    }
 
     // Reset input
     event.target.value = ''
@@ -2460,7 +2462,7 @@ const handleDrawCommandInChat = async (msgId, prompt) => {
     }
 };
 
-const handleSendMessage = (payload) => {
+const handleSendMessage = async (payload) => {
     try {
         const { type, content } = payload
         const chatId = chatStore.currentChatId
@@ -2488,19 +2490,13 @@ const handleSendMessage = (payload) => {
                         msgType = 'html'
                         msgHtml = parsed.html
                         console.log('[ChatWindow] Detected user HTML message, html length:', msgHtml.length)
-                    } else {
-                        console.log('[ChatWindow] JSON parsed but not HTML type or no html content')
                     }
-                } catch (e) {
-                    console.log('[ChatWindow] JSON parse failed:', e.message)
-                }
-            } else {
-                console.log('[ChatWindow] Not an HTML JSON message')
+                } catch (e) {}
             }
         }
 
         if (type === 'voice') {
-            chatStore.addMessage(chatId, {
+            await chatStore.addMessage(chatId, {
                 role: 'user',
                 type: 'voice',
                 content: content,
@@ -2509,7 +2505,7 @@ const handleSendMessage = (payload) => {
                 mode: 'online'
             })
         } else if (msgType === 'html') {
-            chatStore.addMessage(chatId, {
+            await chatStore.addMessage(chatId, {
                 role: 'user',
                 type: 'html',
                 content: content,
@@ -2519,7 +2515,7 @@ const handleSendMessage = (payload) => {
                 forceCard: true
             })
         } else {
-            chatStore.addMessage(chatId, {
+            await chatStore.addMessage(chatId, {
                 role: 'user',
                 content: content,
                 quote: currentQuote.value,
@@ -3098,7 +3094,7 @@ const closeContextMenu = () => {
     selectedMsg.value = null
 }
 
-const handleMenuAction = (action) => {
+const handleMenuAction = async (action) => {
     if (!selectedMsg.value) return
     const content = getCleanContent(selectedMsg.value.content)
     const idx = msgs.value.findIndex(m => m.id === selectedMsg.value.id)
@@ -3134,7 +3130,7 @@ const handleMenuAction = (action) => {
         case 'delete':
             if (idx !== -1) {
                 msgs.value.splice(idx, 1)
-                chatStore.saveChats()
+                await chatStore.saveChats(true)
             }
             break
         case 'recall':
@@ -3149,7 +3145,7 @@ const handleMenuAction = (action) => {
                     realContent: msgs.value[idx].content // Keep for click-to-view
                 }
                 msgs.value.splice(idx, 1, recallMsg)
-                chatStore.saveChats()
+                await chatStore.saveChats(true)
             }
             break
         case 'fav':
@@ -3183,9 +3179,9 @@ const handleEmojiSelect = (emoji) => {
     chatInputBarRef.value?.insertText(emoji)
 };
 
-const handleStickerSelect = (sticker) => {
+const handleStickerSelect = async (sticker) => {
     // Send as Sticker Tag (Same as AI)
-    chatStore.addMessage(chatStore.currentChatId, {
+    await chatStore.addMessage(chatStore.currentChatId, {
         role: 'user',
         type: 'sticker',
         content: `[表情包: ${sticker.name || '表情'}]`,
@@ -3238,7 +3234,7 @@ const getHtmlContent = (content) => {
 
 
 // UI Methods
-const handleToggleMusic = () => {
+const handleToggleMusic = async () => {
     if (!musicStore.playerVisible) {
         // Automatically start 'Together' mode when opening the player in Chat
         if (chatData.value && !musicStore.isListeningTogether) {
@@ -3249,7 +3245,7 @@ const handleToggleMusic = () => {
             
             // ✅ 添加系统提示：开启一起听歌
             const chatId = chatStore.currentChatId
-            chatStore.addMessage(chatId, {
+            await chatStore.addMessage(chatId, {
                 role: 'system',
                 type: 'system',
                 content: `【系统提示】你发起了"一起听歌"模式，正在和 ${chatData.value.name} 一起听歌`
@@ -3265,7 +3261,7 @@ const handleToggleMusic = () => {
 // Family Card Logic
 const claimModalRef = ref(null)
 
-const handleClaimConfirm = (data) => {
+const handleClaimConfirm = async (data) => {
     // data: { uuid, amount, note, fromCharId, cardName, number, theme }
     const { uuid, amount, fromCharId, cardName, number, theme } = data
 
@@ -3293,7 +3289,7 @@ const handleClaimConfirm = (data) => {
     )
 
     if (msg) {
-        chatStore.updateMessage(chatId, msg.id, {
+        await chatStore.updateMessage(chatId, msg.id, {
             isClaimed: true,
             status: 'claimed',
             claimTime: Date.now()

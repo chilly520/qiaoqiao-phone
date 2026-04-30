@@ -325,56 +325,39 @@ const parseVoiceData = (text) => {
             jsonStr = jsonMatch[0]
         }
 
-        console.log('[parseVoiceData] 提取的 JSON:', jsonStr.substring(0, 200))
-
         // 2. Attempt Parse
         try {
-            result = JSON.parse(jsonStr)
-            console.log('[parseVoiceData] 解析成功 (原始)')
+            // Pre-process for common AI issues
+            const cleanStr = jsonStr.replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\')
+                                   .replace(/([{,]\s*)([a-zA-Z0-9_\u4e00-\u9fa5]+)\s*:/g, '$1"$2":'); // Quote unquoted keys
+            result = JSON.parse(cleanStr)
+            console.log('[parseVoiceData] 解析成功')
         } catch (e) {
-            console.warn('[parseVoiceData] 第一次解析失败:', e.message)
-            try {
-                // 处理转义字符：AI 经常返回带反斜杠的 JSON
-                let unescaped = jsonStr
-                    .replace(/\\"/g, '"')
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\t/g, '\t')
-                    .replace(/\\\\/g, '\\')
-                    .replace(/,\s*}/g, '}')
-                    .replace(/,\s*]/g, ']')
-                unescaped = unescaped.replace(/[“"]/g, '"')
+            console.warn('[parseVoiceData] 解析失败:', e.message)
+        }
+    }
 
-                console.log('[parseVoiceData] 去转义后:', unescaped.substring(0, 200))
-                result = JSON.parse(unescaped)
-                console.log('[parseVoiceData] 解析成功 (去转义)')
-            } catch (e2) {
-                console.error('[parseVoiceData] 第二次解析失败:', e2.message)
-                // Aggressive extraction...
-            }
+    // Fallback or JSON processing
+    if (result) {
+        const getString = (val) => {
+            if (!val) return null
+            if (typeof val === 'string') return val.replace(/###/g, '').trim()
+            if (typeof val === 'object') return val.content || val.thought || JSON.stringify(val).replace(/###/g, '').trim()
+            return String(val)
         }
 
-        // Fallback or JSON processing
-        if (result) {
-            const getString = (val) => {
-                if (!val) return null
-                if (typeof val === 'string') return val.replace(/###/g, '').trim()
-                if (typeof val === 'object') return val.content || val.thought || JSON.stringify(val).replace(/###/g, '').trim()
-                return String(val)
-            }
+        let target = result
+        // Check for nested structure: result.INNER_VOICE or result.inner_voice
+        if (result.INNER_VOICE) target = result.INNER_VOICE
+        else if (result.inner_voice) target = result.inner_voice
 
-            let target = result
-            // Check for nested structure: result.INNER_VOICE or result.inner_voice
-            if (result.INNER_VOICE) target = result.INNER_VOICE
-            else if (result.inner_voice) target = result.inner_voice
-
-            // Map the final fields
-            return {
-                clothes: getString(target.着装 || target.outfit || target.clothes),
-                scene: getString(target.环境 || target.scene || target.environment),
-                mind: getString(target.心声 || target.心心声 || target.mind || target.thought || target.thoughts || target.emotion),
-                action: getString(target.行为 || target.action || target.behavior || target.plan),
-                stats: target.stats || target[" stats"] || null
-            }
+        // Map the final fields
+        return {
+            clothes: getString(target.着装 || target.outfit || target.clothes),
+            scene: getString(target.环境 || target.scene || target.environment),
+            mind: getString(target.心声 || target.心心声 || target.mind || target.thought || target.thoughts || target.emotion),
+            action: getString(target.行为 || target.action || target.behavior || target.plan),
+            stats: target.stats || target[" stats"] || null
         }
     }
     return null
@@ -393,9 +376,11 @@ const historyList = computed(() => {
         if (m.innerVoice || m.mindData || m.inner_voice) return true
         if (!m.content) return false;
         if (m.type === 'inner_voice_card') return true;
-        // Test content against regex OR check for raw JSON characteristics
+        // Test content against regex OR check for raw JSON characteristics (strictly looking for inner voice keys)
         const str = String(m.content);
-        return voiceRegex.test(str) || (str.includes('{') && (str.includes('"status"') || str.includes('"status"') || str.includes('"心声"') || str.includes('"心声"')));
+        // Exclude LS_JSON and strictly look for mind/heartbeat indicators
+        if (str.includes('[LS_JSON:')) return false;
+        return voiceRegex.test(str) || (str.includes('{') && (str.includes('"心声"') || str.includes('"mind"') || str.includes('"thought"')));
     }).map(m => {
         // 优先从消息参数中提取心声数据
         const voiceData = m.innerVoice || m.mindData || m.inner_voice
@@ -484,7 +469,7 @@ const sortedHistory = computed(() => {
         return {
             ...item,
             originalIndex: index,
-            preview: parsed?.mind || (typeof item.content === 'string' ? item.content.substring(0, 35) : '...')
+            preview: parsed?.mind || (typeof item.content === 'string' && !item.content.trim().startsWith('{') ? item.content.substring(0, 35) : '（系统记录/心声解析中...）')
         }
     }).sort((a, b) => b.timestamp - a.timestamp)
 })

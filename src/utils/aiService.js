@@ -25,6 +25,23 @@ const apiQueue = new RequestQueue(10, 60000); // Strict: 10 requests per 60 seco
  * 3. 直接的 JSON 对象 {...}
  * 4. 转义的 JSON 字符串 \"{...}\"
  */
+function ensureString(val) {
+    if (typeof val === 'string') return val;
+    if (Array.isArray(val)) {
+        return val.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') {
+                return part.text || part.content || '';
+            }
+            return '';
+        }).join('');
+    }
+    if (val && typeof val === 'object') {
+        return val.text || val.content || JSON.stringify(val);
+    }
+    return String(val || '');
+}
+
 function extractInnerVoiceJson(content) {
     if (!content) return null
     
@@ -48,8 +65,8 @@ function extractInnerVoiceJson(content) {
         }
     }
     
-    // 尝试 3: 直接匹配 JSON 对象（没有标签）
-    const directJsonMatch = content.match(/\{[^{}]*"status"[^{}]*\}/i)
+    // 尝试 3: 直接匹配 JSON 对象（没有标签），支持更多关键词
+    const directJsonMatch = content.match(/\{[^{}]*"(?:status|type|footprint|diary|commands)"[^{}]*\}/i)
     if (directJsonMatch) {
         return directJsonMatch[0]
     }
@@ -934,17 +951,20 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
     // Collect IDs of all "unseen" user images (images sent AFTER the last AI reply)
     const unseenUserImageIds = new Set()
+    const allUnseenIds = []
     messages.forEach((msg, idx) => {
         if (!msg || msg.role !== 'user' || idx <= lastAssistantIndex) return
         // This is a user message after the last AI reply → it's "unseen"
         if (msg.image || (typeof msg.content === 'string' && msg.content.startsWith('data:image/'))) {
-            unseenUserImageIds.add(msg.id)
+            allUnseenIds.push(msg.id)
         } else if (typeof msg.content === 'string' && imageRegex.test(msg.content)) {
-            unseenUserImageIds.add(msg.id)
+            allUnseenIds.push(msg.id)
             // Reset regex lastIndex since we used test()
             imageRegex.lastIndex = 0
         }
     })
+    // [FIX] Cap unseen images to last 8 to prevent massive request payload / OOM on mobile
+    allUnseenIds.slice(-8).forEach(id => unseenUserImageIds.add(id))
 
     // Count total images & track which ones are user's
     messages.forEach(msg => {
@@ -1188,7 +1208,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         if (Array.isArray(msg.content)) return msg.content.length > 0
         return true
     })
-    console.log('[AI Debug] Full Messages:', JSON.stringify(fullMessages, null, 2))
+    // [FIX] Avoid JSON.stringify(fullMessages) as it can be MASSIVE (base64 images) and crash mobile tabs.
+    console.log('[AI Debug] Request Chain ready. Length:', fullMessages.length, 'Images in chain:', currentImageIndex)
 
     // --- PROVIDER SWITCHING LOGIC ---
     let endpoint = baseUrl || ''
@@ -1758,13 +1779,22 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const result = {};
             let foundCount = 0;
 
-            // ====== 预处理：还原转义字符 ======
+            // ====== 预处理：还原转义字符与 JSON 修复 ======
             if (text.includes('\\"') || text.includes('\\n')) {
                 text = text
                     .replace(/\\"/g, '"')
                     .replace(/\\n/g, '\n')
                     .replace(/\\t/g, '  ')
+                    .replace(/\\\\/g, '\\');
             }
+            // 修复 AI 常见的 JSON 格式错误：双引号重复、尾部逗号、中文引号等
+            text = text.trim()
+                .replace(/([^\\])""/g, '$1"')  // 修复 "value"" 这种多了一个引号的情况
+                .replace(/[“＂”]/g, '"')       // 统一全角双引号
+                .replace(/，/g, ',')           // 统一全角逗号
+                .replace(/：/g, ':')           // 统一全角冒号
+                .replace(/,\s*([\}\]])/g, '$1') // 移除数组或对象末尾多余的逗号
+                .replace(/([{,]\s*)([a-zA-Z0-9_\u4e00-\u9fa5]+)\s*:/g, '$1"$2":'); // 给没加引号的 key 补上引号
 
             // ====== 策略 A：整体 JSON.parse（最高优先级）======
             // 用平衡括号法找到最外层 {} 块
@@ -1927,11 +1957,14 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     if (endIdx > firstBrace + 1) {
                         const jsonStr = content.substring(firstBrace, endIdx);
                         const strippedJsonObj = tryExtractInnerVoice(jsonStr);
-                        if (strippedJsonObj) {
-                            innerVoice = strippedJsonObj;
-                            console.log('[AI Service] 心声提取成功（裸露 JSON 对象模式）', Object.keys(innerVoice));
-                            // 🎉 既然提取出有效心声，就把这个 JSON 大块从聊天框彻底抹去！
-                            content = content.substring(0, firstBrace) + content.substring(endIdx);
+                        if (strippedJsonObj || jsonStr.includes('footprint') || jsonStr.includes('diary') || jsonStr.includes('type')) {
+                            innerVoice = strippedJsonObj || innerVoice;
+                            console.log('[AI Service] 心声/指令提取成功（裸露 JSON 对象模式）', innerVoice ? Object.keys(innerVoice) : 'JSON detected');
+                            // 🎉 既然提取出有效块，就把这个 JSON 大块从聊天框彻底抹去！
+                            let pre = content.substring(0, firstBrace);
+                            // 🗑️ 增强清理：剔除指令前残留的逗号、冒号、空格或换行
+                            pre = pre.replace(/[,，:：\s\r\n]+$/, '');
+                            content = pre + content.substring(endIdx);
                             content = content.trim();
                         }
                     }
@@ -1952,7 +1985,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             
             // 🗑️ 统一清洁工：拔除哪怕一点点外泄可能存在的残留结构
             // 清理裸露的 stats 块和散落的英文属性行
-            content = content.replace(/[\r\n\s]*["']?stats["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n]+)/g, '');
+            content = content.replace(/[\r\n\s]*[,，]?\s*["']?(?:stats|type|footprint|diary|sticky|commands)["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n\]]+)/gi, '');
             content = content.replace(/[\r\n\s]*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/gi, '');
             
             // 对散落的中文特征属性，进行安全、保守行清理（仅当以"key": "value"开头单独占行时清理）

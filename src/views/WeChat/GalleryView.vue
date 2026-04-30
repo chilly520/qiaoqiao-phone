@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../../stores/chatStore'
 
+import localforage from 'localforage'
+
 const router = useRouter()
 const chatStore = useChatStore()
 
@@ -40,16 +42,29 @@ const filteredImages = computed(() => {
   return galleryData.value.images.filter(img => img.groupId === activeGroup.value)
 })
 
-// 加载图库数据
-const loadGalleryData = () => {
-  // 从localStorage加载图库数据
-  const savedData = localStorage.getItem('galleryData')
-  if (savedData) {
-    try {
-      galleryData.value = JSON.parse(savedData)
-    } catch (e) {
-      console.error('Failed to parse gallery data:', e)
+// [FIX] Migrate from localStorage to localforage to avoid QuotaExceededError (Screenshot 2)
+// localStorage has a ~5MB limit, while IndexedDB (via localforage) is much larger.
+const loadGalleryData = async () => {
+  // 1. Try localforage (IndexedDB) first
+  let savedData = await localforage.getItem('galleryData')
+  
+  // 2. Migration: Check if there's old data in localStorage
+  if (!savedData) {
+    const legacyData = localStorage.getItem('galleryData')
+    if (legacyData) {
+      try {
+        savedData = JSON.parse(legacyData)
+        // Persist to localforage immediately
+        await localforage.setItem('galleryData', savedData)
+        // Optional: localStorage.removeItem('galleryData') // Keep for now to be safe
+      } catch (e) {
+        console.error('Legacy gallery data parse failed:', e)
+      }
     }
+  }
+
+  if (savedData) {
+    galleryData.value = savedData
   }
 
   // 从聊天记录中提取所有生成的图片
@@ -109,7 +124,7 @@ const extractImagesFromChats = () => {
   })
 
   // 保存更新后的数据
-  saveGalleryData()
+  return saveGalleryData()
 }
 
 // 更新分组计数
@@ -124,8 +139,10 @@ const updateGroupCounts = () => {
 }
 
 // 保存图库数据
-const saveGalleryData = () => {
-  localStorage.setItem('galleryData', JSON.stringify(galleryData.value))
+const saveGalleryData = async () => {
+  // Use toRaw to strip Vue proxies before saving to IndexedDB
+  const { toRaw } = await import('vue')
+  await localforage.setItem('galleryData', toRaw(galleryData.value))
   updateGroupCounts()
 }
 
@@ -199,7 +216,7 @@ const confirmRename = () => {
   if (renameImage.value && newImageName.value.trim()) {
     renameImage.value.name = newImageName.value.trim()
     renameImage.value.groupId = newImageGroup.value
-    saveGalleryData()
+    await saveGalleryData()
     showRenameModal.value = false
     renameImage.value = null
   }
@@ -220,7 +237,7 @@ const confirmAddGroup = () => {
       count: 0
     }
     galleryData.value.groups.push(newGroup)
-    saveGalleryData()
+    await saveGalleryData()
     showAddGroupModal.value = false
   }
 }
@@ -279,7 +296,7 @@ const deleteSelectedImages = () => {
 
   const deleteCount = selectedImages.value.length
   galleryData.value.images = galleryData.value.images.filter(img => !selectedImages.value.includes(img.id))
-  saveGalleryData()
+  await saveGalleryData()
   selectedImages.value = []
   isSelectMode.value = false
   chatStore.triggerToast(`已删除 ${deleteCount} 张图片`, 'success')
@@ -339,7 +356,7 @@ const scanImages = () => {
   })
 
   if (scanCount > 0) {
-    saveGalleryData()
+    await saveGalleryData()
     chatStore.triggerToast(`扫描完成，新增 ${scanCount} 张图片`, 'success')
   } else {
     chatStore.triggerToast('没有发现新图片', 'info')

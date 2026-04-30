@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useChatStore } from '../../stores/chatStore'
 import { storeToRefs } from 'pinia'
+import localforage from 'localforage'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
@@ -38,7 +39,8 @@ const calculateStorage = async () => {
         moments: 0,
         images: 0,
         other: 0,
-        system: 0
+        system: 0,
+        gallery: 0
     }
 
     // 1. Calculate LocalStorage usage
@@ -56,25 +58,54 @@ const calculateStorage = async () => {
         }
     }
 
-    // 2. Try to get System Quota (IndexedDB usage)
+    // 2. Calculate localforage (IndexedDB) usage for V3 Schema
+    try {
+        // Metadata
+        const metadata = await localforage.getItem('qiaoqiao_chats_metadata')
+        if (metadata) details.chats += getSize(JSON.stringify(metadata))
+        
+        // Messages (Sum of all per-chat keys)
+        // Note: This is an estimation, iterating all keys might be slow but let's try
+        if (typeof localforage.keys === 'function') {
+            const keys = await localforage.keys()
+            for (const key of keys) {
+                if (key.startsWith('qiaoqiao_chat_msgs_')) {
+                    const msgs = await localforage.getItem(key)
+                    if (msgs) details.chats += getSize(JSON.stringify(msgs))
+                }
+            }
+        } else {
+            // Fallback for V2 if metadata not found
+            const chatsV2 = await localforage.getItem('qiaoqiao_chats_v2')
+            if (chatsV2) details.chats += getSize(JSON.stringify(chatsV2))
+        }
+        
+        const gallery = await localforage.getItem('galleryData')
+        if (gallery) details.gallery = getSize(JSON.stringify(gallery))
+        
+        const moments = await localforage.getItem('qiaoqiao_moments')
+        if (moments) details.moments += getSize(JSON.stringify(moments))
+    } catch (e) {
+        console.warn('[Storage] Failed to calculate IndexedDB details:', e)
+    }
+
+    // 3. Try to get System Quota
     if (navigator.storage && navigator.storage.estimate) {
         try {
             const estimate = await navigator.storage.estimate()
-            usedSpace.value = estimate.usage || lsTotal
-            totalLimit.value = estimate.quota || (500 * 1024 * 1024) // Default to 500MB if quota hidden
+            usedSpace.value = estimate.usage || (lsTotal + details.gallery + details.chats)
+            totalLimit.value = estimate.quota || (500 * 1024 * 1024)
             quotaMode.value = 'system'
-            details.system = Math.max(0, estimate.usage - lsTotal)
+            details.system = Math.max(0, usedSpace.value - lsTotal - details.gallery - details.chats - details.moments)
         } catch (e) {
-            usedSpace.value = lsTotal
+            usedSpace.value = lsTotal + details.gallery + details.chats
             quotaMode.value = 'ls'
         }
     } else {
-        usedSpace.value = lsTotal
+        usedSpace.value = lsTotal + details.gallery + details.chats
         quotaMode.value = 'ls'
     }
 
-    // Migration Clean-up: If qiaoqiao_settings exists in LS but it's large, we might have migrated it
-    // We already do this in settingsStore, but let's ensure breakdown is accurate
     breakdown.value = details
 }
 
@@ -157,7 +188,7 @@ const compressImages = async () => {
             }
         }
 
-        chatStore.saveChats()
+        await chatStore.saveChats(true)
         calculateStorage()
         chatStore.triggerToast(`压缩完成！处理了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
     })
@@ -198,23 +229,36 @@ const reCompressBase64 = (base64, quality) => {
 }
 
 const cleanAllImages = () => {
-    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n此操作不可撤销！', async () => {
+    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片和图库图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n图库中的图片也将被清空！\n此操作不可撤销！', async () => {
         chatStore.triggerToast('正在清理图片，请稍候...', 'info')
         await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
         let count = 0
         let savedSize = 0
         let loopCounter = 0
 
+        // 1. Clean Chat Messages
         const chats = chatStore.chats
         for (const chatId in chats) {
             const msgs = chats[chatId].msgs || []
             for (const msg of msgs) {
                 if (loopCounter++ % 1000 === 0) await new Promise(r => setTimeout(r, 0)) // Yield event loop
-                // Check for image content or raw Base64 blocks
+                
+                // [FIX] Primary: Clear msg.image field
+                if (msg.image && typeof msg.image === 'string' && 
+                    (msg.image.startsWith('data:image') || msg.image.length > 1000)) {
+                    savedSize += msg.image.length
+                    msg.image = null
+                    if (msg.type === 'image') {
+                        msg.content = '[图片已清理]'
+                    }
+                    count++
+                }
+                
+                // Also clear legacy format: [图片:data:image...] in content
                 if (msg.content && typeof msg.content === 'string') {
                     if (msg.content.includes('[图片:data:image')) {
                         const oldLen = msg.content.length
-                        msg.content = '[图片已清理]' // Replace with placeholder
+                        msg.content = '[图片已清理]'
                         savedSize += oldLen
                         count++
                     }
@@ -222,7 +266,21 @@ const cleanAllImages = () => {
             }
         }
 
-        chatStore.saveChats()
+        // 2. Clean Gallery Data (IndexedDB)
+        try {
+            const gallery = await localforage.getItem('galleryData')
+            if (gallery && gallery.images) {
+                const gallerySize = getSize(JSON.stringify(gallery))
+                savedSize += gallerySize
+                count += gallery.images.length
+                gallery.images = [] // Clear all images
+                await localforage.setItem('galleryData', gallery)
+            }
+        } catch (e) {
+            console.warn('[Storage] Failed to clear gallery:', e)
+        }
+
+        await chatStore.saveChats(true)
         calculateStorage()
         chatStore.triggerToast(`清理完成！删除了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
     })
@@ -461,16 +519,20 @@ const clearChats = () => {
                             <span class="text-gray-600">聊天/生图缓存 (IndexedDB)</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.chats + breakdown.system) }}</span>
                         </div>
+                        <div v-if="breakdown.gallery > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
+                            <span class="text-gray-600">图库照片 (IndexedDB)</span>
+                            <span class="text-gray-400">{{ formatSize(breakdown.gallery) }}</span>
+                        </div>
                         <div v-if="breakdown.moments > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
                             <span class="text-gray-600">朋友圈数据</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.moments) }}</span>
                         </div>
                         <div v-if="breakdown.images > 0" class="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
-                            <span class="text-gray-600">自定义图片</span>
+                            <span class="text-gray-600">自定义图片 (LS)</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.images) }}</span>
                         </div>
                         <div class="flex justify-between items-center text-sm pb-1">
-                            <span class="text-gray-600">页面配置/预设</span>
+                            <span class="text-gray-600">页面配置/预设 (LS)</span>
                             <span class="text-gray-400">{{ formatSize(breakdown.other) }}</span>
                         </div>
                     </div>

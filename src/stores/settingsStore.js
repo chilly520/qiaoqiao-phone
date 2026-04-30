@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import { useLoggerStore } from './loggerStore'
 import { useChatStore } from './chatStore'
 import { useMomentsStore } from './momentsStore'
@@ -345,7 +345,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
         try {
             // DEEP CLONE to avoid Proxy DataCloneError
-            const cleanData = JSON.parse(JSON.stringify(data))
+            const cleanData = { ...data }
             
             // Save to IndexedDB (localforage)
             await settingsDB.setItem('qiaoqiao_settings_v2', cleanData)
@@ -780,31 +780,31 @@ export const useSettingsStore = defineStore('settings', () => {
         }
 
         if (selectionState.chats) {
-            data.chats = injectedData.chats || JSON.parse(JSON.stringify(chatStore.chats || {}))
+            data.chats = injectedData.chats || toRaw(chatStore.chats || {})
         }
         if (selectionState.moments) {
-            data.moments = injectedData.moments || JSON.parse(JSON.stringify(momentsStore.moments || []))
-            data.momentsTop = injectedData.momentsTop || JSON.parse(JSON.stringify(momentsStore.topMoments || []))
-            data.momentsNotifications = injectedData.momentsNotifications || JSON.parse(JSON.stringify(momentsStore.notifications || []))
+            data.moments = injectedData.moments || toRaw(momentsStore.moments || [])
+            data.momentsTop = injectedData.momentsTop || toRaw(momentsStore.topMoments || [])
+            data.momentsNotifications = injectedData.momentsNotifications || toRaw(momentsStore.notifications || [])
         }
         if (selectionState.settings) {
-            data.settings = JSON.parse(JSON.stringify(personalization.value))
-            data.apiConfigs = JSON.parse(JSON.stringify(apiConfigs.value))
+            data.settings = toRaw(personalization.value)
+            data.apiConfigs = toRaw(apiConfigs.value)
             data.currentConfigIndex = currentConfigIndex.value
-            data.voice = JSON.parse(JSON.stringify(voice.value))
-            data.weather = JSON.parse(JSON.stringify(weather.value))
-            data.drawing = JSON.parse(JSON.stringify(drawing.value))
+            data.voice = toRaw(voice.value)
+            data.weather = toRaw(weather.value)
+            data.drawing = toRaw(drawing.value)
             data.compressQuality = compressQuality.value
             data.fontScale = fontScale.value
         }
         if (selectionState.worldbook) {
-            data.worldbook = injectedData.worldbook || JSON.parse(JSON.stringify(worldBookStore.books || []))
+            data.worldbook = injectedData.worldbook || toRaw(worldBookStore.books || [])
         }
         if (selectionState.stickers) {
-            data.stickers = injectedData.stickers || JSON.parse(JSON.stringify(stickerStore.stickers || []))
+            data.stickers = injectedData.stickers || toRaw(stickerStore.stickers || [])
         }
         if (selectionState.favorites) {
-            data.favorites = injectedData.favorites || JSON.parse(JSON.stringify(chatStore.favorites || []))
+            data.favorites = injectedData.favorites || toRaw(chatStore.favorites || [])
         }
         if (selectionState.wallet) {
             try { const { useWalletStore } = await import('./walletStore'); const ws = useWalletStore()

@@ -1251,7 +1251,7 @@
                             </div>
                             
                             <template v-for="(segment, segIndex) in contentSegments" :key="segIndex">
-                                <div v-if="segment && !isImageMsg(msg) && !isFamilyCard && !isFamilyCardApply && !isFamilyCardReject && !shouldRenderCard && !isDiceMsg && !isTarotMsg" 
+                                <div v-if="segment && !isImageMsg(msg) && !isAnyProtocolCard" 
                                     @contextmenu.prevent="emitContextMenu"
                                     @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                     @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
@@ -1281,14 +1281,13 @@
                                 </div>
                             </template>
 
-                            <!-- 2. Image Layer -->
                             <div v-if="isImageMsg(msg) || msg.image" class="msg-image bg-transparent"
                                 @contextmenu.prevent="emitContextMenu">
-                                <img :src="msg.image || getImageSrc(msg)"
+                                <img :src="localImageSrc"
                                     class="max-w-[200px] max-h-[250px] rounded-lg cursor-pointer shadow-sm hover:shadow-md transition-shadow"
                                     :class="{ 'animate-bounce-subtle': msg.type === 'sticker' || isSticker(msg) }"
                                     :alt="ensureString(msg.content).substring(0, 20)"
-                                    @click="previewImage(msg.image || getImageSrc(msg))" @error="handleImageError"
+                                    @click="previewImage(localImageSrc)" @error="handleImageError"
                                     referrerpolicy="no-referrer">
                             </div>
 
@@ -1460,6 +1459,29 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
+// [MEMORY OPTIMIZATION] Reactive Blob URL for images
+// Large base64 strings in DOM cause crashes. We convert them to temporary Blob URLs.
+const localImageSrc = ref('')
+const convertToBase64ToBlob = async (src) => {
+    if (!src || !src.startsWith('data:image/')) {
+        localImageSrc.value = src
+        return
+    }
+    try {
+        const response = await fetch(src)
+        const blob = await response.blob()
+        const newUrl = URL.createObjectURL(blob)
+        if (localImageSrc.value && localImageSrc.value.startsWith('blob:')) {
+            URL.revokeObjectURL(localImageSrc.value)
+        }
+        localImageSrc.value = newUrl
+    } catch (e) {
+        console.warn('[ChatMessageItem] Blob conversion failed:', e)
+        localImageSrc.value = src // Fallback
+    }
+}
+
+
 import { useStickerStore } from '../../../stores/stickerStore'
 import { useChatStore } from '../../../stores/chatStore'
 import { useWalletStore } from '../../../stores/walletStore'
@@ -1467,6 +1489,7 @@ import { useSettingsStore } from '../../../stores/settingsStore'
 import { useMusicBoxStore } from '../../../stores/musicBoxStore'
 import { useMusicStore } from '../../../stores/musicStore'
 import { parseWeChatEmojis } from '../../../utils/emojiParser'
+import { onMounted, onUnmounted, watch } from 'vue'
 import {
     ensureMessageString,
     getOfflineRenderableContent,
@@ -1483,6 +1506,11 @@ import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
 import FamilyCardClaimModal from '../FamilyCardClaimModal.vue'
 import FamilyCardDetailModal from '../FamilyCardDetailModal.vue'
+
+// 支持两种格式：
+// 1. [表情包：名称] - 传统格式，通过名称查找
+// 2. [表情包：名称：https://url] - 新格式，通过URL查找或验证
+const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*([^:：\]]+)(?:[:：]\s*(https?:\/\/[^\]]+))?\s*\]/i;
 
 const props = defineProps({
     msg: Object,
@@ -1503,7 +1531,8 @@ const props = defineProps({
 const emit = defineEmits([
     'click-avatar', 'dblclick-avatar', 'context-menu', 'avatar-longpress',
     'toggle-select', 'click-pay', 'play-voice', 'click-gift',
-    'payment-response' // 代付响应（同意/拒绝）
+    'payment-response', 'click-order', 'accept-request', 'ignore-request',
+    'longpress-avatar', 'show-rank', 'click-moment', 'vote', 'end-vote', 'resend'
 ])
 
 const stickerStore = useStickerStore()
@@ -1520,6 +1549,16 @@ const familyDetailModal = ref(null)
 const isPressing = ref(false)
 const pressTimer = ref(null)
 const expandedPaymentId = ref(null) // 代付卡片展开状态
+
+watch(() => props.msg.image || getImageSrc(props.msg), (newVal) => {
+    convertToBase64ToBlob(newVal)
+}, { immediate: true })
+
+onUnmounted(() => {
+    if (localImageSrc.value && localImageSrc.value.startsWith('blob:')) {
+        URL.revokeObjectURL(localImageSrc.value)
+    }
+})
 
 // 代付卡片：切换展开/收起
 const togglePaymentDetail = (msg) => {
@@ -2090,24 +2129,41 @@ const isLoveSpaceInvite = computed(() => {
     return /[\\[【]\s*LOVESPACE_INVITE[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
+const isLoveSpaceCommand = computed(() => {
+    const c = ensureString(props.msg.content)
+    // 检测 [LS_JSON:] 标签或可能外泄的裸露情侣空间指令 JSON
+    return /[\\[【]\s*LS_JSON[:：]?/i.test(c) || (c.trim().startsWith('{') && c.includes('footprint'));
+})
+
 const parsedLoveSpaceInvite = computed(() => {
     if (!isLoveSpaceInvite.value) return null
     const c = ensureString(props.msg.content).trim()
-    const tag = '[LOVESPACE_INVITE:'
-    const startIndex = c.indexOf(tag)
-    if (startIndex === -1) return null
-    
-    // Extract everything from after the tag until the last ]
-    const afterTag = c.slice(startIndex + tag.length)
-    const lastBracketIndex = afterTag.lastIndexOf(']')
-    const inner = lastBracketIndex !== -1 ? afterTag.slice(0, lastBracketIndex) : afterTag
-    
-    const parts = inner.split(':')
-    if (parts.length >= 1 && parts[0].trim()) {
-        return { charId: parts[0].trim() }
+    // Support both [LOVESPACE_INVITE:charId] and 【LOVESPACE_INVITE：charId】
+    const match = c.match(/[\[【]\s*LOVESPACE_INVITE[:：]?\s*([^\]】]*)[\]】]/i)
+    if (match && match[1]) {
+        return { charId: match[1].trim() }
     }
-    return null
+    return { charId: '' }
 })
+
+// 综合协议卡片检测 - 用于隐藏气泡中的原始协议文本
+const isAnyProtocolCard = computed(() => {
+    return isFamilyCard.value || 
+           isFamilyCardApply.value || 
+           isFamilyCardReject.value || 
+           shouldRenderCard.value || 
+           isDiceMsg.value || 
+           isTarotMsg.value || 
+           isLoveSpaceInvite.value || 
+           isLoveSpaceContract.value || 
+           isLoveSpaceReject.value || 
+           isWeiboCard.value || 
+           isForumCard.value || 
+           isMomentCard.value || 
+           isFavoriteCard.value || 
+           isLoveSpaceCommand.value ||
+           isPayCard.value;
+});
 
 function handleLoveSpaceInviteClick() {
     if (isLoveSpaceInvite.value && parsedLoveSpaceInvite.value) {
@@ -2124,18 +2180,10 @@ const isLoveSpaceContract = computed(() => {
 const parsedLoveSpaceContract = computed(() => {
     if (!isLoveSpaceContract.value) return null
     const c = ensureString(props.msg.content).trim()
-    const tag = '[LOVESPACE_CONTRACT:'
-    const startIndex = c.indexOf(tag)
-    if (startIndex === -1) return { days: '1' }
-    
-    // Extract everything from after the tag until the last ]
-    const afterTag = c.slice(startIndex + tag.length)
-    const lastBracketIndex = afterTag.lastIndexOf(']')
-    const inner = lastBracketIndex !== -1 ? afterTag.slice(0, lastBracketIndex) : afterTag
-    
-    const parts = inner.split(':')
-    if (parts.length >= 1 && parts[0].trim()) {
-        return { days: parts[0].trim() }
+    // Support [LOVESPACE_CONTRACT:days]
+    const match = c.match(/[\[【]\s*LOVESPACE_CONTRACT[:：]?\s*([^\]】]*)[\]】]/i)
+    if (match && match[1]) {
+        return { days: match[1].trim() || '1' }
     }
     return { days: '1' }
 })
@@ -2147,18 +2195,10 @@ const isLoveSpaceReject = computed(() => {
 const parsedLoveSpaceReject = computed(() => {
     if (!isLoveSpaceReject.value) return null
     const c = ensureString(props.msg.content).trim()
-    const tag = '[LOVESPACE_REJECT:'
-    const startIndex = c.indexOf(tag)
-    if (startIndex === -1) return { charId: '' }
-    
-    // Extract everything from after the tag until the last ]
-    const afterTag = c.slice(startIndex + tag.length)
-    const lastBracketIndex = afterTag.lastIndexOf(']')
-    const inner = lastBracketIndex !== -1 ? afterTag.slice(0, lastBracketIndex) : afterTag
-    
-    const parts = inner.split(':')
-    if (parts.length >= 1 && parts[0].trim()) {
-        return { charId: parts[0].trim() }
+    // Support [LOVESPACE_REJECT:charId]
+    const match = c.match(/[\[【]\s*LOVESPACE_REJECT[:：]?\s*([^\]】]*)[\]】]/i)
+    if (match && match[1]) {
+        return { charId: match[1].trim() }
     }
     return { charId: '' }
 })
@@ -3117,10 +3157,6 @@ const isCenteredContent = computed(() => {
     return !shouldShowAvatar.value
 })
 
-// 支持两种格式：
-// 1. [表情包：名称] - 传统格式，通过名称查找
-// 2. [表情包：名称：https://url] - 新格式，通过URL查找或验证
-const STICKER_REGEX = /\[(?:图片|IMAGE|表情包|表情-包|STICKER)[:：]\s*([^:：\]]+)(?:[:：]\s*(https?:\/\/[^\]]+))?\s*\]/i;
 
 function normalizeStickerName(s) {
     if (!s) return '';
