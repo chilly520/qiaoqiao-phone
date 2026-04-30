@@ -429,38 +429,28 @@ export const useChatStore = defineStore('chat', () => {
         // Parse special tags (Mission: Priority)
         if (msg.role === 'ai') {
             let processedContent = msg.content;
-            if (typeof processedContent === 'string') {
-                processedContent = processedContent.replace(/\[done\]$/gi, '').trim();
-                processedContent = processTaskCommands(processedContent, chatId);
-                processedContent = processBioUpdate(processedContent, chatId);
-                
-                // 处理手机指令 (允许/锁屏/JSON)
-                const phoneStore = usePhoneInspectionStore()
-                phoneStore.processHiddenCommand(msg, chatId)
-                // === 关键修复：增强对“裸露”情侣空间指令的自动补全与提取 ===
+            if (typeof processedContent === 'string') {                // === 关键修复：增强对“裸露”情侣空间指令的自动补全与提取 ===
                 // AI 有时会忘记写 [LS_JSON:] 标签，或者只输出了裸露的 JSON 块
                 const trimmedContent = processedContent.trim();
                 const looseLSPattern = /\{[^{}]*?(?:"type"|type)\s*[:：]\s*["']?(?:diary|footprint|message|sticky|anniversary|letter|question|album|house|gacha|schedule|commands)["']?[\s\S]*?\}/gi;
                 
                 if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
                     try {
-                        const parsed = JSON.parse(trimmedContent.replace(/['"]/g, '"')); // Simple fix for unquoted keys
+                        const parsed = JSON.parse(trimmedContent.replace(/['"]/g, '"')); 
                         if (parsed.commands || (parsed.type && ['diary', 'footprint', 'message', 'sticky', 'anniversary', 'letter', 'question', 'album', 'house', 'gacha', 'schedule'].includes(parsed.type))) {
                             console.log('[ChatStore] Detected raw JSON LS_JSON format, wrapping with tag...');
                             processedContent = `[LS_JSON:${trimmedContent}]`;
                         }
                     } catch (e) {
-                        // If it looks like LS JSON but failed parsing, still try to wrap it
                         if (looseLSPattern.test(trimmedContent)) {
                             processedContent = `[LS_JSON:${trimmedContent}]`;
                         }
                     }
-                } else if (!processedContent.includes('LS_JSON')) {
+                } else if (!processedContent.includes('LS_JSON') && !processedContent.includes('情侣空间')) {
                     // 如果在正文中发现了裸露的指令块，尝试给它们补全标签
                     const matches = [...processedContent.matchAll(looseLSPattern)];
                     if (matches.length > 0) {
                         console.log('[ChatStore] 发现正文中的裸露指令，正在补全 [LS_JSON:] 标签...');
-                        // 按倒序替换，防止索引偏移
                         for (let i = matches.length - 1; i >= 0; i--) {
                             const m = matches[i];
                             processedContent = processedContent.substring(0, m.index) + `[LS_JSON:${m[0]}]` + processedContent.substring(m.index + m[0].length);
@@ -468,14 +458,12 @@ export const useChatStore = defineStore('chat', () => {
                     }
                 }
                 
-                // Intercept Couple Space commands [LS_JSON: ...]
+                // Intercept Couple Space commands [LS_JSON: ...], [情侣空间: ...], [LS: ...]
                 // Robust extraction using balanced brace matching
-                const startMarkerRegex = /[\\[【]\s*LS_JSON[:：]?\s*/gi;
+                const startMarkerRegex = /[\\[【]\s*(?:LS_JSON|LS|情侣空间)[:：]?\s*/gi;
                 let match;
                 let foundBlocks = [];
                 
-                // Manual loop to find and extract blocks
-                // We use a fresh copy for matching lastIndex
                 const searchRegex = new RegExp(startMarkerRegex.source, startMarkerRegex.flags);
                 while ((match = searchRegex.exec(processedContent)) !== null) {
                     const startIdx = match.index;
@@ -652,7 +640,8 @@ export const useChatStore = defineStore('chat', () => {
         // 1.00 INNER_VOICE EXTRACTION: 在 protocolTags 清理之前，先从 content 提取心声数据
         // 这样即使 content 里的 [INNER_VOICE] 标签被清掉，心声数据也安全保存在 newMsg.innerVoice
         if (!newMsg.innerVoice && typeof newMsg.content === 'string') {
-            const ivExtractRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/i;
+            // Support [INNER_VOICE], [心声], [内心], [INNER]
+            const ivExtractRegex = /[\\[【]\s*(?:INNER[\s-_]*VOICE|心声|内心|INNER)\s*[\]】]([\s\S]*?)(?:[\\[【]\s*\/\s*(?:INNER[\s-_]*)?VOICE\s*[\]】]|$)/i;
             const ivExtractMatch = newMsg.content.match(ivExtractRegex);
             if (ivExtractMatch && ivExtractMatch[1]) {
                 try {
@@ -1139,7 +1128,7 @@ export const useChatStore = defineStore('chat', () => {
                         newMsg.content = JSON.stringify(momentData);
                         
                         // Add system notification to chat
-                        const momentResult = getMomentsStore().addMoment({
+                        const momentResult = await getMomentsStore().addMoment({
                             id: momentData.id,
                             authorId: chatId,
                             content: momentData.text || momentData.content || '',
@@ -1468,13 +1457,14 @@ export const useChatStore = defineStore('chat', () => {
                 /\[CALL_START\][\s\S]*?\[CALL_END\]/gi, /\[CALL_START\]|\[CALL_END\]/gi,
                 /\[语音通话\]|\[视频通话\]|\[接听\]|\[挂断\]|\[拒绝\]/gi,
                 /\[(?:UPDATE_)?BIO:[^\]]+\]/gi,
-                /[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, 
-                /[\\[【]\s*LOVESPACE_(?:CONTRACT|REJECT|INVITE)[:：]?\s*[^\]】]*[\]】]/gi,
+                /[\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, 
+                /[\[【]\s*LOVESPACE_(?:CONTRACT|REJECT|INVITE)[:：]?\s*[^\]】]*[\]】]/gi,
                 /\[MOMENT_SHARE:[^\]]+\]|\[分享朋友圈:[^\]]+\]/gi,
                 /\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi,
                 /\[领取红包:[^\]]+\]|\[领取转账:[^\]]+\]/gi,
                 /\[LIKE[:：].*?\]/gi, /\[COMMENT[:：].*?\]/gi, /\[REPLY[:：].*?\]/gi,
-                /\[INNER_VOICE\][\s\S]*?\[\/INNER_VOICE\]/gi,
+                /[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=\n?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE))|$)/gi,
+                /[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN))\s*[\]】]/gi,
                 /\[PHONE_CMD\][\s\S]*?\[\/PHONE_CMD\]/gi
             ];
 
@@ -1514,6 +1504,16 @@ export const useChatStore = defineStore('chat', () => {
         // 4. Persistence
         if (!chat.msgs) chat.msgs = []
         chat.msgs.push(newMsg)
+
+        // Aggressive Metadata Leakage Cleanup for the displayed message
+        if (newMsg.content && typeof newMsg.content === 'string') {
+            // Remove [LS_JSON:...], [情侣空间:...], [INNER_VOICE]...[/INNER_VOICE], [OFFLINE], [DONE] etc from display if they somehow leaked
+            newMsg.content = newMsg.content
+                .replace(/[\[【]\s*(?:LS_JSON|情侣空间)[:：]?\s*\{[\s\S]*?\}(?:\s*[\]】])?/gi, '')
+                .replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=\n?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE))|$)/gi, '')
+                .replace(/[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN))\s*[\]】]/gi, '')
+                .trim();
+        }
 
         // 4.1 Insert pending system messages (if any)
         if (newMsg._pendingSystemMessages && newMsg._pendingSystemMessages.length > 0) {
@@ -3170,12 +3170,12 @@ export const useChatStore = defineStore('chat', () => {
                                 }
                             }
 
-                            const momentResult = momentsStore.addMoment(newMoment);
+                            const momentResult = await momentsStore.addMoment(newMoment);
 
                             addMessage(chatId, {
                                 type: 'system',
                                 content: `"${chat.name}" 发布了一条朋友圈`,
-                                _momentReferenceId: momentResult.id
+                                _momentReferenceId: momentResult?.id
                             });
                         }
                     } catch (e) {
@@ -3454,7 +3454,7 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(/\[Image Reference ID:.*?\]/gi, '')
                     .replace(/Here is the original image:/gi, '')
                     .replace(/\(我发送了一张图片\)/gi, '')
-                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\]/gi, '')
+                    .replace(/\[\/?(MOMENT|REPLY|SET_AVATAR|FAMILY_CARD|FAMILY_CARD_APPLY|FAMILY_CARD_REJECT)\]/gi, '')
                     // Strip system context hints parrotted by AI
                     .replace(/[\[\(]?(系统|System)[:：\s]*(图片|语音|IMAGE|VOICE|心声|INNER[-_ ]?VOICE)消息[\]\)]?/gi, '')
                     .replace(/\[(?:图片消息|语音消息|心声数据)\]/gi, '')
@@ -3483,9 +3483,10 @@ export const useChatStore = defineStore('chat', () => {
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
 
                 // Pass 1.8: Protect [INNER_VOICE] blocks from being swallowed by the card extractor below.
-                // Replace [INNER_VOICE]...[/INNER_VOICE] with a temporary placeholder so Pass 2 won't match them.
+                // REGEX FIX: 使用更严谨的 lookahead，支持真换行 \n 和字面量 \\n，防止吞噬后续标签
                 const innerVoicePlaceholders = [];
-                cleanContent = cleanContent.replace(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, (match) => {
+                const ivStripRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE|MOMENT))|$)/gi;
+                cleanContent = cleanContent.replace(ivStripRegex, (match) => {
                     innerVoicePlaceholders.push(match);
                     return ` __IV_PLACEHOLDER_${innerVoicePlaceholders.length - 1}__ `;
                 });
@@ -4005,6 +4006,15 @@ export const useChatStore = defineStore('chat', () => {
                                 // ✅ 使用全局 AI 任务 Store 管理绘画请求（不受组件生命周期影响）
                                 const aiTaskStore = useAITaskStore()
                                 const drawTaskId = `draw_${chatId}_${targetMsgId}_${Date.now()}`
+                                const momentResult = await momentsStore.addMoment(newMoment);
+                                if (momentResult) {
+                                    await addMessage(chatId, {
+                                        role: 'system',
+                                        content: `${chat.name} 发布了一条朋友圈`,
+                                        type: 'system',
+                                        _momentReferenceId: momentResult.id
+                                    });
+                                }
                                                             
                                 // 创建全局绘画任务
                                 aiTaskStore.createStreamingTask({
@@ -4791,6 +4801,80 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
+    /**
+     * Aggressively compress all base64 images in all chats to save memory/storage
+     * Useful for users with massive histories (400MB+ cases)
+     */
+    async function compressAllChatImages() {
+        console.log('[ChatStore] Starting bulk image compression for all chats and moments...');
+        const { compressImage } = await import('../utils/imageUtils');
+        let totalProcessed = 0;
+        let totalCompressed = 0;
+
+        // 1. Compress Chat Messages
+        for (const chat of Object.values(chats.value)) {
+            if (!chat.msgs) continue;
+            for (const msg of chat.msgs) {
+                // Case 1: type=image with base64
+                if (msg.type === 'image' && msg.content && msg.content.startsWith('data:image')) {
+                    try {
+                        const originalSize = msg.content.length;
+                        // Skip if already small (< 100KB)
+                        if (originalSize < 100 * 1024) continue; 
+
+                        // Convert base64 to File-like
+                        const res = await fetch(msg.content);
+                        const blob = await res.blob();
+                        const file = new File([blob], 'image.jpg', { type: 'image/jpeg' });
+                        
+                        const compressed = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.6 });
+                        if (compressed.length < originalSize) {
+                            msg.content = compressed;
+                            totalCompressed++;
+                        }
+                    } catch (e) {
+                        console.warn('[ChatStore] Bulk compression failed for message:', msg.id, e);
+                    }
+                }
+                totalProcessed++;
+                // Yield to main thread
+                if (totalProcessed % 50 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+        }
+
+        // 2. Compress Moments
+        try {
+            const momentsStore = (await import('./momentsStore')).useMomentsStore();
+            for (const moment of (momentsStore.moments || [])) {
+                if (moment.images && Array.isArray(moment.images)) {
+                    for (let i = 0; i < moment.images.length; i++) {
+                        const img = moment.images[i];
+                        if (typeof img === 'string' && img.startsWith('data:image') && img.length > 100 * 1024) {
+                            try {
+                                const originalSize = img.length;
+                                const res = await fetch(img);
+                                const blob = await res.blob();
+                                const file = new File([blob], 'image.jpg', { type: 'image/jpeg' });
+                                const compressed = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.6 });
+                                if (compressed.length < originalSize) {
+                                    moment.images[i] = compressed;
+                                    totalCompressed++;
+                                }
+                            } catch (err) { }
+                        }
+                    }
+                }
+            }
+            await momentsStore.saveMoments?.();
+        } catch (momentErr) {
+            console.error('[ChatStore] Moment compression failed:', momentErr);
+        }
+        
+        console.log(`[ChatStore] Bulk compression finished. Compressed ${totalCompressed} images.`);
+        await saveChats(true);
+        return totalCompressed;
+    }
+
     const financial = setupFinancialLogic(chats, addMessage, saveChats, playSound)
 
     return {
@@ -4806,6 +4890,7 @@ export const useChatStore = defineStore('chat', () => {
         getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
         isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings,
         getMemberTitle, calculateMemberLevel, castVote, endVote,
-        streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState
+        streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState,
+        compressAllChatImages
     }
 })

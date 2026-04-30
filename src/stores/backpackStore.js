@@ -16,7 +16,8 @@ export const useBackpackStore = defineStore('backpack', () => {
         const saved = localStorage.getItem('qiaoqiao_backpack')
         if (saved) {
             try {
-                items.value = JSON.parse(saved)
+                const parsed = JSON.parse(saved)
+                items.value = Array.isArray(parsed) ? parsed.filter(i => i !== null) : []
             } catch (e) {
                 console.error('Failed to load backpack', e)
             }

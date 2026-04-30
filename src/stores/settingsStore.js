@@ -344,8 +344,8 @@ export const useSettingsStore = defineStore('settings', () => {
             fontScale: fontScale.value
         }
         try {
-            // DEEP CLONE to avoid Proxy DataCloneError
-            const cleanData = { ...data }
+            // DEEP CLONE to avoid Proxy DataCloneError (Pinia state is Proxy-based)
+            const cleanData = JSON.parse(JSON.stringify(data))
             
             // Save to IndexedDB (localforage)
             await settingsDB.setItem('qiaoqiao_settings_v2', cleanData)

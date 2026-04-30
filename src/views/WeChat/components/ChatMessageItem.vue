@@ -692,7 +692,7 @@
                         </div>
 
                         <!-- CASE 6: Favorite Card (Shared Favorite) -->
-                        <div v-else-if="isFavoriteCard"
+                        <div v-else-if="isFavoriteCard && favoriteCardData"
                             class="max-w-[280px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in"
                             @click="$router.push('/favorites/' + favoriteCardData.favoriteId)" @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
@@ -1835,7 +1835,7 @@ const hasSceneChange = computed(() => {
     if (!props.msg || props.msg.role !== 'ai') return false
     const content = ensureString(props.msg.content)
     // Check for【场景：xxx】tag
-    return /[\\[【] 场景：[^\]】]*[\]】]/i.test(content)
+    return /[\[【] 场景：[^\]】]*[\]】]/i.test(content)
 })
 
 // Split content into segments for bubble rendering (only for AI messages with multiple paragraphs)
@@ -2020,12 +2020,12 @@ const isFamilyCard = computed(() => {
     // Check for family card tags in text content
     const content = ensureString(props.msg.content)
     // Only match proper [FAMILY_CARD] or [亲属卡] tags, not random strings containing the keyword
-    return /[\\]?\[\s*(?:FAMILY_CARD|亲属卡)/i.test(content)
+    return /\[\s*(?:FAMILY_CARD|亲属卡)/i.test(content)
 })
 
 const isFamilyCardApply = computed(() => {
     const content = ensureString(props.msg.content)
-    return props.msg.type === 'family_card_apply' || /[\\]?\[\s*(?:FAMILY_CARD_APPLY|申请亲属卡)/i.test(content)
+    return props.msg.type === 'family_card_apply' || /\[\s*(?:FAMILY_CARD_APPLY|申请亲属卡)/i.test(content)
 })
 
 const isFamilyCardReject = computed(() => {
@@ -2034,7 +2034,7 @@ const isFamilyCardReject = computed(() => {
     
     const c = ensureString(props.msg.content)
     // Regular check OR HTML JSON check
-    return /[\\]?\[\s*(?:FAMILY_CARD_REJECT|拒绝亲属卡)/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
+    return /\[\s*(?:FAMILY_CARD_REJECT|拒绝亲属卡)/i.test(c) || (c.includes('type":"html"') && c.includes('拒绝'))
 })
 
 
@@ -2126,13 +2126,13 @@ function handleForumCardClick() {
 }
 
 const isLoveSpaceInvite = computed(() => {
-    return /[\\[【]\s*LOVESPACE_INVITE[:：]?\s*/i.test(ensureString(props.msg.content))
+    return /[\[【]\s*LOVESPACE_INVITE[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
 const isLoveSpaceCommand = computed(() => {
     const c = ensureString(props.msg.content)
-    // 检测 [LS_JSON:] 标签或可能外泄的裸露情侣空间指令 JSON
-    return /[\\[【]\s*LS_JSON[:：]?/i.test(c) || (c.trim().startsWith('{') && c.includes('footprint'));
+    // 检测 [LS_JSON:] 或 [情侣空间:] 标签，或可能外泄的裸露情侣空间指令 JSON
+    return /[\[【]\s*(?:LS_JSON|情侣空间)[:：]?/i.test(c) || (c.trim().startsWith('{') && c.includes('footprint'));
 })
 
 const parsedLoveSpaceInvite = computed(() => {
@@ -2174,7 +2174,7 @@ function handleLoveSpaceInviteClick() {
 }
 
 const isLoveSpaceContract = computed(() => {
-    return /[\\[【]\s*LOVESPACE_CONTRACT[:：]?\s*/i.test(ensureString(props.msg.content))
+    return /[\[【]\s*LOVESPACE_CONTRACT[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
 const parsedLoveSpaceContract = computed(() => {
@@ -2189,7 +2189,7 @@ const parsedLoveSpaceContract = computed(() => {
 })
 
 const isLoveSpaceReject = computed(() => {
-    return /[\\[【]\s*LOVESPACE_REJECT[:：]?\s*/i.test(ensureString(props.msg.content))
+    return /[\[【]\s*LOVESPACE_REJECT[:：]?\s*/i.test(ensureString(props.msg.content))
 })
 
 const parsedLoveSpaceReject = computed(() => {
@@ -2863,6 +2863,8 @@ function cleanHtmlResult(html) {
     // 移除转义的引号
     result = result.replace(/\\"/g, '"');
     result = result.replace(/\\'/g, "'");
+    result = result.replace(/\\n/g, '\n');
+    result = result.replace(/\\t/g, ' ');
     
     // 再次清理可能残留的 JSON 结束符（处理多个片段合并后的情况）
     result = result.replace(/"\s*\}\s*\{/g, '');
@@ -3361,7 +3363,7 @@ function formatMessageContent(msg) {
         return `<div class="inline-flex items-center gap-2 bg-blue-50/10 border border-blue-400/30 rounded-lg px-3 py-2 my-1 select-none backdrop-blur-sm shadow-sm overflow-hidden max-w-full"><i class="fa-solid fa-spinner fa-spin text-blue-400"></i><span class="text-xs text-blue-200/80 whitespace-nowrap overflow-hidden text-ellipsis">AI 正在绘制：${truncated}</span></div>`
     })
 
-    text = text.replace(/\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi, '');
+    text = text.replace(/[\\[【]\s*(?:INNER[\s-_]*VOICE|心声|内心|INNER)\s*[\]】][\s\S]*?(?:[\\[【]\s*\/\s*(?:INNER[\s-_]*)?VOICE\s*[\]】]|$)/gi, '');
     
     // Dice result card
     const diceMatch = text.match(/[\[【](?:摇骰子|掷骰子)[:：]?\s*(\d+)?[\]】]/i);
@@ -3401,7 +3403,7 @@ function formatMessageContent(msg) {
 function formatLocation(content) {
     if (!content) return ''
     return ensureString(content)
-        .replace(/[\\\[【（]\s*(?:位置|地图|MAP|LOCATION|场景|地点|SCENE|THINK|STATUS|INNER|心里|内心|心声)[:：]?\s*/i, '')
+        .replace(/[\[【（]\s*(?:位置|地图|MAP|LOCATION|场景|地点|SCENE|THINK|STATUS|INNER|心里|内心|心声)[:：]?\s*/i, '')
         .replace(/[\]】）\)\s]+$/, '')
         .replace(/^[\s/\\•·-]+/, '')
         .replace(/(?:OFFLINE|ONLINE|线下|线上)/gi, '')
@@ -3678,8 +3680,11 @@ function getHtmlContent(content) {
     try {
         let processed = content;
 
-        // 1. 移除 [INNER_VOICE] 标签和内容（包括换行符）
-        processed = processed.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+        // 1. 移除 [INNER_VOICE] 或 [心声] 标签和内容（包括换行符）
+        // REGEX FIX: 使用更严谨的 lookahead，支持真换行 \n 和字面量 \\n，防止吞噬后续标签
+        processed = processed.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE))|$)/gi, '').trim();
+        // 2. 移除常见的协议标签（如 [OFFLINE], [DONE] 等）
+        processed = processed.replace(/[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN))\s*[\]】]/gi, '').trim();
         // ✅ 隐藏心率参数（防止泄露）
         // 英文格式: heartRate: 110, heartRate：110, heartRate: 110 bpm, heartRate:110bpm
         processed = processed.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
@@ -3744,8 +3749,8 @@ function getHtmlContent(content) {
             // 6. 尝试提取JSON片段
             let cleaned = content;
 
-            // 重新处理原始内容
-            cleaned = cleaned.replace(/\[INNER_VOICE\][\s\S]*?(?:\[\/INNER_VOICE\]|$)/gi, '').trim();
+            // 重新处理原始内容 - 同样使用修正后的正则
+            cleaned = cleaned.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE))|$)/gi, '').trim();
             // 隐藏心率参数
             cleaned = cleaned.replace(/heartRate\s*[:：]\s*\d+(?:\s*bpm)?/gi, '').trim();
             cleaned = cleaned.replace(/心率\s*[:：]\s*\d+(?:\s*次)?(?:\/min)?/gi, '').trim();

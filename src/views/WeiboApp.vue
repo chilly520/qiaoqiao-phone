@@ -433,12 +433,12 @@ function sharePostTo(contactId) {
   if (post.stats) post.stats.share++
 }
 
-function shareToMoments() {
+async function shareToMoments() {
   if (!selectedPostToShare.value) return
   const post = selectedPostToShare.value
   const momentsStore = window.useMomentsStore?.()
   if (momentsStore) {
-    momentsStore.addMoment({
+    await momentsStore.addMoment({
       authorId: 'user',
       content: post.content,
       images: post.images || []

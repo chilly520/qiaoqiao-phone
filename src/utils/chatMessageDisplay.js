@@ -6,7 +6,7 @@ const OFFLINE_TAGGED_DIALOGUE_RE = /\u300c\s*([^:\uFF1A\u300d\u3010\[]+)\s*[:\uF
 const OFFLINE_QUOTED_DIALOGUE_RE = /^\s*(?:"(?:\\"|[\s\S])*?"|\u201c[\s\S]*?\u201d|\"[\s\S]*?\")\s*$/
 const OFFLINE_SPEAKER_DIALOGUE_RE = /^([^:\uff1a\uFF1A\n\u2016\u2016\u201c"\u300c\u3010\[\s]{1,16})\s*[:\uff1a\uFF1A]\s*([\s\S]+?)$/
 
-const INNER_VOICE_BLOCK_RE = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/i
+const INNER_VOICE_BLOCK_RE = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/i
 const CARD_BLOCK_RE = /\[\s*CARD\s*\][\s\S]*?\[\/\s*CARD\s*\]/gi
 const ONLINE_BLOCK_RE = /\[\s*\/?\s*ONLINE\s*\]/gi
 const OFFLINE_BLOCK_RE = /\[\s*\/?\s*OFFLINE\s*\]/gi
@@ -29,21 +29,28 @@ export function looksLikeHtmlCard(content) {
 }
 
 export function ensureMessageString(value) {
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) {
-    return value.map((part) => {
+  let str = ''
+  if (typeof value === 'string') {
+    str = value
+  } else if (Array.isArray(value)) {
+    str = value.map((part) => {
       if (typeof part === 'string') return part
       if (part && typeof part === 'object') return part.text || part.content || ''
       return ''
     }).join('')
+  } else if (value && typeof value === 'object') {
+    str = value.text || value.content || JSON.stringify(value)
+  } else {
+    str = String(value || '')
   }
-  if (value && typeof value === 'object') return value.text || value.content || JSON.stringify(value)
-  return String(value || '')
+  
+  // REGEX FIX: Global unescape for literal \n and \t
+  return str.replace(/\\n/g, '\n').replace(/\\t/g, ' ')
 }
 
 export function stripInnerVoiceBlocks(content) {
   let cleaned = ensureMessageString(content)
-    .replace(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/gi, '')
+    .replace(/\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/gi, '')
     .replace(/\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]/gi, '') // Proactive closing tag cleanup
     .replace(/\[\s*INNER[\s-_]*VOICE\s*\]/gi, '')
     
@@ -648,12 +655,16 @@ export function hasInnerVoice(content) {
 export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   let clean = ensureMessageString(content)
   if (!clean) return ''
+  
+  // REGEX FIX: Correctly convert literal \\n to real newlines
+  clean = clean.replace(/\\n/g, '\n').replace(/\\t/g, ' ')
 
   // 1. Strip Mode Tags [ONLINE]/[OFFLINE]
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE)\s*\]/gi, '')
 
   // 2. Strip Metadata Blocks (JSON heartRate, stats, etc.)
-  clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|$)/gi, '')
+  // REGEX FIX: Stop before other tags, support \\n
+  clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|ONLINE|OFFLINE|IMAGE|MOMENT|LS_JSON|情侣空间))|$)/gi, '')
   
   // 2b. Catch-all for isolated/dangling mode or protocol tags
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\s*\]/gi, '')
@@ -682,8 +693,8 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   // Strip 【系统提示】 prefix
   clean = clean.replace(/^[【\[]?\s*系统提示\s*[】\]]?\s*[:：]?\s*/gi, '')
   
-  // 4. Strip CARD blocks
-  clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|$)/gi, '')
+  // 4. Strip CARD blocks (STOP at end of card or start of next block)
+  clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:MOMENT|LS_JSON|情侣空间|ONLINE|OFFLINE))|$)/gi, '')
   
   // 5. If AI, aggressively strip any JSON-like hanging braces/logic/CSS
   if (role !== 'user') {

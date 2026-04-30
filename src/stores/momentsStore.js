@@ -125,8 +125,27 @@ export const useMomentsStore = defineStore('moments', () => {
 
     // --- Actions ---
 
-    function addMoment(data, options = {}) {
+    async function addMoment(data, options = {}) {
         const id = data.id || ('m-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5))
+
+        // Compress images if present (base64 only)
+        let processedImages = data.images || []
+        if (processedImages.some(img => typeof img === 'string' && img.startsWith('data:'))) {
+            try {
+                const { compressImage } = await import('../utils/imageUtils')
+                processedImages = await Promise.all(processedImages.map(async img => {
+                    if (typeof img === 'string' && img.startsWith('data:') && img.length > 100 * 1024) {
+                        try {
+                            const res = await fetch(img)
+                            const blob = await res.blob()
+                            const file = new File([blob], 'image.jpg', { type: 'image/jpeg' })
+                            return await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.7 })
+                        } catch (err) { return img }
+                    }
+                    return img
+                }))
+            } catch (e) { console.error('[MomentsStore] Compression failed', e) }
+        }
 
         // Resolve author name at creation time (cache it so UI doesn't depend on chatStore lookups)
         let resolvedAuthorName = data.authorName || ''
@@ -152,7 +171,7 @@ export const useMomentsStore = defineStore('moments', () => {
             authorId: data.authorId,
             authorName: resolvedAuthorName, // Cached display name
             content: data.content,
-            images: data.images || [],
+            images: processedImages,
             imageDescriptions: data.imageDescriptions || [],
             stickers: data.stickers || [],
             location: data.location || '',
@@ -243,11 +262,32 @@ export const useMomentsStore = defineStore('moments', () => {
         return moment
     }
 
-    function updateMoment(id, updates) {
-        const idx = moments.value.findIndex(m => m.id === id)
-        if (idx > -1) {
+    async function updateMoment(momentId, updates) {
+        const idx = moments.value.findIndex(m => m.id === momentId)
+        if (idx !== -1) {
+            // Compress images if present in updates
+            if (updates.images && Array.isArray(updates.images)) {
+                if (updates.images.some(img => typeof img === 'string' && img.startsWith('data:') && img.length > 200 * 1024)) {
+                    try {
+                        const { compressImage } = await import('../utils/imageUtils')
+                        updates.images = await Promise.all(updates.images.map(async img => {
+                            if (typeof img === 'string' && img.startsWith('data:') && img.length > 200 * 1024) {
+                                try {
+                                    const res = await fetch(img)
+                                    const blob = await res.blob()
+                                    const file = new File([blob], 'image.jpg', { type: 'image/jpeg' })
+                                    return await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.7 })
+                                } catch (err) { return img }
+                            }
+                            return img
+                        }))
+                    } catch (e) { }
+                }
+            }
             moments.value[idx] = { ...moments.value[idx], ...updates }
+            return true
         }
+        return false
     }
 
     function deleteMoment(id) {

@@ -1131,7 +1131,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       }
       
       const blocks = []
-      const startMarkerRegex = /[\\[【]\s*LS_JSON[:：]?\s*/gi
+      const startMarkerRegex = /[\\[【]\s*(?:LS_JSON|LS|情侣空间)[:：]?\s*/gi
       
       // Robust extraction using balanced brace matching (Manual loop to avoid regex lastIndex issues)
       let match;

@@ -916,14 +916,21 @@
                             @click="handleResetConfigClick">
                             重置配置
                         </button>
-                        <!-- Clear History -->
+                        <!-- Compress Images -->
                         <button
-                            class="py-3 rounded-xl bg-white text-gray-700 font-bold border border-gray-200 active:bg-gray-50 transition-colors shadow-sm"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-gray-700 text-gray-300 active:bg-gray-700/20' : ''"
-                            @click="handleClearHistoryClick">
-                            删除记录
+                            class="py-3 rounded-xl bg-white text-purple-600 font-bold border border-purple-100 active:bg-purple-50 transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-purple-900/50 text-purple-400 active:bg-purple-900/20' : ''"
+                            @click="handleCompressHistoryClick">
+                            <i class="fa-solid fa-compress-arrows-alt"></i>图片压缩
                         </button>
                     </div>
+
+                    <button
+                        class="w-full py-3 mb-3 rounded-xl bg-white text-gray-700 font-bold border border-gray-200 active:bg-gray-50 transition-colors shadow-sm"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-gray-700 text-gray-300 active:bg-gray-700/20' : ''"
+                        @click="handleClearHistoryClick">
+                        删除所有记录
+                    </button>
 
                     <!-- Delete Character -->
                     <button
@@ -1166,11 +1173,30 @@
                         </div>
                         <div class="flex-1">
                             <div class="text-sm font-bold text-gray-700">包含聊天记录</div>
-                            <div class="text-[10px] text-gray-400 text-orange-500">
-                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>文件可能较大
+                            <div class="text-[10px]" :class="historySizeWarning ? 'text-red-500 font-bold' : 'text-gray-400'">
+                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                                预估大小: {{ estimatedHistorySize }}
                             </div>
                         </div>
                     </div>
+
+                    <!-- Exclude Images (Conditional) -->
+                    <div v-if="exportIncludeHistory" class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none ml-4 animate-slide-in"
+                        @click="exportExcludeImages = !exportExcludeImages">
+                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
+                            :class="exportExcludeImages ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300'">
+                            <i v-if="exportExcludeImages" class="fa-solid fa-check text-white text-xs"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="text-sm font-bold text-gray-700">排除图片</div>
+                            <div class="text-[10px] text-gray-400">仅导出文字内容，显著减小文件体积</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="historySizeWarning" class="mb-4 p-2 bg-red-50 rounded-lg border border-red-100 text-[10px] text-red-600">
+                    <i class="fa-solid fa-circle-exclamation mr-1"></i>
+                    检测到超大历史记录，导出可能会导致浏览器崩溃或导出失败。建议先进行“图片压缩”或只导出基础信息。
                 </div>
 
                 <div class="flex gap-3">
@@ -2311,10 +2337,66 @@ const handleDeleteCharacterClick = () => {
     confirmDelete()
 }
 
+const handleCompressHistoryClick = async () => {
+    if (confirm('确定要压缩所有聊天记录中的图片吗？这会降低部分图片清晰度，但能显著减小存档大小并提升运行速度。')) {
+        showToast('正在压缩中，请稍候...')
+        try {
+            const count = await chatStore.compressAllChatImages()
+            showToast(`压缩完成！共优化了 ${count} 张图片`)
+        } catch (e) {
+            showToast('压缩过程中出现错误')
+            console.error(e)
+        }
+    }
+}
+
+// --- Computed Sizes for Export ---
+const estimatedHistorySize = computed(() => {
+    const chat = chatStore.chats[props.chatData.id]
+    if (!chat || !chat.msgs) return '0 KB'
+    
+    // SAFE ESTIMATION: Avoid JSON.stringify on massive arrays which crashes mobile
+    // Count images and estimate text size
+    let totalChars = 0;
+    let imageCount = 0;
+    let imageSizeEst = 0;
+    
+    // Sample first 100 and last 100 if huge, or just loop if reasonable
+    const sampleSize = chat.msgs.length;
+    for (let i = 0; i < sampleSize; i++) {
+        const m = chat.msgs[i];
+        if (m.type === 'image' && m.content && m.content.startsWith('data:')) {
+            imageCount++;
+            imageSizeEst += m.content.length;
+        } else {
+            totalChars += (m.content?.length || 0);
+        }
+    }
+    
+    const estimatedBytes = (totalChars * 2) + imageSizeEst + (chat.msgs.length * 100); // 100 bytes overhead per msg
+    
+    if (estimatedBytes < 1024) return estimatedBytes + ' B'
+    if (estimatedBytes < 1024 * 1024) return (estimatedBytes / 1024).toFixed(1) + ' KB'
+    return (estimatedBytes / (1024 * 1024)).toFixed(1) + ' MB'
+})
+
+const historySizeWarning = computed(() => {
+    const chat = chatStore.chats[props.chatData.id]
+    if (!chat || !chat.msgs) return false
+    // Warning at 30MB
+    const sizeStr = estimatedHistorySize.value;
+    if (sizeStr.includes('MB')) {
+        const val = parseFloat(sizeStr);
+        return val > 30;
+    }
+    return false;
+})
+
 // --- Export Logic ---
 const showExportModal = ref(false)
 const exportIncludeHistory = ref(false)
 const exportIncludeMemory = ref(true)
+const exportExcludeImages = ref(false) // New: Option to strip images from history
 
 const handleExportCard = () => {
     try {
@@ -2392,10 +2474,27 @@ const handleExportCard = () => {
         }
 
         if (exportIncludeHistory.value && chat.msgs) {
-            exportData.msgs = chat.msgs
+            if (exportExcludeImages.value) {
+                // Strip images to reduce size
+                exportData.msgs = chat.msgs.map(m => {
+                    if (m.type === 'image') return { ...m, content: '[图片已排除]', originalType: 'image' }
+                    return m
+                })
+            } else {
+                exportData.msgs = chat.msgs
+            }
         }
 
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+        // Try to stringify safely
+        let jsonStr;
+        try {
+            jsonStr = JSON.stringify(exportData, null, 2);
+        } catch (stringifyErr) {
+            showToast('数据量太大，无法导出。请勾选“排除图片”或减少记录', 'error');
+            return;
+        }
+
+        const blob = new Blob([jsonStr], { type: 'application/json' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url

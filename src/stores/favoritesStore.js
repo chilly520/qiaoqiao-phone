@@ -9,7 +9,7 @@ export const useFavoritesStore = defineStore('favorites', () => {
         if (saved) {
             try {
                 const parsed = JSON.parse(saved)
-                favorites.value = Array.isArray(parsed) ? parsed : []
+                favorites.value = Array.isArray(parsed) ? parsed.filter(i => i !== null) : []
             } catch (e) {
                 console.error(e)
                 favorites.value = []

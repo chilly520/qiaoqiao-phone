@@ -59,8 +59,8 @@ function extractInnerVoiceJson(content) {
         const jsonEnd = content.indexOf('}', escapedJsonMatch.index + 50)
         if (jsonStart !== -1 && jsonEnd !== -1) {
             let jsonStr = content.substring(jsonStart, jsonEnd + 1)
-            // 移除转义字符
-            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\n/g, '\\n').replace(/\\\\/g, '\\')
+            // 移除转义字符，正确转换 \n 为换行符
+            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\')
             return jsonStr
         }
     }
@@ -2748,30 +2748,20 @@ async function _persistImageUrl(url) {
         const resp = await fetch(url, { signal: AbortSignal.timeout(30000) })
         if (!resp.ok) { console.warn('[AI Image] Persist fetch failed, returning raw URL'); return url }
         const blob = await resp.blob()
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onloadend = () => {
-                const base64 = reader.result
-                if (base64.length > 500 * 1024) {
-                    const img = new Image()
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas')
-                        const maxDim = 800
-                        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1)
-                        canvas.width = Math.round(img.width * scale)
-                        canvas.height = Math.round(img.height * scale)
-                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-                        resolve(canvas.toDataURL('image/jpeg', 0.7))
-                    }
-                    img.onerror = () => resolve(base64)
-                    img.src = base64
-                } else {
-                    resolve(base64)
-                }
-            }
-            reader.onerror = () => { console.warn('[AI Image] FileReader failed, returning raw URL'); resolve(url) }
-            reader.readAsDataURL(blob)
-        })
+        
+        // Compress for storage
+        try {
+            const { compressImage } = await import('./imageUtils')
+            const file = new File([blob], "ai_image.jpg", { type: 'image/jpeg' })
+            return await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.7 })
+        } catch (e) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result)
+                reader.onerror = reject
+                reader.readAsDataURL(blob)
+            })
+        }
     } catch(e) {
         console.warn('[AI Image] Persist conversion failed, using raw URL:', e.message)
         return url
@@ -2946,22 +2936,27 @@ async function _generateImageInternal(prompt, options = {}) {
 
             const blob = await response.blob()
 
-            // Convert to Base64 with aggressive compression for persistence
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader()
-                reader.onloadend = () => {
-                    const base64 = reader.result
-                    useLoggerStore().addLog('AI', '图片生成成功 (Pollinations)', {
-                        size: base64.length,
-                        provider: 'pollinations'
-                    })
-                    // Compress by reducing quality if possible
-                    // For now, return as-is; compression happens at display level
-                    resolve(base64)
-                }
-                reader.onerror = reject
-                reader.readAsDataURL(blob)
-            })
+            // Convert to Blob and then to compressed Base64
+            try {
+                const { compressImage } = await import('./imageUtils')
+                const file = new File([blob], "ai_image.jpg", { type: 'image/jpeg' })
+                const compressedBase64 = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.7 })
+                
+                useLoggerStore().addLog('AI', '图片生成成功并已压缩 (Pollinations)', {
+                    originalSize: blob.size,
+                    compressedSize: compressedBase64.length,
+                    provider: 'pollinations'
+                })
+                return compressedBase64
+            } catch (compressErr) {
+                console.warn('[AI Image] Compression failed, falling back to raw base64', compressErr)
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader()
+                    reader.onloadend = () => resolve(reader.result)
+                    reader.onerror = reject
+                    reader.readAsDataURL(blob)
+                })
+            }
         } catch (e) {
             console.error('[AI Image] Pollinations Final Failure:', e)
             useLoggerStore().addLog('ERROR', '图片生成失败 (Pollinations)', e.message)

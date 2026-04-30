@@ -160,8 +160,8 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
                         // 2. Inject initial moments
                         const initialMoments = profile.pinnedMoments || profile.moments || []
                         if (initialMoments.length > 0) {
-                            initialMoments.forEach(m => {
-                                momentsStore.addMoment({
+                            initialMoments.forEach(async m => {
+                                await momentsStore.addMoment({
                                     authorId: charId,
                                     content: m.content,
                                     images: m.images || [],

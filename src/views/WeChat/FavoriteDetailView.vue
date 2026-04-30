@@ -40,7 +40,7 @@ const item = computed(() => {
                         return {
                             id: content.favoriteId,
                             type: 'text', // Render as simple text for now since it's a summary
-                            source: content.source,
+                            source: content?.source || '未知来源',
                             author: chat.name,
                             avatar: chat.avatar,
                             savedAt: content.savedAt || msg.timestamp,
