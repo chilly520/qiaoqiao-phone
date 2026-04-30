@@ -3265,12 +3265,8 @@ function formatMessageContent(msg) {
         return ''
     }
     
-    let text = ensureString(msg.content)
-
-    // Strip protocol tags and common AI leakage fields
-    text = text.replace(/\[(?:STATUS|THINK|INNER|GIFT|红包|REDPACKET|LOCATION|SCENE)[:：][\s\S]*?\]/gi, '')
-               .replace(/^\s*(?:心声|内心|心里|想|着装|环境|行为|场景|地点|状态|mood|thoughts|mind|outfit|status)[:：].*$/gim, '')
-               .trim();
+    // 强制先进行深度清理，确保心声、JSON片段、穿搭等元数据不进入渲染环节
+    let text = getCleanContent(msg.content, msg.type === 'html', msg.role)
 
     if (props.forceOffline) {
         return renderOfflineMessageHtml(msg)

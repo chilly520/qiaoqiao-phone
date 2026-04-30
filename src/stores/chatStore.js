@@ -36,7 +36,13 @@ const ensureString = (val) => {
         }).join('');
     }
     if (val && typeof val === 'object') {
-        return val.text || val.content || JSON.stringify(val);
+        if (val.text) return String(val.text)
+        if (val.content) return String(val.content)
+        try {
+            return JSON.stringify(val);
+        } catch (e) {
+            return '[Object]';
+        }
     }
     return String(val || '');
 }

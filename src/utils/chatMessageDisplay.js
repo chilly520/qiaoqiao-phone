@@ -29,22 +29,30 @@ export function looksLikeHtmlCard(content) {
 }
 
 export function ensureMessageString(value) {
-  let str = ''
-  if (typeof value === 'string') {
-    str = value
-  } else if (Array.isArray(value)) {
-    str = value.map((part) => {
+  if (typeof value === 'string') return value
+  
+  if (Array.isArray(value)) {
+    return value.map((part) => {
       if (typeof part === 'string') return part
       if (part && typeof part === 'object') return part.text || part.content || ''
       return ''
     }).join('')
-  } else if (value && typeof value === 'object') {
-    str = value.text || value.content || JSON.stringify(value)
-  } else {
-    str = String(value || '')
   }
   
-  return str
+  if (value && typeof value === 'object') {
+    // Priority 1: common text fields
+    if (value.text) return String(value.text)
+    if (value.content) return String(value.content)
+    
+    // Priority 2: Safe stringify
+    try {
+      return JSON.stringify(value)
+    } catch (e) {
+      return '[Object]'
+    }
+  }
+  
+  return String(value || '')
 }
 
 export function stripInnerVoiceBlocks(content) {
@@ -96,11 +104,15 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
 
   // Aggressively remove multi-line naked JSON stat objects that got leaked outside tags
-  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
 
   // Aggressively remove single-line metadata that might have been leaked
-  const metaLinesRegex = new RegExp(`^\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:\uff1a][^\\n]*$`, 'gim')
+  // Enhanced to catch lines like ":下装:睡裤", "scene: xxx" or "。室内极致黑暗"
+  const metaLinesRegex = new RegExp(`^\\s*[:：。，,. ]?\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:：][^\\n]*$`, 'gim')
   cleaned = cleaned.replace(metaLinesRegex, '').trim()
+
+  // Catch secondary lines that look like meta details (e.g., ":下装:睡裤" when the header line was stripped)
+  cleaned = cleaned.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态)[:：][^\\n]*$/gim, '')
 
   return cleaned
 }
@@ -507,12 +519,13 @@ export function extractLatestOfflineScene(messages = []) {
   return null
 }
 
-// \u5fc3\u58f0\u76f8\u5173\u7684\u5b57\u6bb5\u540d\uff08\u7528\u4e8e\u8bc6\u522b\u65e0\u6807\u7b7e\u7684JSON\uff09
+// 心声相关的字段名（用于识别无标签的JSON）
 const INNER_VOICE_FIELDS = [
-  'status', '\u5fc3\u58f0', '\u7740\u88c5', 'thought', 'mood', 'emotion', 'feeling', 'spirit',
-  '\u60f3\u6cd5', '\u5fc3\u60c5', '\u60c5\u7eea', '\u611f\u53d7', '\u601d\u8003', '\u5185\u5fc3', 'inner', '\u5fc3\u7406',
-  'state', 'mind', 'mental', 'activity', 'behavior', '\u884c\u4e3a', 'heartRate', 'location', 'distance', 'stats',
-  'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'emotion', 'label', 'value', 'heart'
+  'status', '心声', '着装', 'thought', 'mood', 'emotion', 'feeling', 'spirit',
+  '想法', '心情', '情绪', '感受', '思考', '内心', 'inner', '心理',
+  'state', 'mind', 'mental', 'activity', 'behavior', '行为', 'heartRate', 'location', 'distance', 'stats',
+  'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'label', 'value', 'heart',
+  '场景', '环境', '姿态', '表情', '目标', '任务', '属性', '状态', '位置', '距离', '穿搭', '动作'
 ]
 
 export function extractInnerVoiceData(content, msg) {
@@ -655,8 +668,9 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   let clean = ensureMessageString(content)
   if (!clean) return ''
   
-  // REGEX FIX: Correctly convert literal \\n to real newlines
-  clean = clean.replace(/\\n/g, '\n').replace(/\\t/g, ' ')
+  // NOTE: We do NOT perform aggressive newline/tab replacement here 
+  // as it can break JSON structure for cards. 
+  // Cleaning is done per-token/tag below.
 
   // 1. Strip Mode Tags [ONLINE]/[OFFLINE]
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE)\s*\]/gi, '')
@@ -696,7 +710,7 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   clean = clean.replace(/\[CARD\][\s\S]*?(?:\[\/CARD\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:MOMENT|LS_JSON|情侣空间|ONLINE|OFFLINE))|$)/gi, '')
   
   // 5. If AI, aggressively strip any JSON-like hanging braces/logic/CSS
-  if (role !== 'user') {
+  if (role !== 'user' && !isHtml) {
       // Strip style blocks
       clean = clean.replace(/<style[\s\S]*?<\/style>/gi, '')
       // Strip common containers if they start/end with tags
@@ -748,9 +762,12 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       }
       clean = removeJsonWithKeywords(clean)
       
-      // Remove loose lines like "spirit: calm"
-      const looseMetaRegex = new RegExp(`^\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:\uff1a][^\\n]*$`, 'gim')
+      // Remove loose lines like "spirit: calm" or ":下装: 睡裤"
+      const looseMetaRegex = new RegExp(`^\\s*[:：。，,. ]?\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:：][^\\n]*$`, 'gim')
       clean = clean.replace(looseMetaRegex, '').trim()
+      
+      // Additional catch for detail lines
+      clean = clean.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态)[:：][^\\n]*$/gim, '')
 
       // Final cosmetic cleanup
       clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces

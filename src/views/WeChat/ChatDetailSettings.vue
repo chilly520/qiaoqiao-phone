@@ -1336,7 +1336,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, nextTick, onMounted } from 'vue'
+import { ref, watch, computed, nextTick, onMounted, toRaw } from 'vue'
 import { useChatStore } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
@@ -1919,8 +1919,14 @@ const localData = ref({
 // Sync props
 watch(() => props.chatData, (newVal) => {
     if (newVal && !isSaving.value) {
-        // Use JSON parse/stringify to break reactivity references and ensure clean copy
-        const dataCopy = JSON.parse(JSON.stringify(newVal))
+        let dataCopy = {}
+        try {
+            // Use JSON parse/stringify with toRaw to break reactivity references and ensure clean copy
+            dataCopy = JSON.parse(JSON.stringify(toRaw(newVal)))
+        } catch (e) {
+            console.error('[ChatDetailSettings] Failed to deep clone chatData:', e)
+            dataCopy = { ...newVal } // Fallback to shallow copy
+        }
 
         // Data Migration: handle legacy nickname vs new remark
         if (dataCopy.nickname && !dataCopy.remark) {

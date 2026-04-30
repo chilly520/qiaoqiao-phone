@@ -332,56 +332,32 @@ export const useSettingsStore = defineStore('settings', () => {
     const isInitialized = ref(false)
 
     async function saveToStorage() {
-        const data = {
-            apiConfigs: apiConfigs.value,
-            currentConfigIndex: currentConfigIndex.value,
-            personalization: personalization.value,
-            voice: voice.value,
-            weather: weather.value,
-            compressQuality: compressQuality.value,
-            drawing: drawing.value,
-            chatOfflineModes: chatOfflineModes.value,
-            fontScale: fontScale.value
-        }
         try {
-            // USE toRaw to strip Vue/Pinia proxies safely
-            // This is better than JSON.parse(JSON.stringify) which can fail on circular refs
-            const cleanData = {
-                apiConfigs: toRaw(apiConfigs.value),
+            // Revert to JSON-based deep clone as it is the most reliable way to strip 
+            // reactive proxies and ensure the object is cloneable for IndexedDB.
+            // Using toRaw on the main fields first to improve performance.
+            const dataToSave = {
+                apiConfigs: JSON.parse(JSON.stringify(toRaw(apiConfigs.value))),
                 currentConfigIndex: toRaw(currentConfigIndex.value),
-                personalization: toRaw(personalization.value),
-                voice: toRaw(voice.value),
-                weather: toRaw(weather.value),
+                personalization: JSON.parse(JSON.stringify(toRaw(personalization.value))),
+                voice: JSON.parse(JSON.stringify(toRaw(voice.value))),
+                weather: JSON.parse(JSON.stringify(toRaw(weather.value))),
                 compressQuality: toRaw(compressQuality.value),
-                drawing: toRaw(drawing.value),
-                chatOfflineModes: toRaw(chatOfflineModes.value),
+                drawing: JSON.parse(JSON.stringify(toRaw(drawing.value))),
+                chatOfflineModes: JSON.parse(JSON.stringify(toRaw(chatOfflineModes.value))),
                 fontScale: toRaw(fontScale.value)
             }
             
             // Save to IndexedDB (localforage)
-            await settingsDB.setItem('qiaoqiao_settings_v2', cleanData)
+            await settingsDB.setItem('qiaoqiao_settings_v2', dataToSave)
             console.log('[SettingsStore] Saved to localforage.')
-            
-            // Success - check if we need to remove from LS
-            // } else {
-            //     // If too big for LS, we MUST clear it from LS to free up space
-            //     localStorage.removeItem('qiaoqiao_settings')
-            // }
-
             // To fully resolve the user's issue, we gradually remove it from localStorage once migrated
             if (isInitialized.value && localStorage.getItem('qiaoqiao_settings')) {
                 localStorage.removeItem('qiaoqiao_settings')
             }
-
         } catch (e) {
             console.error('[SettingsStore] Failed to save to localforage:', e)
-            // Fallback to localStorage for small data if needed
-            try {
-                const json = JSON.stringify(data)
-                if (json.length < 1024 * 500) { // 0.5MB limit for fallback
-                    localStorage.setItem('qiaoqiao_settings', json)
-                }
-            } catch (le) {}
+            // Fallback: don't let the crash bubble up and kill the UI thread
         }
     }
 
