@@ -129,8 +129,27 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(/\{?\s*["'](?:type|card)["']\s*:\s*["'](?:html|moment_card|gift_card|order_share|payment_request)["']\s*,\s*["'](?:html|content|amount|price|title)["']\s*:\s*["']/gi, '')
   // 针对 HTML 代码结尾的尾巴 (如 "} 或者 </div>" })
   cleaned = cleaned.replace(/["']\s*\}(?:\s*\[\/OFFLINE\])?(?:[\s\S]*)$/g, '')
-  // 针对心声中漏网的键值对（例如："行为": "【线下】我站在洗手台前..." ）
-  cleaned = cleaned.replace(/^\s*["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate)["']?\s*[:：]\s*["']?.*$/gim, '')
+
+  // 终极元数据键值对清除器 (跨行、带/不带引号、带/不带逗号)
+  // 匹配诸如: "行为": "我赤着上身坐在床头...", 或者 行为：【线下】... 这种无论多长的内容，直到下一个键或者块结束
+  const ultimateMetaRegex = /(?:^|\n|,\s*|\{\s*)\s*["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)["']?\s*[:：]\s*(?:\[[\s\S]*?\]|\{[\s\S]*?\}|["'][^"']*["']|“[^”]*”|'[^']*'|[^,\{\}\n]+)\s*,?/gi;
+  
+  // 多次执行以处理嵌套或紧密相邻的键值对
+  let prevCleaned = '';
+  while (cleaned !== prevCleaned) {
+      prevCleaned = cleaned;
+      cleaned = cleaned.replace(ultimateMetaRegex, '\n');
+  }
+
+  // 针对仍然顽固残留的无引号长文本（例如多行字符串且缺少引号，或者上面正则由于种种原因没吃干净）
+  cleaned = cleaned.replace(/^\s*["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate)["']?\s*[:：][\s\S]*?(?=\n\s*["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)["']?\s*[:：]|\}|$)/gim, '');
+  
+  // 最后的清理：清理孤立的标点符号或单行残留
+  cleaned = cleaned.replace(/^\s*["']?(?:html|type|content|label|value|行为|着装|环境|心声|装饰)["']?\s*[:：]?\s*["']?\s*$/gim, '')
+  cleaned = cleaned.replace(/^[ \t]*[,;]\s*(?:html|type|content|心声|行为|着装|装饰|环境|stats).*$/gim, '')
+  cleaned = cleaned.replace(/^[ \t]*["'],?\s*$/gim, '') // 独立的 ", 
+  cleaned = cleaned.replace(/^[ \t]*\}\s*$/gim, '') // 独立的 }
+
 
 
   return cleaned
