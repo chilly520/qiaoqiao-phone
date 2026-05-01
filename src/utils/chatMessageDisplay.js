@@ -104,7 +104,7 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
 
   // Aggressively remove multi-line naked JSON stat objects that got leaked outside tags
-  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|label|value|date|time)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|label|value|date|time|行为|着装|环境|心声|心情|状态)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
 
   // Aggressively remove single-line metadata that might have been leaked
   // Enhanced to catch lines like ":下装:睡裤", "scene: xxx" or "。室内极致黑暗"
@@ -112,10 +112,14 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(metaLinesRegex, '').trim()
 
   // Catch secondary lines that look like meta details (e.g., ":下装:睡裤" when the header line was stripped)
-  cleaned = cleaned.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态|表情|目标|任务|属性|状态|位置|距离|穿搭|时间|日期|date|time|label|value)[:：][^\\n]*$/gim, '')
+  cleaned = cleaned.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态|表情|目标|任务|属性|状态|位置|距离|穿搭|时间|日期|行为|date|time|label|value)[:：][^\\n]*$/gim, '')
 
   // NEW: Catch naked JSON debris strings like ',"html": "' or '"label": "充沛",'
-  cleaned = cleaned.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+),?/gi, '')
+  // This version is much more aggressive and matches open-ended keys too.
+  cleaned = cleaned.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|行为|着装|环境|心声)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+|\\?["'][^"]*$|\\?["']$|[^,}\n]*$),?/gi, '')
+
+  // Final sweep: remove any lines that are just a single JSON key debris or common AI junk
+  cleaned = cleaned.replace(/^\s*["']?(?:html|type|content|label|value)["']?\s*[:：]?\s*["']?\s*$/gim, '')
 
   return cleaned
 }
