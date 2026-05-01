@@ -16,16 +16,18 @@ const goBack = () => {
 }
 
 // Stats
-const totalLimit = ref(5 * 1024 * 1024) // Default 5MB for LocalStorage, but we will update with real quota
+const totalLimit = ref(5 * 1024 * 1024) // Default 5MB for LocalStorage
 const usedSpace = ref(0)
-const quotaMode = ref('ls') // 'ls' or 'system'
+const quotaMode = ref('loading') // 'loading', 'ls', or 'system'
 const breakdown = ref({
     logs: 0,
     chats: 0,
     moments: 0,
     images: 0,
     other: 0,
-    system: 0 // IndexedDB / System storage
+    system: 0, // IndexedDB / System storage
+    gallery: 0,
+    indexedDB: 0  // Explicit IndexedDB usage
 })
 
 // Mock helper to estimate string size in bytes
@@ -40,7 +42,8 @@ const calculateStorage = async () => {
         images: 0,
         other: 0,
         system: 0,
-        gallery: 0
+        gallery: 0,
+        indexedDB: 0
     }
 
     // 1. Calculate LocalStorage usage
@@ -60,37 +63,71 @@ const calculateStorage = async () => {
 
     // 2. Calculate localforage (IndexedDB) usage for V3 Schema
     try {
+        let idbTotal = 0
+        
         // Metadata
         const metadata = await localforage.getItem('qiaoqiao_chats_metadata')
-        if (metadata) details.chats += getSize(JSON.stringify(metadata))
+        if (metadata) {
+            const metaSize = getSize(JSON.stringify(metadata))
+            details.chats += metaSize
+            idbTotal += metaSize
+        }
         
         // Messages (Sum of all per-chat keys)
-        // Note: This is an estimation, iterating all keys might be slow but let's try
         if (typeof localforage.keys === 'function') {
             const keys = await localforage.keys()
             for (const key of keys) {
                 if (key.startsWith('qiaoqiao_chat_msgs_')) {
                     const msgs = await localforage.getItem(key)
-                    if (msgs) details.chats += getSize(JSON.stringify(msgs))
+                    if (msgs) {
+                        const msgSize = getSize(JSON.stringify(msgs))
+                        details.chats += msgSize
+                        idbTotal += msgSize
+                    }
+                } else if (key === 'qiaoqiao_chats_v2') {
+                    const v2Data = await localforage.getItem(key)
+                    if (v2Data) {
+                        const v2Size = getSize(JSON.stringify(v2Data))
+                        details.chats += v2Size
+                        idbTotal += v2Size
+                    }
                 }
             }
-        } else {
-            // Fallback for V2 if metadata not found
-            const chatsV2 = await localforage.getItem('qiaoqiao_chats_v2')
-            if (chatsV2) details.chats += getSize(JSON.stringify(chatsV2))
         }
         
+        details.indexedDB = idbTotal
+        
         const gallery = await localforage.getItem('galleryData')
-        if (gallery) details.gallery = getSize(JSON.stringify(gallery))
+        if (gallery) {
+            const gallerySize = getSize(JSON.stringify(gallery))
+            details.gallery = gallerySize
+            idbTotal += gallerySize
+        }
         
         const moments = await localforage.getItem('qiaoqiao_moments')
-        if (moments) details.moments += getSize(JSON.stringify(moments))
+        if (moments) {
+            const momentSize = getSize(JSON.stringify(moments))
+            details.moments += momentSize
+            idbTotal += momentSize
+        }
+        
+        // Update total IndexedDB tracking
+        details.indexedDB = idbTotal
+        
     } catch (e) {
         console.warn('[Storage] Failed to calculate IndexedDB details:', e)
     }
 
-    // 3. Try to get System Quota
-    if (navigator.storage && navigator.storage.estimate) {
+    // 3. Determine storage mode and display appropriate info
+    // PREFER IndexedDB mode if we have data there (more accurate)
+    if (details.indexedDB > 0) {
+        // We have IndexedDB data - show that as primary
+        usedSpace.value = details.indexedDB + lsTotal
+        totalLimit.value = 280 * 1024 * 1024 * 1024 // ~280GB typical browser quota (approximate)
+        quotaMode.value = 'system'
+        details.system = Math.max(0, details.indexedDB - details.chats - details.gallery - details.moments)
+    } else if (navigator.storage && navigator.storage.estimate) {
+        // Try system API as fallback
         try {
             const estimate = await navigator.storage.estimate()
             usedSpace.value = estimate.usage || (lsTotal + details.gallery + details.chats)
@@ -98,15 +135,20 @@ const calculateStorage = async () => {
             quotaMode.value = 'system'
             details.system = Math.max(0, usedSpace.value - lsTotal - details.gallery - details.chats - details.moments)
         } catch (e) {
+            // Final fallback to LocalStorage only mode
             usedSpace.value = lsTotal + details.gallery + details.chats
+            totalLimit.value = 5 * 1024 * 1024
             quotaMode.value = 'ls'
         }
     } else {
+        // No IndexedDB data, no system API - pure LocalStorage mode
         usedSpace.value = lsTotal + details.gallery + details.chats
+        totalLimit.value = 5 * 1024 * 1024
         quotaMode.value = 'ls'
     }
 
     breakdown.value = details
+    console.log('[Storage] Calculation complete - Mode:', quotaMode.value, 'Used:', formatSize(usedSpace.value), 'Limit:', formatSize(totalLimit.value))
 }
 
 onMounted(() => {

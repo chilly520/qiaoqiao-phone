@@ -4466,9 +4466,86 @@ export const useChatStore = defineStore('chat', () => {
                 return true;
             } catch (e) {
                 console.error('[Storage] Per-chat save failed:', e);
-                // Fallback to legacy single-key save if absolutely necessary
+                
+                // CRITICAL: Before fallback, try to sanitize oversized data (especially avatars)
+                // This prevents cascading failures when base64 images are too large
                 try {
-                    await localforage.setItem('qiaoqiao_chats_v2', JSON.parse(JSON.stringify(chats.value)));
+                    const sanitizedChats = {};
+                    for (const chatId of Object.keys(chats.value)) {
+                        const chat = chats.value[chatId];
+                        const sanitized = { ...chat };
+                        
+                        // Check and warn about oversized avatar
+                        if (sanitized.avatar && typeof sanitized.avatar === 'string' && sanitized.avatar.length > 100000) {
+                            console.warn(`[Storage] Oversized avatar detected for chat ${chatId}:`, Math.round(sanitized.avatar.length / 1024), 'KB. Removing from save.');
+                            delete sanitized.avatar;  // Remove oversized avatar to allow save to succeed
+                        }
+                        
+                        // Check userAvatar too
+                        if (sanitized.userAvatar && typeof sanitized.userAvatar === 'string' && sanitized.userAvatar.length > 100000) {
+                            console.warn(`[Storage] Oversized userAvatar for chat ${chatId}:`, Math.round(sanitized.userAvatar.length / 1024), 'KB. Removing.`);
+                            delete sanitized.userAvatar;
+                        }
+                        
+                        sanitizedChats[chatId] = sanitized;
+                    }
+                    
+                    // Retry with sanitized data
+                    const metadata = {};
+                    for (const chatId of Object.keys(sanitizedChats)) {
+                        const { msgs, ...meta } = sanitizedChats[chatId];
+                        metadata[chatId] = deepToRaw(meta);
+                    }
+                    await localforage.setItem(METADATA_KEY, metadata);
+                    
+                    // Save messages again
+                    for (const chatId of Object.keys(sanitizedChats)) {
+                        const msgs = sanitizedChats[chatId].msgs;
+                        if (msgs && Array.isArray(msgs)) {
+                            await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, deepToRaw(msgs));
+                        }
+                    }
+                    
+                    localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
+                    localStorage.setItem(V3_MIGRATED_KEY, 'true');
+                    
+                    console.log('[Storage] Saved successfully after sanitizing oversized data');
+                    if (resolve) resolve(true);
+                    return true;
+                    
+                } catch (sanitizeErr) {
+                    console.error('[Storage] Sanitization retry also failed:', sanitizeErr);
+                }
+                
+                // Final fallback: Try legacy single-key save (without oversized fields)
+                try {
+                    const fallbackData = {};
+                    for (const chatId of Object.keys(chats.value)) {
+                        const chat = chats.value[chatId];
+                        const fallback = { ...chat };
+                        
+                        // Remove any field that might be too large
+                        if (fallback.avatar && fallback.avatar.length > 50000) delete fallback.avatar;
+                        if (fallback.userAvatar && fallback.userAvatar.length > 50000) delete fallback.userAvatar;
+                        if (fallback.background && typeof fallback.background === 'string' && fallback.background.length > 50000) delete fallback.background;
+                        
+                        // Also sanitize messages
+                        if (Array.isArray(fallback.msgs)) {
+                            fallback.msgs = fallback.msgs.map(m => {
+                                const clean = { ...m };
+                                if (clean.image && typeof clean.image === 'string' && clean.image.length > 500000) clean.image = '[图片过大已清理]';
+                                if (clean.content && typeof clean.content === 'string' && clean.content.length > 1000000) {
+                                    clean.content = clean.content.substring(0, 50000) + '... [内容过长已截断]';
+                                }
+                                return clean;
+                            });
+                        }
+                        
+                        fallbackData[chatId] = fallback;
+                    }
+                    
+                    await localforage.setItem('qiaoqiao_chats_v2', fallbackData);
+                    console.log('[Storage] Fallback V2 save succeeded (with data sanitization)');
                     if (resolve) resolve(true);
                     return true;
                 } catch (innerE) {
