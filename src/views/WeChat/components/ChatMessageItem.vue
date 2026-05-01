@@ -2835,21 +2835,58 @@ function cleanHtmlResult(html) {
     // 移除所有孤立开头的 JSON 结构残留 (无论中间或开头)，支持双重转义
     result = result.replace(/\{\s*\\?["']?type\\?["']?\s*:\s*\\?["']?(?:html|card)\\?["']?\s*(?:,\s*\\?["']?(?:html|content)\\?["']?\s*:\s*\\?["']?)?/gi, '');
     
+    // 新增：移除开头的完整JSON对象（包括多行JSON）
+    // 匹配以 { 开头且包含 type/html/content 的JSON块
+    result = result.replace(/^\s*\{[\s\S]*?"(?:type|html|content)"[\s\S]*?\}\s*/gi, '');
+    
     // 移除开头的 { 和 }（JSON 残留）
     while (result.startsWith('{') || result.startsWith('}')) {
         result = result.substring(1).trim();
+    }
+    
+    // 新增：移除HTML之前的所有非HTML内容（JSON代码、元数据等）
+    // 找到第一个HTML标签的位置，截取之后的内容
+    const firstHtmlTag = result.search(/<(div|section|article|table|ul|ol|p|h[1-6]|svg|details|summary|style|span|a|button|input|form|header|footer|nav|main|aside|figure|figcaption|hr|br|img|video|audio|source|canvas|map|area|script|noscript|embed|object|param|source|track|wbr|b|i|u|em|strong|small|mark|del|ins|sub|sup|code|pre|blockquote|cite|q|abbr|acronym|address|bdo|bdi|dfn|kbd|var|samp|time|data|ruby|rt|rp|wbr|template|slot)\b/i);
+    if (firstHtmlTag > 0) {
+        // 如果第一个HTML标签前面有内容，说明有代码泄露，移除前面的内容
+        const beforeHtml = result.substring(0, firstHtmlTag).trim();
+        // 只有当前面的内容看起来像代码/JSON时才移除（包含{、"、\等字符）
+        if (beforeHtml && /[\{\[\"\']/i.test(beforeHtml)) {
+            console.log('[cleanHtmlResult] Removing leaked code before HTML:', beforeHtml.substring(0, 100));
+            result = result.substring(firstHtmlTag).trim();
+        }
     }
     
     // 移除结尾的 JSON 结构残留 - 更全面的匹配
     // 匹配 "} 或 "} 或 "} 后面跟着任何内容（包括空格）
     result = result.replace(/"\s*\}\s*$/g, '');
     result = result.replace(/'\s*\}\s*$/g, '');
-    result = result.replace(/\\"\s*\}\s*$/g, '');
+    result = result.replace(/\\\s*\}\s*$/g, '');
     result = result.replace(/\\'\s*\}\s*$/g, '');
     
     // 移除结尾的 } 和 {（JSON 残留）
     while (result.endsWith('}') || result.endsWith('{')) {
         result = result.substring(0, result.length - 1).trim();
+    }
+    
+    // 新增：移除HTML标签之后的非HTML内容（JSON代码、元数据等）
+    // 找到最后一个闭合HTML标签的位置
+    const closingTags = ['</div>', '</section>', '</article>', '</table>', '</ul>', '</ol>', '</p>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</svg>', '</details>', '</summary>', '</style>', '</span>', '</a>', '</button>', '</header>', '</footer>', '</main>', '</aside>', '</figure>', '</figcaption>', '</blockquote>', '</pre>', '</code>', '</template>'];
+    let lastClosingTagPos = -1;
+    for (const tag of closingTags) {
+        const pos = result.toLowerCase().lastIndexOf(tag);
+        if (pos > lastClosingTagPos) {
+            lastClosingTagPos = pos + tag.length;
+        }
+    }
+    
+    if (lastClosingTagPos > 0 && lastClosingTagPos < result.length) {
+        const afterHtml = result.substring(lastClosingTagPos).trim();
+        // 如果后面的内容看起来像代码/JSON，移除它
+        if (afterHtml && /[\}\]\"\',]|^\s*\{/i.test(afterHtml)) {
+            console.log('[cleanHtmlResult] Removing leaked code after HTML:', afterHtml.substring(0, 100));
+            result = result.substring(0, lastClosingTagPos).trim();
+        }
     }
     
     // 移除 "html": 或 "content": 前缀
