@@ -104,7 +104,7 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
 
   // Aggressively remove multi-line naked JSON stat objects that got leaked outside tags
-  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|label|value|date|time)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
 
   // Aggressively remove single-line metadata that might have been leaked
   // Enhanced to catch lines like ":下装:睡裤", "scene: xxx" or "。室内极致黑暗"
@@ -112,7 +112,10 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(metaLinesRegex, '').trim()
 
   // Catch secondary lines that look like meta details (e.g., ":下装:睡裤" when the header line was stripped)
-  cleaned = cleaned.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态)[:：][^\\n]*$/gim, '')
+  cleaned = cleaned.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态|表情|目标|任务|属性|状态|位置|距离|穿搭|时间|日期|date|time|label|value)[:：][^\\n]*$/gim, '')
+
+  // NEW: Catch naked JSON debris strings like ',"html": "' or '"label": "充沛",'
+  cleaned = cleaned.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+),?/gi, '')
 
   return cleaned
 }
@@ -226,7 +229,8 @@ export function getOnlineRenderableContent(msg) {
 }
 
 export function getOfflineTextContent(msg) {
-  return stripModeWrapperTags(stripCardBlocks(stripInnerVoiceBlocks(getOfflineRenderableContent(msg)))).trim()
+  // 强制使用统一的深度清理逻辑，避免元数据泄露到线下消息气泡中
+  return getUnifiedCleanContent(msg.content, false, 'ai')
 }
 
 export function getOnlineTextContent(msg) {
@@ -525,7 +529,8 @@ const INNER_VOICE_FIELDS = [
   '想法', '心情', '情绪', '感受', '思考', '内心', 'inner', '心理',
   'state', 'mind', 'mental', 'activity', 'behavior', '行为', 'heartRate', 'location', 'distance', 'stats',
   'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'label', 'value', 'heart',
-  '场景', '环境', '姿态', '表情', '目标', '任务', '属性', '状态', '位置', '距离', '穿搭', '动作'
+  '场景', '环境', '姿态', '表情', '目标', '任务', '属性', '状态', '位置', '距离', '穿搭', '动作',
+  'type', 'html', 'content', 'note', 'amount', 'source', 'savedAt', 'title', 'author', 'url', '日期', '时间'
 ]
 
 export function extractInnerVoiceData(content, msg) {
@@ -762,12 +767,15 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       }
       clean = removeJsonWithKeywords(clean)
       
+      // NEW: Catch naked JSON debris strings like ',"html": "' or '"label": "充沛",'
+      clean = clean.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+),?/gi, '')
+
       // Remove loose lines like "spirit: calm" or ":下装: 睡裤"
       const looseMetaRegex = new RegExp(`^\\s*[:：。，,. ]?\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:：][^\\n]*$`, 'gim')
       clean = clean.replace(looseMetaRegex, '').trim()
       
       // Additional catch for detail lines
-      clean = clean.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态)[:：][^\\n]*$/gim, '')
+      clean = clean.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态|表情|目标|任务|属性|状态|位置|距离|穿搭|时间|日期|date|time|label|value)[:：][^\\n]*$/gim, '')
 
       // Final cosmetic cleanup
       clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces

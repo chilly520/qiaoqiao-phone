@@ -9,8 +9,8 @@
         <span>{{ segment.content }}</span>
       </div>
 
-      <!-- 旁白/叙述 - 图1风格：浅绿/青色 callout -->
-      <div v-else-if="segment.type === 'narration'" class="narration-card">
+      <!-- 旁白/叙述 - 加深底色并区分角色 -->
+      <div v-else-if="segment.type === 'narration'" class="narration-card" :class="[segment.side === 'right' ? 'is-self' : '']">
         <div class="narration-accent"></div>
         <div class="narration-main">
           <i class="fa-solid fa-bullhorn narration-icon"></i>
@@ -18,9 +18,9 @@
         </div>
       </div>
 
-      <!-- 动作描写 - 图3风格：淡色背景，斜体 -->
-      <div v-else-if="segment.type === 'action'" class="action-card">
-        <div class="action-text">{{ segment.content }}</div>
+      <!-- 动作描写 - 手动加括号并区分角色 -->
+      <div v-else-if="segment.type === 'action'" class="action-card" :class="[segment.side === 'right' ? 'is-self' : '']">
+        <div class="action-text">（{{ segment.content }}）</div>
       </div>
 
       <!-- \u7cfb\u7edf\u63d0\u793a/\u901a\u77e5 - \u5c45\u4e2d\u5c0f\u5b57 -->
@@ -47,8 +47,7 @@
             {{ segment.speaker }}
           </div>
           <!-- 对话气泡 -->
-          <div class="dialogue-bubble" :class="[getBubbleClass(segment)]">
-            {{ formatDialogueContent(segment.content) }}
+          <div class="dialogue-bubble" :class="[getBubbleClass(segment)]" v-html="processInlineStyles(segment.content, segment.side)">
           </div>
         </div>
       </div>
@@ -123,19 +122,28 @@ const charAvatar = computed(() => (
 ))
 
 const renderedSegments = computed(() => {
-  // 每个对话 segment 都显示头像
   return segments.value.map((segment) => {
-    if (segment.type !== 'dialogue') {
-      return segment
-    }
- 
-    // 每个对话 segment 都显示头像
+    const isSelf = isRightAligned(segment)
+    const side = isSelf ? 'right' : 'left'
+    
     return {
       ...segment,
-      showAvatar: true
+      side,
+      showAvatar: segment.type === 'dialogue'
     }
   })
 })
+
+const processInlineStyles = (text, side) => {
+    if (!text) return ''
+    const content = formatDialogueContent(text)
+    // 处理内联括号动作
+    return content
+        .replace(/([\uff08\(][^\uff09\)]*[\uff09\)])/g, (match) => {
+            return `<span class="inline-action-tag ${side}">${match}</span>`
+        })
+        .replace(/\n/g, '<br>')
+}
 
 function isRightAligned(segment) {
   if (segment.speakerTagged) return segment.speaker === userName.value
@@ -399,34 +407,58 @@ function formatTimestamp(timestamp) {
   color: #b2dfdb;
 }
 
-/* 动作描写 - 淡色斜体 */
 .action-card {
   width: fit-content;
   max-width: min(100%, 340px);
-  margin: 4px auto;
-  padding: 8px 16px;
-  border-radius: 12px;
-  background: rgba(240, 243, 247, 0.7);
-  border: 1px solid rgba(225, 230, 235, 0.5);
+  margin: 10px auto;
+  padding: 8px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.4) !important;
+  border: none;
+}
+
+/* 取消侧边底色区分 */
+.action-card.is-self {
+  background: rgba(255, 255, 255, 0.4) !important;
 }
 
 .night-mode .action-card {
-  background: rgba(45, 50, 60, 0.6);
-  border-color: rgba(65, 75, 90, 0.4);
+  background: rgba(255, 255, 255, 0.12) !important;
 }
 
 .action-text {
-  font-size: 0.93em;
+  font-size: 0.95em;
   line-height: 1.6;
-  color: #7a8a9a;
+  color: #2c3e50 !important; /* 回归最清晰干净的深灰蓝色 */
   font-style: italic;
   white-space: pre-wrap;
   word-break: break-word;
   text-align: center;
 }
 
-.night-mode .action-text {
-  color: #9aa5b5;
+/* 统一文字颜色 */
+.action-card.is-self .action-text {
+  color: #2c3e50 !important;
+}
+
+.inline-action-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 0 2px;
+    border-radius: 8px;
+    font-style: italic;
+    background: rgba(255, 255, 255, 0.35);
+    color: #2c3e50 !important;
+}
+
+.inline-action-tag.right {
+    background: rgba(255, 255, 255, 0.35);
+    color: #2c3e50 !important;
+}
+
+.night-mode .action-text, 
+.night-mode .inline-action-tag {
+  color: #f1f5f9 !important;
 }
 
 /* 对话行 - 优化气泡样式 */

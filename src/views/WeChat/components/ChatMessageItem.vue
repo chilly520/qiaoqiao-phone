@@ -2997,15 +2997,28 @@ function renderOfflineMessageHtml(msg) {
     const characterAvatar = props.chatData?.avatar
         || 'https://api.dicebear.com/bottts/svg?seed=Bot'
 
+    const processInlineStyles = (text, side) => {
+        if (!text) return ''
+        // 处理内联括号动作：(动作内容) 或 （动作内容）
+        return escapeHtml(text)
+            .replace(/([\uff08\(][^\uff09\)]*[\uff09\)])/g, (match) => {
+                return `<span class="node-inline-action ${side}">${match}</span>`
+            })
+            .replace(/\n/g, '<br>')
+    }
+
     return segments.map((segment) => {
         if (segment.type === 'scene') {
             return `<div class="node-scene">${escapeHtml(segment.content)}</div>`
         }
         if (segment.type === 'narration') {
-            return `<div class="node-narration">${escapeHtml(segment.content)}</div>`
+            const side = msg?.role === 'user' ? 'right' : 'left'
+            return `<div class="node-narration ${side}">${escapeHtml(segment.content)}</div>`
         }
         if (segment.type === 'action') {
-            return `<div class="node-action">${escapeHtml(segment.content)}</div>`
+            const side = msg?.role === 'user' ? 'right' : 'left'
+            // 手动加回括号，满足用户视觉预期
+            return `<div class="node-action ${side}">（${escapeHtml(segment.content)}）</div>`
         }
 
         const speaker = segment.speaker || (msg?.role === 'user' ? userName : characterName)
@@ -3019,7 +3032,7 @@ function renderOfflineMessageHtml(msg) {
                 <img src="${avatar}" class="node-avatar shadow-sm" />
                 <div class="node-content">
                     ${nameHtml}
-                    <div class="node-text">${escapeHtml(segment.content).replace(/\n/g, '<br>')}</div>
+                    <div class="node-text">${processInlineStyles(segment.content, side)}</div>
                 </div>
             </div>
         `
@@ -4053,6 +4066,66 @@ const scrollToVote = (refId) => {
     animation-delay: 0.2s;
 }
 
+.voice-wave:deep(.node-narration) {
+    text-align: center;
+    font-style: italic;
+    color: #ffffff;
+    padding: 10px 18px;
+    margin: 12px auto;
+    width: fit-content;
+    max-width: 90%;
+    display: block;
+    font-family: "KaiTi", "STKaiti", serif;
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    line-height: 1.6;
+}
+
+:deep(.node-narration.right) {
+    background: rgba(149, 236, 105, 0.25);
+    border: 1px solid rgba(149, 236, 105, 0.2);
+}
+
+:deep(.node-narration.left) {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.node-action) {
+    text-align: center;
+    color: #ffffff;
+    font-size: 15px;
+    margin: 10px auto;
+    padding: 8px 18px;
+    border-radius: 20px;
+    width: fit-content;
+    max-width: 85%;
+    display: block;
+    font-style: italic;
+    backdrop-filter: blur(8px);
+}
+
+:deep(.node-action.right), :deep(.node-inline-action.right) {
+    background: rgba(149, 236, 105, 0.3);
+    border: 1px solid rgba(149, 236, 105, 0.2);
+    color: #ffffff;
+}
+
+:deep(.node-action.left), :deep(.node-inline-action.left) {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
+
+:deep(.node-inline-action) {
+    display: inline-block;
+    padding: 2px 6px;
+    margin: 0 2px;
+    border-radius: 6px;
+    font-style: italic;
+    font-family: "KaiTi", "STKaiti", serif;
+}
+
 .voice-wave.playing .bar4 {
     animation-delay: 0.3s;
 }
@@ -4425,10 +4498,27 @@ const scrollToVote = (refId) => {
 :deep(.node-narration) {
     text-align: center;
     font-style: italic;
-    color: rgba(255, 255, 255, 0.85);
-    padding: 12px 0;
-    width: 100%;
+    color: #ffffff !important;
+    padding: 10px 18px;
+    margin: 12px auto;
+    width: fit-content;
+    max-width: 90%;
+    display: block;
     font-family: "KaiTi", "STKaiti", serif;
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    line-height: 1.6;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+:deep(.node-narration.right) {
+    background: rgba(149, 236, 105, 0.35) !important;
+    border: 1px solid rgba(149, 236, 105, 0.25);
+}
+
+:deep(.node-narration.left) {
+    background: rgba(255, 255, 255, 0.25) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 :deep(.node-scene) {
@@ -4444,10 +4534,40 @@ const scrollToVote = (refId) => {
 
 :deep(.node-action) {
     text-align: center;
-    color: rgba(255, 255, 255, 0.8);
+    color: #ffffff !important;
     font-size: 15px;
-    margin: 8px 0;
-    width: 100%;
+    margin: 10px auto;
+    padding: 8px 18px;
+    border-radius: 20px;
+    width: fit-content;
+    max-width: 85%;
+    display: block;
+    font-style: italic;
+    backdrop-filter: blur(8px);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+:deep(.node-action.right), :deep(.node-inline-action.right) {
+    background: rgba(149, 236, 105, 0.4) !important;
+    border: 1px solid rgba(149, 236, 105, 0.3);
+    color: #ffffff !important;
+}
+
+:deep(.node-action.left), :deep(.node-inline-action.left) {
+    background: rgba(255, 255, 255, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff !important;
+}
+
+:deep(.node-inline-action) {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 0 2px;
+    border-radius: 6px;
+    font-style: italic;
+    font-family: "KaiTi", "STKaiti", serif;
+    color: #ffffff !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 :deep(.node-speech) {
@@ -4486,7 +4606,7 @@ const scrollToVote = (refId) => {
 
 :deep(.node-name) {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.85);
     margin-bottom: 4px;
 }
 
@@ -4495,19 +4615,19 @@ const scrollToVote = (refId) => {
     color: white;
     line-height: 1.6;
     background: rgba(255, 255, 255, 0.1);
-    backdrop-blur: sm;
+    backdrop-filter: blur(4px);
     padding: 8px 14px;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 :deep(.node-speech.right .node-text) {
-    background: rgba(149, 236, 105, 0.2);
+    background: rgba(149, 236, 105, 0.28);
     border-radius: 12px 2px 12px 12px;
 }
 
 :deep(.node-speech.left .node-text) {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.22);
     border-radius: 2px 12px 12px 12px;
 }
 
