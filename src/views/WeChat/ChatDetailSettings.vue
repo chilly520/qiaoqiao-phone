@@ -15,7 +15,11 @@
                 :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">角色设置 - {{
                     localData.name }}</span>
             <button @click="saveSettings"
-                class="ml-auto text-green-600 font-bold text-sm bg-green-100 px-3 py-1 rounded mr-2">保存</button>
+                :disabled="isSaving"
+                class="ml-auto text-green-600 font-bold text-sm bg-green-100 px-3 py-1 rounded mr-2 transition-all"
+                :class="{ 'opacity-50 cursor-not-allowed': isSaving }">
+                {{ isSaving ? '保存中...' : '保存' }}
+            </button>
         </div>
 
         <!-- Content -->
@@ -1996,33 +2000,45 @@ const actualSelectedCount = computed(() => {
 
 // Avatar Handlers
 const triggerAvatarUpload = () => {
+    console.log('[Settings] triggerAvatarUpload called, fileInput.value:', fileInput.value)
     if (fileInput.value) {
         fileInput.value.click()
+        console.log('[Settings] fileInput.click() triggered')
     } else {
-        showToast('无法打开文件选择器')
+        console.error('[Settings] fileInput ref is null!')
+        showToast('无法打开文件选择器，请刷新页面重试')
     }
 }
 const handleAvatarChange = async (e) => {
+    console.log('[Settings] handleAvatarChange triggered, files:', e.target.files)
     const file = e.target.files[0]
     if (file) {
         try {
-            // Read file as data URL to show in cropper
             const reader = new FileReader()
             reader.onload = (e) => {
+                console.log('[Settings] File read successfully, showing cropper')
                 cropperImageSrc.value = e.target.result
                 currentAvatarType.value = 'character'
                 showAvatarCropper.value = true
             }
+            reader.onerror = (err) => {
+                console.error('[Settings] FileReader error:', err)
+                showToast('文件读取失败')
+            }
             reader.readAsDataURL(file)
         } catch (err) {
-            console.error('Failed to read file', err)
+            console.error('[Settings] Failed to read file', err)
             showToast('文件读取失败')
         }
+    } else {
+        console.warn('[Settings] No file selected')
     }
+    // Reset input value so same file can be selected again
+    e.target.value = ''
 }
 const promptAvatarUrl = () => {
-    // 尝试从最近的AI消息中提取头像URL作为默认值
-    let defaultAvatarUrl = localData.value.avatar
+    console.log('[Settings] promptAvatarUrl called')
+    let defaultAvatarUrl = localData.value.avatar || ''
     if (props.chatData && props.chatData.msgs) {
         const recentMsgs = props.chatData.msgs.slice(-10) // 检查最近10条消息
         for (let i = recentMsgs.length - 1; i >= 0; i--) {
@@ -2042,39 +2058,95 @@ const promptAvatarUrl = () => {
     }
 
     chatStore.triggerPrompt('设置角色头像', '请输入头像图片URL', 'https://...', defaultAvatarUrl, (url) => {
-        if (url) {
-            localData.value.avatar = url
-            // 直接保存头像更改，不需要用户点击保存按钮
-            chatStore.updateCharacter(props.chatData.id, { avatar: url })
-            showToast('头像URL已更新', 'success')
+        console.log('[Settings] Avatar URL callback received:', url)
+        if (url && url.trim()) {
+            const trimmedUrl = url.trim()
+            localData.value.avatar = trimmedUrl
+            // 直接保存头像更改
+            if (props.chatData && props.chatData.id) {
+                chatStore.updateCharacter(props.chatData.id, { avatar: trimmedUrl })
+                    .then(success => {
+                        if (success) {
+                            showToast('头像URL已更新', 'success')
+                        } else {
+                            showToast('头像保存失败')
+                        }
+                    })
+                    .catch(err => {
+                        console.error('[Settings] Failed to save avatar:', err)
+                        showToast('头像保存失败')
+                    })
+            } else {
+                console.error('[Settings] Cannot save avatar: chatData.id missing')
+                showToast('保存失败：会话ID缺失')
+            }
+        } else {
+            console.log('[Settings] Avatar URL cancelled or empty')
         }
     })
 }
 
 // User Avatar Handlers
-const triggerUserAvatarUpload = () => userFileInput.value.click()
+const triggerUserAvatarUpload = () => {
+    console.log('[Settings] triggerUserAvatarUpload called, userFileInput.value:', userFileInput.value)
+    if (userFileInput.value) {
+        userFileInput.value.click()
+    } else {
+        console.error('[Settings] userFileInput ref is null!')
+        showToast('无法打开文件选择器')
+    }
+}
 const handleUserAvatarChange = async (e) => {
+    console.log('[Settings] handleUserAvatarChange triggered, files:', e.target.files)
     const file = e.target.files[0]
     if (file) {
         try {
-            // Read file as data URL to show in cropper
             const reader = new FileReader()
             reader.onload = (e) => {
+                console.log('[Settings] User avatar file read successfully')
                 cropperImageSrc.value = e.target.result
                 currentAvatarType.value = 'user'
                 showUserAvatarCropper.value = true
             }
+            reader.onerror = (err) => {
+                console.error('[Settings] User avatar FileReader error:', err)
+                showToast('文件读取失败')
+            }
             reader.readAsDataURL(file)
         } catch (err) {
-            console.error('Failed to read file', err)
+            console.error('[Settings] Failed to read user avatar file', err)
             showToast('文件读取失败')
         }
+    } else {
+        console.warn('[Settings] No user avatar file selected')
     }
+    // Reset input value
+    e.target.value = ''
 }
 const promptUserAvatarUrl = () => {
-    showToast('测试：点击了用户头像URL按钮')
-    chatStore.triggerPrompt('设置我的头像', '请输入我的头像图片URL', 'https://...', localData.value.userAvatar, (url) => {
-        if (url) localData.value.userAvatar = url
+    console.log('[Settings] promptUserAvatarUrl called')
+    chatStore.triggerPrompt('设置我的头像', '请输入我的头像图片URL', 'https://...', localData.value.userAvatar || '', (url) => {
+        console.log('[Settings] User Avatar URL callback received:', url)
+        if (url && url.trim()) {
+            const trimmedUrl = url.trim()
+            localData.value.userAvatar = trimmedUrl
+            if (props.chatData && props.chatData.id) {
+                chatStore.updateCharacter(props.chatData.id, { userAvatar: trimmedUrl })
+                    .then(success => {
+                        if (success) {
+                            showToast('我的头像URL已更新', 'success')
+                        } else {
+                            showToast('头像保存失败')
+                        }
+                    })
+                    .catch(err => {
+                        console.error('[Settings] Failed to save user avatar:', err)
+                        showToast('头像保存失败')
+                    })
+            } else {
+                showToast('保存失败：会话ID缺失')
+            }
+        }
     })
 }
 
@@ -2559,6 +2631,14 @@ const selectAllBook = (book) => {
 }
 
 const saveSettings = async () => {
+    console.log('[Settings] saveSettings called, isSaving:', isSaving.value)
+    
+    // 防止重复点击
+    if (isSaving.value) {
+        console.warn('[Settings] Already saving, ignoring duplicate click')
+        return
+    }
+    
     if (!props.chatData || !props.chatData.id) {
         console.error('[Settings] FAILED TO SAVE: Chat ID is missing!', props.chatData)
         showToast('保存失败：会话ID缺失')
