@@ -2689,38 +2689,80 @@ const saveSettings = async () => {
         protectedFields.forEach(field => delete finalData[field])
 
         // WARNING: Check for oversized avatar data (base64 images can be several MB)
-        if (finalData.avatar && typeof finalData.avatar === 'string' && finalData.avatar.length > 500000) {
-            console.warn('[Settings] Avatar data is very large:', Math.round(finalData.avatar.length / 1024), 'KB. This may cause storage issues.')
-            // Attempt to compress or warn user
-            if (finalData.avatar.startsWith('data:image')) {
-                showToast('头像文件过大，正在压缩...')
-                // Simple compression: reduce quality by re-encoding at lower quality
-                try {
-                    const img = new Image()
-                    await new Promise((resolve, reject) => {
-                        img.onload = resolve
-                        img.onerror = reject
-                        img.src = finalData.avatar
-                    })
-                    const canvas = document.createElement('canvas')
-                    const maxSize = 200 // Max dimension
-                    let width = img.width
-                    let height = img.height
-                    if (width > height) {
-                        if (width > maxSize) { height *= maxSize / width; width = maxSize; }
-                    } else {
-                        if (height > maxSize) { width *= maxSize / height; height = maxSize; }
+        // This is CRITICAL because saveChats stores avatar in metadata, and large base64
+        // strings cause "Invalid string length" error in localforage/IndexedDB
+        if (finalData.avatar && typeof finalData.avatar === 'string') {
+            const avatarSizeKB = Math.round(finalData.avatar.length / 1024)
+            console.log('[Settings] Avatar size:', avatarSizeKB, 'KB')
+            
+            if (finalData.avatar.length > 100000) {  // >100KB 就需要处理
+                if (finalData.avatar.startsWith('data:image')) {
+                    console.warn('[Settings] Avatar too large for storage (' + avatarSizeKB + ' KB), compressing...')
+                    showToast('正在优化头像大小...')
+                    
+                    try {
+                        const img = new Image()
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve
+                            img.onerror = () => reject(new Error('Image load failed'))
+                            img.src = finalData.avatar
+                        })
+                        
+                        const canvas = document.createElement('canvas')
+                        
+                        // 根据原始尺寸动态调整目标尺寸
+                        let maxSize = 150  // 默认最大150px
+                        if (img.width > 800 || img.height > 800) maxSize = 120  // 大图用更小尺寸
+                        else if (img.width < 200 || img.height < 200) maxSize = 100  // 小图保持
+                        
+                        let width = img.width
+                        let height = img.height
+                        if (width > height) {
+                            if (width > maxSize) { height *= maxSize / width; width = maxSize }
+                        } else {
+                            if (height > maxSize) { width *= maxSize / height; height = maxSize }
+                        }
+                        
+                        canvas.width = Math.round(width)
+                        canvas.height = Math.round(height)
+                        const ctx = canvas.getContext('2d')
+                        ctx.drawImage(img, 0, 0, width, height)
+                        
+                        // 尝试 JPEG 压缩（体积最小）
+                        let compressedAvatar = canvas.toDataURL('image/jpeg', 0.6)
+                        
+                        // 如果还是太大，进一步降低质量
+                        if (compressedAvatar.length > 50000) {  // >50KB
+                            compressedAvatar = canvas.toDataURL('image/jpeg', 0.4)
+                            console.log('[Settings] Second compression with quality 0.4')
+                        }
+                        // 如果还太大，缩小尺寸
+                        if (compressedAvatar.length > 50000) {
+                            const smallCanvas = document.createElement('canvas')
+                            smallCanvas.width = 80
+                            smallCanvas.height = 80
+                            const smallCtx = smallCanvas.getContext('2d')
+                            smallCtx.drawImage(img, 0, 0, 80, 80)
+                            compressedAvatar = smallCanvas.toDataURL('image/jpeg', 0.5)
+                            console.log('[Settings] Fallback to 80x80 size')
+                        }
+                        
+                        finalData.avatar = compressedAvatar
+                        const newSizeKB = Math.round(compressedAvatar.length / 1024)
+                        console.log('[Settings] Compressed avatar:', newSizeKB, 'KB (from', avatarSizeKB, 'KB)')
+                        showToast('头像已优化：' + avatarSizeKB + 'KB → ' + newSizeKB + 'KB')
+                        
+                    } catch (compressErr) {
+                        console.error('[Settings] Failed to compress avatar:', compressErr)
+                        // 压缩失败时，清除头像数据避免存储错误
+                        showToast('头像压缩失败，请使用URL方式设置头像')
+                        delete finalData.avatar  // 不保存超大头像
                     }
-                    canvas.width = width
-                    canvas.height = height
-                    const ctx = canvas.getContext('2d')
-                    ctx.drawImage(img, 0, 0, width, height)
-                    // Convert to JPEG with 0.7 quality for smaller size
-                    finalData.avatar = canvas.toDataURL('image/jpeg', 0.7)
-                    console.log('[Settings] Compressed avatar to:', Math.round(finalData.avatar.length / 1024), 'KB')
-                } catch (compressErr) {
-                    console.error('[Settings] Failed to compress avatar:', compressErr)
-                    // If compression fails, keep original but warn
+                } else {
+                    // URL类型的头像通常不会太大，但如果异常长也警告
+                    if (finalData.avatar.length > 10000) {
+                        console.warn('[Settings] Avatar URL suspiciously long:', avatarSizeKB, 'KB')
+                    }
                 }
             }
         }
@@ -2761,9 +2803,29 @@ const saveSettings = async () => {
     } catch (error) {
         console.error('[Settings] Save failed with error:', error)
         
-        // 根据错误类型给出具体提示
-        if (error.name === 'QuotaExceededError' || error.message?.includes('quota') || error.message?.includes('storage')) {
-            showToast('保存失败：存储空间不足，请尝试使用较小的头像图片')
+        // 根据错误类型给出具体提示和解决方案
+        if (error.name === 'QuotaExceededError' || error.message?.includes('quota') || error.message?.includes('storage') || error.message?.includes('Invalid string length')) {
+            showToast('存储空间不足！请使用URL方式设置头像（点击头像旁的URL按钮）')
+            console.error('[Settings] Storage quota exceeded. Suggest using URL avatar instead of base64.')
+            
+            // 自动清除本地头像数据以避免持续失败
+            if (localData.value.avatar && localData.value.avatar.startsWith('data:image')) {
+                console.warn('[Settings] Auto-clearing oversized base64 avatar to allow save')
+                localData.value.avatar = ''  // 清除base64头像
+                // 重新尝试保存（不带大头像）
+                try {
+                    const retryData = JSON.parse(JSON.stringify(localData.value))
+                    const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'lastSummaryCount', 'isSummarizing', 'unreadCount']
+                    protectedFields.forEach(field => delete retryData[field])
+                    const success = await chatStore.updateCharacter(props.chatData.id, retryData)
+                    if (success) {
+                        showToast('已自动移除大头像并保存成功，请用URL方式重新设置')
+                        setTimeout(() => emit('close'), 300)
+                    }
+                } catch (retryErr) {
+                    console.error('[Settings] Retry also failed:', retryErr)
+                }
+            }
         } else if (error.message?.includes('JSON') || error.message?.includes('serialize')) {
             showToast('保存失败：数据格式错误')
         } else {
