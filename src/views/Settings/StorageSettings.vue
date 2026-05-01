@@ -48,22 +48,28 @@ const calculateStorage = async () => {
         }
 
         // 1. Calculate LocalStorage usage (safe, always works)
-        for (let key in localStorage) {
-            if (localStorage.hasOwnProperty(key)) {
-                const size = getSize(localStorage[key]) + key.length
-                lsTotal += size
+        try {
+            for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                    const value = localStorage[key]
+                    if (!value) continue
+                    const size = getSize(value) + key.length
+                    lsTotal += size
 
-                if (key === 'qiaoqiao_logs' || key.includes('log')) details.logs += size
-                else if (key.includes('chat') || key === 'qiaoqiao_chat_store' || key === 'qiaoqiao_chats') details.chats += size
-                else if (key.includes('moment')) details.moments += size
-                else if (key.includes('image') || key.includes('avatar')) details.images += size
-                else details.other += size
+                    if (key === 'qiaoqiao_logs' || key.includes('log')) details.logs += size
+                    else if (key.includes('chat') || key === 'qiaoqiao_chat_store' || key === 'qiaoqiao_chats') details.chats += size
+                    else if (key.includes('moment')) details.moments += size
+                    else if (key.includes('image') || key.includes('avatar')) details.images += size
+                    else details.other += size
+                }
             }
+        } catch (lsErr) {
+            console.warn('[Storage] Failed to calculate LocalStorage:', lsErr)
         }
 
         // 2. Estimate IndexedDB usage WITHOUT loading all data (safe approach)
         let idbTotal = 0
-        
+
         try {
             // Only check metadata size (not individual messages - too expensive!)
             const metadata = await localforage.getItem('qiaoqiao_chats_metadata')
@@ -120,19 +126,41 @@ const calculateStorage = async () => {
                 }
             }
             
-            // Gallery and Moments (usually small, safe to load)
-            const gallery = await localforage.getItem('galleryData')
-            if (gallery) {
-                const gallerySize = getSize(JSON.stringify(gallery))
-                details.gallery = gallerySize
-                idbTotal += gallerySize
+            // Gallery and Moments (usually small, safe to load, but add protection)
+            try {
+                const gallery = await localforage.getItem('galleryData')
+                if (gallery) {
+                    const galleryStr = JSON.stringify(gallery)
+                    if (galleryStr.length < 5 * 1024 * 1024) {  // Safety: <5MB
+                        const gallerySize = getSize(galleryStr)
+                        details.gallery = gallerySize
+                        idbTotal += gallerySize
+                    } else {
+                        console.warn('[Storage] Gallery data too large, using estimate')
+                        details.gallery = 2 * 1024 * 1024  // Assume 2MB
+                        idbTotal += details.gallery
+                    }
+                }
+            } catch (galleryErr) {
+                console.warn('[Storage] Failed to read gallery:', galleryErr)
             }
-            
-            const moments = await localforage.getItem('qiaoqiao_moments')
-            if (moments) {
-                const momentSize = getSize(JSON.stringify(moments))
-                details.moments += momentSize
-                idbTotal += momentSize
+
+            try {
+                const moments = await localforage.getItem('qiaoqiao_moments')
+                if (moments) {
+                    const momentStr = JSON.stringify(moments)
+                    if (momentStr.length < 5 * 1024 * 1024) {  // Safety: <5MB
+                        const momentSize = getSize(momentStr)
+                        details.moments += momentSize
+                        idbTotal += momentSize
+                    } else {
+                        console.warn('[Storage] Moments data too large, using estimate')
+                        details.moments += 1 * 1024 * 1024  // Assume 1MB
+                        idbTotal += details.moments
+                    }
+                }
+            } catch (momentsErr) {
+                console.warn('[Storage] Failed to read moments:', momentsErr)
             }
             
             details.indexedDB = idbTotal

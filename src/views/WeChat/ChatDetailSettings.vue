@@ -2694,12 +2694,13 @@ const saveSettings = async () => {
         if (finalData.avatar && typeof finalData.avatar === 'string') {
             const avatarSizeKB = Math.round(finalData.avatar.length / 1024)
             console.log('[Settings] Avatar size:', avatarSizeKB, 'KB')
-            
-            if (finalData.avatar.length > 100000) {  // >100KB 就需要处理
+
+            // 更严格的阈值：>30KB就压缩，确保存储安全
+            if (finalData.avatar.length > 30000) {
                 if (finalData.avatar.startsWith('data:image')) {
                     console.warn('[Settings] Avatar too large for storage (' + avatarSizeKB + ' KB), compressing...')
                     showToast('正在优化头像大小...')
-                    
+
                     try {
                         const img = new Image()
                         await new Promise((resolve, reject) => {
@@ -2707,14 +2708,14 @@ const saveSettings = async () => {
                             img.onerror = () => reject(new Error('Image load failed'))
                             img.src = finalData.avatar
                         })
-                        
+
                         const canvas = document.createElement('canvas')
-                        
-                        // 根据原始尺寸动态调整目标尺寸
-                        let maxSize = 150  // 默认最大150px
-                        if (img.width > 800 || img.height > 800) maxSize = 120  // 大图用更小尺寸
-                        else if (img.width < 200 || img.height < 200) maxSize = 100  // 小图保持
-                        
+
+                        // 使用更小的尺寸确保头像<20KB
+                        let maxSize = 100  // 默认最大100px
+                        if (img.width > 800 || img.height > 800) maxSize = 80   // 大图用更小尺寸
+                        else if (img.width < 200 || img.height < 200) maxSize = 80  // 小图也缩小
+
                         let width = img.width
                         let height = img.height
                         if (width > height) {
@@ -2727,26 +2728,31 @@ const saveSettings = async () => {
                         canvas.height = Math.round(height)
                         const ctx = canvas.getContext('2d')
                         ctx.drawImage(img, 0, 0, width, height)
-                        
-                        // 尝试 JPEG 压缩（体积最小）
-                        let compressedAvatar = canvas.toDataURL('image/jpeg', 0.6)
-                        
-                        // 如果还是太大，进一步降低质量
-                        if (compressedAvatar.length > 50000) {  // >50KB
-                            compressedAvatar = canvas.toDataURL('image/jpeg', 0.4)
-                            console.log('[Settings] Second compression with quality 0.4')
+
+                        // 使用更激进的JPEG压缩确保头像<20KB
+                        let compressedAvatar = canvas.toDataURL('image/jpeg', 0.5)
+
+                        // 如果还是太大（>20KB），进一步降低质量到0.3
+                        if (compressedAvatar.length > 20000) {
+                            compressedAvatar = canvas.toDataURL('image/jpeg', 0.3)
+                            console.log('[Settings] Second compression with quality 0.3')
                         }
-                        // 如果还太大，缩小尺寸
-                        if (compressedAvatar.length > 50000) {
-                            const smallCanvas = document.createElement('canvas')
-                            smallCanvas.width = 80
-                            smallCanvas.height = 80
-                            const smallCtx = smallCanvas.getContext('2d')
-                            smallCtx.drawImage(img, 0, 0, 80, 80)
-                            compressedAvatar = smallCanvas.toDataURL('image/jpeg', 0.5)
-                            console.log('[Settings] Fallback to 80x80 size')
+                        // 如果还太大（>20KB），缩小到60x60
+                        if (compressedAvatar.length > 20000) {
+                            const tinyCanvas = document.createElement('canvas')
+                            tinyCanvas.width = 60
+                            tinyCanvas.height = 60
+                            const tinyCtx = tinyCanvas.getContext('2d')
+                            tinyCtx.drawImage(img, 0, 0, 60, 60)
+                            compressedAvatar = tinyCanvas.toDataURL('image/jpeg', 0.4)
+                            console.log('[Settings] Fallback to 60x60 size')
                         }
-                        
+                        // 最终保险：如果还太大，使用极低质量
+                        if (compressedAvatar.length > 20000) {
+                            compressedAvatar = canvas.toDataURL('image/jpeg', 0.2)
+                            console.log('[Settings] Final fallback with quality 0.2')
+                        }
+
                         finalData.avatar = compressedAvatar
                         const newSizeKB = Math.round(compressedAvatar.length / 1024)
                         console.log('[Settings] Compressed avatar:', newSizeKB, 'KB (from', avatarSizeKB, 'KB)')
