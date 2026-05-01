@@ -698,7 +698,27 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   
   // 2b. 清理INNER_VOICE标签内的裸露JSON对象（即使标签已被移除，但内部JSON残留）
   // 这些JSON通常包含：行为、动作、心理、着装、环境等字段
+  // 支持多种引号格式（双引号、单引号、中文引号）
   clean = clean.replace(/(?:^|\n)\s*\{[^{}]*(?:"(?:行为|动作|心理|着装|环境|场景|姿态|表情|心情|情绪|感受|心声|想法|内心|思考|状态|outfit|scene|action|mood|emotion|feeling|thought|spirit)"\s*:)[^}]*\}/gi, '\n')
+  
+  // 2b2. 新增：清理非标准格式的INNER_VOICE字段（无花括号包裹的键值对）
+  // 匹配格式如："行为": "【线下】xxx" 或 '行为': 'xxx' 或 行为：xxx
+  const innerVoiceFieldPattern = new RegExp(
+    `(?:^|\\n)\\s*[\"']?(?:行为|动作|心理|着装|环境|场景|姿态|表情|心情|情绪|感受|心声|想法|内心|思考|状态|活动|活动|behavior|activity|action|outfit|scene|mood|emotion|feeling|thought|spirit)[\"']?\\s*[:：]\\s*[\"']?[^\\n]{5,500}[\"']?\\s*$`,
+    'gim'
+  )
+  clean = clean.replace(innerVoiceFieldPattern, (match) => {
+      console.log('[getUnifiedCleanContent] Removing leaked inner voice field:', match.substring(0, 100))
+      return '\n'
+  }).trim()
+  
+  // 2b3. 新增：清理【xxx】开头的行为/动作描述文本
+  // 这种格式常见于AI输出的"行为"字段值，如：【线下】我单手稳稳地...
+  const bracketActionPattern = /(?:^|\n)\s*【(?:线下|线上|独白|旁白|内心|心理|动作|行为|场景|环境|表情|姿态)[^】]{2,20}】[^\\n]{10,300}[。，！？]$|$/gim
+  clean = clean.replace(bracketActionPattern, (match) => {
+      console.log('[getUnifiedCleanContent] Removing bracket action text:', match.substring(0, 100))
+      return '\n'
+  }).trim()
   
   // 2c. Catch-all for isolated/dangling mode or protocol tags
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\s*\]/gi, '')
