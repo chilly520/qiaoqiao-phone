@@ -4483,7 +4483,7 @@ export const useChatStore = defineStore('chat', () => {
                         
                         // Check userAvatar too
                         if (sanitized.userAvatar && typeof sanitized.userAvatar === 'string' && sanitized.userAvatar.length > 100000) {
-                            console.warn(`[Storage] Oversized userAvatar for chat ${chatId}:`, Math.round(sanitized.userAvatar.length / 1024), 'KB. Removing.`);
+                            console.warn('[Storage] Oversized userAvatar for chat ' + chatId + ':', Math.round(sanitized.userAvatar.length / 1024), 'KB. Removing.');
                             delete sanitized.userAvatar;
                         }
                         
