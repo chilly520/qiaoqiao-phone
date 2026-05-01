@@ -4886,6 +4886,7 @@ export const useChatStore = defineStore('chat', () => {
     return {
         ...financial,
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
+        promptEvent, triggerPrompt, triggerConfirm,  // 新增：prompt相关功能
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         groupNpcs, pendingRequests, acceptPendingRequest, rejectPendingRequest,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
