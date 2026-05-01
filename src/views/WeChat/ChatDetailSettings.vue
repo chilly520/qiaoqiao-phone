@@ -2647,80 +2647,132 @@ const saveSettings = async () => {
 
     isSaving.value = true
 
-    console.log('[Settings] Save Clicked - Preparing Data for ID:', props.chatData.id)
+    try {
+        console.log('[Settings] Save Clicked - Preparing Data for ID:', props.chatData.id)
 
-    // Validation / Defaulting
-    if (!localData.value.gender) localData.value.gender = '无'
-    if (!localData.value.userGender) localData.value.userGender = '无'
+        // Validation / Defaulting
+        if (!localData.value.gender) localData.value.gender = '无'
+        if (!localData.value.userGender) localData.value.userGender = '无'
 
-    // Check for Remark Change
-    const oldRemark = props.chatData.remark
-    const newRemark = localData.value.remark
+        // Check for Remark Change
+        const oldRemark = props.chatData.remark
+        const newRemark = localData.value.remark
 
-    // Cleanup stale world book links ONLY if store is loaded and has data
-    // This prevents wiping links if the store hasn't finished loading yet
-    if (localData.value.worldBookLinks && worldBookStore.isLoaded && worldBookStore.books.length > 0) {
-        const allEntryIds = new Set()
-        worldBookStore.books.forEach(book => {
-            if (book && Array.isArray(book.entries)) {
-                book.entries.forEach(e => {
-                    if (e && e.id) allEntryIds.add(e.id)
-                })
+        // Cleanup stale world book links ONLY if store is loaded and has data
+        // This prevents wiping links if the store hasn't finished loading yet
+        if (localData.value.worldBookLinks && worldBookStore.isLoaded && worldBookStore.books.length > 0) {
+            const allEntryIds = new Set()
+            worldBookStore.books.forEach(book => {
+                if (book && Array.isArray(book.entries)) {
+                    book.entries.forEach(e => {
+                        if (e && e.id) allEntryIds.add(e.id)
+                    })
+                }
+            })
+            const originalCount = localData.value.worldBookLinks.length
+            localData.value.worldBookLinks = localData.value.worldBookLinks.filter(id => allEntryIds.has(id))
+            if (localData.value.worldBookLinks.length !== originalCount) {
+                console.log(`[Settings] Cleaned up ${originalCount - localData.value.worldBookLinks.length} stale world book links`)
             }
-        })
-        const originalCount = localData.value.worldBookLinks.length
-        localData.value.worldBookLinks = localData.value.worldBookLinks.filter(id => allEntryIds.has(id))
-        if (localData.value.worldBookLinks.length !== originalCount) {
-            console.log(`[Settings] Cleaned up ${originalCount - localData.value.worldBookLinks.length} stale world book links`)
         }
-    }
 
-    // Virtual time sync logic
-    if (localData.value.timeSyncMode === 'manual' && (!localData.value.virtualTimeLastSync || localData.value.virtualTimeLastSync === 0)) {
-        localData.value.virtualTimeLastSync = Date.now()
-    }
+        // Virtual time sync logic
+        if (localData.value.timeSyncMode === 'manual' && (!localData.value.virtualTimeLastSync || localData.value.virtualTimeLastSync === 0)) {
+            localData.value.virtualTimeLastSync = Date.now()
+        }
 
-    // Capture final data state
-    const finalData = JSON.parse(JSON.stringify(localData.value))
+        // Capture final data state
+        const finalData = JSON.parse(JSON.stringify(localData.value))
 
-    // CRITICAL: Protect live fields from being overwritten by stale local state
-    const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'lastSummaryCount', 'isSummarizing', 'unreadCount']
-    protectedFields.forEach(field => delete finalData[field])
+        // CRITICAL: Protect live fields from being overwritten by stale local state
+        const protectedFields = ['msgs', 'memory', 'summary', 'bio', 'lastSummaryIndex', 'lastSummaryCount', 'isSummarizing', 'unreadCount']
+        protectedFields.forEach(field => delete finalData[field])
 
-    console.log('[Settings] Dispatching Update to Store (Sanitized):', finalData)
+        // WARNING: Check for oversized avatar data (base64 images can be several MB)
+        if (finalData.avatar && typeof finalData.avatar === 'string' && finalData.avatar.length > 500000) {
+            console.warn('[Settings] Avatar data is very large:', Math.round(finalData.avatar.length / 1024), 'KB. This may cause storage issues.')
+            // Attempt to compress or warn user
+            if (finalData.avatar.startsWith('data:image')) {
+                showToast('头像文件过大，正在压缩...')
+                // Simple compression: reduce quality by re-encoding at lower quality
+                try {
+                    const img = new Image()
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve
+                        img.onerror = reject
+                        img.src = finalData.avatar
+                    })
+                    const canvas = document.createElement('canvas')
+                    const maxSize = 200 // Max dimension
+                    let width = img.width
+                    let height = img.height
+                    if (width > height) {
+                        if (width > maxSize) { height *= maxSize / width; width = maxSize; }
+                    } else {
+                        if (height > maxSize) { width *= maxSize / height; height = maxSize; }
+                    }
+                    canvas.width = width
+                    canvas.height = height
+                    const ctx = canvas.getContext('2d')
+                    ctx.drawImage(img, 0, 0, width, height)
+                    // Convert to JPEG with 0.7 quality for smaller size
+                    finalData.avatar = canvas.toDataURL('image/jpeg', 0.7)
+                    console.log('[Settings] Compressed avatar to:', Math.round(finalData.avatar.length / 1024), 'KB')
+                } catch (compressErr) {
+                    console.error('[Settings] Failed to compress avatar:', compressErr)
+                    // If compression fails, keep original but warn
+                }
+            }
+        }
 
-    // Sync with scheduler store
-    if (schedulerStore.setRandomConfig) {
-        schedulerStore.setRandomConfig(props.chatData.id, {
-            enabled: localData.value.randomProactive,
-            min: localData.value.randomMin,
-            max: localData.value.randomMax
-        })
-    }
+        console.log('[Settings] Dispatching Update to Store (Sanitized):', Object.keys(finalData))
 
-    // 1. Update character in centralized store
-    const success = await chatStore.updateCharacter(props.chatData.id, finalData)
-
-    if (success) {
-        // 2. Add system notification if remark changed
-        if (!props.chatData.isNew && newRemark !== undefined && newRemark !== oldRemark && newRemark.trim() !== '') {
-            chatStore.addMessage(props.chatData.id, {
-                role: 'system',
-                content: `${localData.value.userName || '用户'}将你的备注改成了${newRemark}`
+        // Sync with scheduler store
+        if (schedulerStore.setRandomConfig) {
+            schedulerStore.setRandomConfig(props.chatData.id, {
+                enabled: localData.value.randomProactive,
+                min: localData.value.randomMin,
+                max: localData.value.randomMax
             })
         }
 
-        showToast('设置已保存')
+        // 1. Update character in centralized store
+        const success = await chatStore.updateCharacter(props.chatData.id, finalData)
 
-        // Use a slightly longer delay to ensure Vue has processed the store update 
-        setTimeout(() => {
-            isSaving.value = false
-            console.log('[Settings] Save Sequence Complete. Closing modal.')
-            emit('close')
-        }, 300)
-    } else {
+        if (success) {
+            // 2. Add system notification if remark changed
+            if (!props.chatData.isNew && newRemark !== undefined && newRemark !== oldRemark && newRemark.trim() !== '') {
+                chatStore.addMessage(props.chatData.id, {
+                    role: 'system',
+                    content: `${localData.value.userName || '用户'}将你的备注改成了${newRemark}`
+                })
+            }
+
+            showToast('设置已保存')
+
+            // Use a slightly longer delay to ensure Vue has processed the store update 
+            setTimeout(() => {
+                emit('close')
+            }, 300)
+        } else {
+            showToast('保存失败：存储写入错误')
+        }
+
+    } catch (error) {
+        console.error('[Settings] Save failed with error:', error)
+        
+        // 根据错误类型给出具体提示
+        if (error.name === 'QuotaExceededError' || error.message?.includes('quota') || error.message?.includes('storage')) {
+            showToast('保存失败：存储空间不足，请尝试使用较小的头像图片')
+        } else if (error.message?.includes('JSON') || error.message?.includes('serialize')) {
+            showToast('保存失败：数据格式错误')
+        } else {
+            showToast('保存失败：' + (error.message || '未知错误'))
+        }
+    } finally {
+        // 无论成功还是失败，都必须重置 isSaving 状态
         isSaving.value = false
-        showToast('保存失败')
+        console.log('[Settings] Save operation completed (finally block)')
     }
 }
 
