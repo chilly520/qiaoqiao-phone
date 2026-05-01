@@ -834,6 +834,27 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
           return match
       }).trim()
 
+      // 新增：移除泄露的第一人称行为/动作描写文本（无字段前缀版本）
+      // 这种文本通常从INNER_VOICE的"行为"或"ACTION"字段泄露出来
+      // 特征：以"我"开头 + 大量身体接触/动作动词 + 无对话标记 + 较长文本(>40字符)
+      const firstPersonActionRegex = /(?:^|\n)\s*我(?:单手|双手|伸手|低头|抬头|侧身|转身|凑近|靠近|贴近|依偎|拥抱|搂住|抚摸|轻抚|捏住|握住|拉住|扯住|抱住|亲吻|舔舐|咬住|含住|探入|插入|顶弄|研磨|蹭动|扭动|挺动|抽送|律动|颤抖|喘息|呻吟|闷哼|轻哼|呢喃|低语|喃喃)[^\\n]{20,300}(?:[。，！？;；,]|$)/gim
+      clean = clean.replace(firstPersonActionRegex, (match) => {
+          // 二次确认：如果没有对话标记，则移除
+          if (!/(?:说|问|答|道|喊|叫|唱|笑|哭|吼|回应|回答|反问|质问|询问|告诉|表示|提到|说道|你想|你要|你敢|你是不是|你难道|你怎么|你为什么不)[了着过吗呢吧啊呀嘛哟]/.test(match)) {
+              console.log('[getUnifiedCleanContent] Removing first-person action text:', match.substring(0, 80))
+              return '\n'
+          }
+          return match
+      }).trim()
+
+      // 新增：移除【xxx】格式但未被前面规则匹配的行为文本
+      // 匹配【线下/线上/独白等】+ 第一人称动作描述
+      const bracketFirstPersonRegex = /(?:^|\n)\s*【(?:线下|线上|独白|旁白|内心|心理|动作|行为|场景|环境|表情|姿态)[^】]{2,30}】\s*我[^\\n]{30,300}[。，！？]/gim
+      clean = clean.replace(bracketFirstPersonRegex, (match) => {
+          console.log('[getUnifiedCleanContent] Removing bracket first-person action:', match.substring(0, 100))
+          return '\n'
+      }).trim()
+
       // Final cosmetic cleanup
       clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces
       clean = clean.replace(/[\}\{"]+/g, (m) => m.trim().length === 0 ? '' : m) // Remove dangling JSON chars

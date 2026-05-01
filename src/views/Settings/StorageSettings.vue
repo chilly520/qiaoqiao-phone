@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onErrorCaptured } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useChatStore } from '../../stores/chatStore'
@@ -11,6 +11,13 @@ const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const { compressQuality } = storeToRefs(settingsStore)
 
+// Error boundary: catch any unhandled errors in this component
+onErrorCaptured((error, instance, info) => {
+    console.error('[StorageSettings] Component error caught:', error, info)
+    // Prevent crash by returning false (don't propagate)
+    return false
+})
+
 const goBack = () => {
     router.back()
 }
@@ -19,6 +26,7 @@ const goBack = () => {
 const totalLimit = ref(5 * 1024 * 1024) // Default 5MB for LocalStorage
 const usedSpace = ref(0)
 const quotaMode = ref('loading') // 'loading', 'ls', or 'system'
+const hasError = ref(false) // Error state flag
 const breakdown = ref({
     logs: 0,
     chats: 0,
@@ -35,6 +43,10 @@ const getSize = (str) => str ? new Blob([str]).size : 0
 
 const calculateStorage = async () => {
     try {
+        // Reset error state
+        hasError.value = false
+        quotaMode.value = 'calculating'  // Show calculating state
+
         let lsTotal = 0
         let details = {
             logs: 0,
@@ -201,11 +213,12 @@ const calculateStorage = async () => {
         
     } catch (error) {
         console.error('[Storage] CRITICAL: calculateStorage failed completely!', error)
-        
+
         // EMERGENCY FALLBACK: Show minimal info to prevent crash
+        hasError.value = true
         usedSpace.value = 0
         totalLimit.value = 5 * 1024 * 1024
-        quotaMode.value = 'ls'
+        quotaMode.value = 'error'  // Error state
         breakdown.value = {
             logs: 0,
             chats: 0,
@@ -216,13 +229,20 @@ const calculateStorage = async () => {
             gallery: 0,
             indexedDB: 0
         }
-        
-        showToast('存储空间计算出错，请刷新页面重试')
+
+        // Don't show toast for every error to avoid spam
+        console.warn('[Storage] Storage calculation failed, showing fallback data')
     }
 }
 
-onMounted(() => {
-    calculateStorage()
+onMounted(async () => {
+    try {
+        await calculateStorage()
+    } catch (err) {
+        console.error('[Storage] onMounted error:', err)
+        hasError.value = true
+        quotaMode.value = 'error'
+    }
 })
 
 const formatSize = (bytes) => {
