@@ -823,9 +823,9 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
           clean = clean.replace(ultimateMetaRegex, '\n');
       }
 
-      // 针对仍然顽固残留的无引号长文本
-      const stubbornMetaRegex = /^\s*\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：][\s\S]*?(?=\n\s*\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：]|\}|$)/gim;
-      clean = clean.replace(stubbornMetaRegex, '');
+      // 针对仍然顽固残留的无引号长文本（例如多属性混杂在同一行，或因逗号截断而残留的情况）
+      const stubbornMetaRegex = /(^|[\s，。、；;！？.,!?])\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：][^\n]*/gim;
+      clean = clean.replace(stubbornMetaRegex, '$1');
 
       // 新增：移除以特定字段开头或包含特定关键字的疑似心声行
       // 匹配格式如："深灰色针织长裤；鞋子：黑色棉袜" 或 "黑色棉袜；装饰：..."
