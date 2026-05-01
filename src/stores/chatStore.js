@@ -1710,11 +1710,9 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return false
 
-        // Merge into a new object to trigger reactivity
-        chats.value[chatId] = { ...chat, ...updates }
-
-        // Re-assign the whole chats object to ensure top-level reactivity
-        chats.value = { ...chats.value }
+        // Directly mutate the chat object to leverage Vue 3's deep reactivity.
+        // Re-assigning chats.value = { ...chats.value } causes massive CPU/memory spikes on large histories.
+        Object.assign(chats.value[chatId], updates)
 
         // Immediately check for auto-summary if settings changed
         if (updates.autoSummary || updates.summaryLimit) {
@@ -2164,17 +2162,8 @@ export const useChatStore = defineStore('chat', () => {
         console.log('[ChatStore] Old message:', oldMsg)
         console.log('[ChatStore] New message:', newMsg)
 
-        // NUCLEAR OPTION: Completely rebuild the array
-        const newMsgs = [
-            ...chat.msgs.slice(0, idx),
-            newMsg,
-            ...chat.msgs.slice(idx + 1)
-        ]
-
-        // Triple-layer reactivity flush
-        chat.msgs = newMsgs
-        chats.value[chatId] = { ...chat, msgs: newMsgs }
-        chats.value = { ...chats.value }
+        // Update message directly. Vue's deep reactivity handles this without needing to reconstruct the massive state tree.
+        Object.assign(chat.msgs[idx], newMsg)
 
         await saveChats()
         console.log('[ChatStore updateMessage] COMPLETE. State flushed 3x.')

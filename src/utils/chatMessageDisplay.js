@@ -125,6 +125,14 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(/,?\s*["']html["']\s*:\s*["'][^"']*$/gim, '')
   cleaned = cleaned.replace(/^[ \t]*[,;]\s*(?:html|type|content|心声|行为|着装|装饰|环境|stats).*$/gim, '')
 
+  // 极度强力的 JSON 碎片拦截 (针对 <html> 之前的 {"type":"html", 等)
+  cleaned = cleaned.replace(/\{?\s*["'](?:type|card)["']\s*:\s*["'](?:html|moment_card|gift_card|order_share|payment_request)["']\s*,\s*["'](?:html|content|amount|price|title)["']\s*:\s*["']/gi, '')
+  // 针对 HTML 代码结尾的尾巴 (如 "} 或者 </div>" })
+  cleaned = cleaned.replace(/["']\s*\}(?:\s*\[\/OFFLINE\])?(?:[\s\S]*)$/g, '')
+  // 针对心声中漏网的键值对（例如："行为": "【线下】我站在洗手台前..." ）
+  cleaned = cleaned.replace(/^\s*["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate)["']?\s*[:：]\s*["']?.*$/gim, '')
+
+
   return cleaned
 }
 
