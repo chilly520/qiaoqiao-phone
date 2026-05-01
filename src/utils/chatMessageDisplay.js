@@ -680,48 +680,32 @@ export function hasInnerVoice(content) {
 export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   let clean = ensureMessageString(content)
   if (!clean) return ''
-  
-  // NOTE: We do NOT perform aggressive newline/tab replacement here 
-  // as it can break JSON structure for cards. 
+
+  // NOTE: We do NOT perform aggressive newline/tab replacement here
+  // as it can break JSON structure for cards.
   // Cleaning is done per-token/tag below.
 
   // 1. Strip Mode Tags [ONLINE]/[OFFLINE]
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE)\s*\]/gi, '')
 
-  // 2. Strip Metadata Blocks (JSON heartRate, stats, etc.)
-  // REGEX FIX: Stop before other tags, support \\n
-  clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|ONLINE|OFFLINE|IMAGE|MOMENT|LS_JSON|情侣空间))|$)/gi, '')
-  
-  // 2a. 额外清理：处理未闭合的INNER_VOICE标签或残留内容
-  // 匹配从 [INNER_VOICE 到字符串结尾的所有内容（如果没有正确闭合）
-  clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]+$/gi, '')
-  
-  // 2b. 清理INNER_VOICE标签内的裸露JSON对象（即使标签已被移除，但内部JSON残留）
-  // 这些JSON通常包含：行为、动作、心理、着装、环境等字段
-  // 支持多种引号格式（双引号、单引号、中文引号）
-  clean = clean.replace(/(?:^|\n)\s*\{[^{}]*(?:"(?:行为|动作|心理|着装|环境|场景|姿态|表情|心情|情绪|感受|心声|想法|内心|思考|状态|outfit|scene|action|mood|emotion|feeling|thought|spirit)"\s*:)[^}]*\}/gi, '\n')
-  
-  // 2b2. 新增：清理非标准格式的INNER_VOICE字段（无花括号包裹的键值对）
-  // 匹配格式如："行为": "【线下】xxx" 或 '行为': 'xxx' 或 行为：xxx
-  const innerVoiceFieldPattern = new RegExp(
-    `(?:^|\\n)\\s*[\"']?(?:行为|动作|心理|着装|环境|场景|姿态|表情|心情|情绪|感受|心声|想法|内心|思考|状态|活动|活动|behavior|activity|action|outfit|scene|mood|emotion|feeling|thought|spirit)[\"']?\\s*[:：]\\s*[\"']?[^\\n]{5,500}[\"']?\\s*$`,
-    'gim'
-  )
-  clean = clean.replace(innerVoiceFieldPattern, (match) => {
-      console.log('[getUnifiedCleanContent] Removing leaked inner voice field:', match.substring(0, 100))
-      return '\n'
-  }).trim()
-  
-  // 2b3. 新增：清理【xxx】开头的行为/动作描述文本
-  // 这种格式常见于AI输出的"行为"字段值，如：【线下】我单手稳稳地...
-  const bracketActionPattern = /(?:^|\n)\s*【(?:线下|线上|独白|旁白|内心|心理|动作|行为|场景|环境|表情|姿态)[^】]{2,20}】[^\\n]{10,300}[。，！？]$|$/gim
-  clean = clean.replace(bracketActionPattern, (match) => {
-      console.log('[getUnifiedCleanContent] Removing bracket action text:', match.substring(0, 100))
-      return '\n'
-  }).trim()
-  
+  // 2. Strip ENTIRE INNER_VOICE block (complete removal - content goes to MINDSCAPE popup)
+  // This removes everything between [INNER_VOICE] and [/INNER_VOICE] tags
+  // Supports: [INNER_VOICE], [INNER_VOICE], [INNER VOICE], [Inner_Voice], [心声]
+  // Also handles unclosed tags (removes to end of string)
+  clean = clean.replace(
+    /\[\s*(?:INNER[-_ ]?VOICE|心声|内心|心理活动)\s*\][\s\S]*?(?:\[\/\s*(?:INNER[-_ ]?VOICE|心声|内心|心理活动)\s*\]|$)/gi,
+    ''
+  ).trim()
+
+  // 2b. Safety net: Remove any remaining inner voice JSON objects that leaked
+  // This catches cases where tags were malformed but JSON structure is detectable
+  clean = clean.replace(
+    /(?:^|\n)\s*(?=\{)[\s\S]*?(?:行为|动作|着装|环境|场景|姿态|心声|心情|情绪|状态|outfit|scene|action|mood|emotion|status)[\s\S]*?(?<=\})/gi,
+    '\n'
+  ).trim()
+
   // 2c. Catch-all for isolated/dangling mode or protocol tags
-  clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\s*\]/gi, '')
+  clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE|INNER[-_ ]?VOICE|心声|CARD|LS_JSON|JSON)\s*\]/gi, '')
   
   // 3. Strip common protocol tags
   const protocols = [
