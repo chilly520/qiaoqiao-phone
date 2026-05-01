@@ -814,19 +814,19 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       }
       clean = removeJsonWithKeywords(clean)
       
-      // NEW: Catch naked JSON debris strings like ',"html": "' or '"label": "充沛",'
-      clean = clean.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+),?/gi, '')
+      // === 新增：终极元数据键值对清除器 (跨行、带/不带引号、带/不带逗号) ===
+      const ultimateMetaRegex = /(?:^|\n|,\s*|\{\s*)\s*\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：]\s*(?:\[[\s\S]*?\]|\{[\s\S]*?\}|\\?["'][^"']*\\?["']|“[^”]*”|'[^']*'|[^,\{\}\n]+)\s*,?/gi;
+      
+      let prevCleaned = '';
+      while (clean !== prevCleaned) {
+          prevCleaned = clean;
+          clean = clean.replace(ultimateMetaRegex, '\n');
+      }
 
-      // Remove loose lines like "spirit: calm" or ":下装: 睡裤"
-      const looseMetaRegex = new RegExp(`^\\s*[:：。，,. ]?\\s*(?:${INNER_VOICE_FIELDS.join('|')})\\s*[:：][^\\n]*$`, 'gim')
-      clean = clean.replace(looseMetaRegex, '').trim()
-      
-      // Additional catch for detail lines
-      clean = clean.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|行为|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态|表情|目标|任务|属性|位置|距离|穿搭|时间|日期|date|time|label|value)[:：][^\\n]*$/gim, '')
-      
-      // 更精确的多字段行匹配（避免误删正常对话）
-      clean = clean.replace(/^[^\\n]*?(?:上装|下装|鞋子|装饰|穿搭|着装|环境|场景|姿态|动作|行为|表情|心情|情绪|感受|心声|想法|内心|思考|心理|状态|属性|位置|距离|目标|任务)[:：][^\\n]*$/gim, '')
-      
+      // 针对仍然顽固残留的无引号长文本
+      const stubbornMetaRegex = /^\s*\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：][\s\S]*?(?=\n\s*\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：]|\}|$)/gim;
+      clean = clean.replace(stubbornMetaRegex, '');
+
       // 新增：移除以特定字段开头或包含特定关键字的疑似心声行
       // 匹配格式如："深灰色针织长裤；鞋子：黑色棉袜" 或 "黑色棉袜；装饰：..."
       const voiceContentRegex = /(?:^|\n)\s*[^\\n]*?(?:黑色|白色|红色|蓝色|绿色|黄色|紫色|粉色|灰色|棕色|米色|卡其|藏青|酒红|墨绿|天蓝|橘色|橙色)[^\\n]*?(?:裤|裙|鞋|袜、|外套|衬衫|T恤|卫衣|毛衣|夹克|西装|大衣|羽绒服|背心|马甲|内衣|帽子|围巾、|手套|眼镜|首饰|戒指|项链、|耳环|手链、|腰带|包包|手表|发饰|美甲|纹身|婚戒|婚戒|钻戒|珍珠|蕾丝、|丝绸|棉麻|羊毛|牛仔|皮革|帆布|橡胶|金属|塑料|木质|陶瓷|玻璃|水晶|宝石|翡翠|玉石|黄金|白银|铂金|玫瑰金)[^\\n]*?(?:;|；|,|，|$)/gim
