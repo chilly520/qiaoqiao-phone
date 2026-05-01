@@ -2833,25 +2833,29 @@ function cleanHtmlResult(html) {
     result = result.replace(/\\?["']?\s*\\?\}[\s\n\r,]*\{\s*\\?["']?type\\?["']?\s*:\s*\\?["']?(?:html|card)\\?["']?\s*(?:,\s*\\?["']?(?:html|content)\\?["']?\s*:\s*\\?["']?)?/gi, '\n');
     
     // 移除所有孤立开头的 JSON 结构残留 (无论中间或开头)，支持双重转义
+    // 只移除简短的type声明行，不删除整个HTML内容
     result = result.replace(/\{\s*\\?["']?type\\?["']?\s*:\s*\\?["']?(?:html|card)\\?["']?\s*(?:,\s*\\?["']?(?:html|content)\\?["']?\s*:\s*\\?["']?)?/gi, '');
     
-    // 新增：移除开头的完整JSON对象（包括多行JSON）
-    // 匹配以 { 开头且包含 type/html/content 的JSON块
-    result = result.replace(/^\s*\{[\s\S]*?"(?:type|html|content)"[\s\S]*?\}\s*/gi, '');
-    
-    // 移除开头的 { 和 }（JSON 残留）
-    while (result.startsWith('{') || result.startsWith('}')) {
-        result = result.substring(1).trim();
+    // 移除开头的 { 和 }（JSON 残留）- 但只在确实是孤立符号时才移除
+    let startTrimmed = 0;
+    while (startTrimmed < result.length && (result[startTrimmed] === '{' || result[startTrimmed] === '}' || result[startTrimmed] === ' ' || result[startTrimmed] === '\n')) {
+        startTrimmed++;
+    }
+    if (startTrimmed > 0 && startTrimmed < result.length - 10) {
+        // 只有当截断后剩余内容足够长（>10字符）且不以<开头时才截断
+        const remaining = result.substring(startTrimmed).trim();
+        if (!remaining.startsWith('<') && /[\{\[\"\']/i.test(result.substring(0, startTrimmed))) {
+            result = remaining;
+        }
     }
     
-    // 新增：移除HTML之前的所有非HTML内容（JSON代码、元数据等）
-    // 找到第一个HTML标签的位置，截取之后的内容
+    // 移除HTML之前的纯代码泄露（但保留HTML内容）
+    // 找到第一个HTML标签的位置
     const firstHtmlTag = result.search(/<(div|section|article|table|ul|ol|p|h[1-6]|svg|details|summary|style|span|a|button|input|form|header|footer|nav|main|aside|figure|figcaption|hr|br|img|video|audio|source|canvas|map|area|script|noscript|embed|object|param|source|track|wbr|b|i|u|em|strong|small|mark|del|ins|sub|sup|code|pre|blockquote|cite|q|abbr|acronym|address|bdo|bdi|dfn|kbd|var|samp|time|data|ruby|rt|rp|wbr|template|slot)\b/i);
     if (firstHtmlTag > 0) {
-        // 如果第一个HTML标签前面有内容，说明有代码泄露，移除前面的内容
         const beforeHtml = result.substring(0, firstHtmlTag).trim();
-        // 只有当前面的内容看起来像代码/JSON时才移除（包含{、"、\等字符）
-        if (beforeHtml && /[\{\[\"\']/i.test(beforeHtml)) {
+        // 只有当前面的内容看起来像代码/JSON时才移除（包含{、"、\等字符，且长度较短）
+        if (beforeHtml.length < 200 && beforeHtml && /[\{\[\"\'\\]/i.test(beforeHtml)) {
             console.log('[cleanHtmlResult] Removing leaked code before HTML:', beforeHtml.substring(0, 100));
             result = result.substring(firstHtmlTag).trim();
         }

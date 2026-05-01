@@ -692,7 +692,15 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   // REGEX FIX: Stop before other tags, support \\n
   clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]*?(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|ONLINE|OFFLINE|IMAGE|MOMENT|LS_JSON|情侣空间))|$)/gi, '')
   
-  // 2b. Catch-all for isolated/dangling mode or protocol tags
+  // 2a. 额外清理：处理未闭合的INNER_VOICE标签或残留内容
+  // 匹配从 [INNER_VOICE 到字符串结尾的所有内容（如果没有正确闭合）
+  clean = clean.replace(/\[\s*INNER[-_ ]?VOICE\s*\][\s\S]+$/gi, '')
+  
+  // 2b. 清理INNER_VOICE标签内的裸露JSON对象（即使标签已被移除，但内部JSON残留）
+  // 这些JSON通常包含：行为、动作、心理、着装、环境等字段
+  clean = clean.replace(/(?:^|\n)\s*\{[^{}]*(?:"(?:行为|动作|心理|着装|环境|场景|姿态|表情|心情|情绪|感受|心声|想法|内心|思考|状态|outfit|scene|action|mood|emotion|feeling|thought|spirit)"\s*:)[^}]*\}/gi, '\n')
+  
+  // 2c. Catch-all for isolated/dangling mode or protocol tags
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE|INNER[-_ ]?VOICE|CARD|LS_JSON|JSON)\s*\]/gi, '')
   
   // 3. Strip common protocol tags
@@ -785,14 +793,6 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       // Additional catch for detail lines
       clean = clean.replace(/^[ :：。，,. ]\s*(?:上装|下装|鞋子|装饰|行为|环境|时间|地点|人物|剧情|动作|姿态|心声|想法|心情|状态|表情|目标|任务|属性|位置|距离|穿搭|时间|日期|date|time|label|value)[:：][^\\n]*$/gim, '')
       
-      // 新增：移除独立的心声字段行（无前缀冒号的情况）
-      // 例如："深灰色针织长裤；鞋子：黑色棉袜；装饰：左手无名指婚戒,凌乱的碎发。"
-      // 匹配包含多个心声字段的整行
-      const multiFieldLineRegex = new RegExp(
-        `^(?=.*(?:${INNER_VOICE_FIELDS.slice(0, 20).join('|')}))[^\\n]{10,}$`,
-        'gim'
-      )
-      
       // 更精确的多字段行匹配（避免误删正常对话）
       clean = clean.replace(/^[^\\n]*?(?:上装|下装|鞋子|装饰|穿搭|着装|环境|场景|姿态|动作|行为|表情|心情|情绪|感受|心声|想法|内心|思考|心理|状态|属性|位置|距离|目标|任务)[:：][^\\n]*$/gim, '')
       
@@ -800,6 +800,19 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       // 匹配格式如："深灰色针织长裤；鞋子：黑色棉袜" 或 "黑色棉袜；装饰：..."
       const voiceContentRegex = /(?:^|\n)\s*[^\\n]*?(?:黑色|白色|红色|蓝色|绿色|黄色|紫色|粉色|灰色|棕色|米色|卡其|藏青|酒红|墨绿|天蓝|橘色|橙色)[^\\n]*?(?:裤|裙|鞋|袜、|外套|衬衫|T恤|卫衣|毛衣|夹克|西装|大衣|羽绒服|背心|马甲|内衣|帽子|围巾、|手套|眼镜|首饰|戒指|项链、|耳环|手链、|腰带|包包|手表|发饰|美甲|纹身|婚戒|婚戒|钻戒|珍珠|蕾丝、|丝绸|棉麻|羊毛|牛仔|皮革|帆布|橡胶|金属|塑料|木质|陶瓷|玻璃|水晶|宝石|翡翠|玉石|黄金|白银|铂金|玫瑰金)[^\\n]*?(?:;|；|,|，|$)/gim
       clean = clean.replace(voiceContentRegex, '\n').trim()
+      
+      // 新增：移除INNER_VOICE标签内泄露的行为/动作/心理描述文本
+      // 这些文本的特征：没有明确的字段名前缀（如"行为："），但明显是描述性文字
+      // 通常出现在INNER_VOICE块之后或之间，包含动作描写、心理活动等
+      const innerVoiceLeakRegex = /(?:^|\n)\s*(?:(?:任由|轻轻|缓缓|微微|悄悄|默默|故意|不由自主|下意识|本能地|自然而然|忍不住|情不自禁|难以抑制)[^\\n]{5,150}|(?:"[^"]{10,150}"|'[^']{10,150}')[^\\n]*?[，。！？])\s*$/gim
+      clean = clean.replace(innerVoiceLeakRegex, (match) => {
+          // 额外检查：如果这行不包含对话动词（说、问、答等），则认为是心声泄露
+          if (!/(?:说|问|答|道|喊|叫|唱|笑|哭|吼|喃喃|低语|嘀咕|回应|回答|反问|质问|询问|告诉|表示|提到|说道)[了着过]/.test(match)) {
+              console.log('[getUnifiedCleanContent] Removing leaked inner voice text:', match.substring(0, 80))
+              return '\n'
+          }
+          return match
+      }).trim()
 
       // Final cosmetic cleanup
       clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces
