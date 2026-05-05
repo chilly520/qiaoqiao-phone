@@ -2786,8 +2786,9 @@ const saveSettings = async () => {
             })
         }
 
-        // Construct the update payload intelligently
-        const finalData = { ...localData.value }
+        // Construct the update payload intelligently (finalData is already defined above)
+        // Ensure latest localData values are synced if not already
+        Object.assign(finalData, localData.value);
         
         // --- 核心优化：空间检查与静默清理 ---
         const clearQuota = () => {
