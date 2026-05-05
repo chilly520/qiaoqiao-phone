@@ -3800,11 +3800,11 @@ export const useChatStore = defineStore('chat', () => {
                             // NEW: Catch comma-prefixed or colon-prefixed fragments like ", {type:footprint" or ":下装:..." (Screenshot fix)
                             const isTrashMetadata = /^\s*[,，:：]?\s*["']?(?:type|card|json|html|content|data|commands|postId|interactions|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|下装|上装|鞋子|装饰|作者|名字|地点|visibility|status|speech|thought|thinking)["']?\s*[:：]/i.test(filtered.trim());
                             const containsMetadata = /(?:type|card|html|json|data|commands)\s*[:：]/i.test(filtered);
-                            const isPunctuationOnly = /^[\[\]\{\}\(\)（）\s、,，.。:：\d\|\/\\_-]+$/.test(filtered.trim());
                             const isJsonFragment = /^\s*[,，]?\s*[\{\}\[\]]\s*["']?\w+["']?\s*[:：]\s*[\{\[]?\s*$/i.test(filtered.trim());
 
-                            if (isPunctuationOnly || isTrashMetadata || isJsonFragment || (filtered.length < 50 && containsMetadata)) {
-                                console.log('[ChatStore] Swallowed trash or metadata segment:', filtered);
+                            // 关键调整：删除了 isPunctuationOnly，确保 (...) 或 "..." 等格式不被过滤
+                            if (isTrashMetadata || isJsonFragment || (filtered.length < 50 && containsMetadata && !/^[（\("]/.test(filtered.trim()))) {
+                                console.log('[ChatStore] Swallowed structural metadata segment:', filtered);
                             } else if (!isLeakedVoice) {
                                 finalSegments.push({ type: 'text', content: filtered, mode: activeMode });
                             } else {
