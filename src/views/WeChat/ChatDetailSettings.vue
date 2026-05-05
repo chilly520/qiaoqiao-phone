@@ -2691,9 +2691,11 @@ const saveSettings = async () => {
         // WARNING: Check for oversized avatar data (base64 images can be several MB)
         // This is CRITICAL because saveChats stores avatar in metadata, and large base64
         // strings cause "Invalid string length" error in localforage/IndexedDB
-        if (finalData.avatar && typeof finalData.avatar === 'string') {
+        // 关键修复：如果头像没有被修改，直接跳过压缩和大小检查
+        const avatarUnchanged = finalData.avatar === props.chatData.avatar
+        if (finalData.avatar && typeof finalData.avatar === 'string' && !avatarUnchanged) {
             const avatarSizeKB = Math.round(finalData.avatar.length / 1024)
-            console.log('[Settings] Avatar size:', avatarSizeKB, 'KB')
+            console.log('[Settings] Avatar size:', avatarSizeKB, 'KB (changed from original)')
 
             // 更严格的阈值：>30KB就压缩，确保存储安全
             if (finalData.avatar.length > 30000) {
