@@ -3049,6 +3049,44 @@ export const useChatStore = defineStore('chat', () => {
                     }
                 }
 
+                // --- Pass -1: Extract INNER_VOICE early using balanced braces ---
+                // We do this BEFORE any other regex-based cleaning to preserve the structure.
+                let rawInnerVoiceBlock = "";
+                const result = { innerVoice: undefined };
+                const ivMarkerRegex = /\[\s*INNER[-_ ]?VOICE\s*\]\s*/gi;
+                let ivMatch = ivMarkerRegex.exec(properlyOrderedContent);
+                if (ivMatch) {
+                    const startIdx = ivMatch.index;
+                    const jsonStart = properlyOrderedContent.indexOf('{', startIdx + ivMatch[0].length);
+                    if (jsonStart !== -1) {
+                        let braceCount = 0, inString = false, isEscaped = false, jsonEndIdx = -1;
+                        for (let i = jsonStart; i < properlyOrderedContent.length; i++) {
+                            const char = properlyOrderedContent[i];
+                            if (isEscaped) { isEscaped = false; continue; }
+                            if (char === '\\') { isEscaped = true; continue; }
+                            if (char === '"') { inString = !inString; continue; }
+                            if (!inString) {
+                                if (char === '{') braceCount++;
+                                else if (char === '}') { braceCount--; if (braceCount === 0) { jsonEndIdx = i; break; } }
+                            }
+                        }
+                        if (jsonEndIdx !== -1) {
+                            rawInnerVoiceBlock = properlyOrderedContent.substring(startIdx, jsonEndIdx + 1);
+                            const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
+                            const closeMatch = remaining.match(/^\s*[\]】]/);
+                            if (closeMatch) rawInnerVoiceBlock += closeMatch[0];
+                            
+                            try {
+                                const jsonStr = properlyOrderedContent.substring(jsonStart, jsonEndIdx + 1);
+                                result.innerVoice = JSON.parse(jsonStr);
+                                console.log('[ChatStore] Top-level InnerVoice extracted successfully.');
+                            } catch (e) {
+                                console.warn('[ChatStore] Top-level InnerVoice parse failed:', e);
+                            }
+                        }
+                    }
+                }
+
                 // --- Handle [NUDGE] Command (Updated) ---
                 const nudgeRegex = /\[(NUDGE(?:_SELF)?)(?::(.+?))?\]/i;
                 const nudgeMatch = properlyOrderedContent.match(nudgeRegex);
@@ -3384,47 +3422,6 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Handle Payment Operations (ID-based) ---
                 const claimRegex = /\[领取(红包|转账):([^\]]+)\]/g;
                 const rejectRegex = /\[(拒收|退回)(红包|转账):([^\]]+)\]/g;
-
-                // --- Pass -1: Extract INNER_VOICE early using balanced braces ---
-                // We do this BEFORE any other regex-based cleaning to preserve the structure.
-                let rawInnerVoiceBlock = "";
-                const ivMarkerRegex = /\[\s*INNER[-_ ]?VOICE\s*\]\s*/gi;
-                let ivMatch = ivMarkerRegex.exec(properlyOrderedContent);
-                if (ivMatch) {
-                    const startIdx = ivMatch.index;
-                    const jsonStart = properlyOrderedContent.indexOf('{', startIdx + ivMatch[0].length);
-                    if (jsonStart !== -1) {
-                        let braceCount = 0, inString = false, isEscaped = false, jsonEndIdx = -1;
-                        for (let i = jsonStart; i < properlyOrderedContent.length; i++) {
-                            const char = properlyOrderedContent[i];
-                            if (isEscaped) { isEscaped = false; continue; }
-                            if (char === '\\') { isEscaped = true; continue; }
-                            if (char === '"') { inString = !inString; continue; }
-                            if (!inString) {
-                                if (char === '{') braceCount++;
-                                else if (char === '}') { braceCount--; if (braceCount === 0) { jsonEndIdx = i; break; } }
-                            }
-                        }
-                        if (jsonEndIdx !== -1) {
-                            rawInnerVoiceBlock = properlyOrderedContent.substring(startIdx, jsonEndIdx + 1);
-                            // Check for trailing bracket
-                            const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
-                            const closeMatch = remaining.match(/^\s*[\]】]/);
-                            if (closeMatch) rawInnerVoiceBlock += closeMatch[0];
-                            
-                            // SYNC TO RESULT: Ensure result object exists and save innerVoice
-                            try {
-                                const jsonStr = properlyOrderedContent.substring(jsonStart, jsonEndIdx + 1);
-                                const parsed = JSON.parse(jsonStr);
-                                if (!result) result = {}; // Initialize result if it doesn't exist
-                                result.innerVoice = parsed;
-                                console.log('[ChatStore] InnerVoice parsed and attached to result:', Object.keys(parsed));
-                            } catch (e) {
-                                console.warn('[ChatStore] Failed to parse InnerVoice JSON:', e);
-                            }
-                        }
-                    }
-                }
 
                 let cleanContent = properlyOrderedContent
                     .replace(patRegex, '')
