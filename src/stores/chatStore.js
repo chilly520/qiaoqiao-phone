@@ -3478,14 +3478,11 @@ export const useChatStore = defineStore('chat', () => {
                 // We do this before HTML extraction so it doesn't get tangled
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
 
-                // Pass 1.8: Protect [INNER_VOICE] blocks from being swallowed by the card extractor below.
-                // REGEX FIX: 使用更严谨的 lookahead，支持真换行 \n 和字面量 \\n，防止吞噬后续标签
+                // Pass 1.8: Remove [INNER_VOICE] blocks completely from the visible text.
+                // REGEX: Matches the tags and everything inside.
                 const innerVoicePlaceholders = [];
-                const ivStripRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE|MOMENT))|$)/gi;
-                cleanContent = cleanContent.replace(ivStripRegex, (match) => {
-                    innerVoicePlaceholders.push(match);
-                    return ` __IV_PLACEHOLDER_${innerVoicePlaceholders.length - 1}__ `;
-                });
+                const ivStripRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                cleanContent = cleanContent.replace(ivStripRegex, ""); // 直接删除，不留占位符，防止产生空白气泡
 
                 // Pass 2: Extraction using robust brace matcher (The Protectors)
                 // Aggressively match anything starting with [CARD]{, { "type":, or type: html {
@@ -3800,12 +3797,13 @@ export const useChatStore = defineStore('chat', () => {
                             // Aggressively catch card metadata remnants (e.g., "type: html, html:")
                             // MULTILINE SUPPORT: Catch keys even if they contain some values within the segment
                             // STRENGTHENED: Catch any segment that only contains brackets, braces, commas, dots or metadata keys
-                            // NEW: Catch comma-prefixed fragments like ", {type:footprint" (Screenshot 2 fix)
-                            const isTrashMetadata = /^\s*[,，]?\s*["']?(?:type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking|data|commands|postId|interactions)["']?\s*[:：]/i.test(filtered.trim());
+                            // NEW: Catch comma-prefixed or colon-prefixed fragments like ", {type:footprint" or ":下装:..." (Screenshot fix)
+                            const isTrashMetadata = /^\s*[,，:：]?\s*["']?(?:type|card|json|html|content|data|commands|postId|interactions|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|下装|上装|鞋子|装饰|作者|名字|地点|visibility|status|speech|thought|thinking)["']?\s*[:：]/i.test(filtered.trim());
                             const containsMetadata = /(?:type|card|html|json|data|commands)\s*[:：]/i.test(filtered);
                             const isPunctuationOnly = /^[\[\]\{\}\(\)（）\s、,，.。:：\d\|\/\\_-]+$/.test(filtered.trim());
+                            const isJsonFragment = /^\s*[,，]?\s*[\{\}\[\]]\s*["']?\w+["']?\s*[:：]\s*[\{\[]?\s*$/i.test(filtered.trim());
 
-                            if (isPunctuationOnly || isTrashMetadata || (filtered.length < 40 && containsMetadata)) {
+                            if (isPunctuationOnly || isTrashMetadata || isJsonFragment || (filtered.length < 50 && containsMetadata)) {
                                 console.log('[ChatStore] Swallowed trash or metadata segment:', filtered);
                             } else if (!isLeakedVoice) {
                                 finalSegments.push({ type: 'text', content: filtered, mode: activeMode });
