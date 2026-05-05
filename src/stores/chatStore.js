@@ -3387,7 +3387,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Pass -1: Extract INNER_VOICE early using balanced braces ---
                 // We do this BEFORE any other regex-based cleaning to preserve the structure.
-                let innerVoiceBlock = "";
+                let rawInnerVoiceBlock = "";
                 const ivMarkerRegex = /\[\s*INNER[-_ ]?VOICE\s*\]\s*/gi;
                 let ivMatch = ivMarkerRegex.exec(properlyOrderedContent);
                 if (ivMatch) {
@@ -3406,11 +3406,11 @@ export const useChatStore = defineStore('chat', () => {
                             }
                         }
                         if (jsonEndIdx !== -1) {
-                            innerVoiceBlock = properlyOrderedContent.substring(startIdx, jsonEndIdx + 1);
+                            rawInnerVoiceBlock = properlyOrderedContent.substring(startIdx, jsonEndIdx + 1);
                             // Check for trailing bracket
                             const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
                             const closeMatch = remaining.match(/^\s*[\]】]/);
-                            if (closeMatch) innerVoiceBlock += closeMatch[0];
+                            if (closeMatch) rawInnerVoiceBlock += closeMatch[0];
                             
                             // SYNC TO HEART_SCAPE: Immediately save to history
                             try {
@@ -3519,7 +3519,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Pass 1.8: Extract [INNER_VOICE] blocks for context but remove from cleanContent.
                 const ivStripRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
-                const activeInnerVoice = innerVoiceBlock || ""; // 使用之前通过平衡括号法提取的完整块
+                const activeInnerVoice = rawInnerVoiceBlock || ""; // 使用之前通过平衡括号法提取的完整块
                 cleanContent = cleanContent.replace(ivStripRegex, ""); 
 
                 // Pass 2: Extraction using robust brace matcher (The Protectors)
