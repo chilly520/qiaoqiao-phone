@@ -2786,8 +2786,41 @@ const saveSettings = async () => {
             })
         }
 
+        // Construct the update payload intelligently
+        const finalData = { ...localData.value }
+        
+        // --- 核心优化：空间检查与静默清理 ---
+        const clearQuota = () => {
+            try {
+                // 清理视觉描述缓存（通常很大且非核心数据）
+                localStorage.removeItem('qiaoqiao_avatar_descriptions');
+                console.log('[Settings] Cleared avatar descriptions cache to free up space.');
+            } catch (e) {}
+        }
+
+        // --- 核心优化：头像去重保存 ---
+        // 如果头像数据是 base64 且没有发生变化，从更新负载中移除它，避免重复写入巨大的字符串
+        if (finalData.avatar && finalData.avatar === props.chatData.avatar) {
+            console.log('[Settings] Avatar unchanged, removing from payload to save space');
+            delete finalData.avatar;
+        }
+        if (finalData.userAvatar && finalData.userAvatar === props.chatData.userAvatar) {
+            console.log('[Settings] User avatar unchanged, removing from payload to save space');
+            delete finalData.userAvatar;
+        }
+
         // 1. Update character in centralized store
-        const success = await chatStore.updateCharacter(props.chatData.id, finalData)
+        let success = false;
+        try {
+            success = await chatStore.updateCharacter(props.chatData.id, finalData)
+        } catch (e) {
+            if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
+                clearQuota(); // 尝试清理缓存后重试
+                success = await chatStore.updateCharacter(props.chatData.id, finalData);
+            } else {
+                throw e;
+            }
+        }
 
         if (success) {
             // 2. Add system notification if remark changed
