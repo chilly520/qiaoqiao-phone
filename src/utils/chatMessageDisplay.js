@@ -823,48 +823,19 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
           clean = clean.replace(ultimateMetaRegex, '\n');
       }
 
-      // 针对仍然顽固残留的无引号长文本（例如多属性混杂在同一行，或因逗号截断而残留的情况）
-      const stubbornMetaRegex = /(^|[\s，。、；;！？.,!?])\\?["']?(?:行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期)\\?["']?\s*[:：][^\n]*/gim;
-      clean = clean.replace(stubbornMetaRegex, '$1');
-
-      // 新增：移除以特定字段开头或包含特定关键字的疑似心声行
-      // 匹配格式如："深灰色针织长裤；鞋子：黑色棉袜" 或 "黑色棉袜；装饰：..."
-      const voiceContentRegex = /(?:^|\n)\s*[^\\n]*?(?:黑色|白色|红色|蓝色|绿色|黄色|紫色|粉色|灰色|棕色|米色|卡其|藏青|酒红|墨绿|天蓝|橘色|橙色)[^\\n]*?(?:裤|裙|鞋|袜、|外套|衬衫|T恤|卫衣|毛衣|夹克|西装|大衣|羽绒服|背心|马甲|内衣|帽子|围巾、|手套|眼镜|首饰|戒指|项链、|耳环|手链、|腰带|包包|手表|发饰|美甲|纹身|婚戒|婚戒|钻戒|珍珠|蕾丝、|丝绸|棉麻|羊毛|牛仔|皮革|帆布|橡胶|金属|塑料|木质|陶瓷|玻璃|水晶|宝石|翡翠|玉石|黄金|白银|铂金|玫瑰金)[^\\n]*?(?:;|；|,|，|$)/gim
-      clean = clean.replace(voiceContentRegex, '\n').trim()
+      // 针对仍然顽固残留的无引号长文本（例如多属性混杂在同一行，或带有中括号、小括号前缀的情况）
+      const metaFields = "行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期";
       
-      // 新增：移除INNER_VOICE标签内泄露的行为/动作/心理描述文本
-      // 这些文本的特征：没有明确的字段名前缀（如"行为："），但明显是描述性文字
-      // 通常出现在INNER_VOICE块之后或之间，包含动作描写、心理活动等
-      const innerVoiceLeakRegex = /(?:^|\n)\s*(?:(?:任由|轻轻|缓缓|微微|悄悄|默默|故意|不由自主|下意识|本能地|自然而然|忍不住|情不自禁|难以抑制)[^\\n]{5,150}|(?:"[^"]{10,150}"|'[^']{10,150}')[^\\n]*?[，。！？])\s*$/gim
-      clean = clean.replace(innerVoiceLeakRegex, (match) => {
-          // 额外检查：如果这行不包含对话动词（说、问、答等），则认为是心声泄露
-          if (!/(?:说|问|答|道|喊|叫|唱|笑|哭|吼|喃喃|低语|嘀咕|回应|回答|反问|质问|询问|告诉|表示|提到|说道)[了着过]/.test(match)) {
-              console.log('[getUnifiedCleanContent] Removing leaked inner voice text:', match.substring(0, 80))
-              return '\n'
-          }
-          return match
-      }).trim()
+      // 1. 如果以关键字开头，删除整行
+      const startMetaRegex = new RegExp(`^\\s*\\\\?["']?(?:${metaFields})\\\\?["']?\\s*[:：][^\\n]*`, 'gim');
+      clean = clean.replace(startMetaRegex, '');
 
-      // 新增：移除泄露的第一人称行为/动作描写文本（无字段前缀版本）
-      // 这种文本通常从INNER_VOICE的"行为"或"ACTION"字段泄露出来
-      // 特征：以"我"开头 + 大量身体接触/动作动词 + 无对话标记 + 较长文本(>40字符)
-      const firstPersonActionRegex = /(?:^|\n)\s*我(?:单手|双手|伸手|低头|抬头|侧身|转身|凑近|靠近|贴近|依偎|拥抱|搂住|抚摸|轻抚|捏住|握住|拉住|扯住|抱住|亲吻|舔舐|咬住|含住|探入|插入|顶弄|研磨|蹭动|扭动|挺动|抽送|律动|颤抖|喘息|呻吟|闷哼|轻哼|呢喃|低语|喃喃)[^\\n]{20,300}(?:[。，！？;；,]|$)/gim
-      clean = clean.replace(firstPersonActionRegex, (match) => {
-          // 二次确认：如果没有对话标记，则移除
-          if (!/(?:说|问|答|道|喊|叫|唱|笑|哭|吼|回应|回答|反问|质问|询问|告诉|表示|提到|说道|你想|你要|你敢|你是不是|你难道|你怎么|你为什么不)[了着过吗呢吧啊呀嘛哟]/.test(match)) {
-              console.log('[getUnifiedCleanContent] Removing first-person action text:', match.substring(0, 80))
-              return '\n'
-          }
-          return match
-      }).trim()
+      // 2. 如果在中途遇到关键字（前置有标点、括号或空格），从前置标点处截断到行尾
+      const midMetaRegex = new RegExp(`[\\s，。、；;！？.,!?\\(\\)\\[\\]【】（）<>{}"']+\\\\?["']?(?:${metaFields})\\\\?["']?\\s*[:：][^\\n]*`, 'gim');
+      clean = clean.replace(midMetaRegex, '');
 
-      // 新增：移除【xxx】格式但未被前面规则匹配的行为文本
-      // 匹配【线下/线上/独白等】+ 第一人称动作描述
-      const bracketFirstPersonRegex = /(?:^|\n)\s*【(?:线下|线上|独白|旁白|内心|心理|动作|行为|场景|环境|表情|姿态)[^】]{2,30}】\s*我[^\\n]{30,300}[。，！？]/gim
-      clean = clean.replace(bracketFirstPersonRegex, (match) => {
-          console.log('[getUnifiedCleanContent] Removing bracket first-person action:', match.substring(0, 100))
-          return '\n'
-      }).trim()
+
+
 
       // Final cosmetic cleanup
       clean = clean.replace(/[\u200b\uFEFF]/g, '') // Zero width spaces
