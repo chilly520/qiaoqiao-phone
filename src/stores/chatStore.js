@@ -3385,11 +3385,50 @@ export const useChatStore = defineStore('chat', () => {
                 const claimRegex = /\[领取(红包|转账):([^\]]+)\]/g;
                 const rejectRegex = /\[(拒收|退回)(红包|转账):([^\]]+)\]/g;
 
-                // --- Improved Content Cleaning ---
-                // Use robust regex for cleanup to prevent catastrophic backtracking/swallowing
-                const cleanVoiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                // --- Pass -1: Extract INNER_VOICE early using balanced braces ---
+                // We do this BEFORE any other regex-based cleaning to preserve the structure.
+                let innerVoiceBlock = "";
+                const ivMarkerRegex = /\[\s*INNER[-_ ]?VOICE\s*\]\s*/gi;
+                let ivMatch = ivMarkerRegex.exec(properlyOrderedContent);
+                if (ivMatch) {
+                    const startIdx = ivMatch.index;
+                    const jsonStart = properlyOrderedContent.indexOf('{', startIdx + ivMatch[0].length);
+                    if (jsonStart !== -1) {
+                        let braceCount = 0, inString = false, isEscaped = false, jsonEndIdx = -1;
+                        for (let i = jsonStart; i < properlyOrderedContent.length; i++) {
+                            const char = properlyOrderedContent[i];
+                            if (isEscaped) { isEscaped = false; continue; }
+                            if (char === '\\') { isEscaped = true; continue; }
+                            if (char === '"') { inString = !inString; continue; }
+                            if (!inString) {
+                                if (char === '{') braceCount++;
+                                else if (char === '}') { braceCount--; if (braceCount === 0) { jsonEndIdx = i; break; } }
+                            }
+                        }
+                        if (jsonEndIdx !== -1) {
+                            innerVoiceBlock = properlyOrderedContent.substring(startIdx, jsonEndIdx + 1);
+                            // Check for trailing bracket
+                            const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
+                            const closeMatch = remaining.match(/^\s*[\]】]/);
+                            if (closeMatch) innerVoiceBlock += closeMatch[0];
+                            
+                            // SYNC TO HEART_SCAPE: Immediately save to history
+                            try {
+                                const jsonStr = properlyOrderedContent.substring(jsonStart, jsonEndIdx + 1);
+                                const parsed = JSON.parse(jsonStr);
+                                const heartscapeStore = useHeartscapeStore();
+                                if (heartscapeStore && typeof heartscapeStore.addRecord === 'function') {
+                                    heartscapeStore.addRecord(chatId, parsed);
+                                    console.log('[ChatStore] Heartscape record added successfully.');
+                                }
+                            } catch (e) {
+                                console.warn('[ChatStore] Failed to parse/save InnerVoice JSON:', e);
+                            }
+                        }
+                    }
+                }
+
                 let cleanContent = properlyOrderedContent
-                    // .replace(cleanVoiceRegex, '') // KEEP INNER_VOICE for History/Card to read!
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
                     .replace(momentRegex, '')
