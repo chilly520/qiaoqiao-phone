@@ -3412,17 +3412,15 @@ export const useChatStore = defineStore('chat', () => {
                             const closeMatch = remaining.match(/^\s*[\]】]/);
                             if (closeMatch) rawInnerVoiceBlock += closeMatch[0];
                             
-                            // SYNC TO HEART_SCAPE: Immediately save to history
+                            // SYNC TO RESULT: Ensure result object exists and save innerVoice
                             try {
                                 const jsonStr = properlyOrderedContent.substring(jsonStart, jsonEndIdx + 1);
                                 const parsed = JSON.parse(jsonStr);
-                                const heartscapeStore = useHeartscapeStore();
-                                if (heartscapeStore && typeof heartscapeStore.addRecord === 'function') {
-                                    heartscapeStore.addRecord(chatId, parsed);
-                                    console.log('[ChatStore] Heartscape record added successfully.');
-                                }
+                                if (!result) result = {}; // Initialize result if it doesn't exist
+                                result.innerVoice = parsed;
+                                console.log('[ChatStore] InnerVoice parsed and attached to result:', Object.keys(parsed));
                             } catch (e) {
-                                console.warn('[ChatStore] Failed to parse/save InnerVoice JSON:', e);
+                                console.warn('[ChatStore] Failed to parse InnerVoice JSON:', e);
                             }
                         }
                     }
