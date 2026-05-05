@@ -480,6 +480,12 @@ export function generateContextPreview(chatId, char) {
         const speakerName = m.role === 'user' 
             ? (char.userName || settingsStore?.personalization?.userProfile?.name || '用户')
             : (char.name || char.remark || '对方')
+        
+        // --- 核心修复：回填心声上下文 ---
+        if (m.role === 'ai' && m.innerVoice && !content.includes('[INNER_VOICE]')) {
+            content = `${m.innerVoice}\n${content}`;
+        }
+
         return `${speakerName}: ${content}`
     }).join('\n')
     // 5. Summary
@@ -1003,6 +1009,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // Only process User/AI messages for AI Vision perception
         if (msg.role === 'user' || msg.role === 'assistant') {
             let content = msg.content || ''
+
+            // --- 核心修复：回填心声上下文 ---
+            // 如果消息带有独立存储的 innerVoice，且 content 中不包含它，则拼回 content
+            // 这样 AI 就能在历史记录中看到自己之前的想法、状态、着装等，保证连贯性
+            if (msg.role === 'assistant' && msg.innerVoice && !content.includes('[INNER_VOICE]')) {
+                content = `${msg.innerVoice}\n${content}`;
+            }
 
             // Include giftId in context for gift messages
             if (msg.type === 'gift' && msg.giftId) {

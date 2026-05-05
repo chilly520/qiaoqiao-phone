@@ -3478,11 +3478,10 @@ export const useChatStore = defineStore('chat', () => {
                 // We do this before HTML extraction so it doesn't get tangled
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
 
-                // Pass 1.8: Remove [INNER_VOICE] blocks completely from the visible text.
-                // REGEX: Matches the tags and everything inside.
-                const innerVoicePlaceholders = [];
+                // Pass 1.8: Extract [INNER_VOICE] blocks for context but remove from cleanContent.
                 const ivStripRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
-                cleanContent = cleanContent.replace(ivStripRegex, ""); // 直接删除，不留占位符，防止产生空白气泡
+                const activeInnerVoice = innerVoiceBlock || ""; // 使用之前通过平衡括号法提取的完整块
+                cleanContent = cleanContent.replace(ivStripRegex, ""); 
 
                 // Pass 2: Extraction using robust brace matcher (The Protectors)
                 // Aggressively match anything starting with [CARD]{, { "type":, or type: html {
