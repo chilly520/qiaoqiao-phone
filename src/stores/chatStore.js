@@ -2998,7 +2998,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // Reconstruct the full content with proper order: dialogue first, then inner voice
-                const properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
+                let properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
 
                 console.log(`[AI Reply] Dialogue length: ${pureDialogue.length}, InnerVoice: ${!!innerVoiceBlock}, Raw: ${fullContent.substring(0, 50)}...`);
 
@@ -3218,14 +3218,14 @@ export const useChatStore = defineStore('chat', () => {
                                 }
                             }
 
-                            const shareMomentResult = momentsStore.addMoment(newShareMoment);
-                            console.log('[ChatStore] MOMENT_SHARE published to moments feed:', shareMomentResult.id);
+                            const shareMomentResult = await momentsStore.addMoment(newShareMoment);
+                            console.log('[ChatStore] MOMENT_SHARE published to moments feed:', shareMomentResult?.id);
 
                             // Mark this message as a moment_card so UI renders it properly
                             properlyOrderedContent = properlyOrderedContent.replace(momentShareRegex, '');
                             
                             // Track that we have a pending moment_card to attach to the message
-                            _pendingMomentCardData = { ...newShareMoment, _momentReferenceId: shareMomentResult.id };
+                            _pendingMomentCardData = { ...newShareMoment, _momentReferenceId: shareMomentResult?.id };
                         }
                     } catch (e) {
                         console.error('[ChatStore] Failed to parse [MOMENT_SHARE]', e);
@@ -3393,6 +3393,7 @@ export const useChatStore = defineStore('chat', () => {
                     .replace(patRegex, '')
                     .replace(nudgeRegex, '')
                     .replace(momentRegex, '')
+                    .replace(momentShareRegex, '') // 安全网：确保 MOMENT_SHARE 标签不会泄漏
                     .replace(replyRegex, '')
                     .replace(setAvatarRegex, '')
                     .replace(familyCardRegex, '') // Remove FAMILY_CARD tags
