@@ -3541,17 +3541,8 @@ export const useChatStore = defineStore('chat', () => {
                     processedContent = processedContent.substring(0, pos.start) + ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ ` + processedContent.substring(pos.end);
                 }
 
-                // Pass 2.5: Restore [INNER_VOICE] placeholders BEFORE Pass 3 (which processes processedContent)
-                // so that the segment splitter can later detect and skip them correctly.
-                if (innerVoicePlaceholders.length > 0) {
-                    processedContent = processedContent.replace(/__IV_PLACEHOLDER_(\d+)__/g, (_, idx) => {
-                        return innerVoicePlaceholders[parseInt(idx)] || '';
-                    });
-                    // Also restore in cleanContent in case any later pass reads it
-                    cleanContent = cleanContent.replace(/__IV_PLACEHOLDER_(\d+)__/g, (_, idx) => {
-                        return innerVoicePlaceholders[parseInt(idx)] || '';
-                    });
-                }
+                // Pass 2.5: Removed placeholders for innerVoice as it is now handled as metadata.
+
 
                 // Pass 3: Handle naked <html>...</html> or large <div> blocks anywhere in the message
                 // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
