@@ -3780,25 +3780,20 @@ export const useChatStore = defineStore('chat', () => {
                         }).join('\n').trim();
 
                         if (filtered) {
-                            // Filtered out trash segments like residual brackets or punctuation
-                            const isLeakedVoice = /^[\(（].*?[\)）]$/.test(filtered.trim()) && 
-                                               (filtered.length < 50 || /尴尬|白团|思考|想着|犹豫|惊讶|开心|难过|宠溺|无奈|沉默|心跳/.test(filtered));
+                            // NEW: Improved leaked voice detection.
+                            // Only swallow if it looks EXACTLY like a system/JSON artifact (e.g. "status:...", "mood:...").
+                            // Natural language in parentheses like "(么么)" or "(笑)" should ALWAYS be preserved.
+                            const isLeakedVoice = false; // Disable aggressive parenthetical swallowing to preserve roleplay nuance
                             
                             // Aggressively catch card metadata remnants (e.g., "type: html, html:")
-                            // MULTILINE SUPPORT: Catch keys even if they contain some values within the segment
-                            // STRENGTHENED: Catch any segment that only contains brackets, braces, commas, dots or metadata keys
-                            // NEW: Catch comma-prefixed or colon-prefixed fragments like ", {type:footprint" or ":下装:..." (Screenshot fix)
                             const isTrashMetadata = /^\s*[,，:：]?\s*["']?(?:type|card|json|html|content|data|commands|postId|interactions|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|下装|上装|鞋子|装饰|作者|名字|地点|visibility|status|speech|thought|thinking)["']?\s*[:：]/i.test(filtered.trim());
                             const containsMetadata = /(?:type|card|html|json|data|commands)\s*[:：]/i.test(filtered);
                             const isJsonFragment = /^\s*[,，]?\s*[\{\}\[\]]\s*["']?\w+["']?\s*[:：]\s*[\{\[]?\s*$/i.test(filtered.trim());
 
-                            // 关键调整：删除了 isPunctuationOnly，确保 (...) 或 "..." 等格式不被过滤
                             if (isTrashMetadata || isJsonFragment || (filtered.length < 50 && containsMetadata && !/^[（\("]/.test(filtered.trim()))) {
                                 console.log('[ChatStore] Swallowed structural metadata segment:', filtered);
-                            } else if (!isLeakedVoice) {
-                                finalSegments.push({ type: 'text', content: filtered, mode: activeMode });
                             } else {
-                                console.log('[ChatStore] Swallowed leaked voice segment:', filtered);
+                                finalSegments.push({ type: 'text', content: filtered, mode: activeMode });
                             }
                         }
                     }
