@@ -4,14 +4,41 @@
       <div class="spark-detail-modal">
         <div class="spark-header" :style="{ background: `linear-gradient(135deg, ${(sparkInfo?.level?.color || '#FF6B35')}20, transparent)` }">
           <button @click="close" class="close-btn">&times;</button>
-          <div class="spark-main-icon">
-            <span class="mega-icon">{{ sparkInfo?.level?.icon || '🔥' }}</span>
-            <div v-if="sparkInfo?.streak > 0" class="streak-big" :style="{ color: sparkInfo?.level?.color }">
-              {{ sparkInfo?.streak }}天
+
+          <!-- QQ-style main display -->
+          <div class="spark-main-display">
+            <!-- Big fire icon with number overlay -->
+            <div class="spark-icon-big-wrapper">
+              <span class="spark-icon-big">{{ sparkInfo?.level?.icon || '🔥' }}</span>
+              <span v-if="sparkInfo?.streak > 0"
+                class="spark-number-big"
+                :style="{ color: '#FFFFFF', background: sparkInfo?.level?.color || '#FF6B35' }">
+                {{ sparkInfo?.streak }}
+              </span>
+            </div>
+
+            <!-- Title and level info -->
+            <div class="spark-title-area">
+              <h2 class="spark-title">聊得熋熋x{{ sparkInfo?.streak || 0 }}</h2>
+              <p class="spark-level-desc">每保持聊天连续超过10天，等级+1</p>
+
+              <!-- Level progress bar (like QQ) -->
+              <div v-if="sparkInfo?.streak > 0" class="qq-level-bar">
+                <span class="status-text">已佩戴</span>
+                <div class="level-dots">
+                  <span
+                    v-for="i in 10"
+                    :key="i"
+                    class="level-dot"
+                    :class="{ active: i <= Math.min(sparkInfo.streak % 10 || sparkInfo.streak, 10), filled: i <= (sparkInfo.streak % 10 || 10) }"
+                    :style="{ backgroundColor: i <= (sparkInfo.streak % 10 || 10) ? getLevelDotColor(i, sparkInfo.streak) : '#E0E0E0' }"
+                  >{{ getLevelEmoji(i, sparkInfo.streak) }}</span>
+                </div>
+              </div>
             </div>
           </div>
-          <h2 class="spark-title">{{ sparkInfo?.level?.name || '火花' }}</h2>
-          <p class="spark-subtitle">与 {{ charName || 'TA' }} 的火花</p>
+
+          <p v-if="charName" class="spark-subtitle">与 {{ charName }} 的火花</p>
         </div>
 
         <div class="spark-body">
@@ -137,6 +164,26 @@ function toggleEquip(titleId) {
   if (!titleId || !props.charId) return
   sparkStore.equipTitle(props.charId, titleId)
 }
+
+// Helper functions for QQ-style level display
+const LEVEL_EMOJIS = ['🔥', '🔥', '🔥', '🔥', '🔥', '💥', '💫', '⚡', '🌟', '💕']
+const LEVEL_COLORS = ['#FF6B35', '#FF8C42', '#FFA500', '#FF4500', '#FFD700', '#FF1493', '#9400D3', '#4B0082', '#00CED1', '#FF69B4']
+
+function getLevelDotColor(index, streak) {
+  const currentLevelInCycle = streak % 10 || 10
+  if (index <= currentLevelInCycle) {
+    return LEVEL_COLORS[Math.min(index - 1, LEVEL_COLORS.length - 1)]
+  }
+  return '#E0E0E0'
+}
+
+function getLevelEmoji(index, streak) {
+  const currentLevelInCycle = streak % 10 || 10
+  if (index <= currentLevelInCycle) {
+    return LEVEL_EMOJIS[Math.min(index - 1, LEVEL_EMOJIS.length - 1)]
+  }
+  return ''
+}
 </script>
 
 <style scoped>
@@ -186,37 +233,126 @@ function toggleEquip(titleId) {
   position: relative;
 }
 
-.spark-main-icon {
-  margin-bottom: 12px;
+/* QQ-style main display */
+.spark-main-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
-.mega-icon {
-  font-size: 64px;
+.spark-icon-big-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.spark-icon-big {
+  font-size: 72px;
   display: block;
   animation: floatIcon 3s ease-in-out infinite;
+  filter: drop-shadow(0 4px 12px rgba(255,107,53,0.3));
 }
 
 @keyframes floatIcon {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-8px) scale(1.05); }
 }
 
-.streak-big {
+.spark-number-big {
+  position: absolute;
+  bottom: -4px;
+  right: -8px;
   font-size: 28px;
-  font-weight: 800;
-  font-family: 'Outfit', sans-serif;
-  margin-top: 4px;
+  font-weight: 900;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #FF6B35, #FF4500);
+  min-width: 48px;
+  height: 36px;
+  line-height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(255,107,53,0.4);
+  letter-spacing: -1px;
+  animation: numberBounce 2s ease-in-out infinite;
+}
+
+@keyframes numberBounce {
+  0%, 100% { transform: scale(1) rotate(-5deg); }
+  50% { transform: scale(1.08) rotate(5deg); }
+}
+
+.spark-title-area {
+  text-align: center;
 }
 
 .spark-title {
   font-size: 22px;
-  font-weight: 700;
-  margin: 4px 0;
+  font-weight: 800;
+  margin: 0 0 6px;
+  background: linear-gradient(135deg, #FF6B35, #FF1493);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.spark-subtitle {
-  font-size: 13px;
-  color: #888;
+.spark-level-desc {
+  font-size: 12px;
+  color: #999;
+  margin: 0 0 16px;
+}
+
+/* QQ-style level progress bar */
+.qq-level-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-text {
+  font-size: 11px;
+  color: #AAA;
+  background: #F5F5F5;
+  padding: 2px 12px;
+  border-radius: 10px;
+}
+
+.level-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.level-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  background-color: #E0E0E0;
+  opacity: 0.4;
+}
+
+.level-dot.active {
+  opacity: 1;
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.level-dot.filled {
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
 }
 
 .spark-body {
