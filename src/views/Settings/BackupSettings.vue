@@ -424,83 +424,121 @@ async function handleConfirmExport() {
   chatStore.triggerToast('🚀 正在打包全系统资产...', 'info')
 
   try {
-    // Collect data directly from stores to ensure we export what is in memory
-    let chatsData = JSON.parse(JSON.stringify(chatStore.chats || {}))
+    // ============================================================
+    // NUCLEAR OPTION: Aggressively clean ALL data before serialization
+    // This prevents "Invalid string length" at all costs
+    // ============================================================
 
-    // CRITICAL: Clean oversized base64 avatars to prevent "Invalid string length" error
-    // Base64 images can be several MB each, causing JSON.stringify to fail
-    if (chatsData && typeof chatsData === 'object') {
-        let cleanedCount = 0
-        let totalSavedKB = 0
-
-        for (const chatId in chatsData) {
-            const chat = chatsData[chatId]
-            if (!chat) continue
-
-            // Clean character avatar (base64 image)
-            if (chat.avatar && typeof chat.avatar === 'string' && chat.avatar.length > 10000) {
-                const sizeKB = Math.round(chat.avatar.length / 1024)
-                totalSavedKB += sizeKB
-                cleanedCount++
-
-                // If it's a base64 image, remove it; keep URLs
-                if (chat.avatar.startsWith('data:image')) {
-                    console.log('[Backup] Removing large avatar for chat', chatId, ':', sizeKB, 'KB')
-                    chat.avatar = ''  // Remove to save space
-                }
-            }
-
-            // Clean userAvatar in metadata (if exists)
-            if (chat.userAvatar && typeof chat.userAvatar === 'string' && chat.userAvatar.length > 10000) {
-                const sizeKB = Math.round(chat.userAvatar.length / 1024)
-                totalSavedKB += sizeKB
-                cleanedCount++
-
-                if (chat.userAvatar.startsWith('data:image')) {
-                    console.log('[Backup] Removing large userAvatar for chat', chatId, ':', sizeKB, 'KB')
-                    chat.userAvatar = ''
-                }
-            }
-
-            // Clean message images (if any base64 embedded)
-            if (chat.msgs && Array.isArray(chat.msgs)) {
-                chat.msgs.forEach((msg, idx) => {
-                    if (msg.image && typeof msg.image === 'string' && msg.image.length > 50000) {
-                        const imgSizeKB = Math.round(msg.image.length / 1024)
-                        console.log('[Backup] Removing large image in msg', idx, ':', imgSizeKB, 'KB')
-                        totalSavedKB += imgSizeKB
-                        cleanedCount++
-                        msg.image = '[image removed for backup size]'
-                    }
-                })
-            }
-        }
-
-        if (cleanedCount > 0) {
-            console.log('[Backup] Cleaned', cleanedCount, 'large assets, saved ~', Math.round(totalSavedKB / 1024), 'MB')
-            chatStore.triggerToast('⚠️ 已优化' + cleanedCount + '个大文件 (~' + Math.round(totalSavedKB / 1024) + 'MB)', 'info')
-        }
+    const cleanLargeBase64 = (str, label = '') => {
+        if (!str || typeof str !== 'string') return str
+        // Remove any base64 image data longer than 5KB
+        return str.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]{5000,}/g, '[image cleaned for export]')
     }
+
+    const cleanObject = (obj, path = '') => {
+        if (!obj || typeof obj !== 'object') return obj
+
+        if (Array.isArray(obj)) {
+            return obj.map((item, idx) => cleanObject(item, path + '[' + idx + ']'))
+        }
+
+        const cleaned = {}
+        for (const key in obj) {
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+            const value = obj[key]
+            const currentPath = path + '.' + key
+
+            if (typeof value === 'string') {
+                // Clean large strings (>10KB) that look like base64
+                if (value.length > 10000 && (value.includes('data:image') || value.startsWith('data:'))) {
+                    console.log('[Backup] Cleaning large string at', currentPath, ':', Math.round(value.length / 1024), 'KB')
+                    cleaned[key] = cleanLargeBase64(value, currentPath)
+                } else if (value.length > 50000) {
+                    // For very long strings that might contain embedded images
+                    cleaned[key] = cleanLargeBase64(value, currentPath)
+                } else {
+                    cleaned[key] = value
+                }
+            } else if (typeof value === 'object' && value !== null) {
+                cleaned[key] = cleanObject(value, currentPath)
+            } else {
+                cleaned[key] = value
+            }
+        }
+
+        return cleaned
+    }
+
+    // Collect and DEEP CLEAN all data
+    let chatsData = JSON.parse(JSON.stringify(chatStore.chats || {}))
+    chatsData = cleanObject(chatsData, 'chats')
+
+    let momentsData = JSON.parse(JSON.stringify(momentsStore.moments || []))
+    momentsData = cleanObject(momentsData, 'moments')
+
+    let momentsTopData = JSON.parse(JSON.stringify(momentsStore.topMoments || []))
+    momentsTopData = cleanObject(momentsTopData, 'momentsTop')
+
+    let momentsNotifData = JSON.parse(JSON.stringify(momentsStore.notifications || []))
+    momentsNotifData = cleanObject(momentsNotifData, 'momentsNotifications')
+
+    let worldbookData = JSON.parse(JSON.stringify(worldBookStore.books || []))
+    worldbookData = cleanObject(worldbookData, 'worldbook')
+
+    let stickersData = JSON.parse(JSON.stringify(stickerStore.stickers || []))
+    stickersData = cleanObject(stickersData, 'stickers')
+
+    let favoritesData = JSON.parse(JSON.stringify(chatStore.favorites || []))
+    favoritesData = cleanObject(favoritesData, 'favorites')
 
     const injectedData = {
         chats: chatsData,
-        moments: JSON.parse(JSON.stringify(momentsStore.moments || [])),
-        momentsTop: JSON.parse(JSON.stringify(momentsStore.topMoments || [])),
-        momentsNotifications: JSON.parse(JSON.stringify(momentsStore.notifications || [])),
-        worldbook: JSON.parse(JSON.stringify(worldBookStore.books || [])),
-        stickers: JSON.parse(JSON.stringify(stickerStore.stickers || [])),
-        favorites: JSON.parse(JSON.stringify(chatStore.favorites || [])), // Assuming favorites in chatStore or similar
-        // Add other store data as needed if they are in memory
+        moments: momentsData,
+        momentsTop: momentsTopData,
+        momentsNotifications: momentsNotifData,
+        worldbook: worldbookData,
+        stickers: stickersData,
+        favorites: favoritesData
     }
 
     // Pass injectedData to exportFullData
     const backupData = await settingsStore.exportFullData(selectionState.value, injectedData)
 
-    // Use compact JSON (no indentation) to reduce string length
-    const jsonString = JSON.stringify(backupData)
+    // Use compact JSON (no indentation) to reduce string length by ~50%
+    let jsonString
+    try {
+        jsonString = JSON.stringify(backupData)
+    } catch (stringifyErr) {
+        console.error('[Backup] JSON.stringify failed:', stringifyErr)
 
-    // Safety check: verify string length is reasonable (< 100MB)
-    if (jsonString.length > 100 * 1024 * 1024) {
+        // LAST RESORT: Try to serialize without problematic fields
+        try {
+            // Remove all avatar/image fields entirely
+            const safeBackup = JSON.parse(JSON.stringify(backupData))
+            const removeImages = (obj) => {
+                if (!obj || typeof obj !== 'object') return obj
+                if (Array.isArray(obj)) return obj.map(removeImages)
+                for (const key in obj) {
+                    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+                    const val = obj[key]
+                    if (typeof val === 'string' && (val.includes('data:image') || val.length > 50000)) {
+                        delete obj[key]
+                    } else if (typeof val === 'object' && val !== null) {
+                        removeImages(val)
+                    }
+                }
+                return obj
+            }
+            removeImages(safeBackup)
+            jsonString = JSON.stringify(safeBackup)
+            chatStore.triggerToast('⚠️ 已移除所有大文件以完成导出', 'info')
+        } catch (finalErr) {
+            throw new Error('数据量过大，无法导出。请先在"存储空间"中压缩图片或减少聊天记录')
+        }
+    }
+
+    // Safety check: verify string length is reasonable (< 50MB)
+    if (jsonString.length > 50 * 1024 * 1024) {
       throw new Error('数据包过大 (' + Math.round(jsonString.length / 1024 / 1024) + 'MB)，请减少选择的数据项')
     }
 
@@ -515,7 +553,7 @@ async function handleConfirmExport() {
     window.URL.revokeObjectURL(downloadUrl)
 
     showExportModal.value = false
-    chatStore.triggerToast('✅ 迁移数据包生成完成', 'success')
+    chatStore.triggerToast('✅ 迁移数据包生成完成 (' + Math.round(jsonString.length / 1024 / 1024) + ' MB)', 'success')
   } catch (err) {
     chatStore.triggerToast('导出失败: ' + err.message, 'error')
     console.error('[Backup] Export failed:', err)
