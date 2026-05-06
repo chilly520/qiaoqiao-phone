@@ -761,13 +761,19 @@ export const useMomentsStore = defineStore('moments', () => {
 
 
     async function batchGenerateAIMoments(count = 1, specificCharacters = null) {
+        const logger = useLoggerStore()
+        logger.sys(`[MomentsStore] batchGenerateAIMoments called (count: ${count}, specificChars: ${specificCharacters ? specificCharacters.length : 'all'})`)
+
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
         const worldBookStore = useWorldBookStore()
         const stickerStore = useStickerStore()
 
         let candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id) && !chatStore.chats[id].isGroup) : [])
-        if (candidates.length === 0) return
+        if (candidates.length === 0) {
+            logger.warn('[MomentsStore] No candidates found for generation')
+            return
+        }
 
         // 核心优化：如果启用了太多角色，只随机抽取 8 个参与本次“朋友圈生态”生成，节省 Token 且避免 AI 混乱
         if (candidates.length > 8) {
@@ -940,12 +946,15 @@ export const useMomentsStore = defineStore('moments', () => {
 
         } catch (e) {
             console.error('[MomentsStore] Batch generation failed:', e)
+            logger.error(`[MomentsStore] Batch generation error: ${e.message}`, { error: e.message, stack: e.stack?.substring(0, 200) })
         } finally {
             // Update last generate time regardless of success to prevent spam loops on error
             if (isInitialized.value) {
+                const oldTime = lastGenerateTime.value
                 lastGenerateTime.value = Date.now()
                 try {
                     localStorage.setItem('wechat_moments_last_gen', lastGenerateTime.value)
+                    logger.sys(`[MomentsStore] Last generate time updated: ${new Date(oldTime).toLocaleString()} -> ${new Date(lastGenerateTime.value).toLocaleString()}`)
                 } catch (e) { }
             }
         }
@@ -955,15 +964,26 @@ export const useMomentsStore = defineStore('moments', () => {
     // Auto Gen Loop
     // --- Background Loop (Web Worker based for resilience) ---
     let autoGenWorker = null
+    let autoGenTimer = null
 
     function startAutoGeneration() {
         if (autoGenWorker) {
             autoGenWorker.terminate()
             autoGenWorker = null
         }
+        if (autoGenTimer) {
+            clearInterval(autoGenTimer)
+            autoGenTimer = null
+        }
 
         const intervalMs = config.value.autoGenerateInterval * 60 * 1000
-        if (intervalMs <= 0) return
+        if (intervalMs <= 0) {
+            console.log('[MomentsStore] Auto-gen disabled (interval=0)')
+            return
+        }
+
+        const logger = useLoggerStore()
+        logger.sys(`[MomentsStore] Starting auto-generation (interval: ${config.value.autoGenerateInterval}min, lastGen: ${new Date(lastGenerateTime.value).toLocaleString()})`)
 
         // 1. Initial Check: Catch up if missed while closed/backgrounded
         const now = Date.now()
@@ -973,7 +993,21 @@ export const useMomentsStore = defineStore('moments', () => {
             batchGenerateAIMoments(1)
         }
 
-        // 2. Start Worker for background timing
+        // 2. Primary Timer (setInterval with fallback - more reliable than Worker for long intervals)
+        // Check every 5 minutes to see if it's time to generate
+        autoGenTimer = setInterval(() => {
+            try {
+                const currentElapsed = Date.now() - lastGenerateTime.value
+                if (currentElapsed >= intervalMs) {
+                    logger.sys(`[MomentsStore] Timer triggering generation (elapsed: ${Math.round(currentElapsed / 60000)}min)`)
+                    batchGenerateAIMoments(1)
+                }
+            } catch (timerErr) {
+                console.error('[MomentsStore] Timer error:', timerErr)
+            }
+        }, 5 * 60 * 1000) // Check every 5 minutes
+
+        // 3. Secondary Worker for background resilience (backup)
         const workerScript = `
             self.onmessage = function(e) {
                 if (e.data === 'start') {
@@ -988,10 +1022,9 @@ export const useMomentsStore = defineStore('moments', () => {
 
         autoGenWorker.onmessage = (e) => {
             if (e.data === 'tick') {
-                const logger = useLoggerStore()
                 const now = new Date()
                 if (now.getMinutes() % 30 === 0) {
-                    logger.sys('[MomentsStore] Worker heartbeat: checking auto-generation status...')
+                    logger.sys('[MomentsStore] Worker heartbeat active')
                 }
 
                 const currentElapsed = Date.now() - lastGenerateTime.value
@@ -1004,11 +1037,12 @@ export const useMomentsStore = defineStore('moments', () => {
 
         autoGenWorker.postMessage('start');
 
-        // 3. Foreground Compensation
+        // 4. Foreground Compensation (critical fix!)
         if (typeof document !== 'undefined') {
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
                     const catchupElapsed = Date.now() - lastGenerateTime.value
+                    logger.sys(`[MomentsStore] Page visible, checking overdue (elapsed: ${Math.round(catchupElapsed / 60000)}min, threshold: ${config.value.autoGenerateInterval}min)`)
                     if (catchupElapsed >= intervalMs) {
                         console.log('[MomentsStore] Foreground return: triggering catch-up...')
                         batchGenerateAIMoments(1)
@@ -1016,6 +1050,12 @@ export const useMomentsStore = defineStore('moments', () => {
                 }
             })
         }
+
+        // 5. Log startup status
+        setTimeout(() => {
+            const checkElapsed = Date.now() - lastGenerateTime.value
+            logger.sys(`[MomentsStore] Auto-gen started successfully, next gen in: ${Math.max(0, Math.round((intervalMs - checkElapsed) / 60000))}min`)
+        }, 1000)
     }
 
     function addNotification(payload) {

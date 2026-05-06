@@ -581,7 +581,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // Historical memories (历史记忆列表)
             if (Array.isArray(chat.memory) && chat.memory.length > 0) {
                 const memText = chat.memory
-                    .filter(m => m && typeof m === 'string' && m.trim())
+                    .filter(m => m && (typeof m === 'string' ? m.trim() : (m.content || JSON.stringify(m))))
+                    .map(m => typeof m === 'object' ? (m.content || JSON.stringify(m)) : m)
                     .join('\n\n')
                 if (memText) {
                     memoryParts.push(`【历史记忆库 (${chat.memory.length}条)】\n${memText}`)
@@ -591,7 +592,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // 2. Memory Log Fragments (记忆日志碎片 - recent events)
         // This is supplementary - auto-extracted from conversations
-        const memorySummary = getMemorySummary(charId, 20)  // Increased to 20
+        const memorySummary = getMemorySummary(charId)  // Send ALL memory fragments
         if (memorySummary) {
             memoryParts.push(memorySummary)
         }
@@ -747,8 +748,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     // 构建 System Message
     // Memory Logic
     if (!memoryText && char && char.memory && Array.isArray(char.memory) && char.memory.length > 0) {
-        // Take top 10 recent memories
-        const recentMemories = char.memory.slice(0, 10)
+        const recentMemories = char.memory
         memoryText = recentMemories.map(m => {
             const content = typeof m === 'object' ? (m.content || JSON.stringify(m)) : m
             return `- ${content} `

@@ -1129,6 +1129,15 @@
                         </label>
                         <button
                             class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
+                            :class="selectedIndices.size > 0 && !isSummarizingMemory
+                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-md'
+                                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed')"
+                            @click="batchSummarizeMemory" :disabled="selectedIndices.size === 0 || isSummarizingMemory">
+                            <i class="fa-solid fa-wand-magic-sparkles text-xs" :class="{ 'animate-spin': isSummarizingMemory }"></i>
+                            {{ isSummarizingMemory ? '总结中...' : `总结 (${selectedIndices.size})` }}
+                        </button>
+                        <button
+                            class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
                             :class="selectedIndices.size > 0
                                 ? 'bg-red-500 text-white hover:bg-red-600 shadow-md'
                                 : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')"
@@ -1349,6 +1358,7 @@ import { useAvatarFrameStore } from '../../stores/avatarFrameStore'
 import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
 import AvatarCropper from '../../components/AvatarCropper.vue'
 import { weatherService, POPULAR_CITIES } from '../../utils/weatherService'
+import { generateSummary } from '../../utils/aiService'
 
 const props = defineProps({
     chatData: {
@@ -1739,6 +1749,81 @@ const batchDeleteMemory = () => {
         chatStore.saveChats()
         showToast(`已删除 ${selectedIndices.value.size} 条记忆`)
         selectedIndices.value.clear()
+    }
+}
+
+const isSummarizingMemory = ref(false)
+
+const batchSummarizeMemory = async () => {
+    if (selectedIndices.value.size === 0 || isSummarizingMemory.value) return
+
+    isSummarizingMemory.value = true
+    try {
+        const chat = chatStore.chats[props.chatData.id]
+        if (!chat || !chat.memory || chat.memory.length === 0) throw new Error('角色不存在或无记忆')
+
+        // 获取选中的记忆内容
+        const selectedContents = []
+        const originalIndicesToDelete = new Set()
+
+        selectedIndices.value.forEach(reversedIndex => {
+            const originalIndex = chat.memory.length - 1 - reversedIndex
+            if (originalIndex >= 0 && originalIndex < chat.memory.length) {
+                const mem = chat.memory[originalIndex]
+                const content = typeof mem === 'object' ? (mem.content || JSON.stringify(mem)) : String(mem)
+                selectedContents.push(content)
+                originalIndicesToDelete.add(originalIndex)
+            }
+        })
+
+        if (selectedContents.length === 0) throw new Error('没有选中的有效记忆')
+
+        // 构建总结请求
+        const contentToSummarize = selectedContents.map((c, i) => `【记忆${i + 1}】${c}`).join('\n\n')
+        const prompt = localData.value.summaryPrompt || '请以第三人称总结以下多条记忆的关键信息，整合为一条精简的长期记忆。保留重要事件、关系变化和情感转折，去除冗余细节。控制在200字以内。'
+
+        const summaryContext = [{
+            role: 'user',
+            content: `【待整合的记忆记录】\n${contentToSummarize}\n\n【总结要求】\n${prompt}`
+        }]
+
+        const systemHelper = '你是一个专业的记忆整理助手。请阅读上方的记忆记录，严格按照要求输出整合后的内容。直接输出结果，不要包含任何旁白或解释。'
+
+        showToast(`正在整合 ${selectedContents.length} 条记忆...`, 'info')
+
+        const summaryContent = await generateSummary(summaryContext, systemHelper)
+
+        if (!summaryContent || summaryContent.startsWith('总结生成失败')) {
+            throw new Error(summaryContent || 'AI返回空内容')
+        }
+
+        // 删除旧记忆（从后往前删除避免索引偏移）
+        const sortedIndices = Array.from(originalIndicesToDelete).sort((a, b) => b - a)
+        sortedIndices.forEach(idx => {
+            chat.memory.splice(idx, 1)
+        })
+
+        // 添加新记忆到开头
+        const newMemoryItem = {
+            id: Date.now(),
+            timestamp: Date.now(),
+            range: `整合 ${selectedContents.length} 条`,
+            content: summaryContent
+        }
+        chat.memory.unshift(newMemoryItem)
+
+        // 更新summary字段供AI上下文使用
+        chat.summary = summaryContent
+
+        await chatStore.saveChats()
+
+        showToast(`✅ 已将 ${selectedContents.length} 条记忆整合为新记忆`, 'success')
+        selectedIndices.value.clear()
+    } catch (error) {
+        console.error('[批量总结失败]', error)
+        showToast('总结失败: ' + error.message, 'error')
+    } finally {
+        isSummarizingMemory.value = false
     }
 }
 

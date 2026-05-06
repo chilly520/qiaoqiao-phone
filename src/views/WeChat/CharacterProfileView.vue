@@ -234,8 +234,29 @@
         <div class="bg-white w-full max-w-md max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl animate-fade-in" @click.stop>
           <div class="sticky top-0 bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between z-10">
             <h3 class="font-bold text-base">🧠 {{ character?.name || '' }}的记忆日志</h3>
-            <button @click="showMemoryLog = false" class="w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all">×</button>
+            <div class="flex items-center gap-2">
+              <button @click="memoryManageMode = !memoryManageMode"
+                class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all"
+                :class="memoryManageMode ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+                {{ memoryManageMode ? '完成' : '管理' }}
+              </button>
+              <button @click="showMemoryLog = false" class="w-8 h-8 rounded-full bg-white/80 shadow flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all">×</button>
+            </div>
           </div>
+
+          <div v-if="memoryManageMode && memoryLogs.length > 0" class="px-6 py-3 bg-purple-50/50 border-b border-gray-100 flex items-center justify-between">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" v-model="memorySelectAll" @change="toggleMemorySelectAll" class="w-4 h-4 rounded border-gray-300 text-purple-500 focus:ring-purple-400">
+              <span class="text-[11px] font-medium text-gray-600">全选 ({{ selectedMemories.length }}/{{ memoryLogs.length }})</span>
+            </label>
+            <button @click="batchSummarizeMemories"
+              :disabled="selectedMemories.length === 0 || isSummarizingMemories"
+              class="px-4 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[11px] font-bold rounded-lg shadow-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles text-xs" :class="{ 'animate-spin': isSummarizingMemories }"></i>
+              {{ isSummarizingMemories ? '总结中...' : `总结选中 (${selectedMemories.length})` }}
+            </button>
+          </div>
+
           <div class="p-4 overflow-y-auto max-h-[60vh] space-y-2 text-xs">
             <div v-if="memoryLogs.length === 0" class="text-center py-8">
               <p class="text-gray-400 mb-4">暂无记忆记录</p>
@@ -247,7 +268,14 @@
               </button>
             </div>
             <div v-for="(log, i) in memoryLogs" :key="i"
-              class="p-2.5 rounded-xl bg-gray-50/80 leading-relaxed text-gray-700 break-words">{{ log }}</div>
+              class="p-2.5 rounded-xl leading-relaxed break-words transition-all relative group"
+              :class="memoryManageMode ? 'bg-gray-50/80 hover:bg-purple-50 cursor-pointer' : 'bg-gray-50/80 text-gray-700'"
+              @click="memoryManageMode ? toggleMemorySelect(i) : null">
+              <div v-if="memoryManageMode" class="absolute top-3 left-3">
+                <input type="checkbox" :checked="selectedMemories.includes(i)" @change="toggleMemorySelect(i)" @click.stop class="w-4 h-4 rounded border-gray-300 text-purple-500 focus:ring-purple-400">
+              </div>
+              <div :class="[memoryManageMode ? 'pl-8' : '', !memoryManageMode ? 'text-gray-700' : '']">{{ log }}</div>
+            </div>
           </div>
           <div v-if="Object.keys(memoryFacts).length > 0" class="px-4 pb-4 border-t border-gray-100 pt-3">
             <h4 class="text-[11px] font-bold text-gray-400 mb-2 tracking-wider">👤 关键事实</h4>
@@ -269,7 +297,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { compressImage } from '@/utils/imageUtils'
-import { searchMemoryLog, getFacts, rebuildMemoryLog } from '@/utils/memoryLog'
+import { searchMemoryLog, getFacts, rebuildMemoryLog, appendLog } from '@/utils/memoryLog'
+import { generateSummary } from '@/utils/aiService'
 
 const route = useRoute()
 const router = useRouter()
@@ -282,6 +311,80 @@ const avatarFileInput = ref(null)
 const showMemoryLog = ref(false)
 const memoryLogs = computed(() => searchMemoryLog(charId, { limit: 100 }))
 const memoryFacts = computed(() => getFacts(charId))
+
+const memoryManageMode = ref(false)
+const selectedMemories = ref([])
+const memorySelectAll = ref(false)
+const isSummarizingMemories = ref(false)
+
+const toggleMemorySelect = (index) => {
+  const idx = selectedMemories.value.indexOf(index)
+  if (idx > -1) {
+    selectedMemories.value.splice(idx, 1)
+  } else {
+    selectedMemories.value.push(index)
+  }
+  memorySelectAll.value = selectedMemories.value.length === memoryLogs.value.length
+}
+
+const toggleMemorySelectAll = () => {
+  if (memorySelectAll.value) {
+    selectedMemories.value = memoryLogs.value.map((_, i) => i)
+  } else {
+    selectedMemories.value = []
+  }
+}
+
+const batchSummarizeMemories = async () => {
+  if (selectedMemories.value.length === 0 || isSummarizingMemories.value) return
+
+  isSummarizingMemories.value = true
+
+  try {
+    const chat = chatStore.chats[charId]
+    if (!chat) throw new Error('角色不存在')
+
+    const selectedLogs = selectedMemories.value.map(i => memoryLogs.value[i]).filter(Boolean)
+    if (selectedLogs.length === 0) throw new Error('没有选中的记忆')
+
+    const contentToSummarize = selectedLogs.join('\n\n---\n\n')
+    const prompt = '请将以下多条记忆碎片整合总结为一条精简的长期记忆，保留关键信息、情感变化和重要事件，去除冗余细节。以第三人称客观描述，控制在150字以内。'
+
+    const summaryContext = [{
+      role: 'user',
+      content: `【待总结的记忆碎片】\n${contentToSummarize}\n\n【总结要求】\n${prompt}`
+    }]
+
+    const systemHelper = '你是一个专业的记忆整理助手。请阅读上方的记忆碎片，并严格按照要求输出整合后的记忆内容。直接输出结果，不要包含任何旁白或解释。'
+
+    const summaryContent = await generateSummary(summaryContext, systemHelper)
+
+    if (!summaryContent || summaryContent.startsWith('总结生成失败')) {
+      throw new Error(summaryContent || 'AI返回空内容')
+    }
+
+    const sortedIndices = [...selectedMemories.value].sort((a, b) => b - a)
+    sortedIndices.forEach(idx => {
+      if (chat.memoryLog && idx < chat.memoryLog.length) {
+        chat.memoryLog.splice(idx, 1)
+      }
+    })
+
+    appendLog(charId, { type: '📝', content: `[记忆整合] ${summaryContent.substring(0, 120)}`, time: Date.now() })
+
+    chatStore.triggerToast(`✅ 已整合 ${selectedLogs.length} 条记忆为新记忆`, 'success')
+    chatStore.saveChats()
+
+    selectedMemories.value = []
+    memorySelectAll.value = false
+    memoryManageMode.value = false
+  } catch (error) {
+    console.error('[批量总结失败]', error)
+    chatStore.triggerToast('总结失败: ' + error.message, 'error')
+  } finally {
+    isSummarizingMemories.value = false
+  }
+}
 
 const rebuildMemory = () => {
   rebuildMemoryLog(charId)

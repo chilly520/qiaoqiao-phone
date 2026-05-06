@@ -602,13 +602,20 @@ const mapContainerStyle = computed(() => {
 
 
 const getStatValue = (val) => {
-
     if (typeof val === 'object' && val !== null) return val.value || 0
+    if (typeof val === 'string') {
+        const numMatch = val.match(/(\d+)/)
+        return numMatch ? parseInt(numMatch[1]) : 0
+    }
     return val || 0
 }
 
 const getStatLabel = (key, val) => {
     if (typeof val === 'object' && val !== null && val.label) return val.label
+    if (typeof val === 'string') {
+        const labelMatch = val.match(/^([^\d]+)/)
+        return labelMatch ? labelMatch[1].trim() : val
+    }
     const defaults = { emotion: '情绪', spirit: '精神', mood: '心情' }
     return defaults[key] || key.toUpperCase()
 }

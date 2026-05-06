@@ -2871,8 +2871,11 @@ export const useChatStore = defineStore('chat', () => {
                     }
 
                     // Write key facts (persistent attributes)
-                    if (iv.stats?.emotion?.label) {
-                        appendLog(chat.id, { type: '😊', content: `心情: ${iv.stats.emotion.label} (${iv.stats.emotion.value}%)`, time: Date.now() })
+                    if (iv.stats?.emotion) {
+                        const emotionVal = iv.stats.emotion
+                        const emotionLabel = typeof emotionVal === 'object' ? (emotionVal.label || '未知') : String(emotionVal).replace(/\d+$/, '').trim()
+                        const emotionNum = typeof emotionVal === 'object' ? (emotionVal.value || 0) : (String(emotionVal).match(/(\d+)/)?.[1] || 0)
+                        appendLog(chat.id, { type: '😊', content: `心情: ${emotionLabel} (${emotionNum}%)`, time: Date.now() })
                     }
                 }
 
@@ -2994,6 +2997,24 @@ export const useChatStore = defineStore('chat', () => {
                             }
                         } catch (e) {
                             console.warn('[ChatStore] Failed to extract balanced JSON fallback', e);
+                        }
+                    }
+                }
+
+                // Auto-write to Memory Log from AI dialogue content (after pureDialogue is declared)
+                if (pureDialogue && pureDialogue.length > 10) {
+                    const theaterMatches = pureDialogue.match(/‖([\s\S]{10,200}?)‖/g)
+                    if (theaterMatches) {
+                        theaterMatches.forEach(t => appendLog(chat.id, { type: '🎬', content: t.replace(/‖/g, '').trim().substring(0, 150), time: Date.now() }))
+                    } else {
+                        const cleanContent = pureDialogue
+                            .replace(/\[(ONLINE|OFFLINE|INNER_VOICE|\/INNER_VOICE|表情包|图片)\][\s]*/gi, '')
+                            .replace(/__CARD_PLACEHOLDER_\d+__/gi, '[卡片]')
+                            .replace(/\[MOMENT[^\]]*\]/gi, '')
+                            .replace(/\[LS_JSON[^\]]*\]/gi, '')
+                            .trim()
+                        if (cleanContent.length > 15) {
+                            appendLog(chat.id, { type: '💬', content: cleanContent.substring(0, 150), time: Date.now() })
                         }
                     }
                 }

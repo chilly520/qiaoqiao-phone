@@ -116,7 +116,7 @@ export function searchMemoryLog(charId, options = {}) {
   return logs.slice(-limit)
 }
 
-export function getMemorySummary(charId, maxLines = 20) {
+export function getMemorySummary(charId, maxLines = 9999) {
   const chatStore = useChatStoreSync()
   const char = chatStore?.chats?.[charId]
   if (!char) return ''
@@ -127,7 +127,7 @@ export function getMemorySummary(charId, maxLines = 20) {
   if (char.memoryFacts && Object.keys(char.memoryFacts).length > 0) {
     facts = '\n' + Object.entries(char.memoryFacts).map(([k, v]) => `  👤 ${k}: ${v}`).join('\n')
   }
-  return `----- 【角色记忆日志】-----\n${recent.join('\n')}${facts}`
+  return `----- 【角色记忆日志】(${recent.length}条)-----\n${recent.join('\n')}${facts}`
 }
 
 export function setFact(charId, key, value) {
