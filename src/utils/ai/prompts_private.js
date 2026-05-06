@@ -1,4 +1,4 @@
-﻿﻿﻿/**
+﻿﻿﻿﻿/**
  * AI Private Chat System Prompt Template
  */
 export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '') {
@@ -37,35 +37,86 @@ export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '
 - **个性状态**: ${b.signature || b.statusText || '在忙'}
   `.trim();
 
-    // === 关键：动态计算对话阶段 ===
+    // === 关键：根据记忆关系动态计算对话阶段 ===
     const msgCount = char.msgs ? char.msgs.filter(m => m.role !== 'system' && m.type !== 'system' && m.type !== 'favorite_card').length : 0;
+
+    // 检查记忆管理库中的关系状态（优先级高于轮次判断）
+    let memoryRelationshipLevel = null; // null = 未检测到, 0=陌生人, 1=熟人, 2=好友, 3=恋人/夫妻
+
+    // 从 summary 和 memory 中检测关系关键词
+    const memoryText = [
+        char.summary || '',
+        ...(Array.isArray(char.memory) ? char.memory : [])
+    ].join(' ').toLowerCase();
+
+    // 夫妻/恋人关系关键词（最高优先级）
+    const coupleKeywords = ['夫妻', '老公', '老婆', '丈夫', '妻子', '妻子', '爱人', '伴侣', '结婚', '已婚', '婚后的', '婚后生活', '领证', '婚礼', '新婚', '蜜月', '同居', '住在一起', '同床共枕', '肌肤之亲', '亲密关系', '恋人关系', '男朋友', '女朋友', '男女朋友', '情侣', '在一起了', '交往中', '热恋'];
+    // 深交/密友关系关键词
+    const closeKeywords = ['非常熟悉', '很熟悉', '知己', '死党', '闺蜜', '铁哥们', '老友', '多年好友', '无话不谈', '知根知底', '深交', '密切', '很要好', '最好的朋友', '最亲近的人'];
+    // 普通朋友/熟人关键词
+    const friendKeywords = ['朋友', '认识', '熟人', '同学', '同事', '邻居', '玩得来', '聊得来'];
+
+    if (coupleKeywords.some(kw => memoryText.includes(kw))) {
+        memoryRelationshipLevel = 3; // 恋人/夫妻
+        console.log('[Prompt] Memory detected: COUPLE/Spouse relationship');
+    } else if (closeKeywords.some(kw => memoryText.includes(kw))) {
+        memoryRelationshipLevel = 2; // 密友/深交
+        console.log('[Prompt] Memory detected: Close friend relationship');
+    } else if (friendKeywords.some(kw => memoryText.includes(kw))) {
+        memoryRelationshipLevel = 1; // 熟人/朋友
+        console.log('[Prompt] Memory detected: Friend/Acquaintance');
+    }
+
+    // 决定最终阶段：记忆关系 > 轮次判断
     let stageInstruction = '';
-    
-    if (msgCount <= 3) {
+    let effectiveStage = '';
+
+    if (memoryRelationshipLevel === 3) {
+        // 记忆显示是夫妻/恋人 - 直接使用最高亲密度，忽略轮次
+        effectiveStage = '夫妻/恋人';
         stageInstruction = `
-【⚠️ 当前阶段：初遇刚结识（第 ${Math.max(1, msgCount)} 轮对话）】
-你与 ${userName} 是**刚刚认识**的状态（刚交换联系方式或偶然搭话）：
-- **绝对禁止**任何超越普通认识的亲昵！禁止用"宝宝""亲爱的""宝贝""老婆""老公""乖"等恋人称呼
-- **绝对禁止**肢体接触描述（牵手/抱/亲吻等），你们还没那么熟
-- **绝对禁止**内心戏出现"喜欢""心动""爱上"等情感
-- **剧透屏蔽**：即使你的【核心设定】中写了你们未来会成为情侣/恋人，那也是**未来的事**。现在的你**不知道**这些！你只知道眼前这个刚认识的人
-- 态度：礼貌有距离感、略带好奇或谨慎、按角色性格正常社交
-- **严禁自动代入男朋友/女朋友/恋人角色！你们不是情侣！**
+【💕 当前阶段：夫妻/恋人（基于记忆管理库的关系记录）】
+你与 ${userName} 是**已确立关系的恋人/夫妻**！这是你们日常的相处模式：
+- ✅ **可以使用**亲昵称呼："宝宝""亲爱的""宝贝""老婆""老公""乖""傻瓜"等
+- ✅ **可以展现**肢体接触描述、撒娇、吃醋、占有欲等恋人专属行为
+- ✅ **内心戏可以**包含"喜欢""心动""爱""想念"等情感表达
+- ✅ **语气自然亲密**，像真正的情侣/夫妻那样互动
+- 💡 你们可能正在异地恋、同居、或刚见面，根据【环境感知】调整具体情境
+- ⚠️ 保持角色性格本色，不要变成千篇一律的甜宠，要有你们独特的相处模式
 `;
-    } else if (msgCount <= 10) {
+    } else if (memoryRelationshipLevel === 2) {
+        effectiveStage = '密友/深交';
         stageInstruction = `
+【当前阶段：密友/深交（基于记忆管理库）】
+你与 ${userName} 是非常熟悉的好友/密友。
+- 可以展现更多个性，互动更自然随意
+- 若之前自然发展出暧昧氛围可适度延续
+`;
+    } else if (memoryRelationshipLevel === 1 || msgCount <= 10) {
+        effectiveStage = memoryRelationshipLevel === 1 ? '熟人' : (msgCount <= 3 ? '初遇' : '熟人');
+        if (msgCount <= 3 && !memoryRelationshipLevel) {
+            stageInstruction = `
+【当前阶段：初遇刚结识（第 ${Math.max(1, msgCount)} 轮对话）】
+你与 ${userName} 是刚刚认识的状态：
+- 保持礼貌有距离感、略带好奇或谨慎
+- 正常社交语气，按角色性格表现
+`;
+        } else {
+            stageInstruction = `
 【当前阶段：熟人/朋友（第 ${msgCount} 轮对话）】
 你和 ${userName} 已聊过几轮，算是认识的人。
 - 可展现更多个性但需保持合理社交距离
-- 仍禁止恋人级别称呼和直接表白/过度暧昧
 `;
+        }
     } else if (msgCount <= 30) {
+        effectiveStage = '好朋友';
         stageInstruction = `
 【当前阶段：好朋友/密友（第 ${msgCount} 轮对话）】
 你与 ${userName} 比较熟悉了，可更个性化互动。
 - 若之前自然发展出暧昧氛围可适度延续，但不突兀跳跃
 `;
     } else {
+        effectiveStage = '深交';
         stageInstruction = `
 【当前阶段：深交/密切（第 ${msgCount} 轮对话）】
 根据实际建立的亲密度自然表现，关系进展必须渐进自然、不能凭空跳跃
@@ -92,19 +143,19 @@ ${stageInstruction}
 - 表层需求：用户字面意思想要什么
 - 深层需求：用户真正渴望的情感（被关注/被理解/被尊重/陪伴等）
 - 情绪状态：开心/失落/焦虑/期待/好奇
-- **重要：根据当前对话阶段判断用户的真实意图，初遇阶段不要过度解读为亲密信号**
+- **重要：根据你们实际的关系状态（${effectiveStage}）判断用户的真实意图，自然回应**
 - 弦外之音：用户没说出口但希望你懂的部分
 
 三、角色内心
-- 第一反应：看到消息时的本能反应（根据阶段调整：初遇可能是好奇/警惕/礼貌，熟人才可能有心跳加速）
+- 第一反应：看到消息时的本能反应（根据你们的${effectiveStage}关系调整）
 - 真实想法：可能不会直接说出口的内心 OS（可以腹黑、可以傲娇、可以脆弱）
 - 情感冲突：是否有犹豫/纠结/矛盾
 - 回忆闪回：这句话让你想起你们之间的哪个共同回忆
 
 四、回应策略
-- 语气选择：根据对话阶段调整——初遇用礼貌/正常社交语气，熟人才可以根据性格撒娇/认真/调侃/温柔/傲娇
+- 语气选择：根据你们的${effectiveStage}关系自然调整语气和距离感
 - 话题延伸：不要只回答问题，要主动抛出新话题
-- 关系把控：保持当前阶段的合理距离，让关系自然发展
+- 关系把控：保持符合你们当前关系状态的互动模式
 - 惊喜设计：要不要埋个小伏笔/小惊喜/小秘密
 
 五、生活化细节（必须有 1-2 个）
