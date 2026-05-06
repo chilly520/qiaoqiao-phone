@@ -11,6 +11,9 @@ import { useWorldLoopStore } from '../../stores/worldLoopStore'
 import WorldLoopCreateModal from './modals/WorldLoopCreateModal.vue'
 import PendingRequestsModal from './modals/PendingRequestsModal.vue'
 import { compressImage } from '../../utils/imageUtils'
+import SparkIcon from './components/SparkIcon.vue'
+import SparkDetailModal from './components/SparkDetailModal.vue'
+import { useSparkStore } from '../../stores/sparkStore'
 
 const worldLoopStore = useWorldLoopStore()
 const expandLoopContacts = ref(true)
@@ -20,6 +23,10 @@ const router = useRouter()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 const momentsStore = useMomentsStore()
+const sparkStore = useSparkStore()
+const showSparkDetail = ref(false)
+const sparkDetailCharId = ref(null)
+const sparkDetailCharName = ref('')
 
 const userProfile = computed(() => settingsStore.personalization.userProfile)
 
@@ -1340,6 +1347,7 @@ const handleImport = async (e) => {
                                             <span v-if="chat.isGroup"
                                                 class="bg-green-500 text-white text-[8px] px-1 rounded-sm shrink-0">群组</span>
                                             <span class="font-medium text-gray-900 truncate">{{ chat.displayName || chat.name }}</span>
+                                            <SparkIcon v-if="chat.id && !chat.isGroup" :char-id="chat.id" size="sm" :show-days="false" @click="sparkDetailCharId = chat.id; sparkDetailCharName = chat.displayName || chat.name; showSparkDetail = true" />
                                         </div>
                                         <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
                                             Date(chat.lastMsg.timestamp).toLocaleTimeString([], {
@@ -1656,6 +1664,13 @@ const handleImport = async (e) => {
             </div>
         </template>
     </div>
+
+    <!-- Spark Detail Modal (聊天列表) -->
+    <SparkDetailModal
+        :visible="showSparkDetail"
+        :char-id="sparkDetailCharId"
+        :char-name="sparkDetailCharName"
+        @close="showSparkDetail = false" />
 </template>
 
 <style scoped>
