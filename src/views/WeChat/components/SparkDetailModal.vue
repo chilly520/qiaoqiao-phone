@@ -2,7 +2,7 @@
   <Teleport to="body">
     <div v-if="visible && sparkInfo" class="spark-detail-overlay" @click.self="close">
       <div class="spark-detail-modal">
-        <div class="spark-header" :style="{ background: `linear-gradient(135deg, ${(sparkInfo?.level?.color || '#FF6B35')}20, transparent)` }">
+        <div class="spark-header" :style="{ background: 'linear-gradient(135deg, ' + (sparkInfo?.level?.color || '#FF6B35') + '20, transparent)' }">
           <button @click="close" class="close-btn">&times;</button>
 
           <div class="spark-main-display">
@@ -59,7 +59,7 @@
               <span>{{ Math.round(sparkInfo?.progressToNext || 0) }}%</span>
             </div>
             <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: (sparkInfo?.progressToNext || 0) + '%', background: `linear-gradient(90deg, ${sparkInfo?.level?.color || '#FF6B35'}, ${sparkInfo?.nextLevel?.color || '#FFA500'})` }"></div>
+              <div class="progress-fill" :style="{ width: (sparkInfo?.progressToNext || 0) + '%', background: 'linear-gradient(90deg, ' + (sparkInfo?.level?.color || '#FF6B35') + ', ' + (sparkInfo?.nextLevel?.color || '#FFA500') + ')' }"></div>
             </div>
             <p class="progress-hint">还需 {{ (sparkInfo?.nextLevel?.days || 0) - (sparkInfo?.streak || 0) }} 天</p>
           </div>
@@ -249,7 +249,10 @@ function getLevelEmoji(index, streak) {
 }
 
 @keyframes floatIcon {
-  0%, 100% {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
     transform: translateY(0) scale(1);
   }
   50% {
@@ -279,7 +282,10 @@ function getLevelEmoji(index, streak) {
 }
 
 @keyframes numberBounce {
-  0%, 100% {
+  0% {
+    transform: scale(1) rotate(-5deg);
+  }
+  100% {
     transform: scale(1) rotate(-5deg);
   }
   50% {
@@ -352,7 +358,10 @@ function getLevelEmoji(index, streak) {
 }
 
 @keyframes dotPulse {
-  0%, 100% {
+  0% {
+    transform: scale(1);
+  }
+  100% {
     transform: scale(1);
   }
   50% {
@@ -435,15 +444,19 @@ function getLevelEmoji(index, streak) {
   gap: 6px;
 }
 
-.achievement-grid,
+.achievement-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .title-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.achievement-item,
-.title-item {
+.achievement-item {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -454,13 +467,21 @@ function getLevelEmoji(index, streak) {
   transition: all 0.2s;
 }
 
+.title-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #f8f8f8;
+  border-radius: 10px;
+  font-size: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
 .achievement-item.unlocked {
   background: linear-gradient(135deg, #fff5e6, #fff);
   border: 1px solid #ffd70030;
-}
-
-.title-item {
-  cursor: pointer;
 }
 
 .title-item:hover {
@@ -474,12 +495,18 @@ function getLevelEmoji(index, streak) {
   box-shadow: 0 0 12px rgba(148, 0, 211, 0.13);
 }
 
-.ach-icon,
+.ach-icon {
+  font-size: 18px;
+}
+
 .title-icon {
   font-size: 18px;
 }
 
-.ach-name,
+.ach-name {
+  font-weight: 600;
+}
+
 .title-name {
   font-weight: 600;
 }
