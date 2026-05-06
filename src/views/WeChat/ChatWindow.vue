@@ -44,6 +44,7 @@ import BackpackModal from './modals/BackpackModal.vue'
 import GiftDetailModal from './modals/GiftDetailModal.vue'
 import SparkIcon from './components/SparkIcon.vue'
 import SparkDetailModal from './components/SparkDetailModal.vue'
+import { useSparkStore } from '../../stores/sparkStore'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
