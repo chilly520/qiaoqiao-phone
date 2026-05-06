@@ -1027,7 +1027,12 @@ const updateSceneState = () => {
   // 表情/状态自动探测（保持原逻辑：逆序寻找最新状态）
   for (let index = visibleMsgs.length - 1; index >= 0; index -= 1) {
     const msg = visibleMsgs[index]
-    const innerVoice = extractInnerVoiceData(msg?.content, msg)
+    let innerVoice = null
+    try {
+      innerVoice = extractInnerVoiceData(msg?.content, msg)
+    } catch (e) {
+      // 忽略解析错误，继续下一条消息
+    }
     const status = innerVoice?.status || innerVoice?.state
     if (typeof status === 'string' && status.trim() && !looksLikeMojibake(status)) {
       sceneState.value.status = status.trim()
