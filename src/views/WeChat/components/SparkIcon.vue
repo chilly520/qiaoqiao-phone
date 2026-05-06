@@ -1,6 +1,6 @@
 <template>
-  <div v-if="sparkIcon" class="spark-icon-wrapper" :class="[`size-${size}`, { pulse: sparkIcon.pulse }]" @click.stop="$emit('click')">
-    <span class="spark-emoji" :style="{ fontSize: sparkIcon.size + 'px', filter: `drop-shadow(0 0 ${sparkIcon.size / 3}px ${sparkIcon.color}40)` }">
+  <div v-if="sparkIcon" class="spark-icon-wrapper" :class="[`size-${size}`, { pulse: sparkIcon.pulse, inactive: !sparkIcon.isActive }]" @click.stop="$emit('click')">
+    <span class="spark-emoji" :style="{ fontSize: sparkIcon.size + 'px', filter: `drop-shadow(0 0 ${sparkIcon.size / 3}px ${sparkIcon.color}40)`, opacity: sparkIcon.isActive ? 1 : 0.5 }">
       {{ sparkIcon.icon }}
     </span>
     <span v-if="showDays && sparkIcon.streak > 0" class="spark-days" :style="{ color: sparkIcon.color, fontSize: (sparkIcon.size * 0.5) + 'px' }">
@@ -100,6 +100,10 @@ const equippedTitle = computed(() => {
 
 .spark-icon-wrapper.pulse .spark-emoji {
   animation: sparkPulse 1.5s ease-in-out infinite;
+}
+
+.spark-icon-wrapper.inactive .spark-emoji {
+  filter: grayscale(100%);
 }
 
 @keyframes sparkPulse {

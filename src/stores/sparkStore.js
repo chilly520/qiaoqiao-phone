@@ -206,18 +206,21 @@ export const useSparkStore = defineStore('spark', () => {
 
     function getSparkIcon(charId, size = 'md') {
         const info = getSparkInfo(charId)
-        if (!info || info.streak < 1) return null
+        if (!info) return null
 
         const sizes = { sm: 16, md: 20, lg: 28, xl: 36 }
         const iconSize = sizes[size] || sizes.md
 
+        const hasStreak = info.streak > 0
+
         return {
-            icon: info.level.icon,
-            color: info.level.color,
+            icon: hasStreak ? info.level.icon : '🔥',
+            color: hasStreak ? info.level.color : '#CCCCCC',
             size: iconSize,
             streak: info.streak,
             levelName: info.level.name,
-            pulse: info.streak >= 7
+            pulse: hasStreak && info.streak >= 7,
+            isActive: hasStreak
         }
     }
 
