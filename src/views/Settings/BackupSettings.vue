@@ -422,11 +422,68 @@ function handleOpenExportModal() { showExportModal.value = true }
 async function handleConfirmExport() {
   isPushing.value = true
   chatStore.triggerToast('🚀 正在打包全系统资产...', 'info')
-  
+
   try {
     // Collect data directly from stores to ensure we export what is in memory
+    let chatsData = JSON.parse(JSON.stringify(chatStore.chats || {}))
+
+    // CRITICAL: Clean oversized base64 avatars to prevent "Invalid string length" error
+    // Base64 images can be several MB each, causing JSON.stringify to fail
+    if (chatsData && typeof chatsData === 'object') {
+        let cleanedCount = 0
+        let totalSavedKB = 0
+
+        for (const chatId in chatsData) {
+            const chat = chatsData[chatId]
+            if (!chat) continue
+
+            // Clean character avatar (base64 image)
+            if (chat.avatar && typeof chat.avatar === 'string' && chat.avatar.length > 10000) {
+                const sizeKB = Math.round(chat.avatar.length / 1024)
+                totalSavedKB += sizeKB
+                cleanedCount++
+
+                // If it's a base64 image, remove it; keep URLs
+                if (chat.avatar.startsWith('data:image')) {
+                    console.log('[Backup] Removing large avatar for chat', chatId, ':', sizeKB, 'KB')
+                    chat.avatar = ''  // Remove to save space
+                }
+            }
+
+            // Clean userAvatar in metadata (if exists)
+            if (chat.userAvatar && typeof chat.userAvatar === 'string' && chat.userAvatar.length > 10000) {
+                const sizeKB = Math.round(chat.userAvatar.length / 1024)
+                totalSavedKB += sizeKB
+                cleanedCount++
+
+                if (chat.userAvatar.startsWith('data:image')) {
+                    console.log('[Backup] Removing large userAvatar for chat', chatId, ':', sizeKB, 'KB')
+                    chat.userAvatar = ''
+                }
+            }
+
+            // Clean message images (if any base64 embedded)
+            if (chat.msgs && Array.isArray(chat.msgs)) {
+                chat.msgs.forEach((msg, idx) => {
+                    if (msg.image && typeof msg.image === 'string' && msg.image.length > 50000) {
+                        const imgSizeKB = Math.round(msg.image.length / 1024)
+                        console.log('[Backup] Removing large image in msg', idx, ':', imgSizeKB, 'KB')
+                        totalSavedKB += imgSizeKB
+                        cleanedCount++
+                        msg.image = '[image removed for backup size]'
+                    }
+                })
+            }
+        }
+
+        if (cleanedCount > 0) {
+            console.log('[Backup] Cleaned', cleanedCount, 'large assets, saved ~', Math.round(totalSavedKB / 1024), 'MB')
+            chatStore.triggerToast('⚠️ 已优化' + cleanedCount + '个大文件 (~' + Math.round(totalSavedKB / 1024) + 'MB)', 'info')
+        }
+    }
+
     const injectedData = {
-        chats: JSON.parse(JSON.stringify(chatStore.chats || {})),
+        chats: chatsData,
         moments: JSON.parse(JSON.stringify(momentsStore.moments || [])),
         momentsTop: JSON.parse(JSON.stringify(momentsStore.topMoments || [])),
         momentsNotifications: JSON.parse(JSON.stringify(momentsStore.notifications || [])),
@@ -435,11 +492,19 @@ async function handleConfirmExport() {
         favorites: JSON.parse(JSON.stringify(chatStore.favorites || [])), // Assuming favorites in chatStore or similar
         // Add other store data as needed if they are in memory
     }
-    
+
     // Pass injectedData to exportFullData
     const backupData = await settingsStore.exportFullData(selectionState.value, injectedData)
-    
-    const backupBlob = new window.Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' })
+
+    // Use compact JSON (no indentation) to reduce string length
+    const jsonString = JSON.stringify(backupData)
+
+    // Safety check: verify string length is reasonable (< 100MB)
+    if (jsonString.length > 100 * 1024 * 1024) {
+      throw new Error('数据包过大 (' + Math.round(jsonString.length / 1024 / 1024) + 'MB)，请减少选择的数据项')
+    }
+
+    const backupBlob = new window.Blob([jsonString], { type: 'application/json' })
     const downloadUrl = window.URL.createObjectURL(backupBlob)
     const anchor = window.document.createElement('a')
     anchor.href = downloadUrl
@@ -453,6 +518,7 @@ async function handleConfirmExport() {
     chatStore.triggerToast('✅ 迁移数据包生成完成', 'success')
   } catch (err) {
     chatStore.triggerToast('导出失败: ' + err.message, 'error')
+    console.error('[Backup] Export failed:', err)
   } finally {
     isPushing.value = false
   }
