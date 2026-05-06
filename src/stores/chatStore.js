@@ -435,7 +435,8 @@ export const useChatStore = defineStore('chat', () => {
         // Parse special tags (Mission: Priority)
         if (msg.role === 'ai') {
             let processedContent = msg.content;
-            if (typeof processedContent === 'string') {                // === 关键修复：增强对“裸露”情侣空间指令的自动补全与提取 ===
+            if (typeof processedContent === 'string') {
+                // === 关键修复：增强对“裸露”情侣空间指令的自动补全与提取 ===
                 // AI 有时会忘记写 [LS_JSON:] 标签，或者只输出了裸露的 JSON 块
                 const trimmedContent = processedContent.trim();
                 const looseLSPattern = /\{[^{}]*?(?:"type"|type)\s*[:：]\s*["']?(?:diary|footprint|message|sticky|anniversary|letter|question|album|house|gacha|schedule|commands)["']?[\s\S]*?\}/gi;
