@@ -1,17 +1,17 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="spark-detail-overlay" @click.self="close">
+    <div v-if="visible && sparkInfo" class="spark-detail-overlay" @click.self="close">
       <div class="spark-detail-modal">
-        <div class="spark-header" :style="{ background: `linear-gradient(135deg, ${sparkInfo?.level?.color || '#FF6B35'}20, transparent)` }">
+        <div class="spark-header" :style="{ background: `linear-gradient(135deg, ${(sparkInfo?.level?.color || '#FF6B35')}20, transparent)` }">
           <button @click="close" class="close-btn">&times;</button>
           <div class="spark-main-icon">
             <span class="mega-icon">{{ sparkInfo?.level?.icon || '🔥' }}</span>
             <div v-if="sparkInfo?.streak > 0" class="streak-big" :style="{ color: sparkInfo?.level?.color }">
-              {{ sparkInfo.streak }}天
+              {{ sparkInfo?.streak }}天
             </div>
           </div>
           <h2 class="spark-title">{{ sparkInfo?.level?.name || '火花' }}</h2>
-          <p class="spark-subtitle">与 {{ charName }} 的火花</p>
+          <p class="spark-subtitle">与 {{ charName || 'TA' }} 的火花</p>
         </div>
 
         <div class="spark-body">
@@ -34,23 +34,23 @@
           <!-- Level Progress -->
           <div v-if="sparkInfo?.nextLevel" class="level-progress">
             <div class="progress-header">
-              <span>下一等级: {{ sparkInfo.nextLevel.name }}</span>
-              <span>{{ Math.round(sparkInfo.progressToNext) }}%</span>
+              <span>下一等级: {{ sparkInfo?.nextLevel?.name }}</span>
+              <span>{{ Math.round(sparkInfo?.progressToNext || 0) }}%</span>
             </div>
             <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: sparkInfo.progressToNext + '%', background: `linear-gradient(90deg, ${sparkInfo.level.color}, ${sparkInfo.nextLevel.color})` }"></div>
+              <div class="progress-fill" :style="{ width: (sparkInfo?.progressToNext || 0) + '%', background: `linear-gradient(90deg, ${sparkInfo?.level?.color || '#FF6B35'}, ${sparkInfo?.nextLevel?.color || '#FFA500'})` }"></div>
             </div>
-            <p class="progress-hint">还需 {{ sparkInfo.nextLevel.days - sparkInfo.streak }} 天</p>
+            <p class="progress-hint">还需 {{ (sparkInfo?.nextLevel?.days || 0) - (sparkInfo?.streak || 0) }} 天</p>
           </div>
 
           <!-- Achievements -->
           <div class="section">
             <h3 class="section-title">🏆 成就</h3>
-            <div v-if="sparkInfo?.achievements?.length > 0" class="achievement-grid">
-              <div v-for="ach in sparkInfo.achievements" :key="ach.id" class="achievement-item unlocked">
-                <span class="ach-icon">{{ ach.icon }}</span>
-                <span class="ach-name">{{ ach.name }}</span>
-                <span class="ach-reward">{{ ach.reward }}</span>
+            <div v-if="sparkInfo?.achievements && sparkInfo.achievements.length > 0" class="achievement-grid">
+              <div v-for="ach in (sparkInfo.achievements || [])" :key="ach?.id" class="achievement-item unlocked">
+                <span class="ach-icon">{{ ach?.icon }}</span>
+                <span class="ach-name">{{ ach?.name }}</span>
+                <span class="ach-reward">{{ ach?.reward }}</span>
               </div>
             </div>
             <div v-else class="empty-state">暂无成就，继续聊天解锁！</div>
@@ -59,17 +59,17 @@
           <!-- Titles -->
           <div class="section">
             <h3 class="section-title">👑 称号装备</h3>
-            <div v-if="sparkInfo?.titles?.length > 0" class="title-grid">
+            <div v-if="sparkInfo?.titles && sparkInfo.titles.length > 0" class="title-grid">
               <div
-                v-for="title in sparkInfo.titles"
-                :key="title.id"
+                v-for="title in (sparkInfo.titles || [])"
+                :key="title?.id"
                 class="title-item"
-                :class="{ equipped: isEquipped(title.id) }"
-                @click="toggleEquip(title.id)"
+                :class="{ equipped: isEquipped(title?.id) }"
+                @click="toggleEquip(title?.id)"
               >
-                <span class="title-icon">{{ title.icon }}</span>
-                <span class="title-name">{{ title.name }}</span>
-                <span v-if="isEquipped(title.id)" class="equip-badge">✓</span>
+                <span class="title-icon">{{ title?.icon }}</span>
+                <span class="title-name">{{ title?.name }}</span>
+                <span v-if="isEquipped(title?.id)" class="equip-badge">✓</span>
               </div>
             </div>
             <p v-else class="empty-state">暂无称号，达成条件后解锁！</p>
@@ -80,15 +80,15 @@
             <h3 class="section-title">🔥 等级一览</h3>
             <div class="levels-list">
               <div
-                v-for="(lv, idx) in allLevels"
-                :key="lv.days"
+                v-for="(lv, idx) in (allLevels || [])"
+                :key="lv?.days || idx"
                 class="level-item"
-                :class="{ current: lv.days === sparkInfo?.level?.days, unlocked: (sparkInfo?.maxStreak || 0) >= lv.days }"
+                :class="{ current: lv?.days === sparkInfo?.level?.days, unlocked: (sparkInfo?.maxStreak || 0) >= (lv?.days || 0) }"
               >
-                <span class="lv-icon">{{ lv.icon }}</span>
-                <span class="lv-name">{{ lv.name }}</span>
-                <span class="lv-days">{{ lv.days }}天</span>
-                <span v-if="lv.days === sparkInfo?.level?.days" class="lv-current">当前</span>
+                <span class="lv-icon">{{ lv?.icon }}</span>
+                <span class="lv-name">{{ lv?.name }}</span>
+                <span class="lv-days">{{ lv?.days }}天</span>
+                <span v-if="lv?.days === sparkInfo?.level?.days" class="lv-current">当前</span>
               </div>
             </div>
           </div>
@@ -114,20 +114,27 @@ const sparkStore = useSparkStore()
 
 const sparkInfo = computed(() => {
   if (!props.charId) return null
-  return sparkStore.getSparkInfo(props.charId)
+  try {
+    return sparkStore.getSparkInfo(props.charId)
+  } catch (e) {
+    console.error('[SparkDetail] Error getting info:', e)
+    return null
+  }
 })
 
-const allLevels = computed(() => sparkStore.SPARK_CONFIG.levels)
+const allLevels = computed(() => sparkStore.SPARK_CONFIG?.levels || [])
 
 function close() {
   emit('close')
 }
 
 function isEquipped(titleId) {
-  return sparkStore.equippedTitles[props.charId] === titleId
+  if (!titleId) return false
+  return sparkStore.equippedTitles?.[props.charId] === titleId
 }
 
 function toggleEquip(titleId) {
+  if (!titleId || !props.charId) return
   sparkStore.equipTitle(props.charId, titleId)
 }
 </script>

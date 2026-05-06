@@ -583,7 +583,7 @@
                         <div class="text-[10px] text-gray-400">单聊时，AI 会参考以下群聊的记忆。</div>
 
                         <div class="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                            <div v-if="availableGroups.length === 0"
+                            <div v-if="!availableGroups || availableGroups.length === 0"
                                 class="text-[10px] text-gray-400 text-center py-4 italic">当前没有任何活跃群聊</div>
                             <div v-for="group in availableGroups" :key="group.id"
                                 class="flex items-center justify-between p-2 rounded-xl bg-white/50 border border-white/80 transition-all hover:bg-white cursor-pointer shadow-sm"
@@ -1110,7 +1110,7 @@
 
                 <!-- Memory List with Dynamic Theme -->
                 <div class="flex-1 overflow-y-auto p-4 space-y-3" :class="getThemeBackground()">
-                    <div v-if="memories.length === 0" class="text-center text-gray-400 py-12 text-sm">
+                    <div v-if="!memories || memories.length === 0" class="text-center text-gray-400 py-12 text-sm">
                         <i class="fa-solid fa-box-open text-4xl mb-3 opacity-30"></i>
                         <div>暂无记忆</div>
                     </div>
@@ -1147,7 +1147,7 @@
                                     <div class="flex items-center gap-2">
                                         <!-- Themed Number Badge -->
                                         <span :class="getThemeNumberClass()">
-                                            {{ getThemeNumberPrefix(memories.length - index) }}
+                                            {{ getThemeNumberPrefix((memories?.length || 0) - index) }}
                                         </span>
                                         <span :class="getThemeBadgeClass()">{{ getThemeLabel() }}</span>
                                     </div>
