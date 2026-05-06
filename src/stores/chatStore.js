@@ -3638,9 +3638,7 @@ export const useChatStore = defineStore('chat', () => {
                 });
 
                 // V16-V17: Split logic
-                // DEFENSE: Wrap in try-catch to prevent Vite-minified TDZ errors ("Cannot access 'Xe'")
                 let finalSegments = [];
-                try {
                 const splitRegex = new RegExp("(\\r?\\n|__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\])");
                 // 不再用正则分割中英文括号，改用后处理合并逻辑以支持嵌套括号
                 const rawParts = processedContent.split(splitRegex);
@@ -3839,17 +3837,11 @@ export const useChatStore = defineStore('chat', () => {
 
                 } // END for (const seg of rawSegments)
 
-                    // Assign activeMode to any newly added segments
-                    for (let j = prevLength; j < finalSegments.length; j++) {
-                        if (!finalSegments[j].mode && activeMode) {
-                            finalSegments[j].mode = activeMode;
-                        }
+                // Assign activeMode to any newly added segments
+                for (let j = prevLength; j < finalSegments.length; j++) {
+                    if (!finalSegments[j].mode && activeMode) {
+                        finalSegments[j].mode = activeMode;
                     }
-                } catch (tdzError) {
-                    // DEFENSE: Catch Vite-minified TDZ errors ("Cannot access 'Xe' before initialization")
-                    console.error('[ChatStore] Split/Segment TDZ error, falling back to raw text:', tdzError.message);
-                    useLoggerStore().addLog('ERROR', '分割处理TDZ错误', tdzError.message);
-                    finalSegments = [{ type: 'text', content: processedContent.trim(), mode: null }];
                 }
 
                 // --- 4. Sequential Delivery ---
