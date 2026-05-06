@@ -39,7 +39,31 @@ const breakdown = ref({
 })
 
 // Mock helper to estimate string size in bytes
-const getSize = (str) => str ? new Blob([str]).size : 0
+// SAFETY: Use string length as fallback to prevent "Invalid string length" error
+const getSize = (str) => {
+    if (!str) return 0
+
+    try {
+        // For small strings (< 10MB), use Blob for accurate size
+        if (str.length < 10 * 1024 * 1024) {
+            return new Blob([str]).size
+        }
+        // For large strings, use UTF-8 estimation (1-4 bytes per char)
+        // This prevents "Invalid string length" error from Blob constructor
+        let size = 0
+        for (let i = 0; i < str.length; i++) {
+            const code = str.charCodeAt(i)
+            if (code < 0x80) size += 1           // ASCII: 1 byte
+            else if (code < 0x800) size += 2     // 2-byte UTF-8
+            else if (code < 0xD800 || code >= 0xE000) size += 3  // 3-byte UTF-8
+            else { size += 4; i++ }             // 4-byte surrogate pair
+        }
+        return size
+    } catch (e) {
+        console.warn('[Storage] getSize failed, using string length:', e)
+        return str.length * 2  // Rough estimate: assume 2 bytes per char
+    }
+}
 
 const calculateStorage = async () => {
     try {

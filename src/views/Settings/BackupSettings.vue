@@ -592,12 +592,47 @@ async function handlePushToCloud() {
   try {
     uploadProgress.value = 20
     chatStore.triggerToast('正在聚合系统数据...', 'info')
-    
+
     const allSelected = {}
     Object.keys(selectionState.value).forEach(k => { allSelected[k] = true })
-    
+
+    // CRITICAL: Clean oversized base64 avatars before JSON serialization
+    // This prevents "Invalid string length" error during cloud backup
+    let chatsData = JSON.parse(JSON.stringify(chatStore.chats || {}))
+
+    if (chatsData && typeof chatsData === 'object') {
+        let cleanedCount = 0
+
+        for (const chatId in chatsData) {
+            const chat = chatsData[chatId]
+            if (!chat) continue
+
+            // Clean character avatar (base64 image > 10KB)
+            if (chat.avatar && typeof chat.avatar === 'string' && chat.avatar.length > 10000) {
+                if (chat.avatar.startsWith('data:image')) {
+                    console.log('[CloudBackup] Removing large avatar for chat', chatId, ':', Math.round(chat.avatar.length / 1024), 'KB')
+                    chat.avatar = ''
+                    cleanedCount++
+                }
+            }
+
+            // Clean userAvatar in metadata (> 10KB)
+            if (chat.userAvatar && typeof chat.userAvatar === 'string' && chat.userAvatar.length > 10000) {
+                if (chat.userAvatar.startsWith('data:image')) {
+                    console.log('[CloudBackup] Removing large userAvatar for chat', chatId)
+                    chat.userAvatar = ''
+                    cleanedCount++
+                }
+            }
+        }
+
+        if (cleanedCount > 0) {
+            console.log('[CloudBackup] Cleaned', cleanedCount, 'large avatars for cloud backup')
+        }
+    }
+
     const injectedData = {
-        chats: JSON.parse(JSON.stringify(chatStore.chats || {})),
+        chats: chatsData,
         moments: JSON.parse(JSON.stringify(momentsStore.moments || [])),
         momentsTop: JSON.parse(JSON.stringify(momentsStore.topMoments || [])),
         momentsNotifications: JSON.parse(JSON.stringify(momentsStore.notifications || [])),
@@ -605,13 +640,19 @@ async function handlePushToCloud() {
         stickers: JSON.parse(JSON.stringify(stickerStore.stickers || [])),
         favorites: JSON.parse(JSON.stringify(chatStore.favorites || []))
     }
-    
-    const backupData = await settingsStore.exportFullData(allSelected, injectedData) 
-    
+
+    const backupData = await settingsStore.exportFullData(allSelected, injectedData)
+
+    // Safety check: verify data size before upload
+    const dataStr = JSON.stringify(backupData)
+    if (dataStr.length > 50 * 1024 * 1024) {  // > 50MB warning
+        console.warn('[CloudBackup] Large backup size:', Math.round(dataStr.length / 1024 / 1024), 'MB')
+        chatStore.triggerToast('⚠️ 数据包较大 (' + Math.round(dataStr.length / 1024 / 1024) + 'MB)，上传可能较慢', 'info')
+    }
+
     uploadProgress.value = 50
     const backupService = new GitHubBackup(githubConfig.value)
-    
-    // Option to use stream for very large data if needed, but for now Full is fine
+
     await backupService.uploadFull(backupData)
     
     uploadProgress.value = 100
