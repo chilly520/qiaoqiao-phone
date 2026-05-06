@@ -63,7 +63,7 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     target: 'esnext',
-    minify: 'esbuild',
+    minify: false, // 禁用混淆，防止变量提升顺序在混淆时被破坏（解决 Cannot access before initialization 报错）
     chunkSizeWarningLimit: 2000
   }
 }))

@@ -3016,6 +3016,7 @@ export const useChatStore = defineStore('chat', () => {
                 let command, modifier, action, target, suffix, keyword, targetIdx;
                 let jsonStr, momentData, newMoment, momentResult;
                 let shareJsonStr, shareMomentData, newShareMoment, shareMomentResult;
+                let rawSegments = [], currentRawSegment = "", cardBlocks = [];
 
                 // --- Handle <bgm> Tag ---
                 bgmMatch = properlyOrderedContent.match(bgmRegex);
@@ -3497,7 +3498,7 @@ export const useChatStore = defineStore('chat', () => {
                     .trim();
 
                 // --- Pre-process: Extract and Protect CARD blocks (Enhanced V2) ---
-                const cardBlocks = [];
+                // cardBlocks = []; // ALREADY INITIALIZED AT TOP
 
                 // Pass 1: Handle Markdown HTML code blocks & JSON code blocks (Stupid AI protection)
                 cleanContent = cleanContent.replace(/```(?:html|xml|json)?\s*([\s\S]*?)```/gi, (match, code) => {
@@ -3648,8 +3649,8 @@ export const useChatStore = defineStore('chat', () => {
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
 
-                let rawSegments = [];
-                let currentRawSegment = "";
+                // rawSegments = []; // INITIALIZED AT TOP
+                // currentRawSegment = ""; // INITIALIZED AT TOP
 
                 for (let i = 0; i < rawParts.length; i++) {
                     const part = rawParts[i];
