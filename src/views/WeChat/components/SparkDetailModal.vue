@@ -5,9 +5,7 @@
         <div class="spark-header" :style="{ background: `linear-gradient(135deg, ${(sparkInfo?.level?.color || '#FF6B35')}20, transparent)` }">
           <button @click="close" class="close-btn">&times;</button>
 
-          <!-- QQ-style main display -->
           <div class="spark-main-display">
-            <!-- Big fire icon with number overlay -->
             <div class="spark-icon-big-wrapper">
               <span class="spark-icon-big">{{ sparkInfo?.level?.icon || '🔥' }}</span>
               <span v-if="sparkInfo?.streak > 0"
@@ -17,12 +15,10 @@
               </span>
             </div>
 
-            <!-- Title and level info -->
             <div class="spark-title-area">
               <h2 class="spark-title">聊得燚燚x{{ sparkInfo?.streak || 0 }}</h2>
               <p class="spark-level-desc">每保持聊天连续超过10天，等级+1</p>
 
-              <!-- Level progress bar (like QQ) -->
               <div v-if="sparkInfo?.streak > 0" class="qq-level-bar">
                 <span class="status-text">已佩戴</span>
                 <div class="level-dots">
@@ -42,7 +38,6 @@
         </div>
 
         <div class="spark-body">
-          <!-- Stats Grid -->
           <div class="stats-grid">
             <div class="stat-card">
               <div class="stat-value" :style="{ color: '#FF6B35' }">{{ sparkInfo?.streak || 0 }}</div>
@@ -58,7 +53,6 @@
             </div>
           </div>
 
-          <!-- Level Progress -->
           <div v-if="sparkInfo?.nextLevel" class="level-progress">
             <div class="progress-header">
               <span>下一等级: {{ sparkInfo?.nextLevel?.name }}</span>
@@ -70,7 +64,6 @@
             <p class="progress-hint">还需 {{ (sparkInfo?.nextLevel?.days || 0) - (sparkInfo?.streak || 0) }} 天</p>
           </div>
 
-          <!-- Achievements -->
           <div class="section">
             <h3 class="section-title">🏆 成就</h3>
             <div v-if="sparkInfo?.achievements && sparkInfo.achievements.length > 0" class="achievement-grid">
@@ -83,7 +76,6 @@
             <div v-else class="empty-state">暂无成就，继续聊天解锁！</div>
           </div>
 
-          <!-- Titles -->
           <div class="section">
             <h3 class="section-title">👑 称号装备</h3>
             <div v-if="sparkInfo?.titles && sparkInfo.titles.length > 0" class="title-grid">
@@ -102,7 +94,6 @@
             <p v-else class="empty-state">暂无称号，达成条件后解锁！</p>
           </div>
 
-          <!-- All Levels Preview -->
           <div class="section">
             <h3 class="section-title">🔥 等级一览</h3>
             <div class="levels-list">
@@ -165,7 +156,6 @@ function toggleEquip(titleId) {
   sparkStore.equipTitle(props.charId, titleId)
 }
 
-// Helper functions for QQ-style level display
 const LEVEL_EMOJIS = ['🔥', '🔥', '🔥', '🔥', '🔥', '💥', '💫', '⚡', '🌟', '💕']
 const LEVEL_COLORS = ['#FF6B35', '#FF8C42', '#FFA500', '#FF4500', '#FFD700', '#FF1493', '#9400D3', '#4B0082', '#00CED1', '#FF69B4']
 
@@ -189,8 +179,11 @@ function getLevelEmoji(index, streak) {
 <style scoped>
 .spark-detail-overlay {
   position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
   z-index: 10001;
   display: flex;
@@ -206,14 +199,14 @@ function getLevelEmoji(index, streak) {
   max-width: 400px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 25px 60px rgba(0,0,0,0.25);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
 }
 
 .close-btn {
   position: absolute;
   top: 12px;
   right: 12px;
-  background: rgba(255,255,255,0.8);
+  background: rgba(255, 255, 255, 0.8);
   border: none;
   font-size: 24px;
   cursor: pointer;
@@ -225,7 +218,10 @@ function getLevelEmoji(index, streak) {
   justify-content: center;
   transition: transform 0.2s;
 }
-.close-btn:hover { transform: scale(1.1); }
+
+.close-btn:hover {
+  transform: scale(1.1);
+}
 
 .spark-header {
   padding: 32px 24px 24px;
@@ -233,7 +229,6 @@ function getLevelEmoji(index, streak) {
   position: relative;
 }
 
-/* QQ-style main display */
 .spark-main-display {
   display: flex;
   flex-direction: column;
@@ -250,12 +245,16 @@ function getLevelEmoji(index, streak) {
   font-size: 72px;
   display: block;
   animation: floatIcon 3s ease-in-out infinite;
-  filter: drop-shadow(0 4px 12px rgba(255,107,53,0.3));
+  filter: drop-shadow(0 4px 12px rgba(255, 107, 53, 0.3));
 }
 
 @keyframes floatIcon {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-8px) scale(1.05); }
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.05);
+  }
 }
 
 .spark-number-big {
@@ -274,14 +273,18 @@ function getLevelEmoji(index, streak) {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(255,107,53,0.4);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
   letter-spacing: -1px;
   animation: numberBounce 2s ease-in-out infinite;
 }
 
 @keyframes numberBounce {
-  0%, 100% { transform: scale(1) rotate(-5deg); }
-  50% { transform: scale(1.08) rotate(5deg); }
+  0%, 100% {
+    transform: scale(1) rotate(-5deg);
+  }
+  50% {
+    transform: scale(1.08) rotate(5deg);
+  }
 }
 
 .spark-title-area {
@@ -304,7 +307,6 @@ function getLevelEmoji(index, streak) {
   margin: 0 0 16px;
 }
 
-/* QQ-style level progress bar */
 .qq-level-bar {
   display: flex;
   flex-direction: column;
@@ -342,7 +344,7 @@ function getLevelEmoji(index, streak) {
 .level-dot.active {
   opacity: 1;
   transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .level-dot.filled {
@@ -350,8 +352,12 @@ function getLevelEmoji(index, streak) {
 }
 
 @keyframes dotPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
 }
 
 .spark-body {
@@ -459,13 +465,13 @@ function getLevelEmoji(index, streak) {
 
 .title-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .title-item.equipped {
   background: linear-gradient(135deg, #f0e6ff, #fff);
   border: 2px solid #9400D3;
-  box-shadow: 0 0 12px #9400D320;
+  box-shadow: 0 0 12px rgba(148, 0, 211, 0.13);
 }
 
 .ach-icon,
@@ -526,13 +532,22 @@ function getLevelEmoji(index, streak) {
 .level-item.current {
   opacity: 1;
   background: linear-gradient(135deg, #fff5e6, #fff);
-  border: 1px solid #FFB34750;
+  border: 1px solid rgba(255, 179, 71, 0.31);
   font-weight: 600;
 }
 
-.lv-icon { font-size: 20px; }
-.lv-name { flex: 1; }
-.lv-days { color: #999; font-size: 11px; }
+.lv-icon {
+  font-size: 20px;
+}
+
+.lv-name {
+  flex: 1;
+}
+
+.lv-days {
+  color: #999;
+  font-size: 11px;
+}
 
 .lv-current {
   background: #FF6B35;
