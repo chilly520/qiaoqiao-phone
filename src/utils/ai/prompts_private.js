@@ -44,7 +44,7 @@ export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '
     let memoryRelationshipLevel = null; // null = 未检测到, 0=陌生人, 1=熟人, 2=好友, 3=恋人/夫妻
 
     // 从 summary 和 memory 中检测关系关键词
-    const memoryText = [
+    const relationshipMemoryText = [
         char.summary || '',
         ...(Array.isArray(char.memory) ? char.memory : [])
     ].join(' ').toLowerCase();
@@ -56,13 +56,13 @@ export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '
     // 普通朋友/熟人关键词
     const friendKeywords = ['朋友', '认识', '熟人', '同学', '同事', '邻居', '玩得来', '聊得来'];
 
-    if (coupleKeywords.some(kw => memoryText.includes(kw))) {
+    if (coupleKeywords.some(kw => relationshipMemoryText.includes(kw))) {
         memoryRelationshipLevel = 3; // 恋人/夫妻
         console.log('[Prompt] Memory detected: COUPLE/Spouse relationship');
-    } else if (closeKeywords.some(kw => memoryText.includes(kw))) {
+    } else if (closeKeywords.some(kw => relationshipMemoryText.includes(kw))) {
         memoryRelationshipLevel = 2; // 密友/深交
         console.log('[Prompt] Memory detected: Close friend relationship');
-    } else if (friendKeywords.some(kw => memoryText.includes(kw))) {
+    } else if (friendKeywords.some(kw => relationshipMemoryText.includes(kw))) {
         memoryRelationshipLevel = 1; // 熟人/朋友
         console.log('[Prompt] Memory detected: Friend/Acquaintance');
     }
