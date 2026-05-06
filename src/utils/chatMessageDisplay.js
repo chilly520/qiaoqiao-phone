@@ -569,7 +569,41 @@ const INNER_VOICE_FIELDS = [
 ]
 
 export function extractInnerVoiceData(content, msg) {
-  const raw = ensureMessageString(content)
+  let raw = ensureMessageString(content)
+
+  // ============================================================
+  // PRE-CLEAN: Remove HTML/CSS pollution that may precede INNER_VOICE
+  // This handles cases where AI output mixes card HTML with voice data
+  // ============================================================
+
+  // 1. Remove HTML tags and CSS styles from the beginning (before [INNER_VOICE])
+  const innerVoiceStart = raw.indexOf('[INNER_VOICE]') !== -1
+    ? raw.indexOf('[INNER_VOICE]')
+    : raw.indexOf('[INNERVOICE]') !== -1
+      ? raw.indexOf('[INNERVOICE]')
+      : -1
+
+  if (innerVoiceStart > 0) {
+    // Keep only content from [INNER_VOICE] onwards
+    const beforeIV = raw.substring(0, innerVoiceStart)
+    const afterIV = raw.substring(innerVoiceStart)
+
+    // Check if the part before INNER_VOICE is mostly HTML/CSS pollution
+    const htmlTagCount = (beforeIV.match(/<[^>]+>/g) || []).length
+    const styleTagCount = (beforeIV.match(/<style[\s\S]*?<\/style>/gi) || []).length
+    const totalLength = beforeIV.length
+
+    // If there are significant HTML elements before INNER_VOICE, clean them
+    if ((htmlTagCount >= 2 && styleTagCount >= 1) || (htmlTagCount >= 5)) {
+      console.log('[extractInnerVoice] Detected HTML/CSS pollution before INNER_VOICE, cleaning...')
+      console.log('[extractInnerVoice] Removed', htmlTagCount, 'HTML tags,', styleTagCount, 'style blocks')
+      raw = afterIV  // Use only the clean part
+    }
+  }
+
+  // 2. Also remove [/CARD], [/OFFLINE] tags that might appear right before [INNER_VOICE]
+  raw = raw.replace(/\[\/CARD\]\s*\[\/OFFLINE\]\s*(?=\[INNER)/gi, '')
+
   let block = extractTaggedBlock(raw, 'INNER_VOICE') || extractTaggedBlock(raw, 'INNERVOICE')
   
   // \u5982\u679c\u4e25\u683c\u5339\u914d\u5931\u8d25\uff0c\u5c1d\u8bd5\u4f7f\u7528\u6b63\u5219\u5339\u914d\uff08\u652f\u6301\u672a\u6b63\u786e\u95ed\u5408\u7684\u6807\u7b7e\uff09
