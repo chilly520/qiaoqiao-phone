@@ -1788,16 +1788,27 @@ onMounted(() => {
 })
 
 const backgroundHistory = computed(() => {
-    const chatMode = settingsStore.getChatOfflineMode(props.chatData?.id)
-    return chatMode?.backgroundHistory || []
+    return settingsStore.getWechatBgHistory('chat')
 })
 
 const clearBgHistory = () => {
     if (confirm('确定要清空所有背景图历史吗？')) {
-        settingsStore.setChatOfflineMode(props.chatData?.id, { backgroundHistory: [] })
+        settingsStore.clearWechatBgHistory('chat')
         showToast('背景图历史已清空', 'success')
     }
 }
+
+// 监听 bgUrl 变化，自动保存到历史记录
+watch(() => localData.value.bgUrl, (newUrl) => {
+    if (newUrl && newUrl.trim()) {
+        // 使用防抖避免频繁保存
+        setTimeout(() => {
+            if (localData.value.bgUrl === newUrl) {
+                settingsStore.setWechatBackground('chat', { url: newUrl })
+            }
+        }, 1000)
+    }
+})
 const toggleGroupLink = (chatId) => {
     if (!localData.value.linkedGroups) localData.value.linkedGroups = []
     if (!localData.value.groupMemoryLimits) localData.value.groupMemoryLimits = {}
@@ -2594,9 +2605,15 @@ const handleBgUpload = async (e) => {
         try {
             const compressed = await compressImage(file, 800, 0.7) // Backgrounds can be larger
             localData.value.bgUrl = compressed
+            // 自动保存到历史记录
+            settingsStore.setWechatBackground('chat', { url: compressed })
         } catch (err) {
             const reader = new FileReader()
-            reader.onload = (e) => localData.value.bgUrl = e.target.result
+            reader.onload = (e) => {
+                localData.value.bgUrl = e.target.result
+                // 自动保存到历史记录
+                settingsStore.setWechatBackground('chat', { url: e.target.result })
+            }
             reader.readAsDataURL(file)
         }
     }

@@ -75,10 +75,10 @@ export const useSettingsStore = defineStore('settings', () => {
         theme: 'default', // 新增：主题选择 (default | kawaii | business)
         wallpaperOverlayOpacity: 0.5, // 新增：夜间模式聊天壁纸遮罩透明度 (0-1)
         wechatBackgrounds: {
-            chat: { url: '', localUrl: '' },
-            contacts: { url: '', localUrl: '' },
-            discover: { url: '', localUrl: '' },
-            me: { url: '', localUrl: '' }
+            chat: { url: '', localUrl: '', history: [] },
+            contacts: { url: '', localUrl: '', history: [] },
+            discover: { url: '', localUrl: '', history: [] },
+            me: { url: '', localUrl: '', history: [] }
         },
         userProfile: {
             name: '我',
@@ -612,8 +612,42 @@ export const useSettingsStore = defineStore('settings', () => {
         if (!personalization.value.wechatBackgrounds) {
             personalization.value.wechatBackgrounds = { chat: {}, contacts: {}, discover: {}, me: {} }
         }
-        personalization.value.wechatBackgrounds[tab] = { ...personalization.value.wechatBackgrounds[tab], ...data }
+        const current = personalization.value.wechatBackgrounds[tab] || {}
+
+        // 如果有新的背景URL，自动保存到历史记录
+        if (data.url && data.url !== current.url) {
+            if (!current.history) current.history = []
+            // 避免重复（检查最近5条）
+            const recent5 = current.history.slice(0, 5)
+            const isDuplicate = recent5.some(bg => bg.url === data.url)
+            if (!isDuplicate) {
+                current.history.unshift({
+                    url: data.url,
+                    timestamp: Date.now(),
+                    date: new Date().toLocaleString('zh-CN')
+                })
+                // 最多保留20条
+                if (current.history.length > 20) {
+                    current.history = current.history.slice(0, 20)
+                }
+            }
+        }
+
+        personalization.value.wechatBackgrounds[tab] = { ...current, ...data }
         saveToStorage()
+    }
+
+    // 获取微信背景历史记录
+    function getWechatBgHistory(tab) {
+        return personalization.value.wechatBackgrounds?.[tab]?.history || []
+    }
+
+    // 清空微信背景历史
+    function clearWechatBgHistory(tab) {
+        if (personalization.value.wechatBackgrounds?.[tab]) {
+            personalization.value.wechatBackgrounds[tab].history = []
+            saveToStorage()
+        }
     }
 
     // Preset Actions
@@ -1071,6 +1105,8 @@ export const useSettingsStore = defineStore('settings', () => {
         saveToStorage, loadFromStorage,
         setWallpaper, setIcon, clearIcon, setWidget, setCardBg, setGlobalFont, setGlobalBg, setCustomCss, setTheme, updateUserProfile,
         setWechatBackground,
+        getWechatBgHistory,
+        clearWechatBgHistory,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
         setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
