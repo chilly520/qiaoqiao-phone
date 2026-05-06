@@ -2997,10 +2997,11 @@ export const useChatStore = defineStore('chat', () => {
                     }
                 }
 
-                // Reconstruct the full content with proper order: dialogue first, then inner voice
+                // --- V18 PRE-INITIALIZATION (TDZ Prevention) ---
+                // Pre-declare all variables used in sub-blocks to avoid minification-induced TDZ errors
+                let _pendingMomentCardData = null;
+                let aiQuote = null;
                 let properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
-
-                console.log(`[AI Reply] Dialogue length: ${pureDialogue.length}, InnerVoice: ${!!innerVoiceBlock}, Raw: ${fullContent.substring(0, 50)}...`);
 
                 // --- Handle <bgm> Tag ---
                 const bgmRegex = /<bgm>([\s\S]*?)<\/bgm>/i;
@@ -3032,7 +3033,6 @@ export const useChatStore = defineStore('chat', () => {
                 // Remove ^ to allow REPLY tag to be anywhere (e.g. after Inner Voice)
                 const replyRegex = /\[REPLY:\s*(.*?)\]/i;
                 const replyMatch = properlyOrderedContent.match(replyRegex);
-                let aiQuote = null;
                 if (replyMatch && chat.msgs) {
                     const keyword = replyMatch[1].trim();
                     const quotedMsg = chat.msgs.findLast(m =>
