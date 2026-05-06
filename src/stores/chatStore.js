@@ -3064,7 +3064,7 @@ export const useChatStore = defineStore('chat', () => {
                 // --- Pass -1: Extract INNER_VOICE early using balanced braces ---
                 // We do this BEFORE any other regex-based cleaning to preserve the structure.
                 let rawInnerVoiceBlock = "";
-                const result = { innerVoice: undefined };
+                const ivResult = { innerVoice: undefined };  // Renamed from 'result' to avoid TDZ conflict with line 2627
                 const ivMarkerRegex = /\[\s*INNER[-_ ]?VOICE\s*\]\s*/gi;
                 let ivMatch = ivMarkerRegex.exec(properlyOrderedContent);
                 if (ivMatch) {
@@ -3087,10 +3087,10 @@ export const useChatStore = defineStore('chat', () => {
                             const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
                             const closeMatch = remaining.match(/^\s*[\]】]/);
                             if (closeMatch) rawInnerVoiceBlock += closeMatch[0];
-                            
+
                             try {
                                 const jsonStr = properlyOrderedContent.substring(jsonStart, jsonEndIdx + 1);
-                                result.innerVoice = JSON.parse(jsonStr);
+                                ivResult.innerVoice = JSON.parse(jsonStr);  // Use ivResult instead of result
                                 console.log('[ChatStore] Top-level InnerVoice extracted successfully.');
                             } catch (e) {
                                 console.warn('[ChatStore] Top-level InnerVoice parse failed:', e);
