@@ -19,7 +19,7 @@
 
             <!-- Title and level info -->
             <div class="spark-title-area">
-              <h2 class="spark-title">聊得熋熋x{{ sparkInfo?.streak || 0 }}</h2>
+              <h2 class="spark-title">聊得燚燚x{{ sparkInfo?.streak || 0 }}</h2>
               <p class="spark-level-desc">每保持聊天连续超过10天，等级+1</p>
 
               <!-- Level progress bar (like QQ) -->
@@ -352,7 +352,6 @@ function getLevelEmoji(index, streak) {
 @keyframes dotPulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.15); }
-}
 }
 
 .spark-body {

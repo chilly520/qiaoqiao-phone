@@ -1858,10 +1858,10 @@ const batchDeleteMemory = () => {
 
     const chat = chatStore.chats[props.chatData.id]
     if (chat && chat.memory) {
-        // Convert reversed indices to original array indices
+        // UI index matches memory array index directly (no reversal needed)
         const originalIndicesToDelete = new Set()
-        selectedIndices.value.forEach(reversedIndex => {
-            const originalIndex = chat.memory.length - 1 - reversedIndex
+        selectedIndices.value.forEach(selectedIndex => {
+            const originalIndex = selectedIndex
             originalIndicesToDelete.add(originalIndex)
         })
 
@@ -1889,8 +1889,8 @@ const batchSummarizeMemory = async () => {
         const selectedContents = []
         const originalIndicesToDelete = new Set()
 
-        selectedIndices.value.forEach(reversedIndex => {
-            const originalIndex = chat.memory.length - 1 - reversedIndex
+        selectedIndices.value.forEach(selectedIndex => {
+            const originalIndex = selectedIndex
             if (originalIndex >= 0 && originalIndex < chat.memory.length) {
                 const mem = chat.memory[originalIndex]
                 const content = typeof mem === 'object' ? (mem.content || JSON.stringify(mem)) : String(mem)
