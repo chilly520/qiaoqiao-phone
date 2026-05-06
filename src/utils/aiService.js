@@ -560,9 +560,51 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 lastUserMsg.content += recallResult
             }
         }
-        const memorySummary = getMemorySummary(charId)
+
+        // ============================================================
+        // Build complete memory context from Memory Management Library
+        // Include: 1) Full memory library (summary + historical memories)
+        //           2) Memory log fragments (recent events)
+        // ============================================================
+        const memoryParts = []
+
+        // 1. Memory Management Library (完整记忆管理库)
+        // This is the PRIMARY memory source - user-curated summaries
+        if (chatStore && chatStore.chats[charId]) {
+            const chat = chatStore.chats[charId]
+
+            // Latest summary (最新摘要)
+            if (chat.summary && chat.summary.trim()) {
+                memoryParts.push(`【最新记忆摘要】\n${chat.summary}`)
+            }
+
+            // Historical memories (历史记忆列表)
+            if (Array.isArray(chat.memory) && chat.memory.length > 0) {
+                const memText = chat.memory
+                    .filter(m => m && typeof m === 'string' && m.trim())
+                    .join('\n\n')
+                if (memText) {
+                    memoryParts.push(`【历史记忆库 (${chat.memory.length}条)】\n${memText}`)
+                }
+            }
+        }
+
+        // 2. Memory Log Fragments (记忆日志碎片 - recent events)
+        // This is supplementary - auto-extracted from conversations
+        const memorySummary = getMemorySummary(charId, 20)  // Increased to 20
         if (memorySummary) {
-            memoryText = memorySummary
+            memoryParts.push(memorySummary)
+        }
+
+        // Combine all memory parts
+        if (memoryParts.length > 0) {
+            memoryText = memoryParts.join('\n\n---\n\n')
+            console.log('[aiService] Memory context built:', {
+                parts: memoryParts.length,
+                totalLength: memoryText.length,
+                hasLibrary: !!memoryParts[0],
+                hasLog: memoryParts.length > 1
+            })
         }
     }
 
