@@ -2788,19 +2788,10 @@ const saveSettings = async () => {
 
         // Construct the update payload intelligently (finalData is already defined above)
         // Ensure latest localData values are synced if not already
-        Object.assign(finalData, localData.value);
-        
-        // --- 核心优化：空间检查与静默清理 ---
-        const clearQuota = () => {
-            try {
-                // 清理视觉描述缓存（通常很大且非核心数据）
-                localStorage.removeItem('qiaoqiao_avatar_descriptions');
-                console.log('[Settings] Cleared avatar descriptions cache to free up space.');
-            } catch (e) {}
-        }
+        // Object.assign(finalData, localData.value); // REMOVED: This was undoing our previous deletions and resizing
 
         // --- 核心优化：头像去重保存 ---
-        // 如果头像数据是 base64 且没有发生变化，从更新负载中移除它，避免重复写入巨大的字符串
+        // 确保 finalData 里的头像确实被检查过
         if (finalData.avatar && finalData.avatar === props.chatData.avatar) {
             console.log('[Settings] Avatar unchanged, removing from payload to save space');
             delete finalData.avatar;
@@ -2808,6 +2799,15 @@ const saveSettings = async () => {
         if (finalData.userAvatar && finalData.userAvatar === props.chatData.userAvatar) {
             console.log('[Settings] User avatar unchanged, removing from payload to save space');
             delete finalData.userAvatar;
+        }
+
+        // --- 核心优化：空间检查与静默清理 ---
+        const clearQuota = () => {
+            try {
+                // 清理视觉描述缓存（通常很大且非核心数据）
+                localStorage.removeItem('qiaoqiao_avatar_descriptions');
+                console.log('[Settings] Cleared avatar descriptions cache to free up space.');
+            } catch (e) {}
         }
 
         // 1. Update character in centralized store

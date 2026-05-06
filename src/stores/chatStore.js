@@ -3580,10 +3580,6 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Pass 3: Handle naked <html>...</html> or large <div> blocks anywhere in the message
                 // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
-                // This version is greedy and handles leading emojis/text often found in AI-generated "status cards".
-                // Notice this now runs on processedContent so it doesn't corrupt extracted JSON blocks!
-                // CRITICAL FIX: HTML match must NOT cross [OFFLINE]/[ONLINE]/[/OFFLINE]/[/ONLINE] mode control tags
-                // Use a custom replacer that validates the match doesn't span across mode boundaries
                 processedContent = processedContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[^<]*)?(<(html|div|section|article|style|svg)[^]*?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
                     // GUARD: If match contains a mode boundary tag, skip it to preserve [OFFLINE]/[ONLINE] integrity
                     if (/\[\s*\/?\s*(?:OFFLINE|ONLINE)\s*\]/i.test(match)) {
@@ -3597,6 +3593,14 @@ export const useChatStore = defineStore('chat', () => {
                         return ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
                     }
                     return match;
+                });
+                
+                // Pass 3.1: Specific catch for naked <style> + <div> or similar blocks often missed by AI
+                processedContent = processedContent.replace(/(?:\n|^)\s*(<style>[\s\S]*?<\/style>[\s\S]*?(?:<div|<section|<article)[^]*?<\/(?:div|section|article)>)/gi, (match, htmlContent) => {
+                    const html = htmlContent.trim();
+                    const json = JSON.stringify({ type: 'html', html: html });
+                    cardBlocks.push(`\n[CARD]${json}\n`);
+                    return ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
                 });
 
                 // Pass 3.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
@@ -3637,7 +3641,8 @@ export const useChatStore = defineStore('chat', () => {
                 // DEFENSE: Wrap in try-catch to prevent Vite-minified TDZ errors ("Cannot access 'Xe'")
                 let finalSegments = [];
                 try {
-                const splitRegex = new RegExp("(\\r?\\n|__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\]|\\([^\\)]+\\)|\\uff08[^\\uff09]+\\uff09)");
+                const splitRegex = new RegExp("(\\r?\\n|__CARD_PLACEHOLDER_\\d+__|\\[\\/\\?\\s*OFFLINE\\s*\\]|\\[\\/\\?\\s*ONLINE\\s*\\]|\\|\\|[\\s\\S]*?\\|\\||\\u2016[\\s\\S]*?\\u2016|\\u3010[^\\u3011]+\\u3011|\\[[^\\]]+\\])");
+                // 不再用正则分割中英文括号，改用后处理合并逻辑以支持嵌套括号
                 const rawParts = processedContent.split(splitRegex);
 
                 useLoggerStore().debug(`[Split] Parts count: ${rawParts.length}`);
