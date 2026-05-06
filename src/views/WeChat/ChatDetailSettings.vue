@@ -930,6 +930,37 @@
                         <!-- Hidden BG Upload Input -->
                         <input type="file" ref="bgUploadInput" class="hidden" accept="image/*" @change="handleBgUpload">
 
+                        <!-- Background History List -->
+                        <div v-if="backgroundHistory.length > 0" class="mt-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-medium"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
+                                    📸 背景图历史 ({{ backgroundHistory.length }})
+                                </span>
+                                <button @click="clearBgHistory"
+                                    class="text-[10px] px-2 py-1 rounded bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-red-900/20 text-red-400 hover:bg-red-900/30' : ''">
+                                    清空
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto p-1 rounded-lg border"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10' : 'bg-gray-50 border-gray-200'">
+                                <div v-for="(bg, index) in backgroundHistory" :key="index"
+                                    class="relative group cursor-pointer rounded-lg overflow-hidden aspect-square border-2 transition-all hover:scale-105"
+                                    :class="localData.bgUrl === bg.url ? 'border-green-500 shadow-lg' : (settingsStore.personalization.theme === 'dark' ? 'border-white/20 hover:border-white/50' : 'border-gray-300 hover:border-gray-400')"
+                                    @click="localData.bgUrl = bg.url"
+                                    :title="`${bg.date}\n${bg.prompt || '自定义背景'}`">
+                                    <img :src="bg.url" class="w-full h-full object-cover" loading="lazy">
+                                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                                        <span class="text-white text-[9px] opacity-0 group-hover:opacity-100 transition-opacity font-medium px-1 truncate w-full text-center"
+                                            v-text="bg.prompt?.substring(0, 15) || `#${index + 1}`"></span>
+                                    </div>
+                                    <div v-if="localData.bgUrl === bg.url"
+                                        class="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-[8px]">✓</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <div class="flex justify-between text-xs mb-1"
@@ -1755,6 +1786,18 @@ onMounted(() => {
         sparkStore.initSpark(props.chatData.id)
     }
 })
+
+const backgroundHistory = computed(() => {
+    const chatMode = settingsStore.getChatOfflineMode(props.chatData?.id)
+    return chatMode?.backgroundHistory || []
+})
+
+const clearBgHistory = () => {
+    if (confirm('确定要清空所有背景图历史吗？')) {
+        settingsStore.setChatOfflineMode(props.chatData?.id, { backgroundHistory: [] })
+        showToast('背景图历史已清空', 'success')
+    }
+}
 const toggleGroupLink = (chatId) => {
     if (!localData.value.linkedGroups) localData.value.linkedGroups = []
     if (!localData.value.groupMemoryLimits) localData.value.groupMemoryLimits = {}

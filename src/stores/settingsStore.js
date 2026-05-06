@@ -268,7 +268,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // --- 3.5 Offline Mode State (Per Chat) ---
     // 改为按聊天 ID 存储，每个聊天独立的线上线下状态和背景设置
-    const chatOfflineModes = ref({}) // { chatId: { isOfflineMode: boolean, enableAIBackground: boolean, customBackground: string, backgroundType: string, themeMode: string, opacity: number, blur: number, fontScale: number } }
+    const chatOfflineModes = ref({}) // { chatId: { isOfflineMode: boolean, enableAIBackground: boolean, customBackground: string, backgroundHistory: array, backgroundType: string, themeMode: string, opacity: number, blur: number, fontScale: number } }
     
     // --- 3.6 Global Font Scale ---
     const fontScale = ref(1) // 全局字体缩放比例，默认 1
@@ -282,6 +282,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 isOfflineMode: false,
                 enableAIBackground: false,
                 customBackground: '',
+                backgroundHistory: [],  // 背景图历史记录
                 backgroundType: 'default',
                 themeMode: 'day',
                 opacity: 1,
@@ -313,6 +314,37 @@ export const useSettingsStore = defineStore('settings', () => {
         const current = getChatOfflineMode(chatId)
         chatOfflineModes.value[chatId] = { ...current, enableAIBackground: !current.enableAIBackground }
         saveToStorage()
+    }
+
+    // 添加背景图到历史记录
+    function addBackgroundToHistory(chatId, imageUrl, scenePrompt) {
+        if (!chatId || !imageUrl) return
+        const current = getChatOfflineMode(chatId)
+        if (!current.backgroundHistory) current.backgroundHistory = []
+
+        // 避免重复添加相同的背景图（最近5条内）
+        const recent5 = current.backgroundHistory.slice(0, 5)
+        const isDuplicate = recent5.some(bg => bg.url === imageUrl)
+
+        if (!isDuplicate) {
+            current.backgroundHistory.unshift({
+                url: imageUrl,
+                prompt: scenePrompt || '',
+                timestamp: Date.now(),
+                date: new Date().toLocaleString('zh-CN')
+            })
+
+            // 最多保留20条历史记录
+            if (current.backgroundHistory.length > 20) {
+                current.backgroundHistory = current.backgroundHistory.slice(0, 20)
+            }
+
+            chatOfflineModes.value[chatId] = { ...current }
+            saveToStorage()
+            console.log(`[SettingsStore] 背景图已添加到历史，当前共 ${current.backgroundHistory.length} 条`)
+        }
+
+        return current.backgroundHistory
     }
     
     // 兼容旧代码的 getter（返回当前聊天的状态）
@@ -1044,6 +1076,7 @@ export const useSettingsStore = defineStore('settings', () => {
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
         toggleOfflineMode, toggleAIBackground, setOfflineModeConfig,
         getChatOfflineMode, setChatOfflineMode, toggleChatOfflineMode, toggleChatAIBackground,
+        addBackgroundToHistory,
         fontScale, setFontScale,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
 

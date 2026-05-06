@@ -1470,8 +1470,12 @@ watch(
               console.log('[OfflineMode] 检测到场景指令，生成背景图:', scenePrompt)
               const imageUrl = await generateImage(scenePrompt, { width: 1024, height: 1024 })
               if (imageUrl) {
+                // 保存到历史记录（而不是直接覆盖）
+                const chatStore = useChatStore()
+                settingsStore.addBackgroundToHistory(chatStore.currentChatId, imageUrl, scenePrompt)
+                // 同时更新当前使用的背景图
                 settingsStore.offlineMode.customBackground = imageUrl
-                console.log('[OfflineMode] 背景图已更新:', imageUrl)
+                console.log('[OfflineMode] 背景图已更新并保存到历史')
               }
             } catch (e) {
               console.error('[OfflineMode] 生成背景图失败:', e)
