@@ -1918,8 +1918,9 @@ const diceTotalValue = computed(() => {
 // Parse Inner Voice dynamically to extract all parameters
 const parsedInnerVoice = computed(() => {
     if (!props.msg) return null;
-    const data = extractInnerVoiceData(props.msg.content, props.msg);
-    if (!data) return null;
+    try {
+      const data = extractInnerVoiceData(props.msg.content, props.msg);
+      if (!data) return null;
     
     // If it's just a single field we care about, return the string for simplicity
     const keys = Object.keys(data);
@@ -1938,6 +1939,10 @@ const parsedInnerVoice = computed(() => {
     }
     
     return data;
+    } catch (e) {
+      console.error('[ChatMessageItem] extractInnerVoiceData error:', e);
+      return null;
+    }
 });
 
 const hasHtmlContent = computed(() => {

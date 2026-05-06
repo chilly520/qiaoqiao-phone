@@ -2660,7 +2660,23 @@ ${"```"}
 
         if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
             console.error('[Batch Moments] Cannot find JSON container in response:', jsonStr.substring(0, 500))
-            throw new Error('AI Response does not contain a valid JSON container')
+            // Try to extract moments from plain text as fallback
+            const textLines = jsonStr.split('\n').filter(line => line.trim().length > 10)
+            if (textLines.length > 0) {
+                console.warn('[Batch Moments] Falling back to text extraction')
+                return {
+                    newMoments: textLines.slice(0, count).map((line, i) => ({
+                        authorId: characters[i % characters.length]?.id || 'unknown',
+                        content: line.trim(),
+                        location: '',
+                        images: [],
+                        mentions: [],
+                        interactions: []
+                    })),
+                    ecosystemUpdates: []
+                }
+            }
+            return { newMoments: [], ecosystemUpdates: [] }
         }
 
         jsonStr = jsonStr.substring(startIndex, endIndex + 1)

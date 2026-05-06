@@ -324,11 +324,22 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             const response = await generateReply([{ role: 'system', content: systemInstructions }], chat);
             if (response && response.content) {
                 addMessage(chatId, { role: 'ai', content: response.content });
+                triggerToast('个人档案更新成功', 'success');
+            } else {
+                throw new Error('AI返回空响应')
             }
-            triggerToast('个人档案更新成功', 'success');
         } catch (e) {
             console.error('Bio analysis failed:', e);
-            triggerToast('解析失败，请检查网络', 'error');
+            const errorMsg = e.message || '未知错误'
+            if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('timeout')) {
+                triggerToast('网络连接失败，请检查网络', 'error');
+            } else if (errorMsg.includes('API') || errorMsg.includes('token') || errorMsg.includes('401') || errorMsg.includes('403')) {
+                triggerToast('API配置错误或Token无效', 'error');
+            } else if (errorMsg.includes('空响应') || errorMsg.includes('empty')) {
+                triggerToast('AI服务暂时无响应，请稍后重试', 'error');
+            } else {
+                triggerToast(`档案生成失败: ${errorMsg.substring(0, 30)}`, 'error');
+            }
         } finally {
             typingStatus.value[chatId] = false;
             isProfileProcessing.value[chatId] = false;
