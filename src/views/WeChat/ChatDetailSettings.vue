@@ -1771,7 +1771,7 @@ const toggleGroupLink = (chatId) => {
 }
 
 const availableGroups = computed(() => {
-    return Object.values(chatStore.chats).filter(c => c.isGroup && !c.isDissolved && !c.isArchived)
+    return Object.values(chatStore.chats || {}).filter(c => c && c.isGroup && !c.isDissolved && !c.isArchived)
 })
 
 const memories = computed(() => {
