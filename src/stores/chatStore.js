@@ -3981,8 +3981,8 @@ export const useChatStore = defineStore('chat', () => {
 
                             // V14: Attach inner-voice to the LAST segment if it's AI turn, 
                             // to avoid breaking the initial scene/location markers
-                            if (i === finalSegments.length - 1 && innerVoiceBlock) {
-                                msgContent += (msgContent ? '\n\n' : '') + innerVoiceBlock;
+                            if (i === finalSegments.length - 1 && rawInnerVoiceBlock) {
+                                msgContent += (msgContent ? '\n\n' : '') + rawInnerVoiceBlock;
                             }
 
                             // For group chats: use pre-computed sender identity

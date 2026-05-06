@@ -516,12 +516,18 @@ onMounted(async () => {
         const info = batteryMonitor.getBatteryInfo()
         batteryLevel.value = info.level
         batteryCharging.value = info.charging
+        let hasShownLowBattery = false
         unsubCharge = batteryMonitor.onChange((info) => {
             batteryLevel.value = info.level
             batteryCharging.value = info.charging
+            // 充电后重置低电量提醒标记，下次掉到30以下可以再提醒一次
+            if (info.charging) hasShownLowBattery = false
         })
         unsubLow = batteryMonitor.onLowBattery((info) => {
             if (!chatData.value || info.charging) return
+            // 只提醒一次，防止刷屏
+            if (hasShownLowBattery) return
+            hasShownLowBattery = true
             const systemMsg = {
                 id: `sys_battery_${Date.now()}`,
                 role: 'system',
