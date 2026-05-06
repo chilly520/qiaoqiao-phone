@@ -2559,8 +2559,44 @@ const handleExportCard = () => {
                     return m
                 })
             } else {
-                exportData.msgs = chat.msgs
+                // Still clean oversized base64 images in messages
+                exportData.msgs = chat.msgs.map(m => {
+                    const msgCopy = { ...m }
+                    if (msgCopy.content && typeof msgCopy.content === 'string' && msgCopy.content.length > 50000) {
+                        // Check if content contains large base64 image
+                        if (msgCopy.content.includes('data:image')) {
+                            console.log('[ExportCard] Removing large base64 image from message')
+                            msgCopy.content = msgCopy.content.replace(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]{10000,}/g, '[图片已压缩]')
+                        }
+                    }
+                    return msgCopy
+                })
             }
+        }
+
+        // CRITICAL: Clean oversized base64 avatars to prevent "Invalid string length" error
+        let avatarCleaned = false
+
+        // Clean character avatar
+        if (exportData.character.avatar && typeof exportData.character.avatar === 'string' && exportData.character.avatar.length > 10000) {
+            if (exportData.character.avatar.startsWith('data:image')) {
+                console.log('[ExportCard] Removing large character avatar:', Math.round(exportData.character.avatar.length / 1024), 'KB')
+                exportData.character.avatar = ''
+                avatarCleaned = true
+            }
+        }
+
+        // Clean user avatar
+        if (exportData.user?.avatar && typeof exportData.user.avatar === 'string' && exportData.user.avatar.length > 10000) {
+            if (exportData.user.avatar.startsWith('data:image')) {
+                console.log('[ExportCard] Removing large user avatar:', Math.round(exportData.user.avatar.length / 1024), 'KB')
+                exportData.user.avatar = ''
+                avatarCleaned = true
+            }
+        }
+
+        if (avatarCleaned) {
+            showToast('⚠️ 已优化大尺寸头像以减小文件', 'info')
         }
 
         // Try to stringify safely
