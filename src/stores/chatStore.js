@@ -3017,6 +3017,7 @@ export const useChatStore = defineStore('chat', () => {
                 let jsonStr, momentData, newMoment, momentResult;
                 let shareJsonStr, shareMomentData, newShareMoment, shareMomentResult;
                 let rawSegments = [], currentRawSegment = "", cardBlocks = [];
+                let targetId = "";
 
                 // --- Handle <bgm> Tag ---
                 bgmMatch = properlyOrderedContent.match(bgmRegex);
@@ -3278,7 +3279,7 @@ export const useChatStore = defineStore('chat', () => {
                 const likeRegex = /\[LIKE[:：]\s*([^\]\s]+)\]/gi;
                 let likeMatch;
                 while ((likeMatch = likeRegex.exec(properlyOrderedContent)) !== null) {
-                    let targetId = likeMatch[1].trim();
+                    targetId = likeMatch[1].trim();
                     // Fallback Logic: Try to find actual moment if ID is hallucinated
                     if (!momentsStore.moments.some(m => m.id === targetId)) {
                         const ref = [...chat.msgs].reverse().find(m => m._momentReferenceId);
@@ -3290,7 +3291,7 @@ export const useChatStore = defineStore('chat', () => {
                 const commentRegex = /\[COMMENT[:：]\s*([^\]\s:]+)[:：]\s*([\s\S]+?)\]/gi;
                 let commentMatch;
                 while ((commentMatch = commentRegex.exec(properlyOrderedContent)) !== null) {
-                    let targetId = commentMatch[1].trim();
+                    targetId = commentMatch[1].trim();
                     if (!momentsStore.moments.some(m => m.id === targetId)) {
                         const ref = [...chat.msgs].reverse().find(m => m._momentReferenceId);
                         if (ref) targetId = ref._momentReferenceId;
