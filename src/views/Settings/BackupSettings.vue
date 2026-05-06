@@ -473,6 +473,58 @@ async function handleConfirmExport() {
     let chatsData = JSON.parse(JSON.stringify(chatStore.chats || {}))
     chatsData = cleanObject(chatsData, 'chats')
 
+    // ============================================================
+    // EXTRA: Aggressively compress chat messages for export
+    // This reduces message content size to prevent "Invalid string length"
+    // ============================================================
+    const MAX_MSG_LENGTH = 3000  // Max characters per message
+    const MAX_MSGS_PER_CHAT = 1000  // Max messages per chat (keep recent)
+
+    let totalMsgsBefore = 0
+    let totalMsgsAfter = 0
+    let truncatedCount = 0
+
+    for (const chatId in chatsData) {
+        const chat = chatsData[chatId]
+        if (!chat || !chat.msgs || !Array.isArray(chat.msgs)) continue
+
+        totalMsgsBefore += chat.msgs.length
+
+        // 1. Limit number of messages (keep most recent)
+        if (chat.msgs.length > MAX_MSGS_PER_CHAT) {
+            const removed = chat.msgs.length - MAX_MSGS_PER_CHAT
+            console.log('[Backup] Truncating chat', chatId, ': removing', removed, 'old messages')
+            chat.msgs = chat.msgs.slice(-MAX_MSGS_PER_CHAT)
+        }
+
+        // 2. Truncate long message contents
+        chat.msgs.forEach((msg, idx) => {
+            if (msg.content && typeof msg.content === 'string' && msg.content.length > MAX_MSG_LENGTH) {
+                const originalLength = msg.content.length
+                msg.content = msg.content.substring(0, MAX_MSG_LENGTH) + '\n...[内容已截断以减小文件大小]'
+                truncatedCount++
+                if (truncatedCount <= 5) {  // Only log first 5
+                    console.log('[Backup] Truncated msg', idx, ':', Math.round(originalLength / 1024), 'KB →', Math.round(msg.content.length / 1024), 'KB')
+                }
+            }
+
+            // Remove raw HTML/CSS from card content (can be very large)
+            if (msg.rawHtml && typeof msg.rawHtml === 'string') {
+                delete msg.rawHtml
+            }
+            if (msg.rawContent && typeof msg.rawContent === 'string' && msg.rawContent.length > 5000) {
+                delete msg.rawContent
+            }
+        })
+
+        totalMsgsAfter += chat.msgs.length
+    }
+
+    if (truncatedCount > 0 || totalMsgsBefore !== totalMsgsAfter) {
+        console.log('[Backup] Message compression:', totalMsgsBefore, '→', totalMsgsAfter, 'msgs,', truncatedCount, 'truncated')
+        chatStore.triggerToast('⚠️ 已压缩聊天记录 (' + totalMsgsAfter + '条消息)', 'info')
+    }
+
     let momentsData = JSON.parse(JSON.stringify(momentsStore.moments || []))
     momentsData = cleanObject(momentsData, 'moments')
 
