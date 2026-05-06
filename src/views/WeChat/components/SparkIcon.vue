@@ -14,7 +14,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useSparkStore } from '../../stores/sparkStore'
+import { useSparkStore } from '../../../stores/sparkStore'
 
 const props = defineProps({
   charId: { type: String, required: true },
