@@ -2654,7 +2654,7 @@ export const useChatStore = defineStore('chat', () => {
             // 3. 添加 AI 回复 (拆分消息 - Data Level Splitting)
             if (result.content) {
                 let fullContent = result.content;
-                let _pendingMomentCardData = null;  // Track MOMENT_SHARE data to attach as moment_card
+                // _pendingMomentCardData = null; // MOVED TO TOP
 
                 setStreamingMessage(chatId, null, fullContent, options.mode || 'online')
 
