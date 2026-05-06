@@ -2997,15 +2997,28 @@ export const useChatStore = defineStore('chat', () => {
                     }
                 }
 
-                // --- V18 PRE-INITIALIZATION (TDZ Prevention) ---
-                // Pre-declare all variables used in sub-blocks to avoid minification-induced TDZ errors
+                // --- V18 ULTIMATE TDZ PREVENTION (Variable Hoisting) ---
                 let _pendingMomentCardData = null;
                 let aiQuote = null;
                 let properlyOrderedContent = pureDialogue + (innerVoiceBlock ? '\n' + innerVoiceBlock : '');
+                
+                // Regexes declared early
+                let bgmRegex = /<bgm>([\s\S]*?)<\/bgm>/i;
+                let patRegex = /\[SET_PAT:(.+?)(?::(.+?))?\]/i;
+                let replyRegex = /\[REPLY:\s*(.*?)\]/i;
+                let nudgeRegex = /\[(NUDGE(?:_SELF)?)(?::(.+?))?\]/i;
+                let recallRegex = /\[(?:RECALL|撤回)(?::(.+?))?\]/i;
+                let momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
+                let momentShareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[[A-Z_]|【|\[INNER_VOICE|\[\/\w|$))/i;
+                
+                // Matches and temporary variables
+                let bgmMatch, patMatch, replyMatch, nudgeMatch, recallMatch, momentMatch, momentShareMatch;
+                let command, modifier, action, target, suffix, keyword, targetIdx;
+                let jsonStr, momentData, newMoment, momentResult;
+                let shareJsonStr, shareMomentData, newShareMoment, shareMomentResult;
 
                 // --- Handle <bgm> Tag ---
-                const bgmRegex = /<bgm>([\s\S]*?)<\/bgm>/i;
-                const bgmMatch = properlyOrderedContent.match(bgmRegex);
+                bgmMatch = properlyOrderedContent.match(bgmRegex);
                 if (bgmMatch) {
                     const tagContent = bgmMatch[1].trim();
                     const musicStore = useMusicStore();
@@ -3015,8 +3028,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle [SET_PAT] Command ---
-                const patRegex = /\[SET_PAT:(.+?)(?::(.+?))?\]/i
-                const patMatch = properlyOrderedContent.match(patRegex)
+                patMatch = properlyOrderedContent.match(patRegex)
                 if (patMatch) {
                     const newAction = patMatch[1].trim()
                     if (newAction.toLowerCase() === 'reset') {
@@ -3030,9 +3042,6 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle Quote (REPLY) ---
-                // Remove ^ to allow REPLY tag to be anywhere (e.g. after Inner Voice)
-                const replyRegex = /\[REPLY:\s*(.*?)\]/i;
-                const replyMatch = properlyOrderedContent.match(replyRegex);
                 if (replyMatch && chat.msgs) {
                     const keyword = replyMatch[1].trim();
                     const quotedMsg = chat.msgs.findLast(m =>
@@ -3088,15 +3097,14 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle [NUDGE] Command (Updated) ---
-                const nudgeRegex = /\[(NUDGE(?:_SELF)?)(?::(.+?))?\]/i;
-                const nudgeMatch = properlyOrderedContent.match(nudgeRegex);
+                nudgeMatch = properlyOrderedContent.match(nudgeRegex);
                 if (nudgeMatch) {
-                    const command = nudgeMatch[1].toUpperCase();
-                    const modifier = nudgeMatch[2] ? nudgeMatch[2].trim() : '';
+                    command = nudgeMatch[1].toUpperCase();
+                    modifier = nudgeMatch[2] ? nudgeMatch[2].trim() : '';
 
-                    const action = chat.patAction || '拍了拍';
-                    let target = 'user';
-                    let suffix = chat.patSuffix || '的头'; // Default suffix fixes "user undefined" issue
+                    action = chat.patAction || '拍了拍';
+                    target = 'user';
+                    suffix = chat.patSuffix || '的头'; // Default suffix fixes "user undefined" issue
 
                     if (command === 'NUDGE_SELF' || modifier === 'self' || modifier === '自己' || modifier === 'me') {
                         suffix = '自己' + (chat.patSuffix || '的脸'); // Contextual suffix
@@ -3128,12 +3136,11 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // --- Handle [RECALL] / [撤回] Command ---
-                const recallRegex = /\[(?:RECALL|撤回)(?::(.+?))?\]/i
-                const recallMatch = properlyOrderedContent.match(recallRegex)
+                recallMatch = properlyOrderedContent.match(recallRegex)
                 if (recallMatch) {
-                    const keyword = recallMatch[1] ? recallMatch[1].trim() : null
+                    keyword = recallMatch[1] ? recallMatch[1].trim() : null
                     const msgs = chat.msgs || []
-                    let targetIdx = -1
+                    targetIdx = -1
 
                     if (keyword) {
                         // Find last message from AI containing keyword
@@ -3162,18 +3169,15 @@ export const useChatStore = defineStore('chat', () => {
 
 
                 // --- Handle [MOMENT] Command (Enhanced with Chinese Tag Support) ---
-                // const momentsStore = useMomentsStore() // Already declared at top of function
-
                 // REGEX FIX: Stop before next command tag, NOT just any '[' (which breaks JSON arrays)
-                const momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
-                const momentMatch = properlyOrderedContent.match(momentRegex);
+                momentMatch = properlyOrderedContent.match(momentRegex);
                 if (momentMatch) {
                     try {
-                        let jsonStr = momentMatch[1].trim()
+                        jsonStr = momentMatch[1].trim()
                         jsonStr = jsonStr.replace(/\\"/g, '"');
                         if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) jsonStr += '}'
 
-                        let momentData = JSON.parse(jsonStr)
+                        momentData = JSON.parse(jsonStr)
 
                         const content = momentData.content || momentData.内容
                         const interactions = momentData.interactions || momentData.互动 || []
@@ -3218,15 +3222,14 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Handle [MOMENT_SHARE] / [分享朋友圈] Command ---
                 // AI uses this format to share moments inline within conversation
-                const momentShareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[[A-Z_]|【|\[INNER_VOICE|\[\/\w|$))/i;
-                const momentShareMatch = properlyOrderedContent.match(momentShareRegex);
+                momentShareMatch = properlyOrderedContent.match(momentShareRegex);
                 if (momentShareMatch) {
                     try {
-                        let shareJsonStr = momentShareMatch[1].trim();
+                        shareJsonStr = momentShareMatch[1].trim();
                         shareJsonStr = shareJsonStr.replace(/\\"/g, '"');
                         if (shareJsonStr.startsWith('{') && !shareJsonStr.endsWith('}')) shareJsonStr += '}';
 
-                        const shareMomentData = JSON.parse(shareJsonStr);
+                        shareMomentData = JSON.parse(shareJsonStr);
 
                         const shareContent = shareMomentData.content || shareMomentData.内容 || '';
                         const shareImagePrompt = shareMomentData.imagePrompt || shareMomentData.配图 || '';
