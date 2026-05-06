@@ -116,7 +116,7 @@ export function searchMemoryLog(charId, options = {}) {
   return logs.slice(-limit)
 }
 
-export function getMemorySummary(charId, maxLines = 10) {
+export function getMemorySummary(charId, maxLines = 20) {
   const chatStore = useChatStoreSync()
   const char = chatStore?.chats?.[charId]
   if (!char) return ''
