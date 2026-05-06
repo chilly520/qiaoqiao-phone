@@ -773,6 +773,77 @@
                     </div>
                 </div>
 
+                <!-- Spark Settings -->
+                <div>
+                    <h3 class="section-title"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
+                        🔥 续火花设置</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center justify-between cursor-pointer group"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">
+                            <span class="flex items-center gap-2 text-sm font-medium group-hover:text-purple-500 transition-colors">
+                                <span>启用续火花</span>
+                                <i v-if="sparkInfo?.streak > 0"
+                                    class="fa-solid fa-fire text-xs animate-pulse"
+                                    :style="{ color: sparkInfo?.level?.color || '#FF6B35' }"></i>
+                                <span v-if="sparkInfo?.streak > 0"
+                                    class="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                                    :style="{ background: (sparkInfo?.level?.color || '#FF6B35') + '20', color: sparkInfo?.level?.color }">
+                                    {{ sparkInfo.streak }}天
+                                </span>
+                            </span>
+                            <button type="button" @click="toggleSparkEnabled"
+                                class="relative w-12 h-7 rounded-full transition-colors duration-300 focus:outline-none"
+                                :class="isSparkEnabled ? 'bg-gradient-to-r from-orange-400 to-pink-500 shadow-lg shadow-orange-200' : (settingsStore.personalization.theme === 'dark' ? 'bg-white/10' : 'bg-gray-200')">
+                                <span class="absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center"
+                                    :class="isSparkEnabled ? 'translate-x-5' : ''">
+                                    <i v-if="isSparkEnabled" class="fa-solid fa-fire text-[8px] text-orange-500"></i>
+                                    <i v-else class="fa-solid fa-slash text-[8px] text-gray-400"></i>
+                                </span>
+                            </button>
+                        </label>
+
+                        <!-- Spark Info Card (if enabled and has data) -->
+                        <div v-if="isSparkEnabled && sparkInfo" class="rounded-xl p-3 border transition-all"
+                            :style="{ background: `linear-gradient(135deg, ${sparkInfo.level?.color}08, transparent)`, borderColor: `${sparkInfo.level?.color}30` }">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xl">{{ sparkInfo.level?.icon }}</span>
+                                    <span class="font-bold text-sm" :style="{ color: sparkInfo.level?.color }">{{ sparkInfo.level?.name }}</span>
+                                </div>
+                                <button @click="showSparkDetail = true"
+                                    class="text-[11px] px-2 py-1 rounded-full transition-all hover:scale-105"
+                                    :style="{ background: `${sparkInfo.level?.color}15`, color: sparkInfo.level?.color }">
+                                    详情 →
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-center text-[11px]">
+                                <div class="rounded-lg p-1.5" :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5' : 'bg-white/80'">
+                                    <div class="font-bold" style="color: #FF6B35">{{ sparkInfo.streak }}</div>
+                                    <div class="text-gray-400">连续</div>
+                                </div>
+                                <div class="rounded-lg p-1.5" :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5' : 'bg-white/80'">
+                                    <div class="font-bold" style="color: #9400D3">{{ sparkInfo.maxStreak }}</div>
+                                    <div class="text-gray-400">最长</div>
+                                </div>
+                                <div class="rounded-lg p-1.5" :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5' : 'bg-white/80'">
+                                    <div class="font-bold" style="color: #00CED1">{{ sparkInfo.totalChats }}</div>
+                                    <div class="text-gray-400">聊天</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Spark Warning (if disabled but had streak) -->
+                        <div v-if="!isSparkEnabled && sparkInfo && sparkInfo.streak > 0"
+                            class="rounded-lg p-2.5 bg-yellow-50 border border-yellow-200 flex items-start gap-2">
+                            <i class="fa-solid fa-triangle-exclamation text-yellow-500 mt-0.5 text-sm"></i>
+                            <p class="text-[11px] text-yellow-700 leading-relaxed">
+                                关闭后当前连续天数将保留，但不再增长。重新开启后继续计算。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Bubble & Background -->
                 <div>
                     <h3 class="section-title"
@@ -1344,8 +1415,15 @@
                     </button>
                 </div>
             </div>
-        </div>
-    </div> <!-- End Main Wrapper -->
+            </div>
+        </div> <!-- End Main Wrapper -->
+
+    <!-- Spark Detail Modal -->
+    <SparkDetailModal
+        :visible="showSparkDetail"
+        :char-id="chatData?.id"
+        :char-name="chatData?.remark || chatData?.name"
+        @close="showSparkDetail = false" />
 </template>
 
 <script setup>
@@ -1355,8 +1433,10 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useWorldBookStore } from '../../stores/worldBookStore'
 import { useSchedulerStore } from '../../stores/schedulerStore'
 import { useAvatarFrameStore } from '../../stores/avatarFrameStore'
+import { useSparkStore } from '../../stores/sparkStore'
 import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
 import AvatarCropper from '../../components/AvatarCropper.vue'
+import SparkDetailModal from './components/SparkDetailModal.vue'
 import { weatherService, POPULAR_CITIES } from '../../utils/weatherService'
 import { generateSummary } from '../../utils/aiService'
 
@@ -1373,6 +1453,7 @@ const settingsStore = useSettingsStore()
 const worldBookStore = useWorldBookStore()
 const schedulerStore = useSchedulerStore()
 const frameStore = useAvatarFrameStore()
+const sparkStore = useSparkStore()
 
 // Load World Book Data
 worldBookStore.loadEntries()
@@ -1632,6 +1713,48 @@ const executeManualSummary = async () => {
 
 // --- Memory Library Logic ---
 const showMemoryModal = ref(false)
+
+// --- Spark (续火花) Logic ---
+const showSparkDetail = ref(false)
+const isSparkEnabled = ref(true)
+
+const sparkInfo = computed(() => {
+    if (!props.chatData?.id) return null
+    sparkStore.initSpark(props.chatData.id)
+    return sparkStore.getSparkInfo(props.chatData.id)
+})
+
+const toggleSparkEnabled = () => {
+    isSparkEnabled.value = !isSparkEnabled.value
+    try {
+        const sparkDisabledChars = JSON.parse(localStorage.getItem('spark_disabled_chars') || '[]')
+        if (isSparkEnabled.value) {
+            const idx = sparkDisabledChars.indexOf(props.chatData.id)
+            if (idx > -1) sparkDisabledChars.splice(idx, 1)
+        } else {
+            if (!sparkDisabledChars.includes(props.chatData.id)) {
+                sparkDisabledChars.push(props.chatData.id)
+            }
+        }
+        localStorage.setItem('spark_disabled_chars', JSON.stringify(sparkDisabledChars))
+        showToast(isSparkEnabled.value ? '✅ 续火花已开启' : '⏸️ 续火花已关闭')
+    } catch (e) {
+        console.error('[Spark] Toggle error:', e)
+    }
+}
+
+onMounted(() => {
+    try {
+        const sparkDisabledChars = JSON.parse(localStorage.getItem('spark_disabled_chars') || '[]')
+        isSparkEnabled.value = !sparkDisabledChars.includes(props.chatData?.id)
+    } catch (e) {
+        isSparkEnabled.value = true
+    }
+
+    if (props.chatData?.id) {
+        sparkStore.initSpark(props.chatData.id)
+    }
+})
 const toggleGroupLink = (chatId) => {
     if (!localData.value.linkedGroups) localData.value.linkedGroups = []
     if (!localData.value.groupMemoryLimits) localData.value.groupMemoryLimits = {}

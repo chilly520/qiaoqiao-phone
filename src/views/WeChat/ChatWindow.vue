@@ -42,6 +42,8 @@ import DiceModal from './modals/DiceModal.vue'
 import TarotModal from './modals/TarotModal.vue'
 import BackpackModal from './modals/BackpackModal.vue'
 import GiftDetailModal from './modals/GiftDetailModal.vue'
+import SparkIcon from './components/SparkIcon.vue'
+import SparkDetailModal from './components/SparkDetailModal.vue'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
@@ -85,6 +87,7 @@ const emit = defineEmits(['back', 'show-profile'])
 
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+const sparkStore = useSparkStore()
 const stickerStore = useStickerStore()
 const walletStore = useWalletStore()
 const favoritesStore = useFavoritesStore()
@@ -176,6 +179,7 @@ const route = useRoute()
 const router = useRouter()
 const chatInputBarRef = ref(null)
 const showSettings = ref(false)
+const showSparkDetail = ref(false)
 
 const showGMMenu = ref(false)
 const showMissionScheduler = ref(false)
@@ -2479,6 +2483,16 @@ const handleSendMessage = async (payload) => {
             return
         }
 
+        sparkStore.initSpark(chatId)
+        try {
+            const disabledChars = JSON.parse(localStorage.getItem('spark_disabled_chars') || '[]')
+            if (!disabledChars.includes(chatId)) {
+                sparkStore.recordChat(chatId)
+            }
+        } catch (e) {
+            sparkStore.recordChat(chatId)
+        }
+
         // 检测用户发送的是否是 HTML 格式的消息
         let msgType = type || 'text'
         let msgContent = content
@@ -3354,8 +3368,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 </div>
                 <div class="flex-1 flex flex-col items-center justify-center z-10 overflow-hidden cursor-pointer mx-[70px] h-full"
                     @click="openStatusEditor">
-                    <div class="w-full text-center font-bold text-[16px] truncate text-black leading-tight px-4">
+                    <div class="w-full text-center font-bold text-[16px] truncate text-black leading-tight px-4 flex items-center justify-center gap-1.5">
                         {{ chatData?.remark || chatData?.name }}
+                        <SparkIcon v-if="chatData?.id && !chatData?.isGroup" :char-id="chatData.id" size="sm" :show-days="false" @click="showSparkDetail = true" />
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
 
@@ -3946,6 +3961,13 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             </div>
         </div>
     </div>
+
+    <!-- Spark Detail Modal -->
+    <SparkDetailModal
+        :visible="showSparkDetail"
+        :char-id="chatData?.id"
+        :char-name="chatData?.remark || chatData?.name"
+        @close="showSparkDetail = false" />
 </template>
 
 
