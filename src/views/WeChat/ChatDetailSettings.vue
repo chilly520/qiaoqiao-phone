@@ -226,7 +226,7 @@
                 </h3>
                 <div class="glass-panel p-2 rounded-lg border max-h-48 overflow-y-auto"
                     :class="settingsStore.personalization.theme === 'dark' ? 'bg-black/20 border-white/10' : 'bg-white/50 border-white/20'">
-                    <div v-if="worldBookStore.books.length === 0" class="text-xs text-center py-2"
+                    <div v-if="!worldBookStore.books || worldBookStore.books.length === 0" class="text-xs text-center py-2"
                         :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-500'">
                         暂无世界书，请在桌面App中创建
                     </div>
@@ -1344,7 +1344,7 @@
                                 <i class="fa-solid fa-check text-white text-[10px]"></i>
                             </div>
                         </div>
-                        <div v-if="filteredVoices.length === 0" class="py-12 text-center opacity-40 italic text-sm">
+                        <div v-if="!filteredVoices || filteredVoices.length === 0" class="py-12 text-center opacity-40 italic text-sm">
                             未找到相关音色
                         </div>
                     </div>
@@ -2904,7 +2904,7 @@ const saveSettings = async () => {
 
         // Cleanup stale world book links ONLY if store is loaded and has data
         // This prevents wiping links if the store hasn't finished loading yet
-        if (localData.value.worldBookLinks && worldBookStore.isLoaded && worldBookStore.books.length > 0) {
+        if (localData.value.worldBookLinks && worldBookStore.isLoaded && worldBookStore.books && worldBookStore.books.length > 0) {
             const allEntryIds = new Set()
             worldBookStore.books.forEach(book => {
                 if (book && Array.isArray(book.entries)) {
