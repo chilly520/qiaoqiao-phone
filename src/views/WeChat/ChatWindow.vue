@@ -1047,33 +1047,44 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
 });
 
 const computedBgStyle = computed(() => {
-    if (!chatData.value) return {}
-    const theme = chatData.value.bgTheme
-    const url = chatData.value.bgUrl
-    const blur = chatData.value.bgBlur || 0
-    const opacity = chatData.value.bgOpacity !== undefined ? chatData.value.bgOpacity : 1
+    try {
+        if (!chatData.value) {
+            console.warn('[ChatWindow] No chatData, returning empty style')
+            return {}
+        }
 
-    // Debug log to diagnose background issues
-    if (url) {
-        console.log('[ChatWindow] Applying background:', {
+        const theme = chatData.value.bgTheme
+        const url = chatData.value.bgUrl
+        const blur = chatData.value.bgBlur || 0
+        const opacity = chatData.value.bgOpacity !== undefined ? chatData.value.bgOpacity : 1
+
+        // Debug log to diagnose background issues
+        console.log('[ChatWindow] Computing background style:', {
             chatId: chatData.value.id,
             chatName: chatData.value.remark || chatData.value.name,
-            bgUrl: url?.substring(0, 50) + (url?.length > 50 ? '...' : ''),
+            hasBgUrl: !!url,
+            bgUrlLength: url?.length || 0,
             bgTheme: theme,
             blur,
             opacity
         })
-    }
 
-    // Background color: Black for dark theme, otherwise transparent (showing parent gray) or light gray
-    let bgColor = '#f5f5f5'
-    if (theme === 'dark') bgColor = '#000000'
-    else if (url) bgColor = 'transparent'
+        // Background color: Black for dark theme, otherwise transparent (showing parent gray) or light gray
+        let bgColor = '#f5f5f5'
+        if (theme === 'dark') bgColor = '#000000'
+        else if (url) bgColor = 'transparent'
 
-    return {
-        backgroundImage: url ? `url("${url}")` : 'none',
-        backgroundColor: bgColor,
-        filter: `blur(${blur}px) opacity(${opacity})`
+        const style = {
+            backgroundImage: url ? `url("${url}")` : 'none',
+            backgroundColor: bgColor,
+            filter: `blur(${blur}px) opacity(${opacity})`
+        }
+
+        console.log('[ChatWindow] Final background style:', style)
+        return style
+    } catch (e) {
+        console.error('[ChatWindow] Error computing background style:', e)
+        return {} // 返回空样式而不是崩溃
     }
 })
 
