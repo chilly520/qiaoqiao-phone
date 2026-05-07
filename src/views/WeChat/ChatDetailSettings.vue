@@ -1564,6 +1564,8 @@ const selectPopularCity = (realName) => {
 
 // 角色城市映射变更 → 更新 localData + 刷新天气
 const onCharLocationChange = async () => {
+    if (!localData?.value) return
+
     // 同步到 localData（保存时写入 char）
     localData.value.charLocation = { ...charLocationEdit.value }
     
@@ -1582,6 +1584,8 @@ const onCharLocationChange = async () => {
 }
 
 const toggleLocationSync = async () => {
+    if (!localData?.value) return
+
     if (!localData.value.locationSync) {
         // Enabling
         localData.value.locationSync = true
@@ -1840,18 +1844,31 @@ const clearBgHistory = () => {
 }
 
 // 监听 bgUrl 变化，自动保存到历史记录（仅保存历史，不影响其他地方）
-watch(() => localData.value.bgUrl, (newUrl) => {
-    if (newUrl && newUrl.trim()) {
-        // 使用防抖避免频繁保存
-        setTimeout(() => {
-            if (localData.value.bgUrl === newUrl) {
-                // 只保存到历史记录，不设置为主界面背景
-                settingsStore.addBackgroundToHistory(props.chatData?.id, newUrl, '用户上传')
-            }
-        }, 1000)
+// 注意：这个 watch 必须在 localData 定义之后，否则会报 "Cannot access before initialization" 错误
+const watchBgUrl = () => {
+    watch(() => localData.value.bgUrl, (newUrl) => {
+        if (newUrl && newUrl.trim()) {
+            // 使用防抖避免频繁保存
+            setTimeout(() => {
+                if (localData.value?.bgUrl === newUrl) {
+                    // 只保存到历史记录，不设置为主界面背景
+                    settingsStore.addBackgroundToHistory(props.chatData?.id, newUrl, '用户上传')
+                }
+            }, 1000)
+        }
+    })
+}
+
+// 延迟初始化 watch（确保 localData 已定义）
+onMounted(() => {
+    try {
+        watchBgUrl()
+    } catch (e) {
+        console.warn('[Settings] Failed to initialize bgUrl watcher:', e)
     }
 })
 const toggleGroupLink = (chatId) => {
+    if (!localData?.value) return
     if (!localData.value.linkedGroups) localData.value.linkedGroups = []
     if (!localData.value.groupMemoryLimits) localData.value.groupMemoryLimits = {}
 
@@ -2161,13 +2178,20 @@ const filteredVoices = computed(() => {
     return list.filter(v => v.name.toLowerCase().includes(q) || v.id.toLowerCase().includes(q))
 })
 const selectVoice = (voiceId) => {
+    if (!localData?.value) return
     localData.value.doubaoSpeaker = voiceId
     showVoicePicker.value = false
     voiceSearchQuery.value = ''
 }
 const currentVoiceName = computed(() => {
-    const v = settingsStore.voice.doubaoVoices?.find(v => v.id === localData.value.doubaoSpeaker)
-    return v ? v.name : (localData.value.doubaoSpeaker || '未选择')
+    try {
+        if (!localData?.value) return '未选择'
+        const v = settingsStore.voice.doubaoVoices?.find(v => v.id === localData.value.doubaoSpeaker)
+        return v ? v.name : (localData.value.doubaoSpeaker || '未选择')
+    } catch (e) {
+        console.warn('[Settings] Error computing currentVoiceName:', e)
+        return '未选择'
+    }
 })
 
 const getThemeNumberClass = () => {
