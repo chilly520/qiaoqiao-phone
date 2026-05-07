@@ -1918,27 +1918,28 @@ const diceTotalValue = computed(() => {
 // Parse Inner Voice dynamically to extract all parameters
 const parsedInnerVoice = computed(() => {
     if (!props.msg) return null;
+
     try {
       const data = extractInnerVoiceData(props.msg.content, props.msg);
       if (!data) return null;
-    
-    // If it's just a single field we care about, return the string for simplicity
-    const keys = Object.keys(data);
-    if (keys.length === 1 && !['心声', 'status', 'mind', 'thoughts', 'content'].includes(keys[0])) {
-        // Even if it's just one field like spirit: calm, we want to show it as "Spirit: calm"
-        // But if it's a "known" main text field, just show the text.
-    }
-    
-    // Check if it's fundamentally just a string disguised as an object {content: '...'}
-    if (keys.length === 1 && keys[0] === 'content') return data.content;
 
-    // Filter out internal fields for the preview string if returning a string
-    const mainFields = ['心声', 'status', 'mind', 'thoughts'];
-    for (const f of mainFields) {
-        if (data[f] && keys.length === 1) return data[f];
-    }
-    
-    return data;
+      // If it's just a single field we care about, return the string for simplicity
+      const keys = Object.keys(data);
+      if (keys.length === 1 && !['心声', 'status', 'mind', 'thoughts', 'content'].includes(keys[0])) {
+          // Even if it's just one field like spirit: calm, we want to show it as "Spirit: calm"
+          // But if it's a "known" main text field, just show the text.
+      }
+
+      // Check if it's fundamentally just a string disguised as an object {content: '...'}
+      if (keys.length === 1 && keys[0] === 'content') return data.content;
+
+      // Filter out internal fields for the preview string if returning a string
+      const mainFields = ['心声', 'status', 'mind', 'thoughts'];
+      for (const f of mainFields) {
+          if (data[f] && keys.length === 1) return data[f];
+      }
+
+      return data;
     } catch (e) {
       console.error('[ChatMessageItem] extractInnerVoiceData error:', e);
       return null;
