@@ -772,6 +772,9 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
     }
   }
 
+  // 2a5. Clean up trailing commas/separators left after INNER_VOICE block removal
+  clean = clean.replace(/[,，;；]\s*$/gm, '').trim()
+
   // 2b. Safety net: Remove any remaining inner voice JSON objects that leaked
   // This catches cases where tags were malformed but JSON structure is detectable
   clean = clean.replace(

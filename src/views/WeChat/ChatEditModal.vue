@@ -173,7 +173,7 @@ const normalizeContent = (msg) => {
     }
 
     // Remove ONLY the Inner Voice block (non-greedy)
-    content = content.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '').trim()
+    content = content.replace(/\[INNER_VOICE\][\s\S]*?(\[\/INNER_VOICE\]|$)/gi, '').replace(/[,，;；]\s*$/gm, '').trim()
 
     return content
 }

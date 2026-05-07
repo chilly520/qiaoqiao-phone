@@ -214,7 +214,7 @@ const cleanMessage = (content) => {
     
     // 先提取并剥离INNER_VOICE块
     if (extractInnerVoice(content)) {
-        cleaned = content.replace(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i, '').trim()
+        cleaned = content.replace(/\[INNER_VOICE\]([\s\S]*?)\[\/INNER_VOICE\]/i, '').replace(/[,，;；]\s*$/gm, '').trim()
     }
     
     // 清洗残留的CSS/HTML代码片段（与ChatMessageItem保持一致）
