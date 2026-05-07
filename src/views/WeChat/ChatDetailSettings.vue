@@ -1798,13 +1798,14 @@ const clearBgHistory = () => {
     }
 }
 
-// 监听 bgUrl 变化，自动保存到历史记录
+// 监听 bgUrl 变化，自动保存到历史记录（仅保存历史，不影响其他地方）
 watch(() => localData.value.bgUrl, (newUrl) => {
     if (newUrl && newUrl.trim()) {
         // 使用防抖避免频繁保存
         setTimeout(() => {
             if (localData.value.bgUrl === newUrl) {
-                settingsStore.setWechatBackground('chat', { url: newUrl })
+                // 只保存到历史记录，不设置为主界面背景
+                settingsStore.addBackgroundToHistory(props.chatData?.id, newUrl, '用户上传')
             }
         }, 1000)
     }
@@ -2605,14 +2606,14 @@ const handleBgUpload = async (e) => {
         try {
             const compressed = await compressImage(file, 800, 0.7) // Backgrounds can be larger
             localData.value.bgUrl = compressed
-            // 自动保存到历史记录
-            settingsStore.setWechatBackground('chat', { url: compressed })
+            // 只保存到历史记录，不设置为主界面背景
+            settingsStore.addBackgroundToHistory(props.chatData?.id, compressed, '用户上传')
         } catch (err) {
             const reader = new FileReader()
             reader.onload = (e) => {
                 localData.value.bgUrl = e.target.result
-                // 自动保存到历史记录
-                settingsStore.setWechatBackground('chat', { url: e.target.result })
+                // 只保存到历史记录，不设置为主界面背景
+                settingsStore.addBackgroundToHistory(props.chatData?.id, e.target.result, '用户上传')
             }
             reader.readAsDataURL(file)
         }
