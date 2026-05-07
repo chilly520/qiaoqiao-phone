@@ -2458,24 +2458,26 @@ export const useChatStore = defineStore('chat', () => {
             }
         })
 
-        // --- 角色轮替保护：合并连续的 User/Assistant 消息 (Gemini 必须交替) ---
-        // 合并相同角色的连续消息，然后统一包裹模式标签
+        // --- 角色轮替保护 + 模式保留：智能合并消息 ---
+        // 只在"相同角色 AND 相同模式"时才合并，确保线上线下消息不被混淆
         const mergedContext = [];
         rawContext.forEach(m => {
             const last = mergedContext[mergedContext.length - 1];
-            if (last && last.role === m.role) {
-                // 合并内容
+            const lastMode = (last && last.mode) || 'online';
+            const currentMode = m.mode || 'online';
+
+            // 只有当角色相同且模式相同时才合并
+            if (last && last.role === m.role && lastMode === currentMode) {
                 if (typeof last.content === 'string' && typeof m.content === 'string') {
                     last.content += `\n\n${m.content}`;
                 }
                 if (m.image) last.image = m.image;
-                // 如果模式不同，以第一条消息的模式为准（通常同一轮发送的消息模式相同）
             } else {
                 mergedContext.push({...m});
             }
         });
-        
-        // 统一包裹模式标签：合并后的消息统一包裹一次标签，节省 token
+
+        // 为每条消息添加对应的模式标签（基于消息自身的mode字段）
         mergedContext.forEach(m => {
             const msgMode = m.mode || 'online';
             if (msgMode === 'offline') {
@@ -2483,7 +2485,6 @@ export const useChatStore = defineStore('chat', () => {
             } else {
                 m.content = `[ONLINE]\n${m.content}\n[/ONLINE]`;
             }
-            // 删除临时的 mode 字段
             delete m.mode;
         });
 
