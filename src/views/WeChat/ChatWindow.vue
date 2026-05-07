@@ -1053,6 +1053,18 @@ const computedBgStyle = computed(() => {
     const blur = chatData.value.bgBlur || 0
     const opacity = chatData.value.bgOpacity !== undefined ? chatData.value.bgOpacity : 1
 
+    // Debug log to diagnose background issues
+    if (url) {
+        console.log('[ChatWindow] Applying background:', {
+            chatId: chatData.value.id,
+            chatName: chatData.value.remark || chatData.value.name,
+            bgUrl: url?.substring(0, 50) + (url?.length > 50 ? '...' : ''),
+            bgTheme: theme,
+            blur,
+            opacity
+        })
+    }
+
     // Background color: Black for dark theme, otherwise transparent (showing parent gray) or light gray
     let bgColor = '#f5f5f5'
     if (theme === 'dark') bgColor = '#000000'
