@@ -556,8 +556,17 @@ function queryAIForAlmanac() {
     queryText: `请为${solarDate.value}（${lunarDate.value.fullDate}）进行八字命理分析，八字为${bazi.value.year} ${bazi.value.month} ${bazi.value.day} ${bazi.value.hour}，分析今日运势和注意事项。`
   }
   
-  // 可以打开一个对话框或触发AI响应
-  alert('AI命理大师已收到查询请求，请在对话中查看详细解读')
+  const toast = document.createElement('div')
+  toast.textContent = '🤖 AI命理大师已收到查询请求'
+  Object.assign(toast.style, {
+    position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+    background: 'linear-gradient(135deg, #c5c9ff, #ffb7c5)',
+    color: 'white', padding: '12px 24px', borderRadius: '12px',
+    fontSize: '14px', fontWeight: '600', zIndex: '10000',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+  })
+  document.body.appendChild(toast)
+  setTimeout(() => toast.remove(), 2000)
 }
 
 // 监听日期变化，同步到store

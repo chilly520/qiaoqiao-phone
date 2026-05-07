@@ -703,9 +703,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     }
 
     // 生成预测
-    if (typeof generatePeriodPredictions === 'function') {
-      generatePeriodPredictions()
-    }
+    generatePeriodPredictions()
   }
 
   // 清除所有经期数据

@@ -137,6 +137,7 @@
               <span class="event-dot" :style="{ backgroundColor: event.color || '#ff9eb5' }"></span>
               <span class="event-time">{{ event.allDay ? '全天' : event.startTime }}</span>
               <span class="event-title">{{ event.title }}</span>
+              <button class="event-delete-btn" @click.stop="deleteEventItem(event.id)" title="删除">×</button>
             </div>
           </div>
         </div>
@@ -208,7 +209,7 @@
       @save="saveDiary" />
     <SleepModal v-if="showSleepModal" :date="selectedDateStr" @close="showSleepModal = false" @save="saveSleep" />
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
-    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="(type) => { console.log('[MobileCalendarApp] Received add event with type:', type); handleQuickAdd(type) }" />
+    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
     <ThemeSettingsModal v-if="showThemeSettings" :visible="showThemeSettings" @close="showThemeSettings = false" />
     
     <!-- 自定义确认弹窗 -->
@@ -415,31 +416,7 @@ function showToast(message, type = 'info') {
 }
 
 function selectDate(date) {
-  // 检查点击的日期是否有经期记录
-  const dateStr = calendarStore.formatDateStr(date)
-  const periodStatus = calendarStore.getPeriodStatus(date)
-  
-  // 如果点击的是经期日期，弹出快速操作菜单
-  if (periodStatus?.type === 'period') {
-    showConfirm(
-      '标记经期结束',
-      `3 月${date.getDate()}日 是经期\n\n点击“确定”标记经期结束\n点击“取消”查看详情`,
-      () => {
-        // 标记结束
-        const cycles = calendarStore.periodData.cycles
-        if (cycles.length > 0) {
-          const lastCycle = cycles[cycles.length - 1]
-          if (!lastCycle.endDate || lastCycle.endDate === dateStr) {
-            calendarStore.recordPeriod(lastCycle.startDate, dateStr, lastCycle.symptoms || [])
-            showToast('已标记经期结束', 'success')
-          }
-        }
-      }
-    )
-  } else {
-    // 正常选择日期
-    calendarStore.selectDate(date)
-  }
+  calendarStore.selectDate(date)
 }
 
 function openEventModal() {
@@ -482,8 +459,7 @@ function markPeriodStart(date) {
       return
     }
 
-    // 直接使用默认周期长度5天，不依赖 periodData
-    const duration = 5
+    const duration = calendarStore.periodData.averageDuration || 5
     const endDate = new Date(date)
     endDate.setDate(date.getDate() + duration - 1)
     const endDateStr = calendarStore.formatDateStr(endDate)
@@ -560,6 +536,10 @@ function handleQuickAdd(type) {
 function deleteCountdown(id) {
     calendarStore.countdowns = (calendarStore.countdowns || []).filter(c => c.id !== id)
     calendarStore.anniversaries = (calendarStore.anniversaries || []).filter(a => a.id !== id)
+}
+
+function deleteEventItem(id) {
+    calendarStore.deleteEvent(id)
 }
 
 onMounted(() => {
@@ -1059,6 +1039,26 @@ onMounted(() => {
 
 .day-events .event-item:last-child {
   border-bottom: none;
+}
+
+.event-delete-btn {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #999;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.event-delete-btn:hover {
+  background: rgba(255, 100, 100, 0.15);
+  color: #ff4444;
 }
 
 .event-dot {

@@ -305,7 +305,7 @@
             <div v-for="item in calendarStore.anniversaries" :key="item.id" class="countdown-item">
               <div class="countdown-info">
                 <span class="countdown-title">{{ item.title }}</span>
-                <span class="countdown-date">{{ item.targetDate }} (每年)</span>
+                <span class="countdown-date">{{ item.targetDate }}<template v-if="item.isRecurring"> (每年)</template></span>
               </div>
               <div class="countdown-days anniversary">
                 {{ getAnniversaryDays(item.targetDate) }}
@@ -408,7 +408,7 @@
       @save="saveDiary" />
     <SleepModal v-if="showSleepModal" :date="selectedDateStr" @close="showSleepModal = false" @save="saveSleep" />
     <AISettingsModal v-if="showAISettings" @close="showAISettings = false" />
-    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="(type) => { console.log('[CalendarApp] Received add event with type:', type); handleQuickAdd(type) }" />
+    <QuickAddModal v-if="showQuickAdd" :date="selectedDateStr" @close="showQuickAdd = false" @add="handleQuickAdd" />
     <ThemeSettingsModal v-if="showThemeSettings" @close="showThemeSettings = false" />
     <PeriodSettingsModal v-if="showPeriodSettings" @close="showPeriodSettings = false" @save="handlePeriodSettingsSave" />
   </div>
@@ -693,16 +693,23 @@ function saveSleep(data) {
 
 function recordWater() {
   calendarStore.recordWater(selectedDateStr.value, 250)
-  alert('💧 已记录喝水 250ml！')
+  const toast = document.createElement('div')
+  toast.textContent = '💧 已记录喝水 250ml！'
+  Object.assign(toast.style, {
+    position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+    background: 'linear-gradient(135deg, #a8d8ea, #7fb069)',
+    color: 'white', padding: '12px 24px', borderRadius: '12px',
+    fontSize: '14px', fontWeight: '600', zIndex: '10000',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+  })
+  document.body.appendChild(toast)
+  setTimeout(() => toast.remove(), 2000)
 }
 
 function handlePeriodSettingsSave(data) {
-  console.log('经期设置已保存:', data)
 }
 
 function handleQuickAdd(type) {
-  console.log('[CalendarApp] handleQuickAdd called with type:', type)
-  // 先关闭所有其他弹窗
   showQuickAdd.value = false
   showCountdownModal.value = false
   showAnniversaryModal.value = false
@@ -718,7 +725,6 @@ function handleQuickAdd(type) {
   else if (type === 'mood') showMoodModal.value = true
   else if (type === 'countdown') showCountdownModal.value = true
   else if (type === 'anniversary') {
-    console.log('[CalendarApp] Setting showAnniversaryModal to true')
     showAnniversaryModal.value = true
   }
   else if (type === 'diary') showDiaryModal.value = true

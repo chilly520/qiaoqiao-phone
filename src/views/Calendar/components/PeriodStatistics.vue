@@ -132,8 +132,7 @@ function goBack() {
 }
 
 function goToRecord() {
-  // 打开记录弹窗
-  calendarStore.openPeriodModal()
+  router.push('/calendar')
 }
 
 function deleteAllCycles() {
