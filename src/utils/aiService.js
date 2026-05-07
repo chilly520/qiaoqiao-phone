@@ -953,7 +953,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
 
         if (!options.isCall && char.mcpEnabled !== false && buildMCPPromptSection) {
-            const mcpSection = buildMCPPromptSection()
+            const mcpSection = buildMCPPromptSection(char.mcpEnabledServers || null)
             if (mcpSection) {
                 promptContent += '\n' + mcpSection
             }

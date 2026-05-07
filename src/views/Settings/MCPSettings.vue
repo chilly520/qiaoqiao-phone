@@ -251,9 +251,12 @@ async function discoverTools(id) {
 
 <style scoped>
 .mcp-settings {
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     background: var(--bg-primary, #f5f5f5);
     padding: 16px;
+    padding-bottom: 40px;
 }
 
 .mcp-header {

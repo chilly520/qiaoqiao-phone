@@ -457,11 +457,16 @@ export async function testMCPConnection(serverId) {
 
 // ===================== AI Prompt 注入 =====================
 
-export function buildMCPPromptSection() {
+export function buildMCPPromptSection(enabledServerIds = null) {
     const builtinServers = getEnabledBuiltinServers()
     const externalServers = getEnabledExternalServers()
-    const allServers = [...builtinServers, ...externalServers]
+    let allServers = [...builtinServers, ...externalServers]
     if (!allServers.length) return ''
+
+    if (enabledServerIds !== null && Array.isArray(enabledServerIds) && enabledServerIds.length > 0) {
+        allServers = allServers.filter(s => enabledServerIds.includes(s.id))
+        if (!allServers.length) return ''
+    }
 
     const lines = ['', '【可用的 MCP 工具（开箱即用，无需外部配置）】']
     lines.push('你可以通过输出以下标签调用工具：')
