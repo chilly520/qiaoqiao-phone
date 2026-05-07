@@ -861,8 +861,13 @@ export const useMomentsStore = defineStore('moments', () => {
 
             // Process New Moments
             if (Array.isArray(newMoments)) {
+                // Ensure store is initialized before adding moments
+                if (!isInitialized.value) {
+                    console.warn('[MomentsStore] Store not initialized, forcing initialization...')
+                    await initStore()
+                }
+
                 for (const data of newMoments) {
-                    if (!isInitialized.value) return
 
                     let finalAuthorId = data.authorId
                     const nId = String(data.authorId).toLowerCase()
@@ -917,8 +922,12 @@ export const useMomentsStore = defineStore('moments', () => {
 
             // Process Ecosystem Updates (Interactions for old moments)
             if (Array.isArray(ecosystemUpdates)) {
+                // Ensure store is initialized
+                if (!isInitialized.value) {
+                    await initStore()
+                }
+
                 for (const update of ecosystemUpdates) {
-                    if (!isInitialized.value) return
                     const targetMoment = moments.value.find(m => m.id === update.momentId)
                     if (!targetMoment) continue
 
