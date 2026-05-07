@@ -1771,7 +1771,10 @@ const executeManualSummary = async () => {
     showManualSummaryModal.value = false
 
     try {
-        // Pass range to store action
+        if (!props.chatData?.id) {
+            showToast('无法执行总结：会话ID缺失')
+            return
+        }
         await chatStore.summarizeHistory(props.chatData.id, options)
     } catch (e) {
         console.error(e)
@@ -1794,6 +1797,8 @@ const sparkInfo = computed(() => {
 const toggleSparkEnabled = () => {
     isSparkEnabled.value = !isSparkEnabled.value
     try {
+        if (!props.chatData?.id) return
+
         const sparkDisabledChars = JSON.parse(localStorage.getItem('spark_disabled_chars') || '[]')
         if (isSparkEnabled.value) {
             const idx = sparkDisabledChars.indexOf(props.chatData.id)
@@ -2693,6 +2698,10 @@ const clearIncludeMemory = ref(false)
 const showDeleteConfirm = ref(false)
 
 const confirmReset = () => {
+    if (!props.chatData?.id) {
+        showToast('无法重置：会话ID缺失')
+        return
+    }
     chatStore.triggerConfirm('确认重置?', '将重置界面配置、背景等设置。保留角色设定、人设和记忆库。', () => {
         chatStore.resetCharacter(props.chatData.id)
         showToast('角色已重置', 'success')
@@ -2708,6 +2717,10 @@ const confirmClearHistory = () => {
 }
 
 const handleClearHistoryConfirm = async () => {
+    if (!props.chatData?.id) {
+        showToast('无法清除：会话ID缺失')
+        return
+    }
     // 隐藏弹窗
     showDeleteConfirm.value = false
     // 调用clearHistory方法，根据勾选状态决定是否包含记忆
@@ -2728,6 +2741,10 @@ const handleClearHistoryCancel = () => {
 }
 
 const confirmDelete = () => {
+    if (!props.chatData?.id) {
+        showToast('无法删除：会话ID缺失')
+        return
+    }
     chatStore.triggerConfirm('确认删除角色?', '将删除所有聊天记录、配置和记忆。此操作不可恢复！', () => {
         chatStore.deleteChat(props.chatData.id)
         showToast('角色已删除', 'success')
@@ -2766,8 +2783,11 @@ const handleCompressHistoryClick = async () => {
 
 // --- Computed Sizes for Export ---
 const estimatedHistorySize = computed(() => {
-    const chat = chatStore.chats[props.chatData.id]
-    if (!chat || !chat.msgs) return '0 KB'
+    try {
+        if (!props.chatData?.id) return '0 KB'
+
+        const chat = chatStore.chats[props.chatData.id]
+        if (!chat || !chat.msgs) return '0 KB'
     
     // SAFE ESTIMATION: Avoid JSON.stringify on massive arrays which crashes mobile
     // Count images and estimate text size
@@ -2792,18 +2812,29 @@ const estimatedHistorySize = computed(() => {
     if (estimatedBytes < 1024) return estimatedBytes + ' B'
     if (estimatedBytes < 1024 * 1024) return (estimatedBytes / 1024).toFixed(1) + ' KB'
     return (estimatedBytes / (1024 * 1024)).toFixed(1) + ' MB'
+    } catch (e) {
+        console.error('[Settings] Error computing estimatedHistorySize:', e)
+        return '0 KB'
+    }
 })
 
 const historySizeWarning = computed(() => {
-    const chat = chatStore.chats[props.chatData.id]
-    if (!chat || !chat.msgs) return false
-    // Warning at 30MB
-    const sizeStr = estimatedHistorySize.value;
-    if (sizeStr.includes('MB')) {
-        const val = parseFloat(sizeStr);
-        return val > 30;
+    try {
+        if (!props.chatData?.id) return false
+
+        const chat = chatStore.chats[props.chatData.id]
+        if (!chat || !chat.msgs) return false
+        // Warning at 30MB
+        const sizeStr = estimatedHistorySize.value;
+        if (sizeStr.includes('MB')) {
+            const val = parseFloat(sizeStr);
+            return val > 30;
+        }
+        return false;
+    } catch (e) {
+        console.error('[Settings] Error computing historySizeWarning:', e)
+        return false
     }
-    return false;
 })
 
 // --- Export Logic ---
@@ -2814,6 +2845,10 @@ const exportExcludeImages = ref(false) // New: Option to strip images from histo
 
 const handleExportCard = () => {
     try {
+        if (!props.chatData?.id) {
+            showToast('无法导出：会话ID缺失')
+            return
+        }
         const chat = chatStore.chats[props.chatData.id]
         if (!chat) return
 
@@ -3150,7 +3185,7 @@ const saveSettings = async () => {
         console.log('[Settings] Dispatching Update to Store (Sanitized):', Object.keys(finalData))
 
         // Sync with scheduler store
-        if (schedulerStore.setRandomConfig) {
+        if (schedulerStore.setRandomConfig && props.chatData?.id) {
             schedulerStore.setRandomConfig(props.chatData.id, {
                 enabled: localData.value.randomProactive,
                 min: localData.value.randomMin,
@@ -3285,6 +3320,10 @@ const handleStickerUpload = async (e) => {
     const file = e.target.files[0]
     if (file) {
         try {
+            if (!props.chatData?.id) {
+                showToast('无法添加：会话ID缺失')
+                return
+            }
             const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
             await stickerStore.uploadSticker(file, scope)
             showToast('添加成功')
@@ -3298,6 +3337,10 @@ const handleStickerUpload = async (e) => {
 
 const handleStickerUrlAdd = () => {
     if (!stickerUrlInput.value) return
+    if (!props.chatData?.id && stickerScope.value !== 'special_global') {
+        showToast('无法添加：会话ID缺失')
+        return
+    }
     const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
     const success = stickerStore.addSticker(stickerUrlInput.value, '', scope)
     if (success) {
@@ -3316,30 +3359,40 @@ const handleTxtImport = (e) => {
 
     const reader = new FileReader()
     reader.onload = (event) => {
-        const content = event.target.result
-        const scope = stickerScope.value === 'special_global' ? 'global' : 'special'
-        const res = stickerStore.importStickersFromText(content, scope)
+        try {
+            if (!props.chatData?.id && stickerScope.value !== 'special_global') {
+                showToast('无法导入：会话ID缺失')
+                return
+            }
+            const content = event.target.result
+            const scope = stickerScope.value === 'special_global' ? 'global' : 'special'
+            const res = stickerStore.importStickersFromText(content, scope)
 
-        if (scope === 'special' && res.newStickers?.length > 0) {
-            const newEmojis = [...(props.chatData.emojis || []), ...res.newStickers]
-            chatStore.updateCharacter(props.chatData.id, { emojis: newEmojis })
+            if (scope === 'special' && res.newStickers?.length > 0) {
+                const newEmojis = [...(props.chatData.emojis || []), ...res.newStickers]
+                chatStore.updateCharacter(props.chatData.id, { emojis: newEmojis })
+            }
+
+            showToast(`成功:${res.success}, 重复:${res.duplicate}, 失败:${res.failed}`)
+            e.target.value = ''
+        } catch (err) {
+            console.error('[Settings] Error in handleTxtImport:', err)
+            showToast('导入失败')
         }
-
-        showToast(`成功:${res.success}, 重复:${res.duplicate}, 失败:${res.failed}`)
-        e.target.value = ''
     }
     reader.onerror = () => showToast('读取文件失败')
     reader.readAsText(file)
 }
 
 const confirmDeleteSticker = (url) => {
-    // Custom confirm? Or just delete? User hates alerts.
-    // I'll make it direct delete context menu or similar. Or just delete.
-    // Or I can add a small text "Double click to delete" or similar.
-    // For now, I will just delete it, or maybe log a warning.
-    // Given user frustration, I will implementing a simple inline Confirm state if possible, or just delete.
-    const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
-    stickerStore.deleteSticker(url, scope)
+    try {
+        if (!props.chatData?.id && stickerScope.value !== 'special_global') return
+
+        const scope = stickerScope.value === 'special_global' ? 'global' : props.chatData.id
+        stickerStore.deleteSticker(url, scope)
+    } catch (e) {
+        console.error('[Settings] Error deleting sticker:', e)
+    }
 }
 
 // Avatar Shape and Frame Functions
