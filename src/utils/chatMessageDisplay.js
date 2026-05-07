@@ -572,8 +572,9 @@ export function extractInnerVoiceData(content, msg) {
   let raw = ensureMessageString(content)
 
   // ============================================================
-  // PRE-CLEAN: Remove HTML/CSS pollution that may precede INNER_VOICE
-  // This handles cases where AI output mixes card HTML with voice data
+  // IMPORTANT: This function ONLY extracts inner voice data for display
+  // It does NOT modify or delete any content from the original message
+  // Original message (stickers, HTML, text) will still be displayed normally
   // ============================================================
 
   // 1. Find INNER_VOICE position (search for all possible formats)
@@ -583,49 +584,18 @@ export function extractInnerVoiceData(content, msg) {
       ? raw.indexOf('[INNERVOICE]')
       : -1
 
-  if (innerVoiceStart > 0) {
-    const beforeIV = raw.substring(0, innerVoiceStart)
-    const afterIV = raw.substring(innerVoiceStart)
+  console.log(`[extractInnerVoice] Searching for INNER_VOICE in content (length: ${raw.length}), found at: ${innerVoiceStart}`)
 
-    console.log(`[extractInnerVoice] Found INNER_VOICE at position ${innerVoiceStart}, content length: ${raw.length}`)
-
-    // AGGRESSIVE CLEANING: Remove EVERYTHING before INNER_VOICE if it looks like:
-    // - HTML/CSS code (style tags, div tags, CSS properties)
-    // - Image/Sticker data (base64, data:image, image URLs)
-    // - JSON structures (card JSON, type declarations)
-    // - Card/OFFLINE tags
-    const hasHtmlTags = /<[^>]+>/.test(beforeIV)
-    const hasStyleTags = /<style[\s\S]*?<\/style>/i.test(beforeIV)
-    const hasCssProperties = /:\s*flex|:\s*block|:\s*none|background:#|color:#|font-size:|margin:|padding:/i.test(beforeIV)
-    const hasImageData = /data:image|base64|\.png|\.jpg|\.jpeg|\.gif|\.webp/i.test(beforeIV)
-    const hasJsonStructure = /\{[^}]*"type"|"\s*html|"card"/i.test(beforeIV)
-    const hasCardTags = /\[\/?CARD\]|\[\/?OFFLINE\]/i.test(beforeIV)
-    const hasDivTags = /<div/i.test(beforeIV)
-
-    // If ANY of these indicators exist, remove everything before INNER_VOICE
-    if (hasHtmlTags || hasStyleTags || hasCssProperties || hasImageData || hasJsonStructure || hasCardTags || hasDivTags) {
-      console.log('[extractInnerVoice] Aggressive cleanup - removing', beforeIV.length, 'chars before INNER_VOICE')
-      console.log('[extractInnerVoice] Detected:', {
-        hasHtmlTags,
-        hasStyleTags,
-        hasCssProperties,
-        hasImageData,
-        hasJsonStructure,
-        hasCardTags,
-        hasDivTags
-      })
-      raw = afterIV
-    }
+  if (innerVoiceStart === -1) {
+    console.log('[extractInnerVoice] No INNER_VOICE tag found')
+    return null
   }
 
-  // 2. Clean up any remaining HTML tags that might be mixed in
-  raw = raw.replace(/<style[\s\S]*?<\/style>//gi, '')
-  raw = raw.replace(/<[^>]+>//g, '')
+  // 2. Extract only the INNER_VOICE block content (preserve everything else in original message)
+  const afterIV = raw.substring(innerVoiceStart)
 
-  // 3. Remove [/CARD], [/OFFLINE] tags that might appear right before [INNER_VOICE]
-  raw = raw.replace(/\[\/CARD\]\s*\[\/OFFLINE\]\s*(?=\[INNER)/gi, '')
-
-  let block = extractTaggedBlock(raw, 'INNER_VOICE') || extractTaggedBlock(raw, 'INNERVOICE')
+  // 3. Extract the tagged block (only parse, don't modify original)
+  let block = extractTaggedBlock(afterIV, 'INNER_VOICE') || extractTaggedBlock(afterIV, 'INNERVOICE')
   
   // \u5982\u679c\u4e25\u683c\u5339\u914d\u5931\u8d25\uff0c\u5c1d\u8bd5\u4f7f\u7528\u6b63\u5219\u5339\u914d\uff08\u652f\u6301\u672a\u6b63\u786e\u95ed\u5408\u7684\u6807\u7b7e\uff09
   if (!block) {
