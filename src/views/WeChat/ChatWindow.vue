@@ -1058,7 +1058,6 @@ const computedBgStyle = computed(() => {
         const blur = chatData.value.bgBlur || 0
         const opacity = chatData.value.bgOpacity !== undefined ? chatData.value.bgOpacity : 1
 
-        // Debug log to diagnose background issues
         console.log('[ChatWindow] Computing background style:', {
             chatId: chatData.value.id,
             chatName: chatData.value.remark || chatData.value.name,
@@ -1069,22 +1068,36 @@ const computedBgStyle = computed(() => {
             opacity
         })
 
-        // Background color: Black for dark theme, otherwise transparent (showing parent gray) or light gray
+        if (!url || !url.trim()) {
+            console.warn('[ChatWindow] No bgUrl provided')
+            return {}
+        }
+
         let bgColor = '#f5f5f5'
         if (theme === 'dark') bgColor = '#000000'
         else if (url) bgColor = 'transparent'
 
         const style = {
-            backgroundImage: url ? `url("${url}")` : 'none',
+            backgroundImage: `url("${url}")`,
             backgroundColor: bgColor,
-            filter: `blur(${blur}px) opacity(${opacity})`
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            zIndex: 0
+        }
+
+        if (blur > 0) {
+            style.filter = `blur(${blur}px)`
+        }
+        if (opacity < 1) {
+            style.opacity = opacity
         }
 
         console.log('[ChatWindow] Final background style:', style)
         return style
     } catch (e) {
         console.error('[ChatWindow] Error computing background style:', e)
-        return {} // 返回空样式而不是崩溃
+        return {}
     }
 })
 
@@ -3377,10 +3390,12 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         </Transition>
 
         <!-- Main Chat Content (hidden when settings is open) -->
-        <div v-if="!showSettings" class="flex flex-col h-full">
+        <div v-if="!showSettings" class="flex flex-col h-full relative overflow-hidden">
             <!-- Combined Background Layer -->
-            <div class="absolute inset-0 bg-cover bg-center z-[-1] transition-all duration-300 pointer-events-none"
-                :style="computedBgStyle"></div>
+            <div v-if="chatData?.bgUrl"
+                class="absolute inset-0 bg-cover bg-center transition-all duration-300 pointer-events-none"
+                :style="computedBgStyle">
+            </div>
 
             <!-- Header -->
             <div class="h-[50px] flex items-center justify-between px-3 border-b shadow-sm z-10 relative transition-colors duration-500"
@@ -3480,7 +3495,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <!-- Messages Area -->
 
             <!-- Messages Area -->
-            <div class="flex-1 overflow-y-auto px-4 pt-4 pb-10 flex flex-col gap-4 relative z-10" ref="msgContainer"
+            <div class="flex-1 overflow-y-auto px-4 pt-4 pb-10 flex flex-col gap-4 relative z-10 bg-transparent" ref="msgContainer"
                 @click="closePanels">
                 <!-- Message Content Area -->
 

@@ -1521,8 +1521,13 @@ const showToast = (msg) => {
 
 // Global BG for transparency effect
 const globalBgStyle = computed(() => {
-    const url = settingsStore.personalization.globalBgUrl
-    return url ? { backgroundImage: `url('${url}')` } : {}
+    try {
+        const url = settingsStore?.personalization?.globalBgUrl || settingsStore?.personalization?.globalBg
+        return url ? { backgroundImage: `url('${url}')` } : {}
+    } catch (e) {
+        console.warn('[Settings] Error computing globalBgStyle:', e)
+        return {}
+    }
 })
 
 // Location Sync Logic
@@ -1655,15 +1660,41 @@ const expandedContextKey = ref(null)
 
 // Restored: This is needed for the stats cards in the template
 const tokenStats = computed(() => {
-    return chatStore.getTokenBreakdown(props.chatData.id) || {
-        total: 0,
-        totalContext: 0,
-        system: 0,
-        persona: 0,
-        worldBook: 0,
-        memory: 0,
-        history: 0,
-        summaryLib: 0
+    try {
+        if (!props.chatData?.id) {
+            return {
+                total: 0,
+                totalContext: 0,
+                system: 0,
+                persona: 0,
+                worldBook: 0,
+                memory: 0,
+                history: 0,
+                summaryLib: 0
+            }
+        }
+        return chatStore.getTokenBreakdown(props.chatData.id) || {
+            total: 0,
+            totalContext: 0,
+            system: 0,
+            persona: 0,
+            worldBook: 0,
+            memory: 0,
+            history: 0,
+            summaryLib: 0
+        }
+    } catch (e) {
+        console.error('[Settings] Error computing tokenStats:', e)
+        return {
+            total: 0,
+            totalContext: 0,
+            system: 0,
+            persona: 0,
+            worldBook: 0,
+            memory: 0,
+            history: 0,
+            summaryLib: 0
+        }
     }
 })
 
@@ -1680,6 +1711,11 @@ const contextLabels = {
 
 const showTokenDetailModal = () => {
     try {
+        if (!props.chatData?.id) {
+            showToast('无法加载Token详情：会话ID缺失')
+            return
+        }
+
         // Load Preview Data
         const raw = chatStore.getPreviewContext(props.chatData.id)
         if (raw) {
@@ -1843,11 +1879,20 @@ const openMemoryLib = () => {
 }
 
 const deleteMemory = (index) => {
-    const chat = chatStore.chats[props.chatData.id]
-    if (chat && chat.memory) {
-        chat.memory.splice(index, 1)
-        chatStore.saveChats()
-        showToast('已删除')
+    try {
+        if (!props.chatData?.id) {
+            showToast('无法删除记忆：会话ID缺失')
+            return
+        }
+        const chat = chatStore.chats[props.chatData.id]
+        if (chat && chat.memory) {
+            chat.memory.splice(index, 1)
+            chatStore.saveChats()
+            showToast('已删除')
+        }
+    } catch (e) {
+        console.error('[Settings] Error deleting memory:', e)
+        showToast('删除失败')
     }
 }
 
@@ -1866,22 +1911,31 @@ const cancelEdit = () => {
 }
 
 const saveEdit = (index) => {
-    const chat = chatStore.chats[props.chatData.id]
-    if (chat && chat.memory) {
-        if (chat.memory[index]) {
-            // Prepare updated memory
-            const original = chat.memory[index]
-            if (typeof original === 'object') {
-                original.content = editingContent.value
-                original.updatedAt = Date.now()
-            } else {
-                chat.memory[index] = editingContent.value
-            }
-
-            chatStore.saveChats()
-            cancelEdit()
-            showToast('记忆已更新')
+    try {
+        if (!props.chatData?.id) {
+            showToast('无法保存记忆：会话ID缺失')
+            return
         }
+        const chat = chatStore.chats[props.chatData.id]
+        if (chat && chat.memory) {
+            if (chat.memory[index]) {
+                // Prepare updated memory
+                const original = chat.memory[index]
+                if (typeof original === 'object') {
+                    original.content = editingContent.value
+                    original.updatedAt = Date.now()
+                } else {
+                    chat.memory[index] = editingContent.value
+                }
+
+                chatStore.saveChats()
+                cancelEdit()
+                showToast('记忆已更新')
+            }
+        }
+    } catch (e) {
+        console.error('[Settings] Error saving memory:', e)
+        showToast('保存失败')
     }
 }
 
@@ -1909,24 +1963,33 @@ const isAllSelected = computed(() => {
 })
 
 const batchDeleteMemory = () => {
-    if (selectedIndices.value.size === 0) return
+    try {
+        if (selectedIndices.value.size === 0) return
+        if (!props.chatData?.id) {
+            showToast('无法删除记忆：会话ID缺失')
+            return
+        }
 
-    const chat = chatStore.chats[props.chatData.id]
-    if (chat && chat.memory) {
-        // UI index matches memory array index directly (no reversal needed)
-        const originalIndicesToDelete = new Set()
-        selectedIndices.value.forEach(selectedIndex => {
-            const originalIndex = selectedIndex
-            originalIndicesToDelete.add(originalIndex)
-        })
+        const chat = chatStore.chats[props.chatData.id]
+        if (chat && chat.memory) {
+            // UI index matches memory array index directly (no reversal needed)
+            const originalIndicesToDelete = new Set()
+            selectedIndices.value.forEach(selectedIndex => {
+                const originalIndex = selectedIndex
+                originalIndicesToDelete.add(originalIndex)
+            })
 
-        // Filter out deleted items
-        const toKeep = chat.memory.filter((_, index) => !originalIndicesToDelete.has(index))
-        chat.memory = toKeep
+            // Filter out deleted items
+            const toKeep = chat.memory.filter((_, index) => !originalIndicesToDelete.has(index))
+            chat.memory = toKeep
 
-        chatStore.saveChats()
-        showToast(`已删除 ${selectedIndices.value.size} 条记忆`)
-        selectedIndices.value.clear()
+            chatStore.saveChats()
+            showToast(`已删除 ${selectedIndices.value.size} 条记忆`)
+            selectedIndices.value.clear()
+        }
+    } catch (e) {
+        console.error('[Settings] Error in batchDeleteMemory:', e)
+        showToast('批量删除失败')
     }
 }
 
@@ -1934,6 +1997,10 @@ const isSummarizingMemory = ref(false)
 
 const batchSummarizeMemory = async () => {
     if (selectedIndices.value.size === 0 || isSummarizingMemory.value) return
+    if (!props.chatData?.id) {
+        showToast('无法总结记忆：会话ID缺失')
+        return
+    }
 
     isSummarizingMemory.value = true
     try {
@@ -3186,6 +3253,11 @@ const saveSettings = async () => {
 }
 
 const handleConfirmManualSummary = async () => {
+    if (!props.chatData?.id) {
+        showToast('无法执行总结：会话ID缺失')
+        return
+    }
+
     const options = {}
     if (manualSummaryRange.value && manualSummaryRange.value.trim()) {
         const parts = manualSummaryRange.value.split(/[-: ]+/)
