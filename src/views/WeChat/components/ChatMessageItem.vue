@@ -3739,8 +3739,8 @@ function getHtmlContent(content) {
         // 1. 移除 [INNER_VOICE] 或 [心声] 标签和内容（包括换行符）
         // REGEX FIX: 使用更严谨的 lookahead，支持真换行 \n 和字面量 \\n，防止吞噬后续标签
         processed = processed.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=(?:\n|\\n)?\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE))|$)/gi, '').trim();
-        // 1a. 清理心声标签剥离后残留的尾部逗号和分隔符
-        processed = processed.replace(/[,，;；]\s*$/gm, '').trim();
+        // 1a. 清理心声标签剥离后残留的尾部逗号、分隔符和花括号
+        processed = processed.replace(/[,，;；}]\s*$/gm, '').trim();
         // 2. 移除常见的协议标签（如 [OFFLINE], [DONE] 等）
         processed = processed.replace(/[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN))\s*[\]】]/gi, '').trim();
         // ✅ 隐藏心率参数（防止泄露）
