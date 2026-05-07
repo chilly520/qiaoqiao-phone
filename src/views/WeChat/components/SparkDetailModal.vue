@@ -51,6 +51,10 @@
               <div class="stat-value" :style="{ color: '#00CED1' }">{{ sparkInfo?.totalChats || 0 }}</div>
               <div class="stat-label">累计聊天</div>
             </div>
+            <div class="stat-card">
+              <div class="stat-value" :style="{ color: '#4CAF50' }">{{ messageCount }}</div>
+              <div class="stat-label">聊天条数</div>
+            </div>
           </div>
 
           <div v-if="sparkInfo?.nextLevel" class="level-progress">
@@ -119,6 +123,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useSparkStore } from '../../../stores/sparkStore'
+import { useChatStore } from '../../../stores/chatStore'
 
 const props = defineProps({
   visible: Boolean,
@@ -129,6 +134,7 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const sparkStore = useSparkStore()
+const chatStore = useChatStore()
 
 const sparkInfo = computed(() => {
   if (!props.charId) return null
@@ -137,6 +143,19 @@ const sparkInfo = computed(() => {
   } catch (e) {
     console.error('[SparkDetail] Error getting info:', e)
     return null
+  }
+})
+
+const messageCount = computed(() => {
+  try {
+    if (!props.charId) return 0
+    const chat = chatStore.chats[props.charId]
+    if (!chat || !chat.msgs) return 0
+    // 只统计用户和AI的消息（排除系统消息等）
+    return chat.msgs.filter(m => m.role === 'user' || m.role === 'ai').length
+  } catch (e) {
+    console.error('[SparkDetail] Error computing message count:', e)
+    return 0
   }
 })
 
@@ -375,7 +394,7 @@ function getLevelEmoji(index, streak) {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
