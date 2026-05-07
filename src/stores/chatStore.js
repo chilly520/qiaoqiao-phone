@@ -3951,34 +3951,25 @@ export const useChatStore = defineStore('chat', () => {
                             // Use type: 'card' for maximum compatibility with template conditions
                             msgAdded = await addMessage(chatId, { role: 'ai', type: 'card', content: processedHtml, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: finalMode });
                         } else if (/\{\s*\\?"type\\?"\s*:\s*\\?"html\\?"/.test(msgContent) || (/\{\s*\\?"html\\?"\s*:\s*\\?"/.test(msgContent) && /<[a-zA-Z][^>]*style=/i.test(msgContent))) {
-                            // 关键修复：AI 没有带 [CARD] 标签，但内容中混合了 {"type":"html","html":"<div...>"} 形式的 JSON
-                            // 需要把前面的文字和后面的 JSON 卡片分离开来
-                            console.log('[ChatStore] Detected embedded HTML card JSON without [CARD] tag, splitting...');
-                            const jsonStartIdx = msgContent.indexOf('{');
-                            const textBefore = jsonStartIdx > 0 ? msgContent.substring(0, jsonStartIdx).trim() : '';
-                            const jsonPart = msgContent.substring(jsonStartIdx);
+                            // 优化处理：AI 没有带 [CARD] 标签，但内容中混合了 {"type":"html","html":"<div...>"} 形式的 JSON
+                            // 不再拆分气泡，而是作为单个 HTML 消息发送
+                            console.log('[ChatStore] Detected embedded HTML card JSON without [CARD] tag, keeping as single message...');
 
-                            // 先把前面的文字作为一条独立的文本消息发出去
-                            if (textBefore.length > 0) {
-                                await addMessage(chatId, {
-                                    role: 'ai', type: 'text', content: textBefore,
-                                    quote: i === 0 ? aiQuote : null, mode: finalMode, ...groupSenderInfo
-                                });
-                            }
-
-                            // 然后处理 JSON 卡片部分
-                            let extractedHtml = jsonPart;
+                            let extractedHtml = msgContent;
                             try {
-                                let jsonToParse = jsonPart;
+                                let jsonToParse = msgContent;
                                 if (jsonToParse.includes('\\"')) jsonToParse = jsonToParse.replace(/\\"/g, '"');
                                 const parsed = JSON.parse(jsonToParse);
                                 if (parsed.html) extractedHtml = parsed.html;
                                 else if (parsed.content) extractedHtml = parsed.content;
+                                console.log('[ChatStore] Extracted HTML from JSON, length:', extractedHtml.length);
                             } catch (e) {
                                 console.log('[ChatStore] Embedded HTML card JSON parse failed, using as-is');
                             }
-                            console.log('[ChatStore] Adding split HTML card message');
-                            msgAdded = await addMessage(chatId, { role: 'ai', type: 'card', content: jsonPart, html: extractedHtml, quote: textBefore.length === 0 && i === 0 ? aiQuote : null, mode: finalMode, ...groupSenderInfo });
+
+                            // 作为单个 HTML 消息发送（不拆分）
+                            console.log('[ChatStore] Adding single HTML card message (no split)');
+                            msgAdded = await addMessage(chatId, { role: 'ai', type: 'card', content: msgContent, html: extractedHtml, quote: i === 0 ? aiQuote : null, mode: finalMode, ...groupSenderInfo });
                         } else {
                             // Text Message Delivery
                             // Check if we have a pending MOMENT_SHARE card to deliver

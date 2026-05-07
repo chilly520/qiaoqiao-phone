@@ -576,7 +576,7 @@ export function extractInnerVoiceData(content, msg) {
   // This handles cases where AI output mixes card HTML with voice data
   // ============================================================
 
-  // 1. Find INNER_VOICE position
+  // 1. Find INNER_VOICE position (search for all possible formats)
   const innerVoiceStart = raw.indexOf('[INNER_VOICE]') !== -1
     ? raw.indexOf('[INNER_VOICE]')
     : raw.indexOf('[INNERVOICE]') !== -1
@@ -587,21 +587,33 @@ export function extractInnerVoiceData(content, msg) {
     const beforeIV = raw.substring(0, innerVoiceStart)
     const afterIV = raw.substring(innerVoiceStart)
 
-    // Check for HTML/CSS pollution indicators
-    const htmlTagCount = (beforeIV.match(/<[^>]+>/g) || []).length
-    const styleTagCount = (beforeIV.match(/<style[\s\S]*?<\/style>/gi) || []).length
-    const divCount = (beforeIV.match(/<div/gi) || []).length
-    const hasCssProperties = /:\s*flex|:\s*block|:\s*none|background:#|color:#|font-size:/i.test(beforeIV)
-    const hasStyleTag = /<style/i.test(beforeIV)
+    console.log(`[extractInnerVoice] Found INNER_VOICE at position ${innerVoiceStart}, content length: ${raw.length}`)
 
-    // More aggressive cleaning: any HTML before INNER_VOICE is likely pollution
-    if (htmlTagCount >= 1 && (hasStyleTag || hasCssProperties || divCount >= 1)) {
-      console.log('[extractInnerVoice] Aggressive HTML cleanup:', { htmlTagCount, styleTagCount, divCount })
-      raw = afterIV
-    }
-    // Also clean if there's a lot of HTML noise
-    else if (htmlTagCount >= 3) {
-      console.log('[extractInnerVoice] Heavy HTML cleanup:', htmlTagCount, 'tags removed')
+    // AGGRESSIVE CLEANING: Remove EVERYTHING before INNER_VOICE if it looks like:
+    // - HTML/CSS code (style tags, div tags, CSS properties)
+    // - Image/Sticker data (base64, data:image, image URLs)
+    // - JSON structures (card JSON, type declarations)
+    // - Card/OFFLINE tags
+    const hasHtmlTags = /<[^>]+>/.test(beforeIV)
+    const hasStyleTags = /<style[\s\S]*?<\/style>/i.test(beforeIV)
+    const hasCssProperties = /:\s*flex|:\s*block|:\s*none|background:#|color:#|font-size:|margin:|padding:/i.test(beforeIV)
+    const hasImageData = /data:image|base64|\.png|\.jpg|\.jpeg|\.gif|\.webp/i.test(beforeIV)
+    const hasJsonStructure = /\{[^}]*"type"|"\s*html|"card"/i.test(beforeIV)
+    const hasCardTags = /\[\/?CARD\]|\[\/?OFFLINE\]/i.test(beforeIV)
+    const hasDivTags = /<div/i.test(beforeIV)
+
+    // If ANY of these indicators exist, remove everything before INNER_VOICE
+    if (hasHtmlTags || hasStyleTags || hasCssProperties || hasImageData || hasJsonStructure || hasCardTags || hasDivTags) {
+      console.log('[extractInnerVoice] Aggressive cleanup - removing', beforeIV.length, 'chars before INNER_VOICE')
+      console.log('[extractInnerVoice] Detected:', {
+        hasHtmlTags,
+        hasStyleTags,
+        hasCssProperties,
+        hasImageData,
+        hasJsonStructure,
+        hasCardTags,
+        hasDivTags
+      })
       raw = afterIV
     }
   }
