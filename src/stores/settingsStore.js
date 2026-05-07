@@ -275,6 +275,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // --- 3.7 MCP Servers ---
     const mcpServers = ref([]) // [{ id, name, url, transport: 'stdio'|'sse'|'streamable', enabled: true, tools: [] }]
+
+    // --- 3.8 MCP 内置工具开关 ---
+    const mcpBuiltinToggles = ref({}) // { '@builtin/calculator': true, '@builtin/weather': true, ... }
     
     // 获取指定聊天的线下模式状态
     function getChatOfflineMode(chatId) {
@@ -402,6 +405,11 @@ export const useSettingsStore = defineStore('settings', () => {
         return true
     }
 
+    function toggleBuiltinMCP(serverId) {
+        mcpBuiltinToggles.value[serverId] = !(mcpBuiltinToggles.value[serverId] !== false)
+        saveToStorage()
+    }
+
     function getEnabledMCPServers() {
         return mcpServers.value.filter(s => s.enabled)
     }
@@ -424,7 +432,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 drawing: JSON.parse(JSON.stringify(toRaw(drawing.value))),
                 chatOfflineModes: JSON.parse(JSON.stringify(toRaw(chatOfflineModes.value))),
                 fontScale: toRaw(fontScale.value),
-                mcpServers: JSON.parse(JSON.stringify(toRaw(mcpServers.value)))
+                mcpServers: JSON.parse(JSON.stringify(toRaw(mcpServers.value))),
+                mcpBuiltinToggles: JSON.parse(JSON.stringify(toRaw(mcpBuiltinToggles.value)))
             }
             
             // Save to IndexedDB (localforage)
@@ -600,6 +609,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
             if (data.mcpServers) {
                 mcpServers.value = data.mcpServers
+            }
+
+            if (data.mcpBuiltinToggles) {
+                mcpBuiltinToggles.value = data.mcpBuiltinToggles
             }
 
             isInitialized.value = true
@@ -1166,6 +1179,7 @@ export const useSettingsStore = defineStore('settings', () => {
         addBackgroundToHistory,
         fontScale, setFontScale,
         mcpServers, addMCPServer, updateMCPServer, deleteMCPServer, toggleMCPServer, getEnabledMCPServers,
+        mcpBuiltinToggles, toggleBuiltinMCP,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
 
         // 👇 这两个是你备份页面必须要的

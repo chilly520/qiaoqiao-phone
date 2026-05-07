@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useChatStore } from '@/stores/chatStore'
-import { testMCPConnection, discoverMCPTools } from '@/utils/mcpService'
+import { testMCPConnection, discoverMCPTools, getAllBuiltinServers } from '@/utils/mcpService'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
@@ -73,6 +73,14 @@ function toggleServer(id) {
     settingsStore.toggleMCPServer(id)
 }
 
+function toggleBuiltinTool(serverId) {
+    settingsStore.toggleBuiltinMCP(serverId)
+}
+
+function isBuiltinEnabled(serverId) {
+    return settingsStore.mcpBuiltinToggles[serverId] !== false
+}
+
 async function testConnection(id) {
     testingId.value = id
     const result = await testMCPConnection(id)
@@ -123,6 +131,45 @@ async function discoverTools(id) {
             </div>
         </Transition>
 
+        <!-- 内置工具 -->
+        <div class="section-label">📦 内置工具 (开箱即用)</div>
+        <div class="server-list">
+            <div
+                v-for="server in getAllBuiltinServers()"
+                :key="server.id"
+                class="server-card builtin-card"
+                :class="{ disabled: !isBuiltinEnabled(server.id) }"
+            >
+                <div class="server-top">
+                    <div class="server-info">
+                        <span class="server-name">
+                            <span class="builtin-icon">{{ server.icon }}</span>
+                            {{ server.name }}
+                        </span>
+                        <span class="server-url builtin-desc">{{ server.description }}</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input
+                            type="checkbox"
+                            :checked="isBuiltinEnabled(server.id)"
+                            @change="() => toggleBuiltinTool(server.id)"
+                        />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="server-tools" v-if="server.tools && server.tools.length > 0">
+                    <span class="tools-label">{{ server.tools.length }} 个工具:</span>
+                    <span v-for="t in server.tools" :key="t.name" class="tool-tag builtin-tag">
+                        {{ t.name }}
+                        <span class="tool-desc"> — {{ t.description }}</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 外部 MCP 服务器 -->
+        <div class="section-label" v-if="settingsStore.mcpServers.length > 0">🔗 外部 MCP 服务</div>
         <div class="server-list" v-if="settingsStore.mcpServers.length > 0">
             <div
                 v-for="server in settingsStore.mcpServers"
@@ -331,7 +378,35 @@ async function discoverTools(id) {
     transition: opacity 0.2s;
 }
 
+.builtin-card {
+    border-left: 3px solid #667eea;
+    background: linear-gradient(135deg, var(--card-bg, white), rgba(102, 126, 234, 0.03));
+}
+
 .server-card.disabled { opacity: 0.55; }
+
+.builtin-icon {
+    font-size: 18px;
+    margin-right: 6px;
+}
+
+.builtin-desc {
+    font-size: 12px;
+    color: var(--text-secondary, #666);
+}
+
+.builtin-tag {
+    background: rgba(102, 126, 234, 0.08);
+    color: #667eea;
+}
+
+.section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #888);
+    margin: 18px 0 8px;
+    padding-left: 4px;
+}
 
 .server-top {
     display: flex;
