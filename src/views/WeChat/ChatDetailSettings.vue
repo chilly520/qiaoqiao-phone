@@ -510,6 +510,23 @@
                     :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">分钟</span>
             </div>
 
+            <!-- MCP 工具调用 -->
+            <div class="flex items-center justify-between glass-panel p-3 rounded-lg mb-2 border"
+                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
+                <div class="flex flex-col">
+                    <span class="text-sm font-bold"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">MCP 工具调用</span>
+                    <span class="text-[10px]"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">允许 AI 调用外部 MCP 工具 (天气/搜索等)</span>
+                </div>
+                <div class="w-[44px] h-[24px] rounded-full relative cursor-pointer transition-colors duration-200"
+                    :class="localData.mcpEnabled ? 'bg-purple-500' : (settingsStore.personalization.theme === 'dark' ? 'bg-gray-600' : 'bg-[#e0e0e0]')"
+                    @click="localData.mcpEnabled = !localData.mcpEnabled">
+                    <div class="absolute top-[2px] bg-white w-[20px] h-[20px] rounded-full shadow-sm transition-transform duration-200"
+                        :class="localData.mcpEnabled ? 'left-[22px]' : 'left-[2px]'"></div>
+                </div>
+            </div>
+
             <!-- Memory -->
             <div>
                 <h3 class="section-title"
@@ -2273,6 +2290,7 @@ const localData = ref({
     groupMemoryIntero: false,
     linkedGroups: [],
     groupMemoryLimits: {} // { chatId: limit }
+    , mcpEnabled: true
 })
 
 

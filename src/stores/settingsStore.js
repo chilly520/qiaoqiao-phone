@@ -272,6 +272,9 @@ export const useSettingsStore = defineStore('settings', () => {
     
     // --- 3.6 Global Font Scale ---
     const fontScale = ref(1) // 全局字体缩放比例，默认 1
+
+    // --- 3.7 MCP Servers ---
+    const mcpServers = ref([]) // [{ id, name, url, transport: 'stdio'|'sse'|'streamable', enabled: true, tools: [] }]
     
     // 获取指定聊天的线下模式状态
     function getChatOfflineMode(chatId) {
@@ -360,7 +363,50 @@ export const useSettingsStore = defineStore('settings', () => {
         return currentChatId ? getChatOfflineMode(currentChatId) : { enableAIBackground: false, customBackground: '', backgroundType: 'default', themeMode: 'day', opacity: 1, blur: 0 }
     })
 
-    // --- 4. Persistence Helpers ---
+    // --- 4. MCP Actions ---
+    function addMCPServer(server) {
+        const newServer = {
+            id: crypto.randomUUID(),
+            name: server.name || '新建 MCP',
+            url: server.url || '',
+            transport: server.transport || 'streamable',
+            enabled: true,
+            tools: []
+        }
+        mcpServers.value.push(newServer)
+        saveToStorage()
+        return newServer
+    }
+
+    function updateMCPServer(id, updates) {
+        const idx = mcpServers.value.findIndex(s => s.id === id)
+        if (idx === -1) return false
+        mcpServers.value[idx] = { ...mcpServers.value[idx], ...updates }
+        saveToStorage()
+        return true
+    }
+
+    function deleteMCPServer(id) {
+        const idx = mcpServers.value.findIndex(s => s.id === id)
+        if (idx === -1) return false
+        mcpServers.value.splice(idx, 1)
+        saveToStorage()
+        return true
+    }
+
+    function toggleMCPServer(id) {
+        const server = mcpServers.value.find(s => s.id === id)
+        if (!server) return false
+        server.enabled = !server.enabled
+        saveToStorage()
+        return true
+    }
+
+    function getEnabledMCPServers() {
+        return mcpServers.value.filter(s => s.enabled)
+    }
+
+    // --- 5. Persistence Helpers ---
     const isInitialized = ref(false)
 
     async function saveToStorage() {
@@ -377,7 +423,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 compressQuality: toRaw(compressQuality.value),
                 drawing: JSON.parse(JSON.stringify(toRaw(drawing.value))),
                 chatOfflineModes: JSON.parse(JSON.stringify(toRaw(chatOfflineModes.value))),
-                fontScale: toRaw(fontScale.value)
+                fontScale: toRaw(fontScale.value),
+                mcpServers: JSON.parse(JSON.stringify(toRaw(mcpServers.value)))
             }
             
             // Save to IndexedDB (localforage)
@@ -549,6 +596,10 @@ export const useSettingsStore = defineStore('settings', () => {
             // Load Font Scale
             if (data.fontScale !== undefined) {
                 fontScale.value = data.fontScale
+            }
+
+            if (data.mcpServers) {
+                mcpServers.value = data.mcpServers
             }
 
             isInitialized.value = true
@@ -1114,6 +1165,7 @@ export const useSettingsStore = defineStore('settings', () => {
         getChatOfflineMode, setChatOfflineMode, toggleChatOfflineMode, toggleChatAIBackground,
         addBackgroundToHistory,
         fontScale, setFontScale,
+        mcpServers, addMCPServer, updateMCPServer, deleteMCPServer, toggleMCPServer, getEnabledMCPServers,
         exportData, importData, resetAppData, resetGlobalData, getChatListForExport,
 
         // 👇 这两个是你备份页面必须要的

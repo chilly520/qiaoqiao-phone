@@ -1257,6 +1257,43 @@ export const useChatStore = defineStore('chat', () => {
             }
         }
 
+        // --- MCP Tool Call Detection ---
+        if (newMsg.role === 'ai') {
+            const mcpRegex = /\[MCP:\s*([^:\]\s]+)\s*:\s*(\{[\s\S]*?\})\]/gi
+            let mcpMatch
+            while ((mcpMatch = mcpRegex.exec(newMsg.content)) !== null) {
+                const serverId = mcpMatch[1].trim()
+                let toolCallData = null
+                try {
+                    toolCallData = JSON.parse(mcpMatch[2])
+                } catch (e) {
+                    continue
+                }
+                const toolName = toolCallData.tool || toolCallData.name
+                const toolParams = toolCallData.params || toolCallData.arguments || {}
+
+                newMsg.content = newMsg.content.replace(mcpMatch[0], '')
+
+                import('@/utils/mcpService').then(async (mcpService) => {
+                    const result = await mcpService.callMCPTool(serverId, toolName, toolParams)
+                    const resultText = result.success
+                        ? `MCP 工具 [${toolName}] 返回结果:\n${JSON.stringify(result.result, null, 2)}`
+                        : `MCP 工具 [${toolName}] 调用失败: ${result.error}`
+
+                    addMessage(chatId, {
+                        role: 'system',
+                        type: 'system',
+                        content: resultText
+                    })
+
+                    const currentChat = chats.value[chatId]
+                    if (currentChat && currentChat.mcpEnabled !== false) {
+                        sendMessage({ chatId, forceOnline: true })
+                    }
+                })
+            }
+        }
+
         // --- World Loop: Advanced Interaction Instructions (AI Only) ---
         if (newMsg.role === 'ai') {
             // 1. [私聊: 角色名: 内容]

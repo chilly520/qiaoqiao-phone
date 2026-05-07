@@ -76,6 +76,15 @@ const settingsCards = [
         iconColor: 'text-indigo-600',
         subtitleColor: 'text-gray-500',
         page: 'backup'
+    },
+    {
+        title: 'MCP 服务',
+        subtitle: 'AI 工具调用, 外部服务接入',
+        icon: 'fa-solid fa-plug',
+        gradient: 'from-purple-100 to-purple-200',
+        iconColor: 'text-purple-600',
+        subtitleColor: 'text-gray-500',
+        page: 'mcp'
     }
 ]
 </script>

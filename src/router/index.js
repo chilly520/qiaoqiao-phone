@@ -66,6 +66,11 @@ const router = createRouter({
             component: () => import('../views/Settings/BackupSettings.vue')
         },
         {
+            path: '/settings/mcp',
+            name: 'settings-mcp',
+            component: () => import('../views/Settings/MCPSettings.vue')
+        },
+        {
             path: '/system-logs',
             name: 'system-logs',
             component: () => import('../views/System/SystemLogs.vue')

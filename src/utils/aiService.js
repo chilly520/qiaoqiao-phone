@@ -10,6 +10,7 @@ import { usePhoneInspectionStore } from '../stores/phoneInspectionStore'
 import { useWalletStore } from '../stores/walletStore'
 import { weatherService } from './weatherService'
 import { batteryMonitor } from './batteryMonitor'
+import { buildMCPPromptSection } from './mcpService'
 
 import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from './ai/prompts'
 import { recallOriginalMessages, getMemorySummary } from './memoryLog'
@@ -948,6 +949,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 }
             } else {
                 promptContent += '\n\n【重要提示】当前处于线上微信聊天模式，请严格按照【场景 A：微信聊天】输出。使用短句、口语化表达，保持自然的微信聊天节奏。'
+            }
+        }
+
+        if (!options.isCall && char.mcpEnabled !== false && buildMCPPromptSection) {
+            const mcpSection = buildMCPPromptSection()
+            if (mcpSection) {
+                promptContent += '\n' + mcpSection
             }
         }
 
