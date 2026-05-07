@@ -129,10 +129,6 @@ const props = defineProps({
 })
 
 const phoneStore = usePhoneInspectionStore()
-if (!phoneStore) {
-  console.error('[PhoneDesktop] CRITICAL: usePhoneInspectionStore() returned null/undefined!')
-}
-
 const calendarStore = useCalendarStore()
 const emit = defineEmits(['open-app'])
 
@@ -218,13 +214,11 @@ const daysSince = computed(() => {
   if (!nearestAnniversary.value) {
     return 0
   }
-  
-  // 如果是未来的纪念日，显示倒计时天数
-  if (nearestAnniversary.value.isFuture) {
+
+  if (anniversaryData.value.isFuture) {
     return nearestAnniversary.value.daysUntil
   }
-  
-  // 如果是过去的纪念日，显示已经过去的天数
+
   return nearestAnniversary.value.daysSince || 0
 })
 

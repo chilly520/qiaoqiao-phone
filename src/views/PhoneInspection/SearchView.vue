@@ -81,12 +81,9 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
-import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
 
 const router = useRouter()
 const chatStore = useChatStore()
-const phoneInspection = usePhoneInspectionStore()
-
 const searchQuery = ref('')
 const filteredChats = ref([])
 const currentTime = ref('')
@@ -151,9 +148,6 @@ function getAvatar(chat) {
 }
 
 function selectChat(chat) {
-  // 我们在 store 里已经改成了 Mock 模式，这里直接调用即可
-  phoneInspection.generatePhoneData(chat.id)
-
   router.push({
     name: 'phone-inspection',
     params: { charId: chat.id }
