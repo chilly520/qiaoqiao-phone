@@ -741,13 +741,36 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   clean = clean.replace(/\[\s*\/?\s*(?:ONLINE|OFFLINE)\s*\]/gi, '')
 
   // 2. Strip ENTIRE INNER_VOICE block (complete removal - content goes to MINDSCAPE popup)
-  // This removes everything between [INNER_VOICE] and [/INNER_VOICE] tags
-  // Supports: [INNER_VOICE], [INNER_VOICE], [INNER VOICE], [Inner_Voice], [心声]
-  // Also handles unclosed tags (removes to end of string)
-  clean = clean.replace(
-    /\[\s*(?:INNER[-_ ]?VOICE|心声|内心|心理活动)\s*\][\s\S]*?(?:\[\/\s*(?:INNER[-_ ]?VOICE|心声|内心|心理活动)\s*\]|$)/gi,
-    ''
-  ).trim()
+  // Enhanced: Use balanced brace matching for robustness with nested JSON
+  const innerVoiceStartRegex = /\[\s*(?:INNER[-_ ]?VOICE|心声|内心|心理活动)\s*\]/gi;
+  let match;
+  while ((match = innerVoiceStartRegex.exec(clean)) !== null) {
+    const startIndex = match.index;
+    const startTag = match[0];
+
+    // Look for closing tag [/INNER_VOICE] or [/心声] etc.
+    const closeTagRegex = new RegExp(`\\[\\/\\s*(?:INNER[-_ ]?VOICE|心声|内心|心理活动)\\s*\\]`, 'gi');
+    closeTagRegex.lastIndex = startIndex + startTag.length;
+    const closeMatch = closeTagRegex.exec(clean);
+
+    if (closeMatch) {
+      // Remove from start tag to end of close tag
+      clean = clean.substring(0, startIndex) + clean.substring(closeMatch.index + closeMatch[0].length);
+      // Reset regex index since string changed
+      innerVoiceStartRegex.lastIndex = startIndex;
+    } else {
+      // No closing tag found - remove to end of string or to next major block
+      let endIndex = clean.length;
+      const nextBlockRegex = /(?:\n\s*(?:\[|\【)(?:ONLINE|OFFLINE|CARD|LS_JSON|MOMENT|PHONE_CMD))/gi;
+      nextBlockRegex.lastIndex = startIndex + startTag.length;
+      const nextBlock = nextBlockRegex.exec(clean);
+      if (nextBlock) {
+        endIndex = nextBlock.index;
+      }
+      clean = clean.substring(0, startIndex) + clean.substring(endIndex);
+      break; // Exit loop since we modified the string
+    }
+  }
 
   // 2b. Safety net: Remove any remaining inner voice JSON objects that leaked
   // This catches cases where tags were malformed but JSON structure is detectable
@@ -775,7 +798,51 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
   clean = clean.replace(/\[(?:拒收|退回|拒绝)(?:红包|转账|亲属卡):[^\]]+\]/gi, '')
   clean = clean.replace(/\[\s*(?:FAMILY_CARD|亲属卡|申请亲属卡|拒绝亲属卡|赠送亲属卡)(?:_APPLY|_REJECT)?\s*[:：][^\]]*\]/gi, '')
   clean = clean.replace(/[\\[【]\s*LOVESPACE_(?:INVITE|CONTRACT|REJECT)[:：]?\s*[^\]】]*[\]】]/gi, '')
-  clean = clean.replace(/[\\[【]\s*LS_JSON[:：]?\s*[\s\S]*?[\]】]/gi, '')
+
+  // Enhanced LS_JSON removal: Use balanced brace matching for robustness
+  // Handles nested JSON structures correctly
+  clean = clean.replace(/[\\[【]\s*LS_JSON\s*[:：]?\s*/gi, (match) => {
+    const startIndex = clean.indexOf(match);
+    if (startIndex === -1) return match;
+
+    let braceCount = 0;
+    let inString = false;
+    let isEscaped = false;
+    let endIndex = -1;
+
+    for (let i = startIndex + match.length; i < clean.length; i++) {
+      const char = clean[i];
+      if (isEscaped) { isEscaped = false; continue; }
+      if (char === '\\') { isEscaped = true; continue; }
+      if (char === '"') { inString = !inString; continue; }
+
+      if (!inString) {
+        if (char === '{') braceCount++;
+        else if (char === '}') {
+          braceCount--;
+          if (braceCount < 0) {
+            // Found the closing brace, now look for ] or 】
+            for (let j = i + 1; j < Math.min(i + 10, clean.length); j++) {
+              if (clean[j] === ']' || clean[j] === '】') {
+                endIndex = j + 1;
+                break;
+              }
+            }
+            break;
+          }
+        } else if ((char === ']' || char === '】') && braceCount === 0) {
+          endIndex = i + 1;
+          break;
+        }
+      }
+    }
+
+    if (endIndex !== -1) {
+      return ''; // Remove the entire matched content
+    }
+    return match; // Keep original if not properly matched
+  });
+
   clean = clean.replace(/\[一起听歌:[^\]]+\]|\[停止听歌\]|<bgm>[\s\S]*?<\/bgm>/gi, '')
   clean = clean.replace(/\[(?:MOMENT_SHARE|分享朋友圈)[:：][^\]]+\]/gi, '')
   clean = clean.replace(/\[PHONE_CMD\][\s\S]*?\[\/PHONE_CMD\]/gi, '')
