@@ -2295,7 +2295,47 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. 准备上下文：根据设置动态截取消息历史
         const contextLimit = chat.contextLimit || 20
-        const rawContext = (chat.msgs || []).slice(-contextLimit).map(m => {
+        const currentMode = mode || (useSettingsStore().getChatOfflineMode(chatId).isOfflineMode ? 'offline' : 'online')
+
+        console.log(`[sendMessageToAI] Building context for mode: ${currentMode}, contextLimit: ${contextLimit}`)
+
+        // 根据当前模式过滤消息：优先包含同模式的消息
+        let allMsgs = (chat.msgs || []).filter(m => m.role === 'user' || m.role === 'ai')
+
+        // 统计各模式消息数量
+        const onlineMsgs = allMsgs.filter(m => m.mode !== 'offline')
+        const offlineMsgs = allMsgs.filter(m => m.mode === 'offline')
+
+        console.log(`[sendMessageToAI] Message stats - total: ${allMsgs.length}, online: ${onlineMsgs.length}, offline: ${offlineMsgs.length}`)
+
+        // 根据当前模式选择消息：
+        // - 如果是线上模式，优先使用线上消息，不足时补充离线消息
+        // - 如果是离线模式，优先使用离线消息，不足时补充线上消息
+        let selectedMsgs = []
+        if (currentMode === 'online') {
+            // 线上模式：优先取线上消息
+            selectedMsgs = [...onlineMsgs]
+            // 如果线上消息不够，从末尾补充离线消息
+            if (selectedMsgs.length < contextLimit) {
+                const needed = contextLimit - selectedMsgs.length
+                const additionalOffline = offlineMsgs.slice(-needed)
+                // 合并并按时间排序
+                selectedMsgs = [...selectedMsgs, ...additionalOffline].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+            }
+        } else {
+            // 离线模式：优先取离线消息
+            selectedMsgs = [...offlineMsgs]
+            // 如果离线消息不够，从末尾补充线上消息
+            if (selectedMsgs.length < contextLimit) {
+                const needed = contextLimit - selectedMsgs.length
+                const additionalOnline = onlineMsgs.slice(-needed)
+                // 合并并按时间排序
+                selectedMsgs = [...selectedMsgs, ...additionalOnline].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+            }
+        }
+
+        // 最终截取最近 contextLimit 条
+        const rawContext = selectedMsgs.slice(-contextLimit).map(m => {
             let content = ""
             if (typeof m.content === 'string') {
                 content = m.content
