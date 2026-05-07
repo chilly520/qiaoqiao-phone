@@ -1997,12 +1997,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                      }
                 }
 
-                // ⚠️ 无条件剔除标签块，防止由于解析失败导致的原样代码外漏
-                content = content.replace(ivMatch[0], '').trim();
+                // 保留 INNER_VOICE 块在 content 中，由 ChatMessageItem 解析并渲染为心声卡片
                 if (innerVoice) {
                     console.log('[AI Service] 心声提取成功（标签模式）', Object.keys(innerVoice));
                 } else {
-                    console.warn('[AI Service] 心声块存在但解析失败，已将乱码块从聊天内容中移除');
+                    console.warn('[AI Service] 心声块存在但解析失败，保留标签由前端清理');
                 }
             } else {
                 // 模式 2: AI 忘记标签，直接输出裸露的 JSON 对象 `{ "status": ... }`
@@ -2023,12 +2022,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                         if (strippedJsonObj || jsonStr.includes('footprint') || jsonStr.includes('diary') || jsonStr.includes('type')) {
                             innerVoice = strippedJsonObj || innerVoice;
                             console.log('[AI Service] 心声/指令提取成功（裸露 JSON 对象模式）', innerVoice ? Object.keys(innerVoice) : 'JSON detected');
-                            // 🎉 既然提取出有效块，就把这个 JSON 大块从聊天框彻底抹去！
-                            let pre = content.substring(0, firstBrace);
-                            // 🗑️ 增强清理：剔除指令前残留的逗号、冒号、空格或换行
-                            pre = pre.replace(/[,，:：\s\r\n]+$/, '');
-                            content = pre + content.substring(endIdx);
-                            content = content.trim();
+                            // 保留在 content 中，由前端组件渲染
                         }
                     }
                 }
