@@ -1193,7 +1193,7 @@ export const useChatStore = defineStore('chat', () => {
         if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
             // Robust Regex: Matches [MOMENT_SHARE: payload ] where payload may contain nested brackets (JSON)
             // It stops before the next known tag start [ or at the end of the message.
-            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[[A-Z_]|【|$))/i;
+            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈)[:：]\s*([\s\S]+?)\](?=\s*(?:\[|【|$))/i;
             const match = newMsg.content.match(shareRegex);
 
             if (match) {
