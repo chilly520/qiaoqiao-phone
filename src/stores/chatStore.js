@@ -825,47 +825,81 @@ export const useChatStore = defineStore('chat', () => {
                     newMsg.content = `[亲属卡:${newMsg.amount}:${newMsg.note}:${newMsg.paymentId}]`
                 } else if (tagType === '礼物' || tagType.toUpperCase() === 'GIFT') {
                     newMsg.type = 'gift'
-                    newMsg.giftName = val1 || '礼物'
-                    
-                    // 鲁棒性解析：处理 [GIFT:名称:数量:备注] 或 [GIFT:名称:备注]
+                    newMsg.giftName = val1 || '神秘礼物'
+
+                    // 鲁棒性解析：处理 [GIFT:名称:数量:描述DRAW:图片提示词] 或 [GIFT:名称:备注]
+                    let rawDescription = ''
+                    let rawNote = ''
+
                     if (val3) {
                         newMsg.giftQuantity = parseInt(val2) || 1
-                        newMsg.giftNote = val3
+                        rawDescription = val3  // 可能包含描述和DRAW指令
                     } else if (val2) {
                         const q = parseInt(val2)
-                        // 如果 val2 是纯数字，视为数量；否则视为备注
                         if (!isNaN(q) && /^\d+$/.test(val2)) {
                             newMsg.giftQuantity = q
-                            newMsg.giftNote = ''
+                            rawDescription = ''
                         } else {
                             newMsg.giftQuantity = 1
-                            newMsg.giftNote = val2
+                            rawDescription = val2
                         }
                     } else {
                         newMsg.giftQuantity = 1
-                        newMsg.giftNote = ''
+                        rawDescription = ''
                     }
 
-                    newMsg.giftId = `GIFT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-                    
-                    // 处理礼物中的 DRAW: 生图指令 (支持在备注中包含)
-                    if (newMsg.giftNote && newMsg.giftNote.includes('DRAW:')) {
-                        const parts = newMsg.giftNote.split('DRAW:')
-                        newMsg.giftNote = parts[0].trim()
-                        const prompt = parts[1].trim()
-                        if (prompt) {
-                            console.log('[ChatStore] GIFT DRAW detected, generating image for gift:', newMsg.giftName);
+                    // 处理礼物中的 DRAW: 生图指令 (支持在描述或备注中包含)
+                    if (rawDescription.includes('DRAW:')) {
+                        const parts = rawDescription.split('DRAW:')
+                        const textPart = parts[0].trim()
+                        const imagePrompt = parts[1] ? parts[1].trim() : ''
+
+                        // 判断哪部分是描述，哪部分是留言
+                        // 如果文字部分较短（<20字），视为留言；否则视为描述
+                        if (textPart.length <= 20 && textPart.length > 0) {
+                            rawNote = textPart
+                            rawDescription = ''  // 短文本作为留言
+                        } else if (textPart.length > 20) {
+                            rawDescription = textPart  // 长文本作为描述
+                            rawNote = ''
+                        }
+
+                        // 生成礼物图片
+                        if (imagePrompt) {
+                            console.log('[ChatStore] GIFT DRAW detected, generating image for gift:', newMsg.giftName, 'prompt:', imagePrompt.substring(0, 50));
                             import('@/utils/aiService').then(m => {
-                                m.generateImage(prompt).then(url => {
+                                m.generateImage(imagePrompt).then(url => {
                                     newMsg.giftImage = url
                                     saveChats()
                                 })
                             })
                         }
+                    } else {
+                        // 没有DRAW指令，纯文本处理
+                        if (rawDescription.length > 50) {
+                            // 长文本作为描述
+                            newMsg.giftDescription = rawDescription
+                            newMsg.giftNote = ''
+                        } else if (rawDescription.length > 0) {
+                            // 短文本作为留言
+                            newMsg.giftNote = rawDescription
+                            newMsg.giftDescription = `${newMsg.giftName} - 一份特别的礼物`
+                        }
                     }
-                    
+
+                    // 设置最终字段（确保都有值）
+                    if (!newMsg.giftDescription) {
+                        newMsg.giftDescription = rawDescription || `${newMsg.giftName} - 一份珍贵的礼物`
+                    }
+                    if (!newMsg.giftNote) {
+                        newMsg.giftNote = rawNote || ''
+                    }
+
+                    newMsg.giftId = `GIFT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+                    console.log('[ChatStore] Gift parsed:', { name: newMsg.giftName, quantity: newMsg.giftQuantity, desc: newMsg.giftDescription?.substring(0, 30), note: newMsg.giftNote?.substring(0, 30) })
+
                     if (isTagOnly) {
-                        newMsg.content = `[礼物:${newMsg.giftName}:${newMsg.giftQuantity}:${newMsg.giftNote}:${newMsg.giftId}]`
+                        newMsg.content = `[礼物:${newMsg.giftName}:${newMsg.giftQuantity}:${newMsg.giftNote || newMsg.giftDescription}:${newMsg.giftId}]`
                     }
                 }
             } else {
