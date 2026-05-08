@@ -2444,6 +2444,12 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
         // Remove markdown code blocks if present
         jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
+        // Clean protocol tags that may leak into JSON response (INNER_VOICE, OFFLINE, ONLINE, DONE, etc.)
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE|\/))|$)/gi, '')
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN|INNER[-_ ]?VOICE|心声))\s*[\]】]/gi, '')
+        jsonStr = jsonStr.trim()
+        if (!jsonStr) throw new Error('AI 返回内容仅包含协议标签，无有效 JSON')
+
         // Extract JSON object
         const objectStartIndex = jsonStr.indexOf('{')
         const objectEndIndex = jsonStr.lastIndexOf('}')
@@ -2643,6 +2649,12 @@ ${"```"}
 
         // Remove markdown code blocks if present
         jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+
+        // Clean protocol tags that may leak into JSON response (INNER_VOICE, OFFLINE, ONLINE, DONE, etc.)
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE|\/))|$)/gi, '')
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN|INNER[-_ ]?VOICE|心声))\s*[\]】]/gi, '')
+        jsonStr = jsonStr.trim()
+        if (!jsonStr) throw new Error('AI 返回内容仅包含协议标签，无有效 JSON')
 
         // Try to extract the JSON object or array
         const startBrace = jsonStr.indexOf('{')
