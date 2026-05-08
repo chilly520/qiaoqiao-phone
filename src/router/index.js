@@ -63,7 +63,7 @@ const router = createRouter({
         {
             path: '/settings/backup',
             name: 'settings-backup',
-            component: () => import('../views/settings/BackupSettings.vue')
+            component: () => import('../views/Settings/BackupSettings.vue')
         },
         {
             path: '/settings/mcp',
