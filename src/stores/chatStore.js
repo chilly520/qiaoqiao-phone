@@ -3735,6 +3735,37 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processedContent.replace(/\n{2,}/g, '\n').trim();
 
 
+                // Pass 3.9: Fallback — catch naked {"type":"html",...} JSON objects missed by Pass 2
+                // Use balanced brace scanning to extract and protect them before the splitRegex
+                const nakedHtmlJsonRegex = /\{\s*\\?["'](?:type|html|card|json|content)\\?["']\s*[:：]\s*\\?["'](?:html|card)\\?["']/gi;
+                let nakedMatch;
+                while ((nakedMatch = nakedHtmlJsonRegex.exec(processedContent)) !== null) {
+                    const jsonStart = processedContent.lastIndexOf('{', nakedMatch.index);
+                    if (jsonStart === -1) continue;
+                    let braceCount = 0, inString = false, isEscaped = false, jsonEnd = -1;
+                    for (let i = jsonStart; i < processedContent.length; i++) {
+                        const ch = processedContent[i];
+                        if (isEscaped) { isEscaped = false; continue; }
+                        if (ch === '\\') { isEscaped = true; continue; }
+                        if (ch === '"') { inString = !inString; continue; }
+                        if (!inString) {
+                            if (ch === '{') braceCount++;
+                            else if (ch === '}') { braceCount--; if (braceCount === 0) { jsonEnd = i; break; } }
+                        }
+                    }
+                    if (jsonEnd !== -1) {
+                        const fullJson = processedContent.substring(jsonStart, jsonEnd + 1);
+                        // Verify this is actually an HTML card JSON
+                        if ((fullJson.includes('"html"') || fullJson.includes('"type"')) && fullJson.length > 20) {
+                            cardBlocks.push(`[CARD]${fullJson}`);
+                            const placeholder = ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
+                            processedContent = processedContent.substring(0, jsonStart) + placeholder + processedContent.substring(jsonEnd + 1);
+                            nakedHtmlJsonRegex.lastIndex = jsonStart + placeholder.length;
+                        }
+                    }
+                }
+
+
                 // Pass 4: Clean up image tags & Hallucination Cleanup
                 processedContent = processedContent.replace(/\[图片:(.+?)\]/gi, (match, url) => {
                     const trimmedUrl = url.trim();
