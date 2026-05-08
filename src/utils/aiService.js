@@ -2497,6 +2497,56 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
  * 批量生成朋友圈动态+互动内容（一次性生成）
  * @param {Object} options { characters: [{id, name, persona}], worldContext, customPrompt, count }
  */
+
+function extractBalancedJSON(text) {
+    const openers = { '{': '}', '[': ']' }
+    const closers = { '}': '{', ']': '[' }
+    let inString = false, stringChar = '', depth = 0
+    let start = -1, openChar = '', closeChar = ''
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        if (inString) {
+            if (ch === '\\') { i++; continue }
+            if (ch === stringChar) inString = false
+            continue
+        }
+        if (ch === '"' || ch === "'") { inString = true; stringChar = ch; continue }
+
+        if (depth === 0 && openers[ch]) {
+            depth = 1; start = i; openChar = ch; closeChar = openers[ch]
+            continue
+        }
+        if (depth > 0) {
+            if (ch === openChar) depth++
+            else if (ch === closeChar) {
+                depth--
+                if (depth === 0) return text.slice(start, i + 1)
+            }
+        }
+    }
+    if (depth > 0 && start >= 0) return text.slice(start)
+    return null
+}
+
+function sanitizeJSON(text, aggressive = false) {
+    let s = text
+    s = s.replace(/,(\s*[}\]])/g, '$1')
+    if (aggressive) {
+        s = s.replace(/:\s*undefined\b/g, ': null')
+        s = s.replace(/:\s*NaN\b/g, ': null')
+        s = s.replace(/:\s*Infinity\b/g, ': null')
+        s = s.replace(/:\s*-Infinity\b/g, ': null')
+        s = s.replace(/\/\/[^\n]*/g, '')
+        s = s.replace(/\/\*[\s\S]*?\*\//g, '')
+        s = s.replace(/\n/g, ' ')
+        s = s.replace(/\s+/g, ' ')
+        s = s.replace(/,\s*,/g, ',')
+        s = s.replace(/\[\s*,/g, '[')
+    }
+    return s
+}
+
 export async function generateBatchMomentsWithInteractions(options) {
     const { characters, worldContext, customPrompt, userProfile, historicalMoments = [], count = 3 } = options
 
@@ -2642,39 +2692,20 @@ ${"```"}
         const result = await apiQueue.enqueue(_generateReplyInternal, [messages, { name: 'MomentsGenerator' }, null, { skipVisualContext: true }])
         if (!result || result.error) throw new Error(result?.error || 'AI 返回内容为空')
 
-        // Robust content checking
         const rawContent = result.content || ''
         let jsonStr = rawContent.trim()
         if (!jsonStr) throw new Error('AI 返回内容为空串')
 
-        // Remove markdown code blocks if present
         jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
-        // Clean protocol tags that may leak into JSON response (INNER_VOICE, OFFLINE, ONLINE, DONE, etc.)
-        jsonStr = jsonStr.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?(?:[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]|(?=\s*[\[【]\s*(?:CARD|LS_JSON|情侣空间|IMAGE|OFFLINE|ONLINE|DONE|\/))|$)/gi, '')
-        jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:OFFLINE|ONLINE|DONE|DONE_TOKEN|INNER[-_ ]?VOICE|心声))\s*[\]】]/gi, '')
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]/gi, '')
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:INNER[-_ ]?VOICE|心声|OFFLINE|ONLINE|DONE|DONE_TOKEN|CARD|TIMER|MCP|TIMER:|MCP:)[^\]]*)\s*[\]】]/gi, '')
         jsonStr = jsonStr.trim()
         if (!jsonStr) throw new Error('AI 返回内容仅包含协议标签，无有效 JSON')
 
-        // Try to extract the JSON object or array
-        const startBrace = jsonStr.indexOf('{')
-        const startBracket = jsonStr.indexOf('[')
-
-        // Find the earlier start marker
-        let startIndex = -1
-        let endIndex = -1
-
-        if (startBrace !== -1 && (startBracket === -1 || startBrace < startBracket)) {
-            startIndex = startBrace
-            endIndex = jsonStr.lastIndexOf('}')
-        } else if (startBracket !== -1) {
-            startIndex = startBracket
-            endIndex = jsonStr.lastIndexOf(']')
-        }
-
-        if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+        const extracted = extractBalancedJSON(jsonStr)
+        if (!extracted) {
             console.error('[Batch Moments] Cannot find JSON container in response:', jsonStr.substring(0, 500))
-            // Try to extract moments from plain text as fallback
             const textLines = jsonStr.split('\n').filter(line => line.trim().length > 10)
             if (textLines.length > 0) {
                 console.warn('[Batch Moments] Falling back to text extraction')
@@ -2693,7 +2724,7 @@ ${"```"}
             return { newMoments: [], ecosystemUpdates: [] }
         }
 
-        jsonStr = jsonStr.substring(startIndex, endIndex + 1)
+        jsonStr = sanitizeJSON(extracted)
 
         let parsedData
         try {
@@ -2701,7 +2732,15 @@ ${"```"}
         } catch (parseError) {
             console.error('[Batch Moments] JSON Parse Error:', parseError.message)
             console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
-            throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+
+            const retryStr = sanitizeJSON(extracted, true)
+            try {
+                parsedData = JSON.parse(retryStr)
+                console.warn('[Batch Moments] JSON parsed successfully after aggressive sanitization')
+            } catch (retryError) {
+                console.error('[Batch Moments] Retry also failed:', retryError.message)
+                throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+            }
         }
 
         // Support both old array format and new object format
