@@ -787,7 +787,8 @@
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                             <div class="timer-bubble chat-bubble"
                                 :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
-                                :style="computedBubbleStyle">
+                                :style="computedBubbleStyle"
+                                @click="$emit('click-timer', msg)">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-clock text-amber-500"></i>
                                     <span class="text-sm font-medium">定时提醒</span>

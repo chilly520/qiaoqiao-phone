@@ -1038,6 +1038,11 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                 }
             }
 
+            // 5b. Auto-open Mission Scheduler when AI sends a timer task
+            if (lastMsg.type === 'timer' && lastMsg.role === 'ai') {
+                showMissionScheduler.value = true
+            }
+
             // 4. Auto TTS (AI Only)
             if (lastMsg.role === 'ai' && chatData.value?.autoRead !== false && chatData.value?.autoTTS) {
                 speakMessage(contentStr, lastMsg.id);
@@ -3564,7 +3569,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
                         @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
                         @play-voice="handleVoiceClick" @show-rank="handleShowRank"
-                        @payment-response="handlePaymentResponse" />
+                        @payment-response="handlePaymentResponse" @click-timer="showMissionScheduler = true" />
                 </template>
 
 
