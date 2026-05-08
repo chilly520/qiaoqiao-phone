@@ -2,120 +2,181 @@ import { useSettingsStore } from '@/stores/settingsStore'
 
 const BUILTIN_PREFIX = '@builtin/'
 
-// ===================== 内置工具定义 =====================
-export const BUILTIN_SERVERS = [
+// ===================== 内置 MCP 服务定义 =====================
+
+const BUILTIN_SERVERS = [
     {
-        id: '@builtin/calculator',
-        name: '数学计算器',
-        description: '执行数学运算，支持 + - * / 和三角函数、对数等',
-        icon: '🔢',
-        transport: 'builtin',
-        tools: [{
-            name: 'calc',
-            description: '执行数学表达式计算',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    expression: { type: 'string', description: '数学表达式，如 "2+3*4" 或 "sin(0.5)+sqrt(9)"' }
-                },
-                required: ['expression']
-            }
-        }]
-    },
-    {
-        id: '@builtin/datetime',
-        name: '日期时间查询',
-        description: '获取当前时间、日期、星期、时间戳等',
-        icon: '📅',
-        transport: 'builtin',
-        tools: [{
-            name: 'now',
-            description: '获取当前日期时间信息',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    format: { type: 'string', description: '可选: "full"(完整) "date"(日期) "time"(时间) "weekday"(星期) "timestamp"(时间戳)' }
+        id: '@builtin/web-search',
+        name: '网页搜索',
+        icon: '🔍',
+        desc: '搜索互联网信息',
+        tools: [
+            {
+                name: 'search',
+                description: '在互联网上搜索信息，返回相关结果摘要和链接',
+                parameters: {
+                    query: { type: 'string', description: '搜索关键词', required: true },
+                    max: { type: 'number', description: '最大结果数(1-10)，默认5' }
                 }
             }
-        }]
+        ]
     },
     {
-        id: '@builtin/random',
-        name: '随机工具',
-        description: '生成随机数、掷骰子、抽签、随机选择',
-        icon: '🎲',
-        transport: 'builtin',
-        tools: [{
-            name: 'rand',
-            description: '生成随机数或随机选择',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    action: { type: 'string', description: '"number"(随机数) "dice"(掷骰子) "pick"(从列表选) "coin"(抛硬币)' },
-                    min: { type: 'number', description: '最小值（number模式下）' },
-                    max: { type: 'number', description: '最大值（number模式下）' },
-                    options: { type: 'array', items: { type: 'string' }, description: '候选项列表（pick模式下）' }
-                },
-                required: ['action']
+        id: '@builtin/web-fetch',
+        name: '网页抓取',
+        icon: '🌐',
+        desc: '抓取任意网页内容',
+        tools: [
+            {
+                name: 'fetch',
+                description: '抓取指定URL的网页文本内容',
+                parameters: {
+                    url: { type: 'string', description: '要抓取的网页地址', required: true }
+                }
             }
-        }]
+        ]
+    },
+    {
+        id: '@builtin/translate',
+        name: '翻译',
+        icon: '🌍',
+        desc: '多语言翻译',
+        tools: [
+            {
+                name: 'translate',
+                description: '将文本翻译为指定语言。from: 源语言代码(可选), to: 目标语言代码 如 zh/en/ja/ko/fr/de/es',
+                parameters: {
+                    text: { type: 'string', description: '要翻译的文本', required: true },
+                    to: { type: 'string', description: '目标语言代码 如zh/en/ja/ko', required: true },
+                    from: { type: 'string', description: '源语言代码(可选，自动检测)' }
+                }
+            }
+        ]
     },
     {
         id: '@builtin/weather',
         name: '天气查询',
-        description: '查询城市实时天气（免费API，无需密钥）',
         icon: '🌤️',
-        transport: 'builtin',
-        tools: [{
-            name: 'query',
-            description: '查询指定城市的当前天气',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    city: { type: 'string', description: '城市名称，如 "北京" "上海" "Tokyo"' }
-                },
-                required: ['city']
+        desc: '全球实时天气',
+        tools: [
+            {
+                name: 'get_weather',
+                description: '查询任意城市的实时天气（支持中文城市名）',
+                parameters: {
+                    city: { type: 'string', description: '城市名称，如"北京" "Tokyo" "London"', required: true }
+                }
             }
-        }]
+        ]
     },
     {
-        id: '@builtin/unit',
-        name: '单位换算',
-        description: '长度、重量、温度、货币等常用单位换算',
-        icon: '📐',
-        transport: 'builtin',
-        tools: [{
-            name: 'convert',
-            description: '单位换算',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    value: { type: 'number', description: '要转换的数值' },
-                    from: { type: 'string', description: '源单位，如 km, m, cm, kg, g, c, f, usd, cny, eur 等' },
-                    to: { type: 'string', description: '目标单位' }
-                },
-                required: ['value', 'from', 'to']
+        id: '@builtin/location',
+        name: 'IP定位',
+        icon: '📍',
+        desc: 'IP归属地 / 城市定位',
+        tools: [
+            {
+                name: 'locate',
+                description: '根据IP地址或城市名查询地理位置信息',
+                parameters: {
+                    ip: { type: 'string', description: 'IP地址(可选，默认当前)，或城市名' }
+                }
             }
-        }]
+        ]
     },
     {
-        id: '@builtin/encode',
-        name: '编码转换',
-        description: 'Base64编解码、URL编解码、MD5等',
-        icon: '🔐',
-        transport: 'builtin',
-        tools: [{
-            name: 'transform',
-            description: '编码/解码转换',
-            inputSchema: {
-                type: 'object',
-                properties: {
-                    action: { type: 'string', description: '"base64_encode" "base64_decode" "url_encode" "url_decode"' },
-                    text: { type: 'string', description: '要处理的内容' }
-                },
-                required: ['action', 'text']
+        id: '@builtin/exchange',
+        name: '汇率换算',
+        icon: '💱',
+        desc: '实时货币汇率',
+        tools: [
+            {
+                name: 'convert',
+                description: '查询实时汇率并换算金额',
+                parameters: {
+                    amount: { type: 'number', description: '金额', required: true },
+                    from: { type: 'string', description: '源货币代码 如USD/CNY/EUR/JPY', required: true },
+                    to: { type: 'string', description: '目标货币代码', required: true }
+                }
             }
-        }]
+        ]
+    },
+    {
+        id: '@builtin/news',
+        name: '新闻头条',
+        icon: '📰',
+        desc: '实时新闻摘要',
+        tools: [
+            {
+                name: 'headlines',
+                description: '获取最新新闻头条',
+                parameters: {
+                    category: { type: 'string', description: '分类: general/technology/business/sports/entertainment/health/science' },
+                    country: { type: 'string', description: '国家代码 如cn/us/jp/kr，默认cn' }
+                }
+            }
+        ]
+    },
+    {
+        id: '@builtin/calculator',
+        name: '科学计算器',
+        icon: '🔢',
+        desc: '数学计算 / 科学运算',
+        tools: [
+            {
+                name: 'calc',
+                description: '执行数学表达式计算，支持 +-*/%**、三角函数/对数/开方等',
+                parameters: {
+                    expression: { type: 'string', description: '数学表达式，如"(100+50)*0.8"', required: true }
+                }
+            }
+        ]
+    },
+    {
+        id: '@builtin/datetime',
+        name: '日期时间',
+        icon: '📅',
+        desc: '日期时间 / 时区转换',
+        tools: [
+            {
+                name: 'query',
+                description: '查询当前日期时间或进行时区转换',
+                parameters: {
+                    timezone: { type: 'string', description: '时区 如Asia/Shanghai America/New_York(可选)' },
+                    action: { type: 'string', description: '操作: now/convert/weekday/timestamp' }
+                }
+            }
+        ]
+    },
+    {
+        id: '@builtin/dictionary',
+        name: '英语词典',
+        icon: '📖',
+        desc: '英文单词查询',
+        tools: [
+            {
+                name: 'lookup',
+                description: '查询英文单词的定义、发音、例句',
+                parameters: {
+                    word: { type: 'string', description: '要查询的英文单词', required: true }
+                }
+            }
+        ]
+    },
+    {
+        id: '@builtin/qrcode',
+        name: '二维码生成',
+        icon: '📱',
+        desc: '生成二维码图片',
+        tools: [
+            {
+                name: 'generate',
+                description: '生成二维码图片链接',
+                parameters: {
+                    data: { type: 'string', description: '要编码的内容(URL/文本)', required: true },
+                    size: { type: 'number', description: '尺寸(像素)，默认200' }
+                }
+            }
+        ]
     }
 ]
 
@@ -151,214 +212,204 @@ export function getEnabledServers() {
 // ===================== 内置工具执行 =====================
 
 async function handleBuiltinCall(serverId, toolName, params) {
-    const server = getBuiltinServer(serverId)
-    if (!server) return { error: '内置工具不存在' }
+    switch (serverId) {
+        case '@builtin/web-search': return handleWebSearch(params)
+        case '@builtin/web-fetch': return handleWebFetch(params)
+        case '@builtin/translate': return handleTranslate(params)
+        case '@builtin/weather': return handleWeather(params)
+        case '@builtin/location': return handleLocation(params)
+        case '@builtin/exchange': return handleExchange(params)
+        case '@builtin/news': return handleNews(params)
+        case '@builtin/calculator': return handleCalculator(params)
+        case '@builtin/datetime': return handleDatetime(params)
+        case '@builtin/dictionary': return handleDictionary(params)
+        case '@builtin/qrcode': return handleQrcode(params)
+        default: return { error: '未知内置工具' }
+    }
+}
 
+const handleWebSearch = async (p) => {
+    const q = String(p.query || '').trim()
+    if (!q) return { error: '请输入搜索关键词' }
+    const max = Math.min(parseInt(p.max) || 5, 10)
     try {
-        switch (serverId) {
-            case '@builtin/calculator':
-                return handleCalculator(params)
-            case '@builtin/datetime':
-                return handleDateTime(params)
-            case '@builtin/random':
-                return handleRandom(params)
-            case '@builtin/weather':
-                return await handleWeather(params)
-            case '@builtin/unit':
-                return handleUnit(params)
-            case '@builtin/encode':
-                return handleEncode(params)
-            default:
-                return { error: `未知内置工具: ${serverId}` }
+        const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`
+        const r = await fetch(url, { signal: AbortSignal.timeout(12000) })
+        const html = await r.text()
+        const results = []
+        const linkRe = /<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/gi
+        const descRe = /<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi
+        let m
+        const links = []
+        while ((m = linkRe.exec(html)) !== null && links.length < max * 2) {
+            const href = m[1], title = m[2].replace(/<[^>]+>/g, '').trim()
+            if ((href.startsWith('//') || href.startsWith('http')) && title && !title.includes('>')) {
+                links.push({ href: href.startsWith('//') ? 'https:' + href : href, title })
+            }
         }
-    } catch (err) {
-        return { error: `内置工具执行错误: ${err.message}` }
+        const descs = []
+        while ((m = descRe.exec(html)) !== null && descs.length < max) {
+            descs.push(m[1].replace(/<[^>]+>/g, '').trim())
+        }
+        for (let i = 0; i < Math.min(links.length, max); i++) {
+            results.push({ title: links[i].title, url: links[i].href, snippet: descs[i] || '' })
+        }
+        return { success: true, query: q, results, source: 'DuckDuckGo Lite' }
+    } catch (e) {
+        return { error: `搜索失败: ${e.message}` }
     }
 }
 
-function handleCalculator(params) {
-    const expr = String(params.expression || '').trim()
-    if (!expr) return { error: '请提供数学表达式', result: null }
-
-    const safeExpr = expr
-        .replace(/sin/g, 'Math.sin')
-        .replace(/cos/g, 'Math.cos')
-        .replace(/tan/g, 'Math.tan')
-        .replace(/sqrt/g, 'Math.sqrt')
-        .replace(/pow/g, 'Math.pow')
-        .replace(/log/g, 'Math.log')
-        .replace(/abs/g, 'Math.abs')
-        .replace(/PI/gi, 'Math.PI')
-        .replace(/E(?![a-z])/gi, 'Math.E')
-        .replace(/\^/g, '**')
-
-    if (/[^0-9+\-*/().%\s,Math.sincotargplbfe]/.test(safeExpr.replace(/Math\.\w+/g, ''))) {
-        return { error: '表达式包含不安全的字符，仅支持基本数学运算', result: null }
-    }
-
-    const result = Function(`"use strict"; return (${safeExpr})`)()
-    return { success: true, result: { expression: expr, result } }
-}
-
-function handleDateTime(params) {
-    const now = new Date()
-    const weeks = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
-    const format = params.format || 'full'
-
-    const info = {
-        iso: now.toISOString(),
-        date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
-        time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`,
-        weekday: weeks[now.getDay()],
-        timestamp: now.getTime(),
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
-        day: now.getDate(),
-        hour: now.getHours(),
-        minute: now.getMinutes(),
-        second: now.getSeconds()
-    }
-
-    const resultMap = {
-        full: info,
-        date: info.date,
-        time: info.time,
-        weekday: info.weekday,
-        timestamp: info.timestamp
-    }
-
-    return { success: true, result: resultMap[format] || info }
-}
-
-function handleRandom(params) {
-    const action = params.action || 'number'
-    switch (action) {
-        case 'number': {
-            const min = params.min ?? 1
-            const max = params.max ?? 100
-            const num = Math.floor(Math.random() * (max - min + 1)) + min
-            return { success: true, result: { action, min, max, value: num } }
-        }
-        case 'dice': {
-            const sides = params.max || 6
-            const count = params.count || 1
-            const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1)
-            return { success: true, result: { action, sides: `d${sides}`, rolls, total: rolls.reduce((a, b) => a + b, 0) } }
-        }
-        case 'coin': {
-            const result = Math.random() < 0.5 ? '正面' : '反面'
-            return { success: true, result: { action, result } }
-        }
-        case 'pick': {
-            const options = params.options || []
-            if (!options.length) return { error: '请提供候选项列表' }
-            const picked = options[Math.floor(Math.random() * options.length)]
-            return { success: true, result: { action, options, picked } }
-        }
-        default:
-            return { error: `未知操作: ${action}` }
+const handleWebFetch = async (p) => {
+    const url = String(p.url || '').trim()
+    if (!url) return { error: '请输入URL' }
+    try {
+        const finalUrl = url.startsWith('http') ? url : 'https://' + url
+        const r = await fetch(finalUrl, { signal: AbortSignal.timeout(15000) })
+        const text = await r.text()
+        const stripped = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, '\n').trim().slice(0, 3000)
+        return { success: true, url: finalUrl, text: stripped, length: stripped.length }
+    } catch (e) {
+        return { error: `抓取失败: ${e.message}` }
     }
 }
 
-async function handleWeather(params) {
-    const city = String(params.city || '').trim()
+const handleTranslate = async (p) => {
+    const text = String(p.text || '').trim()
+    const to = String(p.to || '').trim()
+    if (!text || !to) return { error: '请输入文本和目标语言代码' }
+    try {
+        const langPair = (p.from ? p.from + '|' : '') + to
+        const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(langPair)}`, { signal: AbortSignal.timeout(10000) })
+        const d = await r.json()
+        if (d.responseStatus === 200) return { success: true, original: text.slice(0, 200), translated: d.responseData.translatedText, from: p.from || 'auto', to }
+        return { error: `翻译失败: ${d.responseStatus}` }
+    } catch (e) {
+        return { error: `翻译请求失败: ${e.message}` }
+    }
+}
+
+const handleWeather = async (p) => {
+    const city = String(p.city || '').trim()
     if (!city) return { error: '请输入城市名称' }
-
     try {
         const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1`
-        const resp = await fetch(url, { signal: AbortSignal.timeout(10000) })
-        if (!resp.ok) {
-            return { error: `天气查询失败 (${resp.status})，请检查城市名称` }
-        }
-        const data = await resp.json()
-        const current = data.current_condition?.[0]
-        const today = data.weather?.[0]
-        if (!current) return { error: `未找到「${city}」的天气数据` }
-
+        const r = await fetch(url, { signal: AbortSignal.timeout(10000) })
+        if (!r.ok) return { error: `天气查询失败(${r.status})` }
+        const d = await r.json()
+        const cur = d.current_condition?.[0], today = d.weather?.[0]
+        if (!cur) return { error: `未找到「${city}」的天气数据` }
         return {
             success: true,
             result: {
-                city,
-                temperature: `${current.temp_C}°C`,
-                feelsLike: `${current.FeelsLikeC}°C`,
-                humidity: `${current.humidity}%`,
-                weather: current.weatherDesc?.[0]?.value || '未知',
-                wind: `${current.winddir16Point} ${current.windspeedKmph}km/h`,
-                visibility: `${current.visibility}km`,
-                maxTemp: today ? `${today.maxtempC}°C` : null,
-                minTemp: today ? `${today.mintempC}°C` : null,
-                source: 'wttr.in (免费天气)'
+                city, temperature: `${cur.temp_C}°C`, feelsLike: `${cur.FeelsLikeC}°C`,
+                humidity: `${cur.humidity}%`, weather: cur.weatherDesc?.[0]?.value || '未知',
+                wind: `${cur.winddir16Point} ${cur.windspeedKmph}km/h`,
+                maxTemp: today ? `${today.maxtempC}°C` : null, minTemp: today ? `${today.mintempC}°C` : null
             }
         }
-    } catch (err) {
-        return { error: `天气查询网络错误: ${err.message}。请检查网络或尝试其他城市名（英文更稳定）` }
+    } catch (e) {
+        return { error: `天气查询网络错误: ${e.message}` }
     }
 }
 
-function handleUnit(params) {
-    const value = parseFloat(params.value)
-    const from = String(params.from || '').toLowerCase().trim()
-    const to = String(params.to || '').toLowerCase().trim()
-
-    if (isNaN(value)) return { error: '请输入有效数值' }
-    if (!from || !to) return { error: '请指定源单位和目标单位' }
-
-    const rates = {
-        length: {
-            km: 1000, m: 1, cm: 0.01, mm: 0.001, mile: 1609.344, yard: 0.9144, foot: 0.3048, inch: 0.0254, 里: 500
-        },
-        weight: {
-            kg: 1, g: 0.001, mg: 0.000001, t: 1000, lb: 0.453592, oz: 0.0283495, 斤: 0.5, 两: 0.05
-        },
-        temp: null,
-        currency: { usd: 1, cny: 7.25, eur: 0.92, jpy: 155, gbp: 0.79, krw: 1360, hkd: 7.82 }
+const handleLocation = async (p) => {
+    const ip = String(p.ip || '').trim()
+    try {
+        const r = await fetch(`http://ip-api.com/json/${ip}?lang=zh-CN&fields=country,city,regionName,lat,lon,timezone,isp,org`, { signal: AbortSignal.timeout(8000) })
+        const d = await r.json()
+        if (d.status === 'fail') return { error: `定位失败: ${d.message}` }
+        return { success: true, result: { ip: d.query, country: d.country, region: d.regionName, city: d.city, lat: d.lat, lon: d.lon, timezone: d.timezone, isp: d.isp } }
+    } catch (e) {
+        return { error: `定位失败: ${e.message}` }
     }
-
-    if (from === 'c' && to === 'f') return { success: true, result: { from: `${value}°C`, to: `${(value * 9 / 5 + 32).toFixed(1)}°F` } }
-    if (from === 'f' && to === 'c') return { success: true, result: { from: `${value}°F`, to: `${((value - 32) * 5 / 9).toFixed(1)}°C` } }
-
-    let found = false
-    for (const [category, table] of Object.entries(rates)) {
-        if (!table) continue
-        if (table[from] !== undefined && table[to] !== undefined) {
-            const inBase = value * table[from]
-            const converted = inBase / table[to]
-            return {
-                success: true,
-                result: { from: `${value} ${from}`, to: `${converted} ${to}`, category }
-            }
-        }
-    }
-
-    return { error: `暂不支持 ${from} → ${to} 的转换。支持: 长度(km/m/cm/mile/foot/inch)、重量(kg/g/t/lb/oz/斤)、温度(c↔f)` }
 }
 
-function handleEncode(params) {
-    const action = String(params.action || '').trim()
-    const text = String(params.text || '')
-
-    if (!text) return { error: '请输入要处理的内容' }
-
-    switch (action) {
-        case 'base64_encode':
-            return { success: true, result: { action, input: text.slice(0, 50) + (text.length > 50 ? '...' : ''), output: btoa(unescape(encodeURIComponent(text))) } }
-        case 'base64_decode':
-            try {
-                return { success: true, result: { action, output: decodeURIComponent(escape(atob(text))) } }
-            } catch {
-                return { error: 'Base64 解码失败，请检查输入' }
-            }
-        case 'url_encode':
-            return { success: true, result: { action, input: text, output: encodeURIComponent(text) } }
-        case 'url_decode':
-            try {
-                return { success: true, result: { action, output: decodeURIComponent(text) } }
-            } catch {
-                return { error: 'URL 解码失败' }
-            }
-        default:
-            return { error: '请指定操作: base64_encode / base64_decode / url_encode / url_decode' }
+const handleExchange = async (p) => {
+    const amount = parseFloat(p.amount), from = String(p.from || '').toUpperCase().trim(), to = String(p.to || '').toUpperCase().trim()
+    if (isNaN(amount) || !from || !to) return { error: '请输入金额和货币代码' }
+    try {
+        const r = await fetch(`https://open.er-api.com/v6/latest/${from}`, { signal: AbortSignal.timeout(10000) })
+        const d = await r.json()
+        if (d.result !== 'success') return { error: '汇率查询失败' }
+        const rate = d.rates[to]
+        if (!rate) return { error: `不支持的货币代码: ${to}` }
+        return { success: true, result: { amount, from, to, rate, converted: +(amount * rate).toFixed(2), updated: d.time_last_update_utc } }
+    } catch (e) {
+        return { error: `汇率查询失败: ${e.message}` }
     }
+}
+
+const handleNews = async (p) => {
+    const country = String(p.country || 'cn').toLowerCase().trim()
+    const cat = String(p.category || 'general').toLowerCase().trim()
+    try {
+        const r = await fetch(`https://newsdata.io/api/1/news?apikey=pub_508120bcb16dd64ff929c2d8f5b6b556e6e44&country=${country}&language=zh&category=${cat}`, { signal: AbortSignal.timeout(10000) })
+        const d = await r.json()
+        const articles = (d.results || []).slice(0, 6).map(a => ({ title: a.title, source: a.source_id, url: a.link, published: a.pubDate }))
+        return { success: true, category: cat, country, articles, count: articles.length }
+    } catch (e) {
+        return { error: `新闻获取失败，请稍后再试` }
+    }
+}
+
+const handleCalculator = (p) => {
+    let expr = String(p.expression || '').trim()
+    if (!expr) return { error: '请输入数学表达式' }
+    try {
+        const safe = expr.replace(/\^/g, '**').replace(/÷/g, '/').replace(/×/g, '*').replace(/x/gi, '*').replace(/sin/gi, 'Math.sin').replace(/cos/gi, 'Math.cos').replace(/tan/gi, 'Math.tan').replace(/log10/gi, 'Math.log10').replace(/log2/gi, 'Math.log2').replace(/log(?![\d])/gi, 'Math.log').replace(/sqrt/gi, 'Math.sqrt').replace(/abs/gi, 'Math.abs').replace(/ceil/gi, 'Math.ceil').replace(/floor/gi, 'Math.floor').replace(/round/gi, 'Math.round').replace(/pow/gi, 'Math.pow').replace(/exp/gi, 'Math.exp').replace(/PI/gi, 'Math.PI')
+        const fn = new Function('Math', `"use strict"; return (${safe})`)
+        const result = fn(Math)
+        return { success: true, result: { expression: expr, result: Number(result.toFixed(10)) } }
+    } catch (e) {
+        return { error: `计算错误: ${e.message}` }
+    }
+}
+
+const handleDatetime = (p) => {
+    try {
+        const now = new Date(), pad = n => String(n).padStart(2, '0')
+        return {
+            success: true,
+            result: {
+                iso: now.toISOString(),
+                date: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`,
+                time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+                weekday: ['周日','周一','周二','周三','周四','周五','周六'][now.getDay()],
+                timestamp: Math.floor(now.getTime() / 1000),
+                year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate()
+            }
+        }
+    } catch (e) {
+        return { error: `时间查询错误: ${e.message}` }
+    }
+}
+
+const handleDictionary = async (p) => {
+    const word = String(p.word || '').trim()
+    if (!word) return { error: '请输入英文单词' }
+    try {
+        const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, { signal: AbortSignal.timeout(8000) })
+        const d = await r.json()
+        if (!Array.isArray(d) || !d.length) return { error: `未找到「${word}」的定义` }
+        const entry = d[0]
+        const phonetic = entry.phonetic || (entry.phonetics?.[0]?.text) || ''
+        const meanings = entry.meanings?.slice(0, 3).map(m => ({
+            partOfSpeech: m.partOfSpeech,
+            definitions: m.definitions?.slice(0, 3).map(def => ({ definition: def.definition, example: def.example || '' }))
+        }))
+        return { success: true, result: { word, phonetic, meanings } }
+    } catch (e) {
+        return { error: `词典查询失败: ${e.message}` }
+    }
+}
+
+const handleQrcode = (p) => {
+    const data = String(p.data || '').trim()
+    if (!data) return { error: '请输入要编码的内容' }
+    const size = parseInt(p.size) || 200
+    const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`
+    return { success: true, result: { data: data.slice(0, 100), size, qrcode_url: url } }
 }
 
 // ===================== 统一调用入口 =====================
@@ -474,10 +525,10 @@ export function buildMCPPromptSection(enabledServerIds = null) {
     lines.push('')
 
     for (const server of allServers) {
-        const isBuiltin = server.transport === 'builtin'
-        const label = isBuiltin ? '📦 内置' : '🔗 外部'
+        const builtin = isBuiltinServer(server.id)
+        const label = builtin ? '📦 内置' : '🔗 外部'
         lines.push(`--- ${label} ${server.name} (id: ${server.id}) ---`)
-        if (server.description) lines.push(`说明: ${server.description}`)
+        if (server.desc || server.description) lines.push(`说明: ${server.desc || server.description}`)
 
         const tools = server.tools || []
         for (const tool of tools) {
@@ -485,13 +536,12 @@ export function buildMCPPromptSection(enabledServerIds = null) {
             if (tool.description) descParts.push(`— ${tool.description}`)
             lines.push(`  • ${descParts.join(' ')}`)
 
-            const props = tool.inputSchema?.properties
-            if (props) {
-                const paramDescs = Object.entries(props).map(([k, v]) => {
-                    const required = tool.inputSchema?.required?.includes(k) ? '必填' : '可选'
-                    return `    ${k} (${v.type || 'any'}, ${required}): ${v.description || ''}`
-                })
-                lines.push(...paramDescs)
+            const params = tool.parameters
+            if (params) {
+                for (const [k, v] of Object.entries(params)) {
+                    const required = v.required ? '必填' : '可选'
+                    lines.push(`    ${k} (${v.type || 'any'}, ${required}): ${v.description || ''}`)
+                }
             }
         }
         lines.push('')

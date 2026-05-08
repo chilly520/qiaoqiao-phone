@@ -146,7 +146,7 @@ async function discoverTools(id) {
                             <span class="builtin-icon">{{ server.icon }}</span>
                             {{ server.name }}
                         </span>
-                        <span class="server-url builtin-desc">{{ server.description }}</span>
+                        <span class="server-url builtin-desc">{{ server.desc }}</span>
                     </div>
                     <label class="toggle-switch">
                         <input
