@@ -3775,6 +3775,17 @@ export const useChatStore = defineStore('chat', () => {
                     const isCommandTag = isTag && /\[\/?\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|查找|黄历|ALMANAC|运势)/i.test(trimmedPart);
 
                     if (isNewline || isPlaceholder || isCommandTag || isTheater || trimmedPart.startsWith('【') || trimmedPart.startsWith('(') || trimmedPart.startsWith('（')) {
+                        // HTML block continuity: don't split HTML content spread across lines
+                        // e.g. <div style="...">\n  <span>text</span>\n</div> should stay as one segment
+                        if (isNewline) {
+                            const nextPart = rawParts[i + 1]
+                            const looksLikeHtml = (str) => /<\/?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?\/?\s*>/.test(str)
+                            if (nextPart && looksLikeHtml(nextPart) && looksLikeHtml(currentRawSegment)) {
+                                currentRawSegment += part
+                                continue
+                            }
+                        }
+
                         if (currentRawSegment) { 
                             rawSegments.push(currentRawSegment); 
                             currentRawSegment = ""; 
