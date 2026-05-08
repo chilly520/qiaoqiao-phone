@@ -63,7 +63,7 @@ const router = createRouter({
         {
             path: '/settings/backup',
             name: 'settings-backup',
-            component: () => import('../views/Settings/BackupSettings.vue')
+            component: () => import('../views/settings/BackupSettings.vue')
         },
         {
             path: '/settings/mcp',
@@ -291,7 +291,7 @@ const router = createRouter({
 // If we deploy a new version, old asset hashes change. 
 // When a user tries to click a new page, the browser fails to fetch the old .js file (ChunkLoadError).
 // This logic force-refreshes the page to the new version instead of letting the UI "freeze".
-router.onError((error, to) => {
+router.onError((error) => {
     if (error.message.includes('Failed to fetch dynamically imported module') ||
         error.message.includes('Loading chunk')) {
         console.error('[Router] Module load failed! Auto-refreshing to sync with latest version.', error);
