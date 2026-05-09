@@ -43,13 +43,52 @@ function ensureString(val) {
     return String(val || '');
 }
 
+function fixJsonStringValues(jsonStr) {
+    let result = '', inStr = false, strChar = '', escaped = false
+    for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i]
+        if (escaped) { result += ch; escaped = false; continue }
+        if (ch === '\\' && inStr) { result += ch; escaped = true; continue }
+        if ((ch === '"' || ch === "'") && !escaped) {
+            if (inStr && ch === strChar) { inStr = false }
+            else if (!inStr) { inStr = true; strChar = ch }
+            result += ch
+            continue
+        }
+        if (inStr) {
+            if (ch === '\n') result += '\\n'
+            else if (ch === '\r') result += '\\r'
+            else if (ch === '\t') result += '\\t'
+            else if (ch === '"') result += '\\"'
+            else if (ch === "'") result += "\\'"
+            else result += ch
+        } else {
+            result += ch
+        }
+    }
+    return result
+}
+
 function extractInnerVoiceJson(content) {
     if (!content) return null
     
-    // 尝试 1: 直接匹配 [INNER_VOICE] 标签内的 JSON
-    const innerVoiceMatch = content.match(/\[INNER_VOICE\]\s*({[\s\S]*?})\s*(?:\[\/INNER_VOICE\]|$)/i)
+    const innerVoiceMatch = content.match(/\[INNER_VOICE\]\s*/i)
     if (innerVoiceMatch) {
-        return innerVoiceMatch[1]
+        const afterTag = content.substring(innerVoiceMatch[0].length)
+        const jsonStart = afterTag.indexOf('{')
+        if (jsonStart === -1) return null
+        let depth = 0, inStr = false, escaped = false, jsonEnd = -1
+        for (let i = jsonStart; i < afterTag.length; i++) {
+            const ch = afterTag[i]
+            if (escaped) { escaped = false; continue }
+            if (ch === '\\') { escaped = true; continue }
+            if (ch === '"') { inStr = !inStr; continue }
+            if (!inStr) {
+                if (ch === '{') depth++
+                else if (ch === '}') { depth--; if (depth === 0) { jsonEnd = i + 1; break } }
+            }
+        }
+        if (jsonEnd !== -1) return afterTag.substring(jsonStart, jsonEnd)
     }
     
     // 尝试 2: 匹配转义的 JSON（AI 经常生成这种格式）
@@ -1859,7 +1898,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 .replace(/,\s*([\}\]])/g, '$1') // 移除数组或对象末尾多余的逗号
                 .replace(/([{,]\s*)([a-zA-Z0-9_\u4e00-\u9fa5]+)\s*:/g, '$1"$2":'); // 给没加引号的 key 补上引号
 
-            // ====== 策略 A：整体 JSON.parse（最高优先级）======
+            // ====== 策略A：整体 JSON.parse（最高优先级）======
             // 用平衡括号法找到最外层 {} 块
             const firstBrace = text.indexOf('{');
             if (firstBrace !== -1) {
@@ -1874,7 +1913,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 }
                 if (endIdx > firstBrace + 1) {
                     try {
-                        const parsed = JSON.parse(text.substring(firstBrace, endIdx));
+                        let jsonStr = text.substring(firstBrace, endIdx);
+                        // Fix unescaped newlines/quotes inside string values before parsing
+                        jsonStr = fixJsonStringValues(jsonStr)
+                        const parsed = JSON.parse(jsonStr);
                         // 确认是心声 JSON（含已知中文字段或 stats/status）
                         const knownKeys = ['status', '心声', '着装', '环境', '行为', 'stats'];
                         if (knownKeys.some(k => parsed[k] !== undefined)) {
