@@ -69,6 +69,29 @@ function fixJsonStringValues(jsonStr) {
     return result
 }
 
+function reconstructMomentsJSON(rawText) {
+    const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+        .replace(/[\[【][^\]]*?[\]】]/g, '')
+    const moments = []
+    const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
+    const authorRegex = /"authorId"\s*[:：]\s*"(.*?)"/gi
+    const locationRegex = /"location"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
+    let match, idx = 0
+    while ((match = contentRegex.exec(clean)) !== null && idx < 10) {
+        moments.push({
+            authorId: (authorRegex.exec(clean)?.[1] || 'unknown').trim(),
+            content: match[1].replace(/\\n/g, ' ').substring(0, 500),
+            location: '',
+            images: [],
+            mentions: [],
+            interactions: []
+        })
+        idx++
+    }
+    if (moments.length === 0) return null
+    return JSON.stringify({ newMoments: moments, ecosystemUpdates: [] })
+}
+
 function extractInnerVoiceJson(content) {
     if (!content) return null
     
@@ -291,10 +314,13 @@ export function generateContextPreview(chatId, char) {
     try {
         const pinia = getActivePinia()
         if (pinia) {
-            chatStore = pinia._s.get('chat')
+            chatStore = pinia._s.get('chat') || null
         }
     } catch (e) {
         console.warn('[AI Service] ChatStore retrieval failed:', e)
+    }
+    if (!chatStore) {
+        try { chatStore = useChatStore() } catch(e2) { console.warn('[AI Service] useChatStore fallback failed:', e2.message) }
     }
 
     // --- Core Memory Interoperability Logic ---
@@ -2811,7 +2837,40 @@ ${"```"}
                 console.warn('[Batch Moments] JSON parsed successfully after aggressive sanitization')
             } catch (retryError) {
                 console.error('[Batch Moments] Retry also failed:', retryError.message)
-                throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+
+                // Nuclear option: reconstruct JSON from raw text using regex extraction
+                console.warn('[Batch Moments] Attempting nuclear JSON reconstruction...')
+                const reconstructed = reconstructMomentsJSON(rawContent)
+                if (reconstructed) {
+                    try {
+                        parsedData = JSON.parse(reconstructed)
+                        console.warn('[Batch Moments] Nuclear reconstruction succeeded')
+                    } catch (nukeError) {
+                        console.error('[Batch Moments] Nuclear also failed:', nukeError.message)
+                    }
+                }
+
+                if (!parsedData) {
+                    // Final fallback: extract text lines as moments
+                    const textLines = rawContent.split('\n').filter(line => {
+                        const t = line.trim()
+                        return t.length > 10 && !t.startsWith('[') && !t.startsWith('{') && !t.startsWith('```')
+                    })
+                    if (textLines.length > 0) {
+                        return {
+                            newMoments: textLines.slice(0, count).map((line, i) => ({
+                                authorId: characters[i % characters.length]?.id || 'unknown',
+                                content: line.trim(),
+                                location: '',
+                                images: [],
+                                mentions: [],
+                                interactions: []
+                            })),
+                            ecosystemUpdates: []
+                        }
+                    }
+                    throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+                }
             }
         }
 
