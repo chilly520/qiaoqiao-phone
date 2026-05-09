@@ -198,6 +198,7 @@
                       :chatData="chatData"
                       :forceOffline="true"
                       @click-pay="handlePayClick"
+                      @click-gift="handleGiftClick"
                       @payment-response="handlePaymentResponse"
                     />
                     <button v-if="hasInnerVoiceBlockInMsg(msg) && !isMultiSelectMode" 
@@ -358,6 +359,7 @@
     <DiceModal v-if="showDiceModal" @close="showDiceModal = false" />
     <TarotModal v-if="showTarotModal" @close="showTarotModal = false" />
     <BackpackModal v-if="showBackpackModal" @close="showBackpackModal = false" />
+    <GiftDetailModal ref="giftDetailModal" />
 
     <!-- 鍓ф湰缂栬緫 -->
     <div v-if="showEditModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-fadeIn">
@@ -434,6 +436,7 @@ import FamilyCardApplyModal from './modals/FamilyCardApplyModal.vue'
 import DiceModal from './modals/DiceModal.vue'
 import TarotModal from './modals/TarotModal.vue'
 import BackpackModal from './modals/BackpackModal.vue'
+import GiftDetailModal from './modals/GiftDetailModal.vue'
 import MusicPlayer from '../../components/MusicPlayer.vue'
 import MissionSchedulerModal from './modals/MissionSchedulerModal.vue'
 import ChatHistoryModal from './ChatHistoryModal.vue'
@@ -690,6 +693,7 @@ const showFamilyCardApplyModal = ref(false)
 const showDiceModal = ref(false)
 const showTarotModal = ref(false)
 const showBackpackModal = ref(false)
+const giftDetailModal = ref(null)
 const showMissionScheduler = ref(false)
 
 const handleRequestPhone = async () => {
@@ -1102,6 +1106,20 @@ const handlePayClick = (msg) => {
     // 转账
     showTransferModal.value = true
   }
+}
+
+const handleGiftClick = (msg) => {
+    if (!chatData.value) return
+    const displayMsg = {
+        ...msg,
+        senderName: msg.senderName || (msg.role === 'user' ? '你' : chatData.value.name),
+        _isSender: msg.role === 'user' || msg.senderId === 'user'
+    }
+    giftDetailModal.value?.open(displayMsg, async () => {
+        const { claimGift } = await import('../../stores/chatModules/chatFinancial')
+        const success = await claimGift(chatStore.currentChatId, msg.id, 'user')
+        if (success) showToast('✅ 领取成功！已存入背包', 'success')
+    })
 }
 
 // 代付响应处理（线下模式）
