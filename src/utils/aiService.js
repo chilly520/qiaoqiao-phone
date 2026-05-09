@@ -2544,7 +2544,34 @@ function sanitizeJSON(text, aggressive = false) {
         s = s.replace(/,\s*,/g, ',')
         s = s.replace(/\[\s*,/g, '[')
     }
-    return s
+    return fixMalformedStringValues(s)
+}
+
+function fixMalformedStringValues(jsonStr) {
+    let result = ''
+    let inString = false, stringChar = '', escaped = false
+    for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i]
+        if (escaped) { result += ch; escaped = false; continue }
+        if (ch === '\\' && inString) { result += ch; escaped = true; continue }
+        if ((ch === '"' || ch === "'") && !escaped) {
+            if (inString && ch === stringChar) { inString = false }
+            else if (!inString) { inString = true; stringChar = ch }
+            result += ch
+            continue
+        }
+        if (inString) {
+            if (ch === '\n') result += '\\n'
+            else if (ch === '\r') result += '\\r'
+            else if (ch === '\t') result += '\\t'
+            else if (ch === '"') result += '\\"'
+            else if (ch === "'") result += "\\'"
+            else result += ch
+        } else {
+            result += ch
+        }
+    }
+    return result
 }
 
 export async function generateBatchMomentsWithInteractions(options) {
@@ -2731,7 +2758,10 @@ ${"```"}
             parsedData = JSON.parse(jsonStr)
         } catch (parseError) {
             console.error('[Batch Moments] JSON Parse Error:', parseError.message)
-            console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
+            const pos = parseInt(parseError.message.match(/position\s+(\d+)/)?.[1] || '-1')
+            const snippet = pos >= 0 ? jsonStr.substring(Math.max(0, pos - 40), pos + 40) : jsonStr.substring(0, 1000)
+            console.error('[Batch Moments] Context around error:', JSON.stringify(snippet))
+            console.error('[Batch Moments] Full attempted parse length:', jsonStr.length)
 
             const retryStr = sanitizeJSON(extracted, true)
             try {
