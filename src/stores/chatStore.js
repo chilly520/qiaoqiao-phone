@@ -3689,30 +3689,75 @@ export const useChatStore = defineStore('chat', () => {
                 // Pass 2.5: Removed placeholders for innerVoice as it is now handled as metadata.
 
 
-                // Pass 3: Handle naked <html>...</html> or large <div> blocks anywhere in the message
-                // ENHANCED: Match optional metadata labels and capture everything until the end of the tag.
-                processedContent = processedContent.replace(/(?:\s*(?:type|card|json)\s*[:：]\s*html\s*,?\s*(?:html|content)\s*[:：]\s*[^<]*)?(<(html|div|section|article|style|svg)[^]*?<\/\2>(?:\s*<\/\2>)*)/gi, (match, htmlContent) => {
-                    // GUARD: If match contains a mode boundary tag, skip it to preserve [OFFLINE]/[ONLINE] integrity
-                    if (/\[\s*\/?\s*(?:OFFLINE|ONLINE)\s*\]/i.test(match)) {
-                        return match;
+                // Pass 3: Extract bare HTML blocks using balanced tag counting
+                // Replaces regex approach which fails on nested same-type tags (e.g. <div><div></div></div>)
+                {
+                    const BLOCK_TAGS = ['html', 'div', 'section', 'article', 'main', 'header', 'footer', 'nav', 'aside', 'details', 'figure', 'style', 'svg'];
+                    let scanPos = 0
+                    while (scanPos < processedContent.length) {
+                        // Find next opening block tag
+                        let bestTag = null, bestIdx = -1
+                        for (const tag of BLOCK_TAGS) {
+                            const idx = processedContent.indexOf('<' + tag, scanPos)
+                            if (idx === -1) continue
+                            const charAfter = processedContent[idx + 1 + tag.length]
+                            if (charAfter && !/[\s/>]/.test(charAfter)) continue
+                            if (bestIdx === -1 || idx < bestIdx) { bestTag = tag; bestIdx = idx }
+                        }
+                        if (!bestTag) break
+
+                        // Skip self-closing tags like <div/>
+                        const afterOpen = processedContent.slice(bestIdx + 1 + bestTag.length, bestIdx + 3 + bestTag.length)
+                        if (afterOpen.startsWith('/>')) { scanPos = bestIdx + bestTag.length + 3; continue }
+
+                        // Skip past opening tag's attributes to find >
+                        let tagEnd = bestIdx + 1 + bestTag.length
+                        while (tagEnd < processedContent.length && processedContent[tagEnd] !== '>') tagEnd++
+                        if (tagEnd >= processedContent.length) { scanPos++; continue }
+                        tagEnd++ // past >
+
+                        // Use stack to find matching close
+                        const stack = [bestTag.toLowerCase()]
+                        const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)/g
+                        tagRegex.lastIndex = tagEnd
+                        let foundEnd = false, endPos = -1
+
+                        while (true) {
+                            const m = tagRegex.exec(processedContent)
+                            if (!m) break
+                            const foundTag = m[1].toLowerCase()
+                            const isClose = processedContent[m.index + 1] === '/'
+                            if (isClose) {
+                                const top = stack[stack.length - 1]
+                                if (top === foundTag) stack.pop()
+                            } else if (foundTag === stack[0]) {
+                                stack.push(foundTag)
+                            }
+                            endPos = m.index + m[0].length
+                            if (stack.length === 0) {
+                                while (endPos < processedContent.length && processedContent[endPos] !== '>') endPos++
+                                endPos++
+                                foundEnd = true
+                                break
+                            }
+                        }
+
+                        if (foundEnd) {
+                            const fullHtml = processedContent.substring(bestIdx, endPos)
+                            if (!/\[\s*\/?\s*(?:OFFLINE|ONLINE)\s*\]/i.test(fullHtml)) {
+                                const json = JSON.stringify({ type: 'html', html: fullHtml })
+                                cardBlocks.push(`[CARD]${json}`)
+                                const placeholder = ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `
+                                processedContent = processedContent.substring(0, bestIdx) + placeholder + processedContent.substring(endPos)
+                                scanPos = bestIdx + placeholder.length
+                            } else {
+                                scanPos = bestIdx + 1
+                            }
+                        } else {
+                            scanPos = bestIdx + 1
+                        }
                     }
-                    const html = htmlContent.trim();
-                    if (html.length > 20 || html.includes('style=')) {
-                        const fullMatch = match.trim();
-                        const json = JSON.stringify({ type: 'html', html: fullMatch.includes('html:') ? fullMatch.substring(fullMatch.indexOf('<')) : html });
-                        cardBlocks.push(`\n[CARD]${json}\n`);
-                        return ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
-                    }
-                    return match;
-                });
-                
-                // Pass 3.1: Specific catch for naked <style> + <div> or similar blocks often missed by AI
-                processedContent = processedContent.replace(/(?:\n|^)\s*(<style>[\s\S]*?<\/style>[\s\S]*?(?:<div|<section|<article)[^]*?<\/(?:div|section|article)>)/gi, (match, htmlContent) => {
-                    const html = htmlContent.trim();
-                    const json = JSON.stringify({ type: 'html', html: html });
-                    cardBlocks.push(`\n[CARD]${json}\n`);
-                    return ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
-                });
+                }
 
                 // Pass 3.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
                 const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking|spirit|location|distance|energy|stress|intimacy';
@@ -3809,6 +3854,14 @@ export const useChatStore = defineStore('chat', () => {
                         // HTML block continuity: don't split HTML content spread across lines
                         // e.g. <div style="...">\n  <span>text</span>\n</div> should stay as one segment
                         if (isNewline) {
+                            // Count open vs close tags to detect unclosed HTML blocks
+                            const openTags = (currentRawSegment.match(/<[a-zA-Z][a-zA-Z0-9]*(?=[\s/>])/g) || []).length
+                            const closeTags = (currentRawSegment.match(/<\/[a-zA-Z][a-zA-Z0-9]*>/g) || []).length
+                            if (openTags > closeTags) {
+                                currentRawSegment += part
+                                continue
+                            }
+                            // Fallback: check immediate next part for HTML tags
                             const nextPart = rawParts[i + 1]
                             const looksLikeHtml = (str) => /<\/?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?\/?\s*>/.test(str)
                             if (nextPart && looksLikeHtml(nextPart) && looksLikeHtml(currentRawSegment)) {
