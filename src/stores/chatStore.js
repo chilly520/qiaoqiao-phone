@@ -3689,6 +3689,37 @@ export const useChatStore = defineStore('chat', () => {
                 // Pass 2.5: Removed placeholders for innerVoice as it is now handled as metadata.
 
 
+                // Pass 2.8: Pre-Pass-3 guard — extract malformed JSON {,"html":"<div>..."} BEFORE Pass 3 sees inner <div>
+                // Without this, Pass 3 extracts inner HTML from JSON string values, leaving orphaned {, and } as text
+                {
+                    const malformedJsonRegex = /\{[\s,]*["']?html["']?\s*[:：]\s*["']/gi
+                    let mJsonMatch
+                    while ((mJsonMatch = malformedJsonRegex.exec(processedContent)) !== null) {
+                        const jStart = processedContent.lastIndexOf('{', mJsonMatch.index)
+                        if (jStart === -1) continue
+                        let bCount = 0, inStr = false, escaped = false, jEnd = -1
+                        for (let k = jStart; k < processedContent.length; k++) {
+                            const c = processedContent[k]
+                            if (escaped) { escaped = false; continue }
+                            if (c === '\\') { escaped = true; continue }
+                            if (c === '"') { inStr = !inStr; continue }
+                            if (!inStr) {
+                                if (c === '{') bCount++
+                                else if (c === '}') { bCount--; if (bCount === 0) { jEnd = k; break } }
+                            }
+                        }
+                        if (jEnd !== -1) {
+                            const fullBlock = processedContent.substring(jStart, jEnd + 1)
+                            if (fullBlock.includes('"html"') && fullBlock.length > 20 && fullBlock.includes('<')) {
+                                cardBlocks.push(`[CARD]${fullBlock}`)
+                                const ph = ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `
+                                processedContent = processedContent.substring(0, jStart) + ph + processedContent.substring(jEnd + 1)
+                                malformedJsonRegex.lastIndex = jStart + ph.length
+                            }
+                        }
+                    }
+                }
+
                 // Pass 3: Extract bare HTML blocks using balanced tag counting
                 // Replaces regex approach which fails on nested same-type tags (e.g. <div><div></div></div>)
                 {
@@ -3780,9 +3811,9 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processedContent.replace(/\n{2,}/g, '\n').trim();
 
 
-                // Pass 3.9: Fallback — catch naked {"type":"html",...} JSON objects missed by Pass 2
-                // Use balanced brace scanning to extract and protect them before the splitRegex
-                const nakedHtmlJsonRegex = /\{\s*\\?["'](?:type|html|card|json|content)\\?["']\s*[:：]\s*\\?["'](?:html|card)\\?["']/gi;
+                // Pass 3.9: Fallback — catch naked {"type":"html",...} or {,"html":...} JSON objects missed by earlier passes
+                // Handles malformed AI output like {,\n "html":"<div>...</div>"\n} with garbage after {
+                const nakedHtmlJsonRegex = /\{[\s,]*\\?["']?(?:type|html|card|json|content)\\?["']?\s*[:：]\s*\\?["']?(?:html|card)?\\?["']?/gi;
                 let nakedMatch;
                 while ((nakedMatch = nakedHtmlJsonRegex.exec(processedContent)) !== null) {
                     const jsonStart = processedContent.lastIndexOf('{', nakedMatch.index);
@@ -3800,7 +3831,6 @@ export const useChatStore = defineStore('chat', () => {
                     }
                     if (jsonEnd !== -1) {
                         const fullJson = processedContent.substring(jsonStart, jsonEnd + 1);
-                        // Verify this is actually an HTML card JSON
                         if ((fullJson.includes('"html"') || fullJson.includes('"type"')) && fullJson.length > 20) {
                             cardBlocks.push(`[CARD]${fullJson}`);
                             const placeholder = ` __CARD_PLACEHOLDER_${cardBlocks.length - 1}__ `;
@@ -4372,14 +4402,31 @@ export const useChatStore = defineStore('chat', () => {
                         // 处理戳一戳/拍一拍
                         triggerPatEffect(chatId, 'user');
                     } else if (type === 'gift') {
-                        // 处理礼物
+                        const giftMatch = content.match(/\[GIFT\s*[:：]\s*([^:：\]】]*)(?:\s*[:：]\s*([^:：\]】]*))?(?:\s*[:：]\s*([^\]】]*))?[\]】]/i)
+                        const gName = giftMatch?.[1]?.trim() || '神秘礼物'
+                        let gQty = 1, gDesc = '', gNote = '', gImage = ''
+                        if (giftMatch) {
+                            const gv2 = (giftMatch[2] || '').trim(), gv3 = (giftMatch[3] || '').trim()
+                            if (gv3) { gQty = parseInt(gv2) || 1; gDesc = gv3 }
+                            else if (gv2) { const q = parseInt(gv2); if (!isNaN(q) && /^\d+$/.test(gv2)) { gQty = q } else { gDesc = gv2 } }
+                            if (gDesc.includes('DRAW:')) {
+                                const dp = gDesc.split('DRAW:')
+                                const tp = dp[0].trim(), ip = (dp[1]||'').trim()
+                                if (tp.length <= 20 && tp.length > 0) { gNote = tp; gDesc = '' }
+                                else if (tp.length > 20) { gDesc = tp; gNote = '' }
+                                if (ip) import('@/utils/aiService').then(m => m.generateImage(ip).then(url => { gImage = url; saveChats() }))
+                            } else if (gDesc.length > 50) {} else if (gDesc.length > 0) { gNote = gDesc; gDesc = '' }
+                        }
+                        if (!gDesc) gDesc = `${gName} - 一份珍贵的礼物`
+                        const gId = `GIFT-${Date.now()}-${Math.random().toString(36).substr(2,5)}`
                         await addMessage(chatId, {
-                            role: 'ai',
-                            type: 'gift',
-                            content: content,
+                            role: 'ai', type: 'gift',
+                            content: `[礼物:${gName}:${gQty}:${gNote||gDesc}:${gId}]`,
+                            giftName: gName, giftQuantity: gQty,
+                            giftDescription: gDesc, giftNote: gNote,
+                            giftImage: gImage, giftId: gId,
                             quote: i === 0 ? aiQuote : null,
-                            hidden: isCallMode,
-                            mode: finalMode,
+                            hidden: isCallMode, mode: finalMode,
                             ...groupSenderInfo
                         });
                     } else if (type === 'system') {
