@@ -3439,12 +3439,26 @@ function formatMessageContent(msg) {
     const myName = props.chatData?.groupSettings?.myNickname || userName || '我';
     text = text.replace(/@(user|User|我)(?!\w)/g, `@${myName}`);
 
+    // Auto-detect image URLs and convert to <img> tags (before marked.parse)
+    const IMAGE_URL_REGEX = /(?<!(?:\[!\[|src=|href=|["']))(https?:\/\/[^\s<>"')]+\.(?:png|jpg|jpeg|gif|webp|svg|bmp)(?:\?[^\s<>"']*)?)/gi
+    const imageUrls = []
+    text = text.replace(IMAGE_URL_REGEX, (url) => {
+        imageUrls.push(url)
+        return `__IMG_PLACEHOLDER_${imageUrls.length - 1}__`
+    })
+
     let html = '';
     try {
         html = marked.parse(text);
     } catch (e) {
         html = text;
     }
+
+    // Restore image URLs as <img> tags
+    imageUrls.forEach((url, idx) => {
+        const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        html = html.replace(`__IMG_PLACEHOLDER_${idx}__`, `<img src="${url}" class="msg-auto-image max-w-full rounded-lg my-1" style="max-height:280px;object-fit:contain;display:block;" loading="lazy" onerror="this.style.display='none'"/>`)
+    })
 
     // Sticker fallback
     html = html.replace(/\[(.*?)\]/g, (match, name) => {
