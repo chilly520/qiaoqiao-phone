@@ -351,7 +351,9 @@ const batchSummarizeMemories = async () => {
     const now = new Date()
     const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
     const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-    const prompt = `请将以下多条记忆碎片整合总结为一条精简的长期记忆，保留关键信息、情感变化和重要事件，去除冗余细节。以第三人称客观描述，控制在150字以内。\n\n【当前真实时间】${dateStr} ${timeStr}。总结中的日期必须使用这个真实时间。`
+    const timeContext = `\n\n【当前真实时间】${dateStr} ${timeStr}。总结中的日期必须使用这个真实时间。`
+    const defaultPrompt = '请将以下多条记忆碎片整合总结为一条精简的长期记忆，保留关键信息、情感变化和重要事件，去除冗余细节。以第三人称客观描述，控制在150字以内。'
+    const prompt = defaultPrompt + timeContext
 
     const summaryContext = [{
       role: 'user',

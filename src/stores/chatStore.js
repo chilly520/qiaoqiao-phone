@@ -1948,7 +1948,9 @@ export const useChatStore = defineStore('chat', () => {
             const now = new Date()
             const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
             const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-            const prompt = chat.summaryPrompt || `以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。\n\n【重要】当前真实时间是：${dateStr} ${timeStr}。日记中的日期必须使用这个真实日期，禁止编造日期。`
+            const timeContext = `\n\n【重要】当前真实时间是：${dateStr} ${timeStr}。日记中的日期必须使用这个真实日期，禁止编造日期。`
+            const defaultPrompt = '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。'
+            const prompt = (chat.summaryPrompt || defaultPrompt) + timeContext
 
             // Pack into a single User message with the Instruction at the end (Best for LLMs)
             const summaryContext = [

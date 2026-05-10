@@ -2284,7 +2284,7 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     const timeContext = `\n\n【当前真实时间】${dateStr} ${timeStr}。总结中涉及的所有日期和时间必须基于这个真实时间，禁止编造日期。`
 
     // System Prompt (The instruction to summarize)
-    const systemContent = customPrompt || `请简要总结上述对话的主要内容和关键信息，作为长期记忆归档。请保持客观，不要使用第一人称。${timeContext}`
+    const systemContent = (customPrompt || '请简要总结上述对话的主要内容和关键信息，作为长期记忆归档。请保持客观，不要使用第一人称。') + timeContext
 
     // --- PROVIDER SWITCHING LOGIC ---
     let endpoint = apiUrl || ''
