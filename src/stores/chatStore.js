@@ -1945,7 +1945,10 @@ export const useChatStore = defineStore('chat', () => {
                 throw new Error('Empty context (selected messages contain no valid text)')
             }
 
-            const prompt = chat.summaryPrompt || '以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。'
+            const now = new Date()
+            const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+            const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+            const prompt = chat.summaryPrompt || `以第一人称（我）的视角，写一段简短的日记，记录刚才发生了什么，重点记录对方的情绪和我自己的感受。\n\n【重要】当前真实时间是：${dateStr} ${timeStr}。日记中的日期必须使用这个真实日期，禁止编造日期。`
 
             // Pack into a single User message with the Instruction at the end (Best for LLMs)
             const summaryContext = [
@@ -1956,7 +1959,7 @@ export const useChatStore = defineStore('chat', () => {
             ]
 
             let summaryContent = ''
-            const systemHelper = '你是一个专业的对话总结助手。请阅读上方记录，并严格按照总结要求输出内容。直接输出总结，不要包含任何旁白。'
+            const systemHelper = `你是一个专业的对话总结助手。请阅读上方记录，并严格按照总结要求输出内容。直接输出总结，不要包含任何旁白。\n\n【当前时间】${dateStr} ${timeStr}。你输出的所有日期和时间必须基于这个真实时间。`
 
             // Log for context review tab (Matches standard chat log format)
             useLoggerStore().addLog('AI', '网络请求 (生成总结)', {

@@ -348,14 +348,17 @@ const batchSummarizeMemories = async () => {
     if (selectedLogs.length === 0) throw new Error('没有选中的记忆')
 
     const contentToSummarize = selectedLogs.join('\n\n---\n\n')
-    const prompt = '请将以下多条记忆碎片整合总结为一条精简的长期记忆，保留关键信息、情感变化和重要事件，去除冗余细节。以第三人称客观描述，控制在150字以内。'
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+    const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    const prompt = `请将以下多条记忆碎片整合总结为一条精简的长期记忆，保留关键信息、情感变化和重要事件，去除冗余细节。以第三人称客观描述，控制在150字以内。\n\n【当前真实时间】${dateStr} ${timeStr}。总结中的日期必须使用这个真实时间。`
 
     const summaryContext = [{
       role: 'user',
       content: `【待总结的记忆碎片】\n${contentToSummarize}\n\n【总结要求】\n${prompt}`
     }]
 
-    const systemHelper = '你是一个专业的记忆整理助手。请阅读上方的记忆碎片，并严格按照要求输出整合后的记忆内容。直接输出结果，不要包含任何旁白或解释。'
+    const systemHelper = `你是一个专业的记忆整理助手。请阅读上方的记忆碎片，并严格按照要求输出整合后的记忆内容。直接输出结果，不要包含任何旁白或解释。\n\n【当前时间】${dateStr} ${timeStr}`
 
     const summaryContent = await generateSummary(summaryContext, systemHelper)
 

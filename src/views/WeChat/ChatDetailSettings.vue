@@ -2132,14 +2132,17 @@ const batchSummarizeMemory = async () => {
 
         // 构建总结请求
         const contentToSummarize = selectedContents.map((c, i) => `【记忆${i + 1}】${c}`).join('\n\n')
-        const prompt = localData.value.summaryPrompt || '请以第三人称总结以下多条记忆的关键信息，整合为一条精简的长期记忆。保留重要事件、关系变化和情感转折，去除冗余细节。控制在200字以内。'
+        const now = new Date()
+        const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+        const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        const prompt = localData.value.summaryPrompt || `请以第三人称总结以下多条记忆的关键信息，整合为一条精简的长期记忆。保留重要事件、关系变化和情感转折，去除冗余细节。控制在200字以内。\n\n【当前真实时间】${dateStr} ${timeStr}。总结中的日期必须使用这个真实时间。`
 
         const summaryContext = [{
             role: 'user',
             content: `【待整合的记忆记录】\n${contentToSummarize}\n\n【总结要求】\n${prompt}`
         }]
 
-        const systemHelper = '你是一个专业的记忆整理助手。请阅读上方的记忆记录，严格按照要求输出整合后的内容。直接输出结果，不要包含任何旁白或解释。'
+        const systemHelper = `你是一个专业的记忆整理助手。请阅读上方的记忆记录，严格按照要求输出整合后的内容。直接输出结果，不要包含任何旁白或解释。\n\n【当前时间】${dateStr} ${timeStr}`
 
         showToast(`正在整合 ${selectedContents.length} 条记忆...`, 'info')
 
