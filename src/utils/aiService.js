@@ -2796,87 +2796,49 @@ ${"```"}
         let jsonStr = rawContent.trim()
         if (!jsonStr) throw new Error('AI 返回内容为空串')
 
+        // ===== 回退到 v1.5.x 简单解析方式 =====
+        // 1. 清除 markdown 代码块
         jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
+        // 2. 清除协议标签（INNER_VOICE/OFFLINE 等）
         jsonStr = jsonStr.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]/gi, '')
         jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:INNER[-_ ]?VOICE|心声|OFFLINE|ONLINE|DONE|DONE_TOKEN|CARD|TIMER|MCP|TIMER:|MCP:)[^\]]*)\s*[\]】]/gi, '')
         jsonStr = jsonStr.trim()
         if (!jsonStr) throw new Error('AI 返回内容仅包含协议标签，无有效 JSON')
 
-        const extracted = extractBalancedJSON(jsonStr)
-        if (!extracted) {
-            console.error('[Batch Moments] Cannot find JSON container in response:', jsonStr.substring(0, 500))
-            const textLines = jsonStr.split('\n').filter(line => line.trim().length > 10)
-            if (textLines.length > 0) {
-                console.warn('[Batch Moments] Falling back to text extraction')
-                return {
-                    newMoments: textLines.slice(0, count).map((line, i) => ({
-                        authorId: characters[i % characters.length]?.id || 'unknown',
-                        content: line.trim(),
-                        location: '',
-                        images: [],
-                        mentions: [],
-                        interactions: []
-                    })),
-                    ecosystemUpdates: []
-                }
-            }
-            return { newMoments: [], ecosystemUpdates: [] }
+        // 3. 简单查找 JSON 容器边界（与 v1.5.x 一致）
+        let startIndex = -1
+        let endIndex = -1
+
+        const startBrace = jsonStr.indexOf('{')
+        const startBracket = jsonStr.indexOf('[')
+
+        if (startBrace !== -1 && (startBracket === -1 || startBrace < startBracket)) {
+            startIndex = startBrace
+            endIndex = jsonStr.lastIndexOf('}')
+        } else if (startBracket !== -1) {
+            startIndex = startBracket
+            endIndex = jsonStr.lastIndexOf(']')
         }
 
-        jsonStr = sanitizeJSON(extracted)
+        if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+            console.error('[Batch Moments] Cannot find JSON container in response:', jsonStr.substring(0, 500))
+            throw new Error('AI Response does not contain a valid JSON container')
+        }
 
+        jsonStr = jsonStr.substring(startIndex, endIndex + 1)
+
+        // 4. 基础清理：只移除尾逗号（最常见的问题）
+        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
+
+        // 5. 直接尝试解析（与 v1.5.x 一致）
         let parsedData
         try {
             parsedData = JSON.parse(jsonStr)
         } catch (parseError) {
             console.error('[Batch Moments] JSON Parse Error:', parseError.message)
-            const pos = parseInt(parseError.message.match(/position\s+(\d+)/)?.[1] || '-1')
-            const snippet = pos >= 0 ? jsonStr.substring(Math.max(0, pos - 40), pos + 40) : jsonStr.substring(0, 1000)
-            console.error('[Batch Moments] Context around error:', JSON.stringify(snippet))
-            console.error('[Batch Moments] Full attempted parse length:', jsonStr.length)
-
-            const retryStr = sanitizeJSON(extracted, true)
-            try {
-                parsedData = JSON.parse(retryStr)
-                console.warn('[Batch Moments] JSON parsed successfully after aggressive sanitization')
-            } catch (retryError) {
-                console.error('[Batch Moments] Retry also failed:', retryError.message)
-
-                // Nuclear option: reconstruct JSON from raw text using regex extraction
-                console.warn('[Batch Moments] Attempting nuclear JSON reconstruction...')
-                const reconstructed = reconstructMomentsJSON(rawContent)
-                if (reconstructed) {
-                    try {
-                        parsedData = JSON.parse(reconstructed)
-                        console.warn('[Batch Moments] Nuclear reconstruction succeeded')
-                    } catch (nukeError) {
-                        console.error('[Batch Moments] Nuclear also failed:', nukeError.message)
-                    }
-                }
-
-                if (!parsedData) {
-                    // Final fallback: extract text lines as moments
-                    const textLines = rawContent.split('\n').filter(line => {
-                        const t = line.trim()
-                        return t.length > 10 && !t.startsWith('[') && !t.startsWith('{') && !t.startsWith('```')
-                    })
-                    if (textLines.length > 0) {
-                        return {
-                            newMoments: textLines.slice(0, count).map((line, i) => ({
-                                authorId: characters[i % characters.length]?.id || 'unknown',
-                                content: line.trim(),
-                                location: '',
-                                images: [],
-                                mentions: [],
-                                interactions: []
-                            })),
-                            ecosystemUpdates: []
-                        }
-                    }
-                    throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
-                }
-            }
+            console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
+            throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
         }
 
         // Support both old array format and new object format
