@@ -523,32 +523,72 @@ export const useChatStore = defineStore('chat', () => {
                 
                 if (foundBlocks.length > 0) {
                     console.log(`[ChatStore] Detected ${foundBlocks.length} Couple Space commands, processing...`);
-                    
-                    // Capture original for execution (before stripping)
-                    const originalForExecution = processedContent;
-                    
+
+                    // Extract clean JSON payloads for execution (fix double-escaped quotes)
+                    const jsonPayloads = []
+                    for (const block of foundBlocks) {
+                        // Extract only the { ... } portion
+                        const braceStart = block.content.indexOf('{')
+                        const braceEnd = block.content.lastIndexOf('}')
+                        if (braceStart !== -1 && braceEnd !== -1 && braceEnd > braceStart) {
+                            let jsonStr = block.content.substring(braceStart, braceEnd + 1)
+                            // [FIX] Unescape double-escaped quotes that AI sometimes produces
+                            // e.g. {,\"data\":{\"title\":...} → {"data":{"title":...
+                            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+                            // Strip leading comma if present (AI artifact)
+                            jsonStr = jsonStr.replace(/^[\s,]+/, '')
+                            console.log('[ChatStore] Cleaned LS_JSON payload:', jsonStr.substring(0, 120) + '...')
+                            jsonPayloads.push(jsonStr)
+                        }
+                    }
+
+                    // Combine payloads for execution — pass clean JSON array format
+                    const executionPayload = jsonPayloads.length === 1
+                        ? jsonPayloads[0]
+                        : JSON.stringify({ commands: jsonPayloads.map(p => { try { return JSON.parse(p) } catch { return { type: 'raw', raw: p } } }) })
+
                     // Strip blocks from display content (backwards to keep indices intact)
                     for (let i = foundBlocks.length - 1; i >= 0; i--) {
                         const block = foundBlocks[i];
                         let pre = processedContent.substring(0, block.start);
                         let post = processedContent.substring(block.end);
-                        
+
                         // 🗑️ 增强清理：剔除指令前残留的逗号、冒号、空格或换行
                         pre = pre.replace(/[,，:：\s\r\n]+$/, '');
-                        
+
+                        // [FIX] 清理块后的尾部垃圾内容（如 {\n,\n,\n,\n,\n}）
+                        post = post.replace(/^\s*\{[\s,]*\}\s*/, '')
+
                         processedContent = pre + post;
                     }
                     processedContent = processedContent.trim();
-                    
+
                     // Execute commands in background
                     import('./loveSpaceStore').then(m => {
                         const loveSpaceStore = m.useLoveSpaceStore();
-                        loveSpaceStore.executeSpaceCommands(originalForExecution, chat.name, null, chatId)
+                        loveSpaceStore.executeSpaceCommands(executionPayload, chat.name, null, chatId)
                             .then((result) => {
                                 console.log('[ChatStore] LS_JSON commands executed successfully', result)
-                                // [FIX] 给用户执行结果反馈
+                                // [FIX] 给用户执行结果反馈 + 聊天内系统提示
                                 if (result && result.success !== false) {
                                     triggerToast(`${chat.name} 更新了情侣空间`, 'success')
+                                    // 从清理后的payload提取具体操作类型，生成精确的系统提示
+                                    const actions = _extractLSActions(executionPayload)
+                                    if (actions.length > 0) {
+                                        addMessage(chatId, {
+                                            role: 'system',
+                                            type: 'system',
+                                            content: `${chat.name} ${actions.join('、')}`,
+                                            _lsReferenceId: Date.now()
+                                        })
+                                    } else {
+                                        addMessage(chatId, {
+                                            role: 'system',
+                                            type: 'system',
+                                            content: `${chat.name} 更新了情侣空间`,
+                                            _lsReferenceId: Date.now()
+                                        })
+                                    }
                                 } else {
                                     triggerToast('情侣空间更新失败（可能未选择伴侣）', 'warning')
                                 }
@@ -1429,6 +1469,13 @@ export const useChatStore = defineStore('chat', () => {
                         images: []
                     });
                     triggerToast(`${authorName} 发布了新动态`, 'info');
+                    // [FIX] 聊天内系统提示
+                    addMessage(chatId, {
+                        role: 'system',
+                        type: 'system',
+                        content: `${authorName} 发布了一条朋友圈`,
+                        _momentReferenceId: Date.now()
+                    });
                 }, 2000);
             }
 
@@ -2775,7 +2822,9 @@ export const useChatStore = defineStore('chat', () => {
                 searchEnabled: aiOptions.searchEnabled,
                 userLocation: chat.userLocation,
                 locationSync: chat.locationSync,
-                charLocation: chat.charLocation || null
+                charLocation: chat.charLocation || null,
+                // [FIX] 将最新心声状态传递给 AI，确保上下文连贯
+                mindscape: chat.bio?.mindscape || null
             }
 
             // Inject Drawing Capability Hint globally if not explicitly disabled
@@ -4721,8 +4770,8 @@ export const useChatStore = defineStore('chat', () => {
                         }
                     }
 
-                    // Sequential Delay
-                    const delay = Math.min(2000, Math.max(600, (content?.length || 10) * 80));
+                    // Sequential Delay — [FIX] 固定 500ms 每条气泡，不再按内容长度动态计算
+                    const delay = 500
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
 
@@ -5172,16 +5221,40 @@ export const useChatStore = defineStore('chat', () => {
                         const hasSubstantialContent = state.content && state.content.trim().length >= 10
                         
                         if (hasSubstantialContent && !existingMsg) {
-                            // ✅ 直接把已生成的完整内容添加为 AI 消息，不重新生成
-                            console.log(`[ChatStore] Restoring complete AI response (${state.content.length} chars)`)
-                            addMessage(chatId, {
-                                role: 'ai',
-                                type: 'text',
-                                content: state.content,
-                                mode: state.mode || 'online',
-                                timestamp: state.startTime || Date.now(),
-                                _recovered: true
-                            })
+                            // [FIX] 刷新恢复时拆分气泡，与正常输出流程一致
+                            console.log(`[ChatStore] Restoring AI response with bubble splitting (${state.content.length} chars)`)
+
+                            // 使用与正常流程相同的分割符：|| // 换行 【】
+                            const recoverySplitRegex = /(\r?\n|\|\|[\s\S]*?\|\||\u2016[\s\S]*?\u2016|\u3010[^\u3011]+\u3011)/
+                            const segments = state.content.split(recoverySplitRegex).filter(s => s && s.trim())
+
+                            if (segments.length <= 1) {
+                                // 只有一段，直接添加
+                                addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'text',
+                                    content: state.content,
+                                    mode: state.mode || 'online',
+                                    timestamp: state.startTime || Date.now(),
+                                    _recovered: true
+                                })
+                            } else {
+                                // 多段内容，逐条添加带 500ms 延迟（模拟正常气泡弹出效果）
+                                segments.forEach((seg, idx) => {
+                                    const trimmed = seg.trim()
+                                    if (!trimmed) return
+                                    setTimeout(() => {
+                                        addMessage(chatId, {
+                                            role: 'ai',
+                                            type: 'text',
+                                            content: trimmed,
+                                            mode: state.mode || 'online',
+                                            timestamp: (state.startTime || Date.now()) + idx * 500,
+                                            _recovered: true
+                                        })
+                                    }, idx * 500)
+                                })
+                            }
                             clearStreamingState(chatId)
                         } else {
                             // ❌ 内容残缺（如"喘"这种单字）或消息已存在 → 丢弃并重新生成
@@ -5437,6 +5510,30 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const financial = setupFinancialLogic(chats, addMessage, saveChats, playSound)
+
+    // [FIX] 从 LS_JSON payload 中提取具体操作类型，用于生成精确的系统提示
+    function _extractLSActions(payload) {
+        const actions = []
+        if (!payload || typeof payload !== 'string') return actions
+        try {
+            const parsed = JSON.parse(payload)
+            const items = Array.isArray(parsed) ? parsed : [parsed]
+            for (const item of items) {
+                if (!item || typeof item !== 'object') continue
+                const typeMap = {
+                    diary: '写了一篇日记', footprint: '更新了足迹', message: '留了一条言',
+                    gacha: '抽了一个扭蛋', letter: '写了一封信', question: '发了一个问题',
+                    answer: '回答了一个问题', letterComment: '评论了信件', albumComment: '评论了相册',
+                    diaryComment: '评论了日记', sticky: '写了一张便利贴', anniversary: '记录了一个纪念日',
+                    album: '上传了一张照片', house: '布置了小屋', schedule: '添加了一个日程',
+                    bind: '开通了情侣空间'
+                }
+                const action = typeMap[item.type] || item.type
+                if (action) actions.push(action)
+            }
+        } catch { /* 非 JSON 或解析失败，返回空数组 */ }
+        return actions
+    }
 
     return {
         ...financial,

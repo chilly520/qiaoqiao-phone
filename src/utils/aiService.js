@@ -1003,6 +1003,19 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         let promptContent = options.isCall
             ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
             : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx, linkedGroupMemory, contactListStr, calendarContext)
+
+        // [FIX] 将最新心声状态注入系统提示，确保 AI 始终感知当前内心世界
+        if (prunedChar.mindscape) {
+            const ms = prunedChar.mindscape
+            const mindscapeSection = typeof ms === 'string'
+                ? `\n\n【${prunedChar.name}的内心独白（最新）】\n${ms}`
+                : (ms.thought || ms.content || JSON.stringify(ms))
+                    ? `\n\n【${prunedChar.name}的内心独白（最新）】\n${ms.thought || ms.content || JSON.stringify(ms)}`
+                    : ''
+            if (mindscapeSection) {
+                promptContent += mindscapeSection
+            }
+        }
         
         // 线上/线下模式追加提示词
         const forceOffline = options.mode === 'offline' || isOfflineMode

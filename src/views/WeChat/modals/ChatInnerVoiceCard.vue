@@ -921,6 +921,13 @@ watch(() => props.visible, (val) => {
     }
 })
 
+// [FIX] 弹窗打开期间，有新心声消息到来时自动跳转到最新
+watch(() => historyList.value.length, (newLen, oldLen) => {
+    if (newLen > oldLen && props.visible) {
+        currentIndex.value = newLen - 1
+    }
+}, { flush: 'post' })
+
 onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId) })
 </script>
 
