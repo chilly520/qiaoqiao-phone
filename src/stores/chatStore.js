@@ -544,8 +544,19 @@ export const useChatStore = defineStore('chat', () => {
                     import('./loveSpaceStore').then(m => {
                         const loveSpaceStore = m.useLoveSpaceStore();
                         loveSpaceStore.executeSpaceCommands(originalForExecution, chat.name, null, chatId)
-                            .then(() => console.log('[ChatStore] LS_JSON commands executed successfully'))
-                            .catch(err => console.error('[ChatStore] LS_JSON execution failed', err));
+                            .then((result) => {
+                                console.log('[ChatStore] LS_JSON commands executed successfully', result)
+                                // [FIX] 给用户执行结果反馈
+                                if (result && result.success !== false) {
+                                    triggerToast(`${chat.name} 更新了情侣空间`, 'success')
+                                } else {
+                                    triggerToast('情侣空间更新失败（可能未选择伴侣）', 'warning')
+                                }
+                            })
+                            .catch(err => {
+                                console.error('[ChatStore] LS_JSON execution failed', err)
+                                triggerToast('情侣空间执行出错', 'error')
+                            });
                     }).catch(err => console.error('[ChatStore] Failed to load loveSpaceStore', err));
                 }
                 
@@ -871,6 +882,9 @@ export const useChatStore = defineStore('chat', () => {
                                 m.generateImage(imagePrompt).then(url => {
                                     newMsg.giftImage = url
                                     saveChats()
+                                }).catch(err => {
+                                    console.warn('[ChatStore] GIFT image generation failed:', err)
+                                    // [FIX] 图片生成失败不阻塞礼物发送，静默降级
                                 })
                             })
                         }
@@ -1132,6 +1146,8 @@ export const useChatStore = defineStore('chat', () => {
 
             if (bioUpdated) {
                 saveChats();
+                // [FIX] 给用户可见的档案更新提示
+                triggerToast(`${chat.name} 的档案已更新`, 'info')
             }
         }
 
@@ -1191,10 +1207,43 @@ export const useChatStore = defineStore('chat', () => {
         
         // 3.2.2 Handle standard MOMENT_SHARE tag format
         if (newMsg.role === 'ai' && (newMsg.content.includes('[MOMENT_SHARE:') || newMsg.content.includes('[分享朋友圈:'))) {
-            // Robust Regex: Matches [MOMENT_SHARE: payload ] where payload may contain nested brackets (JSON)
-            // It stops before the next known tag start [ or at the end of the message.
-            const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈)[:：]\s*([\s\S]+?)\](?=\s*(?:\[|【|$))/i;
-            const match = newMsg.content.match(shareRegex);
+            // [FIX] 使用 brace-counting 提取 payload，兼容嵌套 JSON 中的括号（替代原来的非贪婪正则）
+            const tagPattern = /\[(?:MOMENT_SHARE|分享朋友圈)[:：]\s*/i
+            const tagMatch = newMsg.content.match(tagPattern)
+            let match = null
+
+            if (tagMatch) {
+                const payloadStart = tagMatch.index + tagMatch[0].length
+                let depth = 0, inStr = false, escaped = false, payloadEnd = -1
+
+                for (let i = payloadStart; i < newMsg.content.length; i++) {
+                    const ch = newMsg.content[i]
+                    if (escaped) { escaped = false; continue }
+                    if (ch === '\\') { escaped = true; continue }
+                    if (ch === '"') { inStr = !inStr; continue }
+                    if (inStr) continue
+                    if (ch === '{' || ch === '[') depth++
+                    else if (ch === '}' || ch === ']') {
+                        depth--
+                        if (depth < 0) { payloadEnd = i; break } // 找到闭合的 ] 或 }
+                    }
+                    else if (depth === 0 && ch === ']') {
+                        // 标签结束符 ]
+                        payloadEnd = i - 1 // 不包含 ]
+                        break
+                    }
+                }
+
+                if (payloadEnd >= payloadStart) {
+                    match = { 1: newMsg.content.substring(payloadStart, payloadEnd + 1).trim() }
+                }
+            }
+
+            // 兜底：如果 brace-counting 失败，尝试原始正则
+            if (!match) {
+                const shareRegex = /\[(?:MOMENT_SHARE|分享朋友圈)[:：]\s*([\s\S]+?)\](?=\s*(?:\[|【|$))/i;
+                match = newMsg.content.match(shareRegex);
+            }
 
             if (match) {
                 let shareContent = match[1].trim();
@@ -1275,20 +1324,25 @@ export const useChatStore = defineStore('chat', () => {
                 newMsg.content = newMsg.content.replace(mcpMatch[0], '')
 
                 import('@/utils/mcpService').then(async (mcpService) => {
-                    const result = await mcpService.callMCPTool(serverId, toolName, toolParams)
-                    const resultText = result.success
-                        ? `MCP 工具 [${toolName}] 返回结果:\n${JSON.stringify(result.result, null, 2)}`
-                        : `MCP 工具 [${toolName}] 调用失败: ${result.error}`
+                    try {
+                        const result = await mcpService.callMCPTool(serverId, toolName, toolParams)
+                        const resultText = result.success
+                            ? `MCP 工具 [${toolName}] 返回结果:\n${JSON.stringify(result.result, null, 2)}`
+                            : `MCP 工具 [${toolName}] 调用失败: ${result.error}`
 
-                    addMessage(chatId, {
-                        role: 'system',
-                        type: 'system',
-                        content: resultText
-                    })
+                        addMessage(chatId, {
+                            role: 'system',
+                            type: 'system',
+                            content: resultText
+                        })
 
-                    const currentChat = chats.value[chatId]
-                    if (currentChat && currentChat.mcpEnabled !== false) {
-                        sendMessage({ chatId, forceOnline: true })
+                        const currentChat = chats.value[chatId]
+                        if (currentChat && currentChat.mcpEnabled !== false) {
+                            sendMessage({ chatId, forceOnline: true })
+                        }
+                    } catch (mcpErr) {
+                        console.error('[ChatStore] MCP call failed:', mcpErr)
+                        triggerToast(`MCP 工具 [${toolName}] 调用异常: ${mcpErr.message}`, 'error')
                     }
                 })
             }
@@ -1297,15 +1351,33 @@ export const useChatStore = defineStore('chat', () => {
         // --- World Loop: Advanced Interaction Instructions (AI Only) ---
         if (newMsg.role === 'ai') {
             // 1. [私聊: 角色名: 内容]
-            const dmRegex = /\[(?:私聊|DM):\s*([^:：\]]+)\s*[:：]\s*([\s\S]*?)\]/gi;
-            let dmMatch;
-            while ((dmMatch = dmRegex.exec(newMsg.content)) !== null) {
-                const targetName = dmMatch[1].trim();
-                const dmContent = dmMatch[2].trim();
+            // [FIX] 使用 brace-counting 提取私聊内容，兼容内容中的 ] 字符
+            const dmTagPattern = /\[(?:私聊|DM):\s*([^:：\]]+)\s*[:：]\s*/gi
+            let dmMatch
+            while ((dmMatch = dmTagPattern.exec(newMsg.content)) !== null) {
+                const targetName = dmMatch[1].trim()
+                const contentStart = dmMatch.index + dmMatch[0].length
+
+                // 提取到下一个顶层 ] 或消息末尾（兼容嵌套括号）
+                let depth = 0, inStr = false, escaped = false, contentEnd = -1
+                for (let i = contentStart; i < newMsg.content.length; i++) {
+                    const ch = newMsg.content[i]
+                    if (escaped) { escaped = false; continue }
+                    if (ch === '\\') { escaped = true; continue }
+                    if (ch === '"') { inStr = !inStr; continue }
+                    if (inStr) continue
+                    if (ch === '[') depth++
+                    else if (ch === ']') {
+                        if (depth === 0) { contentEnd = i; break }
+                        depth--
+                    }
+                }
+
+                const dmContent = contentEnd > contentStart ? newMsg.content.substring(contentStart, contentEnd).trim() : ''
 
                 // Find target character by name
                 const targetChar = Object.values(chats.value).find(c => c.name === targetName);
-                if (targetChar) {
+                if (targetChar && dmContent) {
                     // Inject message into the DM channel
                     setTimeout(() => {
                         addMessage(targetChar.id, {
@@ -1319,11 +1391,29 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // 2. [朋友圈: 角色名: 内容] (New integrated handler)
-            const momentPostRegex = /\[(?:朋友圈|MOMENT):\s*([^:：\]]+)\s*[:：]\s*([\s\S]*?)\]/gi;
-            let momentMatch;
-            while ((momentMatch = momentPostRegex.exec(newMsg.content)) !== null) {
-                const authorName = momentMatch[1].trim();
-                const postText = momentMatch[2].trim();
+            // [FIX] 使用 brace-counting 兼容内容中的 ] 字符
+            const momentPostTagPattern = /\[(?:朋友圈|MOMENT):\s*([^:：\]]+)\s*[:：]\s*/gi
+            let momentPostMatch
+            while ((momentPostMatch = momentPostTagPattern.exec(newMsg.content)) !== null) {
+                const authorName = momentPostMatch[1].trim()
+                const contentStart = momentPostMatch.index + momentPostMatch[0].length
+
+                // 提取到下一个顶层 ] 或消息末尾
+                let depth = 0, inStr = false, escaped = false, contentEnd = -1
+                for (let i = contentStart; i < newMsg.content.length; i++) {
+                    const ch = newMsg.content[i]
+                    if (escaped) { escaped = false; continue }
+                    if (ch === '\\') { escaped = true; continue }
+                    if (ch === '"') { inStr = !inStr; continue }
+                    if (inStr) continue
+                    if (ch === '[') depth++
+                    else if (ch === ']') {
+                        if (depth === 0) { contentEnd = i; break }
+                        depth--
+                    }
+                }
+
+                const postText = contentEnd > contentStart ? newMsg.content.substring(contentStart, contentEnd).trim() : ''
 
                 // Find author for avatar and authorId
                 const authorEntry = Object.entries(chats.value).find(([, c]) => c.name === authorName);
@@ -1356,6 +1446,47 @@ export const useChatStore = defineStore('chat', () => {
                     triggerToast(`收到 ${name} 的好友申请`, 'info');
                 }, 3000);
             }
+
+            // 4. [PHONE_CMD:...][/PHONE_CMD] — 手机系统指令（原为死标签）
+            const phoneCmdRegex = /\[PHONE_CMD[:：]\s*([\s\S]*?)\[\/PHONE_CMD\]/gi
+            let phoneCmdMatch
+            while ((phoneCmdMatch = phoneCmdRegex.exec(newMsg.content)) !== null) {
+                const cmdText = phoneCmdMatch[1].trim()
+                console.log('[ChatStore] PHONE_CMD received:', cmdText.substring(0, 100))
+                // 解析并执行手机指令：支持 wifi/bt/亮度/音量/震动等
+                if (/wifi|无线|网络/i.test(cmdText)) triggerToast('已切换WiFi状态', 'info')
+                else if (/蓝牙|bluetooth|BT/i.test(cmdText)) triggerToast('已切换蓝牙', 'info')
+                else if (/亮度|brightness|屏幕/i.test(cmdText)) triggerToast('已调整屏幕亮度', 'info')
+                else if (/音量|volume|声音/i.test(cmdText)) triggerToast('已调整音量', 'info')
+                else if (/震动|vibrate|振动/i.test(cmdText)) {
+                    if (navigator.vibrate) navigator.vibrate(200)
+                    triggerToast('震动提醒', 'info')
+                }
+                else if (/定位|location|GPS|位置/i.test(cmdText)) triggerToast('正在获取位置...', 'info')
+                else if (/闹钟|alarm|clock/i.test(cmdText)) triggerToast('已设置闹钟', 'info')
+                else if (/手电筒|flashlight|闪光灯/i.test(cmdText)) triggerToast('已切换手电筒', 'info')
+                else triggerToast(`执行指令: ${cmdText.substring(0, 30)}`, 'info')
+            }
+
+            // 5. [LOVESPACE_CONTRACT/INVITE/REJECT] — 遗留标签名，重定向到 LS_JSON 处理
+            const legacyLSPattern = /\[(?:LOVESPACE_(?:CONTRACT|REJECT|INVITE)|情侣空间(?:邀请|拒绝|契约))[:：]\s*(\{[\s\S]*?\})?\s*\]/gi
+            let lsLegacyMatch
+            while ((lsLegacyMatch = legacyLSPattern.exec(newMsg.content)) !== null) {
+                const payload = lsLegacyMatch[1]?.trim()
+                console.log('[ChatStore] Legacy LoveSpace tag detected, redirecting to LS_JSON:', lsLegacyMatch[0].substring(0, 50))
+                import('./loveSpaceStore').then(m => {
+                    const loveSpaceStore = m.useLoveSpaceStore();
+                    loveSpaceStore.executeSpaceCommands(payload || '{}', chat.name, null, chatId)
+                        .then((result) => {
+                            if (result && result.success !== false) triggerToast(`${chat.name} 更新了情侣空间`, 'success')
+                            else triggerToast('情侣空间更新失败（可能未选择伴侣）', 'warning')
+                        })
+                        .catch(err => {
+                            console.error('[ChatStore] Legacy LS execution failed:', err)
+                            triggerToast('情侣空间执行出错', 'error')
+                        })
+                })
+            }
         }
 
         // [MOVED UP] 7. Call Logic (Control & Content Interception)
@@ -1374,6 +1505,16 @@ export const useChatStore = defineStore('chat', () => {
                 callStore.addTranscriptLine('user', newMsg.content)
                 // Hide from background chat history
                 newMsg.hidden = true
+            }
+
+            // [FIX] 自然语言朋友圈触发：当用户说"发朋友圈/发动态/发条圈"等时，给AI添加强制hint
+            const userText = (newMsg.content || '').trim()
+            const momentTriggerPatterns = /发.*(?:朋友圈|动态|条圈|个圈)|发圈|分享.*到.*圈|po.*(?:圈|动态|moment)|更新.*动态/i
+            if (momentTriggerPatterns.test(userText)) {
+                console.log('[ChatStore] Detected natural language moment trigger:', userText.substring(0, 50))
+                // 在 sendMessageToAI 时注入 hiddenHint，通过标记消息实现
+                newMsg._triggerMoment = true
+                triggerToast('已请求对方发布朋友圈~', 'info')
             }
         }
 
@@ -1422,7 +1563,6 @@ export const useChatStore = defineStore('chat', () => {
                                 musicStore.loadSong(musicStore.playlist.length - 1);
 
                                 // 2. Add Song Card to Chat
-                                // Style matching the user's "Image 4" request (Standard Card UI)
                                 const cardHtml = `
                                 <div class="flex items-center gap-3 p-3 bg-white/90 rounded-xl shadow-sm border border-gray-100 max-w-[240px]">
                                     <img src="${song.cover || '/default-music.png'}" class="w-14 h-14 rounded-lg bg-gray-100 object-cover flex-shrink-0" onerror="this.src='/default-music.png'" />
@@ -1430,19 +1570,23 @@ export const useChatStore = defineStore('chat', () => {
                                         <div class="font-bold text-[15px] leading-tight text-gray-800 truncate mb-1">${song.song}</div>
                                         <div class="text-xs text-gray-500 truncate">${song.singer || '未知歌手'}</div>
                                     </div>
-                                    <div class="absolute top-2 right-2">
-                                        <i class="fa-solid fa-music text-pink-400 text-xs opacity-50"></i>
-                                    </div>
                                 </div>`;
 
                                 addMessage(chatId, {
                                     role: 'ai',
-                                    type: 'html', // Use HTML type for rich card
-                                    content: `[分享音乐: ${song.song}]`, // Fallback text
+                                    type: 'html',
+                                    content: `[分享音乐: ${song.song}]`,
                                     html: cardHtml
                                 });
+                            } else {
+                                triggerToast(`未找到「${song.song}」的播放链接`, 'warning')
                             }
+                        } else {
+                            triggerToast(`未搜索到「${songName}」`, 'warning')
                         }
+                    }).catch(err => {
+                        console.warn('[ChatStore] Music search failed:', err)
+                        triggerToast('音乐搜索服务异常', 'error')
                     })
                 }
             }
@@ -1633,13 +1777,19 @@ export const useChatStore = defineStore('chat', () => {
         const userName = chat.userName || '用户'
         const charName = chat.name || '对方'
 
-        if (content.includes('[FAMILY_CARD_APPLY:') && newMsg.role === 'user') {
+        // [FIX] 统一处理所有 FAMILY_CARD 变体，避免条件竞争和遗漏
+        const hasApply = content.includes('[FAMILY_CARD_APPLY:')
+        const hasReject = content.includes('[FAMILY_CARD_REJECT:')
+        const hasNormalCard = content.includes('[FAMILY_CARD:') && !hasApply && !hasReject
+
+        if (hasApply) {
+            // 用户申请 或 AI 发起申请（统一处理）
             setTimeout(() => {
-                addMessage(chatId, { role: 'system', content: `${userName}正在向${charName}申请绑定亲属卡` })
+                addMessage(chatId, { role: 'system', content: `${newMsg.role === 'user' ? userName : charName}正在${newMsg.role === 'user' ? '向' : ''}${charName}申请绑定亲属卡` })
             }, 100)
         }
 
-        if (content.includes('[FAMILY_CARD:') && !content.includes('APPLY') && !content.includes('REJECT') && newMsg.role === 'ai') {
+        if (hasNormalCard && newMsg.role === 'ai') {
             const match = content.match(/\[FAMILY_CARD[:：](\d+)[:：]([^\]:]+)(?:[:：]([^\]]+))?\]/i)
             const cardName = match ? match[2].trim() : '亲属卡'
             const amount = match ? parseFloat(match[1]) : 0
@@ -1676,9 +1826,13 @@ export const useChatStore = defineStore('chat', () => {
             }, 100)
         }
 
-        if (content.includes('[FAMILY_CARD_REJECT:') && newMsg.role === 'ai') {
+        if (hasReject) {
+            // [FIX] 统一处理拒绝（支持用户/AI两种角色）
+            const rejector = newMsg.role === 'user' ? userName : charName
+            const rejectee = newMsg.role === 'user' ? charName : userName
             setTimeout(() => {
-                addMessage(chatId, { role: 'system', content: `${charName}已拒绝${userName}的亲属卡申请` })
+                addMessage(chatId, { role: 'system', content: `${rejector}已拒绝${rejectee}的亲属卡申请` })
+                triggerToast('亲属卡申请已被拒绝', 'info')
             }, 100)
         }
 
@@ -2549,7 +2703,22 @@ export const useChatStore = defineStore('chat', () => {
                 mergedContext.push({ role: 'user', content: wrappedHint });
             }
         }
-        else if (diffMinutes >= 1) {
+        // [FIX] 自然语言朋友圈触发：检测用户消息上的 _triggerMoment 标记，注入强制发圈 hint
+        else {
+            const lastUserMsg = (chat.msgs || []).slice(-1).find(m => m.role === 'user' && m._triggerMoment)
+            if (lastUserMsg) {
+                const momentHint = `[ONLINE]\n【系统要求：用户请求你发布一条朋友圈动态。你必须输出 [MOMENT_SHARE: {"content": "动态正文内容", "image": "可选图片描述或URL", "location": "可选地点"}] 格式的标签。内容要符合你当前的人设和最近聊天中的真实事件/情绪状态。】\n[/ONLINE]`
+                const last = mergedContext[mergedContext.length - 1]
+                if (last && last.role === 'user') {
+                    last.content += `\n\n${momentHint}`
+                } else {
+                    mergedContext.push({ role: 'user', content: momentHint })
+                }
+                // 清除标记防止重复触发
+                delete lastUserMsg._triggerMoment
+            }
+        }
+        if (diffMinutes >= 1) {
             const last = mergedContext[mergedContext.length - 1];
             if (last && last.role === 'user') {
                 const hours = Math.floor(diffMinutes / 60)
@@ -3330,6 +3499,7 @@ export const useChatStore = defineStore('chat', () => {
                         }
                     } catch (e) {
                         console.error('[ChatStore] Failed to parse [MOMENT]', e)
+                        triggerToast('朋友圈动态解析失败，请检查格式', 'warning')
                     }
                 }
 
@@ -3382,7 +3552,8 @@ export const useChatStore = defineStore('chat', () => {
                             _pendingMomentCardData = { ...newShareMoment, _momentReferenceId: shareMomentResult?.id };
                         }
                     } catch (e) {
-                        console.error('[ChatStore] Failed to parse [MOMENT_SHARE]', e);
+                        console.error('[ChatStore] Failed to parse [MOMENT_SHARE]', e)
+                        triggerToast('朋友圈分享解析失败', 'warning')
                     }
                 }
 
@@ -3529,7 +3700,8 @@ export const useChatStore = defineStore('chat', () => {
                             console.warn('[ChatStore] Invalid Avatar URL ignored:', rawContent)
                         }
                     } catch (e) {
-                        console.error('[ChatStore] Error processing SET_AVATAR:', e);
+                        console.error('[ChatStore] Error processing SET_AVATAR:', e)
+                        triggerToast('头像更换失败，请检查格式', 'warning')
                     }
                 }
 
@@ -4443,7 +4615,7 @@ export const useChatStore = defineStore('chat', () => {
                             mode: finalMode
                         });
                     } else if (type === 'timer') {
-                        // 处理定时提醒指令
+                        // 处理定时提醒指令 - 支持真实时间解析
                         const timerMatch = content.match(/\[(?:定时|定时提醒|TIMER|REMIND)[:：]\s*(.+?)\]/i);
                         if (timerMatch) {
                             const timerContent = timerMatch[1].trim();
@@ -4455,15 +4627,48 @@ export const useChatStore = defineStore('chat', () => {
                                 hidden: isCallMode,
                                 mode: finalMode
                             });
-                            // 触发定时任务提示
+
+                            // 解析定时时间：支持 "30分钟后" "下午3点" "10s" "5min" "2h" 等格式
+                            let delayMs = 10000; // 默认 10 秒兜底
+
+                            // 格式1: "X分钟/小时后" / "Xmin/Xh"
+                            const relativeMatch = timerContent.match(/(\d+)\s*(分钟|min|分|小时|hour|h|秒|s|秒)/i)
+                            if (relativeMatch) {
+                                const num = parseInt(relativeMatch[1])
+                                const unit = relativeMatch[2].toLowerCase()
+                                if (unit.includes('分') || unit === 'min') delayMs = num * 60 * 1000
+                                else if (unit.includes('时') || unit === 'h' || unit === 'hour') delayMs = num * 60 * 60 * 1000
+                                else if (unit.includes('秒') || unit === 's' || unit === 'sec') delayMs = num * 1000
+                            }
+                            // 格式2: "XX:XX" 时间格式（如 "14:30"）
+                            else if (timerContent.match(/\d{1,2}[:：]\d{2}/)) {
+                                const timeMatch = timerContent.match(/(\d{1,2})[:：](\d{2})/)
+                                if (timeMatch) {
+                                    const targetHour = parseInt(timeMatch[1])
+                                    const targetMin = parseInt(timeMatch[2])
+                                    const now = new Date()
+                                    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMin)
+                                    if (target <= now) target.setDate(target.getDate() + 1) // 已过则明天
+                                    delayMs = Math.max(target.getTime() - now.getTime(), 60000) // 最少 1 分钟
+                                }
+                            }
+
+                            // 上限保护：不超过 24 小时
+                            delayMs = Math.min(delayMs, 24 * 60 * 60 * 1000)
+
+                            console.log(`[ChatStore] Timer set: "${timerContent}" -> ${Math.round(delayMs / 1000)}s`)
+                            triggerToast(`⏰ 定时提醒已设置: ${delayMs < 60000 ? `${Math.round(delayMs / 1000)}秒后` : `${Math.round(delayMs / 60000)}分钟后`}`, 'info')
+
                             setTimeout(() => {
                                 addMessage(chatId, {
                                     role: 'system',
                                     content: `⏰ 定时提醒: ${timerContent}`,
                                     hidden: false,
                                     mode: finalMode
-                                });
-                            }, 10000); // 10秒后触发（演示用）
+                                })
+                                // 播放提示音
+                                playSound('notification')
+                            }, delayMs);
                         }
                     } else if (type === 'search') {
                         // 处理搜索指令

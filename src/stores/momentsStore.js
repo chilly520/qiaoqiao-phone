@@ -770,8 +770,23 @@ export const useMomentsStore = defineStore('moments', () => {
         const stickerStore = useStickerStore()
 
         let candidates = specificCharacters || (chatStore.chats ? Object.keys(chatStore.chats).filter(id => config.value.enabledCharacters.includes(id) && !chatStore.chats[id].isGroup) : [])
+
+        // [FIX] 当 enabledCharacters 为空（用户未手动配置实验室）时，自动回退到所有非群聊角色
+        if (candidates.length === 0 && !specificCharacters && chatStore.chats) {
+            const fallbackIds = Object.keys(chatStore.chats).filter(id => !chatStore.chats[id].isGroup)
+            if (fallbackIds.length > 0) {
+                candidates = fallbackIds
+                logger.sys(`[MomentsStore] enabledCharacters 为空，自动使用全部 ${fallbackIds.length} 个角色作为候选`)
+            }
+        }
+
         if (candidates.length === 0) {
             logger.warn('[MomentsStore] No candidates found for generation')
+            // [FIX] 给用户可见提示
+            const settingsStore = useSettingsStore()
+            if (settingsStore?.triggerToast) {
+                settingsStore.triggerToast('朋友圈自动生成跳过：没有可用的角色', 'warning')
+            }
             return
         }
 
@@ -830,6 +845,7 @@ export const useMomentsStore = defineStore('moments', () => {
             }))
         }))
 
+        let generatedSuccessfully = false
         try {
             // 3. Get custom prompt from config
             const customPrompt = config.value.customPrompt
@@ -953,12 +969,13 @@ export const useMomentsStore = defineStore('moments', () => {
                 }
             }
 
+            generatedSuccessfully = true
         } catch (e) {
             console.error('[MomentsStore] Batch generation failed:', e)
             logger.error(`[MomentsStore] Batch generation error: ${e.message}`, { error: e.message, stack: e.stack?.substring(0, 200) })
         } finally {
-            // Update last generate time regardless of success to prevent spam loops on error
-            if (isInitialized.value) {
+            // [FIX] 仅在成功生成时更新时间，避免失败后"假成功"导致长时间不重试
+            if (isInitialized.value && generatedSuccessfully) {
                 const oldTime = lastGenerateTime.value
                 lastGenerateTime.value = Date.now()
                 try {

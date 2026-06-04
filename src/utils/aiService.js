@@ -1605,11 +1605,35 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         console.log(`[AI Request] (${provider})`, { endpoint, model, msgCount: fullMessages ? fullMessages.length : 0 })
 
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: reqHeaders,
-            body: JSON.stringify(reqBody)
-        })
+        // [FIX] 网络错误自动重试：Failed to fetch / NetworkError / TypeError 等网络层异常
+        const MAX_NETWORK_RETRIES = 3
+        let response
+        for (let attempt = 0; attempt < MAX_NETWORK_RETRIES; attempt++) {
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: reqHeaders,
+                    body: JSON.stringify(reqBody),
+                    signal: signal || undefined
+                })
+                break // 成功则退出循环
+            } catch (fetchErr) {
+                const isNetworkError = fetchErr instanceof TypeError &&
+                    (fetchErr.message.includes('Failed to fetch') ||
+                     fetchErr.message.includes('NetworkError') ||
+                     fetchErr.message.includes('Network request failed') ||
+                     fetchErr.message.includes('Load failed') ||
+                     fetchErr.name === 'AbortError')
+
+                if (isNetworkError && attempt < MAX_NETWORK_RETRIES - 1) {
+                    const delayMs = Math.min(1000 * Math.pow(2, attempt), 5000)
+                    useLoggerStore().addLog('WARN', `网络请求失败，${delayMs}ms 后自动重试 (${attempt + 1}/${MAX_NETWORK_RETRIES})`, { error: fetchErr.message, endpoint })
+                    await new Promise(r => setTimeout(r, delayMs))
+                } else {
+                    throw fetchErr // 最后一次或非网络错误，直接抛出
+                }
+            }
+        }
 
         let data;
 
@@ -2397,22 +2421,76 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     })
 
     try {
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: reqHeaders,
-            body: JSON.stringify(reqBody)
-        })
+        // [FIX] 网络错误自动重试（与 _generateReplyInternal 一致）
+        const MAX_SUMMARY_RETRIES = 3
+        let response
+        for (let attempt = 0; attempt < MAX_SUMMARY_RETRIES; attempt++) {
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: reqHeaders,
+                    body: JSON.stringify(reqBody)
+                })
+                break
+            } catch (fetchErr) {
+                const isNetworkError = fetchErr instanceof TypeError &&
+                    (fetchErr.message.includes('Failed to fetch') ||
+                     fetchErr.message.includes('NetworkError') ||
+                     fetchErr.message.includes('Network request failed') ||
+                     fetchErr.message.includes('Load failed'))
+                if (isNetworkError && attempt < MAX_SUMMARY_RETRIES - 1) {
+                    const delayMs = Math.min(1000 * Math.pow(2, attempt), 5000)
+                    useLoggerStore().addLog('WARN', `总结请求网络失败，${delayMs}ms 后重试 (${attempt + 1}/${MAX_SUMMARY_RETRIES})`, { error: fetchErr.message })
+                    await new Promise(r => setTimeout(r, delayMs))
+                } else {
+                    throw fetchErr
+                }
+            }
+        }
 
         if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`)
 
         const data = await response.json()
 
-        // Parse Response (Robust)
+        // Parse Response (Enhanced Robust - 多路径兼容各种 API 代理格式)
         let content = ''
+
+        // 路径1: OpenAI 标准格式 choices[0].message.content
         if (data.choices && data.choices.length > 0) {
             content = data.choices[0].message?.content || ''
-        } else if (data.candidates && data.candidates.length > 0) {
-            content = data.candidates[0].content?.parts?.[0]?.text || ''
+        }
+        // 路径2: Gemini 格式 candidates[0].content.parts[0].text
+        if (!content && data.candidates && data.candidates.length > 0) {
+            const candidate = data.candidates[0]
+            content = candidate.content?.parts?.[0]?.text ||
+                       candidate.content?.parts?.[0]?.content ||
+                       candidate.text ||
+                       ''
+            // 兼容：遍历所有 parts 取第一个有文本的
+            if (!content && Array.isArray(candidate.content?.parts)) {
+                for (const part of candidate.content.parts) {
+                    if (part.text) { content = part.text; break }
+                    if (part.content) { content = part.content; break }
+                }
+            }
+        }
+        // 路径3: 某些代理返回 data.output / data.response / data.text / data.result
+        if (!content) {
+            content = data.output || data.response || data.text || data.result ||
+                     data.data?.content || data.data?.text || ''
+        }
+        // 路径4: 兼容嵌套结构 data.data.choices / data.body 等
+        if (!content && data.data) {
+            const nested = data.data
+            if (nested.choices?.[0]?.message?.content) content = nested.choices[0].message.content
+            else if (nested.candidates?.[0]?.content?.parts?.[0]?.text) content = nested.candidates[0].content.parts[0].text
+        }
+        // 路径5: 深度搜索任何字符串内容（兜底）
+        if (!content && typeof data === 'object') {
+            const strVal = JSON.stringify(data)
+            // 尝试提取 "content":"..." 模式
+            const match = strVal.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+            if (match && match[1] && match[1].length > 5) content = match[1]
         }
 
         if (!content) {
@@ -2838,7 +2916,19 @@ ${"```"}
         } catch (parseError) {
             console.error('[Batch Moments] JSON Parse Error:', parseError.message)
             console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
-            throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+            // [FIX] 使用 reconstructMomentsJSON 兜底重建，而非直接抛出异常
+            const reconstructed = reconstructMomentsJSON(rawContent || jsonStr)
+            if (reconstructed) {
+                try {
+                    parsedData = JSON.parse(reconstructed)
+                    useLoggerStore().addLog('AI', '⚠️ 朋友圈JSON解析失败，已通过容错恢复', { originalError: parseError.message })
+                } catch (reconstructErr) {
+                    console.error('[Batch Moments] Reconstruct fallback also failed:', reconstructErr.message)
+                    throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+                }
+            } else {
+                throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+            }
         }
 
         // Support both old array format and new object format
@@ -3353,11 +3443,77 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
             throw new Error(result.error)
         }
 
-        // Parse JSON
-        const jsonMatch = result.content.match(/\[[\s\S]*\]/)
-        if (!jsonMatch) return []
+        // Parse JSON - 使用健壮的 brace-counting 解析，兼容嵌套括号和协议标签
+        let rawContent = result.content || ''
+        let jsonStr = rawContent.trim()
 
-        const interactions = JSON.parse(jsonMatch[0])
+        // 清除 markdown 代码块
+        jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+        // 清除协议标签
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】][\s\S]*?[\[【]\s*\/\s*(?:INNER[-_ ]?VOICE|心声)\s*[\]】]/gi, '')
+        jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:INNER[-_ ]?VOICE|心声|OFFLINE|ONLINE|DONE|DONE_TOKEN|CARD|TIMER|MCP)[^\]]*)\s*[\]】]/gi, '')
+        jsonStr = jsonStr.trim()
+
+        // 方法1: Brace-counting 提取 JSON 数组（最可靠）
+        let interactions = null
+        const arrayStart = jsonStr.indexOf('[')
+        if (arrayStart !== -1) {
+            let depth = 0, inStr = false, escaped = false, arrayEnd = -1
+            for (let i = arrayStart; i < jsonStr.length; i++) {
+                const ch = jsonStr[i]
+                if (escaped) { escaped = false; continue }
+                if (ch === '\\') { escaped = true; continue }
+                if (ch === '"') { inStr = !inStr; continue }
+                if (inStr) continue
+                if (ch === '[') depth++
+                else if (ch === ']') {
+                    depth--
+                    if (depth === 0) { arrayEnd = i; break }
+                }
+            }
+            if (arrayEnd > arrayStart) {
+                try {
+                    interactions = JSON.parse(jsonStr.substring(arrayStart, arrayEnd + 1))
+                } catch (e) {
+                    console.warn('[aiService] Brace-counting parse failed, trying fallback...', e.message)
+                }
+            }
+        }
+
+        // 方法2: 简单正则回退（兼容旧格式）
+        if (!interactions || !Array.isArray(interactions)) {
+            const jsonMatch = rawContent.match(/\[[\s\S]*\]/)
+            if (jsonMatch) {
+                try {
+                    interactions = JSON.parse(jsonMatch[0])
+                } catch (e2) {
+                    console.warn('[aiService] Regex fallback parse failed', e2.message)
+                }
+            }
+        }
+
+        // 方法3: reconstructMomentsJSON 兜底（逐字段提取重建）
+        if (!interactions || !Array.isArray(interactions)) {
+            try {
+                const reconstructed = reconstructMomentsJSON(rawContent)
+                if (reconstructed) {
+                    const parsed = JSON.parse(reconstructed)
+                    interactions = parsed.newMoments || []
+                    // 从 newMoments 中提取 interactions 字段作为互动数据
+                    if (interactions.length === 0 && Array.isArray(parsed.ecosystemUpdates)) {
+                        interactions = parsed.ecosystemUpdates.flatMap(u => u.newInteractions || [])
+                    }
+                }
+            } catch (e3) {
+                console.warn('[aiService] reconstructMomentsJSON fallback failed', e3.message)
+            }
+        }
+
+        if (!interactions || !Array.isArray(interactions) || interactions.length === 0) {
+            useLoggerStore().addLog('WARN', 'Batch interactions 解析为空 (Raw)', { content: rawContent.substring(0, 500) })
+            return []
+        }
+        const VALID_TYPES = new Set(['like', 'comment', 'reply'])
         const userName = userProfile.name || '我'
 
         return interactions
@@ -3369,10 +3525,17 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
                     console.warn(`[aiService] Filtered out AI-generated interaction from forbidden author(user): ${authorName} `);
                     return false
                 }
+                // [FIX] type 字段白名单校验，非法类型记录日志并跳过
+                if (item.type && !VALID_TYPES.has(String(item.type).toLowerCase())) {
+                    console.warn(`[aiService] Filtered out interaction with invalid type: ${item.type} (author: ${authorName})`)
+                    return false
+                }
                 return true
             })
             .map(item => ({
                 ...item,
+                // [FIX] 标准化 type 为小写，防止大小写不一致导致分支遗漏
+                type: item.type ? String(item.type).toLowerCase() : (item.content ? 'comment' : 'like'),
                 // Ensure ID is matched if it's an existing char
                 authorId: item.isVirtual ? `virtual-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` : (item.authorId || charInfos.find(c => c.name === item.authorName)?.id || null)
             }))
