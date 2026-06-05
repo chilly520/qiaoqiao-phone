@@ -524,7 +524,7 @@ export const useChatStore = defineStore('chat', () => {
                 if (foundBlocks.length > 0) {
                     console.log(`[ChatStore] Detected ${foundBlocks.length} Couple Space commands, processing...`);
 
-                    // Extract clean JSON payloads for execution (fix double-escaped quotes)
+                    // Extract clean JSON payloads for execution (fix double-escaped quotes + truncated JSON)
                     const jsonPayloads = []
                     for (const block of foundBlocks) {
                         // Extract only the { ... } portion
@@ -537,8 +537,35 @@ export const useChatStore = defineStore('chat', () => {
                             jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\')
                             // Strip leading comma if present (AI artifact)
                             jsonStr = jsonStr.replace(/^[\s,]+/, '')
-                            console.log('[ChatStore] Cleaned LS_JSON payload:', jsonStr.substring(0, 120) + '...')
-                            jsonPayloads.push(jsonStr)
+
+                            // [FIX] 验证 JSON 是否可解析，若失败则尝试扩大范围重新提取
+                            try {
+                                JSON.parse(jsonStr)
+                                console.log('[ChatStore] Cleaned LS_JSON payload OK:', jsonStr.substring(0, 120) + '...')
+                                jsonPayloads.push(jsonStr)
+                            } catch (parseErr) {
+                                console.warn('[ChatStore] LS_JSON parse failed, trying extended extraction:', parseErr.message, 'raw:', jsonStr.substring(0, 100))
+                                // 兜底：从原始 processedContent 中用正则提取完整的 JSON 对象
+                                const fullText = processedContent
+                                const markerIdx = fullText.toLowerCase().indexOf('ls_json')
+                                if (markerIdx !== -1) {
+                                    const afterMarker = fullText.substring(markerIdx)
+                                    // 找到第一个 { 和最后一个 }
+                                    const extStart = afterMarker.indexOf('{')
+                                    const extEnd = afterMarker.lastIndexOf('}')
+                                    if (extStart !== -1 && extEnd > extStart) {
+                                        let extJson = afterMarker.substring(extStart, extEnd + 1)
+                                        extJson = extJson.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/^[\s,]+/, '')
+                                        try {
+                                            JSON.parse(extJson)
+                                            console.log('[ChatStore] Extended LS_JSON extraction OK:', extJson.substring(0, 120) + '...')
+                                            jsonPayloads.push(extJson)
+                                        } catch {
+                                            console.warn('[ChatStore] Extended extraction also failed, skipping payload')
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -562,6 +589,11 @@ export const useChatStore = defineStore('chat', () => {
                         processedContent = pre + post;
                     }
                     processedContent = processedContent.trim();
+
+                    // [FIX] 安全网：移除所有残留的 LS_JSON 片段（防止 brace-counting 定位偏差导致泄漏）
+                    processedContent = processedContent.replace(/\[?(?:LS_JSON|LS|情侣空间)[:：]?\s*\{[^}]*$/gi, '')
+                    processedContent = processedContent.replace(/\[?(?:LS_JSON|LS|情侣空间)[:：]?\s*\{.*?\}\s*\]?\s*/gi, '')
+                    processedContent = processedContent.trim()
 
                     // Execute commands in background
                     import('./loveSpaceStore').then(m => {
@@ -4106,7 +4138,14 @@ export const useChatStore = defineStore('chat', () => {
                     // Specific command check for tags that aren't generic [xxx]
                     const isCommandTag = isTag && /\[\/?\s*(?:OFFLINE|ONLINE|INNER|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|REDPACKET|TRANSFER|表情包|表情-包|STICKER|图片|IMAGE|语音|VOICE|语音通话|视频通话|通话|CALL|绘画|生成图片|演奏|音乐|骰子|掷骰子|塔罗|塔罗牌|FAMILY_CARD|场景|SCENE|LIKE|点赞|喜欢|COMMENT|评论|REPLY|回复|位置|LOCATION|地图|MAP|SHARE|分享|转发|文件|FILE|LINK|链接|URL|SYSTEM|系统|通知|SET_AVATAR|SET_NAME|SET_PAT|设置头像|设置昵称|设置拍一拍|NUDGE|戳一戳|拍一拍|QUOTE|引用|GIFT|礼物|CARD|定时|TIMER|REMIND|提醒|搜索|查找|黄历|ALMANAC|运势)/i.test(trimmedPart);
 
-                    if (isNewline || isPlaceholder || isCommandTag || isTheater || trimmedPart.startsWith('【') || trimmedPart.startsWith('(') || trimmedPart.startsWith('（')) {
+                    // [FIX] 不再将所有以括号开头的文本视为特殊分段（会导致"(去)"等普通内容被错误拆成独立气泡）
+                    // 仅匹配真正的动作/旁白标记：短内容全包裹在括号内，如(笑)、(点头)、（叹气）等
+                    const isActionInParens = (
+                        (trimmedPart.startsWith('(') && trimmedPart.endsWith(')') && trimmedPart.length < 30) ||
+                        (trimmedPart.startsWith('（') && trimmedPart.endsWith('）') && trimmedPart.length < 30)
+                    )
+
+                    if (isNewline || isPlaceholder || isCommandTag || isTheater || trimmedPart.startsWith('【') || isActionInParens) {
                         // HTML block continuity: don't split HTML content spread across lines
                         // e.g. <div style="...">\n  <span>text</span>\n</div> should stay as one segment
                         if (isNewline) {

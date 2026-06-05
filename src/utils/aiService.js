@@ -69,18 +69,120 @@ function fixJsonStringValues(jsonStr) {
     return result
 }
 
+/**
+ * [FIX] 智能修复 AI 输出的 JSON 字符串值中的常见语法错误
+ * AI 模型常在 content/imagePrompts 等字段中输出未转义的引号、换行等，导致 JSON.parse 失败
+ * 核心策略：逐字符遍历 JSON，仅在字符串值内部修复问题字符
+ */
+function _repairJsonStrings(jsonStr) {
+    let result = ''
+    let inString = false
+    let escaped = false
+    let stringStartChar = ''
+
+    for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i]
+
+        if (escaped) {
+            result += ch
+            escaped = false
+            continue
+        }
+
+        if (ch === '\\') {
+            // 在字符串内部且下一个字符不是已知的转义序列时，保留转义
+            result += ch
+            escaped = true
+            continue
+        }
+
+        if (ch === '"' || ch === "'") {
+            if (!inString) {
+                inString = true
+                stringStartChar = ch
+                result += ch
+            } else if (ch === stringStartChar) {
+                inString = false
+                result += ch
+            } else {
+                // 在双引号字符串内遇到单引号（或反之），转义它
+                result += '\\' + ch
+            }
+            continue
+        }
+
+        if (inString) {
+            // 字符串内部的裸换行 → 替换为 \n
+            if (ch === '\n') { result += '\\n'; continue }
+            if (ch === '\r') { result += '\\r'; continue }
+            if (ch === '\t') { result += '\\t'; continue }
+        }
+
+        result += ch
+    }
+
+    // 二次修复：处理 content 值中的未转义中文引号（AI 常用 "" 包裹对话）
+    // 策略：找到 "content": "..." 模式，将内部的中文引号统一为一种安全形式
+    result = result.replace(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/gi, (match, content) => {
+        // 将内容中的 " 和 " 替换为书名号《》避免破坏 JSON 结构
+        const fixed = content.replace(/\u201c/g, '\u300A').replace(/\u201d/g, '\u300B')
+        return `"content": "${fixed}"`
+    })
+
+    return result
+}
+
 function reconstructMomentsJSON(rawText) {
     const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
         .replace(/[\[【][^\]]*?[\]】]/g, '')
     const moments = []
+    // [FIX] 改进提取逻辑：区分 moment 级别 content 和 interaction 级别 content
+    // 使用更精确的正则，要求 content 前后有 authorId 字段（moment 必须有 authorId）
     const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
     const authorRegex = /"authorId"\s*[:：]\s*"(.*?)"/gi
-    const locationRegex = /"location"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
+    const typeRegex = /"type"\s*[:：]\s*"(comment|reply|like)"/gi
+
     let match, idx = 0
+    let lastAuthorPos = -1
+    // 先收集所有 type 字段位置，用于判断是否在 interactions 上下文中
+    const typePositions = []
+    const typeRegexGlobal = new RegExp('"type"\\s*[:：]\\s*"(comment|reply|like)"', 'gi')
+    let tMatch
+    while ((tMatch = typeRegexGlobal.exec(clean)) !== null) {
+        typePositions.push(tMatch.index)
+    }
+
     while ((match = contentRegex.exec(clean)) !== null && idx < 10) {
+        const contentStart = match.index
+        // 检查这个 content 是否位于某个 type:"comment"/"reply"/"like" 之后（即在 interactions 内部）
+        // 如果是，跳过它 — 它是评论内容不是动态正文
+        const isInInteraction = typePositions.some(tp => tp < contentStart && contentStart - tp < 300)
+        if (isInInteraction) continue
+
+        // 向前搜索最近的 authorId 作为归属
+        let foundAuthor = null
+        const authorRegexLocal = new RegExp('"authorId"\\s*[:：]\\s*"', 'gi')
+        authorRegexLocal.lastIndex = 0
+        let aMatch
+        while ((aMatch = authorRegexLocal.exec(clean)) !== null) {
+            if (aMatch.index < contentStart && aMatch.index > lastAuthorPos) {
+                // 提取到下一个引号之间的值
+                const afterQuote = clean.substring(aMatch.index + aMatch[0].length)
+                const endQuote = afterQuote.indexOf('"')
+                if (endQuote > 0) {
+                    foundAuthor = afterQuote.substring(0, endQuote).trim()
+                    lastAuthorPos = aMatch.index
+                }
+            }
+        }
+
+        const contentText = match[1].replace(/\\n/g, ' ').substring(0, 500)
+        // [FIX] 过滤掉太短的疑似评论内容（真正的动态正文通常 > 10 字符）
+        if (!foundAuthor || contentText.length < 10) continue
+
         moments.push({
-            authorId: (authorRegex.exec(clean)?.[1] || 'unknown').trim(),
-            content: match[1].replace(/\\n/g, ' ').substring(0, 500),
+            authorId: foundAuthor,
+            content: contentText,
             location: '',
             images: [],
             mentions: [],
@@ -88,6 +190,24 @@ function reconstructMomentsJSON(rawText) {
         })
         idx++
     }
+
+    // [FIX] 如果没提取到任何 moment，尝试用旧逻辑作为最后兜底
+    if (moments.length === 0) {
+        authorRegex.lastIndex = 0
+        contentRegex.lastIndex = 0
+        while ((match = contentRegex.exec(clean)) !== null && idx < 5) {
+            moments.push({
+                authorId: (authorRegex.exec(clean)?.[1] || 'unknown').trim(),
+                content: match[1].replace(/\\n/g, ' ').substring(0, 500),
+                location: '',
+                images: [],
+                mentions: [],
+                interactions: []
+            })
+            idx++
+        }
+    }
+
     if (moments.length === 0) return null
     return JSON.stringify({ newMoments: moments, ecosystemUpdates: [] })
 }
@@ -2434,17 +2554,18 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
     })
 
     try {
-        // [FIX] 网络错误自动重试（与 _generateReplyInternal 一致）
+        // [FIX] 网络错误 + 空响应自动重试（最多 3 次）
         const MAX_SUMMARY_RETRIES = 3
-        let response
+        let data = null
+
         for (let attempt = 0; attempt < MAX_SUMMARY_RETRIES; attempt++) {
+            let response
             try {
                 response = await fetch(endpoint, {
                     method: 'POST',
                     headers: reqHeaders,
                     body: JSON.stringify(reqBody)
                 })
-                break
             } catch (fetchErr) {
                 const isNetworkError = fetchErr instanceof TypeError &&
                     (fetchErr.message.includes('Failed to fetch') ||
@@ -2455,15 +2576,28 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
                     const delayMs = Math.min(1000 * Math.pow(2, attempt), 5000)
                     useLoggerStore().addLog('WARN', `总结请求网络失败，${delayMs}ms 后重试 (${attempt + 1}/${MAX_SUMMARY_RETRIES})`, { error: fetchErr.message })
                     await new Promise(r => setTimeout(r, delayMs))
-                } else {
-                    throw fetchErr
+                    continue
                 }
+                throw fetchErr
             }
+
+            if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`)
+
+            data = await response.json()
+
+            // [FIX] 空响应重试：Gemini 有时返回 choices=[] 或 completion_tokens=0（安全过滤/限流）
+            const isEmptyResponse = (
+                (Array.isArray(data.choices) && data.choices.length === 0) ||
+                (Array.isArray(data.candidates) && data.candidates.length === 0) ||
+                data.usage?.completion_tokens === 0
+            )
+            if (isEmptyResponse && attempt < MAX_SUMMARY_RETRIES - 1) {
+                useLoggerStore().addLog('WARN', `总结返回空响应（可能被安全过滤），1.5s 后重试 (${attempt + 1}/${MAX_SUMMARY_RETRIES})`, { model: data.model, usage: data.usage })
+                await new Promise(r => setTimeout(r, 1500))
+                continue
+            }
+            break  // 成功获取非空响应，退出重试循环
         }
-
-        if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`)
-
-        const data = await response.json()
 
         // Parse Response (Enhanced Robust - 多路径兼容各种 API 代理格式)
         let content = ''
@@ -2922,7 +3056,11 @@ ${"```"}
         // 4. 基础清理：只移除尾逗号（最常见的问题）
         jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
 
-        // 5. 直接尝试解析（与 v1.5.x 一致）
+        // [FIX] 5. 智能修复常见 AI 输出的 JSON 语法错误（减少落入兜底的几率）
+        // AI 常在 content 字段值中包含未转义的引号/换行，导致 parse 失败
+        jsonStr = _repairJsonStrings(jsonStr)
+
+        // 6. 直接尝试解析（与 v1.5.x 一致）
         let parsedData
         try {
             parsedData = JSON.parse(jsonStr)
