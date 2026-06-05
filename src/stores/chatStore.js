@@ -590,9 +590,11 @@ export const useChatStore = defineStore('chat', () => {
                     }
                     processedContent = processedContent.trim();
 
-                    // [FIX] 安全网：移除所有残留的 LS_JSON 片段（防止 brace-counting 定位偏差导致泄漏）
-                    processedContent = processedContent.replace(/\[?(?:LS_JSON|LS|情侣空间)[:：]?\s*\{[^}]*$/gi, '')
-                    processedContent = processedContent.replace(/\[?(?:LS_JSON|LS|情侣空间)[:：]?\s*\{.*?\}\s*\]?\s*/gi, '')
+                    // [FIX] 安全网：仅移除残留的 LS_JSON 指令标签片段（防止 brace-counting 定位偏差导致泄漏）
+                    // 使用更精确的匹配：要求 { 前面紧邻 LS_JSON/LS/情侣空间 标记，且不误删正常讨论这些关键词的文本
+                    processedContent = processedContent.replace(/\[?(?:LS_JSON|LS|情侣空间)[:：]\s*\{[^}]*$/gi, '')
+                    // 第二条正则：仅匹配完整的指令格式（有闭合 } 和可选的 ]），避免跨行误删
+                    processedContent = processedContent.replace(/\[?(?:LS_JSON|LS|情侣空间)[:：]\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*\]?\s*/gi, '')
                     processedContent = processedContent.trim()
 
                     // Execute commands in background
@@ -5260,6 +5262,9 @@ export const useChatStore = defineStore('chat', () => {
                         const hasSubstantialContent = state.content && state.content.trim().length >= 10
                         
                         if (hasSubstantialContent && !existingMsg) {
+                            // [FIX] 立即清除 streamingState，防止用户在 setTimeout 执行期间再次刷新导致重复注入
+                            clearStreamingState(chatId)
+
                             // [FIX] 刷新恢复时拆分气泡，与正常输出流程一致
                             console.log(`[ChatStore] Restoring AI response with bubble splitting (${state.content.length} chars)`)
 
@@ -5294,7 +5299,6 @@ export const useChatStore = defineStore('chat', () => {
                                     }, idx * 500)
                                 })
                             }
-                            clearStreamingState(chatId)
                         } else {
                             // ❌ 内容残缺（如"喘"这种单字）或消息已存在 → 丢弃并重新生成
                             console.log(`[ChatStore] Content too short or already exists, regenerating...`)

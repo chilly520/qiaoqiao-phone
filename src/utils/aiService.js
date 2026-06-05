@@ -2585,6 +2585,16 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
 
             data = await response.json()
 
+            // [FIX] 防御 response.json() 返回 null 或非对象值（某些代理在空 body 时返回 null）
+            if (!data || typeof data !== 'object') {
+                if (attempt < MAX_SUMMARY_RETRIES - 1) {
+                    useLoggerStore().addLog('WARN', `总结响应非有效JSON对象，1.5s 后重试 (${attempt + 1}/${MAX_SUMMARY_RETRIES})`, { dataType: typeof data })
+                    await new Promise(r => setTimeout(r, 1500))
+                    continue
+                }
+                throw new Error(`Invalid API response: expected object, got ${typeof data}`)
+            }
+
             // [FIX] 空响应重试：Gemini 有时返回 choices=[] 或 completion_tokens=0（安全过滤/限流）
             const isEmptyResponse = (
                 (Array.isArray(data.choices) && data.choices.length === 0) ||
