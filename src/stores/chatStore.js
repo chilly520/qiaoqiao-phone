@@ -2264,7 +2264,7 @@ export const useChatStore = defineStore('chat', () => {
             const response = await generateReply(
                 summaryContext,
                 chat,
-                (chunk) => {},
+                null, // No abort signal needed for summary
                 {
                     systemPromptOverride: systemHelper,
                     skipContext: true // Don't include other history
