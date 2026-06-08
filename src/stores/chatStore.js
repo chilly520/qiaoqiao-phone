@@ -2081,17 +2081,31 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return false
 
-        // Directly mutate the chat object to leverage Vue 3's deep reactivity.
-        // Re-assigning chats.value = { ...chats.value } causes massive CPU/memory spikes on large histories.
-        Object.assign(chats.value[chatId], updates)
+        try {
+            // Directly mutate the chat object to leverage Vue 3's deep reactivity.
+            // Re-assigning chats.value = { ...chats.value } causes massive CPU/memory spikes on large histories.
+            Object.assign(chats.value[chatId], updates)
 
-        // Immediately check for auto-summary if settings changed
-        if (updates.autoSummary || updates.summaryLimit || updates.groupSettings?.autoSummary) {
-            checkAutoSummary(chatId)
+            // Save FIRST, then check auto-summary asynchronously after save completes.
+            // This prevents any auto-summary error from crashing the save flow.
+            await saveChats()
+
+            // Defer auto-summary check to next event loop tick (after save is fully complete)
+            if (updates.autoSummary || updates.summaryLimit || updates.groupSettings?.autoSummary) {
+                setTimeout(() => {
+                    try {
+                        checkAutoSummary(chatId)
+                    } catch (e) {
+                        console.error('[AutoSummary] Deferred checkAutoSummary error:', e)
+                    }
+                }, 0)
+            }
+
+            return true
+        } catch (err) {
+            console.error('[updateCharacter] Error:', err)
+            return false
         }
-
-        await saveChats()
-        return true
     }
 
     // --- Memory Logic ---
@@ -2158,9 +2172,8 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return { success: false, error: 'Chat not found' }
 
-        // Double check lock
+        // Double check lock (before try to avoid entering if already locked)
         if (chat.isSummarizing) return { success: false, error: 'Summarization already in progress' }
-        chat.isSummarizing = true
 
         if (!options.silent) {
             triggerToast('正在分析上下文...', 'info')
@@ -2172,6 +2185,9 @@ export const useChatStore = defineStore('chat', () => {
         let nextIndex = chat.lastSummaryIndex || 0
 
         try {
+            // Acquire lock INSIDE try so it's released by finally on any error
+            chat.isSummarizing = true
+
             if (options.startIndex !== undefined && options.endIndex !== undefined) {
                 // Manual Range
                 if (options.startIndex < 0) options.startIndex = 0
