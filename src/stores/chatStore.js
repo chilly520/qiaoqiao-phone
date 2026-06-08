@@ -2107,45 +2107,50 @@ export const useChatStore = defineStore('chat', () => {
 
     // Auto Summary Logic
     function checkAutoSummary(chatId) {
-        const chat = chats.value[chatId]
-        if (!chat) return
+        try {
+            const chat = chats.value[chatId]
+            if (!chat) return
 
-        // Check if enabled (either globally or in group settings)
-        const isEnabled = chat.autoSummary || chat.groupSettings?.autoSummary
-        if (!isEnabled) return
+            // Check if enabled (either globally or in group settings)
+            const isEnabled = chat.autoSummary || chat.groupSettings?.autoSummary
+            if (!isEnabled) return
 
-        // Prevent concurrent execution (Fix Double Toast)
-        if (chat.isSummarizing) return
+            // Prevent concurrent execution (Fix Double Toast)
+            if (chat.isSummarizing) return
 
-        const msgs = chat.msgs || []
-        // Limit Priority: Chat-specific > Group Settings > Global Personalization > Default
-        let summaryLimit = parseInt(chat.summaryLimit) ||
-            (chat.isGroup ? (parseInt(chat.groupSettings?.memory?.autoSummaryEvery) || parseInt(chat.groupSettings?.summaryLimit)) : 0) ||
-            useSettingsStore().personalization?.summaryLimit ||
-            50
+            const msgs = chat.msgs || []
+            // Limit Priority: Chat-specific > Group Settings > Global Personalization > Default
+            let summaryLimit = parseInt(chat.summaryLimit) ||
+                (chat.isGroup ? (parseInt(chat.groupSettings?.memory?.autoSummaryEvery) || parseInt(chat.groupSettings?.summaryLimit)) : 0) ||
+                useSettingsStore().personalization?.summaryLimit ||
+                50
 
-        // Use lastSummaryIndex as the single source of truth
-        let lastIndex = chat.lastSummaryIndex || 0
+            // Use lastSummaryIndex as the single source of truth
+            let lastIndex = chat.lastSummaryIndex || 0
 
-        // PROACTIVE FIX: If lastIndex exceeds current msgs length (e.g. deletion occurred), reset it
-        if (lastIndex > msgs.length) {
-            console.log('[AutoSummary] Index reset (deletion detected)', lastIndex, '->', msgs.length)
-            chat.lastSummaryIndex = msgs.length
-            chat.lastSummaryCount = msgs.length
-            lastIndex = msgs.length
-        }
-
-        const backlog = msgs.length - lastIndex
-
-        // Check if new messages (since last summary) exceed limit
-        if (backlog >= summaryLimit) {
-            console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog}, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
-            useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex, totalMsgs: msgs.length })
-            summarizeHistory(chatId, { silent: true })
-        } else {
-            if (backlog > 0 && backlog < summaryLimit) {
-                console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit}`)
+            // PROACTIVE FIX: If lastIndex exceeds current msgs length (e.g. deletion occurred), reset it
+            if (lastIndex > msgs.length) {
+                console.log('[AutoSummary] Index reset (deletion detected)', lastIndex, '->', msgs.length)
+                chat.lastSummaryIndex = msgs.length
+                chat.lastSummaryCount = msgs.length
+                lastIndex = msgs.length
             }
+
+            const backlog = msgs.length - lastIndex
+
+            // Check if new messages (since last summary) exceed limit
+            if (backlog >= summaryLimit) {
+                console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog}, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
+                useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex, totalMsgs: msgs.length })
+                summarizeHistory(chatId, { silent: true })
+            } else {
+                if (backlog > 0 && backlog < summaryLimit) {
+                    console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit}`)
+                }
+            }
+        } catch (err) {
+            console.error('[AutoSummary] checkAutoSummary error:', err)
+            // Don't throw - prevent crash in saveSettings/updateCharacter
         }
     }
 
@@ -2324,19 +2329,23 @@ export const useChatStore = defineStore('chat', () => {
             if (!options.silent) triggerToast(`总结失败: ${error.message}`, 'error')
             return { success: false, error: error.message }
         } finally {
-            chat.isSummarizing = false
+            // Safety: re-fetch chat in case it was replaced/deleted during async operation
+            const finalChat = chats.value[chatId]
+            if (finalChat) {
+                finalChat.isSummarizing = false
 
-            // Auto-trigger next chunk if backlog remains
-            if (options.startIndex === undefined && options.endIndex === undefined) {
-                const currentTotal = chat.msgs.length
-                const backlog = currentTotal - (chat.lastSummaryIndex || 0)
-                const summaryLimit = parseInt(chat.summaryLimit) || 50
+                // Auto-trigger next chunk if backlog remains
+                if (options.startIndex === undefined && options.endIndex === undefined) {
+                    const currentTotal = finalChat.msgs ? finalChat.msgs.length : 0
+                    const backlog = currentTotal - (finalChat.lastSummaryIndex || 0)
+                    const summaryLimit = parseInt(finalChat.summaryLimit) || 50
 
-                if (backlog >= summaryLimit) {
-                    console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)
-                    setTimeout(() => {
-                        checkAutoSummary(chatId)
-                    }, 5000)
+                    if (backlog >= summaryLimit) {
+                        console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)
+                        setTimeout(() => {
+                            checkAutoSummary(chatId)
+                        }, 5000)
+                    }
                 }
             }
         }
