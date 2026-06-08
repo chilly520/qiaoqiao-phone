@@ -944,7 +944,17 @@ export const useMomentsStore = defineStore('moments', () => {
                 }
 
                 for (const update of ecosystemUpdates) {
-                    const targetMoment = moments.value.find(m => m.id === update.momentId)
+                    let targetMoment = moments.value.find(m => m.id === update.momentId)
+
+                    // FIX: If momentId is missing or not found, try to find the most recent moment
+                    // from the same author to attach the interaction to
+                    if (!targetMoment && update.newInteractions) {
+                        // Find the most recent moment as fallback target
+                        targetMoment = sortedMoments.value[0]
+                        if (targetMoment) {
+                            console.log(`[MomentsStore] Ecosystem update momentId "${update.momentId}" not found, attaching to latest moment: ${targetMoment.id}`)
+                        }
+                    }
                     if (!targetMoment) continue
 
                     if (update.newInteractions) {

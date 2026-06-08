@@ -3097,7 +3097,22 @@ ${"```"}
         let ecosystemUpdates = []
 
         if (Array.isArray(parsedData)) {
-            momentsData = parsedData
+            // FIX: When AI returns a flat array, separate moments from interactions
+            // Items with type=like/comment/reply are interactions, not new moments
+            const rawMoments = []
+            const rawInteractions = []
+            for (const item of parsedData) {
+                if (item.type === 'like' || item.type === 'comment' || item.type === 'reply') {
+                    rawInteractions.push(item)
+                } else {
+                    rawMoments.push(item)
+                }
+            }
+            momentsData = rawMoments
+            // Convert orphaned interactions into ecosystemUpdates format
+            if (rawInteractions.length > 0) {
+                ecosystemUpdates = [{ newInteractions: rawInteractions }]
+            }
         } else if (parsedData.newMoments) {
             momentsData = parsedData.newMoments
             ecosystemUpdates = parsedData.ecosystemUpdates || []
@@ -3113,6 +3128,9 @@ ${"```"}
 
         const processedMoments = []
         for (const moment of momentsData) {
+            // FIX: Skip items that are clearly interactions, not moments
+            if (moment.type === 'like' || moment.type === 'comment' || moment.type === 'reply') continue
+
             const authorId = moment.authorId
             if (!authorId) continue
 

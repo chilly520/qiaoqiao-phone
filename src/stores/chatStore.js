@@ -1239,18 +1239,26 @@ export const useChatStore = defineStore('chat', () => {
                     const parsed = JSON.parse(trimmedContent);
                     console.log('[ChatStore] Parsed JSON:', parsed);
                     // Validate it has the required moment fields
-                    if (parsed.content && (parsed.imagePrompt || parsed.location || parsed.visibility)) {
+                    // FIX: Relax validation - accept content with any moment-specific field
+                    // Previously required (imagePrompt || location || visibility) which missed simple moments
+                    const hasMomentContent = parsed.content || parsed.text || parsed.内容
+                    const hasMomentIndicator = parsed.imagePrompt || parsed.imageDescriptions || parsed.location || parsed.visibility || parsed.interactions || parsed.image || parsed.images || parsed.html || parsed.mentions
+                    // Also match if it looks like a moment share (has content + author-like fields)
+                    const looksLikeMoment = hasMomentContent && (hasMomentIndicator || parsed.author || parsed.avatar)
+                    if (looksLikeMoment) {
                         console.log('[ChatStore] Valid moment JSON detected, converting to moment_card');
                         const momentData = {
                             id: parsed.id || crypto.randomUUID(),
-                            content: parsed.content,
-                            text: parsed.content,
+                            content: parsed.content || parsed.text || parsed.内容 || '',
+                            text: parsed.content || parsed.text || parsed.内容 || '',
                             author: chat.name,
                             avatar: chat.avatar,
                             imagePrompt: parsed.imagePrompt || '',
                             location: parsed.location || '',
                             visibility: parsed.visibility || 'public',
-                            interactions: parsed.interactions || []
+                            interactions: parsed.interactions || [],
+                            mentions: parsed.mentions || [],
+                            html: parsed.html || null
                         };
                         
                         // Convert to moment_card type
@@ -1258,12 +1266,18 @@ export const useChatStore = defineStore('chat', () => {
                         newMsg.momentData = momentData;
                         newMsg.content = JSON.stringify(momentData);
                         
-                        // Add system notification to chat
+                        // Add to moments feed with all available data
                         const momentResult = await getMomentsStore().addMoment({
                             id: momentData.id,
                             authorId: chatId,
                             content: momentData.text || momentData.content || '',
-                            images: momentData.image ? [momentData.image] : (momentData.images || []),
+                            images: momentData.image ? [momentData.image] : (momentData.images || parsed.images || []),
+                            imageDescriptions: parsed.imageDescriptions || [],
+                            location: momentData.location,
+                            visibility: momentData.visibility,
+                            mentions: momentData.mentions,
+                            interactions: momentData.interactions,
+                            html: momentData.html
                         });
 
                         addMessage(chatId, {
@@ -1495,7 +1509,7 @@ export const useChatStore = defineStore('chat', () => {
                 const authorChar = authorEntry ? authorEntry[1] : null;
 
                 setTimeout(() => {
-                    getMomentsStore().addMoment({
+                    const momentResult = getMomentsStore().addMoment({
                         authorId,
                         authorName,
                         avatar: authorChar?.avatar || '/avatars/default.png',
@@ -1503,12 +1517,12 @@ export const useChatStore = defineStore('chat', () => {
                         images: []
                     });
                     triggerToast(`${authorName} 发布了新动态`, 'info');
-                    // [FIX] 聊天内系统提示
+                    // [FIX] 聊天内系统提示，使用实际的动态ID
                     addMessage(chatId, {
                         role: 'system',
                         type: 'system',
                         content: `${authorName} 发布了一条朋友圈`,
-                        _momentReferenceId: Date.now()
+                        _momentReferenceId: momentResult?.id
                     });
                 }, 2000);
             }
