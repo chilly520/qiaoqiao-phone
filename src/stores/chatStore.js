@@ -2083,30 +2083,16 @@ export const useChatStore = defineStore('chat', () => {
 
         try {
             // Directly mutate the chat object to leverage Vue 3's deep reactivity.
-            // Re-assigning chats.value = { ...chats.value } causes massive CPU/memory spikes on large histories.
             Object.assign(chats.value[chatId], updates)
 
-            // Save to persistent storage.
-            // Use force=true to bypass 500ms debounce - settings save must be synchronous.
-            const saved = await saveChats(true)
+            // Save to persistent storage (with debounce, like all other saves)
+            await saveChats()
 
-            if (!saved) {
-                console.warn('[updateCharacter] saveChats returned false, data may not have been persisted')
-            }
-
-            // Defer auto-summary check to next event loop tick (after save is fully complete)
-            // This prevents any auto-summary error from crashing the save flow.
-            if (updates.autoSummary || updates.summaryLimit || updates.groupSettings?.autoSummary) {
-                setTimeout(() => {
-                    try {
-                        checkAutoSummary(chatId)
-                    } catch (e) {
-                        console.error('[AutoSummary] Deferred checkAutoSummary error:', e)
-                    }
-                }, 600) // Slightly after saveChats debounce window
-            }
-
-            return saved
+            // Auto-summary is NOT triggered here to prevent any interference with the save flow.
+            // It will be naturally triggered by:
+            // 1. checkAutoSummary called from addMessage (after each new message)
+            // 2. The next chat activation cycle
+            return true
         } catch (err) {
             console.error('[updateCharacter] Error:', err)
             return false
