@@ -2086,11 +2086,16 @@ export const useChatStore = defineStore('chat', () => {
             // Re-assigning chats.value = { ...chats.value } causes massive CPU/memory spikes on large histories.
             Object.assign(chats.value[chatId], updates)
 
-            // Save FIRST, then check auto-summary asynchronously after save completes.
-            // This prevents any auto-summary error from crashing the save flow.
-            await saveChats()
+            // Save to persistent storage.
+            // Use force=true to bypass 500ms debounce - settings save must be synchronous.
+            const saved = await saveChats(true)
+
+            if (!saved) {
+                console.warn('[updateCharacter] saveChats returned false, data may not have been persisted')
+            }
 
             // Defer auto-summary check to next event loop tick (after save is fully complete)
+            // This prevents any auto-summary error from crashing the save flow.
             if (updates.autoSummary || updates.summaryLimit || updates.groupSettings?.autoSummary) {
                 setTimeout(() => {
                     try {
@@ -2098,10 +2103,10 @@ export const useChatStore = defineStore('chat', () => {
                     } catch (e) {
                         console.error('[AutoSummary] Deferred checkAutoSummary error:', e)
                     }
-                }, 0)
+                }, 600) // Slightly after saveChats debounce window
             }
 
-            return true
+            return saved
         } catch (err) {
             console.error('[updateCharacter] Error:', err)
             return false
