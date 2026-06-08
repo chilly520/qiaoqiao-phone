@@ -179,15 +179,14 @@ const settingsForm = ref({
     customPrompt: momentsStore.config.customPrompt
 })
 
-// Default backgrounds from catbox.moe
+// Default backgrounds (hosted on reliable CDN)
 const defaultBackgrounds = [
-    'https://files.catbox.moe/ivtxvo.jpg',
-    'https://files.catbox.moe/h4obao.jpg',
-    'https://files.catbox.moe/34bcq1.jpg',
-    'https://files.catbox.moe/2h9igu.jpg',
-    'https://files.catbox.moe/ys28y8.jpg',
-    'https://files.catbox.moe/zoh8jy.jpg',
-    'https://files.catbox.moe/fmhwhq.jpg'
+    'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80',
+    'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=800&q=80',
+    'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800&q=80',
+    'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80',
+    'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=800&q=80',
+    'https://images.unsplash.com/photo-1501854140801-50d01698950b?w=800&q=80'
 ]
 
 // Background customization removed (now in store)

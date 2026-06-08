@@ -37,13 +37,27 @@ export const useMomentsStore = defineStore('moments', () => {
             // 2. Load Background (Migrate from localStorage if needed)
             const savedBg = await momentsDB.getItem('custom_background')
             if (savedBg) {
-                backgroundUrl.value = savedBg
+                // FIX: Migrate broken catbox.moe URLs to new default
+                if (typeof savedBg === 'string' && savedBg.includes('catbox.moe')) {
+                    const newDefault = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80'
+                    backgroundUrl.value = newDefault
+                    await momentsDB.setItem('custom_background', newDefault)
+                    console.log('[MomentsStore] Migrated broken catbox.moe background to new default')
+                } else {
+                    backgroundUrl.value = savedBg
+                }
             } else {
                 const legacyBg = localStorage.getItem('moments_background')
                 if (legacyBg) {
-                    backgroundUrl.value = legacyBg
-                    await momentsDB.setItem('custom_background', legacyBg)
-                    // Don't remove legacyBg yet to be safe, but we'll stop updating it
+                    // FIX: Also check legacy bg for broken URLs
+                    if (typeof legacyBg === 'string' && legacyBg.includes('catbox.moe')) {
+                        const newDefault = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80'
+                        backgroundUrl.value = newDefault
+                        await momentsDB.setItem('custom_background', newDefault)
+                    } else {
+                        backgroundUrl.value = legacyBg
+                        await momentsDB.setItem('custom_background', legacyBg)
+                    }
                 }
             }
 
@@ -72,7 +86,7 @@ export const useMomentsStore = defineStore('moments', () => {
         customPrompt: ''
     })
 
-    const backgroundUrl = ref(localStorage.getItem('moments_background') || 'https://files.catbox.moe/ivtxvo.jpg')
+    const backgroundUrl = ref(localStorage.getItem('moments_background') || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&q=80')
 
     // Load static configs from localStorage (they are small)
     try {
