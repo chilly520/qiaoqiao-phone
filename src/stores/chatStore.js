@@ -1261,6 +1261,22 @@ export const useChatStore = defineStore('chat', () => {
                             html: parsed.html || null
                         };
                         
+                        // FIX: Generate images from imagePrompt if present
+                        const momentImages = parsed.images || []
+                        const momentImageDescriptions = parsed.imageDescriptions || []
+                        if (parsed.imagePrompt && momentImages.length === 0) {
+                            try {
+                                if (typeof parsed.imagePrompt === 'string' && (parsed.imagePrompt.startsWith('http') || parsed.imagePrompt.startsWith('data:'))) {
+                                    momentImages.push(parsed.imagePrompt)
+                                } else {
+                                    const imageUrl = await generateImage(String(parsed.imagePrompt))
+                                    if (imageUrl) momentImages.push(imageUrl)
+                                }
+                            } catch (e) {
+                                console.warn('[ChatStore] Failed to generate moment image from prompt:', e)
+                            }
+                        }
+                        
                         // Convert to moment_card type
                         newMsg.type = 'moment_card';
                         newMsg.momentData = momentData;
@@ -1271,8 +1287,8 @@ export const useChatStore = defineStore('chat', () => {
                             id: momentData.id,
                             authorId: chatId,
                             content: momentData.text || momentData.content || '',
-                            images: momentData.image ? [momentData.image] : (momentData.images || parsed.images || []),
-                            imageDescriptions: parsed.imageDescriptions || [],
+                            images: momentImages,
+                            imageDescriptions: momentImageDescriptions,
                             location: momentData.location,
                             visibility: momentData.visibility,
                             mentions: momentData.mentions,
@@ -1374,12 +1390,34 @@ export const useChatStore = defineStore('chat', () => {
                 // Keep content as JSON for persistence if needed, or structured
                 newMsg.content = JSON.stringify(momentData); 
                 
+                // FIX: Generate images from imagePrompt if present
+                const shareImages = momentData.images || []
+                const shareImageDescriptions = momentData.imageDescriptions || []
+                if (momentData.imagePrompt && shareImages.length === 0) {
+                    try {
+                        if (typeof momentData.imagePrompt === 'string' && (momentData.imagePrompt.startsWith('http') || momentData.imagePrompt.startsWith('data:'))) {
+                            shareImages.push(momentData.imagePrompt)
+                        } else {
+                            const imageUrl = await generateImage(String(momentData.imagePrompt))
+                            if (imageUrl) shareImages.push(imageUrl)
+                        }
+                    } catch (e) {
+                        console.warn('[ChatStore] Failed to generate moment image from prompt:', e)
+                    }
+                }
+
                 // Publish to moments feed so details are accessible and it shows in profile
                 const momentResult = getMomentsStore().addMoment({
                     id: momentData.id,
                     authorId: chatId,
                     content: momentData.text || momentData.content || '',
-                    images: momentData.image ? [momentData.image] : (momentData.images || []),
+                    images: shareImages,
+                    imageDescriptions: shareImageDescriptions,
+                    location: momentData.location || '',
+                    visibility: momentData.visibility || 'public',
+                    mentions: momentData.mentions || [],
+                    interactions: momentData.interactions || [],
+                    html: momentData.html || null
                 });
 
                 newMsg._momentReferenceId = momentResult?.id;

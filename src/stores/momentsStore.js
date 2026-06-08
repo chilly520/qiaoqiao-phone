@@ -898,6 +898,8 @@ export const useMomentsStore = defineStore('moments', () => {
                 }
 
                 for (const data of newMoments) {
+                    // FIX: Skip items that are clearly interactions, not moments
+                    if (data.type === 'like' || data.type === 'comment' || data.type === 'reply') continue
 
                     let finalAuthorId = data.authorId
                     const nId = String(data.authorId).toLowerCase()
@@ -930,7 +932,10 @@ export const useMomentsStore = defineStore('moments', () => {
                         content: data.content,
                         location: data.location,
                         images: data.images,
-                        mentions: data.mentions || []
+                        imageDescriptions: data.imageDescriptions || [],
+                        mentions: data.mentions || [],
+                        html: data.html || null,
+                        interactions: data.interactions || []
                     }, { skipAutoInteraction: true })
 
 
