@@ -47,12 +47,16 @@ class BackgroundManager {
      * Creates a silent audio loop to trick mobile browsers into keeping the app alive.
      */
     createAudioLoop() {
-        // A short silent WAV file
-        const silentWav = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
+        // A short silent WAV file (注意：base64 末尾不要带空格，否则部分 iOS/Android WebView 会解码失败)
+        const silentWav = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
 
         this.audio = new Audio(silentWav);
         this.audio.loop = true;
-        this.audio.volume = 0.01;
+        // 关键：用 muted 而不是低 volume。iOS/部分 WebView 会把低 volume 的音频视作"在播声音"而主动暂停
+        this.audio.muted = true;
+        this.audio.volume = 0;
+        this.audio.setAttribute('playsinline', '');
+        this.audio.setAttribute('webkit-playsinline', '');
 
         // Important for iOS: must be initiated by user gesture then re-played on visibility change
         this.playAudio();
@@ -127,10 +131,9 @@ class BackgroundManager {
                     this.log('App entered background. Audio loop maintaining execution.', 'sys');
                     this.visibilityLogged = true; // 只打印一次
                 }
-                // Ensure audio is playing before fully backgrounding
-                if (this.audio) {
-                    this.playAudio();
-                }
+                // 注意：切到后台时不要主动调用 playAudio()。
+                // 页面隐藏状态下 audio.play() 必抛 NotAllowedError，会把 isActive 误置为 false，
+                // 并且静默音频循环一旦在后台被系统暂停，也只能等页面回到前台时再恢复。
             }
         });
     }
