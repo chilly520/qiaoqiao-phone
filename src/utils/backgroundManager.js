@@ -73,9 +73,16 @@ class BackgroundManager {
                 this.audioLogCount++;
             }
         } catch (e) {
-            // Only log error if not actively paused by logic
-            if (e.name !== 'AbortError' && this.audioLogCount < 3) {
-                this.log('Audio play failed (waiting for user gesture): ' + e.message, 'info');
+            // 页面隐藏/没有用户手势导致的 NotAllowedError 是预期行为：
+            //   - 音频可能本来就在播（只是 play() 返回的 promise 被中断）
+            //   - 这时把 isActive 置为 false 等于自废保活链路
+            // 仅在确实是"音频加载/解码失败"时（AbortError / MediaError）才视为异常。
+            if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
+                // 静默，不打日志也不改 isActive
+                return;
+            }
+            if (this.audioLogCount < 3) {
+                this.log('Audio play failed: ' + (e.message || e.name), 'error');
                 this.audioLogCount++;
             }
             this.isActive = false;
