@@ -87,10 +87,27 @@ class NotificationService {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        // Skip HEAD request and directly try to register
-        // This avoids the potential ERR_ABORTED error
-        const registration = await navigator.serviceWorker.register('/sw.js')
+        const registration = await navigator.serviceWorker.register('/sw.js?v=2', { scope: '/' })
         console.log('ServiceWorker registration successful with scope:', registration.scope)
+
+        // 如果有等待中的新 SW，立即激活它（替换旧版本）
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+        }
+
+        // 监听后续 SW 更新，自动激活
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // 新 SW 已安装且当前有旧 SW 在控制页面，通知新 SW 跳过等待
+                newWorker.postMessage({ type: 'SKIP_WAITING' })
+              }
+            })
+          }
+        })
+
         return registration
       } catch (error) {
         console.error('ServiceWorker registration failed:', error)
