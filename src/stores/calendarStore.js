@@ -1110,6 +1110,10 @@ export const useCalendarStore = defineStore('calendar', () => {
     addAnniversary,
     deleteAnniversary,
     saveData,
-    getAnniversariesForDate
+    getAnniversariesForDate,
+    getMoodForDate,
+    loadData,
+    parseDateStr,
+    isSameDay
   }
 })

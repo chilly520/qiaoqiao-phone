@@ -1172,7 +1172,7 @@ export const useSettingsStore = defineStore('settings', () => {
         getWechatBgHistory,
         clearWechatBgHistory,
         savePreset, loadPreset, deletePreset, resetAllPersonalization,
-        setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, resetVoiceSettings,
+        setVoiceEngine, updateMinimaxConfig, updateDoubaoConfig, updateBDeTTSConfig, updateVolcPaidConfig, updateDoubaoVoices, resetVoiceSettings,
         setWeatherConfig, updateLiveWeather, setUserLocation, setCompressQuality, setDrawingConfig,
         toggleOfflineMode, toggleAIBackground, setOfflineModeConfig,
         getChatOfflineMode, setChatOfflineMode, toggleChatOfflineMode, toggleChatAIBackground,
