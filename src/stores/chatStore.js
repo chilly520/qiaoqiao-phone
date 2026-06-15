@@ -2389,21 +2389,14 @@ export const useChatStore = defineStore('chat', () => {
         // Start the worker
         proactiveWorker.postMessage('start');
 
-        // 3. Visibility API Compensation (Check immediately when user returns)
-        if (typeof document !== 'undefined') {
-            let lastForegroundTime = Date.now()
-            document.addEventListener('visibilitychange', () => {
+        // 3. 页面刷新补偿 (仅在页面加载/刷新时执行一次,前后台切换不再触发)
+        if (typeof window !== 'undefined') {
+            window.addEventListener('pageshow', () => {
                 const logger = useLoggerStore()
-                if (document.visibilityState === 'visible') {
-                    // Avoid double triggers within 2 seconds
-                    if (Date.now() - lastForegroundTime < 2000) return
-                    lastForegroundTime = Date.now()
-
-                    logger.sys('[Proactive] App in foreground, checking missed triggers...')
-                    Object.keys(chats.value).forEach(chatId => {
-                        checkProactive(chatId)
-                    })
-                }
+                logger.sys('[Proactive] Page loaded/refreshed, checking missed triggers...')
+                Object.keys(chats.value).forEach(chatId => {
+                    checkProactive(chatId)
+                })
             });
         }
     }
