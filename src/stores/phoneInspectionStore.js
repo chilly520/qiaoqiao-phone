@@ -1925,6 +1925,7 @@ ${selectedPrompts}
     triggerAlert,
     triggerConfirm,
     triggerToast,
-    processHiddenCommand
+    processHiddenCommand,
+    getAIPhoneContext
   }
 })
