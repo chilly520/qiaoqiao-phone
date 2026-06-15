@@ -2718,7 +2718,7 @@ ${"```"}
             console.error('[Batch Moments] JSON Parse Error:', parseError.message)
             console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
             // [FIX] 使用 reconstructMomentsJSON 兜底重建，而非直接抛出异常
-            const reconstructed = reconstructMomentsJSON(rawContent || jsonStr)
+            const reconstructed = reconstructMomentsJSON(jsonStr)
             if (reconstructed) {
                 try {
                     parsedData = JSON.parse(reconstructed)

@@ -84,7 +84,8 @@ export function _repairJsonStrings(jsonStr) {
     }
 
     // 二次修复：处理 content 值中的未转义中文引号（AI 常用 "" 包裹对话）
-    result = result.replace(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/gi, (match, content) => {
+    // 注意:正则允许 content 内部包含 中文/英文/转义序列/换行/制表符,只要不出现未转义的 " 或 \
+    result = result.replace(/"content"\s*:\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi, (match, content) => {
         const fixed = content.replace(/\u201c/g, '\u300A').replace(/\u201d/g, '\u300B')
         return `"content": "${fixed}"`
     })
@@ -97,11 +98,15 @@ export function _repairJsonStrings(jsonStr) {
  * @returns {string|null} 序列化后的 { newMoments, ecosystemUpdates }，失败时返回 null
  */
 export function reconstructMomentsJSON(rawText) {
-    const clean = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+    if (!rawText) return null
+    // 先做一次智能修复,确保 AI 常见的"内容中含未转义中文引号/换行"问题被处理
+    const repaired = _repairJsonStrings(rawText)
+    const clean = repaired.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
         .replace(/[\[【][^\]]*?[\]】]/g, '')
     const moments = []
-    const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
-    const authorRegex = /"authorId"\s*[:：]\s*"(.*?)"/gi
+    // 允许 content 内部出现中文/英文双引号、换行、制表符、转义序列(但不能是未转义的英文 " 或 \)
+    const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi
+    const authorRegex = /"authorId"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
     const typeRegex = /"type"\s*[:：]\s*"(comment|reply|like)"/gi
 
     let match, idx = 0
