@@ -710,8 +710,21 @@ export const useMomentsStore = defineStore('moments', () => {
                 chatStore.triggerToast('大家都还在忙，暂时没人回复...', 'warning')
             }
         } catch (e) {
-            console.error('[MomentsStore] Summon failed', e)
-            chatStore.triggerToast(`召唤失败: ${e.message || '未知错误'}`, 'error')
+            // 网络错误时显示友好提示
+            const isNetworkError = e.message &&
+                (e.message.includes('Failed to fetch') ||
+                 e.message.includes('NetworkError') ||
+                 e.message.includes('Network request failed') ||
+                 e.message.includes('Load failed') ||
+                 e.message.includes('timeout'));
+
+            if (isNetworkError) {
+                console.warn('[MomentsStore] Summon failed (network):', e.message)
+                chatStore.triggerToast('朋友们暂时联系不上，稍后再试试吧', 'warning')
+            } else {
+                console.error('[MomentsStore] Summon failed', e)
+                chatStore.triggerToast(`召唤失败: ${e.message || '未知错误'}`, 'error')
+            }
         } finally {
             summoningIds.value.delete(momentId)
         }
@@ -1000,8 +1013,21 @@ export const useMomentsStore = defineStore('moments', () => {
 
             generatedSuccessfully = true
         } catch (e) {
-            console.error('[MomentsStore] Batch generation failed:', e)
-            logger.error(`[MomentsStore] Batch generation error: ${e.message}`, { error: e.message, stack: e.stack?.substring(0, 200) })
+            // 区分网络层错误和真正的业务错误，降低日志噪音
+            const isNetworkError = e.message &&
+                (e.message.includes('Failed to fetch') ||
+                 e.message.includes('NetworkError') ||
+                 e.message.includes('Network request failed') ||
+                 e.message.includes('Load failed') ||
+                 e.message.includes('timeout'));
+
+            if (isNetworkError) {
+                console.warn('[MomentsStore] 朋友圈生成跳过（网络不可达）:', e.message);
+                logger.warn(`[MomentsStore] Batch generation skipped (network unreachable): ${e.message}`);
+            } else {
+                console.error('[MomentsStore] Batch generation failed:', e)
+                logger.error(`[MomentsStore] Batch generation error: ${e.message}`, { error: e.message, stack: e.stack?.substring(0, 200) })
+            }
         } finally {
             // [FIX] 仅在成功生成时更新时间，避免失败后"假成功"导致长时间不重试
             if (isInitialized.value && generatedSuccessfully) {

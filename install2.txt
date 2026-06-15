@@ -1,0 +1,2 @@
+﻿npm error A complete log of this run can be found in: C:\Users\Administrator\Ap
+pData\Local\npm-cache\_logs\2026-06-10T03_39_29_452Z-debug-0.log

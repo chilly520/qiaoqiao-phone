@@ -426,6 +426,7 @@ import OfflineChatInputBar from './components/OfflineChatInputBar.vue'
 import { usePhoneInspectionStore } from '../../stores/phoneInspectionStore'
 import ChatInnerVoiceCard from './modals/ChatInnerVoiceCard.vue'
 import BackgroundUploadModal from './modals/BackgroundUploadModal.vue'
+import { ensureString } from '../../utils/common'
 import ChatActionPanel from './ChatActionPanel.vue'
 import EmojiPicker from './EmojiPicker.vue'
 import ChatRedPacketModal from './modals/ChatRedPacketModal.vue'
@@ -946,12 +947,6 @@ const shouldShowHeader = (msg, index) => {
   const prevMsg = filteredDisplayMsgs.value[index - 1]
   if (!prevMsg) return true
   return msg.role !== prevMsg.role || (msg.timestamp - prevMsg.timestamp) > 300000
-}
-
-const ensureString = (val) => {
-  if (typeof val === 'string') return val
-  if (Array.isArray(val)) return val.map(v => typeof v === 'string' ? v : (v.text || '')).join('')
-  return String(val || '')
 }
 
 

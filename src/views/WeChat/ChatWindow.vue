@@ -54,23 +54,7 @@ import { generateImage, translateToEnglish } from '../../utils/aiService'
 import { batteryMonitor } from '../../utils/batteryMonitor'
 import { useChatTransaction } from '../../composables/chat/useChatTransaction'
 import { shouldShowInOnlineMode, getUnifiedCleanContent } from '../../utils/chatMessageDisplay'
-
-const ensureString = (val) => {
-    if (typeof val === 'string') return val;
-    if (Array.isArray(val)) {
-        return val.map(part => {
-            if (typeof part === 'string') return part;
-            if (part && typeof part === 'object') {
-                return part.text || part.content || '';
-            }
-            return '';
-        }).join('');
-    }
-    if (val && typeof val === 'object') {
-        return val.text || val.content || JSON.stringify(val);
-    }
-    return String(val || '');
-}
+import { ensureString } from '../../utils/common'
 
 // Configure Marked
 marked.setOptions({

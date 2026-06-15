@@ -1107,208 +1107,48 @@
             </div>
         </div>
         <!-- Token Detail Modal -->
-        <div v-if="showTokenModal"
-            class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-            @click="showTokenModal = false">
-            <div class="w-[90%] max-w-[320px] rounded-xl overflow-hidden shadow-2xl"
-                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b]' : 'bg-white'" @click.stop>
-                <div class="p-3 flex justify-between items-center border-b"
-                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#334155] border-[#475569]' : 'bg-gray-100 border-gray-200'">
-                    <span class="font-bold"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">Token
-                        统计详情</span>
-                    <button @click="showTokenModal = false"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'"><i
-                            class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="p-4 space-y-3 text-sm">
-                    <!-- Total -->
-                    <div class="flex justify-between items-center mb-2 pb-2 border-b"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'border-gray-700' : 'border-gray-100'">
-                        <span class="font-bold"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-700'">总计
-                            (Total Context)</span>
-                        <span class="font-bold text-purple-600 font-mono">{{ contextTokenCounts?.total || 0
-                            }}</span>
-                    </div>
-
-                    <!-- Breakdown List -->
-                    <div class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                        <div v-for="(label, key) in contextLabels" :key="key">
-                            <div class="flex justify-between items-center text-gray-600 cursor-pointer p-2 rounded transition-colors"
-                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300 hover:bg-white/10' : 'hover:bg-gray-50'"
-                                @click="toggleContextExpand(key)">
-                                <span class="font-medium border-b border-dashed transition-colors"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'border-gray-600 hover:border-gray-400' : 'border-gray-300 hover:border-gray-500'">{{
-                                        label }}</span>
-                                <span class="font-mono px-1.5 rounded text-xs"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 bg-gray-700' : 'text-gray-500 bg-gray-100'">{{
-                                        contextTokenCounts[key] || 0 }}</span>
-                            </div>
-
-                            <!-- Expanded Content -->
-                            <div v-if="expandedContextKey === key"
-                                class="mt-1 p-2 rounded text-[10px] whitespace-pre-wrap font-mono break-all max-h-[200px] overflow-y-auto shadow-inner"
-                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-800 text-gray-400 border border-gray-700' : 'bg-gray-50 text-gray-500 border border-gray-100'">
-                                {{ contextPreviewData[key] || '（无内容）' }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 text-[10px] text-center border-t pt-2"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500 border-gray-700' : 'text-gray-400'">
-                        * 点击条目可查看实际发送给 AI 的文本内容<br>
-                        * 估算值：1 中文 ≈ 1 Token, 3 英文 ≈ 1 Token
-                    </div>
-                </div>
-            </div>
-        </div>
+        <TokenDetailModal
+            :show="showTokenModal"
+            :is-dark="settingsStore.personalization.theme === 'dark'"
+            :token-counts="contextTokenCounts"
+            :labels="contextLabels"
+            :preview-data="contextPreviewData"
+            :expanded-key="expandedContextKey"
+            @close="showTokenModal = false"
+            @toggle="toggleContextExpand" />
 
         <!-- Memory Library Modal (Redesigned with Themes) -->
-        <div v-if="showMemoryModal"
-            class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-            @click="showMemoryModal = false">
-            <div class="w-[90%] max-w-[360px] h-[85%] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
-                :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a]' : 'bg-white'" @click.stop>
-                <!-- Header with Theme Switcher -->
-                <div class="p-4 border-b" :class="settingsStore.personalization.theme === 'dark'
-                    ? 'border-[#334155] bg-gradient-to-r from-purple-900/50 to-pink-900/50'
-                    : 'border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50'">
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="font-bold flex items-center gap-2 text-lg"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-white' : 'text-gray-800'">
-                            <i class="fa-solid fa-brain text-purple-500"></i> 记忆管理库
-                        </span>
-                        <button @click="showMemoryModal = false" class="transition-colors"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'">
-                            <i class="fa-solid fa-xmark text-xl"></i>
-                        </button>
-                    </div>
-
-                    <!-- Theme Selector -->
-                    <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        <button v-for="theme in memoryThemes" :key="theme.id" @click="currentMemoryTheme = theme.id"
-                            class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0"
-                            :class="currentMemoryTheme === theme.id
-                                ? 'bg-gradient-to-r ' + theme.activeGradient + ' text-white shadow-md scale-105'
-                                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 border border-white/10 hover:border-white/20' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300')">
-                            <i :class="theme.icon"></i> {{ theme.name }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Memory List with Dynamic Theme -->
-                <div class="flex-1 overflow-y-auto p-4 space-y-3" :class="getThemeBackground()">
-                    <div v-if="!memories || memories.length === 0" class="text-center text-gray-400 py-12 text-sm">
-                        <i class="fa-solid fa-box-open text-4xl mb-3 opacity-30"></i>
-                        <div>暂无记忆</div>
-                    </div>
-
-                    <div v-for="(mem, index) in memories" :key="index" class="relative transition-all duration-300"
-                        :class="{ 'pl-8': isEditMode }">
-                        <!-- Checkbox (Only in Edit Mode) -->
-                        <div v-if="isEditMode" class="absolute left-0 top-3">
-                            <input type="checkbox"
-                                class="w-5 h-5 rounded border-2 border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer transition-transform hover:scale-110"
-                                :checked="selectedIndices.has(index)" @change="toggleSelection(index)">
-                        </div>
-
-                        <!-- Memory Card with Theme -->
-                        <div :class="getThemeCardClass()" class="transition-all duration-300 hover:shadow-lg">
-                            <!-- Editing Mode -->
-                            <div v-if="editingIndex === index">
-                                <textarea v-model="editingContent"
-                                    class="w-full border-2 border-purple-300 rounded-lg p-3 text-sm h-32 mb-2 focus:ring-2 focus:ring-purple-400 outline-none font-serif"
-                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-white border-purple-600 focus:ring-purple-500' : ''"></textarea>
-                                <div class="flex justify-end gap-2">
-                                    <button class="text-xs px-4 py-1.5 rounded-lg transition-colors"
-                                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-                                        @click="cancelEdit">取消</button>
-                                    <button
-                                        class="text-xs px-4 py-1.5 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors shadow-md"
-                                        @click="saveEdit(index)">保存</button>
-                                </div>
-                            </div>
-
-                            <!-- Display Mode -->
-                            <div v-else>
-                                <div class="flex justify-between items-start mb-2">
-                                    <div class="flex items-center gap-2">
-                                        <!-- Themed Number Badge -->
-                                        <span :class="getThemeNumberClass()">
-                                            {{ getThemeNumberPrefix((memories?.length || 0) - index) }}
-                                        </span>
-                                        <span :class="getThemeBadgeClass()">{{ getThemeLabel() }}</span>
-                                    </div>
-                                    <div class="flex gap-2">
-                                        <button class="text-blue-500 hover:text-blue-600 transition-colors p-1"
-                                            @click="startEdit(index, mem)" title="编辑">
-                                            <i class="fa-solid fa-pen text-sm"></i>
-                                        </button>
-                                        <button class="text-red-500 hover:text-red-600 transition-colors p-1"
-                                            @click="deleteMemory(index)" title="删除">
-                                            <i class="fa-solid fa-trash text-sm"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div :class="getThemeContentClass()">
-                                    {{ typeof mem === 'object' ? (mem.content || JSON.stringify(mem)) : mem }}
-                                </div>
-                                <div v-if="typeof mem === 'object' && mem.range" :class="getThemeMetaClass()">
-                                    <i class="fa-solid fa-clock mr-1"></i>
-                                    {{ mem.range }} · {{ new Date(mem.timestamp).toLocaleString('zh-CN', {
-                                        month: 'short',
-                                        day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                    }) }}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Footer with Edit Mode Toggle -->
-                <div class="p-3 border-t flex justify-between items-center gap-2"
-                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a] border-[#334155]' : 'bg-white border-gray-200'">
-                    <!-- Edit Mode Toggle -->
-                    <button @click="isEditMode = !isEditMode"
-                        class="px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2"
-                        :class="isEditMode
-                            ? 'bg-purple-500 text-white shadow-md'
-                            : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')">
-                        <i class="fa-solid" :class="isEditMode ? 'fa-check' : 'fa-edit'"></i>
-                        {{ isEditMode ? '完成' : '编辑' }}
-                    </button>
-
-                    <!-- Batch Delete (Only in Edit Mode) -->
-                    <div v-if="isEditMode" class="flex items-center gap-2">
-                        <label class="flex items-center gap-1.5 text-xs cursor-pointer select-none"
-                            :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
-                            <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"
-                                class="rounded border-gray-300 text-purple-600 focus:ring-purple-500">
-                            全选
-                        </label>
-                        <button
-                            class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
-                            :class="selectedIndices.size > 0 && !isSummarizingMemory
-                                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-md'
-                                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed')"
-                            @click="batchSummarizeMemory" :disabled="selectedIndices.size === 0 || isSummarizingMemory">
-                            <i class="fa-solid fa-wand-magic-sparkles text-xs" :class="{ 'animate-spin': isSummarizingMemory }"></i>
-                            {{ isSummarizingMemory ? '总结中...' : `总结 (${selectedIndices.size})` }}
-                        </button>
-                        <button
-                            class="text-xs px-4 py-2 rounded-lg transition-all font-medium flex items-center gap-1.5"
-                            :class="selectedIndices.size > 0
-                                ? 'bg-red-500 text-white hover:bg-red-600 shadow-md'
-                                : (settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed')"
-                            @click="batchDeleteMemory" :disabled="selectedIndices.size === 0">
-                            <i class="fa-solid fa-trash"></i>
-                            删除 ({{ selectedIndices.size }})
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <MemoryLibraryModal
+            :show="showMemoryModal"
+            :is-dark="settingsStore.personalization.theme === 'dark'"
+            :memories="memories"
+            :themes="memoryThemes"
+            :current-theme="currentMemoryTheme"
+            :is-edit-mode="isEditMode"
+            :selected-indices="selectedIndices"
+            :is-all-selected="isAllSelected"
+            :is-summarizing="isSummarizingMemory"
+            :editing-index="editingIndex"
+            :editing-content="editingContent"
+            :theme-background="getThemeBackground()"
+            :theme-card-class="getThemeCardClass()"
+            :theme-number-class="getThemeNumberClass()"
+            :theme-badge-class="getThemeBadgeClass()"
+            :theme-content-class="getThemeContentClass()"
+            :theme-meta-class="getThemeMetaClass()"
+            :theme-label="getThemeLabel()"
+            @close="showMemoryModal = false"
+            @update:current-theme="(v) => currentMemoryTheme = v"
+            @toggle-edit-mode="isEditMode = !isEditMode"
+            @toggle-select="toggleSelection"
+            @toggle-select-all="toggleSelectAll"
+            @start-edit="startEdit"
+            @cancel-edit="cancelEdit"
+            @save-edit="saveEdit"
+            @update:editing-content="(v) => editingContent = v"
+            @delete="deleteMemory"
+            @batch-summarize="batchSummarizeMemory"
+            @batch-delete="batchDeleteMemory" />
 
         <!-- Avatar Frame Pickers -->
         <AvatarFramePicker v-if="showFramePicker" v-model="localData.avatarFrame" @close="showFramePicker = false" />
@@ -1316,196 +1156,49 @@
             @close="showUserFramePicker = false" />
 
         <!-- Export Card Modal -->
-        <div v-if="showExportModal"
-            class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-            @click="showExportModal = false">
-            <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up"
-                @click.stop>
-                <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">导出角色卡</h3>
-
-                <div class="space-y-3 mb-6">
-                    <!-- Include Memory -->
-                    <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
-                        @click="exportIncludeMemory = !exportIncludeMemory">
-                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
-                            :class="exportIncludeMemory ? 'bg-purple-500 border-purple-500' : 'bg-white border-gray-300'">
-                            <i v-if="exportIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="text-sm font-bold text-gray-700">包含记忆库</div>
-                            <div class="text-[10px] text-gray-400">保留角色已有的长期记忆</div>
-                        </div>
-                    </div>
-
-                    <!-- Include History -->
-                    <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
-                        @click="exportIncludeHistory = !exportIncludeHistory">
-                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
-                            :class="exportIncludeHistory ? 'bg-blue-500 border-blue-500' : 'bg-white border-gray-300'">
-                            <i v-if="exportIncludeHistory" class="fa-solid fa-check text-white text-xs"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="text-sm font-bold text-gray-700">包含聊天记录</div>
-                            <div class="text-[10px]" :class="historySizeWarning ? 'text-red-500 font-bold' : 'text-gray-400'">
-                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-                                预估大小: {{ estimatedHistorySize }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Exclude Images (Conditional) -->
-                    <div v-if="exportIncludeHistory" class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none ml-4 animate-slide-in"
-                        @click="exportExcludeImages = !exportExcludeImages">
-                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
-                            :class="exportExcludeImages ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300'">
-                            <i v-if="exportExcludeImages" class="fa-solid fa-check text-white text-xs"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="text-sm font-bold text-gray-700">排除图片</div>
-                            <div class="text-[10px] text-gray-400">仅导出文字内容，显著减小文件体积</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div v-if="historySizeWarning" class="mb-4 p-2 bg-red-50 rounded-lg border border-red-100 text-[10px] text-red-600">
-                    <i class="fa-solid fa-circle-exclamation mr-1"></i>
-                    检测到超大历史记录，导出可能会导致浏览器崩溃或导出失败。建议先进行“图片压缩”或只导出基础信息。
-                </div>
-
-                <div class="flex gap-3">
-                    <button
-                        class="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold active:scale-95 transition-transform"
-                        @click="showExportModal = false">取消</button>
-                    <button
-                        class="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 active:scale-95 transition-transform"
-                        @click="handleExportCard">导出</button>
-                </div>
-            </div>
-        </div>
+        <ExportCardModal
+            :show="showExportModal"
+            :include-memory="exportIncludeMemory"
+            :include-history="exportIncludeHistory"
+            :exclude-images="exportExcludeImages"
+            :size-warning="historySizeWarning"
+            :estimated-size="estimatedHistorySize"
+            @close="showExportModal = false"
+            @export="handleExportCard"
+            @update:include-memory="(v) => exportIncludeMemory = v"
+            @update:include-history="(v) => exportIncludeHistory = v"
+            @update:exclude-images="(v) => exportExcludeImages = v" />
 
         <!-- Avatar Cropper Modal -->
         <AvatarCropper v-if="showAvatarCropper || showUserAvatarCropper" :image-src="cropperImageSrc"
             @crop="handleCropComplete" @cancel="handleCropCancel" />
 
         <!-- Voice Picker Modal -->
-        <Transition name="fade">
-            <div v-if="showVoicePicker"
-                class="fixed inset-0 z-[10002] bg-black/60 backdrop-blur-sm flex items-end justify-center"
-                @click="showVoicePicker = false">
-                <div class="w-full max-w-[500px] bg-[#f8f9fa] rounded-t-[32px] flex flex-col max-h-[85vh] animate-slide-up shadow-2xl"
-                    @click.stop
-                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#0f172a] text-white' : 'bg-[#f8f9fa] text-gray-800'">
-                    <!-- Header -->
-                    <div class="sticky top-0 p-6 flex flex-col gap-4 bg-inherit rounded-t-[32px] border-b"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-100'">
-                        <div class="flex justify-between items-center">
-                            <h2 class="text-xl font-black">选择音色 (Doubao)</h2>
-                            <button @click="showVoicePicker = false"
-                                class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </div>
-                        <!-- Search Bar -->
-                        <div class="relative">
-                            <i
-                                class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                            <input v-model="voiceSearchQuery" type="text" placeholder="搜索发声人名称或 ID..."
-                                class="w-full pl-11 pr-4 py-3 rounded-2xl border-none outline-none text-sm transition-all shadow-sm"
-                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 focus:bg-white/10 text-white' : 'bg-white focus:shadow-md'">
-                        </div>
-                    </div>
-
-                    <!-- List container with specific height/scroll -->
-                    <div class="flex-1 overflow-y-auto p-4 space-y-2 min-h-[300px]">
-                        <div v-for="v in filteredVoices" :key="v.id" @click="selectVoice(v.id)"
-                            class="flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all active:scale-[0.98]"
-                            :class="[
-                                localData.doubaoSpeaker === v.id
-                                    ? (settingsStore.personalization.theme === 'dark' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-50 text-emerald-600 border border-emerald-100')
-                                    : (settingsStore.personalization.theme === 'dark' ? 'hover:bg-white/5 border border-transparent' : 'hover:bg-white border border-transparent hover:border-gray-100')
-                            ]">
-                            <div class="flex flex-col">
-                                <span class="font-bold text-sm">{{ v.name }}</span>
-                                <span class="text-[10px] opacity-40 font-mono">{{ v.id }}</span>
-                            </div>
-                            <div v-if="localData.doubaoSpeaker === v.id"
-                                class="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center">
-                                <i class="fa-solid fa-check text-white text-[10px]"></i>
-                            </div>
-                        </div>
-                        <div v-if="!filteredVoices || filteredVoices.length === 0" class="py-12 text-center opacity-40 italic text-sm">
-                            未找到相关音色
-                        </div>
-                    </div>
-
-                    <!-- Footer Area Padding for Safe Space -->
-                    <div class="h-8 shrink-0"></div>
-                </div>
-            </div>
-        </Transition>
+        <VoicePickerModal
+            :show="showVoicePicker"
+            :is-dark="settingsStore.personalization.theme === 'dark'"
+            :search-query="voiceSearchQuery"
+            :filtered-voices="filteredVoices"
+            :current-speaker="localData.doubaoSpeaker"
+            @close="showVoicePicker = false"
+            @select="selectVoice"
+            @update:search-query="(v) => voiceSearchQuery = v" />
 
         <!-- Delete History Confirm Modal -->
-        <div v-if="showDeleteConfirm"
-            class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-            @click="handleClearHistoryCancel">
-            <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up"
-                @click.stop>
-                <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">确认清除聊天记录</h3>
-
-                <div class="space-y-3 mb-6">
-                    <!-- Include Memory -->
-                    <div class="bg-gray-50 p-3 rounded-xl flex items-center gap-3 cursor-pointer select-none"
-                        @click="clearIncludeMemory = !clearIncludeMemory">
-                        <div class="w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm"
-                            :class="clearIncludeMemory ? 'bg-red-500 border-red-500' : 'bg-white border-gray-300'">
-                            <i v-if="clearIncludeMemory" class="fa-solid fa-check text-white text-xs"></i>
-                        </div>
-                        <div class="flex-1">
-                            <div class="text-sm font-bold text-gray-700">清空记忆管理库</div>
-                            <div class="text-[10px] text-gray-400 text-red-500">
-                                <i class="fa-solid fa-triangle-exclamation mr-1"></i>此操作不可恢复
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex gap-3">
-                    <button @click="handleClearHistoryCancel"
-                        class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold active:bg-gray-200 transition-colors">
-                        取消
-                    </button>
-                    <button @click="handleClearHistoryConfirm"
-                        class="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold active:bg-red-600 transition-colors shadow-md">
-                        确认删除
-                    </button>
-                </div>
-            </div>
-        </div>
+        <DeleteHistoryModal
+            :show="showDeleteConfirm"
+            :include-memory="clearIncludeMemory"
+            @cancel="handleClearHistoryCancel"
+            @confirm="handleClearHistoryConfirm"
+            @update:include-memory="(v) => clearIncludeMemory = v" />
 
         <!-- Manual Summary Modal -->
-        <div v-if="showManualSummaryModal"
-            class="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-            @click="showManualSummaryModal = false">
-            <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up"
-                @click.stop>
-                <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">手动触发总结</h3>
-                <p class="text-xs text-gray-500 mb-4">输入要总结的消息范围（如 <b>1-50</b>），留空则总结全部未总结消息。</p>
-                <input v-model="manualSummaryRange" type="text"
-                    class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
-                    placeholder="如: 1-50（留空总结全部）">
-                <div class="flex gap-3">
-                    <button @click="showManualSummaryModal = false"
-                        class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold active:bg-gray-200 transition-colors">
-                        取消
-                    </button>
-                    <button @click="executeManualSummary"
-                        class="flex-1 py-3 rounded-xl bg-purple-500 text-white font-bold active:bg-purple-600 transition-colors shadow-md">
-                        开始总结
-                    </button>
-                </div>
-            </div>
-            </div>
-        </div> <!-- End Main Wrapper -->
+        <ManualSummaryModal
+            :show="showManualSummaryModal"
+            :range="manualSummaryRange"
+            @close="showManualSummaryModal = false"
+            @execute="executeManualSummary"
+            @update:range="(v) => manualSummaryRange = v" />
 
     <!-- Spark Detail Modal -->
     <SparkDetailModal
@@ -1513,6 +1206,7 @@
         :char-id="chatData?.id"
         :char-name="chatData?.remark || chatData?.name"
         @close="showSparkDetail = false" />
+    </div>
 </template>
 
 <script setup>
@@ -1526,6 +1220,12 @@ import { useSparkStore } from '../../stores/sparkStore'
 import AvatarFramePicker from '../../components/AvatarFramePicker.vue'
 import AvatarCropper from '../../components/AvatarCropper.vue'
 import SparkDetailModal from './components/SparkDetailModal.vue'
+import TokenDetailModal from './modals/TokenDetailModal.vue'
+import MemoryLibraryModal from './modals/MemoryLibraryModal.vue'
+import ExportCardModal from './modals/ExportCardModal.vue'
+import VoicePickerModal from './modals/VoicePickerModal.vue'
+import DeleteHistoryModal from './modals/DeleteHistoryModal.vue'
+import ManualSummaryModal from './modals/ManualSummaryModal.vue'
 import { weatherService, POPULAR_CITIES } from '../../utils/weatherService'
 import { generateSummary } from '../../utils/aiService'
 import { getEnabledServers } from '../../utils/mcpService'

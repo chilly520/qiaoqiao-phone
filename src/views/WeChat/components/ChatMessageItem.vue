@@ -1503,6 +1503,7 @@ import {
     getUnifiedCleanContent,
     extractInnerVoiceData
 } from '../../../utils/chatMessageDisplay'
+import { ensureString } from '../../../utils/common'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
 import FamilyCardClaimModal from '../FamilyCardClaimModal.vue'
@@ -3014,10 +3015,6 @@ const shouldShowArrow = computed(() => {
 })
 
 // --- Methods (Ported) ---
-
-function ensureString(val) {
-    return ensureMessageString(val)
-}
 
 function escapeHtml(value) {
     return ensureString(value)

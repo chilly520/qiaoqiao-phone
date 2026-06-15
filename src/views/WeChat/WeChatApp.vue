@@ -14,6 +14,7 @@ import { compressImage } from '../../utils/imageUtils'
 import SparkIcon from './components/SparkIcon.vue'
 import SparkDetailModal from './components/SparkDetailModal.vue'
 import { useSparkStore } from '../../stores/sparkStore'
+import { ensureString } from '../../utils/common'
 
 const worldLoopStore = useWorldLoopStore()
 const expandLoopContacts = ref(true)
@@ -29,23 +30,6 @@ const sparkDetailCharId = ref(null)
 const sparkDetailCharName = ref('')
 
 const userProfile = computed(() => settingsStore.personalization.userProfile)
-
-const ensureString = (val) => {
-    if (typeof val === 'string') return val;
-    if (Array.isArray(val)) {
-        return val.map(part => {
-            if (typeof part === 'string') return part;
-            if (part && typeof part === 'object') {
-                return part.text || part.content || '';
-            }
-            return '';
-        }).join('');
-    }
-    if (val && typeof val === 'object') {
-        return val.text || val.content || JSON.stringify(val);
-    }
-    return String(val || '');
-}
 
 // Search State
 const searchQuery = ref('')
