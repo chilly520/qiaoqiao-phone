@@ -19,8 +19,27 @@ export const useMomentsStore = defineStore('moments', () => {
     // --- State ---
     const moments = ref([])
     const lastGenerateTime = ref(parseInt(localStorage.getItem('wechat_moments_last_gen') || '0'))
-    const notifications = ref(JSON.parse(localStorage.getItem('wechat_moments_notifications') || '[]'))
-    const topMoments = ref(JSON.parse(localStorage.getItem('wechat_moments_top') || '[]'))
+    
+    const parseNotifications = () => {
+        try {
+            return JSON.parse(localStorage.getItem('wechat_moments_notifications') || '[]')
+        } catch (e) {
+            console.warn('[MomentsStore] Notifications parse failed, resetting:', e.message)
+            return []
+        }
+    }
+    
+    const parseTopMoments = () => {
+        try {
+            return JSON.parse(localStorage.getItem('wechat_moments_top') || '[]')
+        } catch (e) {
+            console.warn('[MomentsStore] Top moments parse failed, resetting:', e.message)
+            return []
+        }
+    }
+    
+    const notifications = ref(parseNotifications())
+    const topMoments = ref(parseTopMoments())
     const summoningIds = ref(new Set())
 
     // Async Initialization

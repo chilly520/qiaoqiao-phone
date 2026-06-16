@@ -494,7 +494,13 @@ function confirmInvite() {
   }
   
   // 获取亲密度数据
-  const intimacyData = JSON.parse(localStorage.getItem('chat_intimacy_' + currentId) || '{}')
+  let intimacyData = {}
+  try {
+    intimacyData = JSON.parse(localStorage.getItem('chat_intimacy_' + currentId) || '{}')
+  } catch (e) {
+    console.warn('[LoveSpace] Intimacy data parse failed:', e.message)
+    intimacyData = {}
+  }
   const intimacy = intimacyData.intimacy || 0
   const level = intimacyData.level || 1
 

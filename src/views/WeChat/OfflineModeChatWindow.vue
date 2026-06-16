@@ -629,7 +629,13 @@ const favoriteSelectedMessages = () => {
     const chatId = chatStore.currentChatId
     if (!chatId) return
     
-    const favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+    let favorites = []
+    try {
+        favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+    } catch (e) {
+        console.warn('[OfflineMode] Favorites parse failed, resetting:', e.message)
+        favorites = []
+    }
     let addedCount = 0
     
     selectedMsgIds.value.forEach(msgId => {
@@ -1401,7 +1407,13 @@ const handleMenuAction = (action) => {
       }
       break
     case 'fav':
-      const favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+      let favorites = []
+      try {
+        favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+      } catch (e) {
+        console.warn('[OfflineMode] Favorites parse failed, resetting:', e.message)
+        favorites = []
+      }
       favorites.push({
         id: selectedMsg.value.id,
         content: selectedMsg.value.content,
