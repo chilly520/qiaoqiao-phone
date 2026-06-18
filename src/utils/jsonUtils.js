@@ -14,20 +14,32 @@ export function fixJsonStringValues(jsonStr) {
         if (escaped) { result += ch; escaped = false; continue }
         if (ch === '\\' && inStr) { result += ch; escaped = true; continue }
         if ((ch === '"' || ch === "'") && !escaped) {
-            if (inStr && ch === strChar) { inStr = false }
-            else if (!inStr) { inStr = true; strChar = ch }
-            result += ch
-            continue
-        }
-        if (inStr) {
-            if (ch === '\n') result += '\\n'
-            else if (ch === '\r') result += '\\r'
-            else if (ch === '\t') result += '\\t'
-            else if (ch === '"') result += '\\"'
-            else if (ch === "'") result += "\\'"
-            else result += ch
+            if (!inStr) {
+                inStr = true; strChar = ch; result += ch; continue
+            }
+            if (ch === strChar) {
+                let nextChar = ''
+                let j = i + 1
+                while (j < jsonStr.length && /\s/.test(jsonStr[j])) {
+                    j++
+                }
+                if (j < jsonStr.length) {
+                    nextChar = jsonStr[j]
+                }
+                if (nextChar === ',' || nextChar === '}' || nextChar === ']' || nextChar === ':' || nextChar === '') {
+                    inStr = false; result += ch; continue
+                }
+            }
+            result += '\\' + ch
         } else {
-            result += ch
+            if (inStr) {
+                if (ch === '\n') result += '\\n'
+                else if (ch === '\r') result += '\\r'
+                else if (ch === '\t') result += '\\t'
+                else result += ch
+            } else {
+                result += ch
+            }
         }
     }
     return result
@@ -65,10 +77,21 @@ export function _repairJsonStrings(jsonStr) {
                 stringStartChar = ch
                 result += ch
             } else if (ch === stringStartChar) {
-                inString = false
-                result += ch
+                let nextChar = ''
+                let j = i + 1
+                while (j < jsonStr.length && /\s/.test(jsonStr[j])) {
+                    j++
+                }
+                if (j < jsonStr.length) {
+                    nextChar = jsonStr[j]
+                }
+                if (nextChar === ',' || nextChar === '}' || nextChar === ']' || nextChar === ':' || nextChar === '') {
+                    inString = false
+                    result += ch
+                } else {
+                    result += '\\' + ch
+                }
             } else {
-                // 在双引号字符串内遇到单引号（或反之），转义它
                 result += '\\' + ch
             }
             continue
@@ -83,8 +106,6 @@ export function _repairJsonStrings(jsonStr) {
         result += ch
     }
 
-    // 二次修复：处理 content 值中的未转义中文引号（AI 常用 "" 包裹对话）
-    // 注意:正则允许 content 内部包含 中文/英文/转义序列/换行/制表符,只要不出现未转义的 " 或 \
     result = result.replace(/"content"\s*:\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi, (match, content) => {
         const fixed = content.replace(/\u201c/g, '\u300A').replace(/\u201d/g, '\u300B')
         return `"content": "${fixed}"`
@@ -102,7 +123,7 @@ export function reconstructMomentsJSON(rawText) {
     // 先做一次智能修复,确保 AI 常见的"内容中含未转义中文引号/换行"问题被处理
     const repaired = _repairJsonStrings(rawText)
     const clean = repaired.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
-        .replace(/[\[【][^\]]*?[\]】]/g, '')
+        .replace(/[【][^】]*[】]/g, '')
     const moments = []
     // 允许 content 内部出现中文/英文双引号、换行、制表符、转义序列(但不能是未转义的英文 " 或 \)
     const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi
@@ -139,7 +160,7 @@ export function reconstructMomentsJSON(rawText) {
         }
 
         const contentText = match[1].replace(/\\n/g, ' ').substring(0, 500)
-        if (!foundAuthor || contentText.length < 10) continue
+        if (!foundAuthor || contentText.length < 2) continue
 
         moments.push({
             authorId: foundAuthor,
