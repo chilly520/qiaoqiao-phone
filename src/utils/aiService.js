@@ -1224,16 +1224,26 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // We MUST merge the system prompt into the first User message for these models.
         let finalMessages = [...fullMessages];
         const isGeminiModel = model.toLowerCase().includes('gemini') || model.toLowerCase().includes('goog');
+        // [FIX] Detect Anthropic-compatible models (Claude) - need different system message handling
+        const isAnthropicModel = model.toLowerCase().includes('claude') || model.toLowerCase().includes('anthropic');
+        let anthropicSystemPrompt = null;
 
         // Handle all system messages for any model
-        finalMessages = finalMessages.map(msg => {
-            if (msg.role === 'system') {
-                // [FIX] 避免 [System Instructions] 倍增：先检查是否已经存在
-                const content = msg.content.startsWith('[System Instructions]') ? msg.content : `[System Instructions]\n${msg.content}`;
-                return { ...msg, role: 'user', content: content };
-            }
-            return msg;
-        });
+        if (isAnthropicModel && fullMessages.length > 0 && fullMessages[0].role === 'system') {
+            // [FIX] Anthropic API: system prompt must be a separate top-level parameter, not in messages array
+            anthropicSystemPrompt = fullMessages[0].content;
+            finalMessages = finalMessages.filter(msg => msg.role !== 'system');
+            console.log('[AI Service] Anthropic model detected - extracting system prompt to top-level parameter');
+        } else {
+            finalMessages = finalMessages.map(msg => {
+                if (msg.role === 'system') {
+                    // [FIX] 避免 [System Instructions] 倍增：先检查是否已经存在
+                    const content = msg.content.startsWith('[System Instructions]') ? msg.content : `[System Instructions]\n${msg.content}`;
+                    return { ...msg, role: 'user', content: content };
+                }
+                return msg;
+            });
+        }
 
         if (isGeminiModel) {
             // [FIX] Ensure first message has correct prefix after map
@@ -1298,6 +1308,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             temperature: Number(temperature) || 0.7,
             max_tokens: safeMaxTokens,
             stream: !!options.onChunk,
+            // [FIX] Anthropic API requires system as separate parameter
+            ...(anthropicSystemPrompt && { system: anthropicSystemPrompt }),
             // [ST Feature] Support SillyTavern-style advanced parameters
             // Only add if they are present in config AND deviate from defaults (to avoid 400 errors)
             // [FIX] Use Number(...) casting to ensure string values from localStorage don't fail the check
