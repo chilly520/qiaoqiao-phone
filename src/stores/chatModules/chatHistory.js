@@ -110,8 +110,14 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
             const prompt = groupSummaryPrompt || chat.summaryPrompt || defaultPrompt
 
-            // Pack into a single User message with the Instruction at the end (Best for LLMs)
+            const systemHelper = '你是一个专业的对话总结助手。请阅读上方记录，并严格按照总结要求输出内容。直接输出总结，不要包含任何旁白。'
+
+            // Pack into messages with system prompt + user transcript (Best for LLMs)
             const summaryContext = [
+                {
+                    role: 'system',
+                    content: systemHelper
+                },
                 {
                     role: 'user',
                     content: `【对话记录】\n${transcript}\n\n【总结要求】\n${prompt}`
@@ -119,7 +125,6 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             ]
 
             let summaryContent = ''
-            const systemHelper = '你是一个专业的对话总结助手。请阅读上方记录，并严格按照总结要求输出内容。直接输出总结，不要包含任何旁白。'
 
             const response = await generateReply(
                 summaryContext,
@@ -128,7 +133,6 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                     summaryContent += chunk
                 },
                 {
-                    systemPromptOverride: systemHelper,
                     skipContext: true // Don't include other history
                 }
             )

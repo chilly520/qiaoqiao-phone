@@ -43,12 +43,19 @@ export function _repairJsonStrings(jsonStr) {
     let inString = false
     let escaped = false
     let stringStartChar = ''
+    // AI 常见的无效转义序列（JSON只支持: \" \\ \/ \b \f \n \r \t \uXXXX）
+    const validEscapes = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'])
 
     for (let i = 0; i < jsonStr.length; i++) {
         const ch = jsonStr[i]
 
         if (escaped) {
-            result += ch
+            if (inString && !validEscapes.has(ch)) {
+                // 字符串内的无效转义：去掉反斜杠，保留字符本身
+                result += ch
+            } else {
+                result += ch
+            }
             escaped = false
             continue
         }
@@ -68,7 +75,6 @@ export function _repairJsonStrings(jsonStr) {
                 inString = false
                 result += ch
             } else {
-                // 在双引号字符串内遇到单引号（或反之），转义它
                 result += '\\' + ch
             }
             continue

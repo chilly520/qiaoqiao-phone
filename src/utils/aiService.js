@@ -295,7 +295,13 @@ export function generateContextPreview(chatId, char) {
         
         // --- 核心修复：回填心声上下文 ---
         if (m.role === 'ai' && m.innerVoice && !content.includes('[INNER_VOICE]')) {
-            content = `${m.innerVoice}\n${content}`;
+            let ivText = ''
+            if (typeof m.innerVoice === 'string') {
+                ivText = m.innerVoice
+            } else {
+                try { ivText = `\n[INNER_VOICE]\n${JSON.stringify(m.innerVoice)}\n[/INNER_VOICE]` } catch (e) { ivText = '' }
+            }
+            if (ivText) content = `${ivText}\n${content}`;
         }
 
         return `${speakerName}: ${content}`
@@ -736,8 +742,15 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         const prunedChar = { ...char }
 
         const chatStore = useChatStore()
-        const phoneStore = usePhoneInspectionStore()
-        const phoneContext = (phoneStore && char.id) ? phoneStore.getAIPhoneContext(char.id) : ''
+        let phoneContext = ''
+        try {
+            const phoneStore = usePhoneInspectionStore()
+            if (phoneStore && typeof phoneStore.getAIPhoneContext === 'function' && char.id) {
+                phoneContext = phoneStore.getAIPhoneContext(char.id)
+            }
+        } catch (e) {
+            console.warn('[AI Service] phoneStore init failed:', e.message)
+        }
 
         const runtimeGroupCtx = char.isGroup ? {
             isGroup: true,
@@ -902,7 +915,18 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // 如果消息带有独立存储的 innerVoice，且 content 中不包含它，则拼回 content
             // 这样 AI 就能在历史记录中看到自己之前的想法、状态、着装等，保证连贯性
             if (msg.role === 'assistant' && msg.innerVoice && !content.includes('[INNER_VOICE]')) {
-                content = `${msg.innerVoice}\n${content}`;
+                let ivText = ''
+                if (typeof msg.innerVoice === 'string') {
+                    ivText = msg.innerVoice
+                } else {
+                    // innerVoice is an object like {status, outfit, ...}
+                    try {
+                        ivText = `\n[INNER_VOICE]\n${JSON.stringify(msg.innerVoice)}\n[/INNER_VOICE]`
+                    } catch (e) {
+                        ivText = `[INNER_VOICE]${JSON.stringify(msg.innerVoice)}[/INNER_VOICE]`
+                    }
+                }
+                content = `${ivText}\n${content}`;
             }
 
             // Include giftId in context for gift messages
@@ -2428,6 +2452,10 @@ ${worldContext ? `\n【背景参考】\n${worldContext}` : ''}`
         }
 
         jsonStr = jsonStr.substring(objectStartIndex, objectEndIndex + 1)
+
+        // [FIX] 修复 AI 输出的 JSON 语法错误（无效转义、未转义引号等）
+        jsonStr = _repairJsonStrings(jsonStr)
+        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
 
         let data
         try {
