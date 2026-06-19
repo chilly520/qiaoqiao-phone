@@ -59,16 +59,20 @@ export function _repairJsonStrings(jsonStr) {
             continue
         }
 
-        if (ch === '"' || ch === "'") {
+        if (ch === '"') {
             if (!inString) {
                 inString = true
                 stringStartChar = ch
                 result += ch
             } else if (ch === stringStartChar) {
-                inString = false
-                result += ch
+                const nextChar = jsonStr[i + 1]
+                if (/[\s,:}\]]/.test(nextChar) || nextChar === undefined) {
+                    result += ch
+                    inString = false
+                } else {
+                    result += '\\' + ch
+                }
             } else {
-                // 在双引号字符串内遇到单引号（或反之），转义它
                 result += '\\' + ch
             }
             continue
@@ -83,8 +87,6 @@ export function _repairJsonStrings(jsonStr) {
         result += ch
     }
 
-    // 二次修复：处理 content 值中的未转义中文引号（AI 常用 "" 包裹对话）
-    // 注意:正则允许 content 内部包含 中文/英文/转义序列/换行/制表符,只要不出现未转义的 " 或 \
     result = result.replace(/"content"\s*:\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi, (match, content) => {
         const fixed = content.replace(/\u201c/g, '\u300A').replace(/\u201d/g, '\u300B')
         return `"content": "${fixed}"`
