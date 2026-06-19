@@ -1226,14 +1226,24 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         const isGeminiModel = model.toLowerCase().includes('gemini') || model.toLowerCase().includes('goog');
         // [FIX] Detect Anthropic-compatible models (Claude) - need different system message handling
         const isAnthropicModel = model.toLowerCase().includes('claude') || model.toLowerCase().includes('anthropic');
-        let anthropicSystemPrompt = null;
 
         // Handle all system messages for any model
         if (isAnthropicModel && fullMessages.length > 0 && fullMessages[0].role === 'system') {
-            // [FIX] Anthropic API: system prompt must be a separate top-level parameter, not in messages array
-            anthropicSystemPrompt = fullMessages[0].content;
+            // [FIX] Anthropic-compatible proxy: system prompt as first user message
+            // This is more compatible with OpenAI-style proxies that wrap Anthropic
+            const systemContent = fullMessages[0].content;
             finalMessages = finalMessages.filter(msg => msg.role !== 'system');
-            console.log('[AI Service] Anthropic model detected - extracting system prompt to top-level parameter');
+            // Prepend system prompt as first user message
+            if (finalMessages.length > 0 && finalMessages[0].role === 'user') {
+                // Merge with first user message
+                finalMessages[0] = {
+                    role: 'user',
+                    content: `${systemContent}\n\n---\n\n${typeof finalMessages[0].content === 'string' ? finalMessages[0].content : JSON.stringify(finalMessages[0].content)}`
+                };
+            } else {
+                finalMessages.unshift({ role: 'user', content: systemContent });
+            }
+            console.log('[AI Service] Anthropic model detected - system prompt merged into first user message');
         } else {
             finalMessages = finalMessages.map(msg => {
                 if (msg.role === 'system') {
@@ -1308,8 +1318,6 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             temperature: Number(temperature) || 0.7,
             max_tokens: safeMaxTokens,
             stream: !!options.onChunk,
-            // [FIX] Anthropic API requires system as separate parameter
-            ...(anthropicSystemPrompt && { system: anthropicSystemPrompt }),
             // [ST Feature] Support SillyTavern-style advanced parameters
             // Only add if they are present in config AND deviate from defaults (to avoid 400 errors)
             // [FIX] Use Number(...) casting to ensure string values from localStorage don't fail the check
