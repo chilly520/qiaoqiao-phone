@@ -90,6 +90,78 @@ const newConfig = () => {
     chatStore.triggerToast('新配置已创建', 'success')
 }
 
+// 快速预设
+const applyPreset = (preset) => {
+    const presets = {
+        deepseek: {
+            name: 'DeepSeek',
+            provider: 'openai',
+            baseUrl: 'https://api.deepseek.com/v1',
+            apiKey: '',
+            model: 'deepseek-chat',
+            temperature: 0.7,
+            maxTokens: 4096,
+            top_p: 1.0,
+            top_k: 0,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            repetition_penalty: 1.0,
+            min_p: 0
+        },
+        openai: {
+            name: 'OpenAI GPT',
+            provider: 'openai',
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: '',
+            model: 'gpt-4o',
+            temperature: 0.7,
+            maxTokens: 4096,
+            top_p: 1.0,
+            top_k: 0,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            repetition_penalty: 1.0,
+            min_p: 0
+        },
+        gemini: {
+            name: 'Google Gemini',
+            provider: 'gemini',
+            baseUrl: 'https://generativelanguage.googleapis.com',
+            apiKey: '',
+            model: 'gemini-2.0-flash',
+            temperature: 0.7,
+            maxTokens: 4096,
+            top_p: 1.0,
+            top_k: 0,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            repetition_penalty: 1.0,
+            min_p: 0
+        },
+        local: {
+            name: '本地代理',
+            provider: 'openai',
+            baseUrl: 'http://127.0.0.1:7861/v1',
+            apiKey: 'pwd',
+            model: 'gemini-2.0-flash-exp',
+            temperature: 0.7,
+            maxTokens: 4096,
+            top_p: 1.0,
+            top_k: 0,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            repetition_penalty: 1.0,
+            min_p: 0
+        }
+    }
+    
+    const config = presets[preset]
+    if (!config) return
+    
+    formData.value = { ...config }
+    chatStore.triggerToast(`已应用 ${config.name} 预设`, 'success')
+}
+
 const deleteConfig = () => {
     chatStore.triggerConfirm('删除配置', '确定要删除当前配置吗？', () => {
         const result = settingsStore.deleteConfig(currentConfigIndex.value)
@@ -215,6 +287,13 @@ watch(() => formData.value.provider, (newProvider) => {
             formData.value.baseUrl = 'https://generativelanguage.googleapis.com'
             chatStore.triggerToast('已自动切换为 Gemini 官方接口地址', 'info')
         }
+    } else if (newProvider === 'deepseek') {
+        const currentUrl = formData.value.baseUrl.trim()
+        // 如果当前地址为空，或者还是默认的本地地址，则自动切换成 DeepSeek 官方地址
+        if (!currentUrl || currentUrl.includes('127.0.0.1') || currentUrl.includes('localhost')) {
+            formData.value.baseUrl = 'https://api.deepseek.com/v1'
+            chatStore.triggerToast('已自动切换为 DeepSeek 官方接口地址', 'info')
+        }
     }
 })
 </script>
@@ -274,6 +353,7 @@ watch(() => formData.value.provider, (newProvider) => {
                     class="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition w-full"
                 >
                     <option value="openai">OpenAI (默认 / 兼容)</option>
+                    <option value="deepseek">DeepSeek</option>
                     <option value="gemini">Google Gemini (原生)</option>
                 </select>
             </div>
@@ -473,6 +553,37 @@ watch(() => formData.value.provider, (newProvider) => {
             >
                 保存配置
             </button>
+
+            <!-- 快速预设 -->
+            <div class="glass-panel p-4 rounded-[20px]">
+                <h3 class="text-sm font-bold text-gray-700 mb-3">快速预设</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button 
+                        @click="applyPreset('deepseek')"
+                        class="bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-2.5 rounded-xl text-sm font-medium active:scale-[0.98] transition shadow-sm"
+                    >
+                        DeepSeek
+                    </button>
+                    <button 
+                        @click="applyPreset('openai')"
+                        class="bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2.5 rounded-xl text-sm font-medium active:scale-[0.98] transition shadow-sm"
+                    >
+                        OpenAI
+                    </button>
+                    <button 
+                        @click="applyPreset('gemini')"
+                        class="bg-gradient-to-r from-purple-500 to-pink-500 text-white py-2.5 rounded-xl text-sm font-medium active:scale-[0.98] transition shadow-sm"
+                    >
+                        Gemini
+                    </button>
+                    <button 
+                        @click="applyPreset('local')"
+                        class="bg-gradient-to-r from-orange-500 to-red-500 text-white py-2.5 rounded-xl text-sm font-medium active:scale-[0.98] transition shadow-sm"
+                    >
+                        本地代理
+                    </button>
+                </div>
+            </div>
 
             <!-- 新建和删除 -->
             <div class="grid grid-cols-2 gap-3">
