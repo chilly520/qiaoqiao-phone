@@ -61,6 +61,9 @@ onMounted(() => {
     // Try immediately
     notificationService.requestPermission()
 
+    // [FIX] PWA桌面安装后没有用户手势也会启动保活，不再仅依赖click/touchstart
+    backgroundManager.enable()
+
     window.addEventListener('click', unlockKeepAlive)
     window.addEventListener('touchstart', unlockKeepAlive)
 

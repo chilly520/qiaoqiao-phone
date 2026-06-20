@@ -154,6 +154,10 @@ class BackgroundManager {
             this.playAudio();
         }
         this.requestWakeLock();
+        // [FIX] 确保即使没有用户手势（PWA桌面安装），心跳检查和可见性监听也一定在运行
+        if (!this.checkInterval) {
+            this.startCheckInterval();
+        }
     }
 
     /**

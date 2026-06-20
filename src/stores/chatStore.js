@@ -2215,7 +2215,14 @@ export const useChatStore = defineStore('chat', () => {
                 if (m.type === 'moment_card') content = '[分享了朋友圈]'
                 if (m.type === 'dice_result') content = `[摇骰子] 合计点数：${m.diceTotal}`
 
-                return `${roleName}: ${content}`
+                // [FIX] 添加时间戳让AI知道每条消息的具体日期时间
+                let timeStr = ''
+                if (m.timestamp) {
+                    const d = new Date(m.timestamp)
+                    timeStr = ` [${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}]`
+                }
+
+                return `${roleName}${timeStr}: ${content}`
             }).filter(line => line.trim().length > 0).join('\n')
 
             if (!transcript.trim()) {
