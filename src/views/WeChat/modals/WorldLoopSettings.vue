@@ -204,7 +204,7 @@
                                 class="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2 border border-purple-500/10">
                                 <input v-model.number="localData.contextLimit" type="number"
                                     class="bg-transparent outline-none text-xs w-full text-purple-100">
-                                <span class="text-[9px] text-gray-500 italic">条</span>
+                                <span class="text-[9px] text-gray-500 italic">轮</span>
                             </div>
                         </div>
                         <div class="space-y-1.5">
@@ -213,7 +213,7 @@
                                 class="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2 border border-purple-500/10">
                                 <input v-model.number="localData.autoSummaryInterval" type="number"
                                     class="bg-transparent outline-none text-xs w-full text-purple-100">
-                                <span class="text-[9px] text-gray-500 italic">条</span>
+                                <span class="text-[9px] text-gray-500 italic">轮</span>
                             </div>
                         </div>
                     </div>

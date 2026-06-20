@@ -55,3 +55,56 @@ export const DEFAULT_AVATARS = [
 export function getRandomAvatar() {
     return DEFAULT_AVATARS[Math.floor(Math.random() * DEFAULT_AVATARS.length)]
 }
+
+/**
+ * 轮次计数工具
+ * 一轮 = 一条用户消息 + 对应的 AI 回复
+ * 以用户消息数作为轮次计数基准
+ */
+
+/**
+ * 计算消息数组中的总轮次数（用户消息数）
+ * @param {Array} msgs - 消息数组
+ * @returns {number} 轮次数
+ */
+export function countTurns(msgs) {
+    if (!msgs || !msgs.length) return 0
+    return msgs.filter(m => m.role === 'user').length
+}
+
+/**
+ * 获取最后 N 轮对应的消息切片
+ * 从末尾向前数 N 条用户消息，返回从该位置开始的所有消息
+ * @param {Array} msgs - 消息数组
+ * @param {number} turnCount - 轮次数
+ * @returns {Array} 最后 N 轮的消息
+ */
+export function getLastNTurns(msgs, turnCount) {
+    if (!msgs || !msgs.length || turnCount <= 0) return []
+    let userCount = 0
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'user') {
+            userCount++
+            if (userCount >= turnCount) {
+                return msgs.slice(i)
+            }
+        }
+    }
+    return [...msgs]
+}
+
+/**
+ * 计算两个索引之间的轮次数（用户消息数）
+ * @param {Array} msgs - 消息数组
+ * @param {number} startIndex - 起始索引
+ * @param {number} endIndex - 结束索引（不含）
+ * @returns {number} 轮次数
+ */
+export function countTurnsBetween(msgs, startIndex, endIndex) {
+    if (!msgs || startIndex >= endIndex) return 0
+    let count = 0
+    for (let i = Math.max(0, startIndex); i < Math.min(endIndex, msgs.length); i++) {
+        if (msgs[i].role === 'user') count++
+    }
+    return count
+}

@@ -15,7 +15,7 @@ import { buildMCPPromptSection } from './mcpService'
 import { SYSTEM_PROMPT_TEMPLATE, CALL_SYSTEM_PROMPT_TEMPLATE, GROUP_MEMBER_GENERATOR_PROMPT } from './ai/prompts'
 import { recallOriginalMessages, getMemorySummary } from './memoryLog'
 import { RequestQueue } from './ai/requestQueue'
-import { ensureString } from './common'
+import { ensureString, getLastNTurns } from './common'
 import { getOrFetchAvatarDesc } from './avatarDescCache'
 import { fixJsonStringValues, _repairJsonStrings, reconstructMomentsJSON, extractInnerVoiceJson } from './jsonUtils'
 
@@ -132,7 +132,7 @@ export function generateContextPreview(chatId, char) {
     const stickers = [...globalStickers, ...charStickers].filter(s => s && s.name)
     // World Book: 常驻 + 关键词触发扫描（与 _generateReplyInternal 逻辑一致）
     const limit = char.contextLimit || 20
-    const recentMsgs = (char.msgs || []).slice(-limit)
+    const recentMsgs = getLastNTurns(char.msgs || [], limit)
     const combinedText = recentMsgs.map(m => {
         let c = m && m.content ? m.content : ''
         return typeof c === 'string' ? c : JSON.stringify(c)
@@ -353,7 +353,7 @@ export function generateContextPreview(chatId, char) {
 
 // Renamed original generateReply to _generateReplyInternal
 async function _generateReplyInternal(messages, char, signal, options = {}) {
-    const { isCommandTask, isSimpleTask, isCall } = options
+    const { isCommandTask, isSimpleTask, isCall, skipContext } = options
     // Debug: Print message IDs
     console.log('[aiService] Incoming messages:');
     (messages || []).forEach((m, idx) => {
@@ -1654,8 +1654,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // Log Token Usage
         if (data.usage) {
-            const total = data.usage.total_tokens
-            useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token Usage: ${total} `, data.usage)
+            const input = data.usage.prompt_tokens || 0
+            const output = data.usage.completion_tokens || 0
+            const total = data.usage.total_tokens || (input + output)
+            useLoggerStore().addLog(total > 50000 ? 'WARN' : 'INFO', `Token: ${input}入/${output}出 = ${total}`, data.usage)
         }
 
         // ========== 【长记忆检索 RAG-lite】==========

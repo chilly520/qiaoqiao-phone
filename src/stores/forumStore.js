@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import * as localforage from 'localforage'
 import { generateReply, generateImage } from '../utils/aiService'
 import { useLoggerStore } from './loggerStore'
+import { getLastNTurns } from '../utils/common'
 import { useChatStore } from './chatStore'
 import { useWorldBookStore } from './worldBookStore'
 
@@ -463,7 +464,7 @@ export const useForumStore = defineStore('forum', () => {
                 if (char) {
                    contextStr += `\n>> 角色名字：${char.name}\n>> 角色设定：${char.prompt || ''}\n`;
                    if (char.msgs && char.msgs.length > 0) {
-                      const recentMsgs = char.msgs.slice(-30).map(m => `${m.author}: ${m.content}`).join('\n')
+                       const recentMsgs = getLastNTurns(char.msgs, 15).map(m => `${m.author}: ${m.content}`).join('\n')
                       contextStr += `(近期生活动态，可作为发帖灵感):\n${recentMsgs}\n`
                    }
                 }

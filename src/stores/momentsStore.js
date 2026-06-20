@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWorldBookStore } from './worldBookStore'
+import { getLastNTurns } from '../utils/common'
 import { useLoggerStore } from './loggerStore'
 import { useStickerStore } from './stickerStore'
 import localforage from 'localforage'
@@ -649,7 +650,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 id,
                 name: chat.name,
                 persona: chat.prompt,
-                recentChats: (chat.msgs || []).slice(-20).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join('\n'),
+                recentChats: getLastNTurns(chat.msgs || [], 10).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join('\n'),
                 worldContext: combinedWorldContext,
                 emojis: allStickers,
                 // 传递用户对该角色的设定
@@ -827,7 +828,7 @@ export const useMomentsStore = defineStore('moments', () => {
             const chat = chatStore.chats[id]
             if (!chat) return null
 
-            const lastMsgs = (chat.msgs || []).slice(-15).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
+            const lastMsgs = getLastNTurns(chat.msgs || [], 8).map(m => `${m.role === 'user' ? '用户' : chat.name}: ${m.content}`).join(' | ')
 
             // Get last 3 personal moments for this character (including images)
             const personalHistory = moments.value

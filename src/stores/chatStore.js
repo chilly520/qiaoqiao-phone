@@ -14,7 +14,7 @@ import { processBioUpdate } from '../utils/bioUtils'
 import { usePhoneInspectionStore } from './phoneInspectionStore'
 import { appendLog } from '../utils/memoryLog'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
-import { ensureString, getRandomAvatar, DEFAULT_AVATARS } from '../utils/common'
+import { ensureString, getRandomAvatar, DEFAULT_AVATARS, getLastNTurns, countTurnsBetween } from '../utils/common'
 import { compressAllChatImages as chatImageUtils_compressAll, extractLSActions as chatImageUtils_extractLSActions } from '../utils/chatImageUtils'
 import localforage from 'localforage'
 
@@ -1972,7 +1972,7 @@ export const useChatStore = defineStore('chat', () => {
 
             // Custom Context Limit from Chat Settings
             const contextLimit = parseInt(chat.contextLimit) || 30;
-            const contextMsgs = chat.msgs.slice(-contextLimit)
+            const contextMsgs = getLastNTurns(chat.msgs, contextLimit)
                 .filter(m => m.role !== 'system')
                 .map(m => `${m.role === 'user' ? userName : chat.name}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
                 .join('\n');
@@ -2107,16 +2107,16 @@ export const useChatStore = defineStore('chat', () => {
                 lastIndex = msgs.length
             }
 
-            const backlog = msgs.length - lastIndex
+            const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
 
-            // Check if new messages (since last summary) exceed limit
+            // Check if new turns (since last summary) exceed limit
             if (backlog >= summaryLimit) {
-                console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog}, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
+                console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog} turns, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
                 useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex, totalMsgs: msgs.length })
                 summarizeHistory(chatId, { silent: true })
             } else {
                 if (backlog > 0 && backlog < summaryLimit) {
-                    console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit}`)
+                    console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit} turns`)
                 }
             }
         } catch (err) {
@@ -2219,7 +2219,7 @@ export const useChatStore = defineStore('chat', () => {
                 let timeStr = ''
                 if (m.timestamp) {
                     const d = new Date(m.timestamp)
-                    timeStr = ` [${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}]`
+                    timeStr = ` [${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}]`
                 }
 
                 return `${roleName}${timeStr}: ${content}`
@@ -2336,12 +2336,13 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Auto-trigger next chunk if backlog remains
                 if (options.startIndex === undefined && options.endIndex === undefined) {
-                    const currentTotal = finalChat.msgs ? finalChat.msgs.length : 0
-                    const backlog = currentTotal - (finalChat.lastSummaryIndex || 0)
+                    const msgs = finalChat.msgs || []
+                    const lastIndex = finalChat.lastSummaryIndex || 0
+                    const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
                     const summaryLimit = parseInt(finalChat.summaryLimit) || 50
 
                     if (backlog >= summaryLimit) {
-                        console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)
+                        console.log(`[Summarize] Backlog remains (${backlog} turns), scheduling next chunk...`)
                         setTimeout(() => {
                             checkAutoSummary(chatId)
                         }, 5000)
@@ -2638,7 +2639,7 @@ export const useChatStore = defineStore('chat', () => {
 
         // 1. 准备上下文：根据设置动态截取消息历史
         const contextLimit = chat.contextLimit || 20
-        const rawContext = (chat.msgs || []).slice(-contextLimit).map(m => {
+        const rawContext = getLastNTurns(chat.msgs || [], contextLimit).map(m => {
             let content = ""
             if (typeof m.content === 'string') {
                 content = m.content
@@ -5439,16 +5440,18 @@ export const useChatStore = defineStore('chat', () => {
             const preview = generateContextPreview(chatId, chat)
 
             const stats = {}
+            // preview.system 已经包含 persona/worldBook/moments（由 SYSTEM_PROMPT_TEMPLATE 拼接）
+            // 所以 system 就是完整的系统提示，不再单独叠加子项
             stats.system = estimateTokens(preview.system)
-            stats.persona = estimateTokens(preview.persona)
-            stats.worldBook = estimateTokens(preview.worldBook)
-            stats.moments = estimateTokens(preview.moments)
+            stats.persona = 0  // 已包含在 system 中
+            stats.worldBook = 0  // 已包含在 system 中
+            stats.moments = 0  // 已包含在 system 中
             stats.history = estimateTokens(preview.history)
             stats.summaryLib = estimateTokens(preview.summary)
-            stats.memory = 0 // Included in System prompt text usually, or handled separately in preview
+            stats.memory = 0
 
             // 1. Context Total (What actually gets sent to AI)
-            stats.totalContext = stats.system + stats.persona + stats.worldBook + stats.moments + stats.history + stats.summaryLib
+            stats.totalContext = stats.system + stats.history + stats.summaryLib
 
             // 2. Grand Total (Including ALL history, not just the sliced context)
             const allMsgsText = (chat.msgs || []).map(m => `${m.role}:${m.content}`).join('\n')

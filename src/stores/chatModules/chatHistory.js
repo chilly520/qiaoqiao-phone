@@ -2,6 +2,7 @@ import { useSettingsStore } from '../settingsStore'
 import { useLoggerStore } from '../loggerStore'
 import { generateReply } from '../../utils/aiService'
 import { appendLog } from '../../utils/memoryLog'
+import { getLastNTurns, countTurnsBetween } from '../../utils/common'
 
 export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats) => {
     async function summarizeHistory(chatId, options = {}) {
@@ -44,13 +45,20 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                     return summarizeHistory(chatId, options);
                 }
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
-                const backlog = currentTotal - lastIndex
+                const backlog = countTurnsBetween(chat.msgs, lastIndex, currentTotal)
 
 
-                // Process up to summaryLimit messages at a time
+                // Process up to summaryLimit turns at a time
                 let endIndex = currentTotal
-                if (backlog > summaryLimit + 10) {
-                    endIndex = parseInt(lastIndex) + summaryLimit // Force Int
+                if (backlog > summaryLimit + 5) {
+                    // 找到从 lastIndex 开始的第 summaryLimit 轮对应的消息索引
+                    let turnCount = 0
+                    endIndex = lastIndex
+                    for (let i = lastIndex; i < currentTotal; i++) {
+                        if (chat.msgs[i].role === 'user') turnCount++
+                        endIndex = i + 1
+                        if (turnCount >= summaryLimit) break
+                    }
                     rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
                     console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${currentTotal - endIndex})`)
                 } else {
@@ -100,7 +108,7 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 let timeStr = ''
                 if (m.timestamp) {
                     const d = new Date(m.timestamp)
-                    timeStr = ` [${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}]`
+                    timeStr = ` [${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}]`
                 }
 
                 return `${roleName}${timeStr}: ${content}`
@@ -247,17 +255,17 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             lastIndex = msgs.length
         }
 
-        const backlog = msgs.length - lastIndex
+        const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
 
-        // Check if new messages (since last summary) exceed limit
+        // Check if new turns (since last summary) exceed limit
         if (backlog >= summaryLimit) {
-            console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog}, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
+            console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog} turns, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
             useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex: lastIndex, totalMsgs: msgs.length })
             summarizeHistory(chatId, { silent: true })
         } else {
             // Debug log to track progress
             if (backlog > 0 && backlog < summaryLimit) {
-                console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit}`)
+                console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit} turns`)
             }
         }
     }
@@ -286,7 +294,7 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
             // Custom Context Limit from Chat Settings
             const contextLimit = parseInt(chat.contextLimit) || 30;
-            const contextMsgs = chat.msgs.slice(-contextLimit)
+            const contextMsgs = getLastNTurns(chat.msgs, contextLimit)
                 .filter(m => m.role !== 'system')
                 .map(m => `${m.role === 'user' ? userProfile.name : chat.name}: ${m.content}`)
                 .join('\n');

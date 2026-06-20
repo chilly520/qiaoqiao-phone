@@ -1452,7 +1452,7 @@ onMounted(() => {
 
           <div class="grid grid-cols-2 gap-3 mb-2">
             <div class="space-y-1">
-              <label class="text-[10px] text-gray-400 ml-1">上下文记忆 (条)</label>
+              <label class="text-[10px] text-gray-400 ml-1">上下文记忆 (轮)</label>
               <input v-model.number="form.contextMemoryCount" type="number"
                 class="w-full bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white"
                 placeholder="默认 20" />
@@ -1464,10 +1464,10 @@ onMounted(() => {
                 placeholder="默认 50" />
             </div>
             <div class="space-y-1 col-span-2">
-              <label class="text-[10px] text-gray-400 ml-1">自动总结条数</label>
+              <label class="text-[10px] text-gray-400 ml-1">自动总结轮次</label>
               <input v-model.number="form.autoSummaryEvery" type="number"
                 class="w-full bg-white/50 border border-gray-100 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white"
-                placeholder="每隔多少条触发 (默认 30)" />
+                placeholder="每隔多少轮触发 (默认 30)" />
             </div>
           </div>
 

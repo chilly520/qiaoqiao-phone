@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useChatStore } from './chatStore'
 import { useSettingsStore } from './settingsStore'
 import { useWalletStore } from './walletStore'
+import { getLastNTurns } from '../utils/common'
 import { generateReply } from '../utils/aiService'
 import { searchMemoryLog, appendLog } from '../utils/memoryLog'
 
@@ -583,8 +584,8 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
     const systemPrompt = `你是手机数据生成助手。请根据角色档案和参考数据生成真实的手机应用数据。直接返回 JSON 格式，不要 markdown 代码块。`
 
-    // 获取近期20条聊天记录作为上下文
-    const recentMessages = (char.msgs || []).slice(-20).map(m => {
+    // 获取近期10轮聊天记录作为上下文
+    const recentMessages = getLastNTurns(char.msgs || [], 10).map(m => {
       const roleLabel = m.role === 'assistant' ? char.name : userName
       const contentPreview = (m.content || '').substring(0, 100)
       return `${roleLabel}: ${contentPreview}`
@@ -1413,7 +1414,7 @@ JSON 结构样例：
     const userGender = char.userGender || '未知'
     const userSig = userProfile.signature || ''
 
-    const recentMessages = (char.msgs || []).slice(-20).map(m => {
+    const recentMessages = getLastNTurns(char.msgs || [], 10).map(m => {
       const roleLabel = m.role === 'assistant' ? char.name : userName
       return `${roleLabel}: ${(m.content || '').substring(0, 80)}`
     }).join('\n')

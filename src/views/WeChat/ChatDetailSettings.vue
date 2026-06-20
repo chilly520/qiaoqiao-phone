@@ -601,9 +601,9 @@
 
                 <div class="mb-2 flex items-center gap-2">
                     <label class="text-xs w-24"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文记忆条数</label>
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文记忆轮次</label>
                     <input v-model="localData.contextLimit" type="number" class="setting-input mt-0 flex-1"
-                        placeholder="默认 20 条"
+                        placeholder="默认 20 轮"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
                 </div>
 
@@ -617,9 +617,9 @@
 
                 <div class="mb-2 flex items-center gap-2">
                     <label class="text-xs w-24"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">自动总结条数</label>
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">自动总结轮次</label>
                     <input v-model="localData.summaryLimit" type="number" class="setting-input mt-0 flex-1"
-                        placeholder="每隔多少条触发 (默认 50)"
+                        placeholder="每隔多少轮触发 (默认 50)"
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : ''">
                 </div>
 
@@ -1491,9 +1491,6 @@ const tokenStats = computed(() => {
 
 const contextLabels = {
     system: '系统提示 (System)',
-    persona: '人设 (Persona)',
-    worldBook: '世界书 (WorldBook)',
-    moments: '朋友圈 (Moments)',
     history: '上下文历史 (History)',
     summary: '自动总结库 (Summary)'
 }
@@ -1510,9 +1507,12 @@ const showTokenDetailModal = () => {
         if (raw) {
             contextPreviewData.value = raw
             // Calculate tokens locally for preview consistency
+            // 注意: raw 中的 persona/worldBook/moments 已包含在 system 中，不重复计算
             let total = 0
             const counts = {}
+            const skipKeys = ['persona', 'worldBook', 'moments']
             for (const k in raw) {
+                if (skipKeys.includes(k)) continue
                 const text = raw[k] || ''
                 const count = chatStore.estimateTokens(text)
                 counts[k] = count

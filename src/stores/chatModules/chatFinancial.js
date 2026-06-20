@@ -1,5 +1,6 @@
 import { useSettingsStore } from '../settingsStore'
 import { useWalletStore } from '../walletStore'
+import { getLastNTurns } from '../../utils/common'
 
 export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => {
     /**
@@ -260,8 +261,8 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         const chat = chats.value[chatId]
         if (!chat || !chat.msgs) return false
         // Search back common list to find any unclaimed red packets/transfers
-        // Only check recent 50 messages for performance
-        const msgs = chat.msgs.slice(-50)
+        // Only check recent 25 turns for performance
+        const msgs = getLastNTurns(chat.msgs, 25)
         return msgs.some(m => {
             if (m.type === 'redpacket') {
                 return m.remainingCount > 0 && !(m.claims || []).some(c => c.id === 'user')

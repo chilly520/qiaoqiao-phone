@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import localforage from 'localforage'
 import { LOVE_SPACE_GENERATOR_PROMPT } from '@/utils/ai/prompts_love'
 import { useChatStore } from './chatStore.js'
+import { getLastNTurns } from '@/utils/common'
 
 const loveSpaceDB = localforage.createInstance({
   name: 'qiaoqiao-phone',
@@ -570,7 +571,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!chat) { console.error('[LoveSpaceStore] generateQuestionReply: no chat found for', charId); return }
 
       const userProfile = settingsStore.personalization.userProfile
-      const recentChats = (chat.msgs || []).slice(-15).map(m => ({ 
+      const recentChats = getLastNTurns(chat.msgs || [], 8).map(m => ({ 
         role: m.role === 'ai' ? 'assistant' : 'user', 
         content: m.content 
       }))
@@ -634,7 +635,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!chat) { console.error('[LoveSpaceStore] generateLetterComment: no chat found for', charId); return }
 
       const userProfile = settingsStore.personalization.userProfile
-      const recentChats = (chat.msgs || []).slice(-15).map(m => ({ 
+      const recentChats = getLastNTurns(chat.msgs || [], 8).map(m => ({ 
         role: m.role === 'ai' ? 'assistant' : 'user', 
         content: m.content 
       }))
@@ -698,7 +699,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       const userProfile = settingsStore.personalization.userProfile
       const partnerName = this.partner?.name || 'TA'
       const userName = userProfile.name || '我'
-      const recentChats = (chat.msgs || []).slice(-10).map(m => ({
+      const recentChats = getLastNTurns(chat.msgs || [], 5).map(m => ({
         role: m.role === 'ai' ? 'assistant' : 'user',
         content: m.content || ''
       }))
@@ -923,7 +924,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         recentAlbum: (this.currentSpace.album || []).slice(-5).map(a => `${a.title}${a.desc ? ': ' + a.desc : ''}`)
       }
 
-      const charHistory = (chatStore.chats[charId]?.msgs || []).slice(-30).map(m => ({ 
+      const charHistory = getLastNTurns(chatStore.chats[charId]?.msgs || [], 15).map(m => ({ 
         role: m.role === 'ai' ? 'assistant' : 'user', 
         content: m.content 
       }))
@@ -1016,8 +1017,8 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
 
       const userProfile = settingsStore.personalization.userProfile
       
-      // 获取最近 30 条聊天记录
-      const recentChats = (chatStore.chats[charId]?.msgs || []).slice(-30).map(m => ({ 
+      // 获取最近 15 轮聊天记录
+      const recentChats = getLastNTurns(chatStore.chats[charId]?.msgs || [], 15).map(m => ({ 
         role: m.role === 'ai' ? 'assistant' : 'user', 
         content: m.content 
       }))

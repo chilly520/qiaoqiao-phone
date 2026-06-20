@@ -365,8 +365,7 @@ const parseVoiceData = (text) => {
 
 // --- History Logic ---
 const historyList = computed(() => {
-    if (!props.chatId) return []
-    const msgs = chatStore.chats[props.chatId]?.msgs || []
+    const msgs = props.chatData?.msgs || []
 
     // Robust Regex matching the one used in Store (Negative lookahead for closing tag)
     const voiceRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\s*\n\s*\[(?!\/))|$)/i;
@@ -922,23 +921,24 @@ watch(() => props.visible, (val) => {
 })
 
 // [FIX] 弹窗打开期间，有新心声消息到来时自动跳转到最新
-// 双重watch：监听historyList长度 + 直接监听chatStore消息数变化（防止computed缓存不刷新）
-watch(() => historyList.value.length, (newLen, oldLen) => {
-    if (newLen > oldLen && props.visible) {
-        currentIndex.value = newLen - 1
-    }
-}, { flush: 'post' })
+// 使用 chatData prop 的 msgs 数组长度作为可靠的响应式依赖源
+const chatMsgCount = computed(() => {
+    if (!props.chatData || !props.chatData.msgs) return 0
+    return props.chatData.msgs.length
+})
 
-watch(() => {
-    if (!props.chatId || !chatStore.chats[props.chatId]) return 0
-    return chatStore.chats[props.chatId].msgs?.length || 0
-}, (newLen, oldLen) => {
+watch(chatMsgCount, (newLen, oldLen) => {
     if (newLen > oldLen && props.visible) {
-        // 延迟一帧确保historyList computed已更新
+        // 延迟两帧确保 historyList computed 已根据新消息重新计算
         nextTick(() => {
-            if (historyList.value.length > 0) {
-                currentIndex.value = historyList.value.length - 1
-            }
+            nextTick(() => {
+                if (historyList.value.length > 0) {
+                    const targetIdx = historyList.value.length - 1
+                    if (currentIndex.value !== targetIdx) {
+                        currentIndex.value = targetIdx
+                    }
+                }
+            })
         })
     }
 })
