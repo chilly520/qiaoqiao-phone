@@ -2229,6 +2229,12 @@ export const useChatStore = defineStore('chat', () => {
                 throw new Error('Empty context (selected messages contain no valid text)')
             }
 
+            // [FIX] 截断过长的transcript防止API返回空响应（约2万字符≈5000token）
+            const MAX_TRANSCRIPT_CHARS = 20000
+            const finalTranscript = transcript.length > MAX_TRANSCRIPT_CHARS
+                ? transcript.substring(transcript.length - MAX_TRANSCRIPT_CHARS)
+                : transcript
+
             const groupSummaryPrompt = chat.groupSettings?.summaryPrompt
             const defaultPrompt = chat.isGroup
                 ? '请总结上述群聊对话的核心内容、主要话题以及各成员的立场，保持简明扼要。'
@@ -2246,7 +2252,7 @@ export const useChatStore = defineStore('chat', () => {
                 },
                 {
                     role: 'user',
-                    content: `【对话记录】\n${transcript}\n\n【总结要求】\n${prompt}`
+                    content: `【对话记录】\n${finalTranscript}\n\n【总结要求】\n${prompt}`
                 }
             ]
 
@@ -2260,7 +2266,18 @@ export const useChatStore = defineStore('chat', () => {
             )
 
             if (!response || !response.content) {
-                throw new Error('AI returned empty response')
+                // [FIX] 详细记录空响应原因，便于排查
+                const diagInfo = {
+                    response: response ? Object.keys(response) : 'null',
+                    hasError: !!response?.error,
+                    errorMsg: response?.error,
+                    transcriptLen: transcript.length,
+                    targetMsgsCount: targetMsgs.length,
+                    rangeDesc
+                }
+                console.error('[AutoSummary] Empty response diagnostics:', diagInfo)
+                useLoggerStore().addLog('WARN', `总结AI返回空 (transcript=${transcript.length}字, msgs=${targetMsgs.length}条)`, diagInfo)
+                throw new Error(`AI returned empty response (transcript=${transcript.length}chars, msgs=${targetMsgs.length})`)
             }
 
             // --- STALE REFERENCE FIX ---
