@@ -1243,41 +1243,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         }
 
         // 3. Payload (Standard Messages)
-        // [FIX] Gemini Proxy Compatibility Strategy
-        // Many proxies/providers for Gemini (via OpenAI protocol) FAIL with 400 if 'role': 'system' is used.
-        // We MUST merge the system prompt into the first User message for these models.
         let finalMessages = [...fullMessages];
         const isGeminiModel = model.toLowerCase().includes('gemini') || model.toLowerCase().includes('goog');
-        // [FIX] Detect Anthropic-compatible models (Claude) - need different system message handling
-        const isAnthropicModel = model.toLowerCase().includes('claude') || model.toLowerCase().includes('anthropic');
 
-        // Handle all system messages for any model
-        if (isAnthropicModel && fullMessages.length > 0 && fullMessages[0].role === 'system') {
-            // [FIX] Anthropic-compatible proxy: system prompt as first user message
-            // This is more compatible with OpenAI-style proxies that wrap Anthropic
-            const systemContent = fullMessages[0].content;
-            finalMessages = finalMessages.filter(msg => msg.role !== 'system');
-            // Prepend system prompt as first user message
-            if (finalMessages.length > 0 && finalMessages[0].role === 'user') {
-                // Merge with first user message
-                finalMessages[0] = {
-                    role: 'user',
-                    content: `${systemContent}\n\n---\n\n${typeof finalMessages[0].content === 'string' ? finalMessages[0].content : JSON.stringify(finalMessages[0].content)}`
-                };
-            } else {
-                finalMessages.unshift({ role: 'user', content: systemContent });
-            }
-            console.log('[AI Service] Anthropic model detected - system prompt merged into first user message');
-        } else {
+        if (isGeminiModel) {
+            // [FIX] Gemini via OpenAI proxy: system role often fails with 400
             finalMessages = finalMessages.map(msg => {
                 if (msg.role === 'system') {
-                    // [FIX] 避免 [System Instructions] 倍增：先检查是否已经存在
                     const content = msg.content.startsWith('[System Instructions]') ? msg.content : `[System Instructions]\n${msg.content}`;
                     return { ...msg, role: 'user', content: content };
                 }
                 return msg;
             });
         }
+        // For all other models (OpenAI, Claude via proxy, etc.): keep system role as-is
+        // Most OpenAI-compatible proxies handle role:'system' correctly
 
         if (isGeminiModel) {
             // [FIX] Ensure first message has correct prefix after map
@@ -1328,9 +1308,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
 
         // Ensure all messages have valid roles before sending to API
+        // Allow: system, user, assistant (most OpenAI-compatible APIs support all three)
         finalMessages = finalMessages.map(msg => {
-            // Only use roles that the API accepts
-            if (msg.role !== 'user' && msg.role !== 'assistant') {
+            if (msg.role !== 'user' && msg.role !== 'assistant' && msg.role !== 'system') {
                 return { ...msg, role: 'user' };
             }
             return msg;
