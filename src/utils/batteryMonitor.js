@@ -11,7 +11,17 @@ class BatteryMonitor {
             onLowBattery: []
         }
         this.lowBatteryThreshold = 0.3 // 30%
-        this.hasNotified = false
+        // 用 sessionStorage 持久化通知状态，防止切换聊天时重复提醒
+        this.hasNotified = this._loadNotified()
+    }
+
+    _loadNotified() {
+        try { return sessionStorage.getItem('battery_notified') === '1' } catch { return false }
+    }
+
+    _saveNotified(val) {
+        try { sessionStorage.setItem('battery_notified', val ? '1' : '0') } catch {}
+        this.hasNotified = val
     }
 
     async init() {
@@ -49,7 +59,7 @@ class BatteryMonitor {
         this.battery.addEventListener('chargingchange', () => {
             updateHandler()
             if (this.charging) {
-                this.hasNotified = false
+                this._saveNotified(false)
             }
         })
 
@@ -69,7 +79,7 @@ class BatteryMonitor {
         if (this.charging || this.hasNotified) return
 
         if (this.battery.level <= this.lowBatteryThreshold) {
-            this.hasNotified = true
+            this._saveNotified(true)
             this.notifyLowBattery()
         }
     }
