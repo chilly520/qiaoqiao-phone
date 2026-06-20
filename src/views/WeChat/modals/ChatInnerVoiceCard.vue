@@ -922,11 +922,26 @@ watch(() => props.visible, (val) => {
 })
 
 // [FIX] 弹窗打开期间，有新心声消息到来时自动跳转到最新
+// 双重watch：监听historyList长度 + 直接监听chatStore消息数变化（防止computed缓存不刷新）
 watch(() => historyList.value.length, (newLen, oldLen) => {
     if (newLen > oldLen && props.visible) {
         currentIndex.value = newLen - 1
     }
 }, { flush: 'post' })
+
+watch(() => {
+    if (!props.chatId || !chatStore.chats[props.chatId]) return 0
+    return chatStore.chats[props.chatId].msgs?.length || 0
+}, (newLen, oldLen) => {
+    if (newLen > oldLen && props.visible) {
+        // 延迟一帧确保historyList computed已更新
+        nextTick(() => {
+            if (historyList.value.length > 0) {
+                currentIndex.value = historyList.value.length - 1
+            }
+        })
+    }
+})
 
 onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId) })
 </script>
