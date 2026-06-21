@@ -1322,6 +1322,8 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             temperature: Number(temperature) || 0.7,
             max_tokens: safeMaxTokens,
             stream: !!options.onChunk,
+            // 流式模式下请求返回 usage 数据（OpenAI 兼容接口）
+            ...((!!options.onChunk && !model.toLowerCase().includes('gemini')) && { stream_options: { include_usage: true } }),
             // [ST Feature] Support SillyTavern-style advanced parameters
             // Only add if they are present in config AND deviate from defaults (to avoid 400 errors)
             // [FIX] Use Number(...) casting to ensure string values from localStorage don't fail the check
@@ -1439,6 +1441,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const decoder = new TextDecoder("utf-8");
             let fullContent = "";
             let done = false;
+            let streamUsage = null;
 
             try {
                 while (!done) {
@@ -1458,6 +1461,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                                         fullContent += delta;
                                         if (options.onChunk) options.onChunk(delta, fullContent);
                                     }
+                                    // 提取流式响应中的 usage 数据（部分API在最后一个chunk返回）
+                                    if (json.usage) {
+                                        streamUsage = json.usage;
+                                    }
                                 } catch (e) { /* ignore partial json */ }
                             }
                         }
@@ -1474,7 +1481,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     message: { content: fullContent },
                     finish_reason: 'stop'
                 }],
-                usage: { total_tokens: 0 }
+                usage: streamUsage || { total_tokens: 0, prompt_tokens: 0, completion_tokens: 0 }
             };
         } else if (response.ok) {
             data = await response.json().catch(() => null);
