@@ -4,6 +4,10 @@ import { useMahjongStore } from './mahjongStore.js'
 import { useSettingsStore } from './settingsStore.js'
 import { useChatStore } from './chatStore.js'
 
+function roundAmount(value) {
+    return Math.round(value * 100) / 100
+}
+
 export const useWalletStore = defineStore('wallet', () => {
     // State
     const balance = ref(0.00) // 零钱余额
@@ -129,7 +133,7 @@ export const useWalletStore = defineStore('wallet', () => {
     function increaseBalance(amount, title, sourceInfo = '零钱') {
         const numAmount = parseFloat(amount) || 0
         if (isNaN(numAmount)) return
-        balance.value = parseFloat((balance.value + numAmount).toFixed(2))
+        balance.value = roundAmount(balance.value + numAmount)
         addTransaction({
             type: 'income',
             amount: numAmount,
@@ -161,7 +165,7 @@ export const useWalletStore = defineStore('wallet', () => {
         for (const method of methods) {
             if (method === 'balance') {
                 if (balance.value >= numAmount) {
-                    balance.value = parseFloat((balance.value - numAmount).toFixed(2))
+                    balance.value = roundAmount(balance.value - numAmount)
                     addTransaction({
                         type: 'expense',
                         amount: numAmount,
@@ -190,7 +194,7 @@ export const useWalletStore = defineStore('wallet', () => {
                 }
 
                 if (capableCard) {
-                    capableCard.usedAmount = parseFloat((capableCard.usedAmount + numAmount).toFixed(2))
+                    capableCard.usedAmount = roundAmount(capableCard.usedAmount + numAmount)
 
                     // Add Transaction to Card History
                     capableCard.transactions.push({
@@ -283,7 +287,7 @@ export const useWalletStore = defineStore('wallet', () => {
                 }
 
                 if (capableCard) {
-                    capableCard.balance = parseFloat((capableCard.balance - numAmount).toFixed(2))
+                    capableCard.balance = roundAmount(capableCard.balance - numAmount)
                     capableCard.transactions.push({
                         id: `btx_${Date.now()}`,
                         type: 'expense',
@@ -350,7 +354,7 @@ export const useWalletStore = defineStore('wallet', () => {
         const available = card.amount - card.usedAmount
 
         if (available >= numAmount) {
-            card.usedAmount = parseFloat((card.usedAmount + numAmount).toFixed(2))
+            card.usedAmount = roundAmount(card.usedAmount + numAmount)
             card.transactions.push({
                 id: `ftx_${Date.now()}`,
                 type: 'expense',

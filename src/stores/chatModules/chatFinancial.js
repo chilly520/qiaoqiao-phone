@@ -70,6 +70,23 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
             return { claimed: false, empty: true };
         }
 
+        // 防止并发领取的竞态条件：使用乐观锁标记
+        if (msg._isClaiming) {
+            return { claimed: false, busy: true };
+        }
+        msg._isClaiming = true;
+
+        // 再次检查（乐观锁后）防止竞态条件
+        if (msg.claims.some(c => c.id === claimantId)) {
+            msg._isClaiming = false;
+            return { claimed: true, already: true, item: msg.claims.find(c => c.id === claimantId) };
+        }
+
+        if (msg.remainingCount <= 0) {
+            msg._isClaiming = false;
+            return { claimed: false, empty: true };
+        }
+
         // Claim logic
         const claimIndex = msg.claims.length;
         const amount = (msg.amounts && msg.amounts[claimIndex] !== undefined) ? msg.amounts[claimIndex] : 0;
@@ -99,6 +116,7 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
 
         msg.claims.push(claimInfo);
         msg.remainingCount--;
+        msg._isClaiming = false;
 
         // If user claimed, add to wallet
         if (claimantId === 'user') {

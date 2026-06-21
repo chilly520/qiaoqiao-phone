@@ -95,7 +95,7 @@ class GitHubBackup {
 
             for (let i = 0; i < chunks.length; i++) {
                 const chunkFileName = `${this.fileName}.part${i}`
-                const content = btoa(chunks[i])
+                const content = btoa(unescape(encodeURIComponent(chunks[i])))
 
                 await fetch(`${this.baseUrl}/${chunkFileName}`, {
                     method: 'PUT',
@@ -140,7 +140,14 @@ class GitHubBackup {
             for (let i = 0; i < metadata.chunks; i++) {
                 const chunkFileName = `${this.fileName}.part${i}`
                 const file = await this.getFile(chunkFileName)
-                chunks.push(atob(file.content.replace(/\n/g, '')))
+                const rawContent = file.content.replace(/\n/g, '')
+                let chunk = ''
+                try {
+                    chunk = decodeURIComponent(escape(atob(rawContent)))
+                } catch (e) {
+                    chunk = atob(rawContent)
+                }
+                chunks.push(chunk)
 
                 if (onProgress) {
                     onProgress((i + 1) / metadata.chunks * 100)
