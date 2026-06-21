@@ -718,6 +718,32 @@ export const useChatStore = defineStore('chat', () => {
                     // 解析失败不影响消息存储
                 }
             }
+
+            // 兜底：无标签时，用平衡花括号法从 content 中提取裸露JSON心声块
+            if (!newMsg.innerVoice && newMsg.content.includes('{')) {
+                const voiceKeys = ['"status"', '"心声"', '"着装"', '"环境"', '"行为"', '"stats"'];
+                const hasVoiceKey = voiceKeys.some(k => newMsg.content.includes(k));
+                if (hasVoiceKey) {
+                    const vBlocks = [];
+                    let vd = 0, vs = -1;
+                    for (let i = 0; i < newMsg.content.length; i++) {
+                        if (newMsg.content[i] === '{') { if (vd === 0) vs = i; vd++; }
+                        else if (newMsg.content[i] === '}') { vd--; if (vd === 0 && vs !== -1) { vBlocks.push(newMsg.content.substring(vs, i + 1)); vs = -1; } }
+                    }
+                    for (let i = vBlocks.length - 1; i >= 0; i--) {
+                        const block = vBlocks[i];
+                        if (voiceKeys.some(k => block.includes(k))) {
+                            try {
+                                const parsed = JSON.parse(block);
+                                if (parsed && typeof parsed === 'object') {
+                                    newMsg.innerVoice = parsed;
+                                }
+                            } catch (e) {}
+                            break;
+                        }
+                    }
+                }
+            }
         }
         
         // Debug: 记录 HTML 消息
@@ -2722,18 +2748,22 @@ export const useChatStore = defineStore('chat', () => {
                 const ivRegex = /\[INNER_VOICE\]([\s\S]*?)(?:\[\/INNER_VOICE\]|$)/gi
                 const ivMatches = [...content.matchAll(ivRegex)]
                 
-                // 同时检测 naked JSON (支持转义引号)
-                const jsonMatches = [...content.matchAll(/\{[\s\S]*?\}/g)];
+                // 同时检测 naked JSON (用平衡花括号匹配，支持嵌套对象)
                 let foundIv = null;
 
                 if (ivMatches.length > 0) {
                     foundIv = ivMatches[0][0]; // 使用找到的首个带标签心声
                 } else {
-                    // 如果没带标签，搜索包含心声关键字的 JSON 块
-                    for (const jm of jsonMatches) {
-                        const block = jm[0];
+                    // 平衡花括号法提取完整JSON块
+                    const jsonBlocks = [];
+                    let depth = 0, start = -1;
+                    for (let i = 0; i < content.length; i++) {
+                        if (content[i] === '{') { if (depth === 0) start = i; depth++; }
+                        else if (content[i] === '}') { depth--; if (depth === 0 && start !== -1) { jsonBlocks.push(content.substring(start, i + 1)); start = -1; } }
+                    }
+                    for (const block of jsonBlocks) {
                         if (block.includes('"status"') || block.includes('"心声"') || 
-                            block.includes('\"status\"') || block.includes('\"心声\"')) {
+                            block.includes('"着装"') || block.includes('"行为"')) {
                             foundIv = `\n[INNER_VOICE]\n${block}\n[/INNER_VOICE]`;
                             content = content.replace(block, '').trim();
                             break;
@@ -3318,9 +3348,14 @@ export const useChatStore = defineStore('chat', () => {
                                 pureDialogue.includes('"VOICE"') || pureDialogue.includes('"mind"') ||
                                 pureDialogue.includes('"stats"') || pureDialogue.includes('"heartRate"')
                             )) {
-                                const blocks = [...pureDialogue.matchAll(/\{[\s\S]*?\}/g)]
-                                for (let i = blocks.length - 1; i >= 0; i--) {
-                                    const block = blocks[i][0]
+                                const innerBlocks = [];
+                                let bd = 0, bs = -1;
+                                for (let i = 0; i < pureDialogue.length; i++) {
+                                    if (pureDialogue[i] === '{') { if (bd === 0) bs = i; bd++; }
+                                    else if (pureDialogue[i] === '}') { bd--; if (bd === 0 && bs !== -1) { innerBlocks.push(pureDialogue.substring(bs, i + 1)); bs = -1; } }
+                                }
+                                for (let i = innerBlocks.length - 1; i >= 0; i--) {
+                                    const block = innerBlocks[i]
                                     if (block.includes('"status"') || block.includes('"心声"') || block.includes('"着装"') || 
                                         block.includes('"VOICE"') || block.includes('"mind"') || block.includes('"heartRate"')) {
                                         pureDialogue = pureDialogue.replace(block, '').trim()

@@ -1810,18 +1810,31 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 }
             }
 
-            // 通用字段提取器：匹配到下一个已知字段名为止，完美兼容多行和内嵌引号
+            // 通用字段提取器：匹配到下一个已知字段名为止，兼容单行和多行JSON
             function extractField(keyRegexStr, sourceText) {
-                // 停止词前瞻：匹配到下一个 key，或花括号/字符串结束
-                const nextKeyLookahead = `(?:["']?,?\\s*\\n\\s*["']?(?:status|state|心声|心心声|着装|环境|行为|stats|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\\s*[:：]|["']?\\s*[\\}]+?\\s*$|$)`;
+                // 策略1：直接匹配双引号包裹的字符串值（最可靠，适用于绝大多数AI输出）
+                const quotedRegex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*"([^"]*)"`, 'i');
+                const quotedMatch = sourceText.match(quotedRegex);
+                if (quotedMatch) {
+                    return quotedMatch[1].trim();
+                }
+
+                // 策略2：匹配中文引号「」包裹的值
+                const cnQuotedRegex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*「([^」]*)」`, 'i');
+                const cnQuotedMatch = sourceText.match(cnQuotedRegex);
+                if (cnQuotedMatch) {
+                    return cnQuotedMatch[1].trim();
+                }
+
+                // 策略3：通用兜底 — 用逗号+已知字段名或闭合花括号作前瞻（兼容单行和多行）
+                const knownKeys = 'status|state|心声|心心声|着装|环境|行为|stats|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature';
+                const nextKeyLookahead = `(?:\\s*,\\s*["']?(?:${knownKeys})["']?\\s*[:：]|\\s*["']?\\s*\\}[\\s\\S]*$)`;
                 const regex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*["「]?([\\s\\S]*?)${nextKeyLookahead}`, 'i');
                 const match = sourceText.match(regex);
                 if (match) {
-                    // 清理头尾的多余引号、逗号和换行
                     let val = match[1].trim();
                     val = val.replace(/^["「]/, '').replace(/["」]$/, '');
-                    // 再次清理可能的尾部逗号和引号
-                    val = val.replace(/[,"\\]+$/, '').trim(); 
+                    val = val.replace(/[,"\\]+$/, '').trim();
                     return val;
                 }
                 return null;
