@@ -1323,7 +1323,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             max_tokens: safeMaxTokens,
             stream: !!options.onChunk,
             // 流式模式下请求返回 usage 数据（OpenAI 兼容接口）
-            ...((!!options.onChunk && !model.toLowerCase().includes('gemini')) && { stream_options: { include_usage: true } }),
+            ...((!!options.onChunk && provider === 'openai' && !model.toLowerCase().includes('gemini')) && { stream_options: { include_usage: true } }),
             // [ST Feature] Support SillyTavern-style advanced parameters
             // Only add if they are present in config AND deviate from defaults (to avoid 400 errors)
             // [FIX] Use Number(...) casting to ensure string values from localStorage don't fail the check
@@ -1453,7 +1453,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                         for (const line of lines) {
                             if (line.startsWith("data: ")) {
                                 const dataStr = line.replace(/^data: /, "").trim();
-                                if (dataStr === "[DONE]") break;
+                                if (dataStr === "[DONE]") {
+                                done = true;
+                                continue;
+                            }
                                 try {
                                     const json = JSON.parse(dataStr);
                                     const delta = json.choices?.[0]?.delta?.content || "";
