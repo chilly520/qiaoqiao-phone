@@ -2381,13 +2381,18 @@ const voiceHistoryList = computed(() => {
     const list = [];
     msgs.value.forEach((msg) => {
         if (msg.role === 'ai') {
-            const voiceData = parseInnerVoice(msg.content);
-            if (voiceData) {
+            // 优先从消息的 innerVoice 字段获取（addMessage 已提取保存）
+            let voiceData = msg.innerVoice || msg.mindData || msg.inner_voice;
+            // 兜底：从 content 字符串提取
+            if (!voiceData) {
+                voiceData = parseInnerVoice(msg.content);
+            }
+            if (voiceData && typeof voiceData === 'object') {
                 list.push({
                     id: msg.id,
                     timestamp: msg.timestamp || Date.now(),
                     data: voiceData,
-                    preview: voiceData.mind || '...'
+                    preview: voiceData.mind || voiceData['心声'] || '...'
                 });
             }
         }
@@ -2419,20 +2424,32 @@ const openInnerVoiceModal = () => {
 
     for (let i = rawMsgs.length - 1; i >= 0; i--) {
         const m = rawMsgs[i]
-        if (m.role === 'ai' && m.content) {
-            const hasTag = voiceTagRegex.test(m.content);
-            const hasJson = m.content.includes('{') && (m.content.includes('"status"') || m.content.includes('"心声"'));
-            if (hasTag || hasJson) {
+        if (m.role === 'ai') {
+            // 优先检查 innerVoice 字段（addMessage 已提取保存）
+            if (m.innerVoice && typeof m.innerVoice === 'object') {
                 foundMsg = m
                 break
+            }
+            // 兜底：从 content 字符串检查
+            if (m.content) {
+                const hasTag = voiceTagRegex.test(m.content);
+                const hasJson = m.content.includes('{') && (m.content.includes('"status"') || m.content.includes('"心声"'));
+                if (hasTag || hasJson) {
+                    foundMsg = m
+                    break
+                }
             }
         }
     }
 
     if (foundMsg) {
-        const data = parseInnerVoice(foundMsg.content);
+        // 优先使用 innerVoice 字段
+        let data = foundMsg.innerVoice || foundMsg.mindData || foundMsg.inner_voice;
+        if (!data || typeof data !== 'object') {
+            data = parseInnerVoice(foundMsg.content);
+        }
         currentInnerVoiceMsgId.value = foundMsg.id;
-        if (data) {
+        if (data && typeof data === 'object') {
             currentInnerVoice.value = { ...data, id: foundMsg.id };
         } else {
             currentInnerVoice.value = { id: foundMsg.id };
