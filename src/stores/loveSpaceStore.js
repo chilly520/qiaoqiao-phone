@@ -1017,8 +1017,8 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
 
       const userProfile = settingsStore.personalization.userProfile
       
-      // 获取最近 15 轮聊天记录
-      const recentChats = getLastNTurns(chatStore.chats[charId]?.msgs || [], 15).map(m => ({ 
+      // 获取最近 100 轮聊天记录
+      const recentChats = getLastNTurns(chatStore.chats[charId]?.msgs || [], 100).map(m => ({ 
         role: m.role === 'ai' ? 'assistant' : 'user', 
         content: m.content 
       }))
