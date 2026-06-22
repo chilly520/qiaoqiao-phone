@@ -1217,6 +1217,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       }
       
       console.log('[LoveSpaceStore] Total LS_JSON blocks found:', blocks.length)
+      console.log('[LoveSpaceStore] Input text sample:', text.substring(0, 200))
       
       // AI 容错：如果没有找到 [LS_JSON: 标记，但内容看起来是完整的 JSON，也进行尝试
       if (blocks.length === 0) {

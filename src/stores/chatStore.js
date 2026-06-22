@@ -536,9 +536,11 @@ export const useChatStore = defineStore('chat', () => {
                     }
 
                     // Combine payloads for execution — pass clean JSON array format
+                    console.log('[ChatStore] LS_JSON jsonPayloads:', jsonPayloads)
                     const executionPayload = jsonPayloads.length === 1
                         ? jsonPayloads[0]
                         : JSON.stringify({ commands: jsonPayloads.map(p => { try { return JSON.parse(p) } catch { return { type: 'raw', raw: p } } }) })
+                    console.log('[ChatStore] LS_JSON executionPayload:', executionPayload)
 
                     // Strip blocks from display content (backwards to keep indices intact)
                     for (let i = foundBlocks.length - 1; i >= 0; i--) {
@@ -2771,6 +2773,12 @@ export const useChatStore = defineStore('chat', () => {
                     }
                 }
 
+                // FIX: 如果content中提取不到心声，从消息的innerVoice字段恢复
+                if (!foundIv && m.innerVoice && typeof m.innerVoice === 'object') {
+                    foundIv = `\n[INNER_VOICE]\n${JSON.stringify(m.innerVoice)}\n[/INNER_VOICE]`;
+                    console.log('[ChatStore] 从innerVoice字段恢复心声到上下文');
+                }
+
                 if (foundIv) {
                     content = content.replace(ivRegex, '').trim() + '\n' + foundIv
                 }
@@ -4215,6 +4223,70 @@ export const useChatStore = defineStore('chat', () => {
                 processedContent = processedContent.replace(/<button[\s\S]*?qiaoqiao_receiveFamilyCard\('([^']*)',\s*([\d.]+),\s*'([^']*)'[\s\S]*?点击领取<\/button>/gi, (match, uuid, amount, note) => {
                     return `[FAMILY_CARD:${amount}:${note}]`;
                 });
+
+                // [FIX] Pre-split LS_JSON extraction: Extract and execute LS_JSON blocks BEFORE splitting
+                // because the split regex \[[^\]]+\] can't handle nested brackets inside JSON arrays
+                {
+                    const lsStartRegex = /\[\s*LS_JSON[:：]?\s*/gi;
+                    let lsMatch;
+                    const lsSearchRegex = new RegExp(lsStartRegex.source, lsStartRegex.flags);
+                    const lsBlocks = [];
+                    while ((lsMatch = lsSearchRegex.exec(processedContent)) !== null) {
+                        const lsStartIdx = lsMatch.index;
+                        const lsContentStart = lsStartIdx + lsMatch[0].length;
+                        const lsFirstBrace = processedContent.indexOf('{', lsContentStart);
+                        if (lsFirstBrace === -1) continue;
+                        let bd = 0, biStr = false, biEsc = false, lsEndIdx = -1;
+                        for (let i = lsFirstBrace; i < processedContent.length; i++) {
+                            const c = processedContent[i];
+                            if (biEsc) { biEsc = false; continue; }
+                            if (c === '\\') { biEsc = true; continue; }
+                            if (c === '"') { biStr = !biStr; continue; }
+                            if (!biStr) {
+                                if (c === '{') bd++;
+                                else if (c === '}') { bd--; if (bd === 0) { lsEndIdx = i; break; } }
+                            }
+                        }
+                        if (lsEndIdx === -1) continue;
+                        let blockEnd = lsEndIdx + 1;
+                        const afterBrace = processedContent.substring(lsEndIdx + 1, lsEndIdx + 10);
+                        const bracketMatch = afterBrace.match(/^\s*[\]】]/);
+                        if (bracketMatch) blockEnd = lsEndIdx + 1 + bracketMatch[0].length;
+                        const lsBlock = processedContent.substring(lsStartIdx, blockEnd);
+                        lsBlocks.push({ start: lsStartIdx, end: blockEnd, content: lsBlock });
+                        lsSearchRegex.lastIndex = blockEnd;
+                    }
+                    if (lsBlocks.length > 0) {
+                        console.log(`[ChatStore] Pre-split: Found ${lsBlocks.length} LS_JSON blocks, executing...`);
+                        const { useLoveSpaceStore } = await import('./loveSpaceStore');
+                        const loveSpaceStore = useLoveSpaceStore();
+                        for (const block of lsBlocks) {
+                            const braceStart = block.content.indexOf('{');
+                            const braceEnd = block.content.lastIndexOf('}');
+                            if (braceStart !== -1 && braceEnd > braceStart) {
+                                let jsonStr = block.content.substring(braceStart, braceEnd + 1);
+                                jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/^[\s,]+/, '');
+                                try {
+                                    JSON.parse(jsonStr);
+                                    console.log('[ChatStore] Pre-split LS_JSON OK:', jsonStr.substring(0, 120));
+                                    const execResult = await loveSpaceStore.executeSpaceCommands(jsonStr, chat.name, null, chatId);
+                                    console.log('[ChatStore] Pre-split LS_JSON executed:', execResult);
+                                    if (execResult && execResult.success !== false) {
+                                        triggerToast(`${chat.name} 更新了情侣空间`, 'success');
+                                    }
+                                } catch (e) {
+                                    console.warn('[ChatStore] Pre-split LS_JSON parse failed:', e.message);
+                                }
+                            }
+                        }
+                        // Strip LS_JSON blocks from content (backwards)
+                        for (let i = lsBlocks.length - 1; i >= 0; i--) {
+                            const b = lsBlocks[i];
+                            processedContent = processedContent.substring(0, b.start).replace(/[,，:：\s\r\n]+$/, '') + processedContent.substring(b.end);
+                        }
+                        processedContent = processedContent.trim();
+                    }
+                }
 
                 // V16-V17: Split logic
                 let finalSegments = [];

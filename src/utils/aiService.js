@@ -1,4 +1,4 @@
-import { getActivePinia } from 'pinia'
+﻿import { getActivePinia } from 'pinia'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
@@ -1836,7 +1836,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 // 策略3：通用兜底 — 用逗号+已知字段名或闭合花括号作前瞻（兼容单行和多行）
                 const knownKeys = 'status|state|心声|心心声|着装|环境|行为|stats|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature';
                 const nextKeyLookahead = `(?:\\s*,\\s*["']?(?:${knownKeys})["']?\\s*[:：]|\\s*["']?\\s*\\}[\\s\\S]*$)`;
-                const regex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*["「]?([\\s\\S]*?)${nextKeyLookahead}`, 'i');
+                const regex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*["「]?([\\s\\S]*)(?:${nextKeyLookahead})`, 'i');
                 const match = sourceText.match(regex);
                 if (match) {
                     let val = match[1].trim();
@@ -1851,6 +1851,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             if (m_status) { result.status = m_status; foundCount++; }
 
             const m_voice = extractField('心心声|心声', text);
+            console.log('[AI Service] 心声提取 - 原始文本片段:', text.substring(0, 300), '提取结果:', m_voice);
             if (m_voice) { result['心声'] = m_voice; foundCount++; }
 
             const m_outfit = extractField('着装', text);
