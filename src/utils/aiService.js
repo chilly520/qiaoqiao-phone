@@ -1,4 +1,4 @@
-﻿import { getActivePinia } from 'pinia'
+import { getActivePinia } from 'pinia'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useLoggerStore } from '../stores/loggerStore'
 import { useStickerStore } from '../stores/stickerStore'
@@ -353,7 +353,7 @@ export function generateContextPreview(chatId, char) {
 
 // Renamed original generateReply to _generateReplyInternal
 async function _generateReplyInternal(messages, char, signal, options = {}) {
-    const { isCommandTask, isSimpleTask, isCall, skipContext } = options
+    const { isCommandTask, isSimpleTask, isCall, skipContext, disableTools } = options
     // Debug: Print message IDs
     console.log('[aiService] Incoming messages:');
     (messages || []).forEach((m, idx) => {
@@ -1333,7 +1333,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             ...(config.presence_penalty !== undefined && Number(config.presence_penalty) !== 0 && { presence_penalty: Number(config.presence_penalty) }),
             ...(config.repetition_penalty !== undefined && Number(config.repetition_penalty) !== 1.0 && { repetition_penalty: Number(config.repetition_penalty) }),
             ...(config.min_p !== undefined && Number(config.min_p) > 0 && { min_p: Number(config.min_p) }),
-            ...(char.searchEnabled && {
+            ...(char.searchEnabled && !disableTools && {
                 // [FIX] Use strictly standard 'function' type to avoid 422 errors on most providers.
                 // Even for search-capable proxies, they usually prefer functions or internal model flags.
                 tools: [
@@ -1891,7 +1891,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             const ivPattern = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/i;
             const ivMatch = content.match(ivPattern);
             if (ivMatch) {
+                console.log('[AI Service] InnerVoice tag matched, content length:', ivMatch[1].length);
                 innerVoice = tryExtractInnerVoice(ivMatch[1]);
+                console.log('[AI Service] tryExtractInnerVoice result:', innerVoice ? Object.keys(innerVoice) : 'null');
                 
                 // Fallback: If AI leaked stats outside the [INNER_VOICE] tag, try to recover them from rawContent
                 if (!innerVoice || !innerVoice.stats || (!innerVoice.spirit && !innerVoice.emotion && !innerVoice.mood)) {

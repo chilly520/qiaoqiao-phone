@@ -704,21 +704,26 @@ export const useChatStore = defineStore('chat', () => {
             const ivExtractRegex = /[\\[【]\s*(?:INNER[\s-_]*VOICE|心声|内心|INNER)\s*[\]】]([\s\S]*?)(?:[\\[【]\s*\/\s*(?:INNER[\s-_]*)?VOICE\s*[\]】]|$)/i;
             const ivExtractMatch = newMsg.content.match(ivExtractRegex);
             if (ivExtractMatch && ivExtractMatch[1]) {
+                console.log('[ChatStore] InnerVoice tag matched, raw content:', ivExtractMatch[1].substring(0, 200));
                 try {
                     let jsonStr = ivExtractMatch[1].trim()
                         .replace(/```json/gi, '').replace(/```/g, '')
                         .replace(/\\"/g, '"').replace(/\\n/g, '\n')
                         .replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
+                    console.log('[ChatStore] InnerVoice cleaned json:', jsonStr.substring(0, 200));
                     const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
                     if (jsonMatch) {
                         const parsed = JSON.parse(jsonMatch[0])
                         if (parsed && typeof parsed === 'object') {
                             newMsg.innerVoice = parsed
+                            console.log('[ChatStore] InnerVoice parsed OK:', Object.keys(parsed));
                         }
                     }
                 } catch (e) {
-                    // 解析失败不影响消息存储
+                    console.warn('[ChatStore] InnerVoice parse failed:', e.message);
                 }
+            } else {
+                console.log('[ChatStore] No InnerVoice tag found in content (first 300):', newMsg.content.substring(0, 300));
             }
 
             // 兜底：无标签时，用平衡花括号法从 content 中提取裸露JSON心声块
@@ -726,12 +731,14 @@ export const useChatStore = defineStore('chat', () => {
                 const voiceKeys = ['"status"', '"心声"', '"着装"', '"环境"', '"行为"', '"stats"'];
                 const hasVoiceKey = voiceKeys.some(k => newMsg.content.includes(k));
                 if (hasVoiceKey) {
+                    console.log('[ChatStore] InnerVoice fallback: trying balanced brace extraction');
                     const vBlocks = [];
                     let vd = 0, vs = -1;
                     for (let i = 0; i < newMsg.content.length; i++) {
                         if (newMsg.content[i] === '{') { if (vd === 0) vs = i; vd++; }
                         else if (newMsg.content[i] === '}') { vd--; if (vd === 0 && vs !== -1) { vBlocks.push(newMsg.content.substring(vs, i + 1)); vs = -1; } }
                     }
+                    console.log('[ChatStore] InnerVoice fallback: found', vBlocks.length, 'JSON blocks');
                     for (let i = vBlocks.length - 1; i >= 0; i--) {
                         const block = vBlocks[i];
                         if (voiceKeys.some(k => block.includes(k))) {
@@ -739,14 +746,19 @@ export const useChatStore = defineStore('chat', () => {
                                 const parsed = JSON.parse(block);
                                 if (parsed && typeof parsed === 'object') {
                                     newMsg.innerVoice = parsed;
+                                    console.log('[ChatStore] InnerVoice fallback parsed OK:', Object.keys(parsed));
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                console.warn('[ChatStore] InnerVoice fallback parse failed:', e.message);
+                            }
                             break;
                         }
                     }
                 }
             }
         }
+        
+        console.log('[ChatStore] addMessage final innerVoice:', newMsg.innerVoice ? 'present' : 'null', 'role:', newMsg.role);
         
         // Debug: 记录 HTML 消息
         if (msg.type === 'html' || msg.html) {
@@ -2289,7 +2301,8 @@ export const useChatStore = defineStore('chat', () => {
                 chat,
                 null, // No abort signal needed for summary
                 {
-                    skipContext: true // Don't include other history
+                    skipContext: true, // Don't include other history
+                    disableTools: true // 禁用工具调用，防止 Gemini 在总结时调用 web_search
                 }
             )
 
@@ -3540,6 +3553,7 @@ export const useChatStore = defineStore('chat', () => {
                 const ivMarkerRegex = /\[\s*INNER[-_ ]?VOICE\s*\]\s*/gi;
                 let ivMatch = ivMarkerRegex.exec(properlyOrderedContent);
                 if (ivMatch) {
+                    console.log('[ChatStore] InnerVoice marker found at index:', ivMatch.index);
                     const startIdx = ivMatch.index;
                     const jsonStart = properlyOrderedContent.indexOf('{', startIdx + ivMatch[0].length);
                     if (jsonStart !== -1) {
@@ -3559,16 +3573,29 @@ export const useChatStore = defineStore('chat', () => {
                             const remaining = properlyOrderedContent.substring(jsonEndIdx + 1, jsonEndIdx + 5);
                             const closeMatch = remaining.match(/^\s*[\]】]/);
                             if (closeMatch) rawInnerVoiceBlock += closeMatch[0];
+                            console.log('[ChatStore] InnerVoice rawBlock extracted, length:', rawInnerVoiceBlock.length);
 
                             try {
                                 const jsonStr = properlyOrderedContent.substring(jsonStart, jsonEndIdx + 1);
                                 ivResult.innerVoice = JSON.parse(jsonStr);  // Use ivResult instead of result
-                                console.log('[ChatStore] Top-level InnerVoice extracted successfully.');
+                                console.log('[ChatStore] Top-level InnerVoice extracted successfully.', Object.keys(ivResult.innerVoice));
                             } catch (e) {
                                 console.warn('[ChatStore] Top-level InnerVoice parse failed:', e);
                             }
+                        } else {
+                            console.warn('[ChatStore] InnerVoice JSON brace matching failed');
                         }
+                    } else {
+                        console.warn('[ChatStore] InnerVoice: no { found after marker');
                     }
+                } else {
+                    console.log('[ChatStore] No InnerVoice marker in content');
+                }
+
+                // [FIX] 将从 content 中提取的心声赋值给 result.innerVoice
+                if (ivResult.innerVoice && !result.innerVoice) {
+                    result.innerVoice = ivResult.innerVoice;
+                    console.log('[ChatStore] ivResult.innerVoice assigned to result.innerVoice');
                 }
 
                 // --- Handle [NUDGE] Command (Updated) ---
