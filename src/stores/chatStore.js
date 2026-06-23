@@ -713,10 +713,14 @@ export const useChatStore = defineStore('chat', () => {
                     console.log('[ChatStore] InnerVoice cleaned json:', jsonStr.substring(0, 200));
                     const jsonMatch = jsonStr.match(/\{[\s\S]*\}/)
                     if (jsonMatch) {
-                        const parsed = JSON.parse(jsonMatch[0])
-                        if (parsed && typeof parsed === 'object') {
-                            newMsg.innerVoice = parsed
-                            console.log('[ChatStore] InnerVoice parsed OK:', Object.keys(parsed));
+                        try {
+                            const parsed = JSON.parse(jsonMatch[0])
+                            if (parsed && typeof parsed === 'object') {
+                                newMsg.innerVoice = parsed
+                                console.log('[ChatStore] InnerVoice parsed OK:', Object.keys(parsed));
+                            }
+                        } catch (e) {
+                            console.warn('[ChatStore] InnerVoice JSON parse failed:', e.message);
                         }
                     }
                 } catch (e) {
@@ -2420,11 +2424,17 @@ export const useChatStore = defineStore('chat', () => {
     // --- Proactive Chat Logic ---
     let proactiveWorker = null
 
+    let proactiveWorkerUrl = null
+
     function startProactiveLoop() {
-        // 1. Cleanup old worker
+        // 1. Cleanup old worker and its URL
         if (proactiveWorker) {
             proactiveWorker.terminate()
             proactiveWorker = null
+        }
+        if (proactiveWorkerUrl) {
+            URL.revokeObjectURL(proactiveWorkerUrl)
+            proactiveWorkerUrl = null
         }
 
         // 2. Create Web Worker for background-resilient timing
@@ -2438,7 +2448,8 @@ export const useChatStore = defineStore('chat', () => {
             };
         `;
         const blob = new Blob([workerScript], { type: 'application/javascript' });
-        proactiveWorker = new Worker(URL.createObjectURL(blob));
+        proactiveWorkerUrl = URL.createObjectURL(blob);
+        proactiveWorker = new Worker(proactiveWorkerUrl);
 
         proactiveWorker.onmessage = (e) => {
             if (e.data === 'tick') {
