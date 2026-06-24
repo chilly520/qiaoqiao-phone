@@ -273,8 +273,12 @@ const updateTime = () => {
     const now = new Date()
     currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
-setInterval(updateTime, 1000)
+const timeInterval = setInterval(updateTime, 1000)
 updateTime()
+
+onUnmounted(() => {
+    clearInterval(timeInterval)
+})
 
 // Battery Status
 const batteryLevel = ref(100)

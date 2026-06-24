@@ -40,7 +40,7 @@ export const useChatStore = defineStore('chat', () => {
     
     async function saveStreamingState() {
         try {
-            await localforage.setItem('qiaoqiao_streaming_state', JSON.parse(JSON.stringify(toRaw(streamingState.value))))
+            await localforage.setItem('qiaoqiao_streaming_state', toRaw(streamingState.value))
         } catch (e) {
             console.warn('[ChatStore] Failed to save streaming state:', e)
         }
@@ -102,7 +102,9 @@ export const useChatStore = defineStore('chat', () => {
             const pending = (await localforage.getItem('qiaoqiao_pending_ai_requests')) || {}
             delete pending[chatId]
             await localforage.setItem('qiaoqiao_pending_ai_requests', pending)
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[ChatStore] Failed to clear pending request:', e)
+        }
     }
     
     function updateStreamingContent(chatId, content) {
@@ -2419,12 +2421,19 @@ export const useChatStore = defineStore('chat', () => {
 
     // --- Proactive Chat Logic ---
     let proactiveWorker = null
+    let pageshowHandler = null
 
     function startProactiveLoop() {
         // 1. Cleanup old worker
         if (proactiveWorker) {
             proactiveWorker.terminate()
             proactiveWorker = null
+        }
+
+        // 2. Cleanup old pageshow listener
+        if (pageshowHandler && typeof window !== 'undefined') {
+            window.removeEventListener('pageshow', pageshowHandler)
+            pageshowHandler = null
         }
 
         // 2. Create Web Worker for background-resilient timing
@@ -2460,13 +2469,14 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. 页面刷新补偿 (仅在页面加载/刷新时执行一次,前后台切换不再触发)
         if (typeof window !== 'undefined') {
-            window.addEventListener('pageshow', () => {
+            pageshowHandler = () => {
                 const logger = useLoggerStore()
                 logger.sys('[Proactive] Page loaded/refreshed, checking missed triggers...')
                 Object.keys(chats.value).forEach(chatId => {
                     checkProactive(chatId)
                 })
-            });
+            }
+            window.addEventListener('pageshow', pageshowHandler)
         }
     }
 

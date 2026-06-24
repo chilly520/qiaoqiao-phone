@@ -159,7 +159,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     
     const snoopingMsg = {
       role: 'system',
-      content: `【用户正在查看你的手机】\n\n用户当前处于[未授权入侵]状态。你可以选择：\n1. 回复指令“【允许查看】”或“【立即锁屏】”；\n2. 授权时可附带密码；\n3. 通过 [PHONE_CMD] JSON 动态修改任何应用数据或密码。\n当前手机密码: ${char.phoneData?.password?.code || '1234'}\n最近 3 次同步记录: ${historyStr}`,
+      content: `【用户正在查看你的手机】\n\n用户当前处于[未授权入侵]状态。你可以选择：\n1. 回复指令“【允许查看】”或“【立即锁屏】”；\n2. 授权时可附带密码；\n3. 通过 [PHONE_CMD] JSON 动态修改任何应用数据或密码。\n当前手机密码: ****\n最近 3 次同步记录: ${historyStr}`,
       id: `snoop_${Date.now()}`,
       hidden: true,
       timestamp: Date.now()
