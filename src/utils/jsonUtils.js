@@ -51,8 +51,7 @@ export function _repairJsonStrings(jsonStr) {
 
         if (escaped) {
             if (inString && !validEscapes.has(ch)) {
-                // 字符串内的无效转义：去掉反斜杠，保留字符本身
-                result += ch
+                result += '\\' + ch
             } else {
                 result += ch
             }
