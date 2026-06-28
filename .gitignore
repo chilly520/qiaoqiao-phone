@@ -16,6 +16,12 @@ dist
 dist-ssr
 *.local
 
+# Env files (含 VITE_PUSH_SERVER_URL 等敏感信息)
+.env
+.env.local
+.env.production
+.env.development
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

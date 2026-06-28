@@ -2,7 +2,33 @@
 
 > 免费额度: 100,000 请求/天,远超推送用量。VAPID 密钥一次生成,无持续费用。
 
-## 一次性部署步骤
+## ⚡ 一键部署(推荐)
+
+### Windows (PowerShell)
+```powershell
+cd worker
+.\deploy.ps1
+```
+
+### macOS / Linux
+```bash
+cd worker
+chmod +x deploy.sh
+./deploy.sh
+```
+
+脚本会自动:
+1. 安装 npm 依赖
+2. 引导 Cloudflare 登录(浏览器授权一次)
+3. 创建两个 KV 命名空间
+4. 把 KV id 写入 `wrangler.toml`
+5. 生成 VAPID 密钥 + 写入 Cloudflare Secrets
+6. 部署 Worker
+7. 打印最终 URL,直接复制到前端 `.env.production`
+
+---
+
+## 手动部署步骤(如果脚本出问题)
 
 ### 1. 安装依赖
 ```bash
