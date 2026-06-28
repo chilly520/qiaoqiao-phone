@@ -12,7 +12,7 @@
  *  未配置时所有 API 都是 no-op,不影响其他功能
  */
 
-const SERVER_URL = (import.meta?.env?.VITE_PUSH_SERVER_URL) || '';
+const SERVER_URL = (import.meta?.env?.VITE_PUSH_SERVER_URL) || 'https://chilly-phone-push.by811520.workers.dev';
 
 // 状态机
 let _state = {
