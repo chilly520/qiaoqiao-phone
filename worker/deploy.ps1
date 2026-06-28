@@ -197,27 +197,40 @@ $schId = Get-Or-Create-KV "SCHEDULED"
 # ---------- 4. Update wrangler.toml ----------
 Write-Step "4/6 Update wrangler.toml"
 
-$toml = Get-Content "wrangler.toml" -Raw -Encoding UTF8
-$toml = $toml -replace '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', ('$1' + $subId + '$2')
-$toml = $toml -replace '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', ('$1' + $subId + '$2')
-$toml = $toml -replace '(binding\s*=\s*"SCHEDULED"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', ('$1' + $schId + '$2')
-$toml = $toml -replace '(binding\s*=\s*"SCHEDULED"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', ('$1' + $schId + '$2')
+$toml = [System.IO.File]::ReadAllText("wrangler.toml", [System.Text.UTF8Encoding]::new($true))
 
-# Ensure compatibility_flags = ["nodejs_compat"] is present (web-push needs Node builtins)
+# Use [regex]::Replace with a match evaluator (much more reliable than -replace with $1/$2 backrefs)
+$toml = [regex]::Replace($toml, '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', {
+    param($m) $m.Groups[1].Value + $subId + $m.Groups[2].Value
+}, 'Singleline')
+$toml = [regex]::Replace($toml, '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', {
+    param($m) $m.Groups[1].Value + $subId + $m.Groups[2].Value
+}, 'Singleline')
+$toml = [regex]::Replace($toml, '(binding\s*=\s*"SCHEDULED"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', {
+    param($m) $m.Groups[1].Value + $schId + $m.Groups[2].Value
+}, 'Singleline')
+$toml = [regex]::Replace($toml, '(binding\s*=\s*"SCHEDULED"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', {
+    param($m) $m.Groups[1].Value + $schId + $m.Groups[2].Value
+}, 'Singleline')
+
+# Ensure compatibility_flags = ["nodejs_compat"] is present
 if ($toml -notmatch 'compatibility_flags') {
-    # Insert after compatibility_date line
     $toml = $toml -replace '(compatibility_date\s*=\s*"[^"]+")', ('$1' + "`ncompatibility_flags = [""nodejs_compat""]")
     Write-Ok "Added compatibility_flags = [nodejs_compat]"
 } elseif ($toml -notmatch 'nodejs_compat') {
-    # Has compatibility_flags but missing nodejs_compat - add it
     $toml = $toml -replace 'compatibility_flags\s*=\s*\[([^\]]*)\]', 'compatibility_flags = [$1, "nodejs_compat"]'
     Write-Ok "Appended nodejs_compat to compatibility_flags"
 } else {
     Write-Skip "compatibility_flags already includes nodejs_compat"
 }
 
+# Verify replacement actually happened
+if ($toml -match 'REPLACE_WITH_ACTUAL_ID' -or $toml -match 'REPLACE_WITH_PREVIEW_ID') {
+    throw "wrangler.toml still has REPLACE placeholders after substitution. Replacement failed."
+}
+
 [System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
-Write-Ok "wrangler.toml updated"
+Write-Ok "wrangler.toml updated (IDs injected)"
 
 # ---------- 5. Generate VAPID keys + set secrets ----------
 Write-Step "5/6 Generate VAPID keys + write secrets"
