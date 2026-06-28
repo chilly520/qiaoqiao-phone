@@ -112,35 +112,48 @@ function Get-Or-Create-KV {
         throw "wrangler kv:namespace list failed: $($list.Combined)"
     }
 
-    # Try to find existing namespace with this name.
-    # Approach 1: parse as JSON (after normalizing single→double quotes)
-    $existing = $null
-    $normalized = $list.StdOut -replace "'", '"'
+    # Debug: print first 500 chars so we can see actual format if it fails
+    $debugPreview = if ($list.StdOut.Length -gt 500) { $list.StdOut.Substring(0, 500) } else { $list.StdOut }
 
-    try {
-        $parsed = $normalized | ConvertFrom-Json -ErrorAction Stop
-        $items = @($parsed)
-        foreach ($item in $items) {
-            $t = $item.title
-            if ($t -eq $Name -or $t -like "*-$Name" -or $t -eq "chilly-phone-push-$Name") {
-                $existing = $item.id
-                break
+    # Extract just the JSON portion (between first [ and matching ])
+    # Wrangler 3 prints telemetry/warning text before the actual JSON array
+    $jsonStart = $list.StdOut.IndexOf('[')
+    $jsonEnd = $list.StdOut.LastIndexOf(']')
+    $jsonText = $null
+    if ($jsonStart -ge 0 -and $jsonEnd -gt $jsonStart) {
+        $jsonText = $list.StdOut.Substring($jsonStart, $jsonEnd - $jsonStart + 1)
+    }
+    # Normalize single quotes to double quotes for wrangler v3
+    if ($jsonText) { $jsonText = $jsonText -replace "'", '"' }
+
+    # Try to find existing namespace with this name.
+    $existing = $null
+
+    if ($jsonText) {
+        try {
+            $parsed = $jsonText | ConvertFrom-Json -ErrorAction Stop
+            $items = @($parsed)
+            foreach ($item in $items) {
+                $t = $item.title
+                if ($t -eq $Name -or $t -like "*-$Name" -or $t -eq "chilly-phone-push-$Name") {
+                    $existing = $item.id
+                    break
+                }
             }
+        } catch {
+            Write-Warn "ConvertFrom-Json failed. Preview of output:"
+            Write-Host $debugPreview -ForegroundColor DarkYellow
         }
-    } catch {
-        # JSON parse failed - fall through to regex
     }
 
     # Approach 2: regex fallback
     if (-not $existing) {
-        # Try multiple patterns
         $patterns = @(
             '"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"',
-            '"title"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"',
-            'id:\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*[,\s]+title:\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]'
+            '"title"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"'
         )
         foreach ($p in $patterns) {
-            $matches = [regex]::Matches($normalized, $p)
+            $matches = [regex]::Matches($jsonText, $p)
             foreach ($m in $matches) {
                 if ($m.Groups.Count -ge 3) {
                     $id = $m.Groups[1].Value
@@ -161,13 +174,13 @@ function Get-Or-Create-KV {
     }
 
     # Not found - try to create
+    Write-Host "  Could not find $Name in list. Raw output:" -ForegroundColor Yellow
+    Write-Host $list.StdOut -ForegroundColor DarkYellow
     Write-Host "  Creating $Name ..." -ForegroundColor Yellow
     $create = Invoke-External "npx" @("wrangler", "kv:namespace", "create", $Name)
     if ($create.ExitCode -ne 0) {
         if ($create.Combined -match "already exists") {
-            Write-Warn "Create says 'already exists' but list didn't return it. Raw list output:"
-            Write-Host $list.StdOut -ForegroundColor DarkYellow
-            throw "Cannot locate $Name. Check raw list output above."
+            throw "Cannot locate $Name but it already exists. Report list output above to dev."
         }
         throw "Failed to create $Name : $($create.Combined)"
     }
