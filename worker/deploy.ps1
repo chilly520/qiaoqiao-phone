@@ -144,34 +144,41 @@ Write-Ok "wrangler.toml updated"
 # ---------- 5. Generate VAPID keys + set secrets ----------
 Write-Step "5/6 Generate VAPID keys + write secrets"
 
-$wpNode = Join-Path $WorkerDir "node_modules\web-push"
-if (-not (Test-Path $wpNode)) {
-    Write-Fail "web-push not installed, run: npm install web-push"
-    exit 1
+# Use web-push CLI to generate VAPID keys
+$keyGen = Invoke-External "npx" @("web-push", "generate-vapid-keys")
+if ($keyGen.ExitCode -ne 0) {
+    Write-Host $keyGen.Combined
+    throw "VAPID key generation failed"
 }
 
-# Generate via inline node script (uses web-push library)
-$genScript = @"
-const webpush = require('web-push');
-const keys = webpush.generateVAPIDKeys();
-process.stdout.write(JSON.stringify({ publicKey: keys.publicKey, privateKey: keys.privateKey }));
-"@
-$genFile = [System.IO.Path]::GetTempFileName() + ".js"
-[System.IO.File]::WriteAllText($genFile, $genScript, [System.Text.UTF8Encoding]::new($false))
-try {
-    $genResult = Invoke-External "node" @($genFile)
-    if ($genResult.ExitCode -ne 0) {
-        throw "VAPID generation failed: $($genResult.Combined)"
+# Output format:
+#   ===============================
+#   Public Key:
+#   <base64url>
+#   Private Key:
+#   <base64url>
+#   ===============================
+$pubMatch = [regex]::Match($keyGen.StdOut, '(?im)^\s*Public\s*Key:\s*$')
+$privMatch = [regex]::Match($keyGen.StdOut, '(?im)^\s*Private\s*Key:\s*$')
+if (-not $pubMatch.Success -or -not $privMatch.Success) {
+    throw "Cannot find Public/Private Key markers in: $($keyGen.StdOut)"
+}
+
+# Take the line right after each marker
+$lines = $keyGen.StdOut -split "`n"
+$publicKey = $null
+$privateKey = $null
+for ($i = 0; $i -lt $lines.Length; $i++) {
+    if ($lines[$i] -match '^\s*Public\s*Key:\s*$') {
+        $publicKey = $lines[$i + 1].Trim()
     }
-    $keys = $genResult.StdOut.Trim() | ConvertFrom-Json
-    $publicKey = $keys.publicKey
-    $privateKey = $keys.privateKey
-} finally {
-    Remove-Item $genFile -ErrorAction SilentlyContinue
+    if ($lines[$i] -match '^\s*Private\s*Key:\s*$') {
+        $privateKey = $lines[$i + 1].Trim()
+    }
 }
 
 if (-not $publicKey -or -not $privateKey) {
-    throw "Failed to parse VAPID keys"
+    throw "Failed to extract VAPID keys from: $($keyGen.StdOut)"
 }
 Write-Host "  Public key: $publicKey" -ForegroundColor Gray
 
