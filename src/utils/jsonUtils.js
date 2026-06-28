@@ -159,18 +159,60 @@ export function reconstructMomentsJSON(rawText) {
     }
 
     if (moments.length === 0) {
-        authorRegex.lastIndex = 0
-        contentRegex.lastIndex = 0
-        while ((match = contentRegex.exec(clean)) !== null && idx < 5) {
-            moments.push({
-                authorId: (authorRegex.exec(clean)?.[1] || 'unknown').trim(),
-                content: match[1].replace(/\\n/g, ' ').substring(0, 500),
-                location: '',
-                images: [],
-                mentions: [],
-                interactions: []
-            })
-            idx++
+        // [FIX] 终极兜底: 这里之前的逻辑是"凡是 content 字段就当 moment", 导致评论/回复被误判成新动态,
+        // 同时 imagePrompts/interactions 全部丢失, 生图无效。
+        // 修复: 用 brace-counting 跟踪 JSON 结构, 只在 newMoments 数组块内的 content 才算 moment;
+        //       遇到 ecosystemUpdates 块或 interactions 块直接跳过。
+        //       如果实在无法定位 newMoments 块, 返回 null 而不是制造错数据。
+        try {
+            const newMomentsStart = clean.indexOf('"newMoments"')
+            const ecosystemStart = clean.indexOf('"ecosystemUpdates"')
+            if (newMomentsStart !== -1) {
+                // 找到 newMoments 数组的范围
+                const arrStart = clean.indexOf('[', newMomentsStart)
+                let arrEnd = -1, depth = 0, inStr = false, esc = false
+                for (let i = arrStart; i < clean.length; i++) {
+                    const ch = clean[i]
+                    if (esc) { esc = false; continue }
+                    if (ch === '\\') { esc = true; continue }
+                    if (ch === '"') { inStr = !inStr; continue }
+                    if (inStr) continue
+                    if (ch === '[') depth++
+                    else if (ch === ']') { depth--; if (depth === 0) { arrEnd = i; break } }
+                }
+                if (arrEnd !== -1) {
+                    const newMomentsBlock = clean.substring(arrStart, arrEnd + 1)
+                    // 在 newMoments 块内找每个 authorId + content 对
+                    const itemRegex = /\{\s*"authorId"\s*:\s*"([^"]+)"[\s\S]*?"content"\s*:\s*"([^"]*)"[\s\S]*?(?:"imagePrompts"\s*:\s*\[([\s\S]*?)\])?/g
+                    let m
+                    while ((m = itemRegex.exec(newMomentsBlock)) !== null && idx < 5) {
+                        const authorId = m[1]
+                        const content = m[2].replace(/\\n/g, ' ').substring(0, 500)
+                        if (content.length < 10) continue
+                        const imagePromptsStr = m[3] || ''
+                        const imagePrompts = imagePromptsStr
+                            ? imagePromptsStr.match(/"([^"]+)"/g)?.map(s => s.slice(1, -1)) || []
+                            : []
+                        moments.push({
+                            authorId,
+                            content,
+                            location: '',
+                            images: [],
+                            imagePrompts,
+                            mentions: [],
+                            interactions: []
+                        })
+                        idx++
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[reconstructMomentsJSON] structured fallback failed:', e.message)
+        }
+
+        if (moments.length === 0) {
+            console.warn('[reconstructMomentsJSON] 无法可靠恢复,返回 null 避免制造错数据')
+            return null
         }
     }
 

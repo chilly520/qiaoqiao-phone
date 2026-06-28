@@ -1391,13 +1391,17 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     try {
         if (model.toLowerCase().includes('gemini')) {
             // Gemini (native) json format
-            // [FIX] If the prompt uses [LS_JSON: tags, we must NOT enable strict JSON mode as it conflicts
-            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON') && !fullMessages[0].content.includes('[LS_JSON')) {
+            // [FIX] 只要 system 提示词中包含 JSON 关键字就强制 JSON mode。
+            // 旧逻辑: 排除 [LS_JSON: 提示词(避免与解析器冲突)。
+            // 但 LS_JSON 解析器本身已支持纯 JSON 兜底(\{[\s\S]*\} 匹配), 强制 JSON mode 反而能提升可靠性,
+            // 避免 AI 在包装格式上"时对时错"。
+            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
                 reqBody.generationConfig = { response_mime_type: "application/json" };
             }
         } else {
             // OpenAI compatible json object mode
-            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON') && !fullMessages[0].content.includes('[LS_JSON')) {
+            // [FIX] 同上, 去掉 [LS_JSON 例外, 任何含 JSON 提示词的任务都强制 JSON 输出
+            if (fullMessages && fullMessages.length > 0 && fullMessages[0].content.includes('JSON')) {
                 reqBody.response_format = { type: "json_object" };
             }
         }
