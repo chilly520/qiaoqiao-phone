@@ -485,14 +485,6 @@ const handleGlobalPromptCancel = () => {
             </div>
         </div>
 
-        <!-- Background Keep-alive Hint (autoplay unlock prompt) -->
-        <div v-if="showKeepAliveHint"
-            class="fixed top-12 left-1/2 px-4 py-2.5 rounded-2xl backdrop-blur-lg shadow-lg z-[10500] flex items-center gap-2 border border-amber-200/50 animate-toast-pop"
-            style="transform: translateX(-50%); background: linear-gradient(135deg, rgba(251, 191, 36, 0.92), rgba(245, 158, 11, 0.92));">
-            <i class="fa-solid fa-hand-pointer text-white text-sm drop-shadow"></i>
-            <span class="text-white text-[12px] font-medium drop-shadow">点击任意位置,启用后台保活</span>
-        </div>
-
         <!-- Global Toast Notification -->
         <div v-if="showToast"
             class="fixed top-16 left-1/2 px-6 py-3.5 rounded-2xl backdrop-blur-lg shadow-xl z-[11000] flex items-center gap-3 min-w-[200px] max-w-[90%] border border-white/30 animate-toast-pop"
