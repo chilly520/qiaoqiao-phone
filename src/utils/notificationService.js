@@ -32,8 +32,8 @@ class NotificationService {
     }
 
     const notificationOptions = {
-      icon: '/pwa-192x192.jpg',
-      badge: '/pwa-192x192.jpg',
+      icon: '/pwa-192x192.png',
+      badge: '/pwa-192x192.png',
       vibrate: [200, 100, 200],
       tag: options.tag || 'chat-notification',
       renotify: true,

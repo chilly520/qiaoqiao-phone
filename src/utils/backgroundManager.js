@@ -241,12 +241,12 @@ class BackgroundManager {
         if (!('mediaSession' in navigator)) return;
         try {
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: '乔乔手机',
+                title: 'Chilly Phone',
                 artist: 'Proactive Companion',
                 album: 'Background Service',
                 artwork: [
-                    { src: '/pwa-192x192.jpg', sizes: '192x192', type: 'image/jpeg' },
-                    { src: '/pwa-512x512.jpg', sizes: '512x512', type: 'image/jpeg' }
+                    { src: '/pwa-192x192.png?v=4', sizes: '192x192', type: 'image/png' },
+                    { src: '/pwa-512x512.png?v=4', sizes: '512x512', type: 'image/png' }
                 ]
             });
             // 声明播放状态为 playing,这是关键
@@ -399,8 +399,8 @@ class BackgroundManager {
             const fireTime = Math.max(triggerTime, minTime);
 
             await reg.showNotification(title, {
-                icon: '/pwa-192x192.jpg',
-                badge: '/pwa-192x192.jpg',
+                icon: '/pwa-192x192.png',
+                badge: '/pwa-192x192.png',
                 tag: options.tag || 'proactive',
                 renotify: true,
                 showTrigger: new TimestampTrigger(fireTime),

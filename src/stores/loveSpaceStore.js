@@ -948,7 +948,35 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
           const execRes = await this.executeSpaceCommands(result.content, chat.name, targetDate, charId)
           if (execRes && execRes.executedCount > 0) {
             chatStore.triggerToast('💖 恋爱空间已同步更新！', 'success')
+          } else {
+            // [FIX] 内容回来了但 0 个命令被执行,说明 LS_JSON 解析失败
+            // AI 对 [LS_JSON: ...] 包装格式的遵循非确定 (temperature 0.7 默认值偏高),
+            // 自动重试一次,加更严格的格式约束
+            console.warn('[LoveSpaceStore] No commands executed. Retrying with stronger format constraint. Content preview:', result.content.substring(0, 500))
+            const retryResult = await generateReply([
+              { role: 'system', content: systemPrompt + '\n\n【上一轮格式不合规！重试提醒】你上次的输出没有正确遵守 [LS_JSON: {...}] 格式。本次必须严格遵守,只输出一个 [LS_JSON: {...}] 块,不要任何解释、思考、换行或多余的 Markdown 包裹。' }
+            ], { name: chat.name, id: chat.id, prompt: systemPrompt }, null, {
+              isCommandTask: true,
+              isSimpleTask: true
+            })
+            if (retryResult.content) {
+              const retryExec = await this.executeSpaceCommands(retryResult.content, chat.name, targetDate, charId)
+              if (retryExec && retryExec.executedCount > 0) {
+                chatStore.triggerToast('💖 恋爱空间已同步更新！', 'success')
+              } else {
+                console.error('[LoveSpaceStore] Retry also failed. Retry content:', retryResult.content.substring(0, 500))
+                chatStore.triggerToast('AI 输出格式异常，请重试或换个模型', 'error')
+              }
+            } else {
+              chatStore.triggerToast('AI 重试仍为空，请稍后再试', 'error')
+            }
           }
+        } else if (result.error) {
+          // [FIX] 把 AI 真实错误透传给用户,避免静默失败
+          console.error('[LoveSpaceStore] generateMagicContent AI error:', result.error)
+          chatStore.triggerToast(`AI 报错: ${result.error}`, 'error')
+        } else {
+          console.warn('[LoveSpaceStore] generateMagicContent: Empty result. Raw:', result)
         }
       } catch (err) {
         console.error('[LoveSpaceStore] generateMagicContent failed:', err)
@@ -1016,11 +1044,11 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       if (!chat) return
 
       const userProfile = settingsStore.personalization.userProfile
-      
+
       // 获取最近 100 轮聊天记录
-      const recentChats = getLastNTurns(chatStore.chats[charId]?.msgs || [], 100).map(m => ({ 
-        role: m.role === 'ai' ? 'assistant' : 'user', 
-        content: m.content 
+      const recentChats = getLastNTurns(chatStore.chats[charId]?.msgs || [], 100).map(m => ({
+        role: m.role === 'ai' ? 'assistant' : 'user',
+        content: m.content
       }))
       
       // 获取该功能最近 5 条历史记录
@@ -1106,7 +1134,42 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
 
         if (result.content) {
           console.log(`[LoveSpaceStore] Single feature ${featureType} generated:`, result.content.substring(0, 300))
-          await this.executeSpaceCommands(result.content, chat.name, null, charId)
+          const execRes = await this.executeSpaceCommands(result.content, chat.name, null, charId)
+          if (execRes && execRes.executedCount > 0) {
+            // 成功
+          } else {
+            // [FIX] AI 对 [LS_JSON: ...] 包装格式的遵循非确定 (temperature 0.7 默认值偏高),
+            // 自动重试一次,加更严格的格式约束
+            console.warn(`[LoveSpaceStore] ${featureType} first attempt: 0 commands. Retrying with stronger format constraint.`)
+            const retryResult = await generateReply([
+              { role: 'system', content: systemPrompt + '\n\n【上一轮格式不合规！重试提醒】你上次的输出没有正确遵守 [LS_JSON: {...}] 格式。本次必须严格遵守,只输出一个 [LS_JSON: {...}] 块,不要任何解释、思考、换行或多余的 Markdown 包裹。' }
+            ], {
+              name: chat.name,
+              id: chat.id,
+              prompt: systemPrompt
+            }, null, {
+              isCommandTask: true,
+              isSimpleTask: true
+            })
+            if (retryResult.content) {
+              const retryExec = await this.executeSpaceCommands(retryResult.content, chat.name, null, charId)
+              if (!retryExec || retryExec.executedCount === 0) {
+                console.error(`[LoveSpaceStore] ${featureType} retry also failed. Content:`, retryResult.content.substring(0, 500))
+                chatStore.triggerToast('AI 输出格式异常，请重试或换个模型', 'error')
+              }
+            } else if (retryResult.error) {
+              chatStore.triggerToast(`AI 重试报错: ${retryResult.error}`, 'error')
+            } else {
+              chatStore.triggerToast('AI 重试仍为空，请稍后再试', 'error')
+            }
+          }
+        } else if (result.error) {
+          // [FIX] 把 AI 真实错误透传给用户,避免静默失败
+          console.error(`[LoveSpaceStore] AI returned error for ${featureType}:`, result.error)
+          chatStore.triggerToast(`AI 报错: ${result.error}`, 'error')
+        } else {
+          // [FIX] 既没 content 也没 error,记下原始 response 方便排查
+          console.warn(`[LoveSpaceStore] Empty result for ${featureType}. Raw:`, result)
         }
       } catch (err) {
         console.error(`[LoveSpaceStore] Single feature ${featureType} generation failed`, err)
