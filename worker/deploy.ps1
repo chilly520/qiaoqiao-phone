@@ -191,6 +191,19 @@ $toml = $toml -replace '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?preview_id\s*=\s*"
 $toml = $toml -replace '(binding\s*=\s*"SCHEDULED"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', ('$1' + $schId + '$2')
 $toml = $toml -replace '(binding\s*=\s*"SCHEDULED"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', ('$1' + $schId + '$2')
 
+# Ensure compatibility_flags = ["nodejs_compat"] is present (web-push needs Node builtins)
+if ($toml -notmatch 'compatibility_flags') {
+    # Insert after compatibility_date line
+    $toml = $toml -replace '(compatibility_date\s*=\s*"[^"]+")', ('$1' + "`ncompatibility_flags = [""nodejs_compat""]")
+    Write-Ok "Added compatibility_flags = [nodejs_compat]"
+} elseif ($toml -notmatch 'nodejs_compat') {
+    # Has compatibility_flags but missing nodejs_compat - add it
+    $toml = $toml -replace 'compatibility_flags\s*=\s*\[([^\]]*)\]', 'compatibility_flags = [$1, "nodejs_compat"]'
+    Write-Ok "Appended nodejs_compat to compatibility_flags"
+} else {
+    Write-Skip "compatibility_flags already includes nodejs_compat"
+}
+
 [System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
 Write-Ok "wrangler.toml updated"
 
