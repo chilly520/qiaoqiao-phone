@@ -2419,69 +2419,29 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // --- Proactive Chat Logic ---
-    let proactiveWorker = null
-    let proactiveWorkerBroken = false // 标记 worker 是否失败过,失败后不再重试
+    let proactiveTimer = null
 
     function startProactiveLoop() {
-        // 1. Cleanup old worker
-        if (proactiveWorker) {
-            proactiveWorker.terminate()
-            proactiveWorker = null
-        }
-        // 如果之前已经失败过,直接跳过 (Blob worker 在某些浏览器/CSP 下不可用)
-        if (proactiveWorkerBroken) {
-            return
+        // 清理旧的
+        if (proactiveTimer) {
+            clearInterval(proactiveTimer)
+            proactiveTimer = null
         }
 
-        // 2. Create Web Worker for background-resilient timing
-        const workerScript = `
-            self.onmessage = function(e) {
-                if (e.data === 'start') {
-                    setInterval(() => {
-                        self.postMessage('tick');
-                    }, 60000); // Check every minute
-                }
-            };
-        `;
-        try {
-            const blob = new Blob([workerScript], { type: 'application/javascript' });
-            proactiveWorker = new Worker(URL.createObjectURL(blob));
-        } catch (e) {
-            console.warn('[Proactive] Worker creation failed, will not retry:', e.message);
-            proactiveWorkerBroken = true;
-            return;
-        }
-
-        proactiveWorker.onmessage = (e) => {
-            if (e.data === 'tick') {
-                if (proactiveWorkerBroken) return;
-                // 每分钟检查所有聊天的 proactive 触发
-                try {
-                    const chatIds = Object.keys(chats.value)
-                    console.log(`[Proactive] Tick: checking ${chatIds.length} chats`)
-                    chatIds.forEach(chatId => {
-                        checkProactive(chatId)
-                    })
-                } catch (err) { console.warn('[Proactive] Tick error:', err) }
+        // 用 setInterval 替代 Worker，更可靠
+        proactiveTimer = setInterval(() => {
+            try {
+                const chatIds = Object.keys(chats.value)
+                console.log(`[Proactive] Tick: checking ${chatIds.length} chats`)
+                chatIds.forEach(chatId => {
+                    checkProactive(chatId)
+                })
+            } catch (err) {
+                console.warn('[Proactive] Tick error:', err)
             }
-        }
+        }, 60000) // 每分钟
 
-        proactiveWorker.onerror = (e) => {
-            console.warn('[Proactive] Worker errored, disabling:', e.message || 'unknown');
-            try { proactiveWorker.terminate(); } catch (err) {}
-            proactiveWorker = null;
-            proactiveWorkerBroken = true;
-        };
-
-        // Start the worker
-        try {
-            proactiveWorker.postMessage('start');
-        } catch (e) {
-            console.warn('[Proactive] postMessage failed:', e.message);
-            proactiveWorkerBroken = true;
-        }
-
-        // 3. 页面刷新补偿 (仅在页面加载/刷新时执行一次,前后台切换不再触发)
+        // 3. 页面刷新补偿
         if (typeof window !== 'undefined') {
             window.addEventListener('pageshow', () => {
                 const logger = useLoggerStore()
@@ -2561,7 +2521,6 @@ export const useChatStore = defineStore('chat', () => {
 
         // 4. Random Proactive
         const randomConfig = schedulerStore.randomConfigs[chatId]
-        console.log(`[Proactive] Chat ${chatId}: randomConfig=`, randomConfig, `now=${now}`)
         if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
             logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
             schedulerStore.updateNextRandomTrigger(chatId)
