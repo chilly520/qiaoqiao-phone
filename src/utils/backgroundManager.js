@@ -123,30 +123,49 @@ class BackgroundManager {
             this.createAudioElement();
         }
 
+        // 已成功播放过且仍在播,直接返回
+        if (this.isActive && this.audio && !this.audio.paused) {
+            return true;
+        }
+        // 之前已确认过失败(autoplay 被永久拒绝),不再重试
+        if (this._audioPlayPermanentlyBlocked) {
+            return false;
+        }
+
         let audioOk = false;
 
         if (this.audio) {
-            try {
-                if (this.audio.paused) {
+            // 只有真的 paused 才尝试 play(),避免每次 visibilitychange 都触发
+            if (this.audio.paused) {
+                try {
                     await this.audio.play();
-                }
-                audioOk = !this.audio.paused && this.audio.readyState >= 2;
-                if (audioOk) {
-                    if (!this._audioOkLogged) {
-                        this.log(`<audio> playing OK. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)} readyState=${this.audio.readyState}`, 'info');
-                        this._audioOkLogged = true;
+                    audioOk = !this.audio.paused && this.audio.readyState >= 2;
+                    if (audioOk) {
+                        if (!this._audioOkLogged) {
+                            this.log(`<audio> playing OK. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)} readyState=${this.audio.readyState}`, 'info');
+                            this._audioOkLogged = true;
+                        }
+                    } else {
+                        if (!this._audioFailLogged) {
+                            this.log(`<audio> play() returned but not playing. paused=${this.audio.paused} readyState=${this.audio.readyState}`, 'error');
+                            this._audioFailLogged = true;
+                        }
                     }
-                } else {
+                } catch (e) {
                     if (!this._audioFailLogged) {
-                        this.log(`<audio> play() returned but not playing. paused=${this.audio.paused} readyState=${this.audio.readyState}`, 'error');
+                        this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
                         this._audioFailLogged = true;
                     }
+                    // NotAllowedError = autoplay 被拒,后续所有重试都没用
+                    if (e.name === 'NotAllowedError') {
+                        this._audioPlayPermanentlyBlocked = true;
+                    }
                 }
-            } catch (e) {
-                if (!this._audioFailLogged) {
-                    this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
-                    this._audioFailLogged = true;
-                }
+            } else {
+                // 已经在播,标记为 ok
+                audioOk = true;
+                this.isActive = true;
+                this.keepAliveWorking = true;
             }
         } else if (!this._audioFailLogged) {
             this.log('No <audio> element to play.', 'error');
@@ -158,9 +177,6 @@ class BackgroundManager {
 
         if (this.isActive) {
             this.setupMediaSession();
-            if (!this._audioOkLogged) {
-                this.log('Keep-alive active. MediaSession updated.', 'info');
-            }
         }
 
         return this.isActive;
@@ -337,48 +353,22 @@ class BackgroundManager {
     }
 
     /**
-     * 通过 Notification Triggers API 在指定时间后台弹出系统通知。
-     * 这是当前唯一能在手机后台真弹出系统通知的纯前端方案。
+     * 调度未来某时刻的后台通知。
      *
-     * 用法：在 proactive 逻辑里检测到下一次触发时间时，调用
-     *   backgroundManager.scheduleNativeNotification(triggerTime, title, options)
-     * 浏览器会原生在那个时间点弹通知——完全不需要页面在跑 JS。
-     *
-     * 注意：
-     *  - 仅 Chrome/Edge 支持，Safari/Firefox 不支持
-     *  - 一次只能排一个 trigger，同 tag 会被覆盖
-     *  - 需要 SW 已激活 + 用户已授予通知权限
+     * ⚠️ v1.10.34: 弃用 Notification Triggers API。
+     * Chrome 在 2024 年移除了 showTrigger / TimestampTrigger,
+     * `'showTrigger' in Notification.prototype` 仍返回 true 但实际调用
+     * 报 "Validation error of unrecognized features: showTrigger"。
+     * 改用即时通知:触发时间到了时由前端 JS 调 showNotification(需要页面在跑)。
+     * 真后台通知需要服务器 Web Push,目前架构不支持。
      */
     async scheduleNativeNotification(triggerTime, title, options = {}) {
-        if (!('Notification' in window) || Notification.permission !== 'granted') {
-            return false;
+        // 直接返回 false,computeAndScheduleNextNotification 走 no-op 路径
+        // 真正的通知靠 visibilitychange→visible 时的 catchUpProactive 兜底
+        if (!options.silent) {
+            this.log('Notification Triggers API 已被 Chrome 移除,跳过排程', 'sys');
         }
-        if (!('showTrigger' in Notification.prototype)) {
-            // 当前浏览器不支持 Notification Triggers API（iOS/Firefox 走这里）
-            return false;
-        }
-        try {
-            if (!('serviceWorker' in navigator)) return false;
-            const reg = await navigator.serviceWorker.ready;
-            if (!reg || !reg.showNotification) return false;
-
-            // 触发时间必须 >= now + ~5s,否则浏览器会拒绝
-            const minTime = Date.now() + 5000;
-            const fireTime = Math.max(triggerTime, minTime);
-
-            await reg.showNotification(title, {
-                icon: '/pwa-192x192.png',
-                badge: '/pwa-192x192.png',
-                tag: options.tag || 'proactive',
-                renotify: true,
-                showTrigger: new TimestampTrigger(fireTime),
-                ...options
-            });
-            return true;
-        } catch (e) {
-            this.log('scheduleNativeNotification failed: ' + (e.message || e.name), 'error');
-            return false;
-        }
+        return false;
     }
 
     /**
