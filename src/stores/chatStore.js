@@ -2420,12 +2420,17 @@ export const useChatStore = defineStore('chat', () => {
 
     // --- Proactive Chat Logic ---
     let proactiveWorker = null
+    let proactiveWorkerBroken = false // 标记 worker 是否失败过,失败后不再重试
 
     function startProactiveLoop() {
         // 1. Cleanup old worker
         if (proactiveWorker) {
             proactiveWorker.terminate()
             proactiveWorker = null
+        }
+        // 如果之前已经失败过,直接跳过 (Blob worker 在某些浏览器/CSP 下不可用)
+        if (proactiveWorkerBroken) {
+            return
         }
 
         // 2. Create Web Worker for background-resilient timing
@@ -2438,26 +2443,36 @@ export const useChatStore = defineStore('chat', () => {
                 }
             };
         `;
-        const blob = new Blob([workerScript], { type: 'application/javascript' });
-        proactiveWorker = new Worker(URL.createObjectURL(blob));
+        try {
+            const blob = new Blob([workerScript], { type: 'application/javascript' });
+            proactiveWorker = new Worker(URL.createObjectURL(blob));
+        } catch (e) {
+            console.warn('[Proactive] Worker creation failed, will not retry:', e.message);
+            proactiveWorkerBroken = true;
+            return;
+        }
 
         proactiveWorker.onmessage = (e) => {
             if (e.data === 'tick') {
-                const logger = useLoggerStore()
-                // Only log one tick every 30 mins to avoid noise in the log
-                const now = new Date()
-                if (now.getMinutes() % 30 === 0) {
-                    logger.sys('[Proactive] Worker heartbeat: scanning all chats...')
-                }
-
-                Object.keys(chats.value).forEach(chatId => {
-                    checkProactive(chatId)
-                })
+                // tick 只做轻量心跳,真正的 checkProactive 留给 backgroundManager.visibilitychange 兜底
+                if (proactiveWorkerBroken) return;
             }
         }
 
+        proactiveWorker.onerror = (e) => {
+            console.warn('[Proactive] Worker errored, disabling:', e.message || 'unknown');
+            try { proactiveWorker.terminate(); } catch (err) {}
+            proactiveWorker = null;
+            proactiveWorkerBroken = true;
+        };
+
         // Start the worker
-        proactiveWorker.postMessage('start');
+        try {
+            proactiveWorker.postMessage('start');
+        } catch (e) {
+            console.warn('[Proactive] postMessage failed:', e.message);
+            proactiveWorkerBroken = true;
+        }
 
         // 3. 页面刷新补偿 (仅在页面加载/刷新时执行一次,前后台切换不再触发)
         if (typeof window !== 'undefined') {

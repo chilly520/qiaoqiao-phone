@@ -132,15 +132,25 @@ class BackgroundManager {
                 }
                 audioOk = !this.audio.paused && this.audio.readyState >= 2;
                 if (audioOk) {
-                    this.log(`<audio> playing OK. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)} readyState=${this.audio.readyState}`, 'info');
+                    if (!this._audioOkLogged) {
+                        this.log(`<audio> playing OK. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)} readyState=${this.audio.readyState}`, 'info');
+                        this._audioOkLogged = true;
+                    }
                 } else {
-                    this.log(`<audio> play() returned but not playing. paused=${this.audio.paused} readyState=${this.audio.readyState}`, 'error');
+                    if (!this._audioFailLogged) {
+                        this.log(`<audio> play() returned but not playing. paused=${this.audio.paused} readyState=${this.audio.readyState}`, 'error');
+                        this._audioFailLogged = true;
+                    }
                 }
             } catch (e) {
-                this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
+                if (!this._audioFailLogged) {
+                    this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
+                    this._audioFailLogged = true;
+                }
             }
-        } else {
+        } else if (!this._audioFailLogged) {
             this.log('No <audio> element to play.', 'error');
+            this._audioFailLogged = true;
         }
 
         this.isActive = audioOk;
@@ -148,9 +158,9 @@ class BackgroundManager {
 
         if (this.isActive) {
             this.setupMediaSession();
-            this.log('Keep-alive active. MediaSession updated.', 'info');
-        } else {
-            this.log('Audio failed to start, keep-alive inactive.', 'error');
+            if (!this._audioOkLogged) {
+                this.log('Keep-alive active. MediaSession updated.', 'info');
+            }
         }
 
         return this.isActive;
