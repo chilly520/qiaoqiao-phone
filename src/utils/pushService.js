@@ -128,8 +128,18 @@ export async function subscribePush(options = {}) {
 
     // 1. 请求通知权限
     let permission = Notification.permission;
+    console.log('[PushService] Current permission:', permission);
     if (permission === 'default') {
-        permission = await Notification.requestPermission();
+        try {
+            const p = await Promise.race([
+                Notification.requestPermission(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Permission request timeout')), 10000)),
+            ]);
+            permission = p;
+        } catch (e) {
+            console.error('[PushService] requestPermission failed:', e.message);
+            return { ok: false, reason: 'permission_denied', error: e.message };
+        }
     }
     if (permission !== 'granted') {
         updateState({ permission, subscribed: false });
@@ -142,18 +152,35 @@ export async function subscribePush(options = {}) {
     if (!publicKey) {
         return { ok: false, reason: 'no_public_key' };
     }
+    console.log('[PushService] Got public key, waiting for SW ready...');
 
-    const reg = await navigator.serviceWorker.ready;
+    let reg;
+    try {
+        reg = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('SW ready timeout')), 10000)),
+        ]);
+    } catch (e) {
+        console.error('[PushService] SW ready failed:', e.message);
+        return { ok: false, reason: 'subscribe_failed', error: e.message };
+    }
+    console.log('[PushService] SW ready, subscribing...');
+
     let subscription;
     try {
-        subscription = await reg.pushManager.subscribe({
-            userVisibleOnly: true, // 必须,Web Push 规范要求
-            applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
+        subscription = await Promise.race([
+            reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(publicKey),
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Push subscribe timeout')), 15000)),
+        ]);
     } catch (e) {
+        console.error('[PushService] subscribe failed:', e.message);
         updateState({ lastError: e.message });
         return { ok: false, reason: 'subscribe_failed', error: e.message };
     }
+    console.log('[PushService] Push subscribed, saving to server...');
 
     // 3. 发送到后端
     const subJson = subscription.toJSON();
@@ -166,6 +193,7 @@ export async function subscribePush(options = {}) {
                 userId: options.userId || 'default',
                 deviceName: options.deviceName || (navigator.userAgent.match(/\(([^)]+)\)/)?.[1] || 'unknown'),
             }),
+            signal: AbortSignal.timeout(15000),
         });
         if (!res.ok) {
             const txt = await res.text();

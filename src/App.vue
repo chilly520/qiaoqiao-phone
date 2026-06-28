@@ -61,8 +61,8 @@ onMounted(() => {
         }
     })
 
-    // Try immediately
-    notificationService.requestPermission()
+    // Try on user gesture only (non-gesture requestPermission() can hang on Android PWA)
+    // notificationService.requestPermission() moved to unlockKeepAlive
 
     // [FIX] PWA桌面安装后没有用户手势也会启动保活，不再仅依赖click/touchstart
     backgroundManager.enable()
