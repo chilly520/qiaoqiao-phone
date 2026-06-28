@@ -31,15 +31,32 @@ function Write-Fail {
 }
 
 # Helper: run external command, capture stdout+stderr, return clean output + exit code
+# Note: must wrap with cmd.exe because npx/npm/etc are .cmd batch files on Windows;
+# Start-Process can't run them directly without shell handling.
 function Invoke-External {
     param([string]$Cmd, [string[]]$CmdArgs = @())
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try {
-        $p = Start-Process -FilePath $Cmd -ArgumentList $CmdArgs -NoNewWindow -Wait `
-            -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
-        $stdout = Get-Content $stdoutFile -Raw -Encoding UTF8
-        $stderr = Get-Content $stderrFile -Raw -Encoding UTF8
+        # Build command line: quote args with spaces, join with spaces
+        $quoted = @()
+        foreach ($a in $CmdArgs) {
+            if ($a -match '\s|"') {
+                $quoted += '"' + ($a -replace '"', '\"') + '"'
+            } else {
+                $quoted += $a
+            }
+        }
+        $cmdLine = $Cmd + ' ' + ($quoted -join ' ')
+
+        $p = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $cmdLine) `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+
+        $stdout = ""
+        $stderr = ""
+        if (Test-Path $stdoutFile) { $stdout = Get-Content $stdoutFile -Raw -Encoding UTF8 }
+        if (Test-Path $stderrFile) { $stderr = Get-Content $stderrFile -Raw -Encoding UTF8 }
         return @{ ExitCode = $p.ExitCode; StdOut = $stdout; StdErr = $stderr; Combined = $stdout + "`n" + $stderr }
     } finally {
         Remove-Item $stdoutFile, $stderrFile -ErrorAction SilentlyContinue
@@ -163,8 +180,8 @@ function Set-Wrangler-Secret {
     $tmpFile = [System.IO.Path]::GetTempFileName()
     [System.IO.File]::WriteAllText($tmpFile, $Value, [System.Text.UTF8Encoding]::new($false))
     try {
-        $p = Start-Process -FilePath "npx" -ArgumentList @("wrangler", "secret", "put", $Name) `
-            -NoNewWindow -Wait -PassThru -RedirectStandardInput $tmpFile `
+        $p = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "npx wrangler secret put $Name < `"$tmpFile`"") `
+            -NoNewWindow -Wait -PassThru `
             -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) `
             -RedirectStandardError ([System.IO.Path]::GetTempFileName())
         if ($p.ExitCode -ne 0) {
