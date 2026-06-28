@@ -2454,8 +2454,13 @@ export const useChatStore = defineStore('chat', () => {
 
         proactiveWorker.onmessage = (e) => {
             if (e.data === 'tick') {
-                // tick 只做轻量心跳,真正的 checkProactive 留给 backgroundManager.visibilitychange 兜底
                 if (proactiveWorkerBroken) return;
+                // 每分钟检查所有聊天的 proactive 触发
+                try {
+                    Object.keys(chats.value).forEach(chatId => {
+                        checkProactive(chatId)
+                    })
+                } catch (err) { /* 静默 */ }
             }
         }
 

@@ -26,7 +26,7 @@
  *   6. npx wrangler deploy
  */
 
-import webpush from 'web-push';
+import { sendWebPush } from './web-push-cf.js';
 
 // CORS 头
 const CORS_HEADERS = {
@@ -58,24 +58,9 @@ function getVapidConfig(env) {
 
 // 推送给单个订阅
 async function sendPushToSubscription(subscription, payload, env) {
-    const vapid = getVapidConfig(env);
-    if (!vapid.publicKey || !vapid.privateKey) {
-        return { ok: false, reason: 'VAPID keys not configured' };
-    }
-
-    webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
-
     try {
-        await webpush.sendNotification(subscription, payload, {
-            TTL: 60 * 60, // 1 小时
-            urgency: 'normal',
-        });
-        return { ok: true };
+        return await sendWebPush(subscription, payload, env);
     } catch (e) {
-        // 410 Gone = 订阅已失效,清理
-        if (e.statusCode === 410 || e.statusCode === 404) {
-            return { ok: false, reason: 'subscription_gone', shouldCleanup: true };
-        }
         return { ok: false, reason: e.message || 'send_failed' };
     }
 }
@@ -83,7 +68,7 @@ async function sendPushToSubscription(subscription, payload, env) {
 // 给所有订阅广播
 async function broadcastPush(payload, env) {
     const list = await env.SUBSCRIPTIONS.list();
-    const results = { total: list.keys.length, sent: 0, failed: 0, cleaned: 0 };
+    const results = { total: list.keys.length, sent: 0, failed: 0, cleaned: 0, errors: [] };
 
     for (const key of list.keys) {
         const subJson = await env.SUBSCRIPTIONS.get(key.name);
@@ -92,11 +77,12 @@ async function broadcastPush(payload, env) {
         let sub;
         try { sub = JSON.parse(subJson); } catch (e) { continue; }
 
-        const res = await sendPushToSubscription(sub, payload, env);
+        const res = await sendPushToSubscription(sub.subscription || sub, payload, env);
         if (res.ok) {
             results.sent++;
         } else {
             results.failed++;
+            results.errors.push({ key: key.name, reason: res.reason });
             if (res.shouldCleanup) {
                 await env.SUBSCRIPTIONS.delete(key.name);
                 results.cleaned++;

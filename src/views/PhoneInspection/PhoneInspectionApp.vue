@@ -5,40 +5,56 @@
 
     <!-- 主内容区 -->
     <transition name="fade" mode="out-in">
-      <!-- Kawaii Loading State: Dreamy Synchronization -->
+      <!-- Elegant Splash Screen -->
       <div v-if="isLoading"
-        class="loading-container fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-[#F5F5FF]">
-        <div class="relative w-56 h-56 mb-12 flex items-center justify-center">
-          <!-- Dreamy Orbit -->
-          <div
-            class="absolute inset-0 rounded-full border-4 border-dashed border-pink-200 animate-spin-slow opacity-60">
-          </div>
-          <div
-            class="absolute inset-4 rounded-full border-2 border-dotted border-purple-200 animate-spin-reverse opacity-40">
-          </div>
-
-          <!-- Character Avatar with Pulse -->
-          <div
-            class="relative z-10 w-28 h-28 rounded-full border-4 border-white shadow-[0_10px_30px_rgba(255,182,193,0.4)] overflow-hidden animate-pulse-soft">
-            <img :src="currentChar?.avatar" class="w-full h-full object-cover">
-          </div>
-
-          <!-- Decorative Clouds -->
-          <div class="absolute -top-4 -right-2 text-4xl text-white opacity-80 animate-bounce-soft"><i
-              class="fa-solid fa-cloud"></i></div>
-          <div class="absolute -bottom-2 -left-4 text-3xl text-white opacity-60 animate-bounce-soft"
-            style="animation-delay: -1s"><i class="fa-solid fa-cloud"></i></div>
+        class="loading-container fixed inset-0 z-[1000] flex flex-col items-center justify-center"
+        style="background: linear-gradient(160deg, #e8f4fd 0%, #f0e6f6 50%, #fce4ec 100%);">
+        
+        <!-- Floating particles -->
+        <div class="splash-particles">
+          <div class="particle" v-for="i in 6" :key="i" :style="{ '--delay': `${i * 0.8}s`, '--x': `${15 + i * 12}%` }"></div>
         </div>
 
-        <div class="text-center px-10">
-          <h2 class="text-[#8F5E6E] font-black text-2xl tracking-widest mb-4 uppercase">正在连线 {{ charName }}
-          </h2>
-          <div
-            class="w-64 h-4 bg-white/60 rounded-full overflow-hidden border-2 border-white shadow-inner mx-auto mb-2">
-            <div class="h-full bg-gradient-to-r from-pink-300 to-purple-300 transition-all duration-300 rounded-full"
-              :style="{ width: `${progress}%` }"></div>
+        <!-- Logo area -->
+        <div class="relative mb-8">
+          <!-- Glow ring -->
+          <div class="absolute inset-[-16px] rounded-full bg-gradient-to-br from-blue-200/40 to-pink-200/40 blur-xl animate-pulse-slow"></div>
+          
+          <!-- Avatar container -->
+          <div class="relative w-24 h-24 rounded-full bg-white shadow-[0_8px_40px_rgba(100,149,237,0.3)] overflow-hidden border-[3px] border-white/80">
+            <img :src="currentChar?.avatar" class="w-full h-full object-cover" />
           </div>
-          <p class="text-[#A66D7A] text-sm font-bold opacity-60 italic">正在偷偷建立数据桥接... {{ progress }}%</p>
+          
+          <!-- Small cherry blossom accent -->
+          <div class="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center">
+            <span class="text-pink-400 text-sm">🌸</span>
+          </div>
+        </div>
+
+        <!-- App name -->
+        <div class="text-center mb-6">
+          <h1 class="text-[22px] font-light tracking-[0.15em] mb-1"
+              style="color: #3d5a80; font-family: 'SF Pro Display', -apple-system, sans-serif;">
+            CHILLY PHONE
+          </h1>
+          <p class="text-[13px] tracking-wider" style="color: #8e99a4;">
+            正在连接 {{ charName }}
+          </p>
+        </div>
+
+        <!-- Minimal progress indicator -->
+        <div class="flex flex-col items-center gap-3">
+          <!-- Thin progress line -->
+          <div class="w-48 h-[3px] bg-white/50 rounded-full overflow-hidden backdrop-blur-sm">
+            <div class="h-full rounded-full transition-all duration-500 ease-out"
+                 style="background: linear-gradient(90deg, #6495ed, #dda0dd);"
+                 :style="{ width: `${progress}%` }"></div>
+          </div>
+          
+          <!-- Progress text -->
+          <p class="text-[11px] tracking-wide" style="color: #a0aab4;">
+            {{ progress }}%
+          </p>
         </div>
       </div>
 
@@ -168,36 +184,55 @@ watch(() => route.params.charId, (newCharId) => {
   opacity: 0;
 }
 
-.loading-screen {
+/* Splash screen animations */
+.splash-particles {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  z-index: 100;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+.particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: rgba(100, 149, 237, 0.2);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-bottom: 16px;
+  left: var(--x);
+  bottom: -20px;
+  animation: float-up 4s ease-in-out infinite;
+  animation-delay: var(--delay);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+@keyframes float-up {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateY(-100vh) scale(0.5);
+    opacity: 0;
   }
 }
 
-.loading-screen p {
-  font-size: 16px;
-  opacity: 0.9;
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
 }
 </style>
