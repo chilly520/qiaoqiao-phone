@@ -51,8 +51,13 @@ class BatteryMonitor {
         if (!this.battery) return
 
         const updateHandler = () => {
+            const prevLevel = this.level
+            const prevCharging = this.charging
             this.updateBatteryInfo()
-            this.notifyChange()
+            // 只有真变了才通知,避免每 30s 触发整页重渲染
+            if (prevLevel !== this.level || prevCharging !== this.charging) {
+                this.notifyChange()
+            }
             this.checkLowBattery()
         }
 

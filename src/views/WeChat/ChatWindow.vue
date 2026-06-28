@@ -267,14 +267,15 @@ onUnmounted(() => {
 })
 
 // Status Bar Time
+// 修复前: setInterval(updateTime, 1000) 每秒 ref 写 + ChatMessageItem 80+ computed 全部重算
+// 修复后: currentTime 根本不在 template 用,直接删,改用独立小组件 (StatusBar.vue) 显示时间
 const currentTime = ref('12:00')
 
-const updateTime = () => {
+// 只在挂载时算一次初始值,不再每秒更新
+currentTime.value = (() => {
     const now = new Date()
-    currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-}
-setInterval(updateTime, 1000)
-updateTime()
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+})()
 
 // Battery Status
 const batteryLevel = ref(100)
