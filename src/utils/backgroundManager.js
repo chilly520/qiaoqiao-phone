@@ -190,27 +190,23 @@ class BackgroundManager {
         if (this._unlockerInstalled) return;
         this._unlockerInstalled = true;
 
-        const unlock = async (e) => {
+        const unlock = (e) => {
             // 防止 click 等合成事件重复触发
             if (this._unlockerFired) return;
             this._unlockerFired = true;
 
-            // 优先调一次(可能会成功,因为这次调用确实在用户手势上下文里)
-            const ok = await this.startAudioPlayback();
+            // 异步 fire-and-forget,避免阻塞后续事件链路(尤其是 PWA 内导航的 click)
+            this.startAudioPlayback().then((ok) => {
+                window.dispatchEvent(new CustomEvent('keep-alive-unlocked', { detail: { ok } }));
+                if (ok) {
+                    this.log('Autoplay unlocked successfully on first user gesture.', 'info');
+                }
+            }).catch(() => {});
 
-            // 移除所有 unlock 监听器
+            // 立即移除所有 unlock 监听器(不等 startAudioPlayback 完成)
             ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(type => {
                 document.removeEventListener(type, unlock, true);
             });
-
-            // 广播事件,UI 层可以监听
-            window.dispatchEvent(new CustomEvent('keep-alive-unlocked', { detail: { ok } }));
-
-            if (ok) {
-                this.log('Autoplay unlocked successfully on first user gesture.', 'info');
-            } else {
-                this.log('Autoplay still blocked after user gesture, may need direct interaction with audio element.', 'error');
-            }
         };
 
         ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(type => {
