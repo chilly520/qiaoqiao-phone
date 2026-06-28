@@ -108,49 +108,50 @@ Write-Step "3/6 Create KV namespaces"
 function Get-Or-Create-KV {
     param([string]$Name)
     $list = Invoke-External "npx" @("wrangler", "kv:namespace", "list")
-    if ($list.ExitCode -ne 0) {
-        # wrangler prints to stderr but also returns the list; check StdOut
-        if ([string]::IsNullOrWhiteSpace($list.StdOut)) {
-            throw "wrangler kv:namespace list failed: $($list.Combined)"
-        }
+    if ($list.ExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($list.StdOut)) {
+        throw "wrangler kv:namespace list failed: $($list.Combined)"
     }
 
-    # wrangler v3 uses single quotes, v4 uses JSON double quotes.
-    # Normalize: replace ' with " for parsing, then search for title match.
+    # Try to find existing namespace with this name.
+    # Approach 1: parse as JSON (after normalizing single→double quotes)
+    $existing = $null
     $normalized = $list.StdOut -replace "'", '"'
 
-    # Try multiple patterns to find {id:"...", title:"Name"} or {id:'...', title:'Name'}
-    # Pattern 1: JSON-like "id":"...","title":"Name"
-    $pattern1 = '"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"'
-    # Pattern 2: title first, then id
-    $pattern2 = '"title"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"'
-    # Pattern 3: id and title on separate lines (wrangler v3 single-quote form)
-    # In PowerShell single-quoted strings, single quote inside is escaped as ''
-    $pattern3 = 'id:\s*[''"]([^''"]+)[''"]\s*[,\s]+title:\s*[''"]([^''"]+)[''"]'
-
-    $allMatches = @()
-    foreach ($p in @($pattern1, $pattern2, $pattern3)) {
-        $regex = [regex]::Matches($normalized, $p)
-        foreach ($m in $regex) {
-            $allMatches += $m
+    try {
+        $parsed = $normalized | ConvertFrom-Json -ErrorAction Stop
+        $items = @($parsed)
+        foreach ($item in $items) {
+            $t = $item.title
+            if ($t -eq $Name -or $t -like "*-$Name" -or $t -eq "chilly-phone-push-$Name") {
+                $existing = $item.id
+                break
+            }
         }
+    } catch {
+        # JSON parse failed - fall through to regex
     }
 
-    # Look for the namespace whose title ends with the desired name
-    # (wrangler may prefix with worker name: "chilly-phone-push-SUBSCRIPTIONS")
-    $existing = $null
-    foreach ($m in $allMatches) {
-        # Determine which group is the title
-        if ($m.Groups.Count -ge 3) {
-            $id = $m.Groups[1].Value
-            $title = $m.Groups[2].Value
-            # Some patterns may capture differently; check
-            if ($title -eq $Name -or $title -like "*-$Name" -or $title -like "*$Name") {
-                if ($title -eq $Name -or $title -like "*-$Name") {
-                    $existing = $id
-                    break
+    # Approach 2: regex fallback
+    if (-not $existing) {
+        # Try multiple patterns
+        $patterns = @(
+            '"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"',
+            '"title"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"',
+            'id:\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]\s*[,\s]+title:\s*[\x22\x27]([^\x22\x27]+)[\x22\x27]'
+        )
+        foreach ($p in $patterns) {
+            $matches = [regex]::Matches($normalized, $p)
+            foreach ($m in $matches) {
+                if ($m.Groups.Count -ge 3) {
+                    $id = $m.Groups[1].Value
+                    $title = $m.Groups[2].Value
+                    if ($title -eq $Name -or $title -like "*-$Name") {
+                        $existing = $id
+                        break
+                    }
                 }
             }
+            if ($existing) { break }
         }
     }
 
@@ -159,16 +160,14 @@ function Get-Or-Create-KV {
         return $existing
     }
 
-    # Not found in list - try to create
+    # Not found - try to create
     Write-Host "  Creating $Name ..." -ForegroundColor Yellow
     $create = Invoke-External "npx" @("wrangler", "kv:namespace", "create", $Name)
     if ($create.ExitCode -ne 0) {
-        # "already exists" error - this means we missed parsing the list
         if ($create.Combined -match "already exists") {
-            Write-Warn "Create said 'already exists' but list didn't find it. Listing again for manual inspection:"
-            $list2 = Invoke-External "npx" @("wrangler", "kv:namespace", "list")
-            Write-Host $list2.StdOut
-            throw "Cannot find $Name in list. Please run 'npx wrangler kv:namespace list' and report the output."
+            Write-Warn "Create says 'already exists' but list didn't return it. Raw list output:"
+            Write-Host $list.StdOut -ForegroundColor DarkYellow
+            throw "Cannot locate $Name. Check raw list output above."
         }
         throw "Failed to create $Name : $($create.Combined)"
     }
