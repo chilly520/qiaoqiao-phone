@@ -124,8 +124,9 @@ function Get-Or-Create-KV {
     $pattern1 = '"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"'
     # Pattern 2: title first, then id
     $pattern2 = '"title"\s*:\s*"([^"]+)"\s*,\s*"id"\s*:\s*"([^"]+)"'
-    # Pattern 3: id and title on separate lines
-    $pattern3 = 'id:\s*[\'"]([^\'"]+)[\'"]\s*[,\s]+title:\s*[\'"]([^\'"]+)[\'"]'
+    # Pattern 3: id and title on separate lines (wrangler v3 single-quote form)
+    # In PowerShell single-quoted strings, single quote inside is escaped as ''
+    $pattern3 = 'id:\s*[''"]([^''"]+)[''"]\s*[,\s]+title:\s*[''"]([^''"]+)[''"]'
 
     $allMatches = @()
     foreach ($p in @($pattern1, $pattern2, $pattern3)) {
