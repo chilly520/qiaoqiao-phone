@@ -197,47 +197,53 @@ $schId = Get-Or-Create-KV "SCHEDULED"
 # ---------- 4. Update wrangler.toml ----------
 Write-Step "4/6 Update wrangler.toml"
 
-# Simple line-by-line replacement (most reliable on PowerShell 5.1)
-$lines = [System.IO.File]::ReadAllLines("wrangler.toml")
-$currentBinding = ""
-$subReplaced = 0
-$schReplaced = 0
-for ($i = 0; $i -lt $lines.Length; $i++) {
-    $line = $lines[$i]
-    if ($line -match 'binding\s*=\s*"(SUBSCRIPTIONS|SCHEDULED)"') {
-        $currentBinding = $Matches[1]
+$toml = [System.IO.File]::ReadAllText("wrangler.toml", [System.Text.UTF8Encoding]::new($true))
+
+# Check if IDs are already filled in (not placeholders)
+$hasPlaceholders = $toml -match 'REPLACE_WITH_ACTUAL_ID' -or $toml -match 'REPLACE_WITH_PREVIEW_ID'
+
+if ($hasPlaceholders) {
+    # Simple line-by-line replacement
+    $lines = [System.IO.File]::ReadAllLines("wrangler.toml")
+    $currentBinding = ""
+    $subReplaced = 0
+    $schReplaced = 0
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        $line = $lines[$i]
+        if ($line -match 'binding\s*=\s*"(SUBSCRIPTIONS|SCHEDULED)"') {
+            $currentBinding = $Matches[1]
+        }
+        if ($line -match 'REPLACE_WITH_ACTUAL_ID' -or $line -match 'REPLACE_WITH_PREVIEW_ID') {
+            $id = if ($currentBinding -eq "SUBSCRIPTIONS") { $subId } else { $schId }
+            $line = $line -replace 'REPLACE_WITH_ACTUAL_ID', $id
+            $line = $line -replace 'REPLACE_WITH_PREVIEW_ID', $id
+            if ($currentBinding -eq "SUBSCRIPTIONS") { $subReplaced++ } else { $schReplaced++ }
+            $lines[$i] = $line
+        }
     }
-    if ($line -match 'id\s*=\s*"REPLACE_WITH_ACTUAL_ID"' -or $line -match 'preview_id\s*=\s*"REPLACE_WITH_PREVIEW_ID"') {
-        $id = if ($currentBinding -eq "SUBSCRIPTIONS") { $subId } else { $schId }
-        $line = $line -replace 'REPLACE_WITH_ACTUAL_ID', $id
-        $line = $line -replace 'REPLACE_WITH_PREVIEW_ID', $id
-        if ($currentBinding -eq "SUBSCRIPTIONS") { $subReplaced++ } else { $schReplaced++ }
-        $lines[$i] = $line
+    $toml = ($lines -join "`r`n")
+
+    if ($toml -match 'REPLACE_WITH_ACTUAL_ID' -or $toml -match 'REPLACE_WITH_PREVIEW_ID') {
+        throw "wrangler.toml still has REPLACE placeholders. subReplaced=$subReplaced schReplaced=$schReplaced"
     }
+    [System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
+    Write-Ok "wrangler.toml updated (SUBSCRIPTIONS: $subReplaced lines, SCHEDULED: $schReplaced lines)"
+} else {
+    Write-Skip "wrangler.toml already has real IDs, no replacement needed"
 }
-$toml = ($lines -join "`r`n")
 
 # Ensure compatibility_flags = ["nodejs_compat"] is present
 if ($toml -notmatch 'compatibility_flags') {
     $toml = $toml -replace '(compatibility_date\s*=\s*"[^"]+")', ('$1' + "`ncompatibility_flags = [""nodejs_compat""]")
+    [System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
     Write-Ok "Added compatibility_flags = [nodejs_compat]"
 } elseif ($toml -notmatch 'nodejs_compat') {
     $toml = $toml -replace 'compatibility_flags\s*=\s*\[([^\]]*)\]', 'compatibility_flags = [$1, "nodejs_compat"]'
+    [System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
     Write-Ok "Appended nodejs_compat to compatibility_flags"
 } else {
     Write-Skip "compatibility_flags already includes nodejs_compat"
 }
-
-# Verify replacement actually happened
-if ($toml -match 'REPLACE_WITH_ACTUAL_ID' -or $toml -match 'REPLACE_WITH_PREVIEW_ID') {
-    throw "wrangler.toml still has REPLACE placeholders. subReplaced=$subReplaced schReplaced=$schReplaced"
-}
-if ($subReplaced -lt 2 -or $schReplaced -lt 2) {
-    Write-Warn "Replaced counts: SUBSCRIPTIONS=$subReplaced SCHEDULED=$schReplaced (expected >=2 each)"
-}
-
-[System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
-Write-Ok "wrangler.toml updated (SUBSCRIPTIONS: $subReplaced lines, SCHEDULED: $schReplaced lines)"
 
 # ---------- 5. Generate VAPID keys + set secrets ----------
 Write-Step "5/6 Generate VAPID keys + write secrets"

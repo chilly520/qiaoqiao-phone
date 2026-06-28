@@ -13,13 +13,13 @@ compatibility_flags = ["nodejs_compat"]
 # 然后把返回的 id 填到下面
 [[kv_namespaces]]
 binding = "SUBSCRIPTIONS"
-id = "REPLACE_WITH_ACTUAL_ID"
-preview_id = "REPLACE_WITH_PREVIEW_ID"
+id = "0d15423354084db0b20e4d8ae5ac11dd"
+preview_id = "0d15423354084db0b20e4d8ae5ac11dd"
 
 [[kv_namespaces]]
 binding = "SCHEDULED"
-id = "REPLACE_WITH_ACTUAL_ID"
-preview_id = "REPLACE_WITH_PREVIEW_ID"
+id = "43de0bda83474f61ad10bc87f7fa41cd"
+preview_id = "43de0bda83474f61ad10bc87f7fa41cd"
 
 # --- 定时触发器:每分钟跑一次,处理已到期的排程推送 ---
 [triggers]
