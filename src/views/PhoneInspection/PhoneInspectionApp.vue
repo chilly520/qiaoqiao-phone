@@ -5,56 +5,46 @@
 
     <!-- 主内容区 -->
     <transition name="fade" mode="out-in">
-      <!-- Elegant Splash Screen -->
+      <!-- Splash Screen with Cat Logo -->
       <div v-if="isLoading"
         class="loading-container fixed inset-0 z-[1000] flex flex-col items-center justify-center"
-        style="background: linear-gradient(160deg, #e8f4fd 0%, #f0e6f6 50%, #fce4ec 100%);">
+        style="background: linear-gradient(180deg, #f0f8ff 0%, #e8f0fa 50%, #dfe8f5 100%);">
         
-        <!-- Floating particles -->
-        <div class="splash-particles">
-          <div class="particle" v-for="i in 6" :key="i" :style="{ '--delay': `${i * 0.8}s`, '--x': `${15 + i * 12}%` }"></div>
+        <!-- Floating snowflakes -->
+        <div class="splash-snowflakes">
+          <div class="snowflake" v-for="i in 8" :key="i" 
+               :style="{ '--delay': `${i * 0.6}s`, '--x': `${10 + i * 10}%`, '--size': `${12 + (i % 3) * 4}px` }">
+            ❄
+          </div>
         </div>
 
-        <!-- Logo area -->
-        <div class="relative mb-8">
-          <!-- Glow ring -->
-          <div class="absolute inset-[-16px] rounded-full bg-gradient-to-br from-blue-200/40 to-pink-200/40 blur-xl animate-pulse-slow"></div>
-          
-          <!-- Avatar container -->
-          <div class="relative w-24 h-24 rounded-full bg-white shadow-[0_8px_40px_rgba(100,149,237,0.3)] overflow-hidden border-[3px] border-white/80">
-            <img :src="currentChar?.avatar" class="w-full h-full object-cover" />
-          </div>
-          
-          <!-- Small cherry blossom accent -->
-          <div class="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center">
-            <span class="text-pink-400 text-sm">🌸</span>
-          </div>
+        <!-- Cat Logo with glow -->
+        <div class="relative mb-6">
+          <div class="absolute inset-[-24px] rounded-full opacity-40"
+               style="background: radial-gradient(circle, rgba(180,210,240,0.6) 0%, transparent 70%);"></div>
+          <img src="/cat-logo.png" class="relative w-40 h-40 object-contain drop-shadow-[0_8px_32px_rgba(150,190,220,0.4)]"
+               style="animation: cat-float 3s ease-in-out infinite;" />
         </div>
 
         <!-- App name -->
-        <div class="text-center mb-6">
-          <h1 class="text-[22px] font-light tracking-[0.15em] mb-1"
-              style="color: #3d5a80; font-family: 'SF Pro Display', -apple-system, sans-serif;">
+        <div class="text-center mb-8">
+          <h1 class="text-[20px] font-light tracking-[0.2em] mb-2"
+              style="color: #7ba7c9; font-family: 'SF Pro Display', -apple-system, sans-serif;">
             CHILLY PHONE
           </h1>
-          <p class="text-[13px] tracking-wider" style="color: #8e99a4;">
-            正在连接 {{ charName }}
+          <p class="text-[12px] tracking-wider" style="color: #a8c4d8;">
+            正在连接 {{ charName }}...
           </p>
         </div>
 
-        <!-- Minimal progress indicator -->
-        <div class="flex flex-col items-center gap-3">
-          <!-- Thin progress line -->
-          <div class="w-48 h-[3px] bg-white/50 rounded-full overflow-hidden backdrop-blur-sm">
+        <!-- Progress -->
+        <div class="flex flex-col items-center gap-2">
+          <div class="w-40 h-[2px] rounded-full overflow-hidden" style="background: rgba(180,210,240,0.3);">
             <div class="h-full rounded-full transition-all duration-500 ease-out"
-                 style="background: linear-gradient(90deg, #6495ed, #dda0dd);"
+                 style="background: linear-gradient(90deg, #a8d4f0, #7ba7c9);"
                  :style="{ width: `${progress}%` }"></div>
           </div>
-          
-          <!-- Progress text -->
-          <p class="text-[11px] tracking-wide" style="color: #a0aab4;">
-            {{ progress }}%
-          </p>
+          <p class="text-[10px] tracking-wide" style="color: #b8c8d8;">{{ progress }}%</p>
         </div>
       </div>
 
@@ -185,54 +175,46 @@ watch(() => route.params.charId, (newCharId) => {
 }
 
 /* Splash screen animations */
-.splash-particles {
+.splash-snowflakes {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
 }
 
-.particle {
+.snowflake {
   position: absolute;
-  width: 6px;
-  height: 6px;
-  background: rgba(100, 149, 237, 0.2);
-  border-radius: 50%;
+  font-size: var(--size, 14px);
+  color: rgba(180, 210, 240, 0.4);
   left: var(--x);
-  bottom: -20px;
-  animation: float-up 4s ease-in-out infinite;
+  bottom: -30px;
+  animation: snow-fall 5s ease-in-out infinite;
   animation-delay: var(--delay);
 }
 
-@keyframes float-up {
+@keyframes snow-fall {
   0% {
-    transform: translateY(0) scale(1);
+    transform: translateY(0) rotate(0deg);
     opacity: 0;
   }
-  20% {
-    opacity: 0.6;
+  15% {
+    opacity: 0.7;
   }
-  80% {
-    opacity: 0.3;
+  85% {
+    opacity: 0.4;
   }
   100% {
-    transform: translateY(-100vh) scale(0.5);
+    transform: translateY(-100vh) rotate(360deg);
     opacity: 0;
   }
 }
 
-.animate-pulse-slow {
-  animation: pulse-slow 3s ease-in-out infinite;
-}
-
-@keyframes pulse-slow {
+@keyframes cat-float {
   0%, 100% {
-    opacity: 0.4;
-    transform: scale(1);
+    transform: translateY(0);
   }
   50% {
-    opacity: 0.7;
-    transform: scale(1.05);
+    transform: translateY(-8px);
   }
 }
 </style>
