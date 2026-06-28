@@ -197,21 +197,25 @@ $schId = Get-Or-Create-KV "SCHEDULED"
 # ---------- 4. Update wrangler.toml ----------
 Write-Step "4/6 Update wrangler.toml"
 
-$toml = [System.IO.File]::ReadAllText("wrangler.toml", [System.Text.UTF8Encoding]::new($true))
-
-# Use [regex]::Replace with a match evaluator (much more reliable than -replace with $1/$2 backrefs)
-$toml = [regex]::Replace($toml, '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', {
-    param($m) $m.Groups[1].Value + $subId + $m.Groups[2].Value
-}, 'Singleline')
-$toml = [regex]::Replace($toml, '(binding\s*=\s*"SUBSCRIPTIONS"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', {
-    param($m) $m.Groups[1].Value + $subId + $m.Groups[2].Value
-}, 'Singleline')
-$toml = [regex]::Replace($toml, '(binding\s*=\s*"SCHEDULED"[\s\S]*?id\s*=\s*")REPLACE_WITH_ACTUAL_ID(")', {
-    param($m) $m.Groups[1].Value + $schId + $m.Groups[2].Value
-}, 'Singleline')
-$toml = [regex]::Replace($toml, '(binding\s*=\s*"SCHEDULED"[\s\S]*?preview_id\s*=\s*")REPLACE_WITH_PREVIEW_ID(")', {
-    param($m) $m.Groups[1].Value + $schId + $m.Groups[2].Value
-}, 'Singleline')
+# Simple line-by-line replacement (most reliable on PowerShell 5.1)
+$lines = [System.IO.File]::ReadAllLines("wrangler.toml")
+$currentBinding = ""
+$subReplaced = 0
+$schReplaced = 0
+for ($i = 0; $i -lt $lines.Length; $i++) {
+    $line = $lines[$i]
+    if ($line -match 'binding\s*=\s*"(SUBSCRIPTIONS|SCHEDULED)"') {
+        $currentBinding = $Matches[1]
+    }
+    if ($line -match 'id\s*=\s*"REPLACE_WITH_ACTUAL_ID"' -or $line -match 'preview_id\s*=\s*"REPLACE_WITH_PREVIEW_ID"') {
+        $id = if ($currentBinding -eq "SUBSCRIPTIONS") { $subId } else { $schId }
+        $line = $line -replace 'REPLACE_WITH_ACTUAL_ID', $id
+        $line = $line -replace 'REPLACE_WITH_PREVIEW_ID', $id
+        if ($currentBinding -eq "SUBSCRIPTIONS") { $subReplaced++ } else { $schReplaced++ }
+        $lines[$i] = $line
+    }
+}
+$toml = ($lines -join "`r`n")
 
 # Ensure compatibility_flags = ["nodejs_compat"] is present
 if ($toml -notmatch 'compatibility_flags') {
@@ -226,11 +230,14 @@ if ($toml -notmatch 'compatibility_flags') {
 
 # Verify replacement actually happened
 if ($toml -match 'REPLACE_WITH_ACTUAL_ID' -or $toml -match 'REPLACE_WITH_PREVIEW_ID') {
-    throw "wrangler.toml still has REPLACE placeholders after substitution. Replacement failed."
+    throw "wrangler.toml still has REPLACE placeholders. subReplaced=$subReplaced schReplaced=$schReplaced"
+}
+if ($subReplaced -lt 2 -or $schReplaced -lt 2) {
+    Write-Warn "Replaced counts: SUBSCRIPTIONS=$subReplaced SCHEDULED=$schReplaced (expected >=2 each)"
 }
 
 [System.IO.File]::WriteAllText("wrangler.toml", $toml, [System.Text.UTF8Encoding]::new($false))
-Write-Ok "wrangler.toml updated (IDs injected)"
+Write-Ok "wrangler.toml updated (SUBSCRIPTIONS: $subReplaced lines, SCHEDULED: $schReplaced lines)"
 
 # ---------- 5. Generate VAPID keys + set secrets ----------
 Write-Step "5/6 Generate VAPID keys + write secrets"
