@@ -205,33 +205,6 @@ const showBanner = ref(false)
 const bannerData = ref(null)
 let bannerTimer = null
 
-// --- Background Keep-alive Status Banner ---
-// [FIX] 后台保活需要用户首次点击解锁 autoplay policy
-// 用一个轻量 toast 提示用户,3 秒后自动消失,或解锁成功后立即消失
-const showKeepAliveHint = ref(false)
-let keepAliveHintTimer = null
-
-onMounted(() => {
-    // 启动后 1.5s 如果还没解锁,显示提示
-    keepAliveHintTimer = setTimeout(() => {
-        if (backgroundManager.keepAliveWorking !== true) {
-            showKeepAliveHint.value = true
-        }
-    }, 1500)
-
-    // 监听解锁事件,解锁成功后立即消失
-    window.addEventListener('keep-alive-unlocked', (e) => {
-        if (e.detail?.ok) {
-            showKeepAliveHint.value = false
-            if (keepAliveHintTimer) clearTimeout(keepAliveHintTimer)
-        }
-    })
-})
-
-onUnmounted(() => {
-    if (keepAliveHintTimer) clearTimeout(keepAliveHintTimer)
-})
-
 // Swipe Logic
 const bannerDragOffset = ref(0)
 const isBannerDragging = ref(false)

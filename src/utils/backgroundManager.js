@@ -48,12 +48,20 @@ class BackgroundManager {
 
         if (this.initialized) return;
 
-        this.log('Initializing background keep-alive system (v3: media-session + audible audio + network heartbeat)...', 'info');
+        this.log('Initializing background keep-alive system (v4: real <audio> + mediaSession)...', 'info');
+        // 1) 程序化创建 <audio>,挂到 DOM,这是 MediaSession 显示通知卡的必要条件
+        this.createAudioElement();
+        // 2) 创建 Web Audio 振荡器作为"出声身份"双保险(部分浏览器会同时看 audio 元素和音频节点)
         this.createWebAudioKeepAlive();
+        // 3) 注册 MediaSession + 行为回调
         this.setupMediaSession();
+        // 4) 网络心跳
         this.startNetworkHeartbeat();
+        // 5) 可见性切换
         this.setupVisibilityHandler();
+        // 6) 首次手势解锁
         this.setupUserGestureUnlocker();
+        // 7) 兜底周期任务
         this.startCheckInterval();
 
         this.initialized = true;
@@ -71,10 +79,41 @@ class BackgroundManager {
     }
 
     /**
-     * Web Audio 振荡器保活（v3 终极版）：
-     * 1) 不再额外创建 <audio> 元素 — 一个 AudioContext 搞定所有音频身份, MediaSession 才能识别
-     * 2) 100Hz(人耳能听到但手机扬声器物理响应接近 0)+ gain=0.05, OS 看到有非零音频输出
-     * 3) 必须等用户手势才能 resume(),否则被 autoplay policy 静默拦截
+     * 程序化创建 <audio> 元素 + 挂到 DOM。
+     * 关键: 现代移动浏览器(Edge Mobile / Chrome Android)只在有真实 <audio>/<video>
+     * 元素在播放时,才会在通知栏显示媒体卡片并放宽后台 JS 限制。
+     * 单独的 Web Audio 振荡器 + MediaSession metadata 不够。
+     */
+    createAudioElement() {
+        try {
+            if (this.audio && this.audio.parentNode) return;
+
+            const a = new Audio();
+            a.id = 'qiaqiao-keepalive-audio';
+            a.src = '/silent.wav';
+            a.loop = true;
+            // 必须非 0:浏览器会基于 volume 判断是否有可听输出,volume=0 会被识别为静默媒体并 pause
+            a.volume = 0.01;
+            a.muted = false;
+            a.preload = 'auto';
+            a.setAttribute('playsinline', '');
+            a.setAttribute('webkit-playsinline', '');
+            // 隐藏起来但保留在 DOM(部分浏览器要求 audio 元素在文档中)
+            a.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+            document.body.appendChild(a);
+
+            this.audio = a;
+            this.log('<audio> element created and attached to DOM (src=/silent.wav, loop, volume=0.01).', 'info');
+        } catch (e) {
+            this.log('createAudioElement failed: ' + (e.message || e.name), 'error');
+        }
+    }
+
+    /**
+     * Web Audio 振荡器保活（v4 双保险）：
+     * Web Audio 振荡器 + 真实 <audio> 元素双管齐下,确保 OS 真的把页面当媒体 App。
+     * 1) 100Hz(人耳能听到但手机扬声器物理响应接近 0)+ gain=0.05, OS 看到有非零音频输出
+     * 2) 必须等用户手势才能 resume(),否则被 autoplay policy 静默拦截
      */
     createWebAudioKeepAlive() {
         try {
@@ -103,30 +142,55 @@ class BackgroundManager {
     }
 
     /**
-     * 尝试启动音频 + 更新 MediaSession。在用户手势上下文中调用才能成功。
+     * 启动音频 + 更新 MediaSession。在用户手势上下文中调用才能成功。
+     * v4: 优先播真实 <audio> 元素,失败再回退到 Web Audio 振荡器 resume。
      */
     async startAudioPlayback() {
-        if (!this.audioCtx) {
-            this.log('Cannot start audio: no AudioContext.', 'error');
-            return false;
-        }
-        try {
-            if (this.audioCtx.state === 'suspended') {
-                await this.audioCtx.resume();
+        let audioOk = false;
+        let ctxOk = false;
+
+        // 1) 真实 <audio> 元素:这是通知栏出现媒体卡片的硬性条件
+        if (this.audio) {
+            try {
+                if (this.audio.paused) {
+                    await this.audio.play();
+                }
+                audioOk = !this.audio.paused;
+                if (audioOk) {
+                    this.log(`<audio> playing. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)}`, 'info');
+                } else {
+                    this.log('<audio> still paused after play() call.', 'error');
+                }
+            } catch (e) {
+                this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
             }
-            this.isActive = this.audioCtx.state === 'running';
-            this.keepAliveWorking = this.isActive;
-            if (this.isActive) {
-                this.setupMediaSession();
-                this.log(`Audio playback started. AudioContext state=${this.audioCtx.state}. MediaSession updated.`, 'info');
-            } else {
-                this.log(`Audio still not running (state=${this.audioCtx.state}).`, 'error');
-            }
-            return this.isActive;
-        } catch (e) {
-            this.log('startAudioPlayback failed: ' + (e.message || e.name), 'error');
-            return false;
+        } else {
+            this.log('No <audio> element to play.', 'error');
         }
+
+        // 2) Web Audio 振荡器:作为"出声身份"双保险
+        if (this.audioCtx) {
+            try {
+                if (this.audioCtx.state === 'suspended') {
+                    await this.audioCtx.resume();
+                }
+                ctxOk = this.audioCtx.state === 'running';
+            } catch (e) {
+                this.log('AudioContext resume failed: ' + (e.message || e.name), 'error');
+            }
+        }
+
+        this.isActive = audioOk || ctxOk;
+        this.keepAliveWorking = this.isActive;
+
+        if (this.isActive) {
+            this.setupMediaSession();
+            this.log(`Keep-alive active. audioOk=${audioOk} ctxOk=${ctxOk}`, 'info');
+        } else {
+            this.log('Both <audio> and AudioContext failed to start.', 'error');
+        }
+
+        return this.isActive;
     }
 
     /**
@@ -171,10 +235,10 @@ class BackgroundManager {
      * MediaSession API:声明"正在播放媒体"。
      * 这会让 Android 把页面当作音乐类 App 看待,通知栏出现媒体卡片,
      * 后台 JS 执行被显著放宽(类比 Spotify/网易云在后台保活)。
+     * v4: 绑定到真实 <audio> 元素,这是通知栏出现媒体卡片的硬性条件。
      */
     setupMediaSession() {
         if (!('mediaSession' in navigator)) return;
-        if (this.mediaSessionSet) return;
         try {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: '乔乔手机',
@@ -187,8 +251,23 @@ class BackgroundManager {
             });
             // 声明播放状态为 playing,这是关键
             navigator.mediaSession.playbackState = 'playing';
+
+            // 注册 action handlers,让媒体卡片上的按钮能控制 audio
+            // (虽然保活场景下我们不希望用户暂停,所以这些是 no-op)
+            const noop = () => { /* keep-alive 必须保持 playing */ };
+            navigator.mediaSession.setActionHandler('play', () => {
+                if (this.audio) this.audio.play().catch(() => {});
+            });
+            navigator.mediaSession.setActionHandler('pause', noop);
+            navigator.mediaSession.setActionHandler('previoustrack', noop);
+            navigator.mediaSession.setActionHandler('nexttrack', noop);
+            navigator.mediaSession.setActionHandler('seekbackward', noop);
+            navigator.mediaSession.setActionHandler('seekforward', noop);
+            navigator.mediaSession.setActionHandler('seekto', noop);
+            navigator.mediaSession.setActionHandler('stop', noop);
+
             this.mediaSessionSet = true;
-            this.log('MediaSession metadata set (playbackState=playing).', 'info');
+            this.log('MediaSession metadata set (playbackState=playing, action handlers bound to <audio>).', 'info');
         } catch (e) {
             this.log('MediaSession setup failed: ' + (e.message || e.name), 'error');
         }
