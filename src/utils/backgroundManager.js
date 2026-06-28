@@ -557,29 +557,16 @@ class BackgroundManager {
                 }
 
                 if (this.heartbeatLogCount < 3) {
-                    this.log('Running background heartbeat...', 'info');
+                    this.log('Running background heartbeat (60s)...', 'info');
                     this.heartbeatLogCount++;
                 }
-
-                try {
-                    const { useChatStore } = await import('../stores/chatStore.js');
-                    const chatStore = useChatStore();
-                    const chats = chatStore.chats;
-                    if (chats) {
-                        Object.keys(chats).forEach(chatId => {
-                            chatStore.checkProactive(chatId);
-                        });
-                    }
-                } catch (e) { /* 静默 */ }
-
-                // 周期性地重排下一次原生系统通知,保证状态变化后下一次排程是最新的
-                this.computeAndScheduleNextNotification().catch(() => {});
+                // 移除每周期重排,避免 CPU spike;通知排程只在 init / visibilitychange 触发
             } catch (error) {
                 this.log(`Error in background check: ${error.message}`, 'error');
             }
-        }, 20000);
+        }, 60000);
 
-        this.log('Background check interval started (20s)', 'info');
+        this.log('Background check interval started (60s)', 'info');
     }
 
     stopCheckInterval() {
