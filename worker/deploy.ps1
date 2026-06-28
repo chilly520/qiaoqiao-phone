@@ -32,11 +32,11 @@ function Write-Fail {
 
 # Helper: run external command, capture stdout+stderr, return clean output + exit code
 function Invoke-External {
-    param([string]$Cmd, [string[]]$Args = @())
+    param([string]$Cmd, [string[]]$CmdArgs = @())
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try {
-        $p = Start-Process -FilePath $Cmd -ArgumentList $Args -NoNewWindow -Wait `
+        $p = Start-Process -FilePath $Cmd -ArgumentList $CmdArgs -NoNewWindow -Wait `
             -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
         $stdout = Get-Content $stdoutFile -Raw -Encoding UTF8
         $stderr = Get-Content $stderrFile -Raw -Encoding UTF8
