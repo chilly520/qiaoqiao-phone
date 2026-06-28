@@ -205,6 +205,33 @@ const showBanner = ref(false)
 const bannerData = ref(null)
 let bannerTimer = null
 
+// --- Background Keep-alive Status Banner ---
+// [FIX] 后台保活需要用户首次点击解锁 autoplay policy
+// 用一个轻量 toast 提示用户,3 秒后自动消失,或解锁成功后立即消失
+const showKeepAliveHint = ref(false)
+let keepAliveHintTimer = null
+
+onMounted(() => {
+    // 启动后 1.5s 如果还没解锁,显示提示
+    keepAliveHintTimer = setTimeout(() => {
+        if (backgroundManager.keepAliveWorking !== true) {
+            showKeepAliveHint.value = true
+        }
+    }, 1500)
+
+    // 监听解锁事件,解锁成功后立即消失
+    window.addEventListener('keep-alive-unlocked', (e) => {
+        if (e.detail?.ok) {
+            showKeepAliveHint.value = false
+            if (keepAliveHintTimer) clearTimeout(keepAliveHintTimer)
+        }
+    })
+})
+
+onUnmounted(() => {
+    if (keepAliveHintTimer) clearTimeout(keepAliveHintTimer)
+})
+
 // Swipe Logic
 const bannerDragOffset = ref(0)
 const isBannerDragging = ref(false)
@@ -456,6 +483,14 @@ const handleGlobalPromptCancel = () => {
                     }}</div>
                 </div>
             </div>
+        </div>
+
+        <!-- Background Keep-alive Hint (autoplay unlock prompt) -->
+        <div v-if="showKeepAliveHint"
+            class="fixed top-12 left-1/2 px-4 py-2.5 rounded-2xl backdrop-blur-lg shadow-lg z-[10500] flex items-center gap-2 border border-amber-200/50 animate-toast-pop"
+            style="transform: translateX(-50%); background: linear-gradient(135deg, rgba(251, 191, 36, 0.92), rgba(245, 158, 11, 0.92));">
+            <i class="fa-solid fa-hand-pointer text-white text-sm drop-shadow"></i>
+            <span class="text-white text-[12px] font-medium drop-shadow">点击任意位置,启用后台保活</span>
         </div>
 
         <!-- Global Toast Notification -->
