@@ -52,7 +52,10 @@ function urlBase64ToUint8Array(base64String) {
 async function getServerPublicKey() {
     if (!SERVER_URL) return null;
     try {
-        const res = await fetch(`${SERVER_URL}/vapid-public-key`, { method: 'GET' });
+        const res = await fetch(`${SERVER_URL}/vapid-public-key`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(10000),
+        });
         if (!res.ok) return null;
         const data = await res.json();
         return data.publicKey;
