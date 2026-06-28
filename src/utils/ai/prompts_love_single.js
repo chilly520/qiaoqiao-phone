@@ -40,13 +40,14 @@ export function generateDiaryPrompt(charName, userName, userProfile, recentChats
 ${recentDiary.slice(-5).map(d => `${d.authorName || '我'}: 《${d.title}》- ${d.content.substring(0, 100)}...`).join('\n') || '（空间暂无历史日记）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "diary",
   "title": "富有仪式感的标题",
   "weather": "晴/雨/微风等",
   "mood": "心动/宁静/依恋等",
   "content": "150-300 字的深情记述，语言优美，富有生活气息"
-}]
+}
+
 
 【格式要求】
 1. **必须包含完整日期**：在开头写明"年 月 日 星期 X"
@@ -72,7 +73,8 @@ export function generateMessagePrompt(charName, userName, userProfile, recentCha
 这类似于在对方的"空间留言板"留言，而不是发送即时消息。语气应带有留念、关怀或逗趣。
 
 【留言板历史 (最后 5 条)】
-${recentMessages.slice(-5).map(m => `[ID:${m.id}${m.replyToId ? ' →回复→'+m.replyToId : ''}] ${m.senderName}: ${m.content}`).join('\n') || '（留言板暂无记录）'}
+${recentMessages.slice(-5).map(m => `[ID:${m.id}${m.replyToId ? ' →回复→'+m.replyToId : ''}
+ ${m.senderName}: ${m.content}`).join('\n') || '（留言板暂无记录）'}
 
 【⚠️ 重要规则】
 1. **不要重复回复已回复过的留言**：如果某条留言已经有 replyToId（说明已被回复过），不要再对它进行二次回复
@@ -80,11 +82,12 @@ ${recentMessages.slice(-5).map(m => `[ID:${m.id}${m.replyToId ? ' →回复→'+
 3. **内容差异化**：查看历史留言，确保你写的内容和之前的不重复
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "message",
   "content": "80-150 字的温馨留言，不仅是日常问候，更要是对彼此感情的加温",
   "replyToId": null // 如果是针对上方某条留言的回应，请填入其 ID
-}]
+}
+
 
 【专项要求】
 1. **去即时化**：回复内容要像一段完整的"小贴士"或"一段心意"，不要回复"在干嘛？"这种需要对方立刻回话的聊天词。
@@ -114,7 +117,7 @@ export function generateFootprintPrompt(charName, userName, userProfile, recentC
 ${todayFootprints.map(f => `${f.time}: ${f.content} (@${f.location})`).join('\n') || '（今日暂无足迹记录）'}
 
 【输出格式（必须输出3~4条）】
-[LS_JSON: {
+{
   "type": "footprint",
   "footprints": [
     {"time": "HH:mm", "location": "地点", "content": "描述"},
@@ -122,10 +125,12 @@ ${todayFootprints.map(f => `${f.time}: ${f.content} (@${f.location})`).join('\n'
     {"time": "HH:mm", "location": "地点", "content": "描述"},
     {"time": "HH:mm", "location": "地点", "content": "描述"}
   ]
-}]
+}
+
 
 或者如果只能输出单条，也请输出：
-[LS_JSON: { "type": "footprint", "time": "HH:mm", "location": "地点", "content": "描述" }]
+{ "type": "footprint", "time": "HH:mm", "location": "地点", "content": "描述" }
+
 
 【专项要求】
 1. **时间逻辑**：新足迹的时间必须在 06:00~${currentTime} 之间，且如果已有足迹，要在最后一条时间之后
@@ -147,10 +152,11 @@ export function generateQuestionPrompt(charName, userName, userProfile, recentCh
 ${recentQuestions.slice(-5).map(q => `问: ${q.text} (答: ${q.userAnswer || '待答'})`).join('\n') || '（暂无历史提问）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "question",
   "text": "一个具体、深刻、且带点人设风格的提问"
-}]
+}
+
 
 【专项要求】
 1. **严禁任何 [表情包:xxx] 内容**。
@@ -170,12 +176,13 @@ export function generateLetterPrompt(charName, userName, userProfile, recentChat
 ${recentLetters.slice(-3).map(l => `《${l.title}》- ${l.content.substring(0, 50)}...`).join('\n') || '（信箱暂空）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "letter",
   "title": "充满美感的信件标题",
   "content": "800 字以上的极长篇幅，排版错落有致，语言极尽柔情",
   "paperIndex": 0-12之间的任意整数（每封信随机选择不同信纸）
-}]
+}
+
 
 【⚠️ 重要规则】
 1. **不要重复回复已存在的信件**：历史中的信件只是让你了解通信风格和进度，不要在内容中逐一回应或提到它们
@@ -208,12 +215,13 @@ export function generateGachaPrompt(charName, userName, userProfile, recentChats
 ${recentGacha.slice(-5).map(g => `${g.name}: ${g.desc}`).join('\n') || '（暂无历史扭蛋）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "gacha",
   "name": "极具诱惑力或趣味性的名称",
   "desc": "具体的承诺或描述，带点调情或温馨感，不要太短",
   "icon": "fa-solid fa-gift" 
-}]
+}
+
 
 【专项要求】
 1. **差异化**：不要重复近期已出的奖励。
@@ -233,12 +241,13 @@ export function generateAlbumPrompt(charName, userName, userProfile, recentChats
 ${recentAlbum.slice(-5).map(a => `《${a.title}》: ${a.desc || ''}`).join('\n') || '（暂无历史相册）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "album",
   "title": "相片标题",
   "draw_cmd": "[DRAW: 符合人设画风的英文分步生图提示词]", 
   "desc": "为这张照片写一段具有纪念意义的文字内容"
-}]
+}
+
 
 【专项要求】
 1. **生图指令**：必须包含 [DRAW: ...] 指令，用于生成对应的艺术照。内容尽量详细，包含场景、光影、衣着。
@@ -258,11 +267,12 @@ export function generateAnniversaryPrompt(charName, userName, userProfile, recen
 ${recentAnniversaries.slice(-5).map(a => `${a.name}: ${a.date}`).join('\n') || '（暂无历史纪念日）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "anniversary",
   "name": "纪念日全名",
   "date": "YYYY-MM-DD"
-}]
+}
+
 
 【专项要求】
 1. **严禁任何 [表情包:xxx] 内容**。
@@ -281,11 +291,12 @@ export function generateHousePrompt(charName, userName, userProfile, recentChats
 ${houseState.lastAction ? `最后一次动作：${houseState.lastAction}` : '（小屋处于原始状态）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "house",
   "action": "极具画面感的装修或日常清扫描写，强调'我们'共同维护家的感觉",
   "comfortIncrease": 10
-}]
+}
+
 
 【专项要求】
 1. **严禁任何 [表情包:xxx] 内容**。
@@ -304,13 +315,14 @@ export function generateStickyPrompt(charName, userName, userProfile, recentChat
 ${recentStickies.slice(-5).map(s => s.content).join(' | ') || '（暂空）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "stickies": [
     { "type": "sticky", "content": "充满爱意的小纸条 1", "color": "#f1f8e9" },
     { "type": "sticky", "content": "生活叮嘱小纸条 2", "color": "#fff3e0" },
     { "type": "sticky", "content": "俏皮情话小纸条 3", "color": "#fce4ec" }
   ]
-}]
+}
+
 
 【专项要求】
 1. **短小精悍**：每条 30 字以内。
@@ -330,7 +342,7 @@ export function generateSchedulePrompt(charName, userName, userProfile, recentCh
 ${recentSchedules.slice(-5).map(s => `${s.date} ${s.time}: ${s.title}`).join('\n') || '（暂无记录）'}
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "schedule",
   "date": "YYYY-MM-DD",
   "time": "HH:mm",
@@ -339,7 +351,8 @@ ${recentSchedules.slice(-5).map(s => `${s.date} ${s.time}: ${s.title}`).join('\n
   "eventType": "daily|romantic|special",
   "location": "地点",
   "mood": "happy|romantic|busy"
-}]
+}
+
 
 【专项要求】
 1. **严禁任何 [表情包:xxx] 内容**。
@@ -363,11 +376,12 @@ ${responder} 刚刚回答了这个问题："${answerText}"。
 请你以 ${charName} 的身份，针对 TA 的回答进行深情、细腻且带有你独特人设风格的回应。
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "answer",
   "qId": ${questionData.id},
   "content": "80-150 字的回应内容，要体现出你对 TA 回答的重视，或是被触动后的心声"
-}]
+}
+
 
 【专项要求】
 1. **情感共鸣**：不要只是说"好的"，要针对具体内容展开，像是一场灵魂的深度交谈。
@@ -396,11 +410,12 @@ ${userComments}
 请你以 ${charName} 的身份，针对 ${userName} 的**留言内容**进行回复。就像在信件评论区互动一样。
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "letterComment",
   "letterId": ${letterData.id},
   "content": "50-100 字的回复，要真诚回应对方的留言内容"
-}]
+}
+
 
 【专项要求】
 1. **针对性回复**：必须针对上方用户的留言内容进行回应，不要泛泛而谈
@@ -421,11 +436,12 @@ ${userName} 上传了一张照片《${photoData.title}》。
 请你以 ${charName} 的身份，在照片下方写一条评论，表达你的感受或回忆。
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "albumComment",
   "photoId": ${photoData.id},
   "content": "30-80 字的评论，可以是对照片的赞美、回忆或感受"
-}]
+}
+
 
 【专项要求】
 1. **具体生动**：结合照片内容或描述，不要泛泛而谈
@@ -454,11 +470,12 @@ ${userComments}
 请你以 ${charName} 的身份，针对 ${userName} 的**留言内容**进行回复。就像在日记评论区互动一样。
 
 【输出格式】
-[LS_JSON: {
+{
   "type": "diaryComment",
   "diaryId": ${diaryData.id},
   "content": "50-100 字的回复，要真诚回应对方的留言内容"
-}]
+}
+
 
 【专项要求】
 1. **针对性回复**：必须针对上方用户的留言内容进行回应，不要泛泛而谈

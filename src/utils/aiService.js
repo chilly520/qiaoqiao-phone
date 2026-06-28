@@ -2848,20 +2848,41 @@ ${"```"}
             const descriptions = moment.imageDescriptions || (moment.imageDescription ? [moment.imageDescription] : [])
 
             console.log('[BatchMoments] 图片描述:', descriptions)
-            console.log('[BatchMoments] 图片描述:', descriptions)
 
-            if (prompts.length > 0) {
-                const finalPrompts = prompts.slice(0, 9)
+            // [FIX] 兜底: 如果 AI 没返回 imagePrompts, 退化为基于 moment.content 生成 1 张
+            // 这样用户至少能看到一张与文字相关的图, 而不是"生图无效"
+            let finalPrompts = prompts.length > 0 ? prompts.slice(0, 9) : []
+            if (finalPrompts.length === 0 && moment.content && moment.content.length >= 5) {
+                // 把中文 content 当成 imagePrompt 喂给 generateImage, 里面有翻译逻辑会处理
+                finalPrompts = [String(moment.content).substring(0, 200)]
+                console.log('[BatchMoments] imagePrompts 缺失, 用 content 作为兜底 prompt')
+            }
+
+            if (finalPrompts.length > 0) {
                 console.log('[BatchMoments] 准备生成', finalPrompts.length, '张图片')
-                const results = await Promise.all(finalPrompts.map(p => generateImage(p).catch((e) => {
-                    console.error('[BatchMoments] 单张图片生成失败:', p, e)
-                    return null
-                })))
+                // [FIX] 每个 prompt 单独带重试: 失败时用更简化的 prompt 再试一次
+                const results = await Promise.all(finalPrompts.map(async (p) => {
+                    try {
+                        return await generateImage(p)
+                    } catch (e1) {
+                        console.warn('[BatchMoments] 第1次生图失败, 尝试简化 prompt:', p.substring(0, 30), e1.message)
+                        try {
+                            // 简化: 截取 prompt 前 80 字符, 去掉括号等特殊字符
+                            const simplified = p.replace(/[()[\]【】]/g, ' ').substring(0, 80).trim()
+                            if (simplified && simplified !== p) {
+                                return await generateImage(simplified)
+                            }
+                        } catch (e2) {
+                            console.error('[BatchMoments] 简化后仍失败:', e2.message)
+                        }
+                        return null
+                    }
+                }))
                 processed.images = results.filter(Boolean)
                 processed.imageDescriptions = descriptions.slice(0, processed.images.length)
                 console.log('[BatchMoments] 实际生成图片数:', processed.images.length)
             } else {
-                console.log('[BatchMoments] AI 未返回图片提示词，跳过图片生成')
+                console.log('[BatchMoments] AI 未返回图片提示词且无 content 兜底, 跳过图片生成')
             }
 
             // Sanitization
