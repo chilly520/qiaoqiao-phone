@@ -67,6 +67,27 @@ onMounted(() => {
     window.addEventListener('click', unlockKeepAlive)
     window.addEventListener('touchstart', unlockKeepAlive)
 
+    // [FIX] 处理 Service Worker 转发的"打开指定 chat"请求(由通知点击触发)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'OPEN_CHAT' && event.data.chatId) {
+                chatStore.currentChatId = event.data.chatId
+                router.push('/wechat')
+            }
+        })
+    }
+
+    // [FIX] 处理从通知点击打开的新窗口,URL 里带 ?openChat=xxx
+    try {
+        const params = new URLSearchParams(window.location.search)
+        const openChat = params.get('openChat')
+        if (openChat) {
+            chatStore.currentChatId = openChat
+            router.push('/wechat')
+            // 清理 URL,避免刷新重复触发
+            window.history.replaceState({}, '', window.location.pathname)
+        }
+    } catch (e) { /* 静默 */ }
 })
 
 // Cleanup listeners

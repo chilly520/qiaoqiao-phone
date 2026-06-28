@@ -13,6 +13,7 @@ import { processTaskCommands } from '../utils/taskUtils'
 import { processBioUpdate } from '../utils/bioUtils'
 import { usePhoneInspectionStore } from './phoneInspectionStore'
 import { appendLog } from '../utils/memoryLog'
+import { backgroundManager } from '../utils/backgroundManager'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
 import { ensureString, getRandomAvatar, DEFAULT_AVATARS, getLastNTurns, countTurnsBetween } from '../utils/common'
 import { compressAllChatImages as chatImageUtils_compressAll, extractLSActions as chatImageUtils_extractLSActions } from '../utils/chatImageUtils'
@@ -2543,6 +2544,10 @@ export const useChatStore = defineStore('chat', () => {
             schedulerStore.updateNextRandomTrigger(chatId)
             sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
         }
+
+        // 5. 重新排程下一次原生系统通知(任意一次检查后都重排,保证状态变化被感知)
+        //    iOS/Firefox 会静默返回 false,不影响前台
+        backgroundManager.computeAndScheduleNextNotification().catch(() => {})
     }
 
     // Initialize proactive loop

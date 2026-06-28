@@ -11,6 +11,8 @@ class BatteryMonitor {
             onLowBattery: []
         }
         this.lowBatteryThreshold = 0.3 // 30%
+        // 恢复阈值：电量回升到此值以上才允许再次提醒，避免反复插拔时刷屏
+        this.recoveryThreshold = 0.5 // 50%
         // 用 sessionStorage 持久化通知状态，防止切换聊天时重复提醒
         this.hasNotified = this._loadNotified()
     }
@@ -57,10 +59,9 @@ class BatteryMonitor {
         // Event Listeners
         this.battery.addEventListener('levelchange', updateHandler)
         this.battery.addEventListener('chargingchange', () => {
+            // 充电状态切换不再重置 hasNotified，仅依赖电量恢复阈值来解除锁定，
+            // 避免用户反复插拔时刷出多条相同的低电量提醒。
             updateHandler()
-            if (this.charging) {
-                this._saveNotified(false)
-            }
         })
 
         // Polling Fallback (Every 30s) - Fixes "imprecise sync" on some devices
@@ -73,6 +74,13 @@ class BatteryMonitor {
 
         this.level = Math.round(this.battery.level * 100)
         this.charging = this.battery.charging
+
+        // 边沿触发解锁：只有当电量回升到恢复阈值以上，
+        // 才允许下次跌到低电量阈值时再次提醒。
+        // 这样反复插拔不会刷屏，但充满后再掉到 30% 以下仍会再次提醒。
+        if (this.level >= this.recoveryThreshold * 100) {
+            this._saveNotified(false)
+        }
     }
 
     checkLowBattery() {

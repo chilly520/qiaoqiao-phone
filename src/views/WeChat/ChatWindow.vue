@@ -280,6 +280,9 @@ updateTime()
 const batteryLevel = ref(100)
 const batteryCharging = ref(false)
 const batteryInitialized = ref(false)
+// 必须在 onMounted 闭包外层声明，否则 onUnmounted 拿不到、永远无法解绑
+let unsubCharge = null
+let unsubLow = null
 
 const showFriendRequest = computed(() => {
     if (!chatData.value || !chatData.value.msgs) return false
@@ -497,8 +500,6 @@ onMounted(async () => {
     }
 
     // Battery Initialization
-    let unsubCharge = null
-    let unsubLow = null
     const initialized = await batteryMonitor.init()
     if (initialized) {
         batteryInitialized.value = true
@@ -509,8 +510,8 @@ onMounted(async () => {
         unsubCharge = batteryMonitor.onChange((info) => {
             batteryLevel.value = info.level
             batteryCharging.value = info.charging
-            // 充电后重置低电量提醒标记，下次掉到30以下可以再提醒一次
-            if (info.charging) hasShownLowBattery = false
+            // 充电不再重置 hasShownLowBattery：单例 batteryMonitor 已通过
+            // 恢复阈值做边沿触发，反复插拔不会刷屏。
         })
         unsubLow = batteryMonitor.onLowBattery((info) => {
             if (!chatData.value || info.charging) return
