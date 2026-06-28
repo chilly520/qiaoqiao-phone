@@ -475,13 +475,32 @@ class BackgroundManager {
             const next = candidates[0];
 
             this.log(
-                `[Proactive] Scheduling native notif for ${next.title} at ${new Date(next.time).toLocaleString()} (type=${next.type})`,
+                `[Proactive] Next candidate: ${next.title} at ${new Date(next.time).toLocaleString()} (type=${next.type})`,
                 'info'
             );
 
+            // 优先通过 Web Push 后端调度(能穿透 App 完全关闭)
+            // 失败/未配置时回退到 scheduleNativeNotification (前端 scheduler,App 必须在跑)
+            try {
+                const { pushService } = await import('./pushService');
+                const result = await pushService.schedule(next.time, {
+                    title: next.title,
+                    body: next.body,
+                    tag: 'proactive-msg',
+                    data: { chatId: next.chatId, type: next.type },
+                    url: `/wechat?openChat=${encodeURIComponent(next.chatId)}`,
+                });
+                if (result.ok) {
+                    this.log(`[Proactive] Scheduled via push server, id=${result.data?.id}`, 'info');
+                    return true;
+                }
+            } catch (e) {
+                // push 未配置或失败,走原 scheduleNativeNotification (永失败,仅日志)
+            }
+
             return await this.scheduleNativeNotification(next.time, next.title, {
                 body: next.body,
-                tag: 'proactive-msg', // 同 tag 会被替换,只保留最近一次
+                tag: 'proactive-msg',
                 data: { chatId: next.chatId, type: next.type }
             });
         } catch (e) {

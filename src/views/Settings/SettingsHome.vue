@@ -78,6 +78,15 @@ const settingsCards = [
         page: 'backup'
     },
     {
+        title: '后台通知',
+        subtitle: 'Web Push, 关闭 App 也能收消息',
+        icon: 'fa-solid fa-bell',
+        gradient: 'from-rose-100 to-rose-200',
+        iconColor: 'text-rose-600',
+        subtitleColor: 'text-gray-500',
+        page: 'push'
+    },
+    {
         title: 'MCP 服务',
         subtitle: 'AI 工具调用, 外部服务接入',
         icon: 'fa-solid fa-plug',

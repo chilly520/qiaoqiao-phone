@@ -44,6 +44,9 @@ onMounted(() => {
     useLoveSpaceStore().loadFromStorage()
     worldBookStore.loadEntries()
 
+    // 初始化 Web Push 服务 (无 VITE_PUSH_SERVER_URL 时静默 no-op)
+    import('./utils/pushService').then(m => m.default.init()).catch(() => {})
+
     // Initialize battery monitoring
     batteryMonitor.init().then((initialized) => {
         if (initialized) {
@@ -73,6 +76,15 @@ onMounted(() => {
             if (event.data && event.data.type === 'OPEN_CHAT' && event.data.chatId) {
                 chatStore.currentChatId = event.data.chatId
                 router.push('/wechat')
+            }
+            // 订阅失效/变更时,前端重新订阅并更新后端
+            if (event.data && event.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && event.data.subscription) {
+                const sub = event.data.subscription
+                // 重新 POST 到后端
+                import('./utils/pushService').then(m => m.default.schedule(
+                    0, // ignored
+                    { title: '__resubscribe', data: { subscription: sub } }
+                )).catch(() => {})
             }
         })
     }

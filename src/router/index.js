@@ -66,6 +66,11 @@ const router = createRouter({
             component: () => import('../views/Settings/BackupSettings.vue')
         },
         {
+            path: '/settings/push',
+            name: 'settings-push',
+            component: () => import('../views/Settings/PushSettings.vue')
+        },
+        {
             path: '/settings/mcp',
             name: 'settings-mcp',
             component: () => import('../views/Settings/MCPSettings.vue')
