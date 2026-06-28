@@ -22,9 +22,6 @@ import { useLoggerStore } from '../stores/loggerStore';
 class BackgroundManager {
     constructor() {
         this.audio = null;
-        this.audioCtx = null;
-        this.oscillator = null;
-        this.gainNode = null;
         this.isActive = false;
         this.wakeLock = null;
         this.initialized = false;
@@ -48,20 +45,16 @@ class BackgroundManager {
 
         if (this.initialized) return;
 
-        this.log('Initializing background keep-alive system (v4: real <audio> + mediaSession)...', 'info');
-        // 1) 程序化创建 <audio>,挂到 DOM,这是 MediaSession 显示通知卡的必要条件
-        this.createAudioElement();
-        // 2) 创建 Web Audio 振荡器作为"出声身份"双保险(部分浏览器会同时看 audio 元素和音频节点)
-        this.createWebAudioKeepAlive();
-        // 3) 注册 MediaSession + 行为回调
+        this.log('Initializing background keep-alive system (v5: real <audio> only, lazy on user gesture)...', 'info');
+        // 1) 注册 MediaSession (metadata 提前设好,play 后才会激活通知卡)
         this.setupMediaSession();
-        // 4) 网络心跳
+        // 2) 网络心跳
         this.startNetworkHeartbeat();
-        // 5) 可见性切换
+        // 3) 可见性切换
         this.setupVisibilityHandler();
-        // 6) 首次手势解锁
+        // 4) 首次手势解锁 (同时创建 <audio> 元素 + play,确保在用户手势上下文里)
         this.setupUserGestureUnlocker();
-        // 7) 兜底周期任务
+        // 5) 兜底周期任务
         this.startCheckInterval();
 
         this.initialized = true;
@@ -79,10 +72,9 @@ class BackgroundManager {
     }
 
     /**
-     * 程序化创建 <audio> 元素 + 挂到 DOM。
+     * 创建 <audio> 元素 + 挂到 DOM,必须在用户手势上下文里调用才能成功 play()。
      * 关键: 现代移动浏览器(Edge Mobile / Chrome Android)只在有真实 <audio>/<video>
      * 元素在播放时,才会在通知栏显示媒体卡片并放宽后台 JS 限制。
-     * 单独的 Web Audio 振荡器 + MediaSession metadata 不够。
      */
     createAudioElement() {
         try {
@@ -90,9 +82,9 @@ class BackgroundManager {
 
             const a = new Audio();
             a.id = 'qiaqiao-keepalive-audio';
-            a.src = '/silent.wav';
+            a.src = '/silent.wav?v=2';
             a.loop = true;
-            // 必须非 0:浏览器会基于 volume 判断是否有可听输出,volume=0 会被识别为静默媒体并 pause
+            // volume 必须 > 0:浏览器基于 volume 判断是否有可听输出,volume=0 会被识别为静默媒体并 pause
             a.volume = 0.01;
             a.muted = false;
             a.preload = 'auto';
@@ -104,62 +96,45 @@ class BackgroundManager {
 
             this.audio = a;
             this.log('<audio> element created and attached to DOM (src=/silent.wav, loop, volume=0.01).', 'info');
+
+            // 监听 audio 实际播放事件,确认确实在播
+            a.addEventListener('playing', () => {
+                this.log(`<audio> "playing" event fired. paused=${a.paused} currentTime=${a.currentTime.toFixed(1)}`, 'info');
+            });
+            a.addEventListener('pause', () => {
+                this.log('<audio> "pause" event fired (浏览器把它停了).', 'error');
+            });
+            a.addEventListener('error', (e) => {
+                this.log('<audio> error: code=' + (a.error?.code || '?') + ' msg=' + (a.error?.message || '?'), 'error');
+            });
         } catch (e) {
             this.log('createAudioElement failed: ' + (e.message || e.name), 'error');
         }
     }
 
     /**
-     * Web Audio 振荡器保活（v4 双保险）：
-     * Web Audio 振荡器 + 真实 <audio> 元素双管齐下,确保 OS 真的把页面当媒体 App。
-     * 1) 100Hz(人耳能听到但手机扬声器物理响应接近 0)+ gain=0.05, OS 看到有非零音频输出
-     * 2) 必须等用户手势才能 resume(),否则被 autoplay policy 静默拦截
-     */
-    createWebAudioKeepAlive() {
-        try {
-            const Ctor = window.AudioContext || window.webkitAudioContext;
-            if (!Ctor) {
-                this.log('WebAudio not supported in this browser.', 'error');
-                return;
-            }
-
-            this.audioCtx = new Ctor();
-            this.oscillator = this.audioCtx.createOscillator();
-            this.gainNode = this.audioCtx.createGain();
-
-            this.oscillator.frequency.value = 100;
-            this.oscillator.type = 'sine';
-            this.gainNode.gain.value = 0.05;
-
-            this.oscillator.connect(this.gainNode);
-            this.gainNode.connect(this.audioCtx.destination);
-            this.oscillator.start();
-
-            this.log(`WebAudio context created (state=${this.audioCtx.state}). Will resume on first user gesture.`, 'info');
-        } catch (e) {
-            this.log('WebAudio keep-alive init failed: ' + (e.message || e.name), 'error');
-        }
-    }
-
-    /**
-     * 启动音频 + 更新 MediaSession。在用户手势上下文中调用才能成功。
-     * v4: 优先播真实 <audio> 元素,失败再回退到 Web Audio 振荡器 resume。
+     * 启动音频 + 更新 MediaSession。**必须在用户手势上下文中调用** 才能成功。
+     * v5: 只用真实 <audio> 元素,这是通知栏出现媒体卡片的硬性条件。
+     * Web Audio 振荡器在 v4 实测无效 + 吃 CPU,已移除。
      */
     async startAudioPlayback() {
-        let audioOk = false;
-        let ctxOk = false;
+        // 如果还没创建 audio 元素,先创建
+        if (!this.audio || !this.audio.parentNode) {
+            this.createAudioElement();
+        }
 
-        // 1) 真实 <audio> 元素:这是通知栏出现媒体卡片的硬性条件
+        let audioOk = false;
+
         if (this.audio) {
             try {
                 if (this.audio.paused) {
                     await this.audio.play();
                 }
-                audioOk = !this.audio.paused;
+                audioOk = !this.audio.paused && this.audio.readyState >= 2;
                 if (audioOk) {
-                    this.log(`<audio> playing. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)}`, 'info');
+                    this.log(`<audio> playing OK. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)} readyState=${this.audio.readyState}`, 'info');
                 } else {
-                    this.log('<audio> still paused after play() call.', 'error');
+                    this.log(`<audio> play() returned but not playing. paused=${this.audio.paused} readyState=${this.audio.readyState}`, 'error');
                 }
             } catch (e) {
                 this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
@@ -168,26 +143,14 @@ class BackgroundManager {
             this.log('No <audio> element to play.', 'error');
         }
 
-        // 2) Web Audio 振荡器:作为"出声身份"双保险
-        if (this.audioCtx) {
-            try {
-                if (this.audioCtx.state === 'suspended') {
-                    await this.audioCtx.resume();
-                }
-                ctxOk = this.audioCtx.state === 'running';
-            } catch (e) {
-                this.log('AudioContext resume failed: ' + (e.message || e.name), 'error');
-            }
-        }
-
-        this.isActive = audioOk || ctxOk;
+        this.isActive = audioOk;
         this.keepAliveWorking = this.isActive;
 
         if (this.isActive) {
             this.setupMediaSession();
-            this.log(`Keep-alive active. audioOk=${audioOk} ctxOk=${ctxOk}`, 'info');
+            this.log('Keep-alive active. MediaSession updated.', 'info');
         } else {
-            this.log('Both <audio> and AudioContext failed to start.', 'error');
+            this.log('Audio failed to start, keep-alive inactive.', 'error');
         }
 
         return this.isActive;
@@ -334,11 +297,6 @@ class BackgroundManager {
 
                 // 切回前台时立即兜底 catch-up
                 this.catchUpProactive().catch(() => {});
-
-                // 唤醒可能因后台被挂起的 WebAudio
-                if (this.audioCtx && this.audioCtx.state === 'suspended') {
-                    this.audioCtx.resume().catch(() => {});
-                }
 
                 // 重新排程下一次原生系统通知(因为期间可能已经过期触发)
                 this.computeAndScheduleNextNotification().catch(() => {});
@@ -551,16 +509,17 @@ class BackgroundManager {
 
         this.checkInterval = setInterval(async () => {
             try {
-                // 检查 WebAudio 状态,如果被后台挂起就唤醒
-                if (this.audioCtx && this.audioCtx.state === 'suspended') {
-                    this.audioCtx.resume().catch(() => {});
+                // 检查 <audio> 播放状态,如果被后台 pause 就尝试恢复
+                if (this.audio) {
+                    if (this.audio.paused && this.isActive) {
+                        try { await this.audio.play(); } catch (e) { /* 静默 */ }
+                    }
                 }
 
                 if (this.heartbeatLogCount < 3) {
                     this.log('Running background heartbeat (60s)...', 'info');
                     this.heartbeatLogCount++;
                 }
-                // 移除每周期重排,避免 CPU spike;通知排程只在 init / visibilitychange 触发
             } catch (error) {
                 this.log(`Error in background check: ${error.message}`, 'error');
             }
@@ -584,7 +543,8 @@ class BackgroundManager {
             wakeLock: !!this.wakeLock,
             checkInterval: !!this.checkInterval,
             networkHeartbeat: !!this.networkHeartbeatTimer,
-            audioContextState: this.audioCtx ? this.audioCtx.state : 'unsupported',
+            audioState: this.audio ? (this.audio.paused ? 'paused' : 'playing') : 'no-element',
+            audioReadyState: this.audio ? this.audio.readyState : -1,
             mediaSessionSet: this.mediaSessionSet,
             keepAliveWorking: this.keepAliveWorking,
             supportsNotificationTriggers: 'showTrigger' in (typeof Notification !== 'undefined' ? Notification.prototype : {})
@@ -594,8 +554,11 @@ class BackgroundManager {
     destroy() {
         this.stopCheckInterval();
         this.stopNetworkHeartbeat();
-        try { if (this.oscillator) this.oscillator.stop(); } catch (e) {}
-        try { if (this.audioCtx) this.audioCtx.close(); } catch (e) {}
+        if (this.audio) {
+            try { this.audio.pause(); } catch (e) {}
+            try { this.audio.parentNode?.removeChild(this.audio); } catch (e) {}
+            this.audio = null;
+        }
         if (this.wakeLock) {
             try { this.wakeLock.release(); } catch (e) {}
             this.wakeLock = null;
