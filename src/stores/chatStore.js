@@ -2457,10 +2457,12 @@ export const useChatStore = defineStore('chat', () => {
                 if (proactiveWorkerBroken) return;
                 // 每分钟检查所有聊天的 proactive 触发
                 try {
-                    Object.keys(chats.value).forEach(chatId => {
+                    const chatIds = Object.keys(chats.value)
+                    console.log(`[Proactive] Tick: checking ${chatIds.length} chats`)
+                    chatIds.forEach(chatId => {
                         checkProactive(chatId)
                     })
-                } catch (err) { /* 静默 */ }
+                } catch (err) { console.warn('[Proactive] Tick error:', err) }
             }
         }
 
@@ -2559,6 +2561,7 @@ export const useChatStore = defineStore('chat', () => {
 
         // 4. Random Proactive
         const randomConfig = schedulerStore.randomConfigs[chatId]
+        console.log(`[Proactive] Chat ${chatId}: randomConfig=`, randomConfig, `now=${now}`)
         if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
             logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
             schedulerStore.updateNextRandomTrigger(chatId)
