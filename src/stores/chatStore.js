@@ -2429,13 +2429,11 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         // 用 setInterval 替代 Worker，更可靠
-        proactiveTimer = setInterval(() => {
+        proactiveTimer = setInterval(async () => {
             try {
                 const chatIds = Object.keys(chats.value)
                 console.log(`[Proactive] Tick: checking ${chatIds.length} chats`)
-                chatIds.forEach(chatId => {
-                    checkProactive(chatId)
-                })
+                await Promise.all(chatIds.map(chatId => checkProactive(chatId)))
             } catch (err) {
                 console.warn('[Proactive] Tick error:', err)
             }
@@ -2443,12 +2441,14 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. 页面刷新补偿
         if (typeof window !== 'undefined') {
-            window.addEventListener('pageshow', () => {
+            window.addEventListener('pageshow', async () => {
                 const logger = useLoggerStore()
                 logger.sys('[Proactive] Page loaded/refreshed, checking missed triggers...')
-                Object.keys(chats.value).forEach(chatId => {
-                    checkProactive(chatId)
-                })
+                try {
+                    await Promise.all(Object.keys(chats.value).map(chatId => checkProactive(chatId)))
+                } catch (err) {
+                    logger.error('[Proactive] Catch-up error:', err)
+                }
             });
         }
     }
