@@ -2510,11 +2510,12 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. Scheduler Task
         const schedulerStore = useSchedulerStore()
-        const dueTasks = schedulerStore.tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp <= now)
+        const dueTasks = schedulerStore.tasks.filter(t => t.triggered && !t.executed && t.chatId === chatId)
         if (dueTasks.length > 0) {
             dueTasks.forEach(task => {
                 logger.sys(`[Proactive] Executing scheduler task: ${task.content}`)
-                schedulerStore.removeTask(task.id)
+                task.executed = true
+                schedulerStore.saveTasks()
                 sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】执行定时任务：${task.content}。请根据当前人设发送消息通知用户。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
             })
         }

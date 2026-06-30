@@ -126,11 +126,6 @@ export const useSchedulerStore = defineStore('scheduler', () => {
                 task.triggered = true;
                 task.enabled = false;
                 changed = true;
-                
-                // Emit global event for other stores (like chatStore) to react
-                window.dispatchEvent(new CustomEvent('qiaoqiao_task_triggered', {
-                    detail: { ...task }
-                }));
             }
         })
         
