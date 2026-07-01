@@ -356,10 +356,49 @@ const handleNews = async (p) => {
 const handleCalculator = (p) => {
     let expr = String(p.expression || '').trim()
     if (!expr) return { error: '请输入数学表达式' }
+    
+    // SECURITY: Whitelist validation - only allow mathematical characters
+    // Prevents arbitrary code execution via new Function
+    const allowedPattern = /^[0-9\s\.\+\-\*\/\%\^\(\)\÷\×xPIe]+$|^(sin|cos|tan|log10|log2|log|sqrt|abs|ceil|floor|round|pow|exp)[0-9\s\.\+\-\*\/\%\^\(\)\÷\×xPIe]*$/i
+    if (!allowedPattern.test(expr)) {
+        return { error: '表达式包含非法字符，仅支持数学运算' }
+    }
+    
     try {
-        const safe = expr.replace(/\^/g, '**').replace(/÷/g, '/').replace(/×/g, '*').replace(/x/gi, '*').replace(/sin/gi, 'Math.sin').replace(/cos/gi, 'Math.cos').replace(/tan/gi, 'Math.tan').replace(/log10/gi, 'Math.log10').replace(/log2/gi, 'Math.log2').replace(/log(?![\d])/gi, 'Math.log').replace(/sqrt/gi, 'Math.sqrt').replace(/abs/gi, 'Math.abs').replace(/ceil/gi, 'Math.ceil').replace(/floor/gi, 'Math.floor').replace(/round/gi, 'Math.round').replace(/pow/gi, 'Math.pow').replace(/exp/gi, 'Math.exp').replace(/PI/gi, 'Math.PI')
+        // Replace symbols with JS operators
+        const safe = expr
+            .replace(/\^/g, '**')
+            .replace(/÷/g, '/')
+            .replace(/×/g, '*')
+            .replace(/x/gi, '*')
+            .replace(/sin/gi, 'Math.sin')
+            .replace(/cos/gi, 'Math.cos')
+            .replace(/tan/gi, 'Math.tan')
+            .replace(/log10/gi, 'Math.log10')
+            .replace(/log2/gi, 'Math.log2')
+            .replace(/log(?![\d])/gi, 'Math.log')
+            .replace(/sqrt/gi, 'Math.sqrt')
+            .replace(/abs/gi, 'Math.abs')
+            .replace(/ceil/gi, 'Math.ceil')
+            .replace(/floor/gi, 'Math.floor')
+            .replace(/round/gi, 'Math.round')
+            .replace(/pow/gi, 'Math.pow')
+            .replace(/exp/gi, 'Math.exp')
+            .replace(/PI/gi, 'Math.PI')
+        
+        // Double-check: ensure result only contains Math.* calls and numbers/operators
+        const finalCheck = /^[\s0-9\.\+\-\*\/\%\(\)Math\.\w]+$/
+        if (!finalCheck.test(safe)) {
+            return { error: '表达式解析失败，请检查格式' }
+        }
+        
         const fn = new Function('Math', `"use strict"; return (${safe})`)
         const result = fn(Math)
+        
+        if (typeof result !== 'number' || !isFinite(result)) {
+            return { error: '计算结果无效（可能溢出或非数值）' }
+        }
+        
         return { success: true, result: { expression: expr, result: Number(result.toFixed(10)) } }
     } catch (e) {
         return { error: `计算错误: ${e.message}` }
