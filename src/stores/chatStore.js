@@ -2348,14 +2348,7 @@ export const useChatStore = defineStore('chat', () => {
             if (lastMem !== newMem) {
                 latestChat.memory.push(newMem)
                 appendLog(latestChat.id, `[💬 聊天总结] ${response.content.substring(0, 120)}`)
-
-                // Limit memory count based on settings
-                const contextLimit = parseInt(latestChat.contextLimit) || 20
-                if (latestChat.memory.length > contextLimit) {
-                    const toRemove = latestChat.memory.length - contextLimit
-                    latestChat.memory.splice(0, toRemove)
-                    console.log(`[AutoSummary] Pruned ${toRemove} old memories to respect limit ${contextLimit}`)
-                }
+                // 长期记忆：不设上限，全部保留
             } else {
                 console.log(`[AutoSummary] Skipping duplicate memory addition.`)
             }
