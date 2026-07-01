@@ -183,12 +183,12 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 latestChat.memory.push(newMem)
                 appendLog(latestChat.id, `[💬 聊天总结] ${response.content.substring(0, 120)}`)
 
-                // Limit memory count based on settings
-                const contextLimit = parseInt(latestChat.contextLimit) || 20
-                if (latestChat.memory.length > contextLimit) {
-                    const toRemove = latestChat.memory.length - contextLimit
+                // Limit memory count based on settings (independent from contextLimit to avoid clipping)
+                const memoryLimit = parseInt(latestChat.memoryLimit) || parseInt(useSettingsStore().personalization?.memoryLimit) || 100
+                if (latestChat.memory.length > memoryLimit) {
+                    const toRemove = latestChat.memory.length - memoryLimit
                     latestChat.memory.splice(0, toRemove)
-                    console.log(`[AutoSummary] Pruned ${toRemove} old memories to respect limit ${contextLimit}`)
+                    console.log(`[AutoSummary] Pruned ${toRemove} old memories to respect limit ${memoryLimit}`)
                 }
             } else {
                 console.log(`[AutoSummary] Skipping duplicate memory addition.`)
