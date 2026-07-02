@@ -170,20 +170,35 @@ async function fetchWeather() {
   try {
     // 使用 Open-Meteo 免费天气 API（无需 API Key）
     // 文档：https://open-meteo.com/
-    // 1. 先获取地理编码
-    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryLoc)}&count=1&language=zh&format=json`)
-    
+    // 1. 先获取地理编码 - 取多条结果以处理同名歧义（深圳、上海、北京等都有多个同名点）
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryLoc)}&count=10&language=zh&format=json`)
+
     if (!geoRes.ok) {
       throw new Error('地理位置查询失败')
     }
-    
+
     const geoData = await geoRes.json()
-    
+
     if (!geoData.results || geoData.results.length === 0) {
       throw new Error(`找不到城市：${queryLoc}`)
     }
-    
-    const { latitude, longitude, name, name_en } = geoData.results[0]
+
+    // 智能挑选最佳匹配：优先中国行政区划 > 按人口排序
+    const cnResults = geoData.results.filter(r => r.country_code === 'CN')
+    let chosen = null
+    if (cnResults.length > 0) {
+      const adminResults = cnResults.filter(r => ['PPLA', 'PPLA2', 'PPLA3', 'PPLA4', 'PPLC'].includes(r.feature_code))
+      if (adminResults.length > 0) {
+        chosen = adminResults.sort((a, b) => (b.population || 0) - (a.population || 0))[0]
+      } else {
+        chosen = cnResults.sort((a, b) => (b.population || 0) - (a.population || 0))[0]
+      }
+    } else {
+      chosen = geoData.results.sort((a, b) => (b.population || 0) - (a.population || 0))[0]
+    }
+    if (!chosen) throw new Error(`没有有效的地理结果：${queryLoc}`)
+
+    const { latitude, longitude, name, name_en } = chosen
     // 优先使用英文名获取 AQI，没有英文名则使用拼音
     const aqiCityName = name_en || name
     

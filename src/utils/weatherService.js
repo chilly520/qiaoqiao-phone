@@ -52,17 +52,35 @@ class WeatherService {
         
         try {
             console.log(`[WeatherService] Fetching fresh weather for ${cacheKey}...`)
-            
-            // 1. 地理编码
+
+            // 1. 地理编码 - 取多条结果以处理同名歧义（例如"深圳"在福建、台湾、浙江都有同名点）
             const geoRes = await fetch(
-                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cacheKey)}&count=1&language=zh&format=json`
+                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cacheKey)}&count=10&language=zh&format=json`
             )
             if (!geoRes.ok) throw new Error('地理编码失败')
-            
+
             const geoData = await geoRes.json()
             if (!geoData.results?.length) throw new Error(`找不到城市：${cacheKey}`)
-            
-            const { latitude, longitude, name: geoName, name_en } = geoData.results[0]
+
+            // 智能挑选最佳匹配：优先中国(PPLA2 行政区) > 中国其他 > 任意
+            const cnResults = geoData.results.filter(r => r.country_code === 'CN')
+            let chosen = null
+            if (cnResults.length > 0) {
+                // 优先匹配 feature_code 为 PPLA2/PPLA/PPLC（行政区划），其次按人口排序
+                const adminResults = cnResults.filter(r => ['PPLA', 'PPLA2', 'PPLA3', 'PPLA4', 'PPLC'].includes(r.feature_code))
+                if (adminResults.length > 0) {
+                    chosen = adminResults.sort((a, b) => (b.population || 0) - (a.population || 0))[0]
+                } else {
+                    chosen = cnResults.sort((a, b) => (b.population || 0) - (a.population || 0))[0]
+                }
+            } else {
+                // 非中国结果：按人口选最大
+                chosen = geoData.results.sort((a, b) => (b.population || 0) - (a.population || 0))[0]
+            }
+
+            if (!chosen) throw new Error(`没有有效的地理结果：${cacheKey}`)
+
+            const { latitude, longitude, name: geoName, name_en } = chosen
             const aqiCityName = name_en || geoName
             
             // 2. 天气数据
