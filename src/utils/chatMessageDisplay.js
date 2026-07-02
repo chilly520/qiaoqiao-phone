@@ -293,7 +293,21 @@ export function parseOfflineLine(line) {
   // 4. \u5e26\u300c\u6807\u7b7e\u300d\u7684\u5bf9\u8bdd
   match = value.match(OFFLINE_TAGGED_DIALOGUE_RE)
   if (match) {
-    const content = match[2].trim().replace(/^[\s"\u201c'\u2018\u201c\u2018]+|[\s"\u201d'\u2019\u201d\u2019]+$/g, '')
+    let content = match[2].trim()
+
+      // 只在整段被同一对引号包裹时去除外层引号，否则保留原汁原味
+      const wrapPairs1 = [
+        /^"([\s\S]+?)"$/,
+        /^'([\s\S]+?)'$/,
+        /^\u201c([\s\S]+?)\u201d$/
+      ]
+      for (const re of wrapPairs1) {
+        if (re.test(content)) {
+          content = content.replace(re, '$1').trim()
+          break
+        }
+      }
+      
     return { type: 'dialogue', speaker: match[1].trim(), content, speakerTagged: true }
   }
 

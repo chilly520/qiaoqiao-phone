@@ -185,45 +185,63 @@ function getBubbleClass(segment) {
   return 'char-bubble'
 }
 
-// \u4f18\u5316\u5bf9\u8bdd\u5185\u5bb9\u6392\u7248\uff1a\u667a\u80fd\u5904\u7406\u6362\u884c\uff0c\u907f\u514d\u8fc7\u77ed\u884c
+// 优化对话内容排版：智能处理换行，避免过短行
 function formatDialogueContent(content) {
   if (!content) return ''
-  
-  // \u6e05\u7406\u5185\u5bb9\uff1a\u79fb\u9664\u6240\u6709\u7c7b\u578b\u7684\u5f15\u53f7\uff08\u5305\u62ec\u4e2d\u6587\u5f15\u53f7\uff09
-  // Use escaped characters to prevent build-time syntax errors
-  let cleanContent = content
-    .replace(/^[\x22\x27\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f\u3010\u3011\u3016\u3017]+|[\x22\x27\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f\u3010\u3011\u3016\u3017]+$/g, '')
-    .replace(/[\x22\x27\u201c\u201d\u2018\u2019]/g, '')
+
+  // 清理内容：
+  // 1) 只去除行首/行尾成对包裹的引号（如整行被 "..." 或 '...' 包裹）
+  // 2) 保留所有内部的引号（"、'、"、'、""、""），让用户看到原汁原味
+  let cleanContent = content.trim()
+
+  // 检测并去除整行被同一对引号包裹的情况
+  const wrapPairs = [
+    /^\s*"([\s\S]+?)"\s*$/,   // "..."
+    /^\s*'([\s\S]+?)'\s*$/,   // '...'
+    /^\s*\u201c([\s\S]+?)\u201d\s*$/,   // "..."
+  ]
+  for (const re of wrapPairs) {
+    if (re.test(cleanContent)) {
+      cleanContent = cleanContent.replace(re, '$1').trim()
+      break
+    }
+  }
+
+  // 「」『』是 NPC 对话包裹符，应当剥离
+  cleanContent = cleanContent
+    .replace(/^[\u300c\u300e\u300f\u3010\u3011\u3016\u3017]+|[\u300c\u300d\u300e\u300f\u3010\u3011\u3016\u3017]+$/g, '')
     .trim()
-  
-  // \u5c06\u5185\u5bb9\u6309\u6362\u884c\u5206\u5272
+
+  if (!cleanContent) return ''
+
+  // 将内容按换行分割
   const lines = cleanContent.split(/\n/)
-  
-  // \u8fc7\u6ee4\u7a7a\u884c\u5e76\u6e05\u7406\u6bcf\u884c
+
+  // 过滤空行并清理每行首尾的空白
   const nonEmptyLines = lines
-    .map(l => l.trim().replace(/^[\x22\x27\u201c\u201d\u2018\u2019]+|[\x22\x27\u201c\u201d\u2018\u2019]+$/g, ''))
+    .map(l => l.trim())
     .filter(l => l.length > 0)
-  
+
   if (nonEmptyLines.length === 0) return ''
   if (nonEmptyLines.length === 1) return nonEmptyLines[0]
-  
+
   const avgLength = nonEmptyLines.reduce((sum, l) => sum + l.length, 0) / nonEmptyLines.length
-  
+
   if (avgLength < 30) {
     return nonEmptyLines.join('')
   }
-  
+
   const result = []
   let buffer = nonEmptyLines[0]
-  
+
   for (let i = 1; i < nonEmptyLines.length; i++) {
     const currentLine = nonEmptyLines[i]
     const prevLine = buffer
-    
-    // \u5224\u65ad\u662f\u5426\u9700\u8981\u5408\u5e76\uff1a\u53e5\u5c3e\u6ca1\u6709\u7ec8\u6b62\u6807\u70b9
+
+    // 判断是否需要合并：句尾没有终止标点
     const hasEndPunctuation = /[\u3002\uff01\uff1f\uff1b~\-\u2026]$/.test(prevLine)
     const shouldMerge = !hasEndPunctuation || prevLine.length < 20 || currentLine.length < 15
-    
+
     if (shouldMerge) {
       buffer += currentLine
     } else {
@@ -231,9 +249,9 @@ function formatDialogueContent(content) {
       buffer = currentLine
     }
   }
-  
+
   if (buffer) result.push(buffer)
-  
+
   return result.join('\n')
 }
 
