@@ -418,6 +418,7 @@ import { useMusicStore } from '../../stores/musicStore'
 import { useCallStore } from '../../stores/callStore'
 import { useWalletStore } from '../../stores/walletStore'
 import { useWorldLoopStore } from '../../stores/worldLoopStore'
+import { useSparkStore } from '../../stores/sparkStore'
 import { useRouter } from 'vue-router'
 import ChatMessageItem from './components/ChatMessageItem.vue'
 import TheaterMessageRenderer from './components/TheaterMessageRenderer.vue'
@@ -468,6 +469,7 @@ const callStore = useCallStore()
 const walletStore = useWalletStore()
 const worldLoopStore = useWorldLoopStore()
 const phoneInspectionStore = usePhoneInspectionStore()
+const sparkStore = useSparkStore()
 
 const DEFAULT_BACKGROUND = 'https://files.catbox.moe/e95o2s.jpg'
 
@@ -1066,12 +1068,27 @@ const shouldSuppressLocation = (index) => false // No longer used for card suppr
 
 const handleSendMessage = (msg) => {
   console.log('[handleSendMessage] Sending message with mode: offline', { content: msg.content })
-  chatStore.addMessage(chatStore.currentChatId, {
+  const chatId = chatStore.currentChatId
+  chatStore.addMessage(chatId, {
     role: 'user',
     content: msg.content,
     mode: 'offline',
     timestamp: Date.now()
   })
+
+  // 线下聊天也计入火花续签（不强制只能线上聊天）
+  if (chatId) {
+    sparkStore.initSpark(chatId)
+    try {
+      const disabledChars = JSON.parse(localStorage.getItem('spark_disabled_chars') || '[]')
+      if (!disabledChars.includes(chatId)) {
+        sparkStore.recordChat(chatId)
+      }
+    } catch (e) {
+      sparkStore.recordChat(chatId)
+    }
+  }
+
   nextTick(() => scrollToBottom())
 }
 

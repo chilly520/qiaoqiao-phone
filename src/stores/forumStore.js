@@ -418,7 +418,9 @@ export const useForumStore = defineStore('forum', () => {
             const char = { name: '论坛助手', prompt: '你是一个可爱的论坛简介生成器' }
             const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true, skipProcessing: true })
             isGeneratingDesc.value = false
-            return (result.content || '').replace(/```/g, '').replace(/^"|"$/g, '').trim()
+            const rawContent = (result && typeof result.content === 'string') ? result.content : ''
+            if (!rawContent) return ''
+            return rawContent.replace(/```/g, '').replace(/^"|"$/g, '').trim()
         } catch (e) {
             console.error('Failed to generate desc:', e)
             isGeneratingDesc.value = false
@@ -510,8 +512,13 @@ export const useForumStore = defineStore('forum', () => {
             符合小清新女生的取向，比如美妆、看剧、情感树洞、校园日常、种草排雷等。
             直接返回JSON数组格式的字符串数组。不要废话。`;
             const result = await generateReply([{ role: 'user', content: prompt }], { name: '引擎' }, null, { isSimpleTask: true, skipProcessing: true });
-            
-            let cleanJSON = result.content.replace(/```json|```/g, '').trim();
+
+            const rawContent = (result && typeof result.content === 'string') ? result.content : '';
+            if (!rawContent) {
+                logger.addLog('ERROR', '热搜生成失败: AI 返回内容为空');
+                return [];
+            }
+            let cleanJSON = rawContent.replace(/```json|```/g, '').trim();
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/);
             if (listMatch) cleanJSON = listMatch[0];
 
@@ -787,7 +794,7 @@ export const useForumStore = defineStore('forum', () => {
 
         } catch (e) {
             console.error('Forum generation failed: ', e);
-            logger.addLog('ERROR', `论帖子生成失败: ${e.message}`);
+            logger.addLog('ERROR', `论坛帖子生成失败: ${e.message || '未知错误'}`);
         } finally {
             isGenerating.value = false;
         }
@@ -838,8 +845,12 @@ export const useForumStore = defineStore('forum', () => {
 
             const char = { name: '论坛引擎', prompt: '你只输出符合规则的 JSON 数组。' };
             const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true, skipProcessing: true });
-            
-            let cleanJSON = result.content.replace(/```json|```/g, '').trim();
+
+            const rawContent = (result && typeof result.content === 'string') ? result.content : '';
+            if (!rawContent) {
+                throw new Error('AI 返回内容为空');
+            }
+            let cleanJSON = rawContent.replace(/```json|```/g, '').trim();
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/);
             if (listMatch) cleanJSON = listMatch[0];
 

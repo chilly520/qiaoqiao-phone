@@ -21,14 +21,16 @@
 
               <div v-if="sparkInfo?.streak > 0" class="qq-level-bar">
                 <span class="status-text">已佩戴</span>
-                <div class="level-dots">
-                  <span
-                    v-for="i in 10"
-                    :key="i"
-                    class="level-dot"
-                    :class="{ active: i <= Math.min(sparkInfo.streak % 10 || sparkInfo.streak, 10), filled: i <= (sparkInfo.streak % 10 || 10) }"
-                    :style="{ backgroundColor: i <= (sparkInfo.streak % 10 || 10) ? getLevelDotColor(i, sparkInfo.streak) : '#E0E0E0' }"
-                  >{{ getLevelEmoji(i, sparkInfo.streak) }}</span>
+                <div class="level-dots-scroll">
+                  <div class="level-dots">
+                    <span
+                      v-for="i in 10"
+                      :key="i"
+                      class="level-dot"
+                      :class="{ active: i <= Math.min(sparkInfo.streak % 10 || sparkInfo.streak, 10), filled: i <= (sparkInfo.streak % 10 || 10) }"
+                      :style="{ backgroundColor: i <= (sparkInfo.streak % 10 || 10) ? getLevelDotColor(i, sparkInfo.streak) : '#E0E0E0' }"
+                    >{{ getLevelEmoji(i, sparkInfo.streak) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -347,23 +349,40 @@ function getLevelEmoji(index, streak) {
   border-radius: 10px;
 }
 
+.level-dots-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 0;
+}
+.level-dots-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .level-dots {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 0 2px;
+  min-width: 100%;
+  justify-content: center;
 }
 
 .level-dot {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.3s ease;
   background-color: #E0E0E0;
   opacity: 0.4;
+  flex-shrink: 0;
 }
 
 .level-dot.active {
