@@ -1161,13 +1161,15 @@
             :include-memory="exportIncludeMemory"
             :include-history="exportIncludeHistory"
             :exclude-images="exportExcludeImages"
+            :include-love-space="exportIncludeLoveSpace"
             :size-warning="historySizeWarning"
             :estimated-size="estimatedHistorySize"
             @close="showExportModal = false"
             @export="handleExportCard"
             @update:include-memory="(v) => exportIncludeMemory = v"
             @update:include-history="(v) => exportIncludeHistory = v"
-            @update:exclude-images="(v) => exportExcludeImages = v" />
+            @update:exclude-images="(v) => exportExcludeImages = v"
+            @update:include-love-space="(v) => exportIncludeLoveSpace = v" />
 
         <!-- Avatar Cropper Modal -->
         <AvatarCropper v-if="showAvatarCropper || showUserAvatarCropper" :image-src="cropperImageSrc"
@@ -2659,8 +2661,9 @@ const showExportModal = ref(false)
 const exportIncludeHistory = ref(false)
 const exportIncludeMemory = ref(true)
 const exportExcludeImages = ref(false) // New: Option to strip images from history
+const exportIncludeLoveSpace = ref(true) // 跟随导出情侣空间
 
-const handleExportCard = () => {
+const handleExportCard = async () => {
     try {
         if (!props.chatData?.id) {
             showToast('无法导出：会话ID缺失')
@@ -2737,6 +2740,35 @@ const handleExportCard = () => {
 
         if (exportIncludeMemory.value && chat.memory) {
             exportData.memory = chat.memory
+        }
+
+        // 跟随导出情侣空间数据
+        if (exportIncludeLoveSpace.value) {
+            try {
+                const { useLoveSpaceStore } = await import('../../stores/loveSpaceStore')
+                const ls = useLoveSpaceStore()
+                if (ls && ls.spaces && ls.spaces[chat.id]) {
+                    const space = ls.spaces[chat.id]
+                    exportData.lovespace = {
+                        partner: space.partner,
+                        startDate: space.startDate,
+                        loveDays: space.loveDays,
+                        diary: space.diary || [],
+                        messages: space.messages || [],
+                        anniversaries: space.anniversaries || [],
+                        footprints: space.footprints || [],
+                        stickies: space.stickies || [],
+                        letters: space.letters || [],
+                        house: space.house || {},
+                        questions: space.questions || [],
+                        album: space.album || [],
+                        gachaHistory: space.gachaHistory || [],
+                        schedules: space.schedules || []
+                    }
+                }
+            } catch (e) {
+                console.warn('[ExportCard] failed to attach love space:', e)
+            }
         }
 
         if (exportIncludeHistory.value && chat.msgs) {

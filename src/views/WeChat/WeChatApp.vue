@@ -877,7 +877,6 @@ const handleImport = async (e) => {
     try {
         const text = await file.text()
         const data = JSON.parse(text)
-
         if (data.type !== 'qiaoqiao_character_card' || !data.character) {
             chatStore.triggerToast('无效的角色卡文件', 'info')
             return
@@ -906,6 +905,41 @@ const handleImport = async (e) => {
         // Restore Memory
         if (data.memory && Array.isArray(data.memory)) {
             chat.memory = data.memory
+        }
+
+        // Restore Love Space (随角色卡一起导入)
+        if (data.lovespace && typeof data.lovespace === 'object') {
+            try {
+                const { useLoveSpaceStore } = await import('../../stores/loveSpaceStore')
+                const ls = useLoveSpaceStore()
+                if (ls) {
+                    // 合并：以导入数据为基准，缺失字段用 DEFAULT_SPACE 兜底
+                    const currentSpace = ls.spaces[chatId] || {}
+                    const incoming = data.lovespace
+                    const restored = {
+                        initialized: true,
+                        partner: incoming.partner || currentSpace.partner || chat,
+                        startDate: incoming.startDate || currentSpace.startDate || new Date().toISOString(),
+                        loveDays: incoming.loveDays ?? currentSpace.loveDays ?? 0,
+                        diary: incoming.diary || [],
+                        messages: incoming.messages || [],
+                        anniversaries: incoming.anniversaries || [],
+                        footprints: incoming.footprints || [],
+                        stickies: incoming.stickies || [],
+                        letters: incoming.letters || [],
+                        house: incoming.house || { comfortLevel: 100, items: [], lastAction: '', lastActionTime: new Date().toISOString() },
+                        questions: incoming.questions || [],
+                        album: incoming.album || [],
+                        gachaHistory: incoming.gachaHistory || [],
+                        schedules: incoming.schedules || [],
+                        applyToDesktop: currentSpace.applyToDesktop ?? false
+                    }
+                    ls.spaces[chatId] = restored
+                    await ls.saveToStorage()
+                }
+            } catch (e) {
+                console.warn('[Import] lovespace restore failed:', e)
+            }
         }
 
         // Restore History

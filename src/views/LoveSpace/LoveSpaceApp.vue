@@ -166,6 +166,20 @@
                   <i class="fa-solid fa-triangle-exclamation"></i> 解除绑定并清空空间
                 </button>
               </div>
+
+              <!-- 单独导入导出 -->
+              <div class="editor-row mt-4">
+                <div class="editor-header">数据迁移</div>
+                <div class="flex gap-2 mt-2">
+                  <button @click="handleExportLoveSpace" class="flex-1 py-2 bg-pink-50 text-pink-600 rounded-xl text-[11px] font-bold active:scale-95 transition-all">
+                    <i class="fa-solid fa-file-export mr-1"></i>导出本空间
+                  </button>
+                  <button @click="triggerLoveSpaceImport" class="flex-1 py-2 bg-blue-50 text-blue-600 rounded-xl text-[11px] font-bold active:scale-95 transition-all">
+                    <i class="fa-solid fa-file-import mr-1"></i>导入空间
+                  </button>
+                </div>
+                <input ref="loveSpaceImportInput" type="file" accept=".json" class="hidden" @change="handleLoveSpaceImport" />
+              </div>
             </div>
 
             <div class="desktop-sync-row">
@@ -358,6 +372,7 @@ const tempStartDate = ref('')
 const isMagicGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 const selectedRole = ref(null) // 用户选择的角色
 const showConfirmation = ref(false) // 是否显示确认步骤
+const loveSpaceImportInput = ref(null) // 单独导入文件选择器
 
 // 清空功能选项
 const resetOptions = ref({
@@ -556,6 +571,113 @@ async function resetCurrentSpace() {
     '确定重置',
     '我再想想'
   )
+}
+
+// === 单独导入导出当前情侣空间 ===
+async function handleExportLoveSpace() {
+  const charId = loveSpaceStore.currentPartnerId
+  if (!charId) {
+    chatStore.triggerToast('请先进入一个情侣空间', 'warning')
+    return
+  }
+  const space = loveSpaceStore.spaces[charId]
+  if (!space) {
+    chatStore.triggerToast('当前空间数据为空', 'warning')
+    return
+  }
+  try {
+    const payload = {
+      type: 'qiaoqiao_love_space',
+      version: '1.0',
+      timestamp: Date.now(),
+      charId,
+      partner: space.partner,
+      startDate: space.startDate,
+      loveDays: space.loveDays,
+      diary: space.diary || [],
+      messages: space.messages || [],
+      anniversaries: space.anniversaries || [],
+      footprints: space.footprints || [],
+      stickies: space.stickies || [],
+      letters: space.letters || [],
+      house: space.house || {},
+      questions: space.questions || [],
+      album: space.album || [],
+      gachaHistory: space.gachaHistory || [],
+      schedules: space.schedules || []
+    }
+    const json = JSON.stringify(payload, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const safeName = (space.partner?.name || 'couple').replace(/[\\/:*?"<>|]/g, '_')
+    a.href = url
+    a.download = `love_space_${safeName}_${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    chatStore.triggerToast('✅ 情侣空间已导出', 'success')
+  } catch (e) {
+    console.error('[ExportLoveSpace]', e)
+    chatStore.triggerToast('导出失败: ' + e.message, 'error')
+  }
+}
+
+function triggerLoveSpaceImport() {
+  if (!loveSpaceStore.currentPartnerId) {
+    chatStore.triggerToast('请先进入一个情侣空间再导入', 'warning')
+    return
+  }
+  if (loveSpaceImportInput.value) loveSpaceImportInput.value.click()
+}
+
+async function handleLoveSpaceImport(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+    if (data.type !== 'qiaoqiao_love_space') {
+      chatStore.triggerToast('不是情侣空间文件', 'error')
+      return
+    }
+    const charId = loveSpaceStore.currentPartnerId
+    if (!charId) return
+
+    showLocalConfirmModal(
+      '导入情侣空间',
+      '导入将覆盖当前空间的所有数据，确定继续吗？建议先导出当前空间备份。',
+      async () => {
+        const incoming = data
+        loveSpaceStore.spaces[charId] = {
+          initialized: true,
+          partner: incoming.partner || loveSpaceStore.spaces[charId]?.partner,
+          startDate: incoming.startDate || new Date().toISOString(),
+          loveDays: incoming.loveDays ?? 0,
+          diary: incoming.diary || [],
+          messages: incoming.messages || [],
+          anniversaries: incoming.anniversaries || [],
+          footprints: incoming.footprints || [],
+          stickies: incoming.stickies || [],
+          letters: incoming.letters || [],
+          house: incoming.house || { comfortLevel: 100, items: [], lastAction: '', lastActionTime: new Date().toISOString() },
+          questions: incoming.questions || [],
+          album: incoming.album || [],
+          gachaHistory: incoming.gachaHistory || [],
+          schedules: incoming.schedules || [],
+          applyToDesktop: loveSpaceStore.spaces[charId]?.applyToDesktop ?? false
+        }
+        await loveSpaceStore.saveToStorage()
+        chatStore.triggerToast('✅ 情侣空间导入成功', 'success')
+      }
+    )
+  } catch (err) {
+    console.error('[ImportLoveSpace]', err)
+    chatStore.triggerToast('导入失败: ' + err.message, 'error')
+  } finally {
+    e.target.value = ''
+  }
 }
 
 // 清空选中的功能

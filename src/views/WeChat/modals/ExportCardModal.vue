@@ -73,6 +73,7 @@ defineProps({
     includeMemory: { type: Boolean, default: true },
     includeHistory: { type: Boolean, default: false },
     excludeImages: { type: Boolean, default: false },
+    includeLoveSpace: { type: Boolean, default: true },
     sizeWarning: { type: Boolean, default: false },
     estimatedSize: { type: String, default: '0 KB' }
 })
@@ -82,6 +83,7 @@ defineEmits([
     'export',
     'update:includeMemory',
     'update:includeHistory',
-    'update:excludeImages'
+    'update:excludeImages',
+    'update:includeLoveSpace'
 ])
 </script>
