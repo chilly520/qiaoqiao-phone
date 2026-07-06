@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Chilly Phone",
   "short_name": "Chilly Phone",
-  "start_url": "/wechat",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
