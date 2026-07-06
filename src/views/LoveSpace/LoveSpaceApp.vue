@@ -604,7 +604,8 @@ async function handleExportLoveSpace() {
       questions: space.questions || [],
       album: space.album || [],
       gachaHistory: space.gachaHistory || [],
-      schedules: space.schedules || []
+      schedules: space.schedules || [],
+      applyToDesktop: space.applyToDesktop || false
     }
     const json = JSON.stringify(payload, null, 2)
     const blob = new Blob([json], { type: 'application/json' })
@@ -666,7 +667,7 @@ async function handleLoveSpaceImport(e) {
           album: incoming.album || [],
           gachaHistory: incoming.gachaHistory || [],
           schedules: incoming.schedules || [],
-          applyToDesktop: loveSpaceStore.spaces[charId]?.applyToDesktop ?? false
+          applyToDesktop: incoming.applyToDesktop ?? loveSpaceStore.spaces[charId]?.applyToDesktop ?? false
         }
         await loveSpaceStore.saveToStorage()
         chatStore.triggerToast('✅ 情侣空间导入成功', 'success')

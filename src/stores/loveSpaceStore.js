@@ -384,7 +384,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
                 if (!q.authorId) {
                   // 旧数据默认是 partner 提问
                   q.authorId = 'partner'
-                  q.authorName = this.spaces[Object.keys(this.spaces)[0]]?.partner?.name || 'TA'
+                  q.authorName = space.partner?.name || 'TA'
                 }
               })
             }

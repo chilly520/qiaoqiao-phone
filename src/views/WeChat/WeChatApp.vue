@@ -918,7 +918,7 @@ const handleImport = async (e) => {
                     const incoming = data.lovespace
                     const restored = {
                         initialized: true,
-                        partner: incoming.partner || currentSpace.partner || chat,
+                        partner: incoming.partner || currentSpace.partner || { id: chatId, name: name, avatar: data.character?.avatar },
                         startDate: incoming.startDate || currentSpace.startDate || new Date().toISOString(),
                         loveDays: incoming.loveDays ?? currentSpace.loveDays ?? 0,
                         diary: incoming.diary || [],
