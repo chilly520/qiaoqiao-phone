@@ -224,6 +224,15 @@ class BackgroundManager {
      */
     setupMediaSession() {
         if (!('mediaSession' in navigator)) return;
+        // 已设置过则只刷新播放状态,避免每秒钟刷一次日志
+        if (this.mediaSessionSet) {
+            try {
+                if (navigator.mediaSession.playbackState !== 'playing') {
+                    navigator.mediaSession.playbackState = 'playing';
+                }
+            } catch (e) { /* ignore */ }
+            return;
+        }
         try {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: 'Chilly Phone',
@@ -252,7 +261,7 @@ class BackgroundManager {
             navigator.mediaSession.setActionHandler('stop', noop);
 
             this.mediaSessionSet = true;
-            this.log('MediaSession metadata set (playbackState=playing, action handlers bound to <audio>).', 'info');
+            this.log('MediaSession metadata set (playbackState=playing, action handlers bound to <audio>).', 'debug');
         } catch (e) {
             this.log('MediaSession setup failed: ' + (e.message || e.name), 'error');
         }
