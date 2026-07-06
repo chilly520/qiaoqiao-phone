@@ -1,41 +1,26 @@
-// Background keep-alive utility for PWA.
+// Background utility for PWA.
 //
-// 1.6.5 之前能跑、之后失效的根因是 1.10.1 引入 SW 之后页面生命周期被更激进地评估，
-// 加上旧实现里 muted+volume=0 的 <audio> 和 17Hz+gain=0.0001 的 Web Audio
-// 都被现代浏览器识别为"静默媒体"直接 pause / suspend,导致 setInterval 跟着
-// 被节流到 1 分钟一次。
+// 之前的 silent.wav + MediaSession + Web Audio 振荡器那一套"假保活"在现代
+// 移动浏览器（Chrome Android / iOS Safari / Edge Mobile）下都没生效：
+// - 静默媒体（volume≈0 / gain≈0）会被浏览器识别为"无音频输出"直接 pause / suspend
+// - 即便 audio 真的在播,MediaSession 通知卡也不一定显示（依赖浏览器策略 + 真实播放）
+// - 用户在通知栏里根本看不到媒体卡片,JS 切后台后依然被节流到 1 分钟一次
 //
-// 这里采用 4 层叠加的"真后台保活"策略,目标是不依赖 visibility 切换、让 JS 在
-// 切后台后还能以较高频率跑:
-//   1. Web Audio 振荡器 100Hz + gain=0.05 (人耳能听但手机扬声器放不出来),
-//      单一 AudioContext 兼任 audio element 角色(让 MediaSession 识别出"在播媒体")
-//   2. MediaSession API 声明"正在播放媒体"(让 OS 认为是音乐类 App,放宽限制)
-//   3. 周期性 fetch 同源资源(保持网络栈活跃,部分浏览器对活跃连接节流更宽松)
-//   4. Notification Triggers API 兜底(页面被 OS 杀掉时,浏览器原生弹通知)
-//
-// ⚠️ 关键: autoplay policy 要求首次 audio.play() 必须在用户手势上下文中。
-// onMounted 里直接调用 play() 会被 NotAllowedError 拦截,所以改成在第一次
-// 任意 pointerdown/click/touchstart/keydown 时再启动,启动后保活链路接管。
+// 所以 v1.10.46 起移除所有"假保活"代码，只保留两个真正有用的部分：
+//   1. Screen Wake Lock  - 前台时不熄屏（Android Chrome 有效,iOS 静默降级）
+//   2. visibilitychange - 监听前后台切换,回到前台时 catchUpProactive 兜底触发
+// 真正能穿透 App 完全关闭的是 Web Push（pushService.schedule），由 chatStore
+// 的 proactive / scheduler / 定时任务模块调用,跟 backgroundManager 无关。
 
 import { useLoggerStore } from '../stores/loggerStore';
 
 class BackgroundManager {
     constructor() {
-        this.audio = null;
-        this.isActive = false;
         this.wakeLock = null;
         this.initialized = false;
         this.logger = null;
-        this.checkInterval = null;
-        this.checkIntervalTime = 60000; // 1分钟检查一次
-        this.networkHeartbeatTimer = null;
-        this.audioLogCount = 0;
-        this.heartbeatLogCount = 0;
-        this.wakeLockLogged = false;
-        this.visibilityLogged = false;
-        this.mediaSessionSet = false;
-        // 后台保活工作状态，供 UI 显示
-        this.keepAliveWorking = null; // null=未知, true=工作中, false=失效
+        // 后台保活工作状态，供 UI 显示（恒为 false：现代浏览器已无可靠保活手段）
+        this.keepAliveWorking = false;
     }
 
     init() {
@@ -45,255 +30,22 @@ class BackgroundManager {
 
         if (this.initialized) return;
 
-        this.log('Initializing background keep-alive system (v5: real <audio> only, lazy on user gesture)...', 'info');
-        // 1) 注册 MediaSession (metadata 提前设好,play 后才会激活通知卡)
-        this.setupMediaSession();
-        // 2) 网络心跳
-        this.startNetworkHeartbeat();
-        // 3) 可见性切换
+        // 只挂可见性切换 + 唤醒锁,不玩 audio / mediaSession 那一套了
         this.setupVisibilityHandler();
-        // 4) 首次手势解锁 (同时创建 <audio> 元素 + play,确保在用户手势上下文里)
-        this.setupUserGestureUnlocker();
-        // 5) 兜底周期任务
-        this.startCheckInterval();
-
         this.initialized = true;
-
-        // 首次排程下一次原生系统通知(Chrome/Edge Android 才有效,iOS/Firefox 静默返回 false)
-        this.computeAndScheduleNextNotification().catch(() => {});
     }
 
     log(message, level = 'sys') {
-        console.log(`[BackgroundManager] ${message}`);
-        if (this.logger) {
+        // 后台保活相关的日志基本只剩可见性切换,默认 debug 不刷屏
+        if (this.logger && level !== 'debug') {
             if (level === 'info' || level === 'sys') this.logger.sys(message);
             else if (level === 'error') this.logger.error(message);
         }
     }
 
     /**
-     * 创建 <audio> 元素 + 挂到 DOM,必须在用户手势上下文里调用才能成功 play()。
-     * 关键: 现代移动浏览器(Edge Mobile / Chrome Android)只在有真实 <audio>/<video>
-     * 元素在播放时,才会在通知栏显示媒体卡片并放宽后台 JS 限制。
-     */
-    createAudioElement() {
-        try {
-            if (this.audio && this.audio.parentNode) return;
-
-            const a = new Audio();
-            a.id = 'qiaqiao-keepalive-audio';
-            a.src = '/silent.wav?v=2';
-            a.loop = true;
-            // volume 必须 > 0:浏览器基于 volume 判断是否有可听输出,volume=0 会被识别为静默媒体并 pause
-            a.volume = 0.01;
-            a.muted = false;
-            a.preload = 'auto';
-            a.setAttribute('playsinline', '');
-            a.setAttribute('webkit-playsinline', '');
-            // 隐藏起来但保留在 DOM(部分浏览器要求 audio 元素在文档中)
-            a.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
-            document.body.appendChild(a);
-
-            this.audio = a;
-            this.log('<audio> element created and attached to DOM (src=/silent.wav, loop, volume=0.01).', 'info');
-
-            // 监听 audio 实际播放事件,确认确实在播
-            a.addEventListener('playing', () => {
-                this.log(`<audio> "playing" event fired. paused=${a.paused} currentTime=${a.currentTime.toFixed(1)}`, 'info');
-            });
-            a.addEventListener('pause', () => {
-                this.log('<audio> "pause" event fired (浏览器把它停了).', 'error');
-            });
-            a.addEventListener('error', (e) => {
-                this.log('<audio> error: code=' + (a.error?.code || '?') + ' msg=' + (a.error?.message || '?'), 'error');
-            });
-        } catch (e) {
-            this.log('createAudioElement failed: ' + (e.message || e.name), 'error');
-        }
-    }
-
-    /**
-     * 启动音频 + 更新 MediaSession。**必须在用户手势上下文中调用** 才能成功。
-     * v5: 只用真实 <audio> 元素,这是通知栏出现媒体卡片的硬性条件。
-     * Web Audio 振荡器在 v4 实测无效 + 吃 CPU,已移除。
-     */
-    async startAudioPlayback() {
-        // 如果还没创建 audio 元素,先创建
-        if (!this.audio || !this.audio.parentNode) {
-            this.createAudioElement();
-        }
-
-        // 已成功播放过且仍在播,直接返回
-        if (this.isActive && this.audio && !this.audio.paused) {
-            return true;
-        }
-        // 之前已确认过失败(autoplay 被永久拒绝),不再重试
-        if (this._audioPlayPermanentlyBlocked) {
-            return false;
-        }
-
-        let audioOk = false;
-
-        if (this.audio) {
-            // 只有真的 paused 才尝试 play(),避免每次 visibilitychange 都触发
-            if (this.audio.paused) {
-                try {
-                    await this.audio.play();
-                    audioOk = !this.audio.paused && this.audio.readyState >= 2;
-                    if (audioOk) {
-                        if (!this._audioOkLogged) {
-                            this.log(`<audio> playing OK. paused=${this.audio.paused} currentTime=${this.audio.currentTime.toFixed(1)} readyState=${this.audio.readyState}`, 'info');
-                            this._audioOkLogged = true;
-                        }
-                    } else {
-                        if (!this._audioFailLogged) {
-                            this.log(`<audio> play() returned but not playing. paused=${this.audio.paused} readyState=${this.audio.readyState}`, 'error');
-                            this._audioFailLogged = true;
-                        }
-                    }
-                } catch (e) {
-                    if (!this._audioFailLogged) {
-                        this.log('<audio>.play() failed: ' + (e.message || e.name), 'error');
-                        this._audioFailLogged = true;
-                    }
-                    // NotAllowedError = autoplay 被拒,后续所有重试都没用
-                    if (e.name === 'NotAllowedError') {
-                        this._audioPlayPermanentlyBlocked = true;
-                    }
-                }
-            } else {
-                // 已经在播,标记为 ok
-                audioOk = true;
-                this.isActive = true;
-                this.keepAliveWorking = true;
-            }
-        } else if (!this._audioFailLogged) {
-            this.log('No <audio> element to play.', 'error');
-            this._audioFailLogged = true;
-        }
-
-        this.isActive = audioOk;
-        this.keepAliveWorking = this.isActive;
-
-        if (this.isActive) {
-            this.setupMediaSession();
-        }
-
-        return this.isActive;
-    }
-
-    /**
-     * 注册"首次用户手势"监听器,用来解锁 autoplay policy。
-     * 用 capture phase + document + 多事件类型,确保不漏任何用户交互。
-     */
-    setupUserGestureUnlocker() {
-        if (this._unlockerInstalled) return;
-        this._unlockerInstalled = true;
-
-        const unlock = (e) => {
-            // 防止 click 等合成事件重复触发
-            if (this._unlockerFired) return;
-            this._unlockerFired = true;
-
-            // 异步 fire-and-forget,避免阻塞后续事件链路(尤其是 PWA 内导航的 click)
-            this.startAudioPlayback().then((ok) => {
-                window.dispatchEvent(new CustomEvent('keep-alive-unlocked', { detail: { ok } }));
-                if (ok) {
-                    this.log('Autoplay unlocked successfully on first user gesture.', 'info');
-                }
-            }).catch(() => {});
-
-            // 立即移除所有 unlock 监听器(不等 startAudioPlayback 完成)
-            ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(type => {
-                document.removeEventListener(type, unlock, true);
-            });
-        };
-
-        ['pointerdown', 'click', 'touchstart', 'keydown'].forEach(type => {
-            document.addEventListener(type, unlock, { capture: true, passive: true });
-        });
-
-        this.log('User gesture unlocker installed. Tap anywhere to start background keep-alive.', 'info');
-    }
-
-    /**
-     * MediaSession API:声明"正在播放媒体"。
-     * 这会让 Android 把页面当作音乐类 App 看待,通知栏出现媒体卡片,
-     * 后台 JS 执行被显著放宽(类比 Spotify/网易云在后台保活)。
-     * v4: 绑定到真实 <audio> 元素,这是通知栏出现媒体卡片的硬性条件。
-     */
-    setupMediaSession() {
-        if (!('mediaSession' in navigator)) return;
-        // 已设置过则只刷新播放状态,避免每秒钟刷一次日志
-        if (this.mediaSessionSet) {
-            try {
-                if (navigator.mediaSession.playbackState !== 'playing') {
-                    navigator.mediaSession.playbackState = 'playing';
-                }
-            } catch (e) { /* ignore */ }
-            return;
-        }
-        try {
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Chilly Phone',
-                artist: 'Proactive Companion',
-                album: 'Background Service',
-                artwork: [
-                    { src: '/pwa-192x192.png?v=4', sizes: '192x192', type: 'image/png' },
-                    { src: '/pwa-512x512.png?v=4', sizes: '512x512', type: 'image/png' }
-                ]
-            });
-            // 声明播放状态为 playing,这是关键
-            navigator.mediaSession.playbackState = 'playing';
-
-            // 注册 action handlers,让媒体卡片上的按钮能控制 audio
-            // (虽然保活场景下我们不希望用户暂停,所以这些是 no-op)
-            const noop = () => { /* keep-alive 必须保持 playing */ };
-            navigator.mediaSession.setActionHandler('play', () => {
-                if (this.audio) this.audio.play().catch(() => {});
-            });
-            navigator.mediaSession.setActionHandler('pause', noop);
-            navigator.mediaSession.setActionHandler('previoustrack', noop);
-            navigator.mediaSession.setActionHandler('nexttrack', noop);
-            navigator.mediaSession.setActionHandler('seekbackward', noop);
-            navigator.mediaSession.setActionHandler('seekforward', noop);
-            navigator.mediaSession.setActionHandler('seekto', noop);
-            navigator.mediaSession.setActionHandler('stop', noop);
-
-            this.mediaSessionSet = true;
-            this.log('MediaSession metadata set (playbackState=playing, action handlers bound to <audio>).', 'debug');
-        } catch (e) {
-            this.log('MediaSession setup failed: ' + (e.message || e.name), 'error');
-        }
-    }
-
-    /**
-     * 网络心跳:周期性 fetch 同源资源,保持网络栈活跃。
-     * Chrome 对有活跃网络请求/连接的页面,后台节流策略更宽松。
-     * 同源 fetch 不会消耗外部 API 配额。
-     */
-    startNetworkHeartbeat() {
-        if (this.networkHeartbeatTimer) return;
-        const ping = () => {
-            // 用 HEAD 拉个同源小资源,失败也无害
-            fetch('/sw.js?v=' + Date.now(), { method: 'HEAD', cache: 'no-store' })
-                .catch(() => { /* 静默 */ });
-        };
-        // 立即打一发,之后每 25s 一次
-        ping();
-        this.networkHeartbeatTimer = setInterval(ping, 25000);
-        this.log('Network heartbeat started (25s interval).', 'info');
-    }
-
-    stopNetworkHeartbeat() {
-        if (this.networkHeartbeatTimer) {
-            clearInterval(this.networkHeartbeatTimer);
-            this.networkHeartbeatTimer = null;
-        }
-    }
-
-    /**
-     * 屏幕唤醒锁：仅在前台有效，页面隐藏后浏览器自动释放。
+     * Screen Wake Lock：前台时阻止屏幕熄灭（仅 Android Chrome 有效,iOS Safari 不支持）。
+     * 失败/不支持都静默,不刷日志。
      */
     async requestWakeLock() {
         if (!('wakeLock' in navigator)) return;
@@ -302,10 +54,6 @@ class BackgroundManager {
 
         try {
             this.wakeLock = await navigator.wakeLock.request('screen');
-            if (!this.wakeLockLogged) {
-                this.log('Screen Wake Lock acquired.', 'info');
-                this.wakeLockLogged = true;
-            }
             this.wakeLock.addEventListener('release', () => {
                 this.wakeLock = null;
                 if (document.visibilityState === 'visible') {
@@ -316,32 +64,20 @@ class BackgroundManager {
     }
 
     setupVisibilityHandler() {
+        if (this._visibilityHandlerInstalled) return;
+        this._visibilityHandlerInstalled = true;
+
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                if (!this.visibilityLogged) {
-                    this.log('App returned to foreground. Re-syncing keepers...', 'sys');
-                    this.visibilityLogged = false; // 重置以便下次切走时再打
-                }
-                this.startAudioPlayback();
                 this.requestWakeLock();
-                this.setupMediaSession();
-
-                // 切回前台时立即兜底 catch-up
+                // 切回前台时立即兜底 catch-up,补齐后台期间被节流掉的所有 proactive / 定时任务
                 this.catchUpProactive().catch(() => {});
-
-                // 重新排程下一次原生系统通知(因为期间可能已经过期触发)
-                this.computeAndScheduleNextNotification().catch(() => {});
-            } else {
-                if (!this.visibilityLogged) {
-                    this.log('App entered background. Keep-alive chain (audio + mediaSession + heartbeat) should keep JS alive.', 'sys');
-                    this.visibilityLogged = true;
-                }
             }
         });
     }
 
     /**
-     * 切回前台时立即扫描所有 overdue 的 proactive 任务并立刻触发，
+     * 切回前台时立即扫描所有 overdue 的 proactive 任务并立刻触发,
      * 弥补后台期间无法触发的心跳。
      */
     async catchUpProactive() {
@@ -353,41 +89,31 @@ class BackgroundManager {
             Object.keys(chats).forEach(chatId => {
                 chatStore.checkProactive(chatId);
             });
-            this.log('[CatchUp] Scanned all chats for missed triggers.', 'info');
         } catch (e) { /* 静默 */ }
     }
 
     /**
-     * 调度未来某时刻的后台通知。
-     *
-     * ⚠️ v1.10.34: 弃用 Notification Triggers API。
-     * Chrome 在 2024 年移除了 showTrigger / TimestampTrigger,
-     * `'showTrigger' in Notification.prototype` 仍返回 true 但实际调用
-     * 报 "Validation error of unrecognized features: showTrigger"。
-     * 改用即时通知:触发时间到了时由前端 JS 调 showNotification(需要页面在跑)。
-     * 真后台通知需要服务器 Web Push,目前架构不支持。
+     * 兼容老调用：v1.10.46 之前 App.vue / 各种 hook 会调 enable() 来触发保活链路,
+     * 现在只剩 wake lock 一件事,enable() 退化为幂等的 init + requestWakeLock。
      */
-    async scheduleNativeNotification(triggerTime, title, options = {}) {
-        // 直接返回 false,computeAndScheduleNextNotification 走 no-op 路径
-        // 真正的通知靠 visibilitychange→visible 时的 catchUpProactive 兜底
-        if (!options.silent) {
-            this.log('Notification Triggers API 已被 Chrome 移除,跳过排程', 'sys');
-        }
+    enable() {
+        this.init();
+        this.requestWakeLock();
+    }
+
+    /**
+     * 调度未来某时刻的后台通知 (v1.10.34: Notification Triggers API 已被 Chrome
+     * 移除,改用 Web Push,具体实现在 pushService.schedule,本方法仅为兼容保留 no-op)。
+     */
+    async scheduleNativeNotification() {
         return false;
     }
 
     /**
-     * 扫描所有聊天，预测"下一次"原生系统通知应该何时弹。
-     * 取所有候选时间最早的 1 个，调用 scheduleNativeNotification 排程。
-     *
-     * 因为 Notification Triggers API 一次只能排一个 trigger 且会被覆盖，
-     * 我们只关心"最近一次要发生的 proactive 事件"，到了之后再重排。
+     * 扫描所有聊天,预测"下一次"通知应该何时弹 -> 走 Web Push。
+     * 真正能穿透 App 完全关闭,跟 backgroundManager 本身的保活无关。
      */
     async computeAndScheduleNextNotification() {
-        // iOS / Firefox 直接静默跳过,不影响前台逻辑
-        if (!('showTrigger' in (typeof Notification !== 'undefined' ? Notification.prototype : {}))) {
-            return false;
-        }
         try {
             const { useChatStore } = await import('../stores/chatStore.js');
             const { useSchedulerStore } = await import('../stores/schedulerStore.js');
@@ -398,67 +124,36 @@ class BackgroundManager {
 
             const now = Date.now();
             const candidates = [];
-            const MIN_LEAD = 30000; // 至少 30 秒后,避免 Chrome 拒绝
 
             Object.keys(chats).forEach(chatId => {
                 const chat = chats[chatId];
-                if (!chat) return;
+                if (!chat || chat.hidden) return;
+                const chatName = chat.name || 'TA';
 
-                const chatName = chat.name || chat.remark || '新消息';
-                const userMsgs = (chat.msgs || []).filter(m => m.role === 'user');
-                const lastUserMsg = userMsgs.slice(-1)[0];
-                const lastMsgTime = lastUserMsg ? lastUserMsg.timestamp : now;
-
-                // 1. activeChat: 用户不在该聊天时的主动关怀
-                if (chat.activeChat && chatStore.currentChatId !== chatId) {
-                    const aInterval = parseInt(chat.activeInterval) || 120;
-                    const lastTrigger = chat._lastActiveTriggeredTime || 0;
-                    // 取 max:最后一条用户消息后+间隔, 或上次触发后+间隔
-                    const earliest = Math.max(
-                        lastMsgTime + aInterval * 60000,
-                        lastTrigger + aInterval * 60000,
-                        now + MIN_LEAD
-                    );
-                    if (earliest > now) {
+                // 1. 倒数日
+                if (Array.isArray(chat.countdowns)) {
+                    chat.countdowns.filter(c => c.date > now).forEach(c => {
                         candidates.push({
-                            time: earliest,
-                            title: chatName,
-                            body: `${chatName} 想你了,过来看看`,
-                            chatId,
-                            type: 'active'
+                            time: c.date, title: chatName,
+                            body: c.title || '纪念日到了', chatId, type: 'countdown'
                         });
-                    }
+                    });
                 }
 
-                // 2. proactiveChat: 用户在该聊天但闲置时
-                if (chat.proactiveChat && chatStore.currentChatId === chatId) {
-                    const pInterval = parseInt(chat.proactiveInterval) || 30;
-                    const lastTrigger = chat._lastProactiveTriggeredTime || 0;
-                    const earliest = Math.max(
-                        lastMsgTime + pInterval * 60000,
-                        lastTrigger + pInterval * 60000,
-                        now + MIN_LEAD
-                    );
-                    if (earliest > now) {
-                        candidates.push({
-                            time: earliest,
-                            title: chatName,
-                            body: `${chatName} 想说点什么`,
-                            chatId,
-                            type: 'proactive'
-                        });
-                    }
+                // 2. proactive 间隔
+                if (chat.proactiveEnabled && chat.proactiveInterval > 0 && chat.proactiveNext > now) {
+                    candidates.push({
+                        time: chat.proactiveNext, title: chatName,
+                        body: `${chatName} 想找你聊聊`, chatId, type: 'proactive'
+                    });
                 }
 
                 // 3. 定时任务
                 const tasks = schedulerStore.tasks || [];
                 tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp > now).forEach(task => {
                     candidates.push({
-                        time: task.timestamp,
-                        title: chatName,
-                        body: task.content || '定时提醒',
-                        chatId,
-                        type: 'scheduled'
+                        time: task.timestamp, title: chatName,
+                        body: task.content || '定时提醒', chatId, type: 'scheduled'
                     });
                 });
 
@@ -466,129 +161,44 @@ class BackgroundManager {
                 const randomConfig = schedulerStore.randomConfigs?.[chatId];
                 if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > now) {
                     candidates.push({
-                        time: randomConfig.nextTrigger,
-                        title: chatName,
-                        body: `${chatName} 想找你聊聊`,
-                        chatId,
-                        type: 'random'
+                        time: randomConfig.nextTrigger, title: chatName,
+                        body: `${chatName} 想找你聊聊`, chatId, type: 'random'
                     });
                 }
             });
 
-            if (candidates.length === 0) {
-                this.log('[Proactive] No future trigger candidates, skipping schedule.', 'info');
-                return false;
-            }
+            if (candidates.length === 0) return false;
 
             candidates.sort((a, b) => a.time - b.time);
             const next = candidates[0];
 
-            this.log(
-                `[Proactive] Next candidate: ${next.title} at ${new Date(next.time).toLocaleString()} (type=${next.type})`,
-                'info'
-            );
-
-            // 优先通过 Web Push 后端调度(能穿透 App 完全关闭)
-            // 失败/未配置时回退到 scheduleNativeNotification (前端 scheduler,App 必须在跑)
+            // 优先通过 Web Push 后端调度
             try {
                 const { pushService } = await import('./pushService');
                 const result = await pushService.schedule(next.time, {
-                    title: next.title,
-                    body: next.body,
-                    tag: 'proactive-msg',
+                    title: next.title, body: next.body, tag: 'proactive-msg',
                     data: { chatId: next.chatId, type: next.type },
                     url: `/wechat?openChat=${encodeURIComponent(next.chatId)}`,
                 });
-                if (result.ok) {
-                    this.log(`[Proactive] Scheduled via push server, id=${result.data?.id}`, 'info');
-                    return true;
-                }
+                return !!result?.ok;
             } catch (e) {
-                // push 未配置或失败,走原 scheduleNativeNotification (永失败,仅日志)
+                return false;
             }
-
-            return await this.scheduleNativeNotification(next.time, next.title, {
-                body: next.body,
-                tag: 'proactive-msg',
-                data: { chatId: next.chatId, type: next.type }
-            });
         } catch (e) {
-            this.log('computeAndScheduleNextNotification failed: ' + (e.message || e.name), 'error');
             return false;
         }
     }
 
-    enable() {
-        this.init();
-        // 尝试启动音频(在用户手势上下文中调用会成功)
-        this.startAudioPlayback();
-        this.requestWakeLock();
-        // enable 也会被用户手势触发,这里再确保 MediaSession 设置一次
-        this.setupMediaSession();
-        if (!this.checkInterval) this.startCheckInterval();
-    }
-
-    startCheckInterval() {
-        this.stopCheckInterval();
-
-        this.checkInterval = setInterval(async () => {
-            try {
-                // 检查 <audio> 播放状态,如果被后台 pause 就尝试恢复
-                if (this.audio) {
-                    if (this.audio.paused && this.isActive) {
-                        try { await this.audio.play(); } catch (e) { /* 静默 */ }
-                    }
-                }
-
-                if (this.heartbeatLogCount < 3) {
-                    this.log('Running background heartbeat (60s)...', 'info');
-                    this.heartbeatLogCount++;
-                }
-            } catch (error) {
-                this.log(`Error in background check: ${error.message}`, 'error');
-            }
-        }, 60000);
-
-        this.log('Background check interval started (60s)', 'info');
-    }
-
-    stopCheckInterval() {
-        if (this.checkInterval) {
-            clearInterval(this.checkInterval);
-            this.checkInterval = null;
-            this.log('Background check interval stopped', 'info');
-        }
-    }
-
-    getStatus() {
-        return {
-            active: this.isActive,
-            initialized: this.initialized,
-            wakeLock: !!this.wakeLock,
-            checkInterval: !!this.checkInterval,
-            networkHeartbeat: !!this.networkHeartbeatTimer,
-            audioState: this.audio ? (this.audio.paused ? 'paused' : 'playing') : 'no-element',
-            audioReadyState: this.audio ? this.audio.readyState : -1,
-            mediaSessionSet: this.mediaSessionSet,
-            keepAliveWorking: this.keepAliveWorking,
-            supportsNotificationTriggers: 'showTrigger' in (typeof Notification !== 'undefined' ? Notification.prototype : {})
-        };
-    }
-
     destroy() {
-        this.stopCheckInterval();
-        this.stopNetworkHeartbeat();
-        if (this.audio) {
-            try { this.audio.pause(); } catch (e) {}
-            try { this.audio.parentNode?.removeChild(this.audio); } catch (e) {}
-            this.audio = null;
-        }
         if (this.wakeLock) {
-            try { this.wakeLock.release(); } catch (e) {}
+            try { this.wakeLock.release(); } catch (e) { /* 静默 */ }
             this.wakeLock = null;
         }
-        this.callbacks = { onChange: [], onLowBattery: [] };
+        this.initialized = false;
+        this._visibilityHandlerInstalled = false;
     }
 }
 
-export const backgroundManager = new BackgroundManager();
+const backgroundManager = new BackgroundManager();
+export default backgroundManager;
+export { backgroundManager };
