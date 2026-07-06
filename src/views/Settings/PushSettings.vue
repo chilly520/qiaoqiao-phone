@@ -329,7 +329,7 @@ async function handleEnableKeepAlive() {
     const result = await backgroundManager.enableRealKeepAlive({
         title: 'qiaoqiao-phone',
         artist: '随时在线',
-        album: 'qiaoqiao',
+        album: 'CHILLY',
         icon: '/pwa-192x192.png'
     })
 
