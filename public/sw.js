@@ -1,29 +1,139 @@
-// Minimal Service Worker to satisfy PWA requirements and handle basic notifications
+// Service Worker for Chilly Phone PWA.
 //
-// 注意：不要在 activate 中调 clients.claim()！
-// v1.10.1 加了 SW 后安卓后台保活失效，根因是 clients.claim() 强制接管当前页面，
-// 导致 Chrome 重新评估页面生命周期，音频循环和 setInterval 被更激进地冻结。
-// 去掉 claim() 后 SW 在下次刷新时自然接管，不会中断正在运行的保活链路。
+// v1.10.49: 补齐 fetch 拦截 + navigation cache-first，让安装到桌面后
+// 重启手机 / 弱网 / 离线都能启动。
+// 保留不调 clients.claim() 的策略(避免影响后台音频保活)。
 //
-// v1.10.37: 加 push 事件处理 — 接收来自 Cloudflare Worker 的 Web Push 并弹系统通知。
-// 这是后台通知从"完全无法触达"升级到"真系统级弹窗"的关键。
+// 缓存策略:
+//   - navigation 请求(打开 PWA): cache-first + 后台刷新
+//   - 同源 GET 资源: cache-first + 后台刷新
+//   - 跨域: 不拦截,直接走网络
+//   - API/POST: 不拦截
+//
+// 启动入口(navigation) 永远 cache 住一份,这样:
+//   - 重启手机后第一次启动(可能还没拿到 IP / DNS 不通)能直接走 cache
+//   - 网络断了也不白屏
+//   - 后台拿到新版本时,会被下次 navigation 拿回来覆盖
 
 const APP_ICON = '/pwa-192x192.png?v=4';
+const SHELL_CACHE = 'chilly-shell-v2';
+const RUNTIME_CACHE = 'chilly-runtime-v2';
+
+// 关键 shell 资源,install 时主动 precache
+const SHELL_URLS = [
+    '/',
+    '/index.html',
+    '/manifest.json',
+    '/pwa-192x192.png',
+    '/pwa-512x512.png',
+    '/silent.wav',
+];
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
-    console.log('[ServiceWorker] Installed');
+    event.waitUntil((async () => {
+        try {
+            const cache = await caches.open(SHELL_CACHE);
+            // addAll 失败会 reject,但 install 不能因此失败,所以单独 cache
+            await Promise.allSettled(SHELL_URLS.map(u => cache.add(u).catch(() => {})));
+            console.log('[SW] shell precached');
+        } catch (e) {
+            console.warn('[SW] precache failed', e);
+        }
+    })());
 });
 
 self.addEventListener('activate', (event) => {
-    // 关键修复：不调 clients.claim()
-    // 让 SW 在下次页面加载时自然接管，避免中断后台保活
-    console.log('[ServiceWorker] Activated');
+    // 注意:不调 clients.claim(),避免影响后台保活
+    // 只清理过期 cache
+    event.waitUntil((async () => {
+        const keys = await caches.keys();
+        await Promise.all(
+            keys
+                .filter(k => k !== SHELL_CACHE && k !== RUNTIME_CACHE)
+                .map(k => caches.delete(k).catch(() => {}))
+        );
+        console.log('[SW] activated, cleaned old caches');
+    })());
 });
 
+// --- fetch 拦截:同源 GET 用 cache-first + 后台刷新 ---
+self.addEventListener('fetch', (event) => {
+    const req = event.request;
+    if (req.method !== 'GET') return;
+
+    const url = new URL(req.url);
+    // 只处理同源
+    if (url.origin !== self.location.origin) return;
+
+    // navigation 请求(PWA 启动 / 刷新 / 路由跳转)用专用 cache
+    if (req.mode === 'navigate') {
+        event.respondWith(handleNavigation(req));
+        return;
+    }
+
+    // 其他同源 GET(JS/CSS/图片/字体)用 runtime cache
+    event.respondWith(handleRuntime(req));
+});
+
+async function handleNavigation(req) {
+    const cache = await caches.open(SHELL_CACHE);
+    // 优先 cache
+    const cached = await cache.match(req, { ignoreSearch: false }).catch(() => null);
+    if (cached) {
+        // 后台异步刷新,不阻塞响应
+        refreshInBackground(cache, req);
+        return cached;
+    }
+    // cache miss -> 走网络
+    try {
+        const fresh = await fetch(req);
+        if (fresh && fresh.ok) {
+            cache.put(req, fresh.clone()).catch(() => {});
+        }
+        return fresh;
+    } catch (e) {
+        // 网络失败且没 cache -> 退化到 shell 根
+        const shell = await cache.match('/').catch(() => null);
+        if (shell) return shell;
+        return new Response(
+            '<!doctype html><meta charset="utf-8"><title>Chilly Phone</title>' +
+            '<body style="font-family:sans-serif;text-align:center;padding:40px">' +
+            '<h2>桥桥暂时离线</h2><p>请检查网络后重试</p></body>',
+            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
+    }
+}
+
+async function handleRuntime(req) {
+    const cache = await caches.open(RUNTIME_CACHE);
+    const cached = await cache.match(req).catch(() => null);
+    if (cached) {
+        refreshInBackground(cache, req);
+        return cached;
+    }
+    try {
+        const fresh = await fetch(req);
+        if (fresh && fresh.ok) {
+            cache.put(req, fresh.clone()).catch(() => {});
+        }
+        return fresh;
+    } catch (e) {
+        // 资源失败且没 cache,直接抛回(浏览器会处理)
+        throw e;
+    }
+}
+
+function refreshInBackground(cache, req) {
+    // 后台拉新版本,不影响当前响应
+    fetch(req).then(fresh => {
+        if (fresh && fresh.ok) {
+            cache.put(req, fresh.clone()).catch(() => {});
+        }
+    }).catch(() => {});
+}
+
 // --- Web Push 接收 ---
-// 后端 Cloudflare Worker 通过 web-push 库发送 push,浏览器触发本事件。
-// 即使 Chilly Phone PWA 处于关闭/后台状态,只要 SW 注册过就会收到。
 self.addEventListener('push', (event) => {
     let payload = {
         title: 'Chilly Phone',
@@ -35,7 +145,6 @@ self.addEventListener('push', (event) => {
         data: {},
     };
 
-    // 后端发的是 JSON 字符串
     if (event.data) {
         try {
             const text = event.data.text();
@@ -44,7 +153,6 @@ self.addEventListener('push', (event) => {
                 payload = { ...payload, ...parsed };
             }
         } catch (e) {
-            // 不是 JSON,直接当 body
             payload.body = event.data.text();
         }
     }
@@ -71,16 +179,13 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-    // 通知里携带的目标 chatId,如果有则跳过去
     const targetChatId = event.notification && event.notification.data && event.notification.data.chatId;
     const targetUrl = event.notification.data?.url || '/';
 
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            // 尝试复用已打开的同源窗口
             for (const client of clientList) {
                 if (client.url && 'focus' in client) {
-                    // 切到前台 + 通知页面跳到对应 chat
                     return client.focus().then(() => {
                         if (targetChatId) {
                             client.postMessage({
@@ -96,7 +201,6 @@ self.addEventListener('notificationclick', (event) => {
                     });
                 }
             }
-            // 没有现成窗口,新开一个并附带 chatId hash
             if (clients.openWindow) {
                 let url = targetUrl;
                 if (targetChatId) {
@@ -108,21 +212,21 @@ self.addEventListener('notificationclick', (event) => {
     );
 });
 
-// 监听页面消息,集中处理来自 notificationclick 的跳转请求
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
-    // 转发 NAVIGATE 消息 - 已在上面处理
+    // 兼容主线程 ping
+    if (event.data === 'ping') {
+        // 接收到消息本身会重置 SW 休眠倒计时
+    }
 });
 
-// 处理 pushsubscriptionchange (订阅失效时浏览器自动重新订阅)
 self.addEventListener('pushsubscriptionchange', (event) => {
     console.log('[ServiceWorker] Push subscription changed/expired');
     event.waitUntil(
         self.registration.pushManager.subscribe(event.oldSubscription.options)
             .then((newSub) => {
-                // 通知页面去更新后端订阅
                 return self.clients.matchAll().then((clientList) => {
                     clientList.forEach((client) => {
                         client.postMessage({
