@@ -1,8 +1,8 @@
 {
-  "id": "/?source=pwa",
+  "id": "/",
   "name": "Chilly Phone",
   "short_name": "Chilly Phone",
-  "start_url": "/?source=pwa",
+  "start_url": "/wechat",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
@@ -38,6 +38,13 @@
       "short_name": "微信",
       "description": "直接打开微信",
       "url": "/wechat",
+      "icons": [{ "src": "/pwa-192x192.png?v=6", "sizes": "192x192" }]
+    },
+    {
+      "name": "朋友圈",
+      "short_name": "朋友圈",
+      "description": "直接打开朋友圈",
+      "url": "/wechat/moments",
       "icons": [{ "src": "/pwa-192x192.png?v=6", "sizes": "192x192" }]
     }
   ]

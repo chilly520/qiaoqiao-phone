@@ -23,6 +23,8 @@ const RUNTIME_CACHE = 'chilly-runtime-v2';
 const SHELL_URLS = [
     '/',
     '/index.html',
+    '/wechat',
+    '/wechat/moments',
     '/manifest.json',
     '/pwa-192x192.png',
     '/pwa-512x512.png',
