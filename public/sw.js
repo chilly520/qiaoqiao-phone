@@ -1,23 +1,27 @@
 // Service Worker for Chilly Phone PWA.
 //
-// v1.10.49: 补齐 fetch 拦截 + navigation cache-first，让安装到桌面后
-// 重启手机 / 弱网 / 离线都能启动。
-// 保留不调 clients.claim() 的策略(避免影响后台音频保活)。
+// v1.10.64: navigation 改 network-first + cache 兜底
+// 原 cache-first 会让 index.html 锁死在 cache 里,新版本 Vite chunk
+// hash 变了,旧 index.html 引用的 chunk 404,导致 PWA 卡在老版本。
+// 现在 online 时永远拿最新 HTML,offline 时退化到 cache。
+//
+// v1.10.49: 补齐 fetch 拦截 + navigation cache-first
+// v1.10.60: runtime 改 network-first + cache 兜底
 //
 // 缓存策略:
-//   - navigation 请求(打开 PWA): cache-first + 后台刷新
-//   - 同源 GET 资源: cache-first + 后台刷新
+//   - navigation 请求(打开 PWA): network-first + cache 兜底
+//   - 同源 GET 资源(JS/CSS/图片): network-first + cache 兜底
 //   - 跨域: 不拦截,直接走网络
 //   - API/POST: 不拦截
 //
 // 启动入口(navigation) 永远 cache 住一份,这样:
-//   - 重启手机后第一次启动(可能还没拿到 IP / DNS 不通)能直接走 cache
+//   - 重启手机后无网络能直接走 cache
 //   - 网络断了也不白屏
-//   - 后台拿到新版本时,会被下次 navigation 拿回来覆盖
+//   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-const SHELL_CACHE = 'chilly-shell-v2';
-const RUNTIME_CACHE = 'chilly-runtime-v2';
+const SHELL_CACHE = 'chilly-shell-v3';
+const RUNTIME_CACHE = 'chilly-runtime-v3';
 
 // 关键 shell 资源,install 时主动 precache
 const SHELL_URLS = [
@@ -80,22 +84,20 @@ self.addEventListener('fetch', (event) => {
 
 async function handleNavigation(req) {
     const cache = await caches.open(SHELL_CACHE);
-    // 优先 cache
-    const cached = await cache.match(req, { ignoreSearch: false }).catch(() => null);
-    if (cached) {
-        // 后台异步刷新,不阻塞响应
-        refreshInBackground(cache, req);
-        return cached;
-    }
-    // cache miss -> 走网络
+    // v1.10.64: network-first + cache 兜底
+    // 在线时永远拿最新 HTML,避免老 index.html 引用失效的 Vite chunk
     try {
         const fresh = await fetch(req);
         if (fresh && fresh.ok) {
+            // 异步更新 cache,offline 时还能用
             cache.put(req, fresh.clone()).catch(() => {});
         }
         return fresh;
     } catch (e) {
-        // 网络失败且没 cache -> 退化到 shell 根
+        // 网络失败 -> 用 cache 兜底(支持 PWA 离线启动)
+        const cached = await cache.match(req, { ignoreSearch: false }).catch(() => null);
+        if (cached) return cached;
+        // 兜底都没 -> 退化到 shell 根
         const shell = await cache.match('/').catch(() => null);
         if (shell) return shell;
         return new Response(
