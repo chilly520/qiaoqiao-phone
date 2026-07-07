@@ -2248,14 +2248,22 @@ export const useChatStore = defineStore('chat', () => {
                     return { success: false, error: 'No new messages to summarize' }
                 }
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
-                const backlog = currentTotal - lastIndex
+                const backlog = countTurnsBetween(chat.msgs, lastIndex, currentTotal)
 
-                // Process up to summaryLimit messages at a time
+                // Process up to summaryLimit TURNS at a time
+                // FIX: 之前是 lastIndex + summaryLimit 条消息,这跟触发条件(backlog 算轮)不一致
+                // 现在按「summaryLimit 轮」找到对应的 endIndex
                 let endIndex = currentTotal
-                if (backlog > summaryLimit + 10) {
-                    endIndex = parseInt(lastIndex) + summaryLimit // Force Int
+                if (backlog > summaryLimit + 5) {
+                    let turnCount = 0
+                    endIndex = lastIndex
+                    for (let i = lastIndex; i < currentTotal; i++) {
+                        if (chat.msgs[i].role === 'user') turnCount++
+                        endIndex = i + 1
+                        if (turnCount >= summaryLimit) break
+                    }
                     rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
-                    console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${currentTotal - endIndex})`)
+                    console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (${turnCount} turns, Remaining: ${currentTotal - endIndex})`)
                 } else {
                     rangeDesc = `自动增量`
                 }
