@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const versionFilePath = path.join(__dirname, '../src/version.json');
+const publicVersionFilePath = path.join(__dirname, '../public/version.json');
 
 function bump() {
     try {
@@ -26,7 +27,10 @@ function bump() {
 
         data.buildTime = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 
-        fs.writeFileSync(versionFilePath, JSON.stringify(data, null, 2), 'utf8');
+        const jsonStr = JSON.stringify(data, null, 2);
+        fs.writeFileSync(versionFilePath, jsonStr, 'utf8');
+        // v1.10.68: 同步到 public/,运行时 fetch('/version.json') 需要
+        fs.writeFileSync(publicVersionFilePath, jsonStr, 'utf8');
         console.log(`Version bumped to ${data.version} at ${data.buildTime}`);
     } catch (error) {
         console.error('Failed to bump version:', error);
