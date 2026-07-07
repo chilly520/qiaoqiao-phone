@@ -41,6 +41,17 @@ onMounted(() => {
     updateTime()
     timer = setInterval(updateTime, 1000)
 
+    // [FIX] v1.10.66: 监听 SW 的 FORCE_RELOAD 消息,新 SW 接管后强制刷新
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'FORCE_RELOAD') {
+                console.log('[App] FORCE_RELOAD from new SW, reloading...')
+                // 用 location.reload 比 window.location.reload 更稳
+                window.location.reload()
+            }
+        })
+    }
+
     // Load persistent data
     useLoveSpaceStore().loadFromStorage()
     worldBookStore.loadEntries()

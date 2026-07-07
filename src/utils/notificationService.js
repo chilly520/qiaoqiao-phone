@@ -87,7 +87,8 @@ class NotificationService {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        const registration = await navigator.serviceWorker.register('/sw.js?v=9', { scope: '/' })
+        // v1.10.66: bump v=9 -> v=10 强制 SW 重新检测
+        const registration = await navigator.serviceWorker.register('/sw.js?v=10', { scope: '/' })
         console.log('ServiceWorker registration successful with scope:', registration.scope)
 
         // 如果有等待中的新 SW，立即激活它（替换旧版本）
@@ -103,6 +104,11 @@ class NotificationService {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // 新 SW 已安装且当前有旧 SW 在控制页面，通知新 SW 跳过等待
                 newWorker.postMessage({ type: 'SKIP_WAITING' })
+              }
+              // [FIX] v1.10.66: 新 SW 激活后,通知所有客户端强制 reload
+              // 否则旧 SW 一直控制页面,新 SW 装上了也没用
+              if (newWorker.state === 'activated') {
+                navigator.serviceWorker.controller?.postMessage({ type: 'CLIENTS_RELOAD' })
               }
             })
           }

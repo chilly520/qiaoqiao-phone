@@ -222,6 +222,16 @@ self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
+    // [FIX] v1.10.66: 收到 CLIENTS_RELOAD 时通知所有客户端强制刷新
+    // 这样新 SW 接管后会强制页面 reload,加载最新 index.html
+    if (event.data && event.data.type === 'CLIENTS_RELOAD') {
+        event.waitUntil((async () => {
+            const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            for (const client of clients) {
+                client.postMessage({ type: 'FORCE_RELOAD' });
+            }
+        })());
+    }
     // 兼容主线程 ping
     if (event.data === 'ping') {
         // 接收到消息本身会重置 SW 休眠倒计时
