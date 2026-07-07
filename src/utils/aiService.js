@@ -1570,11 +1570,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         let rawContent = ''
 
         if (data.choices && data.choices.length > 0) {
-            const message = data.choices[0].message;
-            rawContent = message?.content || '';
+            const message = data.choices[0].message || {};
+            rawContent = message.content || message.text || '';
+
+            // [FIX] v1.10.63: 思考型模型兜底 — content 可能是空，真实内容在 reasoning_content
+            // 适用: DeepSeek-R1 / Doubao-thinking / Claude-extended / o1 系列
+            if (!rawContent && message.reasoning_content) {
+                const rc = String(message.reasoning_content).trim();
+                if (rc) {
+                    console.log('[AI Service] content 为空，使用 reasoning_content 兜底 (len=' + rc.length + ')');
+                    rawContent = rc;
+                }
+            }
 
             // Fallback: If content is empty but tool_calls exist (likely thinking/search)
-            if (!rawContent && message?.tool_calls && message.tool_calls.length > 0) {
+            if (!rawContent && message.tool_calls && message.tool_calls.length > 0) {
                 const thoughtCall = message.tool_calls.find(tc =>
                     tc.function?.name === 'thought' ||
                     tc.function?.name === 'search' ||
@@ -1609,7 +1619,20 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // Deep Debugging for Empty Content
         if (!rawContent) {
-            useLoggerStore().addLog('WARN', 'AI 返回内容为空', data)
+            // [FIX] v1.10.63: 额外记录 message 完整字段，便于诊断代理/模型问题
+            const messageDump = (() => {
+                try {
+                    const m = data.choices?.[0]?.message || {};
+                    return {
+                        content: m.content,
+                        reasoning_content: m.reasoning_content,
+                        refusal: m.refusal,
+                        tool_calls: m.tool_calls,
+                        finish_reason: data.choices?.[0]?.finish_reason
+                    };
+                } catch (e) { return null; }
+            })();
+            useLoggerStore().addLog('WARN', 'AI 返回内容为空', { data, messageDump })
             // Check for safety/finish reason
             const finishReason = data.choices?.[0]?.finish_reason || data.candidates?.[0]?.finishReason
             if (finishReason === 'safety' || finishReason === 'content_filter') {
