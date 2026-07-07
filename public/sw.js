@@ -109,19 +109,21 @@ async function handleNavigation(req) {
 
 async function handleRuntime(req) {
     const cache = await caches.open(RUNTIME_CACHE);
-    const cached = await cache.match(req).catch(() => null);
-    if (cached) {
-        refreshInBackground(cache, req);
-        return cached;
-    }
+    // v1.10.60: 改用 network-first + cache 兜底
+    // 原来 cache-first 在 Vite 部署新版本后会拿到旧 chunk hash 报 Module Load Failed。
+    // 静态资源总是尝试网络,失败才退化到 cache,确保新 chunk 能加载到。
     try {
         const fresh = await fetch(req);
         if (fresh && fresh.ok) {
+            // 异步更新 cache,不阻塞响应
             cache.put(req, fresh.clone()).catch(() => {});
         }
         return fresh;
     } catch (e) {
-        // 资源失败且没 cache,直接抛回(浏览器会处理)
+        // 网络失败 -> 用 cache 兜底
+        const cached = await cache.match(req).catch(() => null);
+        if (cached) return cached;
+        // 没有 cache 也失败 -> 抛错(浏览器会处理)
         throw e;
     }
 }
