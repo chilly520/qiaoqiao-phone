@@ -198,6 +198,21 @@ onMounted(async () => {
     }
 })
 
+// v1.10.72: 调试用,用户点重算按钮时重新算
+const forceRecalculate = async () => {
+    console.log('[Storage] forceRecalculate called')
+    hasError.value = false
+    quotaMode.value = 'loading'
+    try {
+        await calculateStorage()
+        chatStore.triggerToast('重新计算完成', 'success')
+    } catch (err) {
+        console.error('[Storage] forceRecalculate error:', err)
+        hasError.value = true
+        chatStore.triggerToast('重算失败: ' + (err.message || '未知'), 'error')
+    }
+}
+
 const formatSize = (bytes) => {
     if (bytes === 0) return '0 B'
     if (bytes < 1024) return bytes + ' B'
@@ -576,6 +591,14 @@ const clearChats = () => {
 
         <!-- Content -->
         <div class="flex-1 overflow-y-auto p-4 space-y-6">
+
+            <!-- v1.10.72: 调试横幅,显示当前版本号和重算按钮 -->
+            <div class="bg-yellow-50 border border-yellow-300 text-yellow-800 px-3 py-2 rounded-xl text-xs flex items-center justify-between">
+                <span>Debug: v1.10.72 · mode={{ quotaMode }} · error={{ hasError ? '是' : '否' }}</span>
+                <button @click="forceRecalculate" class="bg-yellow-400 text-white px-2 py-1 rounded text-xs">
+                    重新计算
+                </button>
+            </div>
 
             <!-- Usage Section -->
             <div>
