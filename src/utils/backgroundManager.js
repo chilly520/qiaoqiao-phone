@@ -241,33 +241,30 @@ class BackgroundManager {
             }
         }
 
-        // 5. 自动续播:浏览器可能因为后台 / 内存压力 / 解码错误等原因 pause,这里强制续
-        const resume = () => {
-            if (!this.keepAliveActive) return;
-            if (audio.paused || audio.ended) {
-                audio.play().catch(() => { /* 静默 */ });
+        // 5. 不要在 pause/ended 事件里自动续播
+        // v1.10.56 修复:用户在听别的音频(微信语音/QQ 音乐/视频)时,
+        // Chrome 会暂停我们的 audio,触发 pause 事件。如果这里自动 play()
+        // 会抢回音频焦点,打断用户正在听的内容。
+        // 只在用户主动切回 PWA (visibility=visible) 时再尝试续播,
+        // 由 init() 里装的 setupVisibilityHandler 统一处理。
+        const onPlay = () => {
+            if ('mediaSession' in navigator) {
+                try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
             }
         };
-        audio.addEventListener('pause', resume);
-        audio.addEventListener('ended', resume);
-        // 兜底轮询(每 3 秒检查一次,部分 Android 浏览器后台暂停后不会触发事件)
-        this.keepAliveMonitorTimer = setInterval(resume, 3000);
+        const onPause = () => {
+            if ('mediaSession' in navigator) {
+                try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
+            }
+        };
+        audio.addEventListener('play', onPlay);
+        audio.addEventListener('pause', onPause);
+        // 不再注册 ended 续播、不再注册 3 秒轮询兜底
+        this.keepAliveMonitorTimer = null;
 
-        // 6. 切到后台后立刻尝试恢复(部分浏览器在 visibilitychange=hidden 时会暂停 audio)
-        this.keepAliveVisibilityHandler = () => {
-            if (document.visibilityState === 'hidden') {
-                // 立即尝试续播
-                resume();
-                // 同时把 playbackRate 轻微扰动,绕过部分浏览器的"无音频"检测
-                try {
-                    audio.playbackRate = 0.99;
-                    setTimeout(() => { audio.playbackRate = 1.0; }, 200);
-                } catch (e) {}
-            } else if (document.visibilityState === 'visible') {
-                resume();
-            }
-        };
-        document.addEventListener('visibilitychange', this.keepAliveVisibilityHandler);
+        // 6. 不再在 visibilitychange=hidden 时强制续播
+        // 同样的原因:用户在后台听别的音频会被打断
+        this.keepAliveVisibilityHandler = null;
 
         // 7. 防止页面卸载时被回收
         try {
