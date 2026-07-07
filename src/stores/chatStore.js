@@ -5799,6 +5799,7 @@ export const useChatStore = defineStore('chat', () => {
         isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings,
         getMemberTitle, calculateMemberLevel, castVote, endVote,
         streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState,
-        compressAllChatImages
+        compressAllChatImages,
+        collectBackupPayload  // [FIX] 暴露给 BackupSettings 用,手动备份时能拿到 payload
     }
 })

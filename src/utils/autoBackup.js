@@ -62,8 +62,12 @@ class AutoBackupService {
 
     /**
      * 立即执行一次备份(用户点"立即备份"时调用)
+     * payloadCollector 可选,如果不传会用已有的 pendingPayload
      */
-    async flushNow() {
+    async flushNow(payloadCollector = null) {
+        if (payloadCollector) {
+            this.pendingPayload = payloadCollector
+        }
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer)
             this.debounceTimer = null

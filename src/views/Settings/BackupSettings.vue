@@ -437,8 +437,9 @@ async function handleBackupNow() {
   }
   isBackingUp.value = true
   try {
-    // 强制刷新一次 payload 再 flush
-    const result = await autoBackup.flushNow()
+    // [FIX] v1.10.71: 立即备份需要 payload,直接把 chatStore 的采集器传进去
+    // 之前没传的话 pendingPayload 是 null,会被 flush() 当成 no_payload 跳过
+    const result = await autoBackup.flushNow(() => chatStore.collectBackupPayload())
     if (result && result.success) {
       chatStore.triggerToast('✅ 云端备份成功', 'success')
     } else if (result && result.skipped) {
