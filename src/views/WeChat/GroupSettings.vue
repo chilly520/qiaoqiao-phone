@@ -27,6 +27,12 @@ const existingChat = computed(() => {
   return chatStore.chats[chatIdParam.value] || null
 })
 
+// 总聊天轮数：和上下文记忆轮数保持一致，1 轮 = 1 条 user 消息
+const totalTurns = computed(() => {
+  const msgs = existingChat.value?.msgs || []
+  return msgs.filter(m => m && m.role === 'user').length
+})
+
 const tokenStats = computed(() => {
   if (isCreateMode.value) return { total: 0, totalContext: 0 }
   return chatStore.getTokenBreakdown(chatIdParam.value) || {
@@ -1438,7 +1444,7 @@ onMounted(() => {
           <div class="grid grid-cols-3 gap-2 text-center mb-3">
             <div class="glass-panel p-2 rounded-lg border bg-white/50 border-gray-200">
               <div class="text-[10px] text-gray-500">总聊天轮数</div>
-              <div class="font-mono text-blue-600 text-base font-bold">{{ existingChat?.msgs?.length || 0 }}</div>
+              <div class="font-mono text-blue-600 text-base font-bold">{{ totalTurns }}</div>
             </div>
             <div class="glass-panel p-2 rounded-lg border bg-white/50 border-gray-200">
               <div class="text-[10px] text-gray-500">总Token</div>

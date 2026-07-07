@@ -579,7 +579,7 @@
                         <div class="text-[10px]"
                             :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">
                             总聊天轮数</div>
-                        <div class="font-mono text-blue-600 text-base font-bold">{{ props.chatData.msgs?.length || 0 }}
+                        <div class="font-mono text-blue-600 text-base font-bold">{{ totalTurns }}
                         </div>
                     </div>
                     <div class="glass-panel p-2 rounded-lg border"
