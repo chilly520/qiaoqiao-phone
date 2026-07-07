@@ -50,7 +50,41 @@ onMounted(() => {
                 window.location.reload()
             }
         })
+
+        // [FIX] v1.10.67: 监听 controllerchange,新 SW 接管时自动 reload
+        // 覆盖掉 SW 还没来得及 postMessage 的情况
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            console.log('[App] SW controller changed, reloading...')
+            window.location.reload()
+        })
     }
+
+    // [FIX] v1.10.67: 每次启动主动检查 SW 更新 + 检查 version.json
+    // 浏览器默认 ~24h 才检查一次,这里强制每次都查
+    setTimeout(() => {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistration().then(reg => {
+                if (reg) {
+                    console.log('[App] checking for SW update...')
+                    reg.update().catch(e => console.warn('[App] update check failed:', e))
+                }
+            })
+        }
+        // 备份:直接拉 version.json 比对,版本不一致就强制刷新
+        fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
+            .then(r => r.json())
+            .then(remote => {
+                const local = window.localStorage.getItem('app_seen_version')
+                if (local && local !== remote.version) {
+                    console.log('[App] version mismatch local=' + local + ' remote=' + remote.version + ', reloading')
+                    window.location.reload()
+                }
+                if (remote.version) {
+                    window.localStorage.setItem('app_seen_version', remote.version)
+                }
+            })
+            .catch(() => {})
+    }, 2500)
 
     // Load persistent data
     useLoveSpaceStore().loadFromStorage()
