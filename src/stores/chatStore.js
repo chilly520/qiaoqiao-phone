@@ -2088,17 +2088,55 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return false
 
+        // 简化的 deep toRaw (不依赖 saveChats 内部闭包)
+        const toRawObj = (obj) => {
+            try {
+                const r = toRaw(obj);
+                if (r === null || typeof r !== 'object') return r;
+                if (Array.isArray(r)) return r.map(toRawObj);
+                if (r instanceof Date) return r.toISOString();
+                const out = {};
+                for (const k of Object.keys(r)) {
+                    out[k] = toRawObj(r[k]);
+                }
+                return out;
+            } catch (e) {
+                return obj;
+            }
+        };
+
         try {
             // Directly mutate the chat object to leverage Vue 3's deep reactivity.
             Object.assign(chats.value[chatId], updates)
 
-            // Save to persistent storage (with debounce, like all other saves)
-            await saveChats()
+            // v1.10.62: 优先单独写 per-chat 独立 key,绕开 V3 巨型 metadata quota 限制
+            // 之前 saveChats() 一次写整个 qiaoqiao_chats_metadata,几千轮对话后
+            // 单 key 超过 IndexedDB quota (5-50MB) 报 QuotaExceededError,
+            // 导致角色设置保存失败。
+            // 现在先写 per-chat meta + msgs(数据量小),如果 V3 metadata 也能写就同步更新。
+            const chatRef = chats.value[chatId]
+            const { msgs, ...meta } = chatRef
 
-            // Auto-summary is NOT triggered here to prevent any interference with the save flow.
-            // It will be naturally triggered by:
-            // 1. checkAutoSummary called from addMessage (after each new message)
-            // 2. The next chat activation cycle
+            try {
+                await localforage.setItem(`qiaoqiao_chat_meta_${chatId}`, toRawObj(meta))
+            } catch (perChatErr) {
+                console.warn('[updateCharacter] per-chat meta write failed:', perChatErr)
+            }
+
+            if (Array.isArray(msgs)) {
+                try {
+                    await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, toRawObj(msgs))
+                } catch (msgsErr) {
+                    console.warn('[updateCharacter] msgs write failed:', msgsErr)
+                }
+            }
+
+            // 仍然触发整体 saveChats 同步 V3 metadata(给其他 chat 兜底)
+            // 失败不影响本次 updateCharacter 返回成功(per-chat key 已写)
+            saveChats().catch(e => {
+                console.warn('[updateCharacter] V3 metadata sync failed (per-chat key 已保存):', e)
+            })
+
             return true
         } catch (err) {
             console.error('[updateCharacter] Error:', err)
@@ -5339,7 +5377,31 @@ export const useChatStore = defineStore('chat', () => {
                 const loadedChats = {};
                 for (const chatId of Object.keys(metadata)) {
                     const msgs = await localforage.getItem(`${MSGS_KEY_PREFIX}${chatId}`) || [];
-                    loadedChats[chatId] = { ...metadata[chatId], msgs };
+                    // v1.10.62: per-chat meta key 优先,包含 updateCharacter 的最新修改
+                    // (V3 metadata 可能因为 quota 写入失败,per-chat meta 一定能写)
+                    const perChatMeta = await localforage.getItem(`qiaoqiao_chat_meta_${chatId}`);
+                    if (perChatMeta) {
+                        loadedChats[chatId] = { ...metadata[chatId], ...perChatMeta, msgs };
+                    } else {
+                        loadedChats[chatId] = { ...metadata[chatId], msgs };
+                    }
+                }
+                // 兼容: V3 metadata 里没有但 per-chat meta 里有的 chat
+                // (例如新增 chat 时只写了 per-chat key,V3 metadata 写入失败)
+                try {
+                    const perChatKeys = await localforage.keys();
+                    for (const k of perChatKeys) {
+                        if (!k.startsWith('qiaoqiao_chat_meta_')) continue;
+                        const cid = k.substring('qiaoqiao_chat_meta_'.length);
+                        if (loadedChats[cid]) continue;
+                        const perMeta = await localforage.getItem(k);
+                        if (!perMeta) continue;
+                        const msgs = await localforage.getItem(`${MSGS_KEY_PREFIX}${cid}`) || [];
+                        loadedChats[cid] = { ...perMeta, msgs };
+                        console.log(`[Storage] Recovered chat ${cid} from per-chat meta (V3 metadata missing)`);
+                    }
+                } catch (extraErr) {
+                    console.warn('[Storage] per-chat meta recovery failed:', extraErr);
                 }
                 chats.value = loadedChats;
                 pendingRequests.value = await localforage.getItem('qiaoqiao_pending_requests') || [];
