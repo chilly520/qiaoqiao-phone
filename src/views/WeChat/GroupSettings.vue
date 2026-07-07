@@ -1437,7 +1437,7 @@ onMounted(() => {
         <div class="bg-white/70 backdrop-blur-md rounded-2xl p-4 border border-white/40 space-y-4 shadow-sm">
           <div class="grid grid-cols-3 gap-2 text-center mb-3">
             <div class="glass-panel p-2 rounded-lg border bg-white/50 border-gray-200">
-              <div class="text-[10px] text-gray-500">总聊天数</div>
+              <div class="text-[10px] text-gray-500">总聊天轮数</div>
               <div class="font-mono text-blue-600 text-base font-bold">{{ existingChat?.msgs?.length || 0 }}</div>
             </div>
             <div class="glass-panel p-2 rounded-lg border bg-white/50 border-gray-200">

@@ -578,7 +578,7 @@
                         :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
                         <div class="text-[10px]"
                             :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">
-                            总聊天数</div>
+                            总聊天轮数</div>
                         <div class="font-mono text-blue-600 text-base font-bold">{{ props.chatData.msgs?.length || 0 }}
                         </div>
                     </div>
