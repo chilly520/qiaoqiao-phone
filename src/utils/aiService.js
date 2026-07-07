@@ -2226,7 +2226,7 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
             system_instruction: systemInstruction,
             generationConfig: {
                 temperature: 0.3,
-                maxOutputTokens: 1000,
+                maxOutputTokens: 4000,  // 思考型模型需要更多 token 预算
             },
             safetySettings: [
                 { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -2259,7 +2259,7 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
             model: model,
             messages: fullMessages,
             temperature: 0.3,
-            max_tokens: 1000,
+            max_tokens: 4000,  // 思考型模型需要更多 token 预算
             stream: false
         }
     }
@@ -2335,7 +2335,18 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
 
         // 路径1: OpenAI 标准格式 choices[0].message.content
         if (data.choices && data.choices.length > 0) {
-            content = data.choices[0].message?.content || ''
+            const message = data.choices[0].message || {}
+            content = message.content || message.text || ''
+
+            // [FIX] 总结场景:思考型模型 (DeepSeek-R1 / Doubao-thinking / Gemini-3.x) 兜底
+            // 当 content 为空时,真实内容可能在 reasoning_content
+            if (!content && message.reasoning_content) {
+                const rc = String(message.reasoning_content).trim()
+                if (rc) {
+                    console.log('[AI Service Summary] content 为空,使用 reasoning_content 兜底 (len=' + rc.length + ')')
+                    content = rc
+                }
+            }
         }
         // 路径2: Gemini 格式 candidates[0].content.parts[0].text
         if (!content && data.candidates && data.candidates.length > 0) {
@@ -2349,6 +2360,9 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
                 for (const part of candidate.content.parts) {
                     if (part.text) { content = part.text; break }
                     if (part.content) { content = part.content; break }
+                    // 思考型 Gemini 兜底:thought / reasoning_content
+                    if (part.thought) { content = part.thought; break }
+                    if (part.reasoning_content) { content = part.reasoning_content; break }
                 }
             }
         }
@@ -2372,8 +2386,20 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
         }
 
         if (!content) {
-            useLoggerStore().addLog('WARN', '总结结果为空 (Raw Response)', data)
-            throw new Error('Empty Content (Check Raw Response)')
+            // 尝试从 finish_reason 给出更友好的错误
+            const finishReason = data.choices?.[0]?.finish_reason
+                || data.candidates?.[0]?.finishReason
+                || data.candidates?.[0]?.finish_reason
+            let extraHint = ''
+            if (finishReason === 'length') {
+                extraHint = ' (模型达到 max_tokens 上限被截断,可尝试 max_tokens 或换模型)'
+            } else if (finishReason === 'content_filter' || finishReason === 'SAFETY') {
+                extraHint = ' (触发安全过滤)'
+            } else if (finishReason === 'stop' || !finishReason) {
+                extraHint = ' (模型输出为空)'
+            }
+            useLoggerStore().addLog('WARN', '总结结果为空 (Raw Response)' + extraHint, data)
+            throw new Error(`Empty Content - finish_reason=${finishReason || 'unknown'}${extraHint}`)
         }
 
         useLoggerStore().addLog('AI', '总结结果 (Response)', { content })
