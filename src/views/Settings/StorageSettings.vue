@@ -233,65 +233,71 @@ const updateCompressQuality = () => {
 
 // Image Compression Logic
 const compressImages = async () => {
-    chatStore.triggerConfirm('图片压缩', '这将重新压缩所有现有的聊天图片，可能会略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
-        chatStore.triggerToast('正在压缩图片，请稍候...', 'info')
-        await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
-        let count = 0
-        let savedSize = 0
-        let loopCounter = 0
+    console.log('[Storage] compressImages clicked')
+    try {
+        chatStore.triggerConfirm('图片压缩', '这将重新压缩所有现有的聊天图片，可能会略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
+            chatStore.triggerToast('正在压缩图片，请稍候...', 'info')
+            await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
+            let count = 0
+            let savedSize = 0
+            let loopCounter = 0
 
-        // Process
-        const chats = chatStore.chats
-        for (const chatId in chats) {
-            const msgs = chats[chatId].msgs || []
-            for (const msg of msgs) {
-                if (loopCounter++ % 100 === 0) await new Promise(r => setTimeout(r, 0)) // Yield event loop
-                if (msg.content && typeof msg.content === 'string') {
-                    // Match all [图片:...] tags
-                    const imgRegex = /\[图片:([^\]]+)\]/g
-                    let match
-                    let newContent = msg.content
-                    let msgModified = false
+            // Process
+            const chats = chatStore.chats
+            for (const chatId in chats) {
+                const msgs = chats[chatId].msgs || []
+                for (const msg of msgs) {
+                    if (loopCounter++ % 100 === 0) await new Promise(r => setTimeout(r, 0)) // Yield event loop
+                    if (msg.content && typeof msg.content === 'string') {
+                        // Match all [图片:...] tags
+                        const imgRegex = /\[图片:([^\]]+)\]/g
+                        let match
+                        let newContent = msg.content
+                        let msgModified = false
 
-                    // Reset regex index for safety
-                    imgRegex.lastIndex = 0
+                        // Reset regex index for safety
+                        imgRegex.lastIndex = 0
 
-                    // In-place collection of matches to avoid indexing issues during replacement
-                    const foundImages = []
-                    while ((match = imgRegex.exec(msg.content)) !== null) {
-                        foundImages.push({ full: match[0], url: match[1] })
-                    }
+                        // In-place collection of matches to avoid indexing issues during replacement
+                        const foundImages = []
+                        while ((match = imgRegex.exec(msg.content)) !== null) {
+                            foundImages.push({ full: match[0], url: match[1] })
+                        }
 
-                    for (const imgInfo of foundImages) {
-                        const originalUrl = imgInfo.url
-                        // Handle both Base64 and remote URLs
-                        if (originalUrl.startsWith('data:image') || originalUrl.includes('pollinations') || originalUrl.includes('image')) {
-                            try {
-                                const newBase64 = await reCompressBase64FromUrl(originalUrl, compressQuality.value)
-                                if (newBase64 && newBase64.length < originalUrl.length) {
-                                    savedSize += (originalUrl.length - newBase64.length)
-                                    // Use split/join for safe global replace of this specific string
-                                    newContent = newContent.split(imgInfo.full).join(`[图片:${newBase64}]`)
-                                    msgModified = true
-                                    count++
+                        for (const imgInfo of foundImages) {
+                            const originalUrl = imgInfo.url
+                            // Handle both Base64 and remote URLs
+                            if (originalUrl.startsWith('data:image') || originalUrl.includes('pollinations') || originalUrl.includes('image')) {
+                                try {
+                                    const newBase64 = await reCompressBase64FromUrl(originalUrl, compressQuality.value)
+                                    if (newBase64 && newBase64.length < originalUrl.length) {
+                                        savedSize += (originalUrl.length - newBase64.length)
+                                        // Use split/join for safe global replace of this specific string
+                                        newContent = newContent.split(imgInfo.full).join(`[图片:${newBase64}]`)
+                                        msgModified = true
+                                        count++
+                                    }
+                                } catch (e) {
+                                    console.error('Compression failed for img in msg', msg.id, e)
                                 }
-                            } catch (e) {
-                                console.error('Compression failed for img in msg', msg.id, e)
                             }
                         }
-                    }
 
-                    if (msgModified) {
-                        msg.content = newContent
+                        if (msgModified) {
+                            msg.content = newContent
+                        }
                     }
                 }
             }
-        }
 
-        await chatStore.saveChats(true)
-        calculateStorage()
-        chatStore.triggerToast(`压缩完成！处理了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
-    })
+            await chatStore.saveChats(true)
+            calculateStorage()
+            chatStore.triggerToast(`压缩完成！处理了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
+        })
+    } catch (e) {
+        console.error('[Storage] compressImages error:', e)
+        chatStore.triggerToast('压缩启动失败: ' + e.message, 'error')
+    }
 }
 
 // Helper to re-compress
@@ -329,7 +335,9 @@ const reCompressBase64 = (base64, quality) => {
 }
 
 const cleanAllImages = () => {
-    chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片和图库图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n图库中的图片也将被清空！\n此操作不可撤销！', async () => {
+    console.log('[Storage] cleanAllImages clicked')
+    try {
+        chatStore.triggerConfirm('深度清理', '确定要删除所有聊天图片和图库图片吗？\n文字记录将被保留，图片将变为 [已清理]。\n图库中的图片也将被清空！\n此操作不可撤销！', async () => {
         chatStore.triggerToast('正在清理图片，请稍候...', 'info')
         await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
         let count = 0
@@ -384,11 +392,17 @@ const cleanAllImages = () => {
         calculateStorage()
         chatStore.triggerToast(`清理完成！删除了 ${count} 张图片，释放了 ${formatSize(savedSize)}`, 'success')
     })
+    } catch (e) {
+        console.error('[Storage] cleanAllImages error:', e)
+        chatStore.triggerToast('清理启动失败: ' + e.message, 'error')
+    }
 }
 
 // 压缩 AI 生图（包括朋友圈、论坛、相册等）
 const compressAIImages = async () => {
-    chatStore.triggerConfirm('AI 图片压缩', '这将压缩所有 AI 生成的图片（朋友圈、论坛、相册、情侣空间等），可能略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
+    console.log('[Storage] compressAIImages clicked')
+    try {
+        chatStore.triggerConfirm('AI 图片压缩', '这将压缩所有 AI 生成的图片（朋友圈、论坛、相册、情侣空间等），可能略微降低清晰度以节省空间。\n确定要继续吗？', async () => {
         chatStore.triggerToast('正在压缩 AI 图片，请稍候...', 'info')
         await new Promise(r => setTimeout(r, 50)) // Allow UI to render the toast
         let count = 0
@@ -530,6 +544,10 @@ const compressAIImages = async () => {
             chatStore.triggerToast('压缩失败，请重试', 'error')
         }
     })
+    } catch (e) {
+        console.error('[Storage] compressAIImages error:', e)
+        chatStore.triggerToast('AI 压缩启动失败: ' + e.message, 'error')
+    }
 }
 
 // Helper: Compress from URL (fetch then compress)
@@ -565,17 +583,29 @@ const reCompressBase64FromUrl = async (url, quality) => {
 }
 
 const clearLogs = () => {
-    localStorage.removeItem('qiaoqiao_logs')
-    chatStore.triggerToast('系统日志已清理', 'success')
-    calculateStorage()
+    console.log('[Storage] clearLogs clicked')
+    try {
+        localStorage.removeItem('qiaoqiao_logs')
+        chatStore.triggerToast('系统日志已清理', 'success')
+        calculateStorage()
+    } catch (e) {
+        console.error('[Storage] clearLogs error:', e)
+        chatStore.triggerToast('清理失败: ' + e.message, 'error')
+    }
 }
 
 const clearChats = () => {
-    chatStore.triggerConfirm('清空记录', '确定要清空所有聊天记录吗？', () => {
-        chatStore.clearAllChats()
-        calculateStorage()
-        chatStore.triggerToast('聊天记录已清空', 'success')
-    })
+    console.log('[Storage] clearChats clicked')
+    try {
+        chatStore.triggerConfirm('清空记录', '确定要清空所有聊天记录吗？', () => {
+            chatStore.clearAllChats()
+            calculateStorage()
+            chatStore.triggerToast('聊天记录已清空', 'success')
+        })
+    } catch (e) {
+        console.error('[Storage] clearChats error:', e)
+        chatStore.triggerToast('清空失败: ' + e.message, 'error')
+    }
 }
 </script>
 
