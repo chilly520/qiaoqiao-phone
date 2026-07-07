@@ -132,7 +132,7 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        audio.volume = 0.02;            // 关键:不是 0,浏览器才会认为是真实播放
+        audio.volume = 0.005;           // 极低音量,戴耳机也几乎听不见(v1.10.54: 0.02 偏大)
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
