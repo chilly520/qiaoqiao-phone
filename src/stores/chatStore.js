@@ -5647,6 +5647,7 @@ export const useChatStore = defineStore('chat', () => {
         if (!src) return
         try {
             const audio = new Audio(src)
+            // v1.10.57: 消息提示音很短,不需要 yield/resume,Chrome 会自动处理
             audio.play().catch(e => console.log('[ChatStore] 音效播放失败:', e))
         } catch (e) {
             console.log('[ChatStore] 音效加载失败:', e)

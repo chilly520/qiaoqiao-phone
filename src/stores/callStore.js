@@ -61,6 +61,8 @@ export const useCallStore = defineStore('call', () => {
         stopRingtone()
         ringtone = new Audio(url)
         ringtone.loop = loop
+        // v1.10.57: 来电铃声时让出后台保活焦点
+        try { window.dispatchEvent(new CustomEvent('keepalive:yield')); } catch (e) {}
         ringtone.play().catch(e => console.warn('Ringtone play failed:', e))
     }
 
@@ -68,6 +70,8 @@ export const useCallStore = defineStore('call', () => {
         if (ringtone) {
             ringtone.pause()
             ringtone = null
+            // v1.10.57: 铃声结束恢复保活
+            try { window.dispatchEvent(new CustomEvent('keepalive:resume')); } catch (e) {}
         }
     }
 

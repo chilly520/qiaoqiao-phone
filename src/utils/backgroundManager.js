@@ -266,6 +266,13 @@ class BackgroundManager {
         // 同样的原因:用户在后台听别的音频会被打断
         this.keepAliveVisibilityHandler = null;
 
+        // 6.5 v1.10.57: 让出 / 恢复音频焦点机制
+        // PWA 内部有别的 audio 播放时(微信语音 / 来电铃声 / 一起听音乐 / 消息提示音),
+        // Chrome 会自动抢焦点并 pause 我们。这里通过全局事件让其他模块通知我们
+        // "现在让别人播" -> yieldToOtherAudio()
+        // "别人播完了" -> resumeFromYield()
+        this._setupYieldEventListeners(audio);
+
         // 7. 防止页面卸载时被回收
         try {
             document.body.appendChild(audio);
@@ -273,6 +280,7 @@ class BackgroundManager {
 
         this.keepAliveAudio = audio;
         this.keepAliveActive = true;
+        this.keepAliveYielded = false;
 
         // 8. 同时申请 wake lock,前台时屏幕不熄
         this.requestWakeLock();
@@ -345,6 +353,84 @@ class BackgroundManager {
         if (this.keepAliveAudio.paused) {
             this.keepAliveAudio.play().catch(() => { /* 静默 */ });
         }
+    }
+
+    /**
+     * v1.10.57: 让出音频焦点。
+     * PWA 内部别处要播音频(微信语音/来电铃声/消息音)时调用,暂停保活 audio 让出 Chrome 音频焦点。
+     */
+    yieldToOtherAudio() {
+        if (!this.keepAliveActive || this.keepAliveYielded) return;
+        if (!this.keepAliveAudio) return;
+        try {
+            if (!this.keepAliveAudio.paused) this.keepAliveAudio.pause();
+        } catch (e) { /* 静默 */ }
+        this.keepAliveYielded = true;
+    }
+
+    /**
+     * v1.10.57: 恢复保活 audio(从 yield 状态恢复)。
+     */
+    resumeFromYield() {
+        if (!this.keepAliveActive || !this.keepAliveYielded) return;
+        if (!this.keepAliveAudio) return;
+        this.keepAliveYielded = false;
+        // 延迟一点点,避免和别处刚结束的 audio 冲突
+        setTimeout(() => {
+            if (this.keepAliveActive && this.keepAliveAudio && this.keepAliveAudio.paused) {
+                this.keepAliveAudio.play().catch(() => { /* 静默 */ });
+            }
+        }, 300);
+    }
+
+    /**
+     * v1.10.57: 监听全局 yield/resume 事件 + watch musicStore 状态。
+     */
+    _setupYieldEventListeners(audio) {
+        if (this._yieldListenersInstalled) return;
+        this._yieldListenersInstalled = true;
+
+        // 全局事件
+        const onYield = () => this.yieldToOtherAudio();
+        const onResume = () => this.resumeFromYield();
+        window.addEventListener('keepalive:yield', onYield);
+        window.addEventListener('keepalive:resume', onResume);
+
+        // 监听 useMusicStore 的播放状态(一起听音乐)
+        // 用 setTimeout 0 异步加载,避免在 _startKeepAliveAudio 阶段就 import Vue store
+        setTimeout(() => {
+            try {
+                // 动态 import 避免循环依赖
+                import('../stores/musicStore').then(({ useMusicStore }) => {
+                    try {
+                        const musicStore = useMusicStore();
+                        // 简单轮询音乐状态(避免 watch 依赖)
+                        let lastPlaying = false;
+                        const check = () => {
+                            if (!this.keepAliveActive) return;
+                            const playing = !!musicStore.isPlaying;
+                            if (playing !== lastPlaying) {
+                                lastPlaying = playing;
+                                if (playing) this.yieldToOtherAudio();
+                                else this.resumeFromYield();
+                            }
+                        };
+                        setInterval(check, 500);
+                    } catch (e) { /* 静默 */ }
+                }).catch(() => {});
+            } catch (e) { /* 静默 */ }
+        }, 0);
+    }
+
+    /**
+     * 便捷方法:供其他模块直接 import 调用 yield/resume
+     */
+    static yieldAudio() {
+        backgroundManager.yieldToOtherAudio();
+    }
+
+    static resumeAudio() {
+        backgroundManager.resumeFromYield();
     }
 
     /**

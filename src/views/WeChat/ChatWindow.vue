@@ -2098,14 +2098,24 @@ const speakOne = async (text, onEnd, interrupt = false) => {
                 const res = await response.json();
                 if (res.audio?.data) {
                     const audio = new Audio(`data:audio/mp3;base64,${res.audio.data}`);
+                    // v1.10.57: 微信语音播放时让出后台保活焦点,避免通知卡切换打断
+                    audio.onplay = () => {
+                        try { window.dispatchEvent(new CustomEvent('keepalive:yield')); } catch (e) {}
+                    };
+                    const onResumeKeepAlive = () => {
+                        try { window.dispatchEvent(new CustomEvent('keepalive:resume')); } catch (e) {}
+                    };
                     audio.onended = () => {
                         isSpeaking.value = false;
+                        onResumeKeepAlive();
                         if (onEnd) onEnd();
                     };
                     audio.onerror = () => {
                         isSpeaking.value = false;
+                        onResumeKeepAlive();
                         if (onEnd) onEnd();
                     };
+                    audio.onpause = onResumeKeepAlive;
                     audio.play();
                     return;
                 } else {
