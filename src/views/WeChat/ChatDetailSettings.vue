@@ -603,8 +603,8 @@
                 <div class="mb-2 px-1 text-[10px] flex items-center justify-between"
                     :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
                     <span>
-                        已总结到第 <span class="font-mono font-bold text-emerald-500">{{ props.chatData.lastSummaryIndex || 0 }}</span>
-                        / {{ props.chatData.msgs?.length || 0 }} 条
+                        已总结 <span class="font-mono font-bold text-emerald-500">{{ summarizedTurns }}</span>
+                        / {{ totalTurns }} 轮
                         <span v-if="props.chatData.lastSummaryTime" class="ml-1">
                             · 上次 {{ formatLastSummaryTime(props.chatData.lastSummaryTime) }}
                         </span>
@@ -1471,6 +1471,19 @@ const totalTurns = computed(() => {
         return msgs.filter(m => m && m.role === 'user').length
     } catch (e) {
         console.warn('[Settings] totalTurns error:', e)
+        return 0
+    }
+})
+
+// 已总结的轮数：从 0 到 lastSummaryIndex 之间 user 消息的条数
+const summarizedTurns = computed(() => {
+    try {
+        const chat = chatStore.currentChat || props.chatData
+        const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
+        const idx = Math.max(0, Math.min(chat?.lastSummaryIndex || 0, msgs.length))
+        return msgs.slice(0, idx).filter(m => m && m.role === 'user').length
+    } catch (e) {
+        console.warn('[Settings] summarizedTurns error:', e)
         return 0
     }
 })

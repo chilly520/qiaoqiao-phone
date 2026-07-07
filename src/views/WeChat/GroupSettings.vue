@@ -33,6 +33,19 @@ const totalTurns = computed(() => {
   return msgs.filter(m => m && m.role === 'user').length
 })
 
+// 已总结的轮数：从 0 到 lastSummaryIndex 之间 user 消息的条数
+const summarizedTurns = computed(() => {
+  try {
+    const chat = existingChat.value
+    const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
+    const idx = Math.max(0, Math.min(chat?.lastSummaryIndex || 0, msgs.length))
+    return msgs.slice(0, idx).filter(m => m && m.role === 'user').length
+  } catch (e) {
+    console.warn('[GroupSettings] summarizedTurns error:', e)
+    return 0
+  }
+})
+
 // 把 lastSummaryTime (毫秒时间戳) 转成可读字符串
 const formatLastSummaryTime = (ts) => {
   if (!ts) return ''
@@ -1472,8 +1485,8 @@ onMounted(() => {
           <!-- 总结进度指示器 -->
           <div class="text-[10px] text-gray-400 flex items-center justify-between px-1">
             <span>
-              已总结到第 <span class="font-mono font-bold text-emerald-500">{{ existingChat?.lastSummaryIndex || 0 }}</span>
-              / {{ existingChat?.msgs?.length || 0 }} 条
+              已总结 <span class="font-mono font-bold text-emerald-500">{{ summarizedTurns }}</span>
+              / {{ totalTurns }} 轮
               <span v-if="existingChat?.lastSummaryTime" class="ml-1">
                 · 上次 {{ formatLastSummaryTime(existingChat.lastSummaryTime) }}
               </span>
