@@ -103,171 +103,81 @@ const calculateStorage = async () => {
             console.warn('[Storage] Failed to calculate LocalStorage:', lsErr)
         }
 
-        // 2. Estimate IndexedDB usage WITHOUT loading all data (safe approach)
-        let idbTotal = 0
+        // 2. v1.10.61: 用 navigator.storage.estimate() 拿真实浏览器存储用量
+        // 之前用 50KB/key 粗估 + 10MB 截断,实际几百 MB 数据只显示几 MB。
+        // 真实流程:estimate() 拿浏览器记录的 IndexedDB + LS + SW cache 总和(最准),
+        // 然后再用 localforage 遍历 keys 拿细分。
+        let browserReportedUsage = null
+        let browserReportedQuota = null
+        if (navigator.storage && navigator.storage.estimate) {
+            try {
+                const est = await navigator.storage.estimate()
+                browserReportedUsage = est.usage || null
+                browserReportedQuota = est.quota || null
+            } catch (e) { /* 静默 */ }
+        }
 
+        // 3. 遍历 IndexedDB 所有 key 拿细分
+        // 不再卡 10MB 截断,getSize() 已能用 UTF-8 估算处理大字符串
+        let idbTotal = 0
         try {
-            // Only check metadata size (not individual messages - too expensive!)
-            const metadata = await localforage.getItem('qiaoqiao_chats_metadata')
-            if (metadata) {
-                const metaSize = getSize(JSON.stringify(metadata))
-                details.chats += metaSize
-                idbTotal += metaSize
-            }
-            
-            // Quick estimate: count message keys and assume average size
-            // This avoids loading 966MB of data into memory!
             if (typeof localforage.keys === 'function') {
                 const keys = await localforage.keys()
-                let msgKeyCount = 0
-                let hasV2Data = false
-                
                 for (const key of keys) {
-                    if (key.startsWith('qiaoqiao_chat_msgs_')) {
-                        msgKeyCount++
-                    } else if (key === 'qiaoqiao_chats_v2') {
-                        hasV2Data = true
-                    }
-                }
-                
-                // Estimate: assume average 50KB per chat's messages (conservative)
-                // This is much safer than loading actual data!
-                if (msgKeyCount > 0) {
-                    const estimatedMsgsSize = msgKeyCount * 50 * 1024  // 50KB per chat
-                    details.chats += estimatedMsgsSize
-                    idbTotal += estimatedMsgsSize
-                }
-                
-                // Check V2 data size (but with safety limit)
-                if (hasV2Data) {
                     try {
-                        const v2Data = await localforage.getItem('qiaoqiao_chats_v2')
-                        if (v2Data) {
-                            const v2Str = JSON.stringify(v2Data)
-                            // Safety limit: don't process if >10MB
-                            if (v2Str.length < 10 * 1024 * 1024) {
-                                const v2Size = getSize(v2Str)
-                                details.chats += v2Size
-                                idbTotal += v2Size
-                            } else {
-                                // If V2 data is huge, just note it
-                                console.warn('[Storage] V2 data is very large (>10MB), using estimate')
-                                details.chats += 10 * 1024 * 1024  // Assume 10MB
-                                idbTotal += 10 * 1024 * 1024
+                        const value = await localforage.getItem(key)
+                        if (value === null || value === undefined) continue
+                        let entrySize = key.length
+                        if (typeof value === 'string') {
+                            entrySize += getSize(value)
+                        } else {
+                            try {
+                                entrySize += getSize(JSON.stringify(value))
+                            } catch (e) {
+                                entrySize += 1024
                             }
                         }
-                    } catch (v2Err) {
-                        console.warn('[Storage] Failed to read V2 data:', v2Err)
-                    }
+                        if (key.startsWith('qiaoqiao_chat_msgs_') ||
+                            key === 'qiaoqiao_chats_v2' ||
+                            key === 'qiaoqiao_chats_metadata' ||
+                            key === 'qiaoqiao_chat_store') {
+                            details.chats += entrySize
+                        } else if (key === 'galleryData' || key === 'qiaoqiao_gallery' || key === 'gallery') {
+                            details.gallery += entrySize
+                        } else if (key === 'qiaoqiao_moments' || key.includes('moment')) {
+                            details.moments += entrySize
+                        } else if (key.includes('image') || key.includes('avatar') || key.includes('Image') || key.includes('Avatar')) {
+                            details.images += entrySize
+                        } else {
+                            details.system += entrySize
+                        }
+                        idbTotal += entrySize
+                    } catch (singleErr) { /* 单个 key 读失败不影响整体 */ }
                 }
             }
-            
-            // Gallery and Moments (usually small, safe to load, but add protection)
-            try {
-                const gallery = await localforage.getItem('galleryData')
-                if (gallery) {
-                    const galleryStr = JSON.stringify(gallery)
-                    if (galleryStr.length < 5 * 1024 * 1024) {  // Safety: <5MB
-                        const gallerySize = getSize(galleryStr)
-                        details.gallery = gallerySize
-                        idbTotal += gallerySize
-                    } else {
-                        console.warn('[Storage] Gallery data too large, using estimate')
-                        details.gallery = 2 * 1024 * 1024  // Assume 2MB
-                        idbTotal += details.gallery
-                    }
-                }
-            } catch (galleryErr) {
-                console.warn('[Storage] Failed to read gallery:', galleryErr)
-            }
-
-            try {
-                const moments = await localforage.getItem('qiaoqiao_moments')
-                if (moments) {
-                    const momentStr = JSON.stringify(moments)
-                    if (momentStr.length < 5 * 1024 * 1024) {  // Safety: <5MB
-                        const momentSize = getSize(momentStr)
-                        details.moments += momentSize
-                        idbTotal += momentSize
-                    } else {
-                        console.warn('[Storage] Moments data too large, using estimate')
-                        details.moments += 1 * 1024 * 1024  // Assume 1MB
-                        idbTotal += details.moments
-                    }
-                }
-            } catch (momentsErr) {
-                console.warn('[Storage] Failed to read moments:', momentsErr)
-            }
-            
             details.indexedDB = idbTotal
-            
         } catch (idbError) {
-            console.warn('[Storage] Failed to calculate IndexedDB details (using fallback):', idbError)
-            // Fallback: use a reasonable estimate based on what we know
-            details.indexedDB = lsTotal * 100  // Rough guess: IDB is usually 100x LS
-            idbTotal = details.indexedDB
+            console.warn('[Storage] Failed to walk IndexedDB:', idbError)
+            details.indexedDB = 0
         }
 
-        // 3. Determine storage mode (stable logic)
-        if (details.indexedDB > 0) {
-            usedSpace.value = details.indexedDB + lsTotal
+        // 4. 决定 usedSpace / totalLimit / quotaMode
+        // 优先用浏览器 estimate(包含 SW cache 等所有浏览器分配的存储)
+        if (browserReportedUsage !== null && browserReportedUsage > 0) {
+            usedSpace.value = browserReportedUsage
+            totalLimit.value = browserReportedQuota || (280 * 1024 * 1024 * 1024)
+            quotaMode.value = 'system'
+            // 我们遍历的 IDB+LS 加起来可能 < estimate.usage(差额是 SW cache 等)
+            const accountedFor = lsTotal + idbTotal
+            const swCachePortion = Math.max(0, browserReportedUsage - accountedFor)
+            details.system += swCachePortion
+        } else {
+            // estimate 不可用,降级到累加
+            usedSpace.value = lsTotal + idbTotal
             totalLimit.value = 280 * 1024 * 1024 * 1024
             quotaMode.value = 'system'
-            details.system = Math.max(0, details.indexedDB - details.chats - details.gallery - details.moments)
-        } else if (navigator.storage && navigator.storage.estimate) {
-            try {
-                const estimate = await navigator.storage.estimate()
-                usedSpace.value = estimate.usage || (lsTotal + details.gallery + details.chats)
-                totalLimit.value = estimate.quota || (500 * 1024 * 1024)
-                quotaMode.value = 'system'
-                details.system = Math.max(0, usedSpace.value - lsTotal - details.gallery - details.chats - details.moments)
-            } catch (e) {
-                usedSpace.value = lsTotal + details.gallery + details.chats
-                totalLimit.value = 5 * 1024 * 1024
-                quotaMode.value = 'ls'
-            }
-        } else {
-            usedSpace.value = lsTotal + details.gallery + details.chats
-            totalLimit.value = 5 * 1024 * 1024
-            quotaMode.value = 'ls'
         }
-
-        breakdown.value = details
-        console.log('[Storage] Calculation complete - Mode:', quotaMode.value, 'Used:', formatSize(usedSpace.value), 'Limit:', formatSize(totalLimit.value))
-        
-    } catch (error) {
-        console.error('[Storage] CRITICAL: calculateStorage failed completely!', error)
-
-        // EMERGENCY FALLBACK: Show minimal info to prevent crash
-        hasError.value = true
-        usedSpace.value = 0
-        totalLimit.value = 5 * 1024 * 1024
-        quotaMode.value = 'error'  // Error state
-        breakdown.value = {
-            logs: 0,
-            chats: 0,
-            moments: 0,
-            images: 0,
-            other: 0,
-            system: 0,
-            gallery: 0,
-            indexedDB: 0
-        }
-
-        // Don't show toast for every error to avoid spam
-        console.warn('[Storage] Storage calculation failed, showing fallback data')
-    }
-}
-
-onMounted(async () => {
-    try {
-        await calculateStorage()
-    } catch (err) {
-        console.error('[Storage] onMounted error:', err)
-        hasError.value = true
-        quotaMode.value = 'error'
-    }
-})
+        details.system = Math.max(0, details.system)
 
 const formatSize = (bytes) => {
     if (bytes === 0) return '0 B'
