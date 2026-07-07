@@ -599,6 +599,18 @@
                     </div>
                 </div>
 
+                <!-- 总结进度指示器 -->
+                <div class="mb-2 px-1 text-[10px] flex items-center justify-between"
+                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
+                    <span>
+                        已总结到第 <span class="font-mono font-bold text-emerald-500">{{ props.chatData.lastSummaryIndex || 0 }}</span>
+                        / {{ props.chatData.msgs?.length || 0 }} 条
+                        <span v-if="props.chatData.lastSummaryTime" class="ml-1">
+                            · 上次 {{ formatLastSummaryTime(props.chatData.lastSummaryTime) }}
+                        </span>
+                    </span>
+                </div>
+
                 <div class="mb-2 flex items-center gap-2">
                     <label class="text-xs w-24"
                         :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">上下文记忆轮次</label>
@@ -1450,6 +1462,25 @@ const contextTokenCounts = ref({})
 const expandedContextKey = ref(null)
 
 // Restored: This is needed for the stats cards in the template
+// 总聊天轮数：和上下文记忆轮数保持一致,1 轮 = 1 条 user 消息
+const totalTurns = computed(() => {
+    const msgs = props.chatData?.msgs || []
+    return msgs.filter(m => m && m.role === 'user').length
+})
+
+// 把 lastSummaryTime (毫秒时间戳) 转成可读字符串
+const formatLastSummaryTime = (ts) => {
+    if (!ts) return ''
+    const d = new Date(ts)
+    const now = new Date()
+    const diff = (now - d) / 1000 // 秒
+    if (diff < 60) return '刚刚'
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前'
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前'
+    if (diff < 604800) return Math.floor(diff / 86400) + ' 天前'
+    return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
 const tokenStats = computed(() => {
     try {
         if (!props.chatData?.id) {

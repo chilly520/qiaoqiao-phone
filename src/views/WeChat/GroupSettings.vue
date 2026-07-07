@@ -27,11 +27,24 @@ const existingChat = computed(() => {
   return chatStore.chats[chatIdParam.value] || null
 })
 
-// 总聊天轮数：和上下文记忆轮数保持一致，1 轮 = 1 条 user 消息
+// 总聊天轮数：和上下文记忆轮数保持一致,1 轮 = 1 条 user 消息
 const totalTurns = computed(() => {
   const msgs = existingChat.value?.msgs || []
   return msgs.filter(m => m && m.role === 'user').length
 })
+
+// 把 lastSummaryTime (毫秒时间戳) 转成可读字符串
+const formatLastSummaryTime = (ts) => {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const now = new Date()
+  const diff = (now - d) / 1000
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前'
+  if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前'
+  if (diff < 604800) return Math.floor(diff / 86400) + ' 天前'
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
 
 const tokenStats = computed(() => {
   if (isCreateMode.value) return { total: 0, totalContext: 0 }
@@ -1454,6 +1467,17 @@ onMounted(() => {
               <div class="text-[10px] text-gray-500">上下文</div>
               <div class="font-mono text-purple-600 text-base font-bold">{{ tokenStats?.totalContext || 0 }}</div>
             </div>
+          </div>
+
+          <!-- 总结进度指示器 -->
+          <div class="text-[10px] text-gray-400 flex items-center justify-between px-1">
+            <span>
+              已总结到第 <span class="font-mono font-bold text-emerald-500">{{ existingChat?.lastSummaryIndex || 0 }}</span>
+              / {{ existingChat?.msgs?.length || 0 }} 条
+              <span v-if="existingChat?.lastSummaryTime" class="ml-1">
+                · 上次 {{ formatLastSummaryTime(existingChat.lastSummaryTime) }}
+              </span>
+            </span>
           </div>
 
           <div class="grid grid-cols-2 gap-3 mb-2">

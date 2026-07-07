@@ -36,13 +36,15 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 const lastIndex = chat.lastSummaryIndex || 0
                 const currentTotal = chat.msgs.length
 
-                // FIX: Reset index if it exceeds current message count (Corruption/Truncation recovery)
+                // FIX: clamp 而非 reset 到 0
+                // 删消息 / 数据迁移后 lastIndex 可能超过 currentTotal,
+                // 这里把 lastIndex 收紧到 currentTotal,避免把已总结过的又重做一遍
                 if (lastIndex > currentTotal) {
-                    console.warn(`[Summarize] Index mismatch detected (Index: ${lastIndex}, Total: ${currentTotal}). Resetting to 0.`);
-                    chat.lastSummaryIndex = 0;
-                    // Recursive retry with fresh state
+                    console.warn(`[Summarize] Index exceeds total (Index: ${lastIndex}, Total: ${currentTotal}). Clamping to current total.`);
+                    chat.lastSummaryIndex = currentTotal;
+                    chat.lastSummaryCount = currentTotal;
                     chat.isSummarizing = false;
-                    return summarizeHistory(chatId, options);
+                    return { success: false, error: 'No new messages to summarize' }
                 }
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
                 const backlog = countTurnsBetween(chat.msgs, lastIndex, currentTotal)

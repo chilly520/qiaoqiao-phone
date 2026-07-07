@@ -2237,12 +2237,15 @@ export const useChatStore = defineStore('chat', () => {
                 const lastIndex = chat.lastSummaryIndex || 0
                 const currentTotal = chat.msgs.length
 
-                // FIX: Reset index if it exceeds current message count (Corruption/Truncation recovery)
+                // FIX: 之前这里如果 lastIndex > currentTotal 就 reset 到 0
+                // 导致「删了一些消息」或者「数据迁移」后,自动总结会把前面已经总结过的全重做一遍
+                // 正确做法:clamp 到 currentTotal,「已经总结过的不重做」
                 if (lastIndex > currentTotal) {
-                    console.warn(`[Summarize] Index mismatch detected (Index: ${lastIndex}, Total: ${currentTotal}). Resetting to 0.`);
-                    chat.lastSummaryIndex = 0;
-                    chat.isSummarizing = false; // Release lock before recursive retry
-                    return summarizeHistory(chatId, options);
+                    console.warn(`[Summarize] Index exceeds total (Index: ${lastIndex}, Total: ${currentTotal}). Clamping to current total.`);
+                    chat.lastSummaryIndex = currentTotal;
+                    chat.lastSummaryCount = currentTotal;
+                    chat.isSummarizing = false;
+                    return { success: false, error: 'No new messages to summarize' }
                 }
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
                 const backlog = currentTotal - lastIndex
@@ -5126,6 +5129,15 @@ export const useChatStore = defineStore('chat', () => {
             memory: chat.memory || [],
             summary: chat.summary || '',
             tags: chat.tags || [], // WorldBook
+
+            // Preserved Summary State (FIX: 之前重置会丢 lastSummaryIndex,导致重开后自动总结从 0 重新开始)
+            // 记忆库承诺保留,那上次总结到哪也得保留
+            lastSummaryIndex: typeof chat.lastSummaryIndex === 'number' ? chat.lastSummaryIndex : 0,
+            lastSummaryCount: typeof chat.lastSummaryCount === 'number' ? chat.lastSummaryCount : 0,
+            lastSummaryTime: chat.lastSummaryTime || 0,
+            autoSummary: !!chat.autoSummary,
+            summaryLimit: chat.summaryLimit,
+            summaryPrompt: chat.summaryPrompt,
 
             // Preserved State
             inChatList: chat.inChatList,
