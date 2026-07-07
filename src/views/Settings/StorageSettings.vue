@@ -178,12 +178,25 @@ const calculateStorage = async () => {
             quotaMode.value = 'system'
         }
         details.system = Math.max(0, details.system)
+
+        // [FIX] 把细分写回响应式对象,模板 breakdown.* 才会更新
+        breakdown.value = details
     } catch (calcErr) {
         // [FIX] 避免 calculateStorage 抛错时整个组件崩溃
         console.error('[Storage] calculateStorage failed:', calcErr)
         hasError.value = true
     }
 }
+
+onMounted(async () => {
+    try {
+        await calculateStorage()
+    } catch (err) {
+        console.error('[Storage] onMounted error:', err)
+        hasError.value = true
+        quotaMode.value = 'error'
+    }
+})
 
 const formatSize = (bytes) => {
     if (bytes === 0) return '0 B'
