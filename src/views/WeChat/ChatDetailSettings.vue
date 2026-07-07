@@ -579,7 +579,7 @@
                         <div class="text-[10px]"
                             :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-600'">
                             总聊天轮数</div>
-                        <div class="font-mono text-blue-600 text-base font-bold">{{ totalTurns }}
+                        <div class="font-mono text-blue-600 text-base font-bold min-h-[24px]">{{ totalTurns ?? 0 }}
                         </div>
                     </div>
                     <div class="glass-panel p-2 rounded-lg border"
@@ -1463,9 +1463,16 @@ const expandedContextKey = ref(null)
 
 // Restored: This is needed for the stats cards in the template
 // 总聊天轮数：和上下文记忆轮数保持一致,1 轮 = 1 条 user 消息
+// 兜底:用 chatStore.currentChat 直接取,避免 props.chatData 不同步
 const totalTurns = computed(() => {
-    const msgs = props.chatData?.msgs || []
-    return msgs.filter(m => m && m.role === 'user').length
+    try {
+        const chat = chatStore.currentChat || props.chatData
+        const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
+        return msgs.filter(m => m && m.role === 'user').length
+    } catch (e) {
+        console.warn('[Settings] totalTurns error:', e)
+        return 0
+    }
 })
 
 // 把 lastSummaryTime (毫秒时间戳) 转成可读字符串
