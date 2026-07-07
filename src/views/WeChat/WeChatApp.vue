@@ -632,11 +632,16 @@ const confirmAddFriend = () => {
 const handleCreateLoop = async (form) => {
     showCreateLoopModal.value = false
     try {
+        // 1. Create the world loop in worldLoopStore
         const loop = await worldLoopStore.createLoop(form.name, form.description, form.participants)
+
+        // 2. Create the container chat (NOT a group chat - isGroup: false to avoid conflict)
+        //    The chat ties to the loop via loopId, but doesn't pollute group chat data
         const chat = chatStore.createChat(form.name, {
-            isGroup: true,
+            isGroup: false,
+            isWorldLoop: true,
             loopId: loop.id,
-            participants: form.participants // Initialize chat with selected participants
+            prompt: `你是一个剧本杀/RPG游戏的GM。当前世界名称:${form.name}。背景:${form.description}。请扮演这个世界中的所有角色,与用户进行互动对话。`
         })
         chatStore.currentChatId = chat.id
         chatStore.triggerToast('世界圈开启成功', 'success')
@@ -972,7 +977,7 @@ const handleImport = async (e) => {
         <OfflineModeChatWindow v-if="chatStore.currentChatId && settingsStore.isOfflineMode" v-show="!showMoments" class="absolute inset-0 z-50"
             @back="handleChatBack" :initial-unread-count="initialUnreadCount" @show-profile="openProfileFromChat" />
 
-        <WorldLoopCreateModal :visible="showCreateLoopModal" :contacts="chatStore.contactList.filter(c => !c.isGroup)"
+        <WorldLoopCreateModal :visible="showCreateLoopModal" :contacts="chatStore.contactList.filter(c => !c.isGroup && !c.loopId)"
             @close="showCreateLoopModal = false" @confirm="handleCreateLoop" />
 
         <PendingRequestsModal :visible="showPendingRequestsModal" @close="showPendingRequestsModal = false" />
@@ -1362,10 +1367,12 @@ const handleImport = async (e) => {
                                 <div class="flex-1 min-w-0">
                                     <div class="flex justify-between items-center mb-1">
                                         <div class="flex items-center gap-1.5 truncate">
-                                            <span v-if="chat.isGroup"
+                                            <span v-if="chat.loopId && !chat.isDissolved"
+                                                class="bg-purple-500 text-white text-[8px] px-1 rounded-sm shrink-0">世界</span>
+                                            <span v-else-if="chat.isGroup"
                                                 class="bg-green-500 text-white text-[8px] px-1 rounded-sm shrink-0">群组</span>
                                             <span class="font-medium text-gray-900 truncate">{{ chat.displayName || chat.name }}</span>
-                                            <SparkIcon v-if="chat.id && !chat.isGroup" :char-id="chat.id" size="sm" :show-days="false" @click="sparkDetailCharId = chat.id; sparkDetailCharName = chat.displayName || chat.name; showSparkDetail = true" />
+                                            <SparkIcon v-if="chat.id && !chat.isGroup && !chat.loopId" :char-id="chat.id" size="sm" :show-days="false" @click="sparkDetailCharId = chat.id; sparkDetailCharName = chat.displayName || chat.name; showSparkDetail = true" />
                                         </div>
                                         <span class="text-xs text-gray-400">{{ chat.lastMsg ? new
                                             Date(chat.lastMsg.timestamp).toLocaleTimeString([], {
@@ -1430,7 +1437,7 @@ const handleImport = async (e) => {
                                 :class="!expandLoopContacts ? '-rotate-90' : ''"></i>
                         </div>
                         <div v-if="expandLoopContacts">
-                            <div v-for="chat in chatStore.contactList.filter(c => c.isGroup && c.loopId)" :key="chat.id"
+                            <div v-for="chat in chatStore.contactList.filter(c => c.loopId && !c.isDissolved)" :key="chat.id"
                                 class="flex items-center px-4 py-3 border-b border-gray-100/80 active:bg-gray-50/80 cursor-pointer"
                                 @click="openChat(chat.id)">
                                 <div class="relative w-10 h-10 mr-3">
@@ -1443,13 +1450,13 @@ const handleImport = async (e) => {
                                 <div class="flex-1">
                                     <div class="text-base text-gray-900 font-medium">{{ chat.name }}</div>
                                     <div class="text-[10px] text-gray-400 truncate">
-                                        {{ chat.participants?.length || 0 }} 名成员参与中
+                                        {{ worldLoopStore.loops[chat.loopId]?.participants?.length || 0 }} 名角色 · {{ worldLoopStore.loops[chat.loopId]?.currentMode === 'offline' ? '线下' : '线上' }}
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="chatStore.contactList.filter(c => c.isGroup && c.loopId).length === 0"
+                            <div v-if="chatStore.contactList.filter(c => c.loopId && !c.isDissolved).length === 0"
                                 class="py-4 text-center text-xs text-gray-400">
-                                暂无活跃的世界圈
+                                暂无世界圈,点击右上角 + 开启
                             </div>
                         </div>
                     </div>
@@ -1548,7 +1555,7 @@ const handleImport = async (e) => {
                                 :class="!expandFriends ? '-rotate-90' : ''"></i>
                         </div>
                         <div v-if="expandFriends">
-                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop)"
+                            <div v-for="chat in chatStore.contactList.filter(c => !c.isGroup && !c.belongToLoop && !c.loopId)"
                                 :key="chat.id" class="relative overflow-hidden select-none"
                                 @click="!isSwiping && openChat(chat.id)"
                                 @contextmenu.prevent="openContextMenu('contact', chat, $event)"

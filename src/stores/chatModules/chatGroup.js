@@ -17,6 +17,14 @@ export const setupGroupLogic = (chats, createChat, addMessage, saveChats, getRan
         if (c.isGroup === undefined) c.isGroup = false
         if (!Array.isArray(c.participants)) c.participants = []
 
+        // [FIX] v1.10.82: 跳过世界圈 chat
+        // 世界圈虽然有 participants 字段(用于旧版本兼容),但不应被识别为群聊
+        // 世界圈使用 isWorldLoop + loopId 标识
+        if (c.loopId || c.isWorldLoop) {
+            c.isGroup = false
+            return
+        }
+
         if (c.isGroup) {
             if (!c.groupProfile || typeof c.groupProfile !== 'object') {
                 c.groupProfile = {

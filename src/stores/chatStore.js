@@ -5508,6 +5508,7 @@ export const useChatStore = defineStore('chat', () => {
 
             // --- DATA SANITIZER & DEFAULTS (Run for all loaded data) ---
             if (chats.value) {
+                let needSave = false
                 Object.values(chats.value).forEach(c => {
                     if (c.msgs && Array.isArray(c.msgs)) {
                         c.msgs = c.msgs.filter(m => {
@@ -5524,7 +5525,28 @@ export const useChatStore = defineStore('chat', () => {
                     if (c.autoSummary === undefined) c.autoSummary = false;
                     if (c.lastSummaryIndex === undefined) c.lastSummaryIndex = 0;
                     c.isSummarizing = false;
+
+                    // [FIX] v1.10.82: 迁移旧的世界圈 chat
+                    // 旧版本世界圈容器的 chat 使用 isGroup = true,与群聊冲突
+                    // 此处一次性迁移:有 loopId 的 chat 强制 isGroup = false
+                    if (c.loopId && c.isGroup) {
+                        console.log(`[Migration] World loop chat ${c.id} (${c.name}) isGroup: true -> false`)
+                        c.isGroup = false
+                        c.isWorldLoop = true
+                        // 清理群聊残留字段
+                        if (c.groupProfile && typeof c.groupProfile === 'object') {
+                            // 保留群聊基本设置,但标记为世界圈
+                            // (不删除,避免数据丢失,仅标记)
+                        }
+                        needSave = true
+                    }
                 });
+
+                // 迁移完成后立即保存一次
+                if (needSave) {
+                    console.log('[Migration] Saving world loop data migration...')
+                    setTimeout(() => saveChats(true), 100)
+                }
             }
         } catch (e) {
             console.error('[Storage] Load failed:', e);

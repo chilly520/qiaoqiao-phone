@@ -439,7 +439,11 @@ function handleQuitGroup() {
 }
 
 function handleDeleteLoop() {
-    chatStore.triggerConfirm('毁灭世界', '确定要删除这个世界吗？所有聊天记录和设定都将毁灭。', () => {
+    chatStore.triggerConfirm('毁灭世界', '确定要删除这个世界吗？所有聊天记录和设定都将毁灭。', async () => {
+        // [FIX] v1.10.82: 同时删除世界圈本体 (从 worldLoopStore) 和关联的载体 chat
+        if (props.chatData?.loopId) {
+            await worldLoopStore.deleteLoop(props.chatData.loopId)
+        }
         chatStore.deleteChat(props.chatData.id)
         emit('close')
     })

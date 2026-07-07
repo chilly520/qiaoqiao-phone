@@ -404,6 +404,17 @@ const handleSettingsPopState = (event) => {
 }
 
 const openSettings = () => {
+    // [FIX] v1.10.82: 世界圈优先判定
+    // 顺序: 世界圈 (loopId) -> 群聊 (isGroup) -> 单聊
+    if (chatData.value?.loopId) {
+        // 世界圈:使用 WorldLoopSettings,不要走群聊设置
+        showSettings.value = true
+        const currentState = window.history.state || {}
+        if (!currentState.settingsOpen) {
+            window.history.pushState({ ...currentState, settingsOpen: true }, '', '')
+        }
+        return
+    }
     if (chatData.value?.isGroup) {
         openGroupSettings()
         return
@@ -426,7 +437,8 @@ const openPhoneInspection = () => {
 }
 
 const openGroupSettings = (showAnnouncements = false) => {
-    if (!chatData.value?.isGroup) return
+    // [FIX] v1.10.82: 跳过世界圈 chat,世界圈有独立的设置面板
+    if (!chatData.value?.isGroup || chatData.value?.loopId) return
     if (showAnnouncements && groupAnnouncementModal.value) {
         groupAnnouncementModal.value.open()
         return
