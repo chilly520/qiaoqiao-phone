@@ -987,6 +987,8 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                     if (!url || (!url.startsWith('http') && !url.startsWith('data:image'))) {
                         for (let i = msgs.value.length - 1; i >= 0; i--) {
                             const m = msgs.value[i]
+                            // v1.10.59: 跳过 sticker 类型,避免把表情包当头像
+                            if (m.type === 'sticker') continue
                             if (m.type === 'image' && m.content && (m.content.startsWith('http') || m.content.startsWith('data:image'))) {
                                 url = m.content
                                 console.log('[更换头像] 回退到最近图片:', url.substring(0, 50))

@@ -936,6 +936,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
             // 1. Priority: msg.image property (New standard)
             if (msg.image) {
+                // Sticker (表情包) 也走视觉通道,但不当作头像图片
+                // 加上明确的【表情包】前缀,避免 AI 把它当成头像素材
+                const isSticker = msg.type === 'sticker' || /^\[表情包[:：]/.test(msg.content || '')
+
                 // Unseen user images (sent after last AI reply) are ALWAYS sent to Vision
                 const isUnseenUserImage = unseenUserImageIds.has(msg.id)
                 const isVisionEnabled = isUnseenUserImage || currentImageIndex >= visionStartIndex
@@ -943,9 +947,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
                 if (isVisionEnabled) {
                     const imageId = msg.id || 'curr';
-                    console.log(`[aiService Vision] msg.id=${msg.id}, using imageId=${imageId}`);
-                    // Make Image Reference ID more prominent for avatar operations
-                    const refText = `【图片ID: ${imageId}】如需更换头像，请使用: [更换头像:${imageId}]`;
+                    // v1.10.59: sticker 不再带"如需更换头像"提示,避免 AI 错把表情包当头像
+                    const refText = isSticker
+                        ? `【表情包: ${msg.stickerName || (msg.content && msg.content.replace(/^\[表情包[:：]\s*/, '').replace(/\]\s*$/, '')) || '表情'}】(图片ID: ${imageId})`
+                        : `【图片ID: ${imageId}】如需更换头像，请使用: [更换头像:${imageId}]`;
 
                     // Resolve to B64 if remote
                     const imgUrl = (msg.image.startsWith('http')) ? (await resolveToBase64(msg.image) || msg.image) : msg.image;
