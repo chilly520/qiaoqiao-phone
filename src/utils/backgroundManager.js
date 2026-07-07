@@ -16,6 +16,8 @@
 import { useLoggerStore } from '../stores/loggerStore';
 
 const KEEP_ALIVE_AUDIO_URL = '/silent.wav';
+const KEEP_ALIVE_STORAGE_KEY = 'chilly-keepalive-enabled';
+const KEEP_ALIVE_META_STORAGE_KEY = 'chilly-keepalive-meta';
 
 class BackgroundManager {
     constructor() {
@@ -129,6 +131,58 @@ class BackgroundManager {
             return { ok: false, reason: 'no_window' };
         }
 
+        // 合并 meta:传入的覆盖 localStorage 里保存的(保留用户最近的设置)
+        let savedMeta = {};
+        try {
+            const raw = localStorage.getItem(KEEP_ALIVE_META_STORAGE_KEY);
+            if (raw) savedMeta = JSON.parse(raw);
+        } catch (e) { /* 静默 */ }
+        const finalMeta = { ...savedMeta, ...meta };
+
+        const result = await this._startKeepAliveAudio(finalMeta);
+        if (result.ok) {
+            // 标记持久化,刷新页面后自动恢复
+            try { localStorage.setItem(KEEP_ALIVE_STORAGE_KEY, 'true'); } catch (e) {}
+            try { localStorage.setItem(KEEP_ALIVE_META_STORAGE_KEY, JSON.stringify(finalMeta)); } catch (e) {}
+        }
+        return result;
+    }
+
+    /**
+     * 自动恢复保活(无用户手势上下文):App 启动时调用,尝试重新启动 audio + MediaSession。
+     * 大多数浏览器(Chrome Android / Edge Android)会保留对同一 origin 的音频授权,
+     * 同一 session 内刷新页面/重新打开 PWA 时 audio.play() 不需要手势。
+     * 如果 autoplay 拦截,返回 {ok:false, reason:'need_user_gesture'} 让 UI 引导用户点一下。
+     *
+     * @returns {Promise<{ok: boolean, reason?: string}>}
+     */
+    async tryAutoResumeKeepAlive() {
+        if (this.keepAliveActive) return { ok: true, reason: 'already_active' };
+
+        // 检查用户是否之前开启过
+        let enabled = false;
+        try { enabled = localStorage.getItem(KEEP_ALIVE_STORAGE_KEY) === 'true'; } catch (e) {}
+        if (!enabled) return { ok: false, reason: 'never_enabled' };
+
+        if (typeof window === 'undefined' || typeof document === 'undefined') {
+            return { ok: false, reason: 'no_window' };
+        }
+
+        // 读取上次保存的 meta
+        let meta = {};
+        try {
+            const raw = localStorage.getItem(KEEP_ALIVE_META_STORAGE_KEY);
+            if (raw) meta = JSON.parse(raw);
+        } catch (e) { /* 静默 */ }
+
+        return await this._startKeepAliveAudio(meta);
+    }
+
+    /**
+     * 内部:实际创建 audio + MediaSession + 自动续播监听的核心逻辑。
+     * 复用:用户主动开启 + App 启动自动恢复。
+     */
+    async _startKeepAliveAudio(meta) {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
@@ -234,9 +288,16 @@ class BackgroundManager {
      * 关闭真保活
      */
     disableRealKeepAlive() {
-        if (!this.keepAliveActive) return;
+        if (!this.keepAliveActive) {
+            // 即便未激活,也清掉持久化标记(防止外部误设)
+            try { localStorage.removeItem(KEEP_ALIVE_STORAGE_KEY); } catch (e) {}
+            return;
+        }
 
         this.keepAliveActive = false;
+
+        // 清除持久化标记,避免下次启动又自动恢复
+        try { localStorage.removeItem(KEEP_ALIVE_STORAGE_KEY); } catch (e) {}
 
         if (this.keepAliveMonitorTimer) {
             clearInterval(this.keepAliveMonitorTimer);

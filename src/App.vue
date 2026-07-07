@@ -47,6 +47,19 @@ onMounted(() => {
     // 初始化 Web Push 服务 (无 VITE_PUSH_SERVER_URL 时静默 no-op)
     import('./utils/pushService').then(m => m.default.init()).catch(() => {})
 
+    // 自动恢复前台保活(v1.10.55):
+    // 如果用户之前点过"开启前台保活"按钮,会持久化到 localStorage;
+    // App 启动时自动调用 tryAutoResumeKeepAlive() 重启 audio + MediaSession。
+    // 大多数浏览器(Chrome Android / Edge Android)同 session 内会保留音频授权,
+    // 刷新页面/PWA 重开都能自动恢复;只有重启浏览器或冷启动 PWA 才需要再点一次。
+    setTimeout(() => {
+        backgroundManager.tryAutoResumeKeepAlive().then((res) => {
+            if (res && res.ok) {
+                console.log('[KeepAlive] auto-resumed on app start')
+            }
+        }).catch(() => {})
+    }, 1500)
+
     // Initialize battery monitoring
     batteryMonitor.init().then((initialized) => {
         if (initialized) {
