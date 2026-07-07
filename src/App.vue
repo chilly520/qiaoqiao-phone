@@ -9,6 +9,7 @@ import { batteryMonitor } from './utils/batteryMonitor'
 
 import { notificationService } from './utils/notificationService'
 import { backgroundManager } from './utils/backgroundManager'
+import autoBackup from './utils/autoBackup'
 import CallBanner from './components/CallBanner.vue'
 import CallVisualizer from './components/CallVisualizer.vue'
 import CallStatusBar from './components/CallStatusBar.vue'
@@ -59,6 +60,11 @@ onMounted(() => {
             }
         }).catch(() => {})
     }, 1500)
+
+    // [FIX] v1.10.65: 初始化自动备份服务
+    // - 启动时检查是否需要提示下载本地备份
+    // - saveChats 时会自动 notifyChange -> debounce 5 分钟 -> 上传 GitHub
+    autoBackup.init()
 
     // Initialize battery monitoring
     batteryMonitor.init().then((initialized) => {

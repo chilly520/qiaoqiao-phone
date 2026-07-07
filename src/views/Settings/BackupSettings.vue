@@ -93,6 +93,70 @@
         </div>
       </div>
 
+      <!-- [FIX] v1.10.65: 自动备份状态卡片 -->
+      <div class="glass-panel p-5 rounded-[20px] border-2 border-emerald-100">
+        <div class="flex items-center gap-2 mb-4">
+          <div
+            class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center">
+            <i class="fa-solid fa-shield-halved text-white text-lg"></i>
+          </div>
+          <div>
+            <h2 class="font-bold text-lg text-gray-800">自动备份状态</h2>
+            <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold">v1.10.65 Auto Backup</p>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+            <div class="flex items-center gap-2">
+              <i :class="backupStatus.githubConfigured ? 'fa-solid fa-circle-check text-emerald-500' : 'fa-solid fa-circle-xmark text-rose-400'" class="text-lg"></i>
+              <span class="text-sm font-bold text-gray-700">GitHub 配置</span>
+            </div>
+            <span class="text-xs font-bold" :class="backupStatus.githubConfigured ? 'text-emerald-600' : 'text-rose-500'">
+              {{ backupStatus.githubConfigured ? '已启用' : '未配置' }}
+            </span>
+          </div>
+
+          <div class="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-cloud-arrow-up text-blue-500 text-lg"></i>
+              <span class="text-sm font-bold text-gray-700">上次云端备份</span>
+            </div>
+            <span class="text-xs font-bold text-gray-600">{{ backupStatus.lastBackupAgo }}</span>
+          </div>
+
+          <div class="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-file-arrow-down text-purple-500 text-lg"></i>
+              <span class="text-sm font-bold text-gray-700">本地下载提醒</span>
+            </div>
+            <span class="text-xs font-bold text-gray-600">
+              {{ backupStatus.lastLocalPromptTime > 0 ? formatTime(backupStatus.lastLocalPromptTime) : '从未提示' }}
+            </span>
+          </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-2 gap-2">
+          <button @click="handleBackupNow" :disabled="isBackingUp"
+            class="px-3 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-bold text-xs active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+            <i :class="isBackingUp ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-bolt'"></i>
+            {{ isBackingUp ? '备份中...' : '立即备份到云端' }}
+          </button>
+          <button @click="handleDownloadLocal" :disabled="isDownloading"
+            class="px-3 py-2.5 bg-white border-2 border-emerald-200 text-emerald-700 rounded-xl font-bold text-xs active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+            <i :class="isDownloading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-download'"></i>
+            {{ isDownloading ? '生成中...' : '下载本地 JSON' }}
+          </button>
+        </div>
+
+        <div class="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+          <i class="fa-solid fa-circle-info text-amber-500 mt-0.5"></i>
+          <p class="text-[11px] text-amber-800 leading-relaxed">
+            <b>自动备份已开启</b>：每次聊完 5 分钟内自动上传到云端。强烈建议<b>每周下载一次本地 JSON</b> 到手机存储，浏览器数据丢失时可一键还原。
+          </p>
+        </div>
+      </div>
+
       <!-- 本地物理备份 -->
       <div class="glass-panel p-5 rounded-[20px]">
         <div class="flex items-center gap-2 mb-4">
@@ -317,6 +381,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useStickerStore } from '@/stores/stickerStore'
 import { useWorldBookStore } from '@/stores/worldBookStore'
 import GitHubBackup from '@/utils/githubBackup'
+import autoBackup from '@/utils/autoBackup'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -342,8 +407,67 @@ let syncTimer = null
 const isPushing = ref(false)
 const isPulling = ref(false)
 const uploadProgress = ref(0)
+const isBackingUp = ref(false)
+const isDownloading = ref(false)
 const lastSyncSuccess = ref(window.localStorage.getItem('github_last_sync_time') || '从未')
 const autoArchiveEnabled = ref(false)
+
+const backupStatus = ref(autoBackup.getStatus())
+
+function refreshBackupStatus() {
+  backupStatus.value = autoBackup.getStatus()
+}
+
+function formatTime(ts) {
+  if (!ts) return '从未'
+  const d = new Date(ts)
+  const now = Date.now()
+  const diff = now - ts
+  if (diff < 60 * 1000) return '刚刚'
+  if (diff < 60 * 60 * 1000) return Math.floor(diff / 60000) + ' 分钟前'
+  if (diff < 24 * 60 * 60 * 1000) return Math.floor(diff / 3600000) + ' 小时前'
+  return Math.floor(diff / 86400000) + ' 天前'
+}
+
+async function handleBackupNow() {
+  const cfg = autoBackup.getConfig()
+  if (!cfg || !cfg.token) {
+    chatStore.triggerToast('请先在上方配置 GitHub Token', 'error')
+    return
+  }
+  isBackingUp.value = true
+  try {
+    // 强制刷新一次 payload 再 flush
+    const result = await autoBackup.flushNow()
+    if (result && result.success) {
+      chatStore.triggerToast('✅ 云端备份成功', 'success')
+    } else if (result && result.skipped) {
+      chatStore.triggerToast('跳过：' + (result.reason || '未知原因'), 'info')
+    } else {
+      chatStore.triggerToast('备份失败: ' + (result?.error || '未知错误'), 'error')
+    }
+  } catch (e) {
+    chatStore.triggerToast('备份失败: ' + e.message, 'error')
+  } finally {
+    isBackingUp.value = false
+    refreshBackupStatus()
+  }
+}
+
+async function handleDownloadLocal() {
+  isDownloading.value = true
+  try {
+    // 复用 handleConfirmExport 的逻辑
+    await handleConfirmExport()
+    // 标记已经提示过下载
+    autoBackup.markLocalDownloadPrompted()
+    refreshBackupStatus()
+  } catch (e) {
+    console.error('Download local failed:', e)
+  } finally {
+    isDownloading.value = false
+  }
+}
 
 const showExportModal = ref(false)
 const showConfirmModal = ref(false)
@@ -649,6 +773,15 @@ onMounted(async () => {
   if (window.localStorage.getItem('auto_archive_enabled') === 'true') {
     autoArchiveEnabled.value = true
   }
+
+  // [FIX] v1.10.65: 刷新自动备份状态
+  refreshBackupStatus()
+  // 启动时检查是否需要弹"本地下载"提示
+  if (autoBackup.shouldPromptLocalDownload()) {
+    setTimeout(() => {
+      chatStore.triggerToast('💾 已经超过 7 天没下载本地备份了,建议尽快下载一次到手机存储', 'info')
+    }, 3000)
+  }
 })
 
 watch(githubConfig, (newCfg) => {
@@ -839,6 +972,24 @@ const initPurgeAll = () => {
 }
 
 const processAtomicReset = () => {
+  // [FIX] v1.10.65: 危险操作前的安全检查
+  // 没备份过/备份太老,提示用户先备份再操作
+  const safety = autoBackup.isSafeToDestroyData()
+  if (!safety.safe) {
+    const reason = safety.reason === 'no_github_config'
+      ? '尚未配置 GitHub 备份'
+      : `最近备份时间: ${safety.lastBackupAgo}`
+    const confirmed = window.confirm(
+      '⚠️ 安全拦截\n\n' + reason + '\n\n' +
+      '建议先"立即备份到云端"或"下载本地 JSON"再重置。\n\n' +
+      '仍要继续?(数据将永久丢失)'
+    )
+    if (!confirmed) {
+      showConfirmModal.value = false
+      return
+    }
+  }
+
   showConfirmModal.value = false
   if (resetType.value === 'app') {
     settingsStore.resetAppData({

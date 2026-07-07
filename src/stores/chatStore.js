@@ -14,6 +14,7 @@ import { processBioUpdate } from '../utils/bioUtils'
 import { usePhoneInspectionStore } from './phoneInspectionStore'
 import { appendLog } from '../utils/memoryLog'
 import { backgroundManager } from '../utils/backgroundManager'
+import autoBackup from '../utils/autoBackup'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
 import { ensureString, getRandomAvatar, DEFAULT_AVATARS, getLastNTurns, countTurnsBetween } from '../utils/common'
 import { compressAllChatImages as chatImageUtils_compressAll, extractLSActions as chatImageUtils_extractLSActions } from '../utils/chatImageUtils'
@@ -5186,6 +5187,56 @@ export const useChatStore = defineStore('chat', () => {
     let savePromise = null;
     let saveResolve = null;
 
+    /**
+     * v1.10.65: 采集要备份到云端的全量数据(给 autoBackup 用)
+     * 直接走 settingsStore.exportFullData 逻辑,这里只准备最小输入
+     */
+    async function collectBackupPayload() {
+        try {
+            // 懒加载需要的 store
+            const momentsStore = useMomentsStore()
+            const worldBookStore = useWorldBookStore()
+            const stickerStore = (await import('./stickerStore')).useStickerStore()
+            const settingsStore = useSettingsStore()
+
+            // 清洗大头像
+            let chatsData = JSON.parse(JSON.stringify(chats.value || {}))
+            for (const cid of Object.keys(chatsData)) {
+                const c = chatsData[cid]
+                if (!c) continue
+                if (c.avatar && typeof c.avatar === 'string' && c.avatar.length > 10000 && c.avatar.startsWith('data:image')) {
+                    c.avatar = ''
+                }
+                if (c.userAvatar && typeof c.userAvatar === 'string' && c.userAvatar.length > 10000 && c.userAvatar.startsWith('data:image')) {
+                    c.userAvatar = ''
+                }
+            }
+
+            const injected = {
+                chats: chatsData,
+                moments: JSON.parse(JSON.stringify(momentsStore.moments || [])),
+                momentsTop: JSON.parse(JSON.stringify(momentsStore.topMoments || [])),
+                momentsNotifications: JSON.parse(JSON.stringify(momentsStore.notifications || [])),
+                worldbook: JSON.parse(JSON.stringify(worldBookStore.books || [])),
+                stickers: JSON.parse(JSON.stringify(stickerStore.stickers || [])),
+                favorites: []
+            }
+
+            const allSelected = {
+                chats: true, moments: true, settings: true, decoration: true,
+                worldbook: true, stickers: true, favorites: true, wallet: true,
+                weibo: true, music: true, forum: true, shopping: true,
+                lovespace: true, phoneinspection: true, calendar: true,
+                backpack: true
+            }
+
+            return await settingsStore.exportFullData(allSelected, injected)
+        } catch (e) {
+            console.warn('[AutoBackup] collectBackupPayload failed:', e)
+            return null
+        }
+    }
+
     async function saveChats(force = false) {
         if (!isLoaded.value) {
             console.warn('[Storage] saveChats ignored: data not yet loaded from DB.');
@@ -5248,7 +5299,9 @@ export const useChatStore = defineStore('chat', () => {
                 
                 localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
                 localStorage.setItem(V3_MIGRATED_KEY, 'true');
-                
+
+                // [FIX] v1.10.65: 触发自动云端备份(debounce 5 分钟)
+                autoBackup.notifyChange(() => collectBackupPayload());
                 if (resolve) resolve(true);
                 return true;
             } catch (e) {
