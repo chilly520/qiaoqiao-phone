@@ -178,6 +178,12 @@ const calculateStorage = async () => {
             quotaMode.value = 'system'
         }
         details.system = Math.max(0, details.system)
+    } catch (calcErr) {
+        // [FIX] 避免 calculateStorage 抛错时整个组件崩溃
+        console.error('[Storage] calculateStorage failed:', calcErr)
+        hasError.value = true
+    }
+}
 
 const formatSize = (bytes) => {
     if (bytes === 0) return '0 B'
