@@ -20,9 +20,9 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-// v1.10.88: bump 到 v10 + 强制清理 v3-v9 旧 cache
-const SHELL_CACHE = 'chilly-shell-v10';
-const RUNTIME_CACHE = 'chilly-runtime-v10';
+// v1.10.89: bump 到 v11 + 强制清理 v3-v10 旧 cache
+const SHELL_CACHE = 'chilly-shell-v11';
+const RUNTIME_CACHE = 'chilly-runtime-v11';
 
 // 关键 shell 资源,install 时主动 precache
 const SHELL_URLS = [
@@ -33,9 +33,10 @@ const SHELL_URLS = [
     '/manifest.json',
     '/pwa-192x192.png',
     '/pwa-512x512.png',
-    // v1.10.88: silent.wav 还原 1b9f86e 时代的 6秒 8-bit 8000Hz mono 格式
-    // (v1.10.87 改成 18kHz 单频 16-bit 44.1kHz 后 Android 媒体卡片消失)
-    // 内容为 2kHz 单频 sine wave(±6 围绕 0x80),高到不会有呼吸感,音量 0.01 几乎听不到
+    // v1.10.89: silent.wav 6秒 8-bit 8000Hz mono,内容 15Hz 超低频 sine wave
+    // (v1.10.88 用 2kHz 用户反馈能听到"滴"声,2kHz 在人耳最敏感区)
+    // (v1.10.87 16-bit 44.1kHz 18kHz 媒体卡片消失)
+    // 15Hz < 20Hz 人耳阈值 + 手机喇叭重放差,绝对听不到
     '/silent.wav',
 ];
 
