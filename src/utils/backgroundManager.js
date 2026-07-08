@@ -15,7 +15,7 @@
 
 import { useLoggerStore } from '../stores/loggerStore';
 
-const KEEP_ALIVE_AUDIO_URL = '/silent.wav?v=5';
+const KEEP_ALIVE_AUDIO_URL = '/silent.wav';
 const KEEP_ALIVE_STORAGE_KEY = 'chilly-keepalive-enabled';
 const KEEP_ALIVE_META_STORAGE_KEY = 'chilly-keepalive-meta';
 
@@ -186,18 +186,13 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.83 修复:通知栏媒体卡片不显示
-        // silent.wav 内部数据是 -51dBFS 的 pink noise(非零 PCM),volume=0.05
-        // 输出约 -79dBFS(人耳完全听不见,Android 系统可识别为活跃媒体)
-        // 关键:即使 volume 调高,如果 silent.wav 内部是 0,媒体卡片也不会显示
-        //       所以 silent.wav 必须含非零数据
-        audio.volume = 0.05;
+        audio.volume = 0.005;           // 极低音量,戴耳机也几乎听不见(v1.10.54: 0.02 偏大)
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.muted = false;            // 必须是 false
-        // 不设置 crossOrigin,避免某些 Android Chrome 触发 CORS 预检失败
-        // audio.crossOrigin = 'anonymous';
+        // 一些浏览器需要这个属性
+        audio.crossOrigin = 'anonymous';
 
         // 2. 监听加载错误
         audio.addEventListener('error', (e) => {
@@ -267,12 +262,9 @@ class BackgroundManager {
         // 不再注册 ended 续播、不再注册 3 秒轮询兜底
         this.keepAliveMonitorTimer = null;
 
-        // 6. v1.10.82 修复:智能兜底轮询(15s)
-        // v1.10.56 改掉了之前粗暴的 3 秒轮询(会抢回用户正在听的微信语音/QQ 音乐),
-        // 但完全去掉兜底导致另一个问题:audio 一旦被系统暂停就再也不会自动续播,
-        // PWA 失去音频焦点后被 Android 杀掉,切回前台页面已死。
-        // 解决:加 15s 低频轮询,只在"没有别的音频在播"时才续播,主动让出场景不做任何事。
-        this._installSafetyMonitor(audio);
+        // 6. 不再在 visibilitychange=hidden 时强制续播
+        // 同样的原因:用户在后台听别的音频会被打断
+        this.keepAliveVisibilityHandler = null;
 
         // 6.5 v1.10.57: 让出 / 恢复音频焦点机制
         // PWA 内部有别的 audio 播放时(微信语音 / 来电铃声 / 一起听音乐 / 消息提示音),
@@ -315,12 +307,6 @@ class BackgroundManager {
         if (this.keepAliveMonitorTimer) {
             clearInterval(this.keepAliveMonitorTimer);
             this.keepAliveMonitorTimer = null;
-        }
-
-        // v1.10.82: 清理安全兜底轮询
-        if (this._safetyMonitorTimer) {
-            clearInterval(this._safetyMonitorTimer);
-            this._safetyMonitorTimer = null;
         }
 
         if (this.keepAliveVisibilityHandler) {
@@ -395,65 +381,6 @@ class BackgroundManager {
                 this.keepAliveAudio.play().catch(() => { /* 静默 */ });
             }
         }, 300);
-    }
-
-    /**
-     * v1.10.82 修复:智能兜底轮询。
-     * v1.10.56 把保活轮询完全删了,导致 audio 被系统暂停后永远不恢复,
-     * PWA 在后台被 Android 杀掉。
-     * 这里加 15s 低频轮询,只有当:
-     *   1. keepAliveActive 为 true
-     *   2. audio 实际处于 paused
-     *   3. 用户没主动让出音频焦点 (!keepAliveYielded)
-     *   4. musicStore 没在播放
-     *   5. 页面中没有其他 audio/video 元素在播放
-     * 全部满足时才尝试 play()。
-     * 频率低(15s)+ 严格的前置条件,确保不会抢回用户正在听的微信语音/QQ 音乐焦点。
-     */
-    _installSafetyMonitor(audio) {
-        // 防止重复安装
-        if (this._safetyMonitorTimer) {
-            clearInterval(this._safetyMonitorTimer);
-            this._safetyMonitorTimer = null;
-        }
-
-        const SAFETY_INTERVAL_MS = 15000;
-
-        const tryResume = async () => {
-            // 关掉 / audio 被换掉 -> 不动作
-            if (!this.keepAliveActive) return;
-            if (this.keepAliveAudio !== audio) return;
-            if (!audio.paused) return;  // 正常播放中,啥都不做
-            if (this.keepAliveYielded) return;  // 用户主动让出,尊重
-
-            // 检查 musicStore
-            try {
-                const { useMusicStore } = await import('../stores/musicStore');
-                const musicStore = useMusicStore();
-                if (musicStore && musicStore.isPlaying) return;
-            } catch (e) { /* store 加载失败不阻止续播 */ }
-
-            // 检查页面中其他 audio/video 元素是否有在播放
-            try {
-                const others = document.querySelectorAll('audio, video');
-                for (const el of others) {
-                    if (el === audio) continue;
-                    if (!el.paused && !el.ended && el.readyState > 2) {
-                        return;  // 别的媒体在播,不抢
-                    }
-                }
-            } catch (e) { /* DOM 查询失败不阻止 */ }
-
-            // 全部条件满足,尝试续播
-            try {
-                await audio.play();
-                this.log('[KeepAlive] safety monitor resumed audio', 'info');
-            } catch (err) {
-                // NotAllowedError 等静默忽略(可能在 visibility=hidden 时被系统拒绝)
-            }
-        };
-
-        this._safetyMonitorTimer = setInterval(tryResume, SAFETY_INTERVAL_MS);
     }
 
     /**
