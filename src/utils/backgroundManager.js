@@ -186,10 +186,13 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.86: 还原 1b9f86e 时的非零 silent.wav(媒体卡片要),
-        // 但 volume 降到 0.01(v1.10.54 注释说 0.02 偏大,实测 6 秒非零样本 +
-        // 0.02 戴耳机/安静环境能听到)。0.01 + 非零样本 = 媒体识别 + 听不见。
-        audio.volume = 0.01;
+        // v1.10.87: silent.wav 改为 1秒 18kHz 单频 sine wave,volume=0.005
+        //   - 18kHz >> 人耳敏感频段(中老年用户对 ≥17kHz 几乎听不到)
+        //   - 0.005 × -18dBFS 源 = -64dBFS 输出(绝对听不到)
+        //   - 没有低频包络,完全不会产生"呼吸感"
+        //   - 1b9f86e 时代 silent.wav 是低频噪声(用户反馈"像呼吸"),
+        //     戴耳机能听到;18kHz 单频彻底解决
+        audio.volume = 0.005;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
