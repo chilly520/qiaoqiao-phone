@@ -15,7 +15,7 @@
 
 import { useLoggerStore } from '../stores/loggerStore';
 
-const KEEP_ALIVE_AUDIO_URL = '/silent.wav';
+const KEEP_ALIVE_AUDIO_URL = '/silent.wav?v=84';
 const KEEP_ALIVE_STORAGE_KEY = 'chilly-keepalive-enabled';
 const KEEP_ALIVE_META_STORAGE_KEY = 'chilly-keepalive-meta';
 
@@ -186,12 +186,15 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        audio.volume = 0.005;           // 极低音量,戴耳机也几乎听不见(v1.10.54: 0.02 偏大)
+        // v1.10.84:Android 媒体识别服务现在对 0 振幅 PCM 不分配 MediaSession。
+        // silent.wav 改为 16-bit pink noise(非零),volume=0.05 输出约 -79dBFS
+        // (人耳完全听不见,系统能识别为活跃媒体)。
+        audio.volume = 0.05;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.muted = false;            // 必须是 false
-        // 一些浏览器需要这个属性
+        // 同源资源但保留 anonymous,跟原 92d48b3 一致
         audio.crossOrigin = 'anonymous';
 
         // 2. 监听加载错误
@@ -282,6 +285,31 @@ class BackgroundManager {
         this.keepAliveActive = true;
         this.keepAliveYielded = false;
 
+        // 7.5 v1.10.84:每 30s 重新 setMediaMetadata + 刷新 playbackState
+        // 某些 Android 设备(尤其国产 ROM)MediaSession 状态会被回收,
+        // 周期重置让系统媒体卡片持续保持活跃。
+        if (this._keepAliveReassertTimer) {
+            clearInterval(this._keepAliveReassertTimer);
+        }
+        this._keepAliveReassertTimer = setInterval(() => {
+            if (!this.keepAliveActive || this.keepAliveAudio !== audio) return;
+            try {
+                if ('mediaSession' in navigator) {
+                    // 重新 set 一次 metadata,触发系统媒体卡片刷新
+                    const iconUrl = meta.icon || '/pwa-192x192.png';
+                    navigator.mediaSession.metadata = new MediaMetadata({
+                        title: meta.title || 'qiaoqiao-phone',
+                        artist: meta.artist || '后台保活中',
+                        album: meta.album || 'qiaoqiao',
+                        artwork: [
+                            { src: iconUrl, sizes: '192x192', type: 'image/png' }
+                        ]
+                    });
+                    navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
+                }
+            } catch (e) { /* 静默 */ }
+        }, 30000);
+
         // 8. 同时申请 wake lock,前台时屏幕不熄
         this.requestWakeLock();
 
@@ -307,6 +335,12 @@ class BackgroundManager {
         if (this.keepAliveMonitorTimer) {
             clearInterval(this.keepAliveMonitorTimer);
             this.keepAliveMonitorTimer = null;
+        }
+
+        // v1.10.84: 清理 MediaSession 重置 timer
+        if (this._keepAliveReassertTimer) {
+            clearInterval(this._keepAliveReassertTimer);
+            this._keepAliveReassertTimer = null;
         }
 
         if (this.keepAliveVisibilityHandler) {

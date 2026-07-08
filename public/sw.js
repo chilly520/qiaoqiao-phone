@@ -20,8 +20,9 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-const SHELL_CACHE = 'chilly-shell-v3';
-const RUNTIME_CACHE = 'chilly-runtime-v3';
+// v1.10.84: bump 到 v6 + 强制清理 v3/v4/v5 旧 cache
+const SHELL_CACHE = 'chilly-shell-v6';
+const RUNTIME_CACHE = 'chilly-runtime-v6';
 
 // 关键 shell 资源,install 时主动 precache
 const SHELL_URLS = [
@@ -32,7 +33,8 @@ const SHELL_URLS = [
     '/manifest.json',
     '/pwa-192x192.png',
     '/pwa-512x512.png',
-    '/silent.wav',
+    // v1.10.84: 加 cache-bust 查询参数,确保 SW 重新拉取新文件
+    '/silent.wav?v=84',
 ];
 
 self.addEventListener('install', (event) => {
