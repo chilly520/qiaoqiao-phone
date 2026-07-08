@@ -1,6 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useChatStore } from './chatStore'
+import {
+  normalizeCycles,
+  generatePredictions,
+  calculateStats,
+  getCyclePhase as calcCyclePhase,
+  getCurrentPeriod as calcCurrentPeriod,
+  getFullStats as calcFullStats,
+  startPeriodToday as startToday,
+  endPeriodToday as endToday,
+  deleteCycle as removeCycle,
+  toDateStr
+} from '@/utils/periodCalculator'
 
 // 农历数据
 const lunarInfo = [
@@ -291,12 +303,19 @@ export const useCalendarStore = defineStore('calendar', () => {
   const events = ref([])
 
   // 生理期数据
+  // v1.10.92: 数据模型重构
+  //   cycles: [{ id, startDate, endDate?, duration, symptoms?, flowLevel?, mood?, note?, createdAt }]
+  //   predictions: 自动由 cycles 派生,不再单独存(每次 getPhase 时算)
+  //   settings: 用户偏好(平均周期 / 经期天数,可手动覆盖)
   const periodData = ref({
-    cycles: [], // { startDate, endDate, duration }
-    averageCycle: 28, // 平均周期长度（间隔天数）
-    averageDuration: 5, // 平均经期天数
-    lastPeriod: null,
-    predictions: []
+    cycles: [],
+    settings: {
+      averageCycle: 28,    // 用户手动设置(系统会自动算更精准的值)
+      averageDuration: 5,
+      remindBefore: 2,      // 提前几天提醒
+      remindAt: '09:00',
+      enabled: true
+    }
   })
 
   // 心情记录
@@ -346,7 +365,33 @@ export const useCalendarStore = defineStore('calendar', () => {
       if (saved) {
         const data = JSON.parse(saved)
         events.value = data.events || []
-        periodData.value = data.periodData || { cycles: [], averageCycle: 28, averageDuration: 5, lastPeriod: null, predictions: [] }
+        // v1.10.92: 兼容旧版 periodData 结构
+        if (data.periodData) {
+          const old = data.periodData
+          // 旧版: cycles[], averageCycle, averageDuration, lastPeriod, predictions
+          // 新版: cycles[], settings: { averageCycle, averageDuration, ... }
+          if (old.settings) {
+            periodData.value = old
+          } else {
+            // 迁移
+            periodData.value = {
+              cycles: old.cycles || [],
+              settings: {
+                averageCycle: old.averageCycle || 28,
+                averageDuration: old.averageDuration || 5,
+                remindBefore: old.remindBefore || 2,
+                remindAt: old.remindAt || '09:00',
+                enabled: old.enabled !== false
+              }
+            }
+          }
+          // 自动给老数据补 id 和 createdAt
+          periodData.value.cycles = (periodData.value.cycles || []).map(c => ({
+            id: c.id || `cycle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            createdAt: c.createdAt || new Date().toISOString(),
+            ...c
+          }))
+        }
         moodRecords.value = data.moodRecords || []
         countdowns.value = data.countdowns || []
         recurringTasks.value = data.recurringTasks || []
@@ -575,37 +620,29 @@ export const useCalendarStore = defineStore('calendar', () => {
   }
 
   // 获取生理期状态
+  // v1.10.92: 重构,支持排卵/易孕/黄体期/安全期
   function getPeriodStatus(date) {
-    const dateStr = formatDateStr(date)
-
-    // 检查是否在记录周期内
-    for (const cycle of periodData.value.cycles) {
-      const start = new Date(cycle.startDate)
-      const end = new Date(cycle.endDate)
-      if (date >= start && date <= end) {
-        return { type: 'period', day: Math.floor((date - start) / 86400000) + 1 }
-      }
+    const result = calcCyclePhase(date, periodData.value.cycles, generatePeriodPredictions(6))
+    // 兼容旧版: { type, day }
+    if (!result) return null
+    if (result.phase === 'period') {
+      return { type: 'period', day: result.day, source: 'actual', isActual: true }
     }
-
-    // 检查预测
-    for (const pred of periodData.value.predictions) {
-      const start = new Date(pred.startDate)
-      const end = new Date(pred.endDate)
-      if (date >= start && date <= end) {
-        return { type: 'prediction', day: Math.floor((date - start) / 86400000) + 1 }
-      }
+    if (result.phase === 'prediction') {
+      return { type: 'prediction', day: result.day, cycleIndex: result.cycleIndex, confidence: result.confidence, isActual: false }
     }
-
-    // 排卵期预测
-    if (periodData.value.lastPeriod) {
-      const lastStart = new Date(periodData.value.lastPeriod.startDate)
-      const ovulationStart = new Date(lastStart.getTime() + 11 * 86400000)
-      const ovulationEnd = new Date(lastStart.getTime() + 16 * 86400000)
-      if (date >= ovulationStart && date <= ovulationEnd) {
-        return { type: 'ovulation' }
-      }
+    if (result.phase === 'ovulation') {
+      return { type: 'ovulation', day: 0, isPeak: true }
     }
-
+    if (result.phase === 'fertile') {
+      return { type: 'fertile', day: 0, isPeak: result.isPeak }
+    }
+    if (result.phase === 'luteal') {
+      return { type: 'luteal', day: result.day }
+    }
+    if (result.phase === 'safe') {
+      return { type: 'safe', day: result.day, subtype: result.type }
+    }
     return null
   }
 
@@ -657,62 +694,118 @@ export const useCalendarStore = defineStore('calendar', () => {
   }
 
   // 生成生理期预测
-  function generatePeriodPredictions() {
-    if (!periodData.value.lastPeriod) return
-
-    const predictions = []
-    const lastStart = new Date(periodData.value.lastPeriod.startDate)
-
-    for (let i = 1; i <= 6; i++) {
-      const predStart = new Date(lastStart.getTime() + periodData.value.averageCycle * i * 86400000)
-      const predEnd = new Date(predStart.getTime() + (periodData.value.averageDuration - 1) * 86400000)
-      predictions.push({
-        startDate: formatDateStr(predStart),
-        endDate: formatDateStr(predEnd),
-        isPrediction: true
-      })
-    }
-
-    periodData.value.predictions = predictions
+  // v1.10.92: 用新算法(加权平均 + 标准差 + 置信度)
+  function generatePeriodPredictions(count = 6) {
+    return generatePredictions(periodData.value.cycles, count)
   }
 
-  // 记录生理期
-  function recordPeriod(startDate, endDate, symptoms = []) {
-    const cycle = {
-      id: generateId(),
-      startDate,
-      endDate,
-      duration: Math.floor((new Date(endDate) - new Date(startDate)) / 86400000) + 1,
-      symptoms
+  // 记录生理期 - v1.10.92: 优化版
+  //   startDate 必填,endDate 缺省时按默认时长(5天)算
+  //   支持更新已存在的同开始日记录
+  //   每次都自动重算平均周期(用最近 6 个 interval 加权平均)
+  function recordPeriod({ startDate, endDate, duration, symptoms, flowLevel, mood, note, id } = {}) {
+    if (!startDate) return null
+    const data = normalizeCycles(periodData.value.cycles)
+    const newStart = new Date(startDate + 'T00:00:00')
+    let newEnd = endDate ? new Date(endDate + 'T00:00:00') : null
+    // 自动推算 endDate
+    if (!newEnd) {
+      const d = duration || 5
+      newEnd = new Date(newStart.getTime() + (d - 1) * 86400000)
     }
-    periodData.value.cycles.push(cycle)
-    periodData.value.lastPeriod = cycle
-
-    // 重新计算平均值
-    if (periodData.value.cycles.length >= 2) {
-      let totalCycle = 0
-      let totalDuration = 0
-      for (let i = 1; i < periodData.value.cycles.length; i++) {
-        const prev = new Date(periodData.value.cycles[i - 1].startDate)
-        const curr = new Date(periodData.value.cycles[i].startDate)
-        totalCycle += Math.floor((curr - prev) / 86400000)
-        totalDuration += periodData.value.cycles[i].duration
-      }
-      periodData.value.averageCycle = Math.round(totalCycle / (periodData.value.cycles.length - 1))
-      periodData.value.averageDuration = Math.round(totalDuration / (periodData.value.cycles.length - 1))
+    const actualDuration = Math.round((newEnd - newStart) / 86400000) + 1
+    const target = formatDateStr(newStart)
+    const existingIdx = data.findIndex(c => c.startDate === target)
+    const newCycle = {
+      id: (existingIdx >= 0 ? data[existingIdx].id : null) || id || `cycle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      startDate: target,
+      endDate: formatDateStr(newEnd),
+      duration: actualDuration,
+      symptoms: symptoms || [],
+      flowLevel: flowLevel || 'normal',
+      mood: mood || '',
+      note: note || '',
+      createdAt: new Date().toISOString()
     }
+    let newCycles
+    if (existingIdx >= 0) {
+      newCycles = [...data]
+      newCycles[existingIdx] = { ...newCycles[existingIdx], ...newCycle }
+    } else {
+      newCycles = [...data, newCycle]
+    }
+    const stats = calculateStats(newCycles)
+    periodData.value.cycles = newCycles
+    periodData.value.settings.averageCycle = stats.avgCycle
+    periodData.value.settings.averageDuration = stats.avgDuration
+    saveData()
+    return newCycles[existingIdx >= 0 ? existingIdx : newCycles.length - 1]
+  }
 
-    // 生成预测
-    generatePeriodPredictions()
+  // v1.10.92: 一键开始今天经期
+  function startPeriod() {
+    const result = startToday(periodData.value.cycles)
+    if (result.noop || result.alreadyActive || result.alreadyExists) {
+      return { success: false, message: result.message }
+    }
+    periodData.value.cycles = result.cycles
+    const stats = calculateStats(result.cycles)
+    periodData.value.settings.averageCycle = stats.avgCycle
+    periodData.value.settings.averageDuration = stats.avgDuration
+    saveData()
+    return { success: true, message: result.message, cycle: result.newCycle }
+  }
+
+  // v1.10.92: 一键结束今天经期
+  function endPeriod() {
+    const result = endToday(periodData.value.cycles)
+    if (result.noop) {
+      return { success: false, message: result.message }
+    }
+    periodData.value.cycles = result.cycles
+    const stats = calculateStats(result.cycles)
+    periodData.value.settings.averageCycle = stats.avgCycle
+    periodData.value.settings.averageDuration = stats.avgDuration
+    saveData()
+    return { success: true, message: result.message, cycle: result.updated }
+  }
+
+  // v1.10.92: 删除一条记录
+  function deletePeriodRecord(cycleId) {
+    periodData.value.cycles = removeCycle(periodData.value.cycles, cycleId)
+    const stats = calculateStats(periodData.value.cycles)
+    periodData.value.settings.averageCycle = stats.avgCycle
+    periodData.value.settings.averageDuration = stats.avgDuration
+    saveData()
+  }
+
+  // v1.10.92: 更新设置
+  function updatePeriodSettings(newSettings) {
+    periodData.value.settings = { ...periodData.value.settings, ...newSettings }
+    saveData()
+  }
+
+  // v1.10.92: 获取当前进行中的经期
+  function getCurrentPeriod() {
+    return calcCurrentPeriod(periodData.value.cycles)
+  }
+
+  // v1.10.92: 完整统计数据(给 PeriodStatistics 用的)
+  function getFullPeriodStats() {
+    return calcFullStats(periodData.value.cycles)
   }
 
   // 清除所有经期数据
   function clearAllPeriodData() {
     periodData.value.cycles = []
-    periodData.value.lastPeriod = null
-    periodData.value.averageCycle = 28
-    periodData.value.averageDuration = 5
-    periodData.value.predictions = []
+    periodData.value.settings = {
+      averageCycle: 28,
+      averageDuration: 5,
+      remindBefore: 2,
+      remindAt: '09:00',
+      enabled: true
+    }
+    saveData()
   }
 
   // 记录心情
@@ -1081,6 +1174,12 @@ export const useCalendarStore = defineStore('calendar', () => {
     updateEvent,
     deleteEvent,
     recordPeriod,
+    startPeriod,         // v1.10.92: 一键开始
+    endPeriod,           // v1.10.92: 一键结束
+    deletePeriodRecord,  // v1.10.92: 删除记录
+    updatePeriodSettings,// v1.10.92: 更新设置
+    getCurrentPeriod,    // v1.10.92: 当前进行中
+    getFullPeriodStats,  // v1.10.92: 完整统计
     recordMood,
     addCountdown,
     recordSleep,

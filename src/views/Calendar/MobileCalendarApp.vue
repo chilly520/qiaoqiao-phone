@@ -459,7 +459,7 @@ function markPeriodStart(date) {
       return
     }
 
-    const duration = calendarStore.periodData.averageDuration || 5
+    const duration = calendarStore.periodData.settings.averageDuration || 5
     const endDate = new Date(date)
     endDate.setDate(date.getDate() + duration - 1)
     const endDateStr = calendarStore.formatDateStr(endDate)

@@ -28,11 +28,11 @@
             <div class="stat-label">记录周期</div>
           </div>
           <div class="stat-box">
-            <div class="stat-value">{{ calendarStore.periodData.averageCycle }}</div>
+            <div class="stat-value">{{ calendarStore.periodData.settings.averageCycle }}</div>
             <div class="stat-label">平均周期 (天)</div>
           </div>
           <div class="stat-box">
-            <div class="stat-value">{{ calendarStore.periodData.averageDuration }}</div>
+            <div class="stat-value">{{ calendarStore.periodData.settings.averageDuration }}</div>
             <div class="stat-label">平均经期 (天)</div>
           </div>
         </div>
@@ -198,7 +198,7 @@ const getStatusDesc = computed(() => {
 })
 
 const nextPeriod = computed(() => {
-  return calendarStore.periodData.predictions[0] || null
+  return calendarStore.generatePeriodPredictions(1)[0] || null
 })
 
 const daysUntilNext = computed(() => {

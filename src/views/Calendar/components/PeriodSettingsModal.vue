@@ -71,7 +71,7 @@
             <div class="stat-icon">🔮</div>
             <div class="stat-content">
               <div class="stat-label">预测周期</div>
-              <div class="stat-value">{{ calendarStore.periodData.predictions.length }} 个</div>
+              <div class="stat-value">{{ calendarStore.generatePeriodPredictions(6).length }} 个</div>
             </div>
           </div>
         </div>
@@ -107,8 +107,8 @@ const localCycle = ref(28)
 const localDuration = ref(5)
 
 onMounted(() => {
-  localCycle.value = calendarStore.periodData.averageCycle
-  localDuration.value = calendarStore.periodData.averageDuration
+  localCycle.value = calendarStore.periodData.settings.averageCycle
+  localDuration.value = calendarStore.periodData.settings.averageDuration
 })
 
 function close() {

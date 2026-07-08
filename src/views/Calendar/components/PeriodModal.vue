@@ -201,8 +201,8 @@ const localDuration = ref(5)
 
 // 加载当前设置
 onMounted(() => {
-  localCycle.value = calendarStore.periodData.averageCycle
-  localDuration.value = calendarStore.periodData.averageDuration
+  localCycle.value = calendarStore.periodData.settings.averageCycle
+  localDuration.value = calendarStore.periodData.settings.averageDuration
 })
 
 const cycleDays = computed(() => {

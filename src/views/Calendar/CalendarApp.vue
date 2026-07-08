@@ -612,29 +612,11 @@ function isAIActive(charId) {
   return chat && chat.isOnline
 }
 
-// 检查日期是否在经期范围内（根据设置的经期天数）
+// 检查日期是否在经期范围内(根据设置的经期天数)
+// v1.10.92: 改用 store.getPeriodStatus 统一接口(实际 + 预测)
 function isInPeriodRange(date) {
-  const periodData = calendarStore.periodData
-  
-  // 检查实际的经期记录
-  for (const cycle of periodData.cycles) {
-    const start = new Date(cycle.startDate)
-    const end = new Date(cycle.endDate)
-    if (date >= start && date <= end) {
-      return true
-    }
-  }
-  
-  // 检查预测的经期
-  for (const pred of periodData.predictions) {
-    const start = new Date(pred.startDate)
-    const end = new Date(pred.endDate)
-    if (date >= start && date <= end) {
-      return true
-    }
-  }
-  
-  return false
+  const status = calendarStore.getPeriodStatus(date)
+  return status && (status.type === 'period' || status.type === 'prediction')
 }
 
 function openEventModal() {
