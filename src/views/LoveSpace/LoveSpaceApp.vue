@@ -92,7 +92,7 @@
             <div v-if="showDateEditor" class="date-editor-panel animate-fade-in">
               <div class="editor-header">空间管理</div>
               <div class="editor-row">
-                <span>相识日期:</span>
+                <span>相恋日期:</span>
                 <input type="date" v-model="tempStartDate" @change="updateLoveDate" class="date-input">
               </div>
               
@@ -159,6 +159,60 @@
                 <button @click="handleResetClick" class="force-reset-btn" :disabled="!hasSelection">
                   <i class="fa-solid fa-trash-can"></i> 清空选中功能
                 </button>
+              </div>
+
+              <!-- v1.10.91: 上下文记忆设置 -->
+              <div class="editor-row mt-4 context-mem-block">
+                <div class="editor-header flex items-center justify-between">
+                  <span><i class="fa-solid fa-brain mr-1"></i> 上下文记忆</span>
+                </div>
+                <p class="schedule-desc">
+                  控制每次魔法生成时,AI 看到的聊天上下文范围。
+                </p>
+                <div class="schedule-mode-row">
+                  <span class="row-label">模式</span>
+                  <div class="mode-segment">
+                    <button
+                      :class="{ active: contextMem.mode === 'turns' }"
+                      @click="onContextModeChange('turns')"
+                      class="mode-btn">按轮数</button>
+                    <button
+                      :class="{ active: contextMem.mode === 'daily' }"
+                      @click="onContextModeChange('daily')"
+                      class="mode-btn">按当天</button>
+                  </div>
+                </div>
+                <div v-if="contextMem.mode === 'turns'" class="schedule-mode-row">
+                  <span class="row-label">轮数</span>
+                  <div class="interval-input-wrap">
+                    <input
+                      type="number"
+                      v-model.number="contextMem.turns"
+                      @change="saveContextMem"
+                      min="1" max="500"
+                      class="time-input" />
+                    <span class="unit-suffix">轮</span>
+                  </div>
+                </div>
+                <div v-else class="schedule-mode-row">
+                  <span class="row-label">说明</span>
+                  <span class="hint-text">取今天 00:00 起的所有聊天(最多 {{ contextMem.turns }} 轮封顶)</span>
+                </div>
+                <div class="schedule-mode-row mt-2">
+                  <span class="row-label">注入</span>
+                  <div class="interval-input-wrap">
+                    <input
+                      type="number"
+                      v-model.number="contextMem.injectDays"
+                      @change="saveContextMem"
+                      min="0" max="365"
+                      class="time-input" />
+                    <span class="unit-suffix">天内内容</span>
+                  </div>
+                </div>
+                <p class="schedule-desc mt-1">
+                  注入记忆天数:设置 N 就是把最近 N 天内的日记/留言/信件/足迹/便利贴/纪念日灌到 system prompt;0 = 不限制全部。
+                </p>
               </div>
 
               <!-- v1.10.90: 定时魔法生成配置 -->
@@ -580,6 +634,49 @@ async function runScheduledNow() {
     console.error('[Schedule] runScheduledNow error:', e)
   }
 }
+
+// === v1.10.91: 上下文记忆设置 ===
+const contextMem = ref({
+  mode: 'turns',
+  turns: 30,
+  injectDays: 7
+})
+function syncContextMemFromStore() {
+  const cfg = loveSpaceStore.currentSpace?.contextMemory
+  if (cfg) {
+    contextMem.value = {
+      mode: cfg.mode || 'turns',
+      turns: parseInt(cfg.turns) || 30,
+      injectDays: parseInt(cfg.injectDays) ?? 7
+    }
+  }
+}
+async function saveContextMem() {
+  if (!loveSpaceStore.currentPartnerId) return
+  // 边界保护
+  if (!contextMem.value.turns || contextMem.value.turns < 1) contextMem.value.turns = 1
+  if (contextMem.value.turns > 500) contextMem.value.turns = 500
+  if (contextMem.value.injectDays < 0) contextMem.value.injectDays = 0
+  if (contextMem.value.injectDays > 365) contextMem.value.injectDays = 365
+  await loveSpaceStore.setContextMemory({
+    mode: contextMem.value.mode,
+    turns: contextMem.value.turns,
+    injectDays: contextMem.value.injectDays
+  })
+  syncContextMemFromStore()
+}
+async function onContextModeChange(mode) {
+  contextMem.value.mode = mode
+  await saveContextMem()
+}
+// 监听 currentSpace.contextMemory 变化
+watch(() => loveSpaceStore.currentSpace?.contextMemory, () => {
+  syncContextMemFromStore()
+}, { deep: true })
+// 监听空间切换
+watch(() => loveSpaceStore.currentPartnerId, () => {
+  syncContextMemFromStore()
+})
 
 // 全选/全不选
 function toggleSelectAll() {
@@ -1074,6 +1171,8 @@ onMounted(async () => {
 
   // v1.10.90: 同步定时配置到本地 ref
   syncScheduledGenFromStore()
+  // v1.10.91: 同步上下文记忆配置
+  syncContextMemFromStore()
 })
 
 watch(() => loveSpaceStore.currentPartnerId, (newId) => {
@@ -1808,5 +1907,30 @@ onUnmounted(() => {
 }
 .toggle-container.compact input[type="checkbox"]:checked::after {
   left: 18px;
+}
+
+/* v1.10.91: 上下文记忆 */
+.context-mem-block {
+  background: linear-gradient(135deg, #f0f4ff 0%, #f8f0ff 100%);
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1.5px solid #e0d6f5;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.context-mem-block .editor-header {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  color: #7c5fbf;
+  font-size: 13px;
+}
+.context-mem-block .hint-text {
+  font-size: 11px;
+  color: #8b7aa8;
+  font-weight: 500;
+  flex: 1;
+  line-height: 1.5;
 }
 </style>

@@ -45,6 +45,18 @@ const DEFAULT_SPACE = () => ({
     intervalHours: 6,
     lastRunAt: null,
     nextRunAt: null
+  },
+  // v1.10.91: 生成上下文记忆配置
+  //   mode: 'turns' = 按自定义轮数(最近 N 轮聊天)
+  //         'daily' = 按当天(只取今天 00:00 之后的消息)
+  //   turns: mode='turns' 时使用,默认 30 轮
+  //   injectDays: 注入到微信情侣空间记忆的天数
+  //     设置 N 就是把最近 N 天内的日记/留言/信件/足迹/便利贴/纪念日/日程注入到 system prompt
+  //     0 = 不限制(全部历史)
+  contextMemory: {
+    mode: 'turns',
+    turns: 30,
+    injectDays: 7
   }
 })
 
@@ -411,6 +423,15 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
               space.scheduledGeneration = {
                 ...DEFAULT_SPACE().scheduledGeneration,
                 ...space.scheduledGeneration
+              }
+            }
+            // v1.10.91: 老空间补上 contextMemory 字段
+            if (!space.contextMemory) {
+              space.contextMemory = { ...DEFAULT_SPACE().contextMemory }
+            } else {
+              space.contextMemory = {
+                ...DEFAULT_SPACE().contextMemory,
+                ...space.contextMemory
               }
             }
           })
@@ -991,6 +1012,72 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       }, 5000)
     },
 
+    // ========== v1.10.91: 上下文记忆设置 ==========
+    // 根据当前空间的 contextMemory 配置,获取最近聊天上下文
+    // 返回 [{ role, content }] 数组(已格式化,直接用于 prompt)
+    _getRecentChats(charId, opts = {}) {
+      const chatStore = useChatStore()
+      const cfg = (opts.contextMemory
+        || this.spaces[charId]?.contextMemory
+        || DEFAULT_SPACE().contextMemory)
+      const msgs = chatStore.chats[charId]?.msgs || []
+      if (!cfg) return []
+      if (cfg.mode === 'daily') {
+        // 取今天 00:00 之后的所有消息
+        const now = new Date()
+        const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime()
+        const filtered = msgs.filter(m => {
+          const t = m.timestamp || m.time || m.createTime || 0
+          // time 可能是 ISO 字符串,归一化
+          const tNum = typeof t === 'string' ? new Date(t).getTime() : t
+          return tNum >= dayStart
+        })
+        // 仍然套用 getLastNTurns(防止某天消息爆炸)
+        const turns = Math.max(1, parseInt(cfg.turns) || 30)
+        return getLastNTurns(filtered, turns).map(m => ({
+          role: m.role === 'ai' ? 'assistant' : 'user',
+          content: m.content
+        }))
+      } else {
+        // turns 模式(默认)
+        const turns = Math.max(1, parseInt(cfg.turns) || 30)
+        return getLastNTurns(msgs, turns).map(m => ({
+          role: m.role === 'ai' ? 'assistant' : 'user',
+          content: m.content
+        }))
+      }
+    },
+
+    // 按 injectDays 过滤数组(取最近 N 天内的项目)
+    // arr: 数组
+    // days: 天数,0 = 不限制
+    // dateField: 日期字段名(默认 'time')
+    _filterByDays(arr, days, dateField = 'time') {
+      if (!Array.isArray(arr) || arr.length === 0) return []
+      if (!days || days <= 0) return arr
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+      return arr.filter(item => {
+        const t = item?.[dateField]
+        if (!t) return false
+        const tNum = typeof t === 'string' ? new Date(t).getTime() : t
+        return tNum >= cutoff
+      })
+    },
+
+    // 更新当前空间的 contextMemory 配置
+    async setContextMemory(config) {
+      if (!this.currentPartnerId) return
+      const space = this.spaces[this.currentPartnerId]
+      if (!space) return
+      const prev = space.contextMemory || DEFAULT_SPACE().contextMemory
+      space.contextMemory = {
+        ...prev,
+        ...config
+      }
+      console.log('[LoveSpaceStore] setContextMemory:', space.contextMemory)
+      await this.saveToStorage()
+    },
+
     async generateMagicContent(targetDate = null) {
       if (!this.currentPartnerId) {
         console.warn('[LoveSpaceStore] generateMagicContent: No currentPartnerId')
@@ -1015,9 +1102,22 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
 
       const userProfile = settingsStore.personalization.userProfile
       const dateToUse = targetDate || new Date().toISOString().split('T')[0]
+      // v1.10.91: 注入记忆天数(只把最近 N 天内的内容灌到 system prompt)
+      const injectDays = this.currentSpace?.contextMemory?.injectDays ?? 7
+      // 辅助:过滤+按时间倒序
+      const _recentByDays = (arr, dateField = 'time') => {
+        const filtered = this._filterByDays(arr, injectDays, dateField)
+        // 倒序(最新在前)
+        return filtered.slice().sort((a, b) => {
+          const ta = typeof a[dateField] === 'string' ? new Date(a[dateField]).getTime() : (a[dateField] || 0)
+          const tb = typeof b[dateField] === 'string' ? new Date(b[dateField]).getTime() : (b[dateField] || 0)
+          return tb - ta
+        })
+      }
       const spaceHistory = {
         targetDate: dateToUse,
-        recentDiary: (this.currentSpace.diary || []).slice(-3).map(d => `${d.authorName || '我'}: 《${d.title}》(${d.mood})\n${d.content || '无内容'}`),
+        injectDays: injectDays,  // 透传给 prompt 模板方便 AI 知晓
+        recentDiary: _recentByDays(this.currentSpace.diary || [], 'createdAt').slice(0, 5).map(d => `${d.authorName || '我'}: 《${d.title}》(${d.mood})\n${d.content || '无内容'}`),
         todayFootprints: (this.currentSpace.footprints || [])
           .filter(f => f.createdAt?.startsWith(dateToUse))
           .sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt))
@@ -1026,30 +1126,34 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         unansweredQuestions: (this.currentSpace.questions || [])
           .filter(q => !q.partnerAnswer)
           .map(q => `(ID:${q.id}) ${q.text} ${q.userAnswer ? `[用户已答：${q.userAnswer}]` : '[等待提问]'}`),
-        recentUserMessages: (this.currentSpace.messages || [])
-          .filter(m => m.senderId === 'user')
-          .slice(-5)
+        recentUserMessages: _recentByDays(
+          (this.currentSpace.messages || []).filter(m => m.senderId === 'user'),
+          'createdAt'
+        ).slice(0, 5)
           .map(m => `【用户留言】ID:${m.id} ${m.senderName}: ${m.content}`)
           .join('\n'),
-        recentPartnerMessages: (this.currentSpace.messages || [])
-          .filter(m => m.senderId !== 'user')
-          .slice(-3)
+        recentPartnerMessages: _recentByDays(
+          (this.currentSpace.messages || []).filter(m => m.senderId !== 'user'),
+          'createdAt'
+        ).slice(0, 3)
           .map(m => `【我的留言】ID:${m.id} ${m.senderName}: ${m.content}`)
           .join('\n'),
         // 用户来信（未回复的）
-        unansweredLetters: (this.currentSpace.letters || [])
-          .filter(l => l.author === 'user' && !l.comments?.length)
-          .slice(-3)
+        unansweredLetters: _recentByDays(
+          (this.currentSpace.letters || []).filter(l => l.author === 'user' && !l.comments?.length),
+          'createdAt'
+        ).slice(0, 3)
           .map(l => `【用户来信】《${l.title}》(ID:${l.id}): ${l.content}`)
           .join('\n---\n') || '暂无',
         // 有用户评论但AI尚未回复的信件
-        uncommentedLetters: (this.currentSpace.letters || [])
-          .filter(l => {
+        uncommentedLetters: _recentByDays(
+          (this.currentSpace.letters || []).filter(l => {
             const hasUserComment = (l.comments || []).some(c => c.authorId === 'user' || c.author === 'user')
             const hasPartnerComment = (l.comments || []).some(c => c.authorId === 'partner' || c.author === 'partner')
             return hasUserComment && !hasPartnerComment
-          })
-          .slice(-3)
+          }),
+          'createdAt'
+        ).slice(0, 3)
           .map(l => {
             const userComments = (l.comments || [])
               .filter(c => c.authorId === 'user' || c.author === 'user')
@@ -1058,13 +1162,18 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
           })
           .join('\n') || '暂无',
         // 最近的相册
-        recentAlbum: (this.currentSpace.album || []).slice(-5).map(a => `${a.title}${a.desc ? ': ' + a.desc : ''}`)
+        recentAlbum: _recentByDays(this.currentSpace.album || [], 'createdAt').slice(0, 5)
+          .map(a => `${a.title}${a.desc ? ': ' + a.desc : ''}`),
+        // 便利贴(最近 N 天内)
+        recentStickies: _recentByDays(this.currentSpace.stickies || [], 'createdAt').slice(0, 5)
+          .map(s => `《${s.title || s.content?.slice(0, 20)}》: ${s.content || ''}`),
+        // 纪念日(只看未来 30 天内 + 最近 N 天内的)
+        recentAnniversaries: _recentByDays(this.currentSpace.anniversaries || [], 'createdAt').slice(0, 5)
+          .map(a => `${a.title} (${a.date})`)
       }
 
-      const charHistory = getLastNTurns(chatStore.chats[charId]?.msgs || [], 15).map(m => ({ 
-        role: m.role === 'ai' ? 'assistant' : 'user', 
-        content: m.content 
-      }))
+      // v1.10.91: 用 contextMemory 配置(turns/daily)取上下文,默认 30 轮
+      const charHistory = this._getRecentChats(charId)
 
       const msgWarning = spaceHistory.recentUserMessages ? "" : "\n【重要】甜蜜留言板当前是空的，不要尝试回复任何不存在的消息（replyToId 也要为空）。";
       const systemPrompt = `你现在是 ${chat.name}。你正在与 ${userProfile.name} 经营专属情侣空间。
@@ -1182,11 +1291,8 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
 
       const userProfile = settingsStore.personalization.userProfile
 
-      // 获取最近 100 轮聊天记录
-      const recentChats = getLastNTurns(chatStore.chats[charId]?.msgs || [], 100).map(m => ({
-        role: m.role === 'ai' ? 'assistant' : 'user',
-        content: m.content
-      }))
+      // v1.10.91: 用 contextMemory 配置(turns/daily)取上下文
+      const recentChats = this._getRecentChats(charId)
       
       // 获取该功能最近 5 条历史记录
       let featureHistory = []
