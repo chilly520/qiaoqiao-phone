@@ -30,7 +30,22 @@ const DEFAULT_SPACE = () => ({
   album: [],
   gachaHistory: [],
   applyToDesktop: false,
-  schedules: []  // 新增：日程表数据
+  schedules: [],  // 新增：日程表数据
+  // v1.10.90: 定时魔法生成配置
+  //   enabled: 是否启用
+  //   mode: 'daily' = 每天固定时间 / 'interval' = 间隔 N 小时
+  //   dailyTime: 'HH:mm',仅 mode='daily' 用
+  //   intervalHours: 间隔小时数,仅 mode='interval' 用
+  //   lastRunAt: 上次运行时间戳 (ISO string)
+  //   nextRunAt: 下次运行时间戳 (ISO string),null 表示未计算
+  scheduledGeneration: {
+    enabled: false,
+    mode: 'daily',
+    dailyTime: '09:00',
+    intervalHours: 6,
+    lastRunAt: null,
+    nextRunAt: null
+  }
 })
 
 export const useLoveSpaceStore = defineStore('loveSpace', {
@@ -388,11 +403,23 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
                 }
               })
             }
+            // v1.10.90: 老空间补上 scheduledGeneration 字段
+            if (!space.scheduledGeneration) {
+              space.scheduledGeneration = { ...DEFAULT_SPACE().scheduledGeneration }
+            } else {
+              // 补全缺失的子字段
+              space.scheduledGeneration = {
+                ...DEFAULT_SPACE().scheduledGeneration,
+                ...space.scheduledGeneration
+              }
+            }
           })
           
           this.updateLoveDays()
         }
         this.isLoaded = true
+        // v1.10.90: 加载完启动全局定时检查器
+        this._startScheduledGenerationChecker()
       } catch (e) {
         console.error('[LoveSpaceStore] Load failed', e)
         this.isLoaded = true
@@ -852,6 +879,116 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`
       const schedules = this.currentSpace.schedules || []
       return schedules.filter(s => s.date.startsWith(monthStr))
+    },
+
+    // ========== v1.10.90: 定时魔法生成 ==========
+    // 计算给定 space 的下次运行时间(纯函数,无副作用)
+    _computeNextRunAt(scheduled, fromTs = Date.now()) {
+      if (!scheduled || !scheduled.enabled) return null
+      if (scheduled.mode === 'daily') {
+        // 解析 HH:mm
+        const m = String(scheduled.dailyTime || '09:00').match(/^(\d{1,2}):(\d{1,2})$/)
+        if (!m) return null
+        const hh = parseInt(m[1], 10)
+        const mm = parseInt(m[2], 10)
+        const next = new Date(fromTs)
+        next.setHours(hh, mm, 0, 0)
+        // 如果今天的 HH:mm 已经过了,推到明天
+        if (next.getTime() <= fromTs) {
+          next.setDate(next.getDate() + 1)
+        }
+        return next.toISOString()
+      } else if (scheduled.mode === 'interval') {
+        const hours = Math.max(1, parseInt(scheduled.intervalHours) || 6)
+        // 如果有上次运行时间,从 lastRunAt + hours 计算;否则从现在 + hours
+        const base = scheduled.lastRunAt
+          ? new Date(scheduled.lastRunAt).getTime()
+          : fromTs
+        const next = new Date(base + hours * 60 * 60 * 1000)
+        return next.toISOString()
+      }
+      return null
+    },
+
+    // 设置 / 更新当前空间的定时配置
+    async setScheduledGeneration(config) {
+      if (!this.currentPartnerId) return
+      const space = this.spaces[this.currentPartnerId]
+      if (!space) return
+      const prev = space.scheduledGeneration || DEFAULT_SPACE().scheduledGeneration
+      const merged = {
+        ...prev,
+        ...config
+      }
+      // 计算 nextRunAt
+      merged.nextRunAt = this._computeNextRunAt(merged)
+      merged.lastRunAt = prev.lastRunAt || null
+      space.scheduledGeneration = merged
+      console.log('[LoveSpaceStore] setScheduledGeneration:', merged)
+      await this.saveToStorage()
+    },
+
+    // 关闭定时生成
+    async clearScheduledGeneration() {
+      if (!this.currentPartnerId) return
+      const space = this.spaces[this.currentPartnerId]
+      if (!space) return
+      space.scheduledGeneration = {
+        ...DEFAULT_SPACE().scheduledGeneration,
+        lastRunAt: space.scheduledGeneration?.lastRunAt || null
+      }
+      await this.saveToStorage()
+    },
+
+    // 全局扫描所有空间,如果到点就执行一次魔法生成
+    async checkAndRunScheduledGeneration() {
+      if (this.isMagicGenerating) return // 全局锁
+      const now = Date.now()
+      const charIds = Object.keys(this.spaces || {})
+      if (charIds.length === 0) return
+      for (const charId of charIds) {
+        const space = this.spaces[charId]
+        if (!space || !space.initialized) continue
+        const sched = space.scheduledGeneration
+        if (!sched || !sched.enabled) continue
+        if (!sched.nextRunAt) {
+          // 还没计算过 nextRunAt(老数据/刚启用),补一下
+          sched.nextRunAt = this._computeNextRunAt(sched)
+          continue
+        }
+        if (new Date(sched.nextRunAt).getTime() <= now) {
+          // 到点了,执行
+          console.log(`[LoveSpaceStore] Scheduled generation triggered for ${charId}`)
+          try {
+            // 先切到对应空间(generateMagicContent 依赖 currentPartnerId)
+            const prevId = this.currentPartnerId
+            await this.selectSpace(charId)
+            await this.generateMagicContent()
+            // 更新 lastRunAt + 重算 nextRunAt
+            space.scheduledGeneration.lastRunAt = new Date().toISOString()
+            space.scheduledGeneration.nextRunAt = this._computeNextRunAt(space.scheduledGeneration)
+            await this.saveToStorage()
+            // 还原之前的空间(如果有)
+            if (prevId && prevId !== charId) {
+              await this.selectSpace(prevId)
+            }
+          } catch (e) {
+            console.error(`[LoveSpaceStore] Scheduled generation failed for ${charId}:`, e)
+          }
+        }
+      }
+    },
+
+    // 启动全局定时检查器(由 App.vue 调用一次)
+    _startScheduledGenerationChecker() {
+      if (this._scheduledCheckTimer) return
+      this._scheduledCheckTimer = setInterval(() => {
+        this.checkAndRunScheduledGeneration().catch(() => {})
+      }, 60 * 1000) // 每 60s 检查一次
+      // 启动后立即跑一次,补上因 app 关闭漏掉的运行
+      setTimeout(() => {
+        this.checkAndRunScheduledGeneration().catch(() => {})
+      }, 5000)
     },
 
     async generateMagicContent(targetDate = null) {

@@ -160,6 +160,71 @@
                   <i class="fa-solid fa-trash-can"></i> 清空选中功能
                 </button>
               </div>
+
+              <!-- v1.10.90: 定时魔法生成配置 -->
+              <div class="editor-row mt-4 schedule-gen-block">
+                <div class="editor-header flex items-center justify-between">
+                  <span><i class="fa-solid fa-clock-rotate-left mr-1"></i> 定时魔法生成</span>
+                  <label class="toggle-container compact">
+                    <input type="checkbox" v-model="scheduledGen.enabled" @change="onScheduleToggle">
+                    <span class="checkmark"></span>
+                  </label>
+                </div>
+                <p class="schedule-desc">
+                  开启后,会按设定的时间自动调用魔法生成(等于点右上角✨魔法棒)。
+                  <br>需要 App 处于打开/后台状态才会触发;App 完全关闭时无法执行。
+                </p>
+                <div v-if="scheduledGen.enabled" class="schedule-config">
+                  <div class="schedule-mode-row">
+                    <span class="row-label">频率</span>
+                    <div class="mode-segment">
+                      <button
+                        :class="{ active: scheduledGen.mode === 'daily' }"
+                        @click="onModeChange('daily')"
+                        class="mode-btn">每天固定时间</button>
+                      <button
+                        :class="{ active: scheduledGen.mode === 'interval' }"
+                        @click="onModeChange('interval')"
+                        class="mode-btn">间隔 N 小时</button>
+                    </div>
+                  </div>
+                  <div v-if="scheduledGen.mode === 'daily'" class="schedule-mode-row">
+                    <span class="row-label">时间</span>
+                    <input
+                      type="time"
+                      v-model="scheduledGen.dailyTime"
+                      @change="saveScheduledGen"
+                      class="time-input" />
+                  </div>
+                  <div v-else class="schedule-mode-row">
+                    <span class="row-label">间隔</span>
+                    <div class="interval-input-wrap">
+                      <input
+                        type="number"
+                        v-model.number="scheduledGen.intervalHours"
+                        @change="onIntervalChange"
+                        min="1" max="168"
+                        class="time-input" />
+                      <span class="unit-suffix">小时</span>
+                    </div>
+                  </div>
+                  <div v-if="scheduledGen.nextRunAt" class="schedule-meta">
+                    <i class="fa-solid fa-hourglass-half"></i>
+                    下次运行:<b>{{ formatScheduleTime(scheduledGen.nextRunAt) }}</b>
+                    <span v-if="nextRunIn" class="run-in">({{ nextRunIn }}后)</span>
+                  </div>
+                  <div v-if="scheduledGen.lastRunAt" class="schedule-meta subtle">
+                    <i class="fa-solid fa-check"></i>
+                    上次运行:{{ formatScheduleTime(scheduledGen.lastRunAt) }}
+                  </div>
+                  <button
+                    class="run-now-btn"
+                    :disabled="isMagicGenerating"
+                    @click="runScheduledNow">
+                    <i class="fa-solid fa-bolt"></i> 立即运行一次
+                  </button>
+                </div>
+              </div>
               
               <div class="editor-row mt-2">
                 <button @click="resetCurrentSpace" class="danger-reset-btn">
@@ -341,7 +406,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
@@ -390,6 +455,131 @@ const resetOptions = ref({
 })
 
 const selectAll = ref(false)
+
+// === v1.10.90: 定时魔法生成 ===
+// 用 ref 镜像 store 数据(避免 v-model 直接改 store 触发副作用)
+const scheduledGen = ref({
+  enabled: false,
+  mode: 'daily',
+  dailyTime: '09:00',
+  intervalHours: 6,
+  lastRunAt: null,
+  nextRunAt: null
+})
+// 同步 store -> 本地 ref
+function syncScheduledGenFromStore() {
+  const cfg = loveSpaceStore.currentSpace?.scheduledGeneration
+  if (cfg) {
+    scheduledGen.value = {
+      enabled: !!cfg.enabled,
+      mode: cfg.mode || 'daily',
+      dailyTime: cfg.dailyTime || '09:00',
+      intervalHours: parseInt(cfg.intervalHours) || 6,
+      lastRunAt: cfg.lastRunAt || null,
+      nextRunAt: cfg.nextRunAt || null
+    }
+  }
+}
+// 监听当前空间变化,同步配置
+watch(() => loveSpaceStore.currentPartnerId, () => {
+  syncScheduledGenFromStore()
+})
+watch(() => loveSpaceStore.currentSpace?.scheduledGeneration, () => {
+  syncScheduledGenFromStore()
+}, { deep: true })
+
+async function saveScheduledGen() {
+  if (!loveSpaceStore.currentPartnerId) return
+  // 把本地的 ref 同步到 store
+  const cfg = {
+    enabled: scheduledGen.value.enabled,
+    mode: scheduledGen.value.mode,
+    dailyTime: scheduledGen.value.dailyTime,
+    intervalHours: scheduledGen.value.intervalHours
+  }
+  await loveSpaceStore.setScheduledGeneration(cfg)
+  // 重新拉一次以拿到新的 nextRunAt
+  syncScheduledGenFromStore()
+}
+
+async function onScheduleToggle() {
+  await saveScheduledGen()
+  chatStore.triggerToast(
+    scheduledGen.value.enabled ? '⏰ 已开启定时魔法生成' : '⏸️ 已关闭定时魔法生成',
+    scheduledGen.value.enabled ? 'success' : 'info'
+  )
+}
+
+async function onModeChange(mode) {
+  scheduledGen.value.mode = mode
+  await saveScheduledGen()
+}
+
+async function onIntervalChange() {
+  if (!scheduledGen.value.intervalHours || scheduledGen.value.intervalHours < 1) {
+    scheduledGen.value.intervalHours = 1
+  }
+  if (scheduledGen.value.intervalHours > 168) {
+    scheduledGen.value.intervalHours = 168
+  }
+  await saveScheduledGen()
+}
+
+function formatScheduleTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+const nextRunIn = computed(() => {
+  if (!scheduledGen.value.nextRunAt) return ''
+  const diff = new Date(scheduledGen.value.nextRunAt).getTime() - Date.now()
+  if (diff <= 0) return '即将'
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins} 分钟`
+  const hours = Math.floor(mins / 60)
+  const remainMins = mins % 60
+  if (hours < 24) return `${hours} 小时${remainMins ? ' ' + remainMins + ' 分' : ''}`
+  const days = Math.floor(hours / 24)
+  return `${days} 天`
+})
+
+// 每分钟刷新一次"X 分钟后"的文字,让用户看到倒计时在动
+let _scheduleTick = null
+function startScheduleTicker() {
+  if (_scheduleTick) return
+  _scheduleTick = setInterval(() => {
+    // 触发 nextRunIn 重新计算
+    if (scheduledGen.value.enabled) {
+      // 触发依赖 nextRunAt 的 computed 重算
+      scheduledGen.value = { ...scheduledGen.value }
+    }
+  }, 60 * 1000)
+}
+startScheduleTicker()
+
+async function runScheduledNow() {
+  if (!loveSpaceStore.currentPartnerId) return
+  if (loveSpaceStore.isMagicGenerating) {
+    chatStore.triggerToast('魔法正在施展中,请稍候...', 'info')
+    return
+  }
+  chatStore.triggerToast('✨ 立即触发一次定时生成...', 'info')
+  try {
+    await loveSpaceStore.generateMagicContent()
+    // 更新 lastRunAt + 重新计算 nextRunAt
+    const space = loveSpaceStore.spaces[loveSpaceStore.currentPartnerId]
+    if (space) {
+      space.scheduledGeneration.lastRunAt = new Date().toISOString()
+      space.scheduledGeneration.nextRunAt = loveSpaceStore._computeNextRunAt(space.scheduledGeneration)
+      await loveSpaceStore.saveToStorage()
+    }
+    syncScheduledGenFromStore()
+  } catch (e) {
+    console.error('[Schedule] runScheduledNow error:', e)
+  }
+}
 
 // 全选/全不选
 function toggleSelectAll() {
@@ -666,7 +856,11 @@ async function handleLoveSpaceImport(e) {
           album: incoming.album || [],
           gachaHistory: incoming.gachaHistory || [],
           schedules: incoming.schedules || [],
-          applyToDesktop: loveSpaceStore.spaces[charId]?.applyToDesktop ?? false
+          applyToDesktop: loveSpaceStore.spaces[charId]?.applyToDesktop ?? false,
+          // v1.10.90: 导入时不带定时配置,默认关闭
+          scheduledGeneration: loveSpaceStore.spaces[charId]?.scheduledGeneration || {
+            enabled: false, mode: 'daily', dailyTime: '09:00', intervalHours: 6, lastRunAt: null, nextRunAt: null
+          }
         }
         await loveSpaceStore.saveToStorage()
         chatStore.triggerToast('✅ 情侣空间导入成功', 'success')
@@ -877,11 +1071,21 @@ onMounted(async () => {
   if (loveSpaceStore.startDate) {
     tempStartDate.value = loveSpaceStore.startDate.split('T')[0]
   }
+
+  // v1.10.90: 同步定时配置到本地 ref
+  syncScheduledGenFromStore()
 })
 
 watch(() => loveSpaceStore.currentPartnerId, (newId) => {
   if (newId && loveSpaceStore.startDate) {
     tempStartDate.value = loveSpaceStore.startDate.split('T')[0]
+  }
+})
+
+onUnmounted(() => {
+  if (_scheduleTick) {
+    clearInterval(_scheduleTick)
+    _scheduleTick = null
   }
 })
 </script>
@@ -1409,4 +1613,200 @@ watch(() => loveSpaceStore.currentPartnerId, (newId) => {
 .checkbox-item input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; accent-color: #ff6b9d; }
 .select-all-row { display: flex; justify-content: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e0e0e0; }
 .select-all { font-weight: 700; color: #ff6b9d; }
+
+/* v1.10.90: 定时魔法生成 */
+.schedule-gen-block {
+  background: linear-gradient(135deg, #fff8f0 0%, #fff0f5 100%);
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1.5px solid #ffe4d6;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.schedule-gen-block .editor-header {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  color: #ff6b9d;
+  font-size: 13px;
+}
+.schedule-desc {
+  font-size: 11px;
+  color: #8b7aa8;
+  line-height: 1.5;
+  margin: 8px 0 0;
+  text-align: left;
+}
+.schedule-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #ffd6c8;
+}
+.schedule-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #5a5a7a;
+  font-weight: 600;
+}
+.schedule-mode-row .row-label {
+  flex-shrink: 0;
+  width: 40px;
+  text-align: right;
+}
+.mode-segment {
+  display: flex;
+  background: #fff;
+  border-radius: 8px;
+  padding: 3px;
+  flex: 1;
+  border: 1px solid #ffe4d6;
+}
+.mode-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #8b7aa8;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.mode-btn.active {
+  background: linear-gradient(135deg, #ff9a9e, #ff6b9d);
+  color: white;
+  box-shadow: 0 2px 8px rgba(255, 107, 157, 0.3);
+}
+.time-input {
+  flex: 1;
+  border: 1.5px solid #ffe4d6;
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: #ff6b9d;
+  font-family: inherit;
+  font-size: 12px;
+  background: #fff;
+  font-weight: 600;
+  outline: none;
+  transition: border 0.2s;
+}
+.time-input:focus {
+  border-color: #ff9a9e;
+}
+.interval-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.interval-input-wrap .time-input {
+  flex: 1;
+}
+.unit-suffix {
+  font-size: 11px;
+  color: #8b7aa8;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.schedule-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #ff6b9d;
+  background: rgba(255, 107, 157, 0.08);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.schedule-meta i {
+  font-size: 10px;
+}
+.schedule-meta b {
+  font-weight: 800;
+  color: #ff4d7e;
+}
+.schedule-meta .run-in {
+  font-size: 10px;
+  color: #8b7aa8;
+  font-weight: 500;
+  margin-left: 4px;
+}
+.schedule-meta.subtle {
+  background: rgba(139, 122, 168, 0.08);
+  color: #8b7aa8;
+}
+.run-now-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #ffecd2, #fcb69f);
+  border: none;
+  color: #c95a3f;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.run-now-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(252, 182, 159, 0.4);
+}
+.run-now-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.run-now-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.toggle-container.compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+  cursor: pointer;
+}
+.toggle-container.compact input[type="checkbox"] {
+  width: 36px;
+  height: 20px;
+  appearance: none;
+  background: #ddd;
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  outline: none;
+}
+.toggle-container.compact input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-container.compact input[type="checkbox"]:checked {
+  background: linear-gradient(135deg, #ff9a9e, #ff6b9d);
+}
+.toggle-container.compact input[type="checkbox"]:checked::after {
+  left: 18px;
+}
 </style>
