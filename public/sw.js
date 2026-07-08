@@ -20,8 +20,9 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-const SHELL_CACHE = 'chilly-shell-v3';
-const RUNTIME_CACHE = 'chilly-runtime-v3';
+// v1.10.82: bump cache 版本,确保新 silent.wav(16-bit 44100Hz stereo)被重新 precache
+const SHELL_CACHE = 'chilly-shell-v4';
+const RUNTIME_CACHE = 'chilly-runtime-v4';
 
 // 关键 shell 资源,install 时主动 precache
 const SHELL_URLS = [
