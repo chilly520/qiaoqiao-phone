@@ -186,19 +186,15 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.82 修复:Android 媒体服务对音量有最小识别阈值(约 0.015),
-        // volume=0.005 在很多 Android 设备上会被媒体识别过滤掉,
-        // 导致不显示通知栏媒体卡片。提到 0.02 仍人耳听不见(比环境噪音还低),
-        // 但能稳定触发 Android MediaSession 媒体卡片显示。
+        // v1.10.82: 还原成 v1.10.54 改之前的音量 0.02(原版保活媒体卡片正常)
+        // 配合原始 8-bit 0x80 silent.wav + crossOrigin='anonymous' 走 v1.10.80 之前的逻辑
         audio.volume = 0.02;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.muted = false;            // 必须是 false
-        // v1.10.82: silent.wav 改为 16-bit 44100Hz stereo 标准 WAV(原来 8-bit 8000Hz mono
-        // 在某些 Android 版本不被识别)。同源资源,不需要 crossOrigin(某些 Android Chrome
-        // 上加 anonymous 会导致 CORS 预检失败,silent.wav 加载不到)。
-        // audio.crossOrigin = 'anonymous';  // 已移除
+        // 同源资源但保留 anonymous 属性,跟 v1.10.80 之前保持一致
+        audio.crossOrigin = 'anonymous';
 
         // 2. 监听加载错误
         audio.addEventListener('error', (e) => {
