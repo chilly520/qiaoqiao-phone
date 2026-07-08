@@ -759,25 +759,36 @@
                             </div>
                         </div>
 
-                        <!-- Music (Replicated from old version) -->
+                        <!-- Music (Tone.js 演奏 - 区别于一起听歌) -->
                         <div v-else-if="msg.type === 'music'" class="flex flex-col w-full"
                             :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                             <div class="voice-container">
-                                <!-- ✅ 修复：语音气泡样式遵循全局 bubbleCss 规则 -->
-                                <div class="voice-bubble music-bubble chat-bubble-voice"
-                                    :class="msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left'"
+                                <!-- v1.10.95: 演奏气泡改成乐器图标 + 音符可视化,
+                                     明显区别于"一起听歌"卡片的纯音乐图标 -->
+                                <div class="music-bubble music-bubble-perform chat-bubble-voice"
+                                    :class="[msg.role === 'user' ? 'chat-bubble-right' : 'chat-bubble-left', {
+                                        'is-playing': musicBoxStore.isPlaying
+                                    }]"
                                     :style="[
                                         getVoiceBubbleStyle(),
                                         computedBubbleStyle
                                     ]"
                                     @click="handlePlayMusic">
-                                    <div class="voice-icon">
-                                        <i class="fa-solid fa-music"
-                                            :class="{ 'animate-pulse': musicBoxStore.isPlaying }"></i>
+                                    <div class="music-perform-icon">
+                                        <span class="music-perform-emoji">{{ musicPerformEmoji }}</span>
+                                        <span v-if="musicBoxStore.isPlaying" class="music-waveform">
+                                            <span></span><span></span><span></span><span></span><span></span>
+                                        </span>
                                     </div>
-                                    <span class="voice-duration" style="font-size:12px; margin-left:6px;">
-                                        {{ musicInfo }}
-                                    </span>
+                                    <div class="music-perform-info">
+                                        <div class="music-perform-title">
+                                            <i class="fa-solid fa-music" style="font-size:10px;margin-right:4px;"></i>
+                                            {{ musicInfo }}
+                                        </div>
+                                        <div class="music-perform-hint">
+                                            {{ musicBoxStore.isPlaying ? '正在演奏...' : '点击播放' }}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2457,6 +2468,25 @@ const musicInfo = computed(() => {
     return info
 })
 
+// v1.10.95: 按乐器返回对应大 emoji,让演奏气泡一眼看出是钢琴/吉他
+const musicPerformEmoji = computed(() => {
+    const content = ensureString(props.msg.content)
+    const clean = content.replace(/[\[\]]/g, '').replace(/^(演奏|MUSIC)[:：]?/i, '')
+    const emojiMap = {
+        'piano': '🎹',
+        'guitar': '🎸',
+        'violin': '🎻',
+        'flute': '🪈',
+        'game': '👾',
+        'drum': '🥁'
+    }
+    if (clean.includes(':') || clean.includes('：')) {
+        const inst = clean.split(/[:：]/)[0].trim().toLowerCase()
+        return emojiMap[inst] || '🎵'
+    }
+    return '🎵'
+})
+
 const familyCardData = computed(() => {
     if (props.msg.type === 'family_card' && (props.msg.amount || props.msg.text)) {
         return {
@@ -4068,6 +4098,79 @@ const scrollToVote = (refId) => {
     background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
     border-color: #fbcfe8 !important;
     color: #be185d !important;
+}
+
+/* v1.10.95: 演奏气泡(明显区别于一起听歌卡) */
+.music-bubble-perform {
+    min-width: 180px;
+    padding: 12px 14px !important;
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+}
+.music-perform-icon {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.music-perform-emoji {
+    font-size: 26px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+}
+.music-perform-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.music-perform-title {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.music-perform-hint {
+    font-size: 11px;
+    opacity: 0.75;
+}
+.music-waveform {
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 2px;
+    align-items: flex-end;
+    height: 8px;
+}
+.music-waveform span {
+    display: inline-block;
+    width: 2px;
+    background: #be185d;
+    border-radius: 1px;
+    animation: musicWave 1s ease-in-out infinite;
+}
+.music-waveform span:nth-child(1) { height: 40%; animation-delay: 0s; }
+.music-waveform span:nth-child(2) { height: 80%; animation-delay: 0.15s; }
+.music-waveform span:nth-child(3) { height: 55%; animation-delay: 0.3s; }
+.music-waveform span:nth-child(4) { height: 90%; animation-delay: 0.45s; }
+.music-waveform span:nth-child(5) { height: 45%; animation-delay: 0.6s; }
+@keyframes musicWave {
+    0%, 100% { transform: scaleY(0.3); }
+    50% { transform: scaleY(1); }
+}
+.music-bubble-perform.is-playing {
+    background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%) !important;
+    box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.2), 0 4px 12px rgba(236, 72, 153, 0.15) !important;
 }
 
 .voice-wave {

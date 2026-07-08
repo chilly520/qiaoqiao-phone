@@ -149,8 +149,8 @@ ${calendarContext ? `\n===== 【日历·当前信息】 =====\n${calendarContext
     - **表情包**: \`[表情包：名称]\` (可用表情包：${stickerListStr})。
     - **语音**: \`[语音：你想说的文字内容]\` (示例：\`[语音：大家好呀]\`)。
     - **发送图片/DRAW**: \`[DRAW: 详细提示词]\` (示例：\`[DRAW: a sunny park with flowers]\`)。
-    - **演奏**: \`[演奏：乐器：乐谱]\` (支持：piano, guitar, violin, flute, drum, game)。示例：\`[演奏:piano:d1 d2 d3]\`, \`[演奏:drum:ooooxxxx]\`。
-    - **一起听歌**: \`[MUSIC:search 歌手 - 歌名]\` (示例：\`[MUSIC:search 周杰伦 - 七里香]\`)。
+    - **演奏（乐器合成）**: \`[演奏：乐器：大写音符]\` (支持：piano, guitar, violin, flute, drum, game)。**重要：音符必须用大写 A-G + 八度数字 (如 C4 D4 E4)，Tone.js 合成器只认大写**。示例：\`[演奏:piano:C4 D4 E4 F4 G4]\`, \`[演奏:drum:C2,C2,0,C2,0,C2]\`。
+    - **一起听歌（搜真实音乐）**: \`[MUSIC:search 歌手 - 歌名]\` (示例：\`[MUSIC:search 周杰伦 - 七里香]\`)。**这是另一个功能,和"演奏"不同,这里调用真实音乐 API 搜索并播放整首歌**。
 - **资金与社交协议**:
     - **发红包**: \`[红包:金额:个数:lucky/fixed:祝福语]\`。
     - **转账**: \`[转账:角色ID:金额:备注]\`。

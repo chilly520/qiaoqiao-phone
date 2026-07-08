@@ -4701,7 +4701,7 @@ export const useChatStore = defineStore('chat', () => {
                                 }
                             }
 
-                            // V14: Attach inner-voice to the LAST segment if it's AI turn, 
+                            // V14: Attach inner-voice to the LAST segment if it's AI turn,
                             // to avoid breaking the initial scene/location markers
                             if (i === finalSegments.length - 1 && rawInnerVoiceBlock) {
                                 msgContent += (msgContent ? '\n\n' : '') + rawInnerVoiceBlock;
@@ -4812,12 +4812,15 @@ export const useChatStore = defineStore('chat', () => {
                         const musicMatch = content.match(/\[(?:演奏|MUSIC|音乐)[:：]\s*(.*?)\]/i);
                         if (musicMatch) {
                             const musicData = musicMatch[1].trim();
-                            
-                            // Check if it's a score (contains notes like C4, D4) or a song name
-                            const isScore = /[A-G][0-9]/.test(musicData) || musicData.includes(',');
-                            
+
+                            // v1.10.95: 修复 - 之前 /[A-G][0-9]/ 只匹配大写音符
+                            //   prompt 例子 [演奏:piano:d1 d2 d3] 用小写,被误判为歌名
+                            //   落到一起听歌分支,显示成一起听歌卡片且 Tone.js 不播放
+                            //   改成大小写不敏感,且更严格地要求是"乐谱"格式
+                            const isScore = /[A-Ga-g][0-9]/.test(musicData) || musicData.includes(',') || /\s/.test(musicData);
+
                             if (isScore) {
-                                // Instrumental Performance
+                                // Instrumental Performance - 走 Tone.js 合成器
                                 await addMessage(chatId, {
                                     role: 'ai',
                                     type: 'music',
@@ -4827,14 +4830,15 @@ export const useChatStore = defineStore('chat', () => {
                                     mode: finalMode
                                 });
                             } else {
-                                // Listen Together Sync
-                                const musicStore = useMusicStore();
-                                // Trigger music store to start "listening together" session
-                                musicStore.startTogether({ 
-                                    name: chat.name, 
-                                    avatar: chat.avatar,
-                                    id: chatId 
-                                });
+                                // Listen Together Sync - 只有 [MUSIC:search ...] 才走这里
+                                if (musicData.toLowerCase().startsWith('search ') || /[a-zA-Z\u4e00-\u9fa5]+\s*[-—]\s*[a-zA-Z\u4e00-\u9fa5]+/.test(musicData)) {
+                                    const musicStore = useMusicStore();
+                                    // Trigger music store to start "listening together" session
+                                    musicStore.startTogether({
+                                        name: chat.name,
+                                        avatar: chat.avatar,
+                                        id: chatId
+                                    });
                                 
                                 // Auto-search and play the song
                                 musicStore.searchMusic(musicData, '', 'all').then(results => {
@@ -4856,13 +4860,25 @@ export const useChatStore = defineStore('chat', () => {
                                     hidden: isCallMode,
                                     mode: finalMode
                                 });
-                                
+
                                 // Add a system notification about listening together
                                 await addMessage(chatId, {
                                     role: 'system',
                                     type: 'system',
                                     content: `${chat.name} 发起了一起听歌`
                                 });
+                                } else {
+                                    // 不符合"一起听歌"格式(没有 search 也没有 歌名-歌手),
+                                    // 保守地当作乐器演奏,落到 Tone.js 合成器
+                                    await addMessage(chatId, {
+                                        role: 'ai',
+                                        type: 'music',
+                                        content: musicData,
+                                        quote: i === 0 ? aiQuote : null,
+                                        hidden: isCallMode,
+                                        mode: finalMode
+                                    });
+                                }
                             }
                         }
                     } else if (type === 'dice') {
