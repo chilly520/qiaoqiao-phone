@@ -186,13 +186,14 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.87: silent.wav 改为 1秒 18kHz 单频 sine wave,volume=0.005
-        //   - 18kHz >> 人耳敏感频段(中老年用户对 ≥17kHz 几乎听不到)
-        //   - 0.005 × -18dBFS 源 = -64dBFS 输出(绝对听不到)
-        //   - 没有低频包络,完全不会产生"呼吸感"
-        //   - 1b9f86e 时代 silent.wav 是低频噪声(用户反馈"像呼吸"),
-        //     戴耳机能听到;18kHz 单频彻底解决
-        audio.volume = 0.005;
+        // v1.10.88: silent.wav 还原 1b9f86e 的 6秒 8-bit 8000Hz mono 格式
+        //   (v1.10.87 改成 18kHz 单频 16-bit 44.1kHz 后,Android 媒体卡片消失了)
+        //   - 6秒 8-bit 8000Hz mono = 1b9f86e 证明能让 Android 通知栏出现媒体卡片
+        //   - 内容用 2kHz 单频 sine wave(±6 围绕 0x80),不是 1b9f86e 时代的低频噪声
+        //     → 2kHz >> 呼吸相关频段(0.2-0.3Hz),完全没有"呼吸感"
+        //     → 纯单频没有低频包络,耳塞/耳机也听不到
+        //   - volume=0.01 配合 ±6 样本 ≈ -65dBFS,绝对听不到
+        audio.volume = 0.01;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
