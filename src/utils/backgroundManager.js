@@ -15,7 +15,7 @@
 
 import { useLoggerStore } from '../stores/loggerStore';
 
-const KEEP_ALIVE_AUDIO_URL = '/silent.wav?v=84';
+const KEEP_ALIVE_AUDIO_URL = '/silent.wav';
 const KEEP_ALIVE_STORAGE_KEY = 'chilly-keepalive-enabled';
 const KEEP_ALIVE_META_STORAGE_KEY = 'chilly-keepalive-meta';
 
@@ -186,15 +186,15 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.84:Android 媒体识别服务现在对 0 振幅 PCM 不分配 MediaSession。
-        // silent.wav 改为 16-bit pink noise(非零),volume=0.05 输出约 -79dBFS
-        // (人耳完全听不见,系统能识别为活跃媒体)。
-        audio.volume = 0.05;
+        // v1.10.85:还原 1b9f86e 时的 volume=0.02(92d48b3 改成 0.005 + 把 silent.wav
+        // 改成全 0x80,组合起来破坏了媒体卡片识别。1b9f86e 的注释:"不是 0,
+        // 浏览器才会认为是真实播放")。
+        audio.volume = 0.02;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.muted = false;            // 必须是 false
-        // 同源资源但保留 anonymous,跟原 92d48b3 一致
+        // 一些浏览器需要这个属性
         audio.crossOrigin = 'anonymous';
 
         // 2. 监听加载错误
@@ -244,36 +244,39 @@ class BackgroundManager {
             }
         }
 
-        // 5. 不要在 pause/ended 事件里自动续播
-        // v1.10.56 修复:用户在听别的音频(微信语音/QQ 音乐/视频)时,
-        // Chrome 会暂停我们的 audio,触发 pause 事件。如果这里自动 play()
-        // 会抢回音频焦点,打断用户正在听的内容。
-        // 只在用户主动切回 PWA (visibility=visible) 时再尝试续播,
-        // 由 init() 里装的 setupVisibilityHandler 统一处理。
-        const onPlay = () => {
-            if ('mediaSession' in navigator) {
-                try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
+        // 5. v1.10.85:还原 1b9f86e 的自动续播 + 3 秒轮询 + playbackRate 扰动
+        // (v1.10.56 把这些全删了,理由是"抢音频焦点",但实际后果是 audio 一旦被任何
+        // 因素暂停就再也不会恢复,失去媒体焦点 → 通知栏媒体卡片消失)
+        // 现在保留 v1.10.57 的 yield 机制,让用户在听别的音频时主动让出焦点,
+        // 但默认情况下 audio 被暂停会立刻续播,确保媒体卡片稳定。
+        const resume = () => {
+            if (!this.keepAliveActive) return;
+            if (this.keepAliveYielded) return;  // v1.10.57:用户主动让出时尊重
+            if (audio.paused || audio.ended) {
+                audio.play().catch(() => { /* 静默 */ });
             }
         };
-        const onPause = () => {
-            if ('mediaSession' in navigator) {
-                try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
-            }
-        };
-        audio.addEventListener('play', onPlay);
-        audio.addEventListener('pause', onPause);
-        // 不再注册 ended 续播、不再注册 3 秒轮询兜底
-        this.keepAliveMonitorTimer = null;
+        audio.addEventListener('pause', resume);
+        audio.addEventListener('ended', resume);
+        // 3 秒轮询兜底(部分 Android 浏览器后台暂停后不会触发事件)
+        this.keepAliveMonitorTimer = setInterval(resume, 3000);
 
-        // 6. 不再在 visibilitychange=hidden 时强制续播
-        // 同样的原因:用户在后台听别的音频会被打断
-        this.keepAliveVisibilityHandler = null;
+        // 6. v1.10.85:还原 1b9f86e 的 visibilitychange=hidden 续播 + playbackRate 扰动
+        // 切到后台后立刻尝试恢复,同时轻微扰动 playbackRate 绕过浏览器的"无音频"检测
+        this.keepAliveVisibilityHandler = () => {
+            if (document.visibilityState === 'hidden') {
+                resume();
+                try {
+                    audio.playbackRate = 0.99;
+                    setTimeout(() => { audio.playbackRate = 1.0; }, 200);
+                } catch (e) {}
+            } else if (document.visibilityState === 'visible') {
+                resume();
+            }
+        };
+        document.addEventListener('visibilitychange', this.keepAliveVisibilityHandler);
 
         // 6.5 v1.10.57: 让出 / 恢复音频焦点机制
-        // PWA 内部有别的 audio 播放时(微信语音 / 来电铃声 / 一起听音乐 / 消息提示音),
-        // Chrome 会自动抢焦点并 pause 我们。这里通过全局事件让其他模块通知我们
-        // "现在让别人播" -> yieldToOtherAudio()
-        // "别人播完了" -> resumeFromYield()
         this._setupYieldEventListeners(audio);
 
         // 7. 防止页面卸载时被回收
@@ -284,31 +287,6 @@ class BackgroundManager {
         this.keepAliveAudio = audio;
         this.keepAliveActive = true;
         this.keepAliveYielded = false;
-
-        // 7.5 v1.10.84:每 30s 重新 setMediaMetadata + 刷新 playbackState
-        // 某些 Android 设备(尤其国产 ROM)MediaSession 状态会被回收,
-        // 周期重置让系统媒体卡片持续保持活跃。
-        if (this._keepAliveReassertTimer) {
-            clearInterval(this._keepAliveReassertTimer);
-        }
-        this._keepAliveReassertTimer = setInterval(() => {
-            if (!this.keepAliveActive || this.keepAliveAudio !== audio) return;
-            try {
-                if ('mediaSession' in navigator) {
-                    // 重新 set 一次 metadata,触发系统媒体卡片刷新
-                    const iconUrl = meta.icon || '/pwa-192x192.png';
-                    navigator.mediaSession.metadata = new MediaMetadata({
-                        title: meta.title || 'qiaoqiao-phone',
-                        artist: meta.artist || '后台保活中',
-                        album: meta.album || 'qiaoqiao',
-                        artwork: [
-                            { src: iconUrl, sizes: '192x192', type: 'image/png' }
-                        ]
-                    });
-                    navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing';
-                }
-            } catch (e) { /* 静默 */ }
-        }, 30000);
 
         // 8. 同时申请 wake lock,前台时屏幕不熄
         this.requestWakeLock();
@@ -335,12 +313,6 @@ class BackgroundManager {
         if (this.keepAliveMonitorTimer) {
             clearInterval(this.keepAliveMonitorTimer);
             this.keepAliveMonitorTimer = null;
-        }
-
-        // v1.10.84: 清理 MediaSession 重置 timer
-        if (this._keepAliveReassertTimer) {
-            clearInterval(this._keepAliveReassertTimer);
-            this._keepAliveReassertTimer = null;
         }
 
         if (this.keepAliveVisibilityHandler) {
