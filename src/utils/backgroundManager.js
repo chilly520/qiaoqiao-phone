@@ -15,7 +15,7 @@
 
 import { useLoggerStore } from '../stores/loggerStore';
 
-const KEEP_ALIVE_AUDIO_URL = '/silent.wav';
+const KEEP_ALIVE_AUDIO_URL = '/silent.wav?v=5';
 const KEEP_ALIVE_STORAGE_KEY = 'chilly-keepalive-enabled';
 const KEEP_ALIVE_META_STORAGE_KEY = 'chilly-keepalive-meta';
 
@@ -186,15 +186,18 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.82: 还原成 v1.10.54 改之前的音量 0.02(原版保活媒体卡片正常)
-        // 配合原始 8-bit 0x80 silent.wav + crossOrigin='anonymous' 走 v1.10.80 之前的逻辑
-        audio.volume = 0.02;
+        // v1.10.83 修复:通知栏媒体卡片不显示
+        // silent.wav 内部数据是 -51dBFS 的 pink noise(非零 PCM),volume=0.05
+        // 输出约 -79dBFS(人耳完全听不见,Android 系统可识别为活跃媒体)
+        // 关键:即使 volume 调高,如果 silent.wav 内部是 0,媒体卡片也不会显示
+        //       所以 silent.wav 必须含非零数据
+        audio.volume = 0.05;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.muted = false;            // 必须是 false
-        // 同源资源但保留 anonymous 属性,跟 v1.10.80 之前保持一致
-        audio.crossOrigin = 'anonymous';
+        // 不设置 crossOrigin,避免某些 Android Chrome 触发 CORS 预检失败
+        // audio.crossOrigin = 'anonymous';
 
         // 2. 监听加载错误
         audio.addEventListener('error', (e) => {
