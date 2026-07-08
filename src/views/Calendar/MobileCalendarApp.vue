@@ -111,19 +111,27 @@
             <span v-if="periodStatus.type === 'period'">🌙 生理期第 {{ periodStatus.day }} 天</span>
             <span v-else-if="periodStatus.type === 'prediction'">📅 预计经期第 {{ periodStatus.day }} 天</span>
             <span v-else-if="periodStatus.type === 'ovulation'">🌸 排卵期</span>
+            <span v-else-if="periodStatus.type === 'fertile'">💗 易孕期 {{ periodStatus.isPeak ? '(排卵高峰)' : '' }}</span>
+            <span v-else-if="periodStatus.type === 'luteal'">🌙 黄体期 第 {{ periodStatus.day }} 天</span>
+            <span v-else-if="periodStatus.type === 'safe'">✓ 安全期</span>
           </div>
+
+          <!-- v1.10.94: 绑定角色上下文 -->
+          <CharacterContextWidget :date="selectedDate" />
           
-          <!-- 快速标记按钮 -->
-          <div v-if="!periodStatus || periodStatus.type !== 'period'" class="quick-mark-actions">
-            <button class="quick-btn start" @click="markPeriodStart(selectedDate)">
-              <span class="btn-icon">📍</span>
-              <span>标记开始</span>
+          <!-- v1.10.94: 快速操作按钮组(经期/绑定角色/统计入口) -->
+          <div class="quick-mark-actions">
+            <button v-if="!periodStatus || periodStatus.type !== 'period'" class="quick-btn start" @click="quickStartPeriod">
+              <span class="btn-icon">🌙</span>
+              <span>今天开始经期</span>
             </button>
-          </div>
-          <div v-else class="quick-mark-actions">
-            <button class="quick-btn end" @click="markPeriodEnd(selectedDate)">
+            <button v-else class="quick-btn end" @click="quickEndPeriod">
               <span class="btn-icon">✅</span>
-              <span>标记结束</span>
+              <span>今天结束经期(第 {{ periodStatus.day }} 天)</span>
+            </button>
+            <button class="quick-btn detail" @click="goToPeriodStatistics">
+              <span class="btn-icon">📊</span>
+              <span>查看统计</span>
             </button>
           </div>
           <!-- 今日日程 -->
@@ -232,6 +240,7 @@ import { useChatStore } from '@/stores/chatStore'
 import PerpetualCalendar from './components/PerpetualCalendar.vue'
 import HealthTracker from './components/HealthTracker.vue'
 import ProfilePage from './components/ProfilePage.vue'
+import CharacterContextWidget from './components/CharacterContextWidget.vue'
 import EventModal from './components/EventModal.vue'
 import PeriodModal from './components/PeriodModal.vue'
 import MoodModal from './components/MoodModal.vue'
@@ -444,57 +453,35 @@ function saveEvent(event) {
 }
 
 function savePeriod(data) {
-  calendarStore.recordPeriod(data.startDate, data.endDate, data.symptoms)
+  // v1.10.94: 修复 - 旧版 recordPeriod(startDate, endDate, symptoms) 调用方式
+  //            对新 recordPeriod({...}) 失效,会导致保存被静默丢弃
+  calendarStore.recordPeriod({
+    startDate: data.startDate,
+    endDate: data.endDate,
+    duration: data.duration,
+    symptoms: data.symptoms,
+    flowLevel: data.flowLevel,
+    mood: data.mood,
+    note: data.note
+  })
   showPeriodModal.value = false
+  showToast('已保存经期记录', 'success')
 }
 
-// 快速标记经期开始
-function markPeriodStart(date) {
-  try {
-    const dateStr = calendarStore.formatDateStr(date)
-    const periodStatus = calendarStore.getPeriodStatus(date)
-
-    if (periodStatus?.type === 'period') {
-      showToast('今天已经在经期中了', 'error')
-      return
-    }
-
-    const duration = calendarStore.periodData.settings.averageDuration || 5
-    const endDate = new Date(date)
-    endDate.setDate(date.getDate() + duration - 1)
-    const endDateStr = calendarStore.formatDateStr(endDate)
-
-    calendarStore.recordPeriod(dateStr, endDateStr, [])
-    showToast('已标记经期开始', 'success')
-  } catch (error) {
-    console.error('标记经期失败:', error)
-    showToast('标记失败，请重试', 'error')
-  }
+// v1.10.94: 一键开始(用 store 的 startPeriod)
+function quickStartPeriod() {
+  const result = calendarStore.startPeriod()
+  showToast(result.message || (result.success ? '已开始' : '操作失败'), result.success ? 'success' : 'error')
 }
 
-// 快速标记经期结束
-function markPeriodEnd(date) {
-  const dateStr = calendarStore.formatDateStr(date)
-  const cycles = calendarStore.periodData.cycles
-  
-  if (cycles.length === 0) {
-    showToast('还没有记录经期，请先标记开始', 'error')
-    return
-  }
-  
-  const lastCycle = cycles[cycles.length - 1]
-  if (!lastCycle.endDate || lastCycle.endDate === dateStr) {
-    showConfirm(
-      '标记经期结束',
-      `确定要标记${date.getMonth() + 1}月${date.getDate()}日为经期结束吗？`,
-      () => {
-        calendarStore.recordPeriod(lastCycle.startDate, dateStr, lastCycle.symptoms || [])
-        showToast('已标记经期结束', 'success')
-      }
-    )
-  } else {
-    showToast('当前没有进行中的经期', 'error')
-  }
+// v1.10.94: 一键结束(用 store 的 endPeriod)
+function quickEndPeriod() {
+  const result = calendarStore.endPeriod()
+  showToast(result.message || (result.success ? '已结束' : '操作失败'), result.success ? 'success' : 'error')
+}
+
+function goToPeriodStatistics() {
+  router.push('/calendar/statistics')
 }
 
 function saveMood(data) {
@@ -965,6 +952,18 @@ onMounted(() => {
 .quick-btn.end:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 16px rgba(197, 201, 255, 0.3);
+}
+
+.quick-btn.detail {
+  background: rgba(139, 122, 168, 0.08);
+  color: #8b7aa8;
+  margin-top: 8px;
+  border: 1px solid rgba(139, 122, 168, 0.15);
+}
+
+.quick-btn.detail:hover {
+  background: rgba(139, 122, 168, 0.15);
+  transform: translateY(-1px);
 }
 
 .btn-icon {

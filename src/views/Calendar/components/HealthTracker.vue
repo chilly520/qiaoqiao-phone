@@ -291,8 +291,17 @@ function goToStatistics() {
 }
 
 // 保存方法
+// v1.10.94: 修复 - 旧版 recordPeriod(startDate, endDate, symptoms) 对新 API 失效
 function savePeriod(data) {
-  calendarStore.recordPeriod(data.startDate, data.endDate, data.symptoms)
+  calendarStore.recordPeriod({
+    startDate: data.startDate,
+    endDate: data.endDate,
+    duration: data.duration,
+    symptoms: data.symptoms,
+    flowLevel: data.flowLevel,
+    mood: data.mood,
+    note: data.note
+  })
   showPeriodModal.value = false
 }
 

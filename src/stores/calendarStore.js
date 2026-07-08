@@ -1076,17 +1076,8 @@ export const useCalendarStore = defineStore('calendar', () => {
     periodReminders.value = { ...periodReminders.value, ...settings }
   }
 
-  // 更新周期设置
-  function updatePeriodSettings({ averageCycle, averageDuration }) {
-    if (averageCycle !== undefined) {
-      periodData.value.averageCycle = averageCycle
-    }
-    if (averageDuration !== undefined) {
-      periodData.value.averageDuration = averageDuration
-    }
-    // 重新生成预测
-    generatePeriodPredictions()
-  }
+  // 注意:updatePeriodSettings 已在前面定义(写入 periodData.value.settings),
+  // 此处避免重复定义,否则会把数据写到错误的路径导致"功能完全是乱的"
 
   // 初始化
   loadData()

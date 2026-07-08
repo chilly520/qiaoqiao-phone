@@ -272,9 +272,48 @@
               <div class="period-text">准备好生理用品</div>
             </template>
             <template v-else-if="periodStatus.type === 'ovulation'">
+              <div class="period-day">🥚</div>
               <div class="period-text">排卵期 - 注意身体变化</div>
             </template>
+            <template v-else-if="periodStatus.type === 'fertile'">
+              <div class="period-day">💗</div>
+              <div class="period-text">易孕期{{ periodStatus.isPeak ? '(排卵高峰)' : '' }}</div>
+            </template>
+            <template v-else-if="periodStatus.type === 'luteal'">
+              <div class="period-day">黄体期</div>
+              <div class="period-text">第 {{ periodStatus.day }} 天</div>
+            </template>
+            <template v-else-if="periodStatus.type === 'safe'">
+              <div class="period-day">✓</div>
+              <div class="period-text">安全期</div>
+            </template>
           </div>
+        </div>
+
+        <!-- v1.10.94: 绑定角色上下文 -->
+        <CharacterContextWidget :date="selectedDate" />
+
+        <!-- v1.10.94: 经期快速操作 -->
+        <div class="panel-card period-actions-card">
+          <div class="card-header">
+            <span class="card-title">⚡ 快速操作</span>
+          </div>
+          <div v-if="!periodStatus || periodStatus.type !== 'period'" class="quick-period-row">
+            <button class="qp-btn qp-start" @click="quickStartPeriod">
+              <span class="qp-icon">🌙</span>
+              <span>今天开始经期</span>
+            </button>
+          </div>
+          <div v-else class="quick-period-row">
+            <button class="qp-btn qp-end" @click="quickEndPeriod">
+              <span class="qp-icon">✅</span>
+              <span>今天结束经期(第 {{ periodStatus.day }} 天)</span>
+            </button>
+          </div>
+          <button class="qp-btn qp-detail" @click="goToPeriodStatistics">
+            <span class="qp-icon">📊</span>
+            <span>查看经期统计</span>
+          </button>
         </div>
 
         <!-- 今日日程 -->
@@ -429,6 +468,7 @@ import AISettingsModal from './components/AISettingsModal.vue'
 import QuickAddModal from './components/QuickAddModal.vue'
 import ThemeSettingsModal from './components/ThemeSettingsModal.vue'
 import PeriodSettingsModal from './components/PeriodSettingsModal.vue'
+import CharacterContextWidget from './components/CharacterContextWidget.vue'
 
 const router = useRouter()
 const calendarStore = useCalendarStore()
@@ -644,8 +684,55 @@ function saveEvent(event) {
 }
 
 function savePeriod(data) {
-  calendarStore.recordPeriod(data.startDate, data.endDate, data.symptoms)
+  // v1.10.94: 修复 - 旧版 recordPeriod(startDate, endDate, symptoms) 调用方式
+  //            对新 recordPeriod({...}) 失效,会导致保存被静默丢弃
+  calendarStore.recordPeriod({
+    startDate: data.startDate,
+    endDate: data.endDate,
+    duration: data.duration,
+    symptoms: data.symptoms,
+    flowLevel: data.flowLevel,
+    mood: data.mood,
+    note: data.note
+  })
   showPeriodModal.value = false
+  const toast = document.createElement('div')
+  toast.textContent = '已保存经期记录 🌙'
+  Object.assign(toast.style, {
+    position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+    background: 'linear-gradient(135deg, #ff6b9d, #ffb7c5)',
+    color: 'white', padding: '12px 24px', borderRadius: '12px',
+    fontSize: '14px', fontWeight: '600', zIndex: '10000',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+  })
+  document.body.appendChild(toast)
+  setTimeout(() => toast.remove(), 2000)
+}
+
+// v1.10.94: 一键开始 / 结束
+function quickStartPeriod() {
+  const result = calendarStore.startPeriod()
+  showActionToast(result.message || (result.success ? '已开始' : '操作失败'), result.success)
+}
+function quickEndPeriod() {
+  const result = calendarStore.endPeriod()
+  showActionToast(result.message || (result.success ? '已结束' : '操作失败'), result.success)
+}
+function goToPeriodStatistics() {
+  router.push('/calendar/statistics')
+}
+function showActionToast(message, success) {
+  const toast = document.createElement('div')
+  toast.textContent = (success ? '✅ ' : '⚠️ ') + message
+  Object.assign(toast.style, {
+    position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+    background: success ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+    color: 'white', padding: '12px 24px', borderRadius: '12px',
+    fontSize: '14px', fontWeight: '600', zIndex: '10000',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+  })
+  document.body.appendChild(toast)
+  setTimeout(() => toast.remove(), 2500)
 }
 
 function saveMood(data) {
@@ -1128,6 +1215,55 @@ onMounted(() => {
   background: linear-gradient(135deg, rgba(230, 230, 250, 0.15), rgba(240, 230, 255, 0.15));
   border-left-color: #c5c9ff;
 }
+
+.period-card.fertile {
+  background: linear-gradient(135deg, rgba(255, 200, 220, 0.15), rgba(255, 180, 200, 0.15));
+  border-left-color: #ff8fab;
+}
+
+.period-card.luteal,
+.period-card.safe {
+  background: linear-gradient(135deg, rgba(197, 201, 255, 0.15), rgba(139, 122, 168, 0.1));
+  border-left-color: #8b7aa8;
+}
+
+/* v1.10.94: 经期快速操作 */
+.period-actions-card {
+  background: linear-gradient(135deg, rgba(255, 183, 197, 0.1), rgba(197, 201, 255, 0.1));
+}
+.quick-period-row { margin-bottom: 8px; }
+.qp-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+.qp-icon { font-size: 16px; }
+.qp-start {
+  background: linear-gradient(135deg, #ff6b9d, #ffb7c5);
+  color: white;
+}
+.qp-start:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(255, 107, 157, 0.3); }
+.qp-end {
+  background: linear-gradient(135deg, #c5c9ff, #a8b8ff);
+  color: white;
+}
+.qp-end:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(197, 201, 255, 0.3); }
+.qp-detail {
+  background: rgba(255, 255, 255, 0.7);
+  color: #8b7aa8;
+  border: 1px solid rgba(139, 122, 168, 0.15);
+}
+.qp-detail:hover { background: white; transform: translateY(-1px); }
 
 .period-day {
   font-size: 28px;
