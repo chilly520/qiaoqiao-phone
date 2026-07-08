@@ -966,7 +966,8 @@ export const useCalendarStore = defineStore('calendar', () => {
         }
       }
       // 添加经期记录状态提示
-      if (periodData.value.cycles.length === 0 && periodData.value.predictions.length === 0) {
+      // v1.10.97: predictions 不再单独存储,周期数即为数据是否存在的唯一依据
+      if (periodData.value.cycles.length === 0) {
         prompt += `(暂无经期记录)\n`
       }
     }
@@ -1033,7 +1034,9 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   // 获取经期提醒
   function getPeriodReminders() {
-    if (!periodReminders.value.enabled || periodData.value.predictions.length === 0) {
+    // v1.10.97: predictions 改为派生,按需从 cycles 算
+    const predictions = generatePredictions(periodData.value.cycles, 6)
+    if (!periodReminders.value.enabled || predictions.length === 0) {
       return []
     }
 
@@ -1041,7 +1044,7 @@ export const useCalendarStore = defineStore('calendar', () => {
     const reminders = []
 
     // 检查即将到来的经期
-    const nextPeriod = periodData.value.predictions[0]
+    const nextPeriod = predictions[0]
     if (nextPeriod) {
       const startDate = new Date(nextPeriod.startDate)
       const daysUntil = Math.ceil((startDate - today) / 86400000)

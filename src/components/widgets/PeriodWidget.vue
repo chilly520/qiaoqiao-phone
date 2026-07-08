@@ -106,43 +106,31 @@ function generateCalendarDays() {
   displayDays.value = days
 }
 
+// v1.10.97: periodData.predictions 已在 v1.10.92 重构中移除(改为按需派生),
+// 改用 store 的 getPeriodStatus(date) / generatePeriodPredictions() 实时获取
 function checkDayStatus(date) {
-  const periodData = calendarStore.periodData
-  
-  // Check current period
-  for (const cycle of periodData.cycles) {
-    const start = new Date(cycle.startDate)
-    const end = new Date(cycle.endDate)
-    if (date >= start && date <= end) {
-      return { isCurrentPeriod: true, isPredictedPeriod: false, isOvulation: false }
-    }
+  const status = calendarStore.getPeriodStatus(date)
+  if (!status) {
+    return { isCurrentPeriod: false, isPredictedPeriod: false, isOvulation: false }
   }
-  
-  // Check predicted period
-  for (const pred of periodData.predictions) {
-    const start = new Date(pred.startDate)
-    const end = new Date(pred.endDate)
-    if (date >= start && date <= end) {
-      if (pred.type === 'ovulation') {
-        return { isCurrentPeriod: false, isPredictedPeriod: false, isOvulation: true }
-      }
-      return { isCurrentPeriod: false, isPredictedPeriod: true, isOvulation: false }
-    }
+  return {
+    isCurrentPeriod: status.type === 'period',
+    isPredictedPeriod: status.type === 'prediction',
+    isOvulation: status.type === 'ovulation'
   }
-  
-  return { isCurrentPeriod: false, isPredictedPeriod: false, isOvulation: false }
 }
 
 function calculateDaysUntilNext() {
-  const predictions = calendarStore.periodData.predictions
+  // v1.10.97: predictions 改为派生,直接调 store 方法
+  const predictions = calendarStore.generatePeriodPredictions(6) || []
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  
+
   const nextPeriod = predictions.find(p => {
     const startDate = new Date(p.startDate)
-    return startDate >= today && p.type === 'period'
+    return startDate >= today
   })
-  
+
   if (nextPeriod) {
     const startDate = new Date(nextPeriod.startDate)
     const diffTime = startDate.getTime() - today.getTime()
