@@ -186,10 +186,10 @@ class BackgroundManager {
         // 1. 创建 audio 元素
         const audio = new Audio(KEEP_ALIVE_AUDIO_URL);
         audio.loop = true;
-        // v1.10.85:还原 1b9f86e 时的 volume=0.02(92d48b3 改成 0.005 + 把 silent.wav
-        // 改成全 0x80,组合起来破坏了媒体卡片识别。1b9f86e 的注释:"不是 0,
-        // 浏览器才会认为是真实播放")。
-        audio.volume = 0.02;
+        // v1.10.86: 还原 1b9f86e 时的非零 silent.wav(媒体卡片要),
+        // 但 volume 降到 0.01(v1.10.54 注释说 0.02 偏大,实测 6 秒非零样本 +
+        // 0.02 戴耳机/安静环境能听到)。0.01 + 非零样本 = 媒体识别 + 听不见。
+        audio.volume = 0.01;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
@@ -244,32 +244,46 @@ class BackgroundManager {
             }
         }
 
-        // 5. v1.10.85:还原 1b9f86e 的自动续播 + 3 秒轮询 + playbackRate 扰动
-        // (v1.10.56 把这些全删了,理由是"抢音频焦点",但实际后果是 audio 一旦被任何
-        // 因素暂停就再也不会恢复,失去媒体焦点 → 通知栏媒体卡片消失)
-        // 现在保留 v1.10.57 的 yield 机制,让用户在听别的音频时主动让出焦点,
-        // 但默认情况下 audio 被暂停会立刻续播,确保媒体卡片稳定。
+        // 5. v1.10.86: 改进 1b9f86e 的立即续播机制,延迟 2 秒再 resume,
+        // 避免被微信语音/QQ 音乐等抢焦点时立即抢回打断用户。
+        // v1.10.56 的修复有效但矫枉过正,完全删除导致媒体卡片消失。
+        // 平衡方案: 延迟 2 秒给用户听别的音频的窗口,2 秒后没人在播就恢复。
+        // 如果用户主动 yield (keepAliveYielded=true) 或关闭保活,直接放弃续播。
         const resume = () => {
             if (!this.keepAliveActive) return;
-            if (this.keepAliveYielded) return;  // v1.10.57:用户主动让出时尊重
-            if (audio.paused || audio.ended) {
-                audio.play().catch(() => { /* 静默 */ });
-            }
+            if (this.keepAliveYielded) return;
+            // 已经在播,不用动作
+            if (!audio.paused && !audio.ended) return;
+            // 关键改进: 延迟 2 秒再 resume,给微信语音/QQ 音乐等别的音频播完时间
+            setTimeout(() => {
+                if (!this.keepAliveActive) return;
+                if (this.keepAliveYielded) return;
+                if (this.keepAliveAudio !== audio) return;
+                if (!audio.paused || audio.ended) {
+                    audio.play().catch(() => { /* 静默 */ });
+                }
+            }, 2000);
         };
         audio.addEventListener('pause', resume);
         audio.addEventListener('ended', resume);
-        // 3 秒轮询兜底(部分 Android 浏览器后台暂停后不会触发事件)
-        this.keepAliveMonitorTimer = setInterval(resume, 3000);
+        // 5 秒轮询兜底(部分 Android 浏览器后台暂停后不会触发事件)
+        this.keepAliveMonitorTimer = setInterval(resume, 5000);
 
-        // 6. v1.10.85:还原 1b9f86e 的 visibilitychange=hidden 续播 + playbackRate 扰动
-        // 切到后台后立刻尝试恢复,同时轻微扰动 playbackRate 绕过浏览器的"无音频"检测
+        // 6. v1.10.86: visibilitychange=hidden 续播保留 + playbackRate 扰动
+        // 但延迟 2 秒再触发,避免切到后台时立即抢回正在播放的微信语音焦点
         this.keepAliveVisibilityHandler = () => {
             if (document.visibilityState === 'hidden') {
-                resume();
-                try {
-                    audio.playbackRate = 0.99;
-                    setTimeout(() => { audio.playbackRate = 1.0; }, 200);
-                } catch (e) {}
+                setTimeout(() => {
+                    if (!this.keepAliveActive || this.keepAliveYielded) return;
+                    if (this.keepAliveAudio !== audio) return;
+                    if (audio.paused || audio.ended) {
+                        audio.play().catch(() => {});
+                    }
+                    try {
+                        audio.playbackRate = 0.99;
+                        setTimeout(() => { audio.playbackRate = 1.0; }, 200);
+                    } catch (e) {}
+                }, 2000);
             } else if (document.visibilityState === 'visible') {
                 resume();
             }
