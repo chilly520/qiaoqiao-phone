@@ -252,6 +252,27 @@ class WeatherService {
         return this.getLocationInfo({ realCity })
     }
 
+    // 刷新全局天气（WeatherSettings.vue 保存后调用）
+    // v1.10.98: 之前只更新 weather.realLocation,HomeView 要等下一次挂载或 30min
+    // 才会重新拉,用户感知就是"设哪个城市都是上一次的小雨"。现在保存时立即
+    // 按新城市拉一遍并写回 store,HomeView 回来时直接看到新天气。
+    async refreshGlobalWeather() {
+        const store = useSettingsStore()
+        const realCity = this._parseLoc(store.weather?.realLocation) ||
+                         this._parseLoc(store.weather?.virtualLocation)
+        if (!realCity) return null
+        const result = await this.fetchWeatherForCity(realCity)
+        if (result) {
+            store.updateLiveWeather({
+                temp: result.temp,
+                desc: result.desc,
+                aqi: result.aqi,
+                icon: result.icon
+            })
+        }
+        return result
+    }
+
     // 刷新天气（兼容旧接口）
     async refreshWeather() {
         return this.getLocationInfo()

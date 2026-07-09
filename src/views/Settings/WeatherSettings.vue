@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { weatherService } from '../../utils/weatherService'
 import { storeToRefs } from 'pinia'
 
 const router = useRouter()
@@ -24,12 +25,23 @@ const showToastMsg = (msg) => {
     setTimeout(() => { showToast.value = false }, 2000)
 }
 
-const saveWeather = () => {
+// v1.10.98: 保存后立即按新城市拉一遍并写回 store,HomeView 回来直接看到新天气,
+// 不再需要等下一次挂载或 30min 定时器
+const saveWeather = async () => {
     store.setWeatherConfig({
         virtualLocation: virtualLoc.value,
         realLocation: realLoc.value
     })
     showToastMsg('天气地点已更新')
+    try {
+        const result = await weatherService.refreshGlobalWeather()
+        if (result) {
+            showToastMsg(`已更新:${result.desc} ${result.temp}`)
+        }
+    } catch (e) {
+        // 拉取失败不影响保存的城市名,HomeView 后续会自动重试
+        console.warn('[WeatherSettings] 刷新天气失败', e?.message)
+    }
 }
 </script>
 
