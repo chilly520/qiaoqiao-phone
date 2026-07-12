@@ -457,6 +457,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     const config = settingsStore.currentConfig || settingsStore.apiConfig
     // Mismatch fix: Store uses 'baseUrl', Service expected 'apiUrl'
     const { baseUrl, apiKey, model, temperature, maxTokens } = config || {}
+    // v1.10.99: 调用方可通过 options.overrideMaxTokens 覆盖配置中的 maxTokens,
+    // 供空内容重试等场景使用(把 max_tokens 顶满说明模型在思考,需要更多空间)
+    const effectiveMaxTokens = options.overrideMaxTokens || maxTokens
     const apiUrl = baseUrl // Map baseUrl to apiUrl
 
     // Provider Detection (Matches HTML Logic)
@@ -1219,7 +1222,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             system_instruction: systemInstruction,
             generationConfig: {
                 temperature: Number(temperature) || 0.45,
-                maxOutputTokens: Number(maxTokens) || 4096,
+                maxOutputTokens: Math.min(Number(effectiveMaxTokens) || 4096, 65536),
             },
             safetySettings: [
                 { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -1308,7 +1311,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         // [FIX] Global Safety Cap for Max Tokens
         // User settings might be absurdly high (e.g. 3M), but most models only support 4k/8k/64k.
         // We cap it at 64k to prevent 400 Invalid Argument errors.
-        let safeMaxTokens = Number(maxTokens) || 4096
+        let safeMaxTokens = Number(effectiveMaxTokens) || 4096
         if (safeMaxTokens > 65536) safeMaxTokens = 65536 // Keep global 64k safety, but revert 8k limit
 
 
@@ -1654,14 +1657,25 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // AUTO-RETRY: If empty content, retry once with shorter context
             if (!options.retryAttempt) {
                 useLoggerStore().addLog('AI', '⚠️ 空内容自动重试...', { originalData: data })
-                        
-                // Create a shorter version by reducing character count
+
                 const retryOptions = { ...options, retryAttempt: true }
-                if (options.characters && options.characters.length > 3) {
+
+                // v1.10.99: 思考型模型命中 max_tokens 上限后 content 为空(典型表现
+                // finish_reason=length, completion_tokens 已用完, proxy 返回空串),
+                // 这种情况下缩短上下文没用,得给模型更多 max_tokens 空间
+                if (finishReason === 'length') {
+                    const currentMaxTokens = Number(maxTokens) || 4096
+                    const bumped = Math.max(currentMaxTokens * 2, 8192)
+                    retryOptions.overrideMaxTokens = Math.min(bumped, 32768)
+                    useLoggerStore().addLog('AI',
+                        `检测到 finish_reason=length, 提高 max_tokens ${currentMaxTokens} → ${retryOptions.overrideMaxTokens} 重试`,
+                        { model, finishReason, completionTokens: data.usage?.completion_tokens }
+                    )
+                } else if (options.characters && options.characters.length > 3) {
                     // Only use first 3 characters for retry
                     retryOptions.characters = options.characters.slice(0, 3)
                 }
-                        
+
                 // Recursive retry
                 return await _generateReplyInternal(messages, char, signal, retryOptions)
             }

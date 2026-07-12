@@ -327,7 +327,11 @@ function deleteAllCycles() {
 
 <style scoped>
 .period-statistics {
-  min-height: 100vh;
+  /* v1.10.99: 主内容区(App.vue 的 main-content)固定高度且 overflow:hidden,
+     这里必须 height:100% + overflow-y:auto 才能在长内容时正常滚动,
+     否则底部"易孕期/历史记录"被剪掉、用户也划不动 */
+  height: 100%;
+  overflow-y: auto;
   background: linear-gradient(180deg, #fff5f7 0%, #fff 100%);
   padding: 0 0 40px;
 }
