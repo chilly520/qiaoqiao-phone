@@ -50,7 +50,7 @@ import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
 import { marked } from 'marked'
 import { compressImage } from '../../utils/imageUtils'
-import { generateImage, translateToEnglish } from '../../utils/aiService'
+import { generateImage } from '../../utils/aiService'
 import { batteryMonitor } from '../../utils/batteryMonitor'
 import { useChatTransaction } from '../../composables/chat/useChatTransaction'
 import { shouldShowInOnlineMode, getUnifiedCleanContent } from '../../utils/chatMessageDisplay'
@@ -1675,6 +1675,9 @@ const handleFamilyCardAction = (actionType) => {
 }
 
 // See Image (Text to Image) Methods
+// v1.10.104: 不再走 translateToEnglish(聊天 API)
+//        直接把中文 prompt 交给生图 API(Pollinations/SiliconFlow 都接受中文)
+//        省一轮聊天请求,避开 thinking 模型耗时长的问题
 const generateSeeImage = async () => {
     if (!seeImagePrompt.value.trim()) {
         showToast('请输入生图提示词', 'info')
@@ -1684,42 +1687,12 @@ const generateSeeImage = async () => {
     seeImageLoading.value = true
     try {
         console.log('开始生成图片:', seeImagePrompt.value)
-        // 模拟生成图片（不调用API）
-        // 这里我们只是模拟生成过程，实际项目中可以替换为真实的文生图API调用
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-        // 将中文提示词转义成英文关键词
+        // v1.10.104: 砍掉 setTimeout 模拟 + 中文→英文翻译,直接用原 prompt 调生图 API
         const prompt = seeImagePrompt.value.trim()
-        let englishPrompt = prompt
-        // 简单的中文关键词转英文（实际项目中可使用更复杂的翻译服务）
-        const chineseToEnglish = {
-            '花': 'flower',
-            '玫瑰': 'rose',
-            '山': 'mountain',
-            '水': 'water',
-            '天空': 'sky',
-            '树': 'tree',
-            '人': 'person',
-            '狗': 'dog',
-            '猫': 'cat',
-            '太阳': 'sun',
-            '月亮': 'moon',
-            '星星': 'star'
-        }
-        for (const [chinese, english] of Object.entries(chineseToEnglish)) {
-            if (prompt.includes(chinese)) {
-                englishPrompt = english
-                break
-            }
-        }
+        console.log('生图 prompt:', prompt)
 
-        // 将中文提示词翻译为英文
-        const translatedPrompt = await translateToEnglish(prompt)
-        console.log('中文提示词:', prompt)
-        console.log('翻译后的英文提示词:', translatedPrompt)
-
-        // 使用真实的生图API生成图片
-        const generatedImageUrl = await generateImage(translatedPrompt)
+        // 使用真实的生图API生成图片(直接用中文,不再走聊天 API 翻译)
+        const generatedImageUrl = await generateImage(prompt)
         console.log('生成的图片URL:', generatedImageUrl)
 
         // 添加到历史记录
