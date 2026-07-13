@@ -58,8 +58,10 @@ export function getRandomAvatar() {
 
 /**
  * 轮次计数工具
- * 一轮 = AI 一次完整回复
- * v1.10.102: 口径从「user 消息数」改为「AI 回复数」(同时认 'ai' 和 'assistant' 两种角色名)
+ * v1.10.103: 1 轮 = 1 次完整的「用户消息 → AI 回复」交换
+ * - 不管 AI 那次返回了几条消息(文本+卡片+语音),都只算 1 轮
+ * - AI 还没回的用户消息(pending)也不算 1 轮
+ * - 数据里 AI 角色名同时认 'ai' 和 'assistant'
  */
 
 /**
@@ -71,48 +73,78 @@ export function isAIResponse(m) {
 }
 
 /**
- * 计算消息数组中的总轮次数（AI 回复数）
+ * 计算消息数组中「已完成的轮次数」
+ * 扫一遍,遇到 user 标记「待回」,遇到第一条 AI 关闭+1
  * @param {Array} msgs - 消息数组
- * @returns {number} 轮次数
+ * @returns {number} 已完成轮次数
  */
 export function countTurns(msgs) {
     if (!msgs || !msgs.length) return 0
-    return msgs.filter(isAIResponse).length
+    let count = 0
+    let awaitingAi = false
+    for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i]
+        if (!m) continue
+        if (m.role === 'user') {
+            awaitingAi = true
+        } else if (isAIResponse(m) && awaitingAi) {
+            count++
+            awaitingAi = false
+        }
+    }
+    return count
 }
 
 /**
  * 获取最后 N 轮对应的消息切片
- * 从末尾向前数 N 条 AI 回复，返回从该位置开始的所有消息
+ * 一轮 = 1 个 user 消息 + 后面直到下一个 user 之前的所有 AI 消息
  * @param {Array} msgs - 消息数组
  * @param {number} turnCount - 轮次数
  * @returns {Array} 最后 N 轮的消息
  */
 export function getLastNTurns(msgs, turnCount) {
     if (!msgs || !msgs.length || turnCount <= 0) return []
-    let aiCount = 0
-    for (let i = msgs.length - 1; i >= 0; i--) {
-        if (isAIResponse(msgs[i])) {
-            aiCount++
-            if (aiCount >= turnCount) {
-                return msgs.slice(i)
+    // 找出所有「已完成的轮」的起始 user 索引
+    const roundStartIndices = []
+    for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i]
+        if (!m || m.role !== 'user') continue
+        // 往后找,看本轮是否有 AI 回复
+        for (let j = i + 1; j < msgs.length; j++) {
+            const mm = msgs[j]
+            if (!mm) continue
+            if (mm.role === 'user') break  // 下一轮,本轮无 AI
+            if (isAIResponse(mm)) {
+                roundStartIndices.push(i)
+                break
             }
         }
     }
-    return [...msgs]
+    if (roundStartIndices.length === 0) return []
+    const startIdx = roundStartIndices[Math.max(0, roundStartIndices.length - turnCount)]
+    return msgs.slice(startIdx)
 }
 
 /**
- * 计算两个索引之间的轮次数（AI 回复数）
+ * 计算两个索引之间「已完成的轮次数」
  * @param {Array} msgs - 消息数组
  * @param {number} startIndex - 起始索引
  * @param {number} endIndex - 结束索引（不含）
- * @returns {number} 轮次数
+ * @returns {number} 已完成轮次数
  */
 export function countTurnsBetween(msgs, startIndex, endIndex) {
     if (!msgs || startIndex >= endIndex) return 0
     let count = 0
+    let awaitingAi = false
     for (let i = Math.max(0, startIndex); i < Math.min(endIndex, msgs.length); i++) {
-        if (isAIResponse(msgs[i])) count++
+        const m = msgs[i]
+        if (!m) continue
+        if (m.role === 'user') {
+            awaitingAi = true
+        } else if (isAIResponse(m) && awaitingAi) {
+            count++
+            awaitingAi = false
+        }
     }
     return count
 }

@@ -2255,11 +2255,20 @@ export const useChatStore = defineStore('chat', () => {
                 // 现在按「summaryLimit 轮」找到对应的 endIndex
                 let endIndex = currentTotal
                 if (backlog > summaryLimit + 5) {
+                    // v1.10.103: 按「完成的轮次」找 endIndex,与 countTurnsBetween 一致
+                    // 遇到 user 标记「待回」,遇到第一条 AI 关闭+1 轮
                     let turnCount = 0
                     endIndex = lastIndex
+                    let awaitingAi = false
                     for (let i = lastIndex; i < currentTotal; i++) {
-                        // v1.10.102: 轮 = AI 回复,口径与 countTurnsBetween 对齐
-                        if (chat.msgs[i].role === 'ai' || chat.msgs[i].role === 'assistant') turnCount++
+                        const mm = chat.msgs[i]
+                        if (!mm) continue
+                        if (mm.role === 'user') {
+                            awaitingAi = true
+                        } else if ((mm.role === 'ai' || mm.role === 'assistant') && awaitingAi) {
+                            turnCount++
+                            awaitingAi = false
+                        }
                         endIndex = i + 1
                         if (turnCount >= summaryLimit) break
                     }

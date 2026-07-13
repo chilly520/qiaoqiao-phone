@@ -1243,6 +1243,7 @@ import ManualSummaryModal from './modals/ManualSummaryModal.vue'
 import { weatherService, POPULAR_CITIES } from '../../utils/weatherService'
 import { generateSummary } from '../../utils/aiService'
 import { getEnabledServers } from '../../utils/mcpService'
+import { countTurns, countTurnsBetween } from '../../utils/common'
 
 const props = defineProps({
     chatData: {
@@ -1461,30 +1462,29 @@ const contextPreviewData = ref({})
 const contextTokenCounts = ref({})
 const expandedContextKey = ref(null)
 
-// v1.10.101: 总聊天轮数改按 AI 回复数计算
-// 1 轮 = AI 一次完整回复 (1 条 ai/assistant 消息)
-// v1.10.102: 存储里两种角色名都有 ('ai' 主,'assistant' 零星),要都计
+// v1.10.101: 总聊天轮数改按「完成的轮次」计算
+// v1.10.103: 1 轮 = 1 次「用户消息 → AI 回复」交换,
+//          AI 一次回多条气泡(文本+卡片+语音)只算 1 轮,
+//          pending 的用户消息(AI 还没回)不算
+// 直接调 common.countTurns,口径与全系统一致
 // 兜底:用 chatStore.currentChat 直接取,避免 props.chatData 不同步
-const isAIResponse = (m) => m && (m.role === 'ai' || m.role === 'assistant')
-
 const totalTurns = computed(() => {
     try {
         const chat = chatStore.currentChat || props.chatData
-        const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
-        return msgs.filter(isAIResponse).length
+        return countTurns(chat && Array.isArray(chat.msgs) ? chat.msgs : [])
     } catch (e) {
         console.warn('[Settings] totalTurns error:', e)
         return 0
     }
 })
 
-// v1.10.101: 已总结的轮数同样按 AI 消息计数,与总轮数口径一致
+// v1.10.103: 已总结的轮数同样按「完成的轮次」计,与总轮数口径一致
 const summarizedTurns = computed(() => {
     try {
         const chat = chatStore.currentChat || props.chatData
         const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
         const idx = Math.max(0, Math.min(chat?.lastSummaryIndex || 0, msgs.length))
-        return msgs.slice(0, idx).filter(isAIResponse).length
+        return countTurnsBetween(msgs, 0, idx)
     } catch (e) {
         console.warn('[Settings] summarizedTurns error:', e)
         return 0

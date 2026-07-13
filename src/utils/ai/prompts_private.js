@@ -39,7 +39,22 @@ export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '
 
     // === 关键：根据记忆关系动态计算对话阶段 ===
     // v1.10.102: 口径统一 — 一轮 = 1 次 AI 回复 ('ai' / 'assistant' 都计)
-    const msgCount = char.msgs ? char.msgs.filter(m => (m.role === 'ai' || m.role === 'assistant')).length : 0;
+    // v1.10.103: 改为「完成的轮次」 — 1 个 user + 至少 1 条 AI 回复
+    //          AI 一次回多条气泡(文本+卡片+语音)只算 1 轮
+    //          pending 的用户消息(AI 还没回)也不算
+    let msgCount = 0;
+    if (char.msgs) {
+        let awaitingAi = false;
+        for (const m of char.msgs) {
+            if (!m) continue;
+            if (m.role === 'user') {
+                awaitingAi = true;
+            } else if ((m.role === 'ai' || m.role === 'assistant') && awaitingAi) {
+                msgCount++;
+                awaitingAi = false;
+            }
+        }
+    }
 
     // 检查记忆管理库中的关系状态（优先级高于轮次判断）
     let memoryRelationshipLevel = null; // null = 未检测到, 0=陌生人, 1=熟人, 2=好友, 3=恋人/夫妻

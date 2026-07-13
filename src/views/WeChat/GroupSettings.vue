@@ -8,6 +8,7 @@ import AvatarCropper from '../../components/AvatarCropper.vue'
 import GroupAnnouncementModal from './modals/GroupAnnouncementModal.vue'
 import GroupRankModal from './modals/GroupRankModal.vue'
 import { compressImage } from '../../utils/imageUtils'
+import { countTurns, countTurnsBetween } from '../../utils/common'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,22 +28,22 @@ const existingChat = computed(() => {
   return chatStore.chats[chatIdParam.value] || null
 })
 
-// v1.10.101: 总聊天轮数改按 AI 回复数计算,1 轮 = 1 条 ai/assistant 消息
-// v1.10.102: 存储里两种角色名都有 ('ai' 主,'assistant' 零星),要都计
-const isAIResponse = (m) => m && (m.role === 'ai' || m.role === 'assistant')
-
+// v1.10.101: 总聊天轮数改按「完成的轮次」计算
+// v1.10.103: 1 轮 = 1 次「用户消息 → AI 回复」交换,
+//          AI 一次回多条气泡(文本+卡片+语音)只算 1 轮,
+//          pending 的用户消息(AI 还没回)不算
+// 直接调 common.countTurns,口径与全系统一致
 const totalTurns = computed(() => {
-  const msgs = existingChat.value?.msgs || []
-  return msgs.filter(isAIResponse).length
+  return countTurns(existingChat.value?.msgs || [])
 })
 
-// v1.10.101: 已总结的轮数同样按 AI 消息计数,与总轮数口径一致
+// v1.10.103: 已总结的轮数同样按「完成的轮次」计,与总轮数口径一致
 const summarizedTurns = computed(() => {
   try {
     const chat = existingChat.value
     const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
     const idx = Math.max(0, Math.min(chat?.lastSummaryIndex || 0, msgs.length))
-    return msgs.slice(0, idx).filter(isAIResponse).length
+    return countTurnsBetween(msgs, 0, idx)
   } catch (e) {
     console.warn('[GroupSettings] summarizedTurns error:', e)
     return 0
