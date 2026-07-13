@@ -1,11 +1,12 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Cloudflare
 
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  pages:
+    name: Deploy Frontend (Pages)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +25,32 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=qiaqiao-phone --branch=main
+
+  # v1.10.100: 单独部署 push worker
+  # 需要 GitHub 仓库 Settings → Secrets 配置:
+  #   CLOUDFLARE_API_TOKEN   (Edit Cloudflare Workers 权限)
+  #   CLOUDFLARE_ACCOUNT_ID  (账户首页右侧)
+  # 没电脑时用手机 GitHub App 也能加
+  worker:
+    name: Deploy Push Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      - name: Deploy Push Worker to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
