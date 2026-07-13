@@ -2258,7 +2258,8 @@ export const useChatStore = defineStore('chat', () => {
                     let turnCount = 0
                     endIndex = lastIndex
                     for (let i = lastIndex; i < currentTotal; i++) {
-                        if (chat.msgs[i].role === 'user') turnCount++
+                        // v1.10.102: 轮 = AI 回复,口径与 countTurnsBetween 对齐
+                        if (chat.msgs[i].role === 'ai' || chat.msgs[i].role === 'assistant') turnCount++
                         endIndex = i + 1
                         if (turnCount >= summaryLimit) break
                     }

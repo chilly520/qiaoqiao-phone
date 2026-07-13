@@ -38,7 +38,8 @@ export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '
   `.trim();
 
     // === 关键：根据记忆关系动态计算对话阶段 ===
-    const msgCount = char.msgs ? char.msgs.filter(m => m.role !== 'system' && m.type !== 'system' && m.type !== 'favorite_card').length : 0;
+    // v1.10.102: 口径统一 — 一轮 = 1 次 AI 回复 ('ai' / 'assistant' 都计)
+    const msgCount = char.msgs ? char.msgs.filter(m => (m.role === 'ai' || m.role === 'assistant')).length : 0;
 
     // 检查记忆管理库中的关系状态（优先级高于轮次判断）
     let memoryRelationshipLevel = null; // null = 未检测到, 0=陌生人, 1=熟人, 2=好友, 3=恋人/夫妻

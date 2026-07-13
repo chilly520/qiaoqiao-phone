@@ -58,34 +58,42 @@ export function getRandomAvatar() {
 
 /**
  * 轮次计数工具
- * 一轮 = 一条用户消息 + 对应的 AI 回复
- * 以用户消息数作为轮次计数基准
+ * 一轮 = AI 一次完整回复
+ * v1.10.102: 口径从「user 消息数」改为「AI 回复数」(同时认 'ai' 和 'assistant' 两种角色名)
  */
 
 /**
- * 计算消息数组中的总轮次数（用户消息数）
+ * 判断一条消息是否是 AI 回复
+ * 存储里 'ai' 是主名,少数地方用 'assistant',要都认
+ */
+export function isAIResponse(m) {
+    return !!(m && (m.role === 'ai' || m.role === 'assistant'))
+}
+
+/**
+ * 计算消息数组中的总轮次数（AI 回复数）
  * @param {Array} msgs - 消息数组
  * @returns {number} 轮次数
  */
 export function countTurns(msgs) {
     if (!msgs || !msgs.length) return 0
-    return msgs.filter(m => m.role === 'user').length
+    return msgs.filter(isAIResponse).length
 }
 
 /**
  * 获取最后 N 轮对应的消息切片
- * 从末尾向前数 N 条用户消息，返回从该位置开始的所有消息
+ * 从末尾向前数 N 条 AI 回复，返回从该位置开始的所有消息
  * @param {Array} msgs - 消息数组
  * @param {number} turnCount - 轮次数
  * @returns {Array} 最后 N 轮的消息
  */
 export function getLastNTurns(msgs, turnCount) {
     if (!msgs || !msgs.length || turnCount <= 0) return []
-    let userCount = 0
+    let aiCount = 0
     for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'user') {
-            userCount++
-            if (userCount >= turnCount) {
+        if (isAIResponse(msgs[i])) {
+            aiCount++
+            if (aiCount >= turnCount) {
                 return msgs.slice(i)
             }
         }
@@ -94,7 +102,7 @@ export function getLastNTurns(msgs, turnCount) {
 }
 
 /**
- * 计算两个索引之间的轮次数（用户消息数）
+ * 计算两个索引之间的轮次数（AI 回复数）
  * @param {Array} msgs - 消息数组
  * @param {number} startIndex - 起始索引
  * @param {number} endIndex - 结束索引（不含）
@@ -104,7 +112,7 @@ export function countTurnsBetween(msgs, startIndex, endIndex) {
     if (!msgs || startIndex >= endIndex) return 0
     let count = 0
     for (let i = Math.max(0, startIndex); i < Math.min(endIndex, msgs.length); i++) {
-        if (msgs[i].role === 'user') count++
+        if (isAIResponse(msgs[i])) count++
     }
     return count
 }
