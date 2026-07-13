@@ -217,13 +217,36 @@ export default {
         }
     },
 
-    // --- 定时任务:每分钟跑一次 ---
+    // --- 定时任务:每 5 分钟跑一次（v1.10.100: 1min → 5min 削 5x KV 压力）---
     async scheduled(event, env, ctx) {
         ctx.waitUntil((async () => {
             const now = Date.now();
-            const list = await env.SCHEDULED.list();
 
-            for (const key of list.keys) {
+            // v1.10.100: 提前退出 — 列表空时连 1 个 get 都不做,避免空转吃 KV 配额
+            const schPeek = await env.SCHEDULED.list({ limit: 1 });
+            if (schPeek.keys.length === 0) return;
+
+            const subPeek = await env.SUBSCRIPTIONS.list({ limit: 1 });
+            if (subPeek.keys.length === 0) return;
+
+            // v1.10.100: 一次性预取所有订阅(并发),避免每条排程都重新 list+get
+            // 原版是 O(M*N) 读,M=到期排程数,N=订阅数;现在降到 O(M+N)
+            const allSubs = await env.SUBSCRIPTIONS.list({ limit: 1000 });
+            const subEntries = (await Promise.all(
+                allSubs.keys.map(async (k) => {
+                    const raw = await env.SUBSCRIPTIONS.get(k.name);
+                    if (!raw) return null;
+                    try {
+                        const parsed = JSON.parse(raw);
+                        return { key: k.name, sub: parsed.subscription || parsed };
+                    } catch (e) { return null; }
+                })
+            )).filter(Boolean);
+            if (subEntries.length === 0) return;
+
+            const scheduledKeys = await env.SCHEDULED.list({ limit: 1000 });
+
+            for (const key of scheduledKeys.keys) {
                 const item = await env.SCHEDULED.get(key.name);
                 if (!item) continue;
 
@@ -231,7 +254,7 @@ export default {
                 try { payload = JSON.parse(item); } catch (e) { continue; }
 
                 if (payload.fireTime <= now) {
-                    // 时间到了,推送
+                    // 时间到了,推送(用上面预取的订阅列表,不再每次都 list)
                     const pushPayload = JSON.stringify({
                         title: payload.title,
                         body: payload.body,
@@ -240,7 +263,21 @@ export default {
                         url: payload.url,
                     });
 
-                    const results = await broadcastPush(pushPayload, env);
+                    const results = { sent: 0, failed: 0, cleaned: 0, errors: [] };
+                    for (const { key: subKey, sub } of subEntries) {
+                        const res = await sendPushToSubscription(sub, pushPayload, env);
+                        if (res.ok) {
+                            results.sent++;
+                        } else {
+                            results.failed++;
+                            results.errors.push({ key: subKey, reason: res.reason });
+                            if (res.shouldCleanup) {
+                                await env.SUBSCRIPTIONS.delete(subKey);
+                                results.cleaned++;
+                            }
+                        }
+                    }
+
                     console.log(`[Cron] Sent scheduled push ${key.name}:`, JSON.stringify(results));
 
                     // 删掉已处理的
