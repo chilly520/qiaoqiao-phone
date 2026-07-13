@@ -27,19 +27,19 @@ const existingChat = computed(() => {
   return chatStore.chats[chatIdParam.value] || null
 })
 
-// 总聊天轮数：和上下文记忆轮数保持一致,1 轮 = 1 条 user 消息
+// v1.10.101: 总聊天轮数改按 AI 回复数计算,1 轮 = 1 条 assistant 消息
 const totalTurns = computed(() => {
   const msgs = existingChat.value?.msgs || []
-  return msgs.filter(m => m && m.role === 'user').length
+  return msgs.filter(m => m && m.role === 'assistant').length
 })
 
-// 已总结的轮数：从 0 到 lastSummaryIndex 之间 user 消息的条数
+// v1.10.101: 已总结的轮数同样按 assistant 消息计数,与总轮数口径一致
 const summarizedTurns = computed(() => {
   try {
     const chat = existingChat.value
     const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
     const idx = Math.max(0, Math.min(chat?.lastSummaryIndex || 0, msgs.length))
-    return msgs.slice(0, idx).filter(m => m && m.role === 'user').length
+    return msgs.slice(0, idx).filter(m => m && m.role === 'assistant').length
   } catch (e) {
     console.warn('[GroupSettings] summarizedTurns error:', e)
     return 0

@@ -1461,27 +1461,27 @@ const contextPreviewData = ref({})
 const contextTokenCounts = ref({})
 const expandedContextKey = ref(null)
 
-// Restored: This is needed for the stats cards in the template
-// 总聊天轮数：和上下文记忆轮数保持一致,1 轮 = 1 条 user 消息
+// v1.10.101: 总聊天轮数改按 AI 回复数计算
+// 1 轮 = AI 一次完整回复 (1 条 assistant 消息)
 // 兜底:用 chatStore.currentChat 直接取,避免 props.chatData 不同步
 const totalTurns = computed(() => {
     try {
         const chat = chatStore.currentChat || props.chatData
         const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
-        return msgs.filter(m => m && m.role === 'user').length
+        return msgs.filter(m => m && m.role === 'assistant').length
     } catch (e) {
         console.warn('[Settings] totalTurns error:', e)
         return 0
     }
 })
 
-// 已总结的轮数：从 0 到 lastSummaryIndex 之间 user 消息的条数
+// v1.10.101: 已总结的轮数同样按 assistant 消息计数,与总轮数口径一致
 const summarizedTurns = computed(() => {
     try {
         const chat = chatStore.currentChat || props.chatData
         const msgs = (chat && Array.isArray(chat.msgs)) ? chat.msgs : []
         const idx = Math.max(0, Math.min(chat?.lastSummaryIndex || 0, msgs.length))
-        return msgs.slice(0, idx).filter(m => m && m.role === 'user').length
+        return msgs.slice(0, idx).filter(m => m && m.role === 'assistant').length
     } catch (e) {
         console.warn('[Settings] summarizedTurns error:', e)
         return 0
