@@ -183,8 +183,10 @@
           <i class="fa-solid fa-image"></i>
           <span>上传自定义头像</span>
         </button>
+      </div>
 
-        <!-- v1.10.97: 形象图独立上传(用于火山引擎图生图参考) -->
+      <!-- v1.10.107: 形象图独立上传(对所有角色可见,用于火山引擎图生图参考) -->
+      <div class="mt-8 space-y-3 border-t border-gray-100 pt-6">
         <button
           @click="triggerAppearanceUpload"
           class="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-2xl font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
