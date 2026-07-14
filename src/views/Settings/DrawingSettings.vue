@@ -25,10 +25,14 @@ const providers = [
 ]
 
 // v1.10.97: 火山引擎模型预设
+// v1.10.116: 更新到 2026 现行模型 ID(老的 3.0/SeedEdit 3.0 已下架 → 404)
+// Seedream 4.0 起,文生图/图生图用同一个模型,只需传 image 字段即走 i2i
 const volcengineModels = [
-    { id: 'doubao-seedream-3-0-t2i-250415', name: 'Seedream 3.0 (文生图)', type: 't2i' },
-    { id: 'doubao-seededit-3-0-i2i-250315', name: 'SeedEdit 3.0 (图生图/编辑)', type: 'i2i' },
-    { id: 'doubao-seedream-4-0-250828', name: 'Seedream 4.0 (文生图 最新)', type: 't2i' }
+    { id: 'doubao-seedream-4-0-250828', name: 'Seedream 4.0 ⭐ (推荐/稳定)', type: 'all' },
+    { id: 'doubao-seedream-4-5-251128', name: 'Seedream 4.5 (高质量 4K)', type: 'all' },
+    { id: 'doubao-seedream-5-0-260128', name: 'Seedream 5.0 Lite (支持联网/推理)', type: 'all' },
+    { id: 'doubao-seedream-5-0-pro-260628', name: 'Seedream 5.0 Pro (最新旗舰)', type: 'all' },
+    { id: 'doubao-seededit-3-0-i2i-250315', name: 'SeedEdit 3.0 (旧版 i2i,可能已下架)', type: 'i2i' }
 ]
 const volcengineSizes = [
     '1024x1024', '864x1152', '1152x864', '1280x720', '720x1280', '2048x2048'
@@ -261,7 +265,8 @@ const testI2IGenerate = async () => {
                     <label class="text-xs font-bold text-gray-700 ml-1">文生图模型</label>
                     <select v-model="drawingConfig.volcengine.text2imageModel"
                         class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-                        <option v-for="m in volcengineModels.filter(x => x.type === 't2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
+                        <!-- v1.10.116: type==='all' 或 't2i' 都算文生图可用 -->
+                        <option v-for="m in volcengineModels.filter(x => x.type === 'all' || x.type === 't2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
                     </select>
                 </div>
 
@@ -269,8 +274,12 @@ const testI2IGenerate = async () => {
                     <label class="text-xs font-bold text-gray-700 ml-1">图生图模型 (使用形象图时调用)</label>
                     <select v-model="drawingConfig.volcengine.image2imageModel"
                         class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-                        <option v-for="m in volcengineModels.filter(x => x.type === 'i2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
+                        <option v-for="m in volcengineModels.filter(x => x.type === 'all' || x.type === 'i2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
                     </select>
+                    <p class="text-[10px] text-gray-400 ml-1">
+                        <i class="fa-solid fa-circle-info mr-0.5"></i>
+                        Seedream 4.0+ 同时支持文生图和图生图,传 <code class="font-mono">image</code> 字段即走 i2i
+                    </p>
                 </div>
 
                 <div class="space-y-1.5">

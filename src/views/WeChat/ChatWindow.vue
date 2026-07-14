@@ -1483,9 +1483,9 @@ const seeImageModelHint = computed(() => {
     const drawing = settingsStore.drawing || {}
     const volc = drawing.volcengine || {}
     if (seeImageMode.value === 'i2i') {
-        return volc.image2imageModel || 'doubao-seededit-3-0-i2i-250315'
+        return volc.image2imageModel || 'doubao-seedream-4-0-250828'
     }
-    return volc.text2imageModel || 'doubao-seedream-3-0-t2i-250415'
+    return volc.text2imageModel || 'doubao-seedream-4-0-250828'
 })
 
 // Touch slide variables for image preview

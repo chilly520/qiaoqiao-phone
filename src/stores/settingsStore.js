@@ -277,13 +277,14 @@ export const useSettingsStore = defineStore('settings', () => {
             pollinations: 'flux',
             siliconflow: 'Kwai-Kolors/Kolors',
             'flux-api': 'flux-1-dev',
-            volcengine: 'doubao-seedream-3-0-t2i-250415'  // 火山引擎主模型(火山自己已经独立配 t2i/i2i)
+            // v1.10.116: 用 4.0 替代 3.0(老的 3.0/SeedEdit 3.0 已被火山引擎下架 → 404)
+            volcengine: 'doubao-seedream-4-0-250828'
         },
         quality: 'standard',
         // 火山引擎(豆包)专属配置
         volcengine: {
-            text2imageModel: 'doubao-seedream-3-0-t2i-250415',  // 文生图
-            image2imageModel: 'doubao-seededit-3-0-i2i-250315', // 图生图(图生图/编辑)
+            text2imageModel: 'doubao-seedream-4-0-250828',  // 文生图(默认 Seedream 4.0,4.0+ 同时支持 i2i)
+            image2imageModel: 'doubao-seedream-4-0-250828', // 图生图(4.0+ 传 image 字段即走 i2i,无需单独模型)
             size: '1024x1024',                                  // 输出尺寸
             useAppearanceImage: true,                           // 自动用角色形象图作参考
             appearanceStrength: 0.6                             // 图生图参考强度 0~1
@@ -623,7 +624,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     pollinations: '', siliconflow: '', 'flux-api': '', volcengine: ''
                 }
                 drawing.value.models = drawing.value.models || {
-                    pollinations: 'flux', siliconflow: 'Kwai-Kolors/Kolors', 'flux-api': 'flux-1-dev', volcengine: 'doubao-seedream-3-0-t2i-250415'
+                    pollinations: 'flux', siliconflow: 'Kwai-Kolors/Kolors', 'flux-api': 'flux-1-dev', volcengine: 'doubao-seedream-4-0-250828'
                 }
                 if (data.drawing.apiKey && !drawing.value.keys[loadedProvider]) {
                     console.log(`[SettingsStore] Migrating legacy apiKey → keys.${loadedProvider}`)
@@ -632,6 +633,17 @@ export const useSettingsStore = defineStore('settings', () => {
                 if (data.drawing.model && !drawing.value.models[loadedProvider]) {
                     console.log(`[SettingsStore] Migrating legacy model → models.${loadedProvider}`)
                     drawing.value.models[loadedProvider] = data.drawing.model
+                }
+
+                // v1.10.116: 老模型 ID 升级(3.0 系列已被火山引擎下架,4.0 替代)
+                const oldVolcModels = ['doubao-seedream-3-0-t2i-250415', 'doubao-seedream-3-0-t2i-250328']
+                if (drawing.value.volcengine?.text2imageModel && oldVolcModels.includes(drawing.value.volcengine.text2imageModel)) {
+                    console.log(`[SettingsStore] Upgrading deprecated text2imageModel ${drawing.value.volcengine.text2imageModel} → 4.0`)
+                    drawing.value.volcengine.text2imageModel = 'doubao-seedream-4-0-250828'
+                }
+                if (drawing.value.volcengine?.image2imageModel && drawing.value.volcengine.image2imageModel === 'doubao-seededit-3-0-i2i-250315') {
+                    // SeedEdit 3.0 仍可能可用,保留;但默认改成 4.0
+                    console.log(`[SettingsStore] Note: image2imageModel = old SeedEdit 3.0,建议改用 Seedream 4.0+`)
                 }
             }
 

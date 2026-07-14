@@ -3388,8 +3388,8 @@ async function _generateImageInternal(prompt, options = {}) {
         }
 
         const chosenModel = useImageModel
-            ? (volc.image2imageModel || 'doubao-seededit-3-0-i2i-250315')
-            : (volc.text2imageModel || 'doubao-seedream-3-0-t2i-250415')
+            ? (volc.image2imageModel || 'doubao-seedream-4-0-250828')
+            : (volc.text2imageModel || 'doubao-seedream-4-0-250828')
 
         const chosenSize = volc.size || `${width}x${height}`
 
