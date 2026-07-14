@@ -261,24 +261,47 @@ const testI2IGenerate = async () => {
                     </div>
                 </div>
 
+                <!-- v1.10.117: 改成可输入的 datalist,支持填自定义模型 ID 或 Endpoint ID (ep-xxx) -->
                 <div class="space-y-1.5">
-                    <label class="text-xs font-bold text-gray-700 ml-1">文生图模型</label>
-                    <select v-model="drawingConfig.volcengine.text2imageModel"
-                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-                        <!-- v1.10.116: type==='all' 或 't2i' 都算文生图可用 -->
+                    <label class="text-xs font-bold text-gray-700 ml-1 flex items-center gap-1">
+                        文生图模型
+                        <span class="text-[9px] text-gray-400 font-normal">(可填接入点 ID <code class="font-mono bg-gray-100 px-1 rounded">ep-xxx</code>)</span>
+                    </label>
+                    <input
+                        v-model="drawingConfig.volcengine.text2imageModel"
+                        type="text"
+                        list="volc-t2i-models"
+                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
+                        placeholder="选择或输入模型 ID"
+                    >
+                    <datalist id="volc-t2i-models">
                         <option v-for="m in volcengineModels.filter(x => x.type === 'all' || x.type === 't2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
-                    </select>
+                    </datalist>
                 </div>
 
                 <div class="space-y-1.5">
-                    <label class="text-xs font-bold text-gray-700 ml-1">图生图模型 (使用形象图时调用)</label>
-                    <select v-model="drawingConfig.volcengine.image2imageModel"
-                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                    <label class="text-xs font-bold text-gray-700 ml-1 flex items-center gap-1">
+                        图生图模型 (使用形象图时调用)
+                        <span class="text-[9px] text-gray-400 font-normal">(可填接入点 ID <code class="font-mono bg-gray-100 px-1 rounded">ep-xxx</code>)</span>
+                    </label>
+                    <input
+                        v-model="drawingConfig.volcengine.image2imageModel"
+                        type="text"
+                        list="volc-i2i-models"
+                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
+                        placeholder="选择或输入模型 ID"
+                    >
+                    <datalist id="volc-i2i-models">
                         <option v-for="m in volcengineModels.filter(x => x.type === 'all' || x.type === 'i2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
-                    </select>
-                    <p class="text-[10px] text-gray-400 ml-1">
+                    </datalist>
+                    <p class="text-[10px] text-gray-400 ml-1 leading-relaxed">
                         <i class="fa-solid fa-circle-info mr-0.5"></i>
                         Seedream 4.0+ 同时支持文生图和图生图,传 <code class="font-mono">image</code> 字段即走 i2i
+                        <br>
+                        <i class="fa-solid fa-triangle-exclamation text-orange-400 mr-0.5"></i>
+                        若报 <span class="text-red-500">not activated</span> 需先去
+                        <a href="https://console.volcengine.com/ark/region:ark+cn-beijing/model" target="_blank" class="text-blue-500 underline">火山方舟控制台 → 模型管理</a>
+                        开通对应模型,或创建"在线推理"接入点后填 <code class="font-mono">ep-xxx</code>
                     </p>
                 </div>
 

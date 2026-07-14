@@ -3440,15 +3440,22 @@ async function _generateImageInternal(prompt, options = {}) {
             if (!resp.ok) {
                 console.error('[AI Image] Volcengine error:', resp.status, text)
                 let msg = `火山引擎 ${resp.status}`
+                let errorDetail = ''
                 try {
                     const j = JSON.parse(text)
-                    msg += `: ${j.error?.message || j.message || text.substring(0, 200)}`
+                    errorDetail = j.error?.message || j.message || text.substring(0, 200)
+                    msg += `: ${errorDetail}`
                 } catch (_) {
-                    msg += `: ${text.substring(0, 200)}`
+                    errorDetail = text.substring(0, 200)
+                    msg += `: ${errorDetail}`
                 }
-                if (resp.status === 401) msg = 'API Key 无效或已过期(401)'
+                if (resp.status === 401) msg = 'API Key 无效或已过期(401),请检查火山引擎控制台'
                 else if (resp.status === 403) msg = '权限不足或余额耗尽(403),请检查火山引擎控制台'
                 else if (resp.status === 429) msg = '请求过于频繁(429),请稍后再试'
+                // v1.10.117: 给"未开通模型"加清晰引导
+                else if (/not activated|model.*not.*exist|does not exist|model_not_found|NoModel|endpoint.*not.*found/i.test(errorDetail)) {
+                    msg = `火山引擎模型未开通或不存在:「${chosenModel}」。请去火山方舟控制台 → 模型管理 开通该模型,或创建"在线推理"接入点后填 ep-xxx。${errorDetail}`
+                }
                 else if (resp.status === 400 && useImageModel) msg += ' (图生图请求体可能不被当前模型接受,试试切到文生图模型)'
                 throw new Error(msg)
             }
