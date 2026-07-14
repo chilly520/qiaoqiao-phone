@@ -1,7 +1,7 @@
 ﻿﻿/**
  * AI Private Chat System Prompt Template
  */
-export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '') {
+export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '', drawingConfig = null) {
     const charName = String(char.name || 'AI');
     const charGender = String(char.gender || '未知');
     const charDesc = String(char.description || char.prompt || '无');
@@ -17,6 +17,40 @@ export function PRIVATE_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '
     const stickerListStr = (stickers && stickers.length > 0)
         ? stickers.map(s => `"${s.name}"(URL:${s.url})`).join(', ')
         : '(暂无)';
+
+    // v1.11.0: 动态生成 DRAW 指令说明(根据火山引擎配置和形象图设置)
+    const drawCfg = drawingConfig || {};
+    const isVolcEngine = drawCfg.provider === 'volcengine' && drawCfg.keys?.volcengine;
+    const volcEnabled = isVolcEngine && drawCfg.volcengine?.useAppearanceImage !== false;
+    const hasCharAppearance = !!char.appearanceImage;
+    const hasUserAppearance = !!drawCfg.userAppearanceImage;
+    const hasBothAppearance = hasCharAppearance && hasUserAppearance;
+    const imageStyle = drawCfg.globalImageStyle === 'anime' ? 'anime/illustration style' : 'photorealistic photo style';
+
+    let drawInstruction = '';
+    if (isVolcEngine) {
+        let drawHint = `    - **发送图片/DRAW**: \`[DRAW: 详细的图片提示词(英文)]\` (示例：\`[DRAW: A girl in a red dress walking in a cherry blossom park, ${imageStyle}]\`)。`;
+        if (volcEnabled) {
+            if (hasBothAppearance) {
+                drawHint += `\n      - **智能形象参考(已开启)**：你已上传你的形象图和${charName}的形象图，系统会自动参考：
+        * 用户说"帮我画我/我的照片/自拍"→ 参考你的形象图生成你的照片
+        * 用户说"画你/${charName}/你的照片"→ 参考${charName}的形象图生成TA的照片
+        * 用户说"我们/合照/合影/情侣照/两个人/一起"→ **同时参考两张图**生成你俩的合照(强烈建议多生成合照！)
+        * 用户说"风景/美食/物品/动物"等不涉及人物→ 纯文生图，不参考形象图
+        * 写 DRAW 提示词时人物描述要和请求对应：要合照就描述两人互动场景`;
+            } else if (hasCharAppearance) {
+                drawHint += `\n      - **形象参考(已开启)**：已设置${charName}的形象图。用户说"画你/${charName}/你的照片/自拍"时，系统会自动参考该形象图生成相似人物。生成${charName}的人像时，在提示词中描述清楚场景、服装、动作即可。`;
+            } else if (hasUserAppearance) {
+                drawHint += `\n      - **形象参考(已开启)**：已上传你的形象图。用户说"帮我画我/我的照片/自拍"时系统会参考你的形象图。`;
+            } else {
+                drawHint += `\n      - 提示：角色形象图未设置。如需生成更像${charName}的图片，可引导用户去角色资料页上传形象图。`;
+            }
+            drawHint += `\n      - 当前生图风格：${drawCfg.globalImageStyle === 'anime' ? '动漫插画风格' : '真实照片风格'}`;
+        }
+        drawInstruction = drawHint;
+    } else {
+        drawInstruction = `    - **发送图片/DRAW**: \`[DRAW: 详细的英文提示词]\` (示例：\`[DRAW: A beautiful girl standing in the rain, cinematic lighting]\`)。`;
+    }
 
     const finalMemory = String(memoryText || '（暂无）');
     const finalWorldInfo = String(worldInfo || '（未触发）');
@@ -345,7 +379,7 @@ ${locInfo ? `- **当前时空与环境**:\n${locInfo}` : ''}
       - 格式2（带URL，解决同名问题）: \`[表情包：名称：https://url]\` (示例：\`[表情包：我一直在哭：https://i.postimg.cc/hvFV4G2z/xxx.png]\`)
       - 可用表情包：${stickerListStr}。注意：有些表情包名称相同（如"我一直在哭"），此时必须使用格式2带URL区分。
     - **语音**: \`[语音：你想说的文字内容]\` (示例：\`[语音：你好，有什么事吗？]\`)。
-    - **发送图片/DRAW**: \`[DRAW: 详细的英文提示词]\` (示例：\`[DRAW: A beautiful girl standing in the rain]\`)。
+${drawInstruction}
     - **更换头像**: \`[更换头像：图片 ID]\` (**重要**: 当用户发送图片时，系统会标注 \`【图片 ID: xxx】\`,直接使用这个 ID 即可，不要自编 URL)。
     - **演奏（乐器合成）**: \`[演奏：乐器：大写音符]\` (支持：piano, guitar, violin, flute, drum, game)。**重要：音符必须用大写 A-G + 八度数字 (如 C4 D4 E4)，Tone.js 合成器只认大写**。示例：\`[演奏:piano:C4 D4 E4 F4 G4]\`, \`[演奏:drum:C2,C2,0,C2,0,C2]\`。
     - **一起听歌（搜真实音乐）**: \`[MUSIC:search 歌手 - 歌名]\` (示例：\`[MUSIC:search 周杰伦 - 告白气球]\`)。**这是另一个功能,和"演奏"不同,这里调用真实音乐 API 搜索并播放整首歌**。

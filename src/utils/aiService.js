@@ -326,6 +326,8 @@ export function generateContextPreview(chatId, char) {
 
     const contactListStr = chatStore ? chatStore.contactList.filter(c => !c.isGroup).slice(0, 30).map(c => `- ${c.name} (ID: ${c.id})`).join('\n') : ''
 
+    const drawingConfigForPreview = settingsStore.drawing?.value || settingsStore.drawing || {}
+
     const simplifiedSystemPrompt = SYSTEM_PROMPT_TEMPLATE(
         charWithTime,
         userForSystem,
@@ -338,7 +340,10 @@ export function generateContextPreview(chatId, char) {
         char.bio,
         groupCtxPreview,
         linkedGroupMemory,
-        contactListStr
+        contactListStr,
+        '',
+        '',
+        drawingConfigForPreview
     );
 
     return {
@@ -775,10 +780,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
         // 妫€鏌ユ槸鍚﹀浜庣嚎涓嬫ā寮?
         const isOfflineMode = settingsStore.isOfflineMode
-        
+
+        // v1.11.0: 获取生图配置，传给系统提示词模板让AI知道形象图能力
+        const drawingConfigForPrompt = settingsStore.drawing?.value || settingsStore.drawing || {}
+
         let promptContent = options.isCall
             ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
-            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx, linkedGroupMemory, contactListStr, calendarContext)
+            : SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, availableStickers, worldInfoText, memoryText, patSettings, finalEnvContext, momentsContext, char.bio, runtimeGroupCtx, linkedGroupMemory, contactListStr, calendarContext, '', drawingConfigForPrompt)
 
         // [FIX] 将最新心声状态注入系统提示，确保 AI 始终感知当前内心世界
         if (prunedChar.mindscape) {
