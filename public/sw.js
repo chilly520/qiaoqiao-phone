@@ -20,8 +20,8 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-// v1.10.114: bump 到 v26 + 强制清理 v3-v25 旧 cache
-const SHELL_CACHE = 'chilly-shell-v26';
+// v1.10.115: bump 到 v27 + 强制清理 v3-v26 旧 cache
+const SHELL_CACHE = 'chilly-shell-v27';
 const RUNTIME_CACHE = 'chilly-runtime-v24';
 
 // 关键 shell 资源,install 时主动 precache

@@ -1472,7 +1472,8 @@ const seeImageFileInput = ref(null)
 const isVolcengineReady = computed(() => {
     const drawing = settingsStore.drawing || {}
     const provider = drawing.provider
-    const apiKey = (drawing.apiKey || '').trim()
+    // v1.10.115: 从 keys[provider] 读取每渠道独立 key
+    const apiKey = (drawing.keys?.[provider] || drawing.apiKey || '').trim()
     const volc = drawing.volcengine || {}
     return provider === 'volcengine' && !!apiKey && !!volc.text2imageModel
 })

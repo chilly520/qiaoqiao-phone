@@ -260,10 +260,25 @@ export const useSettingsStore = defineStore('settings', () => {
     })
     const compressQuality = ref(0.7)
     // v1.10.97: 新增火山引擎 provider, 含形象图参考 + 图生图模型配置
+    // v1.10.115: 拆分 per-provider key + model,避免切换渠道时互相串
     const drawing = ref({
         provider: 'pollinations',
+        // 兼容旧字段(顶层 apiKey / model)继续保留,但 UI 只读写下面的 keys / models
         apiKey: '',
-        model: 'flux',
+        model: '',
+        // v1.10.115: 每渠道独立的 key 和 model 名
+        keys: {
+            pollinations: '',
+            siliconflow: '',
+            'flux-api': '',
+            volcengine: ''
+        },
+        models: {
+            pollinations: 'flux',
+            siliconflow: 'Kwai-Kolors/Kolors',
+            'flux-api': 'flux-1-dev',
+            volcengine: 'doubao-seedream-3-0-t2i-250415'  // 火山引擎主模型(火山自己已经独立配 t2i/i2i)
+        },
         quality: 'standard',
         // 火山引擎(豆包)专属配置
         volcengine: {
@@ -600,6 +615,24 @@ export const useSettingsStore = defineStore('settings', () => {
             if (data.drawing) {
                 console.log('[SettingsStore] Found drawing config in storage. Model:', data.drawing.model, 'HasKey:', !!data.drawing.apiKey)
                 drawing.value = { ...drawing.value, ...data.drawing }
+
+                // v1.10.115: 旧版数据迁移 - 把顶层 apiKey/model 拆分到 keys[provider] / models[provider]
+                // 只有当新字段没值时才迁移,避免覆盖用户已经设置好的
+                const loadedProvider = drawing.value.provider || 'pollinations'
+                drawing.value.keys = drawing.value.keys || {
+                    pollinations: '', siliconflow: '', 'flux-api': '', volcengine: ''
+                }
+                drawing.value.models = drawing.value.models || {
+                    pollinations: 'flux', siliconflow: 'Kwai-Kolors/Kolors', 'flux-api': 'flux-1-dev', volcengine: 'doubao-seedream-3-0-t2i-250415'
+                }
+                if (data.drawing.apiKey && !drawing.value.keys[loadedProvider]) {
+                    console.log(`[SettingsStore] Migrating legacy apiKey → keys.${loadedProvider}`)
+                    drawing.value.keys[loadedProvider] = data.drawing.apiKey
+                }
+                if (data.drawing.model && !drawing.value.models[loadedProvider]) {
+                    console.log(`[SettingsStore] Migrating legacy model → models.${loadedProvider}`)
+                    drawing.value.models[loadedProvider] = data.drawing.model
+                }
             }
 
             // Load Offline Mode settings (migrate from old format to new per-chat format)

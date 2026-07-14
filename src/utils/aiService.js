@@ -3064,8 +3064,9 @@ async function _generateImageInternal(prompt, options = {}) {
     // We check for .value to be safe, ensuring we get the actual configuration object.
     const drawingVal = settingsStore.drawing?.value || settingsStore.drawing || {}
     let provider = drawingVal.provider || 'pollinations'
-    let apiKey = (drawingVal.apiKey || '').trim()
-    let model = drawingVal.model || 'flux'
+    // v1.10.115: 每渠道独立 key/model,从 keys[provider] / models[provider] 读取
+    let apiKey = (drawingVal.keys?.[provider] || drawingVal.apiKey || '').trim()
+    let model = drawingVal.models?.[provider] || drawingVal.model || (provider === 'pollinations' ? 'flux' : '')
     const volc = drawingVal.volcengine || {}
 
     // REDUNDANT FALLBACK: If store seems empty, try reading directly from localStorage
@@ -3074,11 +3075,15 @@ async function _generateImageInternal(prompt, options = {}) {
             const raw = localStorage.getItem('qiaoqiao_settings')
             if (raw) {
                 const data = JSON.parse(raw)
-                if (data.drawing && data.drawing.apiKey) {
-                    console.log('[AI Image] Recovered API key/config from raw localStorage')
-                    apiKey = data.drawing.apiKey.trim()
-                    provider = data.drawing.provider || provider
-                    model = data.drawing.model || model
+                if (data.drawing) {
+                    const fallbackKey = data.drawing.keys?.[data.drawing.provider] || data.drawing.apiKey
+                    if (fallbackKey) {
+                        console.log('[AI Image] Recovered API key/config from raw localStorage')
+                        // 优先使用 localStorage 里的 provider
+                        provider = data.drawing.provider || provider
+                        apiKey = (data.drawing.keys?.[provider] || data.drawing.apiKey || '').trim()
+                        model = data.drawing.models?.[provider] || data.drawing.model || model
+                    }
                 }
             }
         } catch (e) {

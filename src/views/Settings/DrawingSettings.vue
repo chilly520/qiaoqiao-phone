@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateImage } from '../../utils/aiService'
@@ -8,8 +8,14 @@ import { compressImage } from '../../utils/imageUtils'
 const router = useRouter()
 const settingsStore = useSettingsStore()
 
-const drawingConfig = ref({ ...settingsStore.drawing })
+const drawingConfig = ref(JSON.parse(JSON.stringify(settingsStore.drawing)))
 const showApiKey = ref(false)
+
+// v1.10.115: 当前选中渠道的展示名
+const currentProviderName = computed(() => {
+    const p = providers.find(x => x.id === drawingConfig.value.provider)
+    return p ? p.name : drawingConfig.value.provider
+})
 
 const providers = [
     { id: 'pollinations', name: 'Pollinations.ai', desc: '支持匿名 (免费) 或积分制 (Flux)' },
@@ -192,16 +198,21 @@ const testI2IGenerate = async () => {
         <section class="space-y-3">
             <h3 class="text-sm font-bold text-gray-400 px-1 uppercase tracking-wider">密钥与参数</h3>
             <div class="bg-white rounded-2xl p-4 border border-gray-100 space-y-4">
+                <!-- v1.10.115: 当前选中渠道的标识,让用户知道这是哪个渠道的 key -->
+                <div class="flex items-center gap-2 text-[10px] text-gray-500 -mb-1">
+                    <i class="fa-solid fa-key text-blue-500"></i>
+                    <span>正在为 <b class="text-blue-600">{{ currentProviderName }}</b> 配置密钥和模型</span>
+                </div>
                 <div class="space-y-1.5">
                     <label class="text-xs font-bold text-gray-700 ml-1">API Key / Token</label>
                     <div class="relative flex items-center">
-                        <input 
-                            v-model="drawingConfig.apiKey" 
-                            :type="showApiKey ? 'text' : 'password'" 
+                        <input
+                            v-model="drawingConfig.keys[drawingConfig.provider]"
+                            :type="showApiKey ? 'text' : 'password'"
                             class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 pr-10"
                             placeholder="输入密钥 (部分服务商免费版可留空)"
                         >
-                        <i 
+                        <i
                             @click="showApiKey = !showApiKey"
                             class="fa-solid absolute right-4 cursor-pointer text-gray-400 hover:text-gray-600 transition-colors"
                             :class="showApiKey ? 'fa-eye-slash' : 'fa-eye'"
@@ -215,7 +226,7 @@ const testI2IGenerate = async () => {
                 <div v-if="drawingConfig.provider !== 'volcengine'" class="space-y-1.5">
                     <label class="text-xs font-bold text-gray-700 ml-1">模型名称 (Model)</label>
                     <input
-                        v-model="drawingConfig.model"
+                        v-model="drawingConfig.models[drawingConfig.provider]"
                         type="text"
                         class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
                         placeholder="例如：flux, flux-schnell, dall-e-3"
