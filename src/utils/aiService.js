@@ -3114,13 +3114,14 @@ async function _generateImageInternal(prompt, options = {}) {
     const hasAbs = /\b(abs|muscle|muscular|six pack)\b/.test(p)
 
     // Extreme negative boosters - EXPLICITLY ban muscles, exposed chest, bad anatomy, wrong age, and unwanted backgrounds
-    let negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.8), (bulky:1.8), (thick neck:1.5), (abs:1.8), (exposed chest:1.8), (open shirt:1.5), (pecs:1.8), (bodybuilder:2.0), (buff:1.8), (ugly:1.3), (bad anatomy:1.5), (bad proportions:1.5), (malformed limbs:1.5), (extra limbs:1.5), (missing limbs:1.5), (extra digits:1.5), (fused fingers:1.5), (too many fingers:1.5), (poorly drawn hands:1.5), (poorly drawn face:1.5), (mutation:1.5), (deformed:1.5), (child:1.8), (little girl:1.8), (little boy:1.8), (kid:1.8), (loli:1.8), (shota:1.8), (teenager:1.3), (adolescent:1.3), (flowers background:1.5), (floral background:1.5), (garden background:1.5), (nature background:1.5), (outdoor flowers:1.5), (field of flowers:1.5), (blossom background:1.5), (cherry blossom background:1.5), (rose background:1.5), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5)"
+    // v1.10.113: 大幅强化对 "公园/花" 的负向权重,火山引擎没有独立的 negative_prompt 字段,需要把这些负向直接 inline 进 prompt
+    let negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.8), (bulky:1.8), (thick neck:1.5), (abs:1.8), (exposed chest:1.8), (open shirt:1.5), (pecs:1.8), (bodybuilder:2.0), (buff:1.8), (ugly:1.3), (bad anatomy:1.5), (bad proportions:1.5), (malformed limbs:1.5), (extra limbs:1.5), (missing limbs:1.5), (extra digits:1.5), (fused fingers:1.5), (too many fingers:1.5), (poorly drawn hands:1.5), (poorly drawn face:1.5), (mutation:1.5), (deformed:1.5), (child:1.8), (little girl:1.8), (little boy:1.8), (kid:1.8), (loli:1.8), (shota:1.8), (teenager:1.3), (adolescent:1.3), (flowers:1.9), (flower:1.9), (floral:1.9), (blossom:1.9), (blossoms:1.9), (cherry blossom:1.9), (rose:1.8), (roses:1.8), (tulip:1.8), (lily:1.8), (sunflower:1.8), (daisy:1.8), (wisteria:1.8), (lavender:1.8), (bouquet:1.8), (wreath:1.8), (petals:1.8), (flower field:1.9), (flower garden:1.9), (flowerbed:1.9), (flowerbed:1.9), (flower shop:1.8), (vase of flowers:1.8), (park:1.9), (public park:1.9), (city park:1.9), (park bench:1.9), (parking lot park:1.5), (garden:1.8), (botanical garden:1.9), (English garden:1.9), (Japanese garden:1.8), (flowers background:1.9), (floral background:1.9), (garden background:1.9), (nature background:1.5), (outdoor flowers:1.9), (field of flowers:1.9), (blossom background:1.9), (cherry blossom background:1.9), (cherry tree:1.8), (rose background:1.9), (lily of the valley:1.8), (blooming:1.7), (bloom:1.6), (in bloom:1.7), (petal:1.8), (petals falling:1.8), (grass field:1.4), (meadow:1.4), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5)"
 
     let enhancedPrompt = ""
     // Universal Anime Style Base - Strictly 2D Japanese Anime, counter Kolors' thick-paint default
     const animeStyleBase = "(anime style:1.6), (Japanese anime style:1.5), (light novel illustration:1.4), (clean lineart:1.4), (flat shading:1.3), (2D:1.6), (illustration:1.4), (cel shading:1.3), (pastel colors), (soft lighting), (no thick painting), (no korean manhwa), (no realistic), (no 3D)"
-    // Default modern urban/indoor background to avoid flowers
-    const defaultBackground = "(modern city background: 1.3), (urban setting: 1.2), (indoor environment: 1.2), (clean simple background: 1.2), (no flowers: 1.5)"
+    // v1.10.113: 默认背景强化 - 强制城市/室内/简洁背景,强力负向禁止"花/公园/花园"
+    const defaultBackground = "(modern city background: 1.5), (urban setting: 1.4), (indoor environment: 1.4), (clean simple background: 1.4), (no flowers: 1.9), (no flower: 1.9), (no floral: 1.9), (no garden: 1.8), (no park: 1.9), (no blossom: 1.8), (no rose: 1.8), (no bouquet: 1.8), (no petals: 1.7), (no botanical: 1.8), (no flower field: 1.9), (no flower bed: 1.8), (no flowerbed: 1.8), (no flower shop: 1.7), (no meadow: 1.5), (no grass field: 1.4)"
 
     if (options.isProduct) {
         // Strict E-commerce Product Strategy
@@ -3387,9 +3388,16 @@ async function _generateImageInternal(prompt, options = {}) {
 
         const chosenSize = volc.size || `${width}x${height}`
 
+        // v1.10.113: 火山引擎 ARK images/generations 不支持独立的 negative_prompt 字段
+        // 只能把负向关键词 inline 到 prompt 里。给 negativeBoost 加一层 (no ... :1.9) 包装
+        // 强负向放在 prompt 末尾,Seedream/SeedEdit 对末尾指令权重最高
+        const volcInlineNegative = negativeBoost
+            .replace(/\(([^()]+):([\d.]+)\)/g, '(no $1:$2)')
+        const finalPrompt = `${enhancedPrompt}, AVOID: ${volcInlineNegative}`
+
         const body = {
             model: chosenModel,
-            prompt: enhancedPrompt,
+            prompt: finalPrompt,
             size: chosenSize,
             response_format: 'url',
             watermark: false

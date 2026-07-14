@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { generateImage } from '../../utils/aiService'
+import { compressImage } from '../../utils/imageUtils'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
@@ -53,13 +54,19 @@ const testPrompt = ref('A beautiful girl with star-shaped hair holding an umbrel
 const isTesting = ref(false)
 const testResultUrl = ref('')
 
+// v1.10.113: 火山引擎图生图测试
+const testRefImage = ref('')        // base64 of ref image
+const testRefPrompt = ref('a beautiful girl with star-shaped hair holding an umbrella, anime style') // i2i prompt
+const isTestingI2I = ref(false)
+const testRefFileInput = ref(null)
+
 const testGenerate = async () => {
     if (isTesting.value) return
     if (!testPrompt.value.trim()) {
         showToast('请输入提示词')
         return
     }
-    
+
     isTesting.value = true
     testResultUrl.value = ''
     try {
@@ -71,9 +78,72 @@ const testGenerate = async () => {
         console.log('Test generation success:', url)
     } catch (e) {
         console.error('Test generation error:', e)
-        showToast('生成失败: ' + e.message)
+        showToast('测试失败：' + (e.message || ''))
     } finally {
         isTesting.value = false
+    }
+}
+
+const triggerTestRefUpload = () => {
+    if (testRefFileInput.value) testRefFileInput.value.click()
+}
+
+const handleTestRefChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+        showToast('请选择图片文件')
+        e.target.value = ''
+        return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('图片不能超过 10MB')
+        e.target.value = ''
+        return
+    }
+    try {
+        const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.85 })
+        testRefImage.value = compressed
+    } catch (err) {
+        console.error('参考图压缩失败', err)
+        showToast('参考图处理失败')
+    } finally {
+        e.target.value = ''
+    }
+}
+
+const testI2IGenerate = async () => {
+    if (isTestingI2I.value || isTesting.value) return
+    if (!testRefImage.value) {
+        showToast('请先上传参考图')
+        return
+    }
+    if (!testRefPrompt.value.trim()) {
+        showToast('请输入图生图提示词')
+        return
+    }
+    if (drawingConfig.value.provider !== 'volcengine') {
+        showToast('图生图测试仅支持火山引擎')
+        return
+    }
+
+    isTestingI2I.value = true
+    testResultUrl.value = ''
+    try {
+        settingsStore.setDrawingConfig({ ...drawingConfig.value })
+        // v1.10.113: 强制走图生图:useAppearance: true 让 backend 走 i2i 模型
+        // referenceImage 必传,直接用用户上传的图
+        const url = await generateImage(testRefPrompt.value.trim(), {
+            referenceImage: testRefImage.value,
+            useAppearance: true
+        })
+        testResultUrl.value = url
+        showToast('图生图测试成功')
+    } catch (e) {
+        console.error('图生图测试失败', e)
+        showToast('图生图测试失败：' + (e.message || ''))
+    } finally {
+        isTestingI2I.value = false
     }
 }
 </script>
@@ -264,13 +334,13 @@ const testGenerate = async () => {
                 </div>
                 
                 <div class="flex gap-3 items-center">
-                    <input 
-                        v-model="testPrompt" 
-                        type="text" 
+                    <input
+                        v-model="testPrompt"
+                        type="text"
                         class="flex-1 bg-gray-100 border-none rounded-xl px-4 py-3 text-xs outline-none focus:ring-1 focus:ring-blue-400"
                         placeholder="输入测试提示词..."
                     >
-                    <button 
+                    <button
                          @click="testGenerate"
                         :disabled="isTesting"
                         class="shrink-0 px-6 py-3 font-bold rounded-xl active:scale-95 transition-all disabled:opacity-50 shadow-md"
@@ -280,15 +350,53 @@ const testGenerate = async () => {
                     </button>
                 </div>
 
+                <!-- v1.10.113: 火山引擎专用的图生图测试入口 -->
+                <div v-if="drawingConfig.provider === 'volcengine' && drawingConfig.volcengine.apiKey"
+                    class="bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-100 rounded-xl p-3 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-image text-pink-500"></i> 图生图测试 (SeedEdit)
+                        </div>
+                        <span class="text-[10px] text-gray-400 font-mono">{{ drawingConfig.volcengine.image2imageModel }}</span>
+                    </div>
+
+                    <!-- 参考图上传 -->
+                    <div v-if="!testRefImage" @click="triggerTestRefUpload"
+                        class="w-full border-2 border-dashed border-pink-200 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:border-pink-400 hover:bg-pink-50/50 transition-colors min-h-[80px]">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-pink-300 mb-1"></i>
+                        <p class="text-xs text-gray-500">点击上传参考图</p>
+                    </div>
+                    <div v-else class="relative">
+                        <img :src="testRefImage" class="w-full max-h-32 object-contain rounded-lg border border-pink-200">
+                        <button @click="testRefImage = ''"
+                            class="absolute top-1 right-1 w-6 h-6 rounded-full bg-white/90 text-red-500 flex items-center justify-center shadow">
+                            <i class="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                    </div>
+                    <input type="file" ref="testRefFileInput" class="hidden" accept="image/*"
+                        @change="handleTestRefChange">
+
+                    <div class="flex gap-2">
+                        <input v-model="testRefPrompt" type="text"
+                            class="flex-1 bg-white border border-pink-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-pink-400"
+                            placeholder="图生图提示词,描述想要的风格/变化...">
+                        <button @click="testI2IGenerate" :disabled="isTestingI2I || !testRefImage"
+                            class="shrink-0 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white text-xs font-bold rounded-lg active:scale-95 transition-all disabled:opacity-50 shadow"
+                            style="min-width: 70px;">
+                            {{ isTestingI2I ? '...' : '测试 i2i' }}
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Result Preview -->
                 <div v-if="testResultUrl || isTesting" class="aspect-square w-full rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden border border-dashed border-gray-200">
                     <div v-if="isTesting" class="flex flex-col items-center gap-3">
                          <i class="fa-solid fa-spinner fa-spin text-xl text-gray-300"></i>
                          <span class="text-[10px] text-gray-400">正在调用接口，请稍候...（免费模型可能需要 30-60 秒）</span>
                     </div>
-                    <img 
-                        v-else 
-                        :src="testResultUrl" 
+                    <img
+                        v-else
+                        :src="testResultUrl"
                         class="w-full h-full object-cover"
                         @error="testResultUrl = ''"
                     >
