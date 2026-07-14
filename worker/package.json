@@ -10,7 +10,7 @@
     "secret:set": "wrangler secret put"
   },
   "devDependencies": {
-    "wrangler": "^3.90.0"
+    "wrangler": "^3.114.0"
   },
   "dependencies": {
     "@noble/curves": "^2.2.0",
