@@ -828,6 +828,53 @@
                     </div>
                 </div>
 
+                <!-- v1.10.110: 角色生图形象图(独立于头像,用作火山引擎/AI 生图的参考图) -->
+                <div>
+                    <h3 class="section-title"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
+                        🎨 角色形象图(生图参考)</h3>
+                    <div class="flex items-start gap-3 p-3 rounded-xl border"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
+                        <!-- 形象图预览 -->
+                        <div class="relative shrink-0">
+                            <div class="w-20 h-20 rounded-lg overflow-hidden border cursor-pointer group relative"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'"
+                                @click="triggerAppearanceUpload">
+                                <img v-if="localData.appearanceImage" :src="localData.appearanceImage"
+                                    class="w-full h-full object-cover">
+                                <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                                    <i class="fa-solid fa-id-card text-xl mb-1"></i>
+                                    <span class="text-[9px]">点击上传</span>
+                                </div>
+                                <div
+                                    class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <i class="fa-solid fa-camera text-white text-sm"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 说明 + 操作 -->
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[11px] leading-relaxed mb-2"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
+                                上传角色的形象图后,使用火山引擎(豆包)生图时会以此为参考生成同角色画面。建议 1:1 比例,自动压缩到 768px。
+                            </p>
+                            <div class="flex gap-1.5 flex-wrap">
+                                <button @click="triggerAppearanceUpload"
+                                    class="text-[10px] text-pink-600 bg-pink-50 px-2 py-1 rounded border border-pink-100 flex items-center gap-1 hover:bg-pink-100 transition-colors">
+                                    <i class="fa-solid fa-upload"></i>
+                                    {{ localData.appearanceImage ? '更换图片' : '上传图片' }}
+                                </button>
+                                <button v-if="localData.appearanceImage" @click="clearAppearanceImage"
+                                    class="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded border border-red-100 flex items-center gap-1 hover:bg-red-100 transition-colors">
+                                    <i class="fa-solid fa-trash"></i>删除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="file" ref="appearanceFileInput" class="hidden" accept="image/*"
+                        @change="handleAppearanceUpload">
+                </div>
+
                 <!-- Pat Settings -->
                 <div>
                     <h3 class="section-title"
@@ -2095,6 +2142,7 @@ const localData = ref({
     voiceId: '',
     doubaoSpeaker: 'zh_female_sichuan',
     voiceSpeed: 1.0,
+    appearanceImage: '', // v1.10.110: 角色形象图(生图参考)
     patAction: '',
     patSuffix: '',
     bubbleSize: 15,
@@ -2381,6 +2429,51 @@ const handleCallAvatarChange = async (e) => {
             console.error('Call avatar upload failed', err)
         }
     }
+}
+
+// v1.10.110: 角色形象图(生图参考)上传
+const appearanceFileInput = ref(null)
+
+const triggerAppearanceUpload = () => {
+    if (appearanceFileInput.value) appearanceFileInput.value.click()
+}
+
+const handleAppearanceUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+        chatStore.triggerToast('请选择图片文件', 'error')
+        e.target.value = ''
+        return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        chatStore.triggerToast('图片不能超过 10MB', 'error')
+        e.target.value = ''
+        return
+    }
+    try {
+        const compressed = await compressImage(file, 768, 0.8)
+        localData.value.appearanceImage = compressed
+        // 立即持久化,这样不用等保存按钮
+        if (props.chatData?.id) {
+            await chatStore.updateCharacter(props.chatData.id, { appearanceImage: compressed })
+        }
+        chatStore.triggerToast('形象图已设置 🎨', 'success')
+    } catch (err) {
+        console.error('形象图上传失败', err)
+        chatStore.triggerToast('上传失败', 'error')
+    } finally {
+        e.target.value = ''
+    }
+}
+
+const clearAppearanceImage = async () => {
+    if (!confirm('确定要删除形象图吗?删除后生图将不再以该形象作为参考。')) return
+    localData.value.appearanceImage = ''
+    if (props.chatData?.id) {
+        await chatStore.updateCharacter(props.chatData.id, { appearanceImage: '' })
+    }
+    chatStore.triggerToast('已删除形象图', 'success')
 }
 
 const promptCallAvatarUrl = (target) => {
