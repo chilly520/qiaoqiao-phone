@@ -961,7 +961,7 @@ export const useChatStore = defineStore('chat', () => {
                         if (imagePrompt) {
                             console.log('[ChatStore] GIFT DRAW detected, generating image for gift:', newMsg.giftName, 'prompt:', imagePrompt.substring(0, 50));
                             import('@/utils/aiService').then(m => {
-                                m.generateImage(imagePrompt).then(url => {
+                                m.generateImage(imagePrompt, { chatId }).then(url => {
                                     newMsg.giftImage = url
                                     saveChats()
                                 }).catch(err => {
@@ -1212,7 +1212,7 @@ export const useChatStore = defineStore('chat', () => {
 
                     if (index >= 0 && index < 3) {
                         chat.bio.loveItems[index].name = itemName;
-                        generateImage(cleanVal).then(url => {
+                        generateImage(cleanVal, { chatId }).then(url => {
                             chat.bio.loveItems[index].image = url;
                             saveChats();
                         });
@@ -1277,7 +1277,7 @@ export const useChatStore = defineStore('chat', () => {
                                 if (typeof parsed.imagePrompt === 'string' && (parsed.imagePrompt.startsWith('http') || parsed.imagePrompt.startsWith('data:'))) {
                                     momentImages.push(parsed.imagePrompt)
                                 } else {
-                                    const imageUrl = await generateImage(String(parsed.imagePrompt))
+                                    const imageUrl = await generateImage(String(parsed.imagePrompt), { chatId })
                                     if (imageUrl) momentImages.push(imageUrl)
                                 }
                             } catch (e) {
@@ -1406,7 +1406,7 @@ export const useChatStore = defineStore('chat', () => {
                         if (typeof momentData.imagePrompt === 'string' && (momentData.imagePrompt.startsWith('http') || momentData.imagePrompt.startsWith('data:'))) {
                             shareImages.push(momentData.imagePrompt)
                         } else {
-                            const imageUrl = await generateImage(String(momentData.imagePrompt))
+                            const imageUrl = await generateImage(String(momentData.imagePrompt), { chatId })
                             if (imageUrl) shareImages.push(imageUrl)
                         }
                     } catch (e) {
@@ -3744,7 +3744,7 @@ export const useChatStore = defineStore('chat', () => {
                                 if (typeof imagePrompt === 'string' && (imagePrompt.startsWith('http') || imagePrompt.startsWith('data:'))) {
                                     newMoment.images.push(imagePrompt)
                                 } else {
-                                    const imageUrl = await generateImage(String(imagePrompt))
+                                    const imageUrl = await generateImage(String(imagePrompt), { chatId })
                                     newMoment.images.push(imageUrl)
                                 }
                             }
@@ -3797,7 +3797,7 @@ export const useChatStore = defineStore('chat', () => {
                                 if (typeof shareImagePrompt === 'string' && (shareImagePrompt.startsWith('http') || shareImagePrompt.startsWith('data:'))) {
                                     newShareMoment.images.push(shareImagePrompt);
                                 } else {
-                                    const shareImageUrl = await generateImage(String(shareImagePrompt));
+                                    const shareImageUrl = await generateImage(String(shareImagePrompt), { chatId });
                                     newShareMoment.images.push(shareImageUrl);
                                 }
                             }
@@ -4785,7 +4785,7 @@ export const useChatStore = defineStore('chat', () => {
                                 aiTaskStore.createStreamingTask({
                                     taskId: drawTaskId,
                                     apiFunc: generateImage,
-                                    args: [drawMatch[1].trim()],
+                                    args: [drawMatch[1].trim(), { chatId, appearanceRef: true }],
                                     onComplete: (imageUrl) => {
                                         // 任务成功：更新消息为图片
                                         console.log('[Draw] Global task completed:', imageUrl);
@@ -4938,7 +4938,7 @@ export const useChatStore = defineStore('chat', () => {
                                 const tp = dp[0].trim(), ip = (dp[1]||'').trim()
                                 if (tp.length <= 20 && tp.length > 0) { gNote = tp; gDesc = '' }
                                 else if (tp.length > 20) { gDesc = tp; gNote = '' }
-                                if (ip) import('@/utils/aiService').then(m => m.generateImage(ip).then(url => { gImage = url; saveChats() }))
+                                if (ip) import('@/utils/aiService').then(m => m.generateImage(ip, { chatId }).then(url => { gImage = url; saveChats() }))
                             } else if (gDesc.length > 50) {} else if (gDesc.length > 0) { gNote = gDesc; gDesc = '' }
                         }
                         if (!gDesc) gDesc = `${gName} - 一份珍贵的礼物`

@@ -104,7 +104,7 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
             if (npcData.useAIHead) {
                 try {
                     const prompt = `A profile picture for a character named ${npcData.name}. ${npcData.prompt || ''} Anime style, high quality.`
-                    const imageUrl = await generateImage(prompt)
+                    const imageUrl = await generateImage(prompt, { chatId: charId, isCharacter: true, appearanceRef: true })
                     chatStore.updateCharacter(charId, { avatar: imageUrl })
                 } catch (e) {
                     console.error('[WorldLoop] Failed to generate AI Avatar', e)
@@ -154,7 +154,7 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
             // 3. Generate Visuals & Profile (Background, Pinned moments)
             try {
                 // Generate Avatar first
-                const avatarUrl = await generateImage(`${persona.appearance}, anime style, masterpiece, high quality, profile picture`)
+                const avatarUrl = await generateImage(`${persona.appearance}, anime style, masterpiece, high quality, profile picture`, { chatId: charId, isCharacter: true, appearanceRef: true })
                 chatStore.updateCharacter(charId, { avatar: avatarUrl })
 
                 // Generate full profile (Async, don't block)

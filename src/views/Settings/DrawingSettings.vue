@@ -13,7 +13,18 @@ const showApiKey = ref(false)
 const providers = [
     { id: 'pollinations', name: 'Pollinations.ai', desc: '支持匿名 (免费) 或积分制 (Flux)' },
     { id: 'siliconflow', name: 'SiliconFlow', desc: '国内极速大模型网关 推荐' },
-    { id: 'flux-api', name: 'Flux-API', desc: '通用 Flux 接口' }
+    { id: 'flux-api', name: 'Flux-API', desc: '通用 Flux 接口' },
+    { id: 'volcengine', name: '火山引擎 ARK', desc: '豆包 Seedream 文生图 / SeedEdit 图生图 (支持角色形象图参考)' }
+]
+
+// v1.10.97: 火山引擎模型预设
+const volcengineModels = [
+    { id: 'doubao-seedream-3-0-t2i-250415', name: 'Seedream 3.0 (文生图)', type: 't2i' },
+    { id: 'doubao-seededit-3-0-i2i-250315', name: 'SeedEdit 3.0 (图生图/编辑)', type: 'i2i' },
+    { id: 'doubao-seedream-4-0-250828', name: 'Seedream 4.0 (文生图 最新)', type: 't2i' }
+]
+const volcengineSizes = [
+    '1024x1024', '864x1152', '1152x864', '1280x720', '720x1280', '2048x2048'
 ]
 
 // Toast State
@@ -133,9 +144,9 @@ const testGenerate = async () => {
 
                 <div class="space-y-1.5">
                     <label class="text-xs font-bold text-gray-700 ml-1">模型名称 (Model)</label>
-                    <input 
-                        v-model="drawingConfig.model" 
-                        type="text" 
+                    <input
+                        v-model="drawingConfig.model"
+                        type="text"
                         class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
                         placeholder="例如：flux, flux-schnell, dall-e-3"
                     >
@@ -143,6 +154,71 @@ const testGenerate = async () => {
                         <i class="fa-solid fa-info-circle mr-0.5"></i>
                         推荐模型：<span class="font-mono text-blue-500">FLUX.1-schnell</span> (免费快)、<span class="font-mono text-purple-500">FLUX.1-dev</span> (高质量) 或 <span class="font-mono text-green-500">Kwai-Kolors/Kolors</span> (快手免费)
                     </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- v1.10.97: 火山引擎专属配置 -->
+        <section v-if="drawingConfig.provider === 'volcengine'" class="space-y-3">
+            <h3 class="text-sm font-bold text-gray-400 px-1 uppercase tracking-wider">火山引擎豆包 / 形象图参考</h3>
+            <div class="bg-white rounded-2xl p-4 border border-gray-100 space-y-4">
+                <div class="bg-blue-50/60 border border-blue-100 rounded-xl p-3 space-y-1.5">
+                    <div class="flex items-start gap-2">
+                        <i class="fa-solid fa-circle-info text-blue-500 text-sm mt-0.5"></i>
+                        <div class="text-[10px] text-blue-800 leading-relaxed">
+                            <p class="font-bold mb-1">🌋 火山引擎 ARK 使用说明</p>
+                            <ul class="list-disc list-inside space-y-0.5 text-blue-700">
+                                <li>API Key 在 <span class="font-mono">火山引擎控制台 → 在线推理 → ARK</span> 创建(单个字符串,不是 AccessKey/SecretKey)</li>
+                                <li>启用 <b>角色形象图参考</b> 后,生成人像时会自动以该角色上传的形象图为参考(图生图)</li>
+                                <li>形象图由角色编辑页单独上传,与"头像"是两套图</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="text-xs font-bold text-gray-700 ml-1">文生图模型</label>
+                    <select v-model="drawingConfig.volcengine.text2imageModel"
+                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                        <option v-for="m in volcengineModels.filter(x => x.type === 't2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
+                    </select>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="text-xs font-bold text-gray-700 ml-1">图生图模型 (使用形象图时调用)</label>
+                    <select v-model="drawingConfig.volcengine.image2imageModel"
+                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                        <option v-for="m in volcengineModels.filter(x => x.type === 'i2i')" :key="m.id" :value="m.id">{{ m.name }}</option>
+                    </select>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="text-xs font-bold text-gray-700 ml-1">输出尺寸</label>
+                    <select v-model="drawingConfig.volcengine.size"
+                        class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+                        <option v-for="s in volcengineSizes" :key="s" :value="s">{{ s }}</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-100">
+                    <div class="flex-1">
+                        <div class="text-xs font-bold text-gray-800">🎨 自动使用角色形象图作参考</div>
+                        <div class="text-[10px] text-gray-500 mt-0.5">开启后,生成人像时自动以"形象图"为 image 参考(图生图)</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" v-model="drawingConfig.volcengine.useAppearanceImage" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-pink-500 transition-colors"></div>
+                        <div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full peer-checked:translate-x-5 transition-transform"></div>
+                    </label>
+                </div>
+
+                <div v-if="drawingConfig.volcengine.useAppearanceImage" class="space-y-1.5">
+                    <label class="text-xs font-bold text-gray-700 ml-1">
+                        形象图参考强度 ({{ drawingConfig.volcengine.appearanceStrength }})
+                    </label>
+                    <input type="range" min="0" max="1" step="0.05" v-model.number="drawingConfig.volcengine.appearanceStrength"
+                        class="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-pink-500">
+                    <p class="text-[10px] text-gray-400 ml-1">0 = 几乎忽略参考图, 1 = 强参考(更接近原图)</p>
                 </div>
             </div>
         </section>

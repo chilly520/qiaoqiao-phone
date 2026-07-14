@@ -259,11 +259,20 @@ export const useSettingsStore = defineStore('settings', () => {
         icon: 'fa-sun'
     })
     const compressQuality = ref(0.7)
+    // v1.10.97: 新增火山引擎 provider, 含形象图参考 + 图生图模型配置
     const drawing = ref({
         provider: 'pollinations',
         apiKey: '',
         model: 'flux',
-        quality: 'standard'
+        quality: 'standard',
+        // 火山引擎(豆包)专属配置
+        volcengine: {
+            text2imageModel: 'doubao-seedream-3-0-t2i-250415',  // 文生图
+            image2imageModel: 'doubao-seededit-3-0-i2i-250315', // 图生图(图生图/编辑)
+            size: '1024x1024',                                  // 输出尺寸
+            useAppearanceImage: true,                           // 自动用角色形象图作参考
+            appearanceStrength: 0.6                             // 图生图参考强度 0~1
+        }
     })
 
     // --- 3.5 Offline Mode State (Per Chat) ---

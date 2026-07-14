@@ -1752,7 +1752,7 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                 // 后台异步生成图片，不阻塞
                 const { generateImage } = await import('../utils/aiService.js')
                 const prompt = cmd.draw_cmd.replace(/\[DRAW:\s*(.*?)\s*\]/i, '$1')
-                generateImage(prompt)
+                generateImage(prompt, { chatId: this.currentPartnerId })
                   .then(url => {
                     // 图片生成完成后更新
                     const album = this.currentSpace.album.find(a => a.tempId === tempId)

@@ -170,26 +170,55 @@
 
       <!-- NPC 专属操作按钮 -->
       <div v-if="character.isNewNPC" class="mt-8 space-y-3 border-t border-gray-100 pt-6">
-        <button 
+        <button
           @click="addToFriends"
           class="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-2xl font-bold shadow-lg shadow-green-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
           <i class="fa-solid fa-user-plus"></i>
           <span>添加为好友</span>
         </button>
-        
-        <button 
+
+        <button
           @click="triggerAvatarUpload"
           class="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
           <i class="fa-solid fa-image"></i>
           <span>上传自定义头像</span>
         </button>
-        
-        <input 
-          ref="avatarFileInput" 
-          type="file" 
-          class="hidden" 
-          accept="image/*" 
-          @change="handleAvatarUpload" 
+
+        <!-- v1.10.97: 形象图独立上传(用于火山引擎图生图参考) -->
+        <button
+          @click="triggerAppearanceUpload"
+          class="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-2xl font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
+          <i class="fa-solid fa-id-card"></i>
+          <span>{{ character.appearanceImage ? '更换形象图' : '上传形象图(生图参考)' }}</span>
+        </button>
+
+        <div v-if="character.appearanceImage" class="bg-pink-50 border border-pink-100 rounded-2xl p-3 space-y-2">
+          <div class="flex items-center gap-2">
+            <img :src="character.appearanceImage" class="w-16 h-16 rounded-xl object-cover border border-pink-200" alt="appearance">
+            <div class="flex-1 min-w-0">
+              <div class="text-xs font-bold text-pink-900">🎨 形象参考图已设置</div>
+              <div class="text-[10px] text-pink-700 mt-0.5 leading-relaxed">生图服务(火山引擎)将以这张图作为参考,生成的形象会更接近 TA</div>
+            </div>
+            <button @click="clearAppearanceImage" class="text-pink-400 hover:text-pink-600 p-1" title="删除形象图">
+              <i class="fa-solid fa-trash-can text-sm"></i>
+            </button>
+          </div>
+        </div>
+
+        <input
+          ref="avatarFileInput"
+          type="file"
+          class="hidden"
+          accept="image/*"
+          @change="handleAvatarUpload"
+        />
+
+        <input
+          ref="appearanceFileInput"
+          type="file"
+          class="hidden"
+          accept="image/*"
+          @change="handleAppearanceUpload"
         />
       </div>
 
@@ -308,6 +337,7 @@ const settingsStore = useSettingsStore()
 const charId = route.params.charId
 const isAnalysisTyping = computed(() => !!chatStore.isProfileProcessing[charId])
 const avatarFileInput = ref(null)
+const appearanceFileInput = ref(null)  // v1.10.97: 形象图
 const showMemoryLog = ref(false)
 const memoryLogs = computed(() => searchMemoryLog(charId, { limit: 100 }))
 const memoryFacts = computed(() => getFacts(charId))
@@ -529,6 +559,53 @@ const handleAvatarUpload = async (event) => {
   } catch (error) {
     console.error('上传头像失败:', error)
     chatStore.triggerToast('上传失败', 'error')
+  }
+}
+
+// v1.10.97: 形象图上传(独立于头像,用于火山引擎图生图参考)
+// 比例推荐 1:1, 压缩到 768 以减少 base64 体积(localStorage 容量有限)
+const triggerAppearanceUpload = () => {
+  if (appearanceFileInput.value) {
+    appearanceFileInput.value.click()
+  }
+}
+
+const handleAppearanceUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    chatStore.triggerToast('请选择图片文件', 'error')
+    event.target.value = ''
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    chatStore.triggerToast('图片不能超过 10MB', 'error')
+    event.target.value = ''
+    return
+  }
+
+  try {
+    const base64 = await compressImage(file, { maxWidth: 768, quality: 0.8 })
+    await chatStore.updateCharacter(charId, { appearanceImage: base64 })
+    character.value.appearanceImage = base64
+    chatStore.triggerToast('形象图已设置 🎨', 'success')
+  } catch (error) {
+    console.error('上传形象图失败:', error)
+    chatStore.triggerToast('上传失败', 'error')
+  } finally {
+    event.target.value = ''
+  }
+}
+
+const clearAppearanceImage = async () => {
+  if (!confirm('确定要删除形象图吗?删除后生图将不再以该形象作为参考。')) return
+  try {
+    await chatStore.updateCharacter(charId, { appearanceImage: '' })
+    character.value.appearanceImage = ''
+    chatStore.triggerToast('已删除形象图', 'success')
+  } catch (error) {
+    console.error('删除形象图失败:', error)
+    chatStore.triggerToast('删除失败', 'error')
   }
 }
 </script>

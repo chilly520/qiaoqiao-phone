@@ -3058,7 +3058,7 @@ export async function generateImage(prompt, options = {}) {
  * Internal logic for image generation, handled by apiQueue.
  */
 async function _generateImageInternal(prompt, options = {}) {
-    const { width = 1024, height = 1024 } = options;
+    const { width = 1024, height = 1024, chatId = null, referenceImage = null } = options;
     const settingsStore = useSettingsStore()
     // In some contexts (like plain JS files), Pinia might return the raw ref object.
     // We check for .value to be safe, ensuring we get the actual configuration object.
@@ -3066,6 +3066,7 @@ async function _generateImageInternal(prompt, options = {}) {
     let provider = drawingVal.provider || 'pollinations'
     let apiKey = (drawingVal.apiKey || '').trim()
     let model = drawingVal.model || 'flux'
+    const volc = drawingVal.volcengine || {}
 
     // REDUNDANT FALLBACK: If store seems empty, try reading directly from localStorage
     if (!apiKey && provider !== 'pollinations') {
@@ -3319,6 +3320,126 @@ async function _generateImageInternal(prompt, options = {}) {
             }
             
             throw e
+        }
+    }
+
+    if (provider === 'volcengine') {
+        // v1.10.97: 火山引擎 ARK (豆包 Seedream 文生图 / SeedEdit 图生图)
+        // 端点: https://ark.cn-beijing.volces.com/api/v3/images/generations
+        // 鉴权: Bearer <ARK_API_KEY>(在 火山引擎控制台 → 在线推理 → ARK 创建)
+        if (!apiKey) {
+            throw new Error('请先在「生图配置」中填入火山引擎 ARK API Key')
+        }
+
+        // 决定走文生图还是图生图:有参考图 + 开启 useAppearanceImage → 图生图
+        let useImageModel = false
+        let refImageBase64 = referenceImage
+        if (!refImageBase64 && chatId && volc.useAppearanceImage !== false) {
+            try {
+                const { useChatStore } = await import('@/stores/chatStore')
+                const chatStore = useChatStore()
+                const chat = chatStore.chars?.[chatId] || chatStore.chats?.[chatId]
+                if (chat && chat.appearanceImage) {
+                    refImageBase64 = chat.appearanceImage
+                }
+            } catch (e) {
+                console.warn('[AI Image] volcengine: failed to look up appearance image', e)
+            }
+        }
+        if (refImageBase64) {
+            // 仅在角色提示词或显式标志下启用图生图
+            // 如果 prompt 里出现"全身"+"XX风格"等非人像描述,跳过图生图避免破坏场景
+            const p = (prompt || '').toLowerCase()
+            const looksLikePortrait = /\b(portrait|selfie|face|人物|人像|自拍|角色|character|him|her|me|我|你|他|她)\b/.test(p)
+                || options.isCharacter === true
+                || options.appearanceRef === true
+            if (looksLikePortrait || volc.useAppearanceImage === 'force') {
+                useImageModel = true
+            }
+        }
+
+        const chosenModel = useImageModel
+            ? (volc.image2imageModel || 'doubao-seededit-3-0-i2i-250315')
+            : (volc.text2imageModel || 'doubao-seedream-3-0-t2i-250415')
+
+        const chosenSize = volc.size || `${width}x${height}`
+
+        const body = {
+            model: chosenModel,
+            prompt: enhancedPrompt,
+            size: chosenSize,
+            response_format: 'url',
+            watermark: false
+        }
+        if (useImageModel && refImageBase64) {
+            // 火山引擎 image 字段: 接受 URL 或 base64(data:image/...;base64,...)
+            body.image = refImageBase64
+            if (typeof volc.appearanceStrength === 'number') {
+                body.strength = volc.appearanceStrength  // 不同模型可能叫 scale / strength / guidance
+            }
+        }
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 120000)  // 2 分钟超时
+
+        try {
+            console.log('[AI Image] Volcengine request:', {
+                model: chosenModel,
+                useImageModel,
+                hasRefImage: !!refImageBase64,
+                size: chosenSize
+            })
+            const resp = await fetch('https://ark.cn-beijing.volces.com/api/v3/images/generations', {
+                method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            })
+            clearTimeout(timeoutId)
+
+            const text = await resp.text()
+            if (!resp.ok) {
+                console.error('[AI Image] Volcengine error:', resp.status, text)
+                let msg = `火山引擎 ${resp.status}`
+                try {
+                    const j = JSON.parse(text)
+                    msg += `: ${j.error?.message || j.message || text.substring(0, 200)}`
+                } catch (_) {
+                    msg += `: ${text.substring(0, 200)}`
+                }
+                if (resp.status === 401) msg = 'API Key 无效或已过期(401)'
+                else if (resp.status === 403) msg = '权限不足或余额耗尽(403),请检查火山引擎控制台'
+                else if (resp.status === 429) msg = '请求过于频繁(429),请稍后再试'
+                else if (resp.status === 400 && useImageModel) msg += ' (图生图请求体可能不被当前模型接受,试试切到文生图模型)'
+                throw new Error(msg)
+            }
+
+            const data = JSON.parse(text)
+            const imageUrl = data?.data?.[0]?.url || data?.images?.[0]?.url || data?.data?.[0]?.b64_json
+            if (!imageUrl) {
+                throw new Error('火山引擎未返回图片 URL: ' + text.substring(0, 200))
+            }
+            useLoggerStore().addLog('AI', '图片生成成功 (火山引擎)', {
+                model: chosenModel,
+                usedImageRef: useImageModel,
+                hasUrl: imageUrl.startsWith('http')
+            })
+            if (imageUrl.startsWith('data:') || imageUrl.startsWith('http')) {
+                if (imageUrl.startsWith('data:')) return imageUrl
+                return await _persistImageUrl(imageUrl)
+            }
+            return imageUrl
+        } catch (e) {
+            clearTimeout(timeoutId)
+            console.error('[AI Image] Volcengine failed:', e)
+            useLoggerStore().addLog('ERROR', '图片生成失败 (火山引擎)', e.message)
+            if (e.name === 'AbortError' || e.message.includes('aborted')) {
+                throw new Error('请求火山引擎超时(120 秒),请检查网络或模型响应')
+            }
+            throw new Error(`火山引擎生图失败: ${e.message}`)
         }
     }
 
