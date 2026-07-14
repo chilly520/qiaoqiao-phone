@@ -973,10 +973,10 @@ const handleImport = async (e) => {
         <!-- Hidden Import Input -->
         <input type="file" ref="importFileInput" class="hidden" accept=".json" @change="handleImport">
 
-        <!-- Chat Window Overlay -->
-        <ChatWindow v-if="chatStore.currentChatId && !settingsStore.isOfflineMode" v-show="!showMoments" class="absolute inset-0 z-50"
+        <!-- Chat Window Overlay (v1.10.109: hide via v-if so it's fully removed from DOM, avoiding backdrop-filter leak) -->
+        <ChatWindow v-if="chatStore.currentChatId && !settingsStore.isOfflineMode && !showMoments" class="absolute inset-0 z-50"
             @back="handleChatBack" :initial-unread-count="initialUnreadCount" @show-profile="openProfileFromChat" />
-        <OfflineModeChatWindow v-if="chatStore.currentChatId && settingsStore.isOfflineMode" v-show="!showMoments" class="absolute inset-0 z-50"
+        <OfflineModeChatWindow v-if="chatStore.currentChatId && settingsStore.isOfflineMode && !showMoments" class="absolute inset-0 z-50"
             @back="handleChatBack" :initial-unread-count="initialUnreadCount" @show-profile="openProfileFromChat" />
 
         <WorldLoopCreateModal :visible="showCreateLoopModal" :contacts="chatStore.contactList.filter(c => !c.isGroup && !c.loopId)"
@@ -1054,10 +1054,12 @@ const handleImport = async (e) => {
             </div>
         </div>
 
-        <!-- Moments View (New) -->
-        <MomentsView v-if="showMoments"
-            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #ededed; z-index: 20000;"
-            :initial-profile-id="momentsInitialProfileId" @back="goBack" />
+        <!-- Moments View (Teleport to body to avoid transform/filter ancestor breaking position:fixed) -->
+        <Teleport to="body">
+            <MomentsView v-if="showMoments"
+                style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #ededed; z-index: 20000;"
+                :initial-profile-id="momentsInitialProfileId" @back="goBack" />
+        </Teleport>
 
         <!-- Main App Content (Hide when overlays are open to prevent misalignment) -->
         <template v-if="!chatStore.currentChatId && !showMoments">
