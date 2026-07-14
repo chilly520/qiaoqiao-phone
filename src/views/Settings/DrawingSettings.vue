@@ -202,8 +202,10 @@ const testGenerate = async () => {
 
                 <div class="flex items-center justify-between p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-100">
                     <div class="flex-1">
-                        <div class="text-xs font-bold text-gray-800">🎨 自动使用角色形象图作参考</div>
-                        <div class="text-[10px] text-gray-500 mt-0.5">开启后,生成人像时自动以"形象图"为 image 参考(图生图)</div>
+                        <div class="text-xs font-bold text-gray-800">🎨 智能使用角色形象图作参考</div>
+                        <div class="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
+                            开启后,人像提示词(我/你/他/她/角色/人物…)自动以形象图为参考(图生图);风景/美食/动物/物品等场景直接文生图不参考
+                        </div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" v-model="drawingConfig.volcengine.useAppearanceImage" class="sr-only peer">

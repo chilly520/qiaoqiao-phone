@@ -1459,6 +1459,34 @@ const seeImageResult = ref('')
 const seeImageHistory = ref([])
 const currentHistoryIndex = ref(-1)
 
+// v1.10.112: 火山引擎模式切换
+// - 't2i': 文生图(可选「智能」用形象图,无参考图上传)
+// - 'i2i': 图生图(必传参考图,可上传或选角色形象图)
+const seeImageMode = ref('t2i')
+const seeImageRefImage = ref('') // base64
+const seeImageRefPreview = ref('') // preview url
+const seeImageUseAppearance = ref(true) // 图生图模式下,是否用角色形象图
+const seeImageFileInput = ref(null)
+
+// 判断火山引擎是否配置可用
+const isVolcengineReady = computed(() => {
+    const drawing = settingsStore.drawing || {}
+    const provider = drawing.provider
+    const apiKey = (drawing.apiKey || '').trim()
+    const volc = drawing.volcengine || {}
+    return provider === 'volcengine' && !!apiKey && !!volc.text2imageModel
+})
+
+// 当前选中的模型描述(给用户看)
+const seeImageModelHint = computed(() => {
+    const drawing = settingsStore.drawing || {}
+    const volc = drawing.volcengine || {}
+    if (seeImageMode.value === 'i2i') {
+        return volc.image2imageModel || 'doubao-seededit-3-0-i2i-250315'
+    }
+    return volc.text2imageModel || 'doubao-seedream-3-0-t2i-250415'
+})
+
 // Touch slide variables for image preview
 let touchStartX = 0
 let touchEndX = 0
@@ -1679,21 +1707,33 @@ const handleFamilyCardAction = (actionType) => {
 // v1.10.104: 不再走 translateToEnglish(聊天 API)
 //        直接把中文 prompt 交给生图 API(Pollinations/SiliconFlow 都接受中文)
 //        省一轮聊天请求,避开 thinking 模型耗时长的问题
+// v1.10.112: 支持 t2i / i2i 模式,智能判断是否使用角色形象图
 const generateSeeImage = async () => {
     if (!seeImagePrompt.value.trim()) {
         showToast('请输入生图提示词', 'info')
         return
     }
+    if (seeImageMode.value === 'i2i' && !seeImageRefImage.value) {
+        showToast('图生图模式请先上传或选择参考图', 'info')
+        return
+    }
 
     seeImageLoading.value = true
     try {
-        console.log('开始生成图片:', seeImagePrompt.value)
-        // v1.10.104: 砍掉 setTimeout 模拟 + 中文→英文翻译,直接用原 prompt 调生图 API
         const prompt = seeImagePrompt.value.trim()
-        console.log('生图 prompt:', prompt)
+        const options = { chatId: chatStore.currentChatId }
 
-        // 使用真实的生图API生成图片(直接用中文,不再走聊天 API 翻译)
-        const generatedImageUrl = await generateImage(prompt)
+        if (seeImageMode.value === 'i2i') {
+            // 图生图:必传 referenceImage,后端必然走 i2i 模型
+            options.referenceImage = seeImageRefImage.value
+        } else {
+            // 文生图:智能模式交给后端根据 prompt 自动判断
+            // 传 useAppearance: 'auto' → 走关键词智能检测(人像用形象图、风景不用)
+            options.useAppearance = 'auto'
+        }
+
+        console.log('[见图] generateSeeImage', { mode: seeImageMode.value, prompt, hasRef: !!options.referenceImage })
+        const generatedImageUrl = await generateImage(prompt, options)
         console.log('生成的图片URL:', generatedImageUrl)
 
         // 添加到历史记录
@@ -1705,7 +1745,7 @@ const generateSeeImage = async () => {
         showToast('图片生成成功', 'success')
     } catch (error) {
         console.error('生成图片失败:', error)
-        showToast('生成图片失败，请重试', 'error')
+        showToast('生成图片失败：' + (error.message || ''), 'error')
     } finally {
         seeImageLoading.value = false
         console.log('生成图片过程结束')
@@ -1785,6 +1825,59 @@ const closeSeeImageModal = () => {
     seeImageResult.value = ''
     seeImageHistory.value = []
     currentHistoryIndex.value = -1
+    // v1.10.112: 重置模式
+    seeImageMode.value = 't2i'
+    seeImageRefImage.value = ''
+    seeImageRefPreview.value = ''
+    seeImageUseAppearance.value = true
+}
+
+// v1.10.112: 图生图模式下的参考图上传
+const triggerSeeImageFile = () => {
+    if (seeImageFileInput.value) seeImageFileInput.value.click()
+}
+
+const handleSeeImageFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+        showToast('请选择图片文件', 'error')
+        e.target.value = ''
+        return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('图片不能超过 10MB', 'error')
+        e.target.value = ''
+        return
+    }
+    try {
+        const compressed = await compressImage(file, 1024, 0.85)
+        seeImageRefImage.value = compressed
+        seeImageRefPreview.value = compressed
+        seeImageUseAppearance.value = false // 用户上传了图,就不再用形象图
+    } catch (err) {
+        console.error('参考图压缩失败', err)
+        showToast('参考图处理失败', 'error')
+    } finally {
+        e.target.value = ''
+    }
+}
+
+const useCharacterAppearanceAsRef = () => {
+    const char = chatStore.chats?.[chatStore.currentChatId]
+    if (char && char.appearanceImage) {
+        seeImageRefImage.value = char.appearanceImage
+        seeImageRefPreview.value = char.appearanceImage
+        seeImageUseAppearance.value = true
+        showToast('已使用角色形象图作参考', 'success')
+    } else {
+        showToast('该角色未设置形象图,请先在「角色设置 - 形象图」上传', 'info')
+    }
+}
+
+const clearSeeImageRef = () => {
+    seeImageRefImage.value = ''
+    seeImageRefPreview.value = ''
 }
 
 // Handle sending family card after user fills form
@@ -3889,7 +3982,10 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                 @click.stop>
                 <!-- Header -->
                 <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-white">
-                    <h3 class="font-bold text-xl text-gray-800">见图</h3>
+                    <div>
+                        <h3 class="font-bold text-xl text-gray-800">见图</h3>
+                        <p class="text-[10px] text-gray-400 mt-0.5 font-mono">{{ seeImageModelHint }}</p>
+                    </div>
                     <button @click="closeSeeImageModal" class="text-gray-400 hover:text-gray-600 transition-colors">
                         <i class="fa-solid fa-xmark text-xl"></i>
                     </button>
@@ -3897,6 +3993,71 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
 
                 <!-- Body -->
                 <div class="p-6">
+                    <!-- v1.10.112: 文生图 / 图生图 模式切换(仅火山引擎配置后显示) -->
+                    <div v-if="isVolcengineReady" class="mb-4">
+                        <div class="grid grid-cols-2 gap-2 p-1 bg-gray-200/60 rounded-xl">
+                            <button @click="seeImageMode = 't2i'" :disabled="seeImageLoading"
+                                class="py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5"
+                                :class="seeImageMode === 't2i' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500'">
+                                <i class="fa-solid fa-font"></i> 文生图
+                            </button>
+                            <button @click="seeImageMode = 'i2i'" :disabled="seeImageLoading"
+                                class="py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5"
+                                :class="seeImageMode === 'i2i' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500'">
+                                <i class="fa-solid fa-image"></i> 图生图
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mt-1.5 ml-1">
+                            <span v-if="seeImageMode === 't2i'">
+                                <i class="fa-solid fa-circle-info"></i>
+                                输入文字描述生成图片。系统会自动检测:人像用角色形象图作参考,风景/美食/物品直接生成
+                            </span>
+                            <span v-else>
+                                <i class="fa-solid fa-circle-info"></i>
+                                上传参考图,生成同风格/同角色的新图片
+                            </span>
+                        </p>
+                    </div>
+
+                    <!-- v1.10.112: 图生图模式下的参考图上传区 -->
+                    <div v-if="seeImageMode === 'i2i'" class="mb-4">
+                        <label class="block text-sm font-medium text-gray-600 mb-2">参考图</label>
+                        <div v-if="!seeImageRefPreview" @click="triggerSeeImageFile"
+                            class="w-full border-2 border-dashed border-gray-300 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer hover:border-pink-400 hover:bg-pink-50/30 transition-colors min-h-[140px]">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-300 mb-2"></i>
+                            <p class="text-sm text-gray-500 font-medium">点击上传参考图</p>
+                            <p class="text-[10px] text-gray-400 mt-1">支持 JPG/PNG,最大 10MB,自动压缩到 1024px</p>
+                        </div>
+                        <div v-else class="relative w-full border border-gray-200 rounded-xl overflow-hidden bg-white p-2">
+                            <img :src="seeImageRefPreview" class="w-full h-48 object-contain rounded">
+                            <div class="absolute top-3 right-3 flex gap-1.5">
+                                <button @click="triggerSeeImageFile"
+                                    class="w-8 h-8 rounded-full bg-white/90 backdrop-blur shadow-md text-gray-600 hover:text-pink-500 flex items-center justify-center"
+                                    title="换一张">
+                                    <i class="fa-solid fa-rotate-right text-xs"></i>
+                                </button>
+                                <button @click="clearSeeImageRef"
+                                    class="w-8 h-8 rounded-full bg-white/90 backdrop-blur shadow-md text-red-500 flex items-center justify-center"
+                                    title="删除参考图">
+                                    <i class="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            </div>
+                            <div v-if="seeImageUseAppearance"
+                                class="absolute top-3 left-3 bg-pink-500/90 backdrop-blur text-white text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-id-card"></i> 角色形象图
+                            </div>
+                        </div>
+                        <!-- 快速操作:使用角色形象图 -->
+                        <div class="flex gap-2 mt-2">
+                            <button @click="useCharacterAppearanceAsRef"
+                                class="flex-1 text-xs text-pink-600 bg-pink-50 px-3 py-2 rounded-lg border border-pink-100 flex items-center justify-center gap-1.5 hover:bg-pink-100 transition-colors font-medium">
+                                <i class="fa-solid fa-id-card"></i> 使用角色形象图
+                            </button>
+                        </div>
+                        <input type="file" ref="seeImageFileInput" class="hidden" accept="image/*"
+                            @change="handleSeeImageFileChange">
+                    </div>
+
                     <!-- Prompt Input -->
                     <div class="mb-5">
                         <label class="block text-sm font-medium text-gray-600 mb-3">生图提示词</label>
@@ -3913,7 +4074,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                             <i class="fa-solid fa-spinner fa-spin mr-2"></i>生成中...
                         </span>
                         <span v-else>
-                            <i class="fa-solid fa-magic mr-2"></i>生成图片
+                            <i class="fa-solid fa-magic mr-2"></i>{{ seeImageMode === 'i2i' ? '生成图生图' : '生成图片' }}
                         </span>
                     </button>
 

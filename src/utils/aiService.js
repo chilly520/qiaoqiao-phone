@@ -3334,7 +3334,25 @@ async function _generateImageInternal(prompt, options = {}) {
         // 决定走文生图还是图生图:有参考图 + 开启 useAppearanceImage → 图生图
         let useImageModel = false
         let refImageBase64 = referenceImage
-        if (!refImageBase64 && chatId && volc.useAppearanceImage !== false) {
+        // v1.10.112: 智能人像/非人像检测
+        // - portraitKeywords: 触发形象图参考(人像)
+        // - nonPortraitKeywords: 跳过形象图参考(风景/美食/动物/物品)
+        // - isNonPortraitOnly: 提示词里只有非人像关键词(明确不要人)
+        const portraitKeywords = /\b(我|你|他|她|它|角色|人物|人像|自拍|全身|头像|肖像|真人|拟人|合影|情侣|我的|你的|他的|她的|它的|我们|他们|她们|我的|我的角色|这个角色|那个角色|character|portrait|selfie|person|people|face|me|him|her|himself|herself|myself|us|them|couple|kiss|hug|romantic|boyfriend|girlfriend|husband|wife|waifu|husbando)\b/i
+        const nonPortraitKeywords = /\b(风景|山水|风景照|风景画|街景|建筑|城市|夜景|日出|日落|天空|云彩|海洋|大海|森林|树木|花草|花卉|花园|公园|室内|房间|客厅|卧室|厨房|餐厅|食物|美食|菜|菜品|甜点|蛋糕|咖啡|餐|料理|水果|蔬菜|动物|猫|狗|鸟|鱼|兔子|仓鼠|物品|家具|装饰|车|汽车|单车|工具|书|画|海报|logo|icon|图标|风景图|风景壁纸|手机壁纸|scenery|landscape|cityscape|building|sky|cloud|sunset|sunrise|night view|forest|tree|flower|garden|park|room|interior|kitchen|food|dish|meal|cake|coffee|dessert|fruit|animal|cat|dog|bird|fish|object|tool|car|book|logo|wallpaper|background only|no person|no people|without person)\b/i
+        const isNonPortraitOnly = nonPortraitKeywords.test(prompt) && !portraitKeywords.test(prompt)
+
+        // v1.10.112: 选项 useAppearance: 'auto'(默认) | true | false
+        // 兼容旧版 volc.useAppearanceImage: true/false/'force'
+        const callerWantsAppearance = options.useAppearance === true
+        const callerForbidsAppearance = options.useAppearance === false
+        const configDisabled = volc.useAppearanceImage === false
+        const configForced = volc.useAppearanceImage === 'force' || options.useAppearance === true
+        const configAuto = volc.useAppearanceImage !== false && options.useAppearance !== false
+
+        // 决定是否拉角色形象图作参考
+        const shouldLookupAppearance = !callerForbidsAppearance && !configDisabled && configAuto && !referenceImage
+        if (shouldLookupAppearance && chatId) {
             try {
                 const { useChatStore } = await import('@/stores/chatStore')
                 const chatStore = useChatStore()
@@ -3347,14 +3365,19 @@ async function _generateImageInternal(prompt, options = {}) {
             }
         }
         if (refImageBase64) {
-            // 仅在角色提示词或显式标志下启用图生图
-            // 如果 prompt 里出现"全身"+"XX风格"等非人像描述,跳过图生图避免破坏场景
-            const p = (prompt || '').toLowerCase()
-            const looksLikePortrait = /\b(portrait|selfie|face|人物|人像|自拍|角色|character|him|her|me|我|你|他|她)\b/.test(p)
-                || options.isCharacter === true
-                || options.appearanceRef === true
-            if (looksLikePortrait || volc.useAppearanceImage === 'force') {
+            // 走图生图的判定:
+            // 1. 用户显式要求(appearanceRef / isCharacter)
+            // 2. config 强制 (useAppearanceImage === 'force' / useAppearance === true)
+            // 3. 提示词里有人像关键词,且不是「非人像」场景
+            const isExplicitPortrait = options.isCharacter === true || options.appearanceRef === true
+            const isForced = configForced
+            const hasPortraitHint = portraitKeywords.test(prompt)
+            if (isExplicitPortrait || isForced || (hasPortraitHint && !isNonPortraitOnly)) {
                 useImageModel = true
+            } else if (isNonPortraitOnly) {
+                // 明确是风景/美食/物品等场景,不要参考形象图 → 改走文生图
+                console.log('[AI Image] volcengine: detected non-portrait prompt, skipping appearance image ref')
+                refImageBase64 = null
             }
         }
 
