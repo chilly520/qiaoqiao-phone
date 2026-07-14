@@ -48,6 +48,7 @@ import { useSparkStore } from '../../stores/sparkStore'
 
 import SafeHtmlCard from '../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../components/MomentShareCard.vue'
+import ImagePreview from '../../components/ImagePreview.vue'
 import { marked } from 'marked'
 import { compressImage } from '../../utils/imageUtils'
 import { generateImage } from '../../utils/aiService'
@@ -3149,8 +3150,14 @@ const playMessageTTS = (text) => {
     window.speechSynthesis.speak(utterance)
 }
 
-const previewImage = (src) => {
-    window.open(src, '_blank')
+const showImagePreview = ref(false)
+const previewImageSrc = ref('')
+const handlePreviewImage = (src) => {
+    previewImageSrc.value = src
+    showImagePreview.value = true
+}
+const closeImagePreview = () => {
+    showImagePreview.value = false
 }
 
 
@@ -3664,7 +3671,8 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         @avatar-longpress="handleAvatarLongPress" @context-menu="(e) => handleContextMenu(e.msg, e.event)"
                         @toggle-select="toggleMessageSelection" @click-pay="handlePayClick" @click-gift="handleGiftClick"
                         @play-voice="handleVoiceClick" @show-rank="handleShowRank"
-                        @payment-response="handlePaymentResponse" @click-timer="showMissionScheduler = true" />
+                        @payment-response="handlePaymentResponse" @click-timer="showMissionScheduler = true"
+                        @preview-image="handlePreviewImage" />
                 </template>
 
 
@@ -3737,7 +3745,7 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
             <CallVisualizer v-if="callStore.status !== 'none'" />
 
             <!-- Media Previews -->
-            <ImagePreview v-if="previewImage" :src="previewImage" @close="previewImage = null" />
+            <ImagePreview :show="showImagePreview" :src="previewImageSrc" @close="closeImagePreview" />
             <VideoPreview v-if="previewVideo" :src="previewVideo" @close="previewVideo = null" />
 
             <!-- Hidden Input -->

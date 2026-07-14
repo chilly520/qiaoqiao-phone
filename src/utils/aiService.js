@@ -3060,14 +3060,13 @@ export async function generateImage(prompt, options = {}) {
 async function _generateImageInternal(prompt, options = {}) {
     const { width = 1024, height = 1024, chatId = null, referenceImage = null } = options;
     const settingsStore = useSettingsStore()
-    // In some contexts (like plain JS files), Pinia might return the raw ref object.
-    // We check for .value to be safe, ensuring we get the actual configuration object.
     const drawingVal = settingsStore.drawing?.value || settingsStore.drawing || {}
     let provider = drawingVal.provider || 'pollinations'
-    // v1.10.115: 每渠道独立 key/model,从 keys[provider] / models[provider] 读取
     let apiKey = (drawingVal.keys?.[provider] || drawingVal.apiKey || '').trim()
     let model = drawingVal.models?.[provider] || drawingVal.model || (provider === 'pollinations' ? 'flux' : '')
     const volc = drawingVal.volcengine || {}
+    const globalImageStyle = drawingVal.globalImageStyle || 'realistic'
+    const isRealisticStyle = globalImageStyle === 'realistic'
 
     // REDUNDANT FALLBACK: If store seems empty, try reading directly from localStorage
     if (!apiKey && provider !== 'pollinations') {
@@ -3118,33 +3117,46 @@ async function _generateImageInternal(prompt, options = {}) {
     const isPerson = isMale || isFemale || isCouple || /\b(person|human|people|face|selfie|character)\b/.test(p)
     const hasAbs = /\b(abs|muscle|muscular|six pack)\b/.test(p)
 
-    // Extreme negative boosters - EXPLICITLY ban muscles, exposed chest, bad anatomy, wrong age, and unwanted backgrounds
-    // v1.10.113: 大幅强化对 "公园/花" 的负向权重,火山引擎没有独立的 negative_prompt 字段,需要把这些负向直接 inline 进 prompt
-    let negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (muscular:1.8), (bulky:1.8), (thick neck:1.5), (abs:1.8), (exposed chest:1.8), (open shirt:1.5), (pecs:1.8), (bodybuilder:2.0), (buff:1.8), (ugly:1.3), (bad anatomy:1.5), (bad proportions:1.5), (malformed limbs:1.5), (extra limbs:1.5), (missing limbs:1.5), (extra digits:1.5), (fused fingers:1.5), (too many fingers:1.5), (poorly drawn hands:1.5), (poorly drawn face:1.5), (mutation:1.5), (deformed:1.5), (child:1.8), (little girl:1.8), (little boy:1.8), (kid:1.8), (loli:1.8), (shota:1.8), (teenager:1.3), (adolescent:1.3), (flowers:1.9), (flower:1.9), (floral:1.9), (blossom:1.9), (blossoms:1.9), (cherry blossom:1.9), (rose:1.8), (roses:1.8), (tulip:1.8), (lily:1.8), (sunflower:1.8), (daisy:1.8), (wisteria:1.8), (lavender:1.8), (bouquet:1.8), (wreath:1.8), (petals:1.8), (flower field:1.9), (flower garden:1.9), (flowerbed:1.9), (flowerbed:1.9), (flower shop:1.8), (vase of flowers:1.8), (park:1.9), (public park:1.9), (city park:1.9), (park bench:1.9), (parking lot park:1.5), (garden:1.8), (botanical garden:1.9), (English garden:1.9), (Japanese garden:1.8), (flowers background:1.9), (floral background:1.9), (garden background:1.9), (nature background:1.5), (outdoor flowers:1.9), (field of flowers:1.9), (blossom background:1.9), (cherry blossom background:1.9), (cherry tree:1.8), (rose background:1.9), (lily of the valley:1.8), (blooming:1.7), (bloom:1.6), (in bloom:1.7), (petal:1.8), (petals falling:1.8), (grass field:1.4), (meadow:1.4), (worst quality), (low quality), (monochrome), (3d:1.5), (realistic:1.5), (photorealistic:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5)"
+    let negativeBoost = "(beard:1.5), (mustache:1.5), (facial hair:1.5), (stubble:1.4), (old:1.4), (wrinkles:1.3), (ugly:1.3), (bad anatomy:1.5), (bad proportions:1.5), (malformed limbs:1.5), (extra limbs:1.5), (missing limbs:1.5), (extra digits:1.5), (fused fingers:1.5), (too many fingers:1.5), (poorly drawn hands:1.5), (poorly drawn face:1.5), (mutation:1.5), (deformed:1.5), (child:1.8), (little girl:1.8), (little boy:1.8), (kid:1.8), (loli:1.8), (shota:1.8), (worst quality), (low quality), (watermark)"
+
+    if (isRealisticStyle) {
+        negativeBoost += ", (anime:1.8), (cartoon:1.8), (illustration:1.5), (2d:1.5), (cel shading:1.5), (drawing:1.5), (painting:1.3)"
+    } else {
+        negativeBoost += ", (realistic:1.5), (photorealistic:1.5), (3d:1.5), (thick painting:1.6), (semirealism:1.5), (oil painting:1.5), (sketch), (korean manhwa:1.5), (flowers:1.9), (flower:1.9), (floral:1.9), (blossom:1.9), (blossoms:1.9), (cherry blossom:1.9), (rose:1.8), (roses:1.8), (tulip:1.8), (lily:1.8), (sunflower:1.8), (daisy:1.8), (wisteria:1.8), (lavender:1.8), (bouquet:1.8), (wreath:1.8), (petals:1.8), (flower field:1.9), (flower garden:1.9), (flowerbed:1.9), (flowerbed:1.9), (flower shop:1.8), (vase of flowers:1.8), (park:1.9), (public park:1.9), (city park:1.9), (park bench:1.9), (parking lot park:1.5), (garden:1.8), (botanical garden:1.9), (English garden:1.9), (Japanese garden:1.8), (flowers background:1.9), (floral background:1.9), (garden background:1.9), (nature background:1.5), (outdoor flowers:1.9), (field of flowers:1.9), (blossom background:1.9), (cherry blossom background:1.9), (cherry tree:1.8), (rose background:1.9), (lily of the valley:1.8), (blooming:1.7), (bloom:1.6), (in bloom:1.7), (petal:1.8), (petals falling:1.8), (grass field:1.4), (meadow:1.4)"
+    }
 
     let enhancedPrompt = ""
-    // Universal Anime Style Base - Strictly 2D Japanese Anime, counter Kolors' thick-paint default
     const animeStyleBase = "(anime style:1.6), (Japanese anime style:1.5), (light novel illustration:1.4), (clean lineart:1.4), (flat shading:1.3), (2D:1.6), (illustration:1.4), (cel shading:1.3), (pastel colors), (soft lighting), (no thick painting), (no korean manhwa), (no realistic), (no 3D)"
-    // v1.10.113: 默认背景强化 - 强制城市/室内/简洁背景,强力负向禁止"花/公园/花园"
-    const defaultBackground = "(modern city background: 1.5), (urban setting: 1.4), (indoor environment: 1.4), (clean simple background: 1.4), (no flowers: 1.9), (no flower: 1.9), (no floral: 1.9), (no garden: 1.8), (no park: 1.9), (no blossom: 1.8), (no rose: 1.8), (no bouquet: 1.8), (no petals: 1.7), (no botanical: 1.8), (no flower field: 1.9), (no flower bed: 1.8), (no flowerbed: 1.8), (no flower shop: 1.7), (no meadow: 1.5), (no grass field: 1.4)"
+    const realisticStyleBase = "(photorealistic:1.6), (realistic:1.5), (hyperrealistic:1.3), (8k uhd:1.4), (professional photography:1.5), (natural lighting:1.3), (high detail:1.4), (sharp focus:1.3), (film grain:0.8), (DSLR photo:1.3)"
+    const styleBase = isRealisticStyle ? realisticStyleBase : animeStyleBase
+    const defaultBackground = isRealisticStyle 
+        ? "(natural background:1.3), (realistic environment:1.2), (no flowers:1.5), (no park:1.3)"
+        : "(modern city background: 1.5), (urban setting: 1.4), (indoor environment: 1.4), (clean simple background: 1.4), (no flowers: 1.9), (no flower: 1.9), (no floral: 1.9), (no garden: 1.8), (no park: 1.9), (no blossom: 1.8), (no rose: 1.8), (no bouquet: 1.8), (no petals: 1.7), (no botanical: 1.8), (no flower field: 1.9), (no flower bed: 1.8), (no flowerbed: 1.8), (no flower shop: 1.7), (no meadow: 1.5), (no grass field: 1.4)"
 
     if (options.isProduct) {
-        // Strict E-commerce Product Strategy
         negativeBoost = "(human:1.8), (person:1.8), (people:1.8), (face:1.8), (hands:1.8), (body:1.8), (fingers:1.8), (model:1.8), (ugly:1.3), (worst quality), (low quality), (blurry), (watermark)"
         enhancedPrompt = `masterpiece, highly detailed, professional product photography, (photorealistic:1.5), (realistic:1.5), studio lighting, 8k resolution, crisp focus, (product only:1.5), (no humans:1.8), ${prompt}`
     } else if (isCouple) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, ${prompt}, (two distinct individuals), (young adult couple: 1.5), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), romantic atmosphere, highly detailed, 18-25 years old`
+        const coupleDesc = isRealisticStyle 
+            ? "(realistic couple portrait:1.5), (natural skin texture:1.3), (candid photo:1.2)"
+            : "(two distinct individuals), (young adult couple: 1.5)"
+        enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${coupleDesc}, ${prompt}, (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), romantic atmosphere, highly detailed, 18-25 years old`
     } else if (isMale) {
-        // STRICT Bishounen aesthetic: slender, elegant, NO muscles, CLOTHED, YOUNG ADULT
-        // Force clothing and ban exposed skin unless explicitly requested
         const clothingEnforcement = hasAbs ? "" : "(fully clothed:1.4), (wearing shirt:1.3), (covered chest:1.3), "
-        const bodyType = hasAbs ? "(lean athletic build:1.2)" : "(slender elegant build:1.5), (thin:1.3), (no muscles:1.5), (delicate frame:1.3)"
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, (beautiful bishounen: 1.6), (pretty boy: 1.4), (young adult man: 1.5), (otome game cg: 1.5), (delicate features: 1.4), (clean shaven: 1.3), (no facial hair: 1.3), ${clothingEnforcement}${bodyType}, (soft expression), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, detailed sparkling eyes, handsome, elegant, 20-25 years old`
+        const bodyType = hasAbs ? "(lean athletic build:1.2)" : isRealisticStyle 
+            ? "(average build:1.3), (natural physique:1.3), (normal body:1.2)"
+            : "(slender elegant build:1.5), (thin:1.3), (no muscles:1.5), (delicate frame:1.3)"
+        const maleDesc = isRealisticStyle
+            ? "(handsome young man: 1.6), (attractive man: 1.4), (natural features: 1.3)"
+            : "(beautiful bishounen: 1.6), (pretty boy: 1.4), (young adult man: 1.5), (otome game cg: 1.5), (delicate features: 1.4)"
+        enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${maleDesc}, (clean shaven: 1.3), (no facial hair: 1.3), ${clothingEnforcement}${bodyType}, (soft expression), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, ${isRealisticStyle ? 'natural skin texture, detailed eyes, professional portrait, 20-28 years old' : 'detailed sparkling eyes, handsome, elegant, 20-25 years old'}`
     } else if (isFemale || isPerson) {
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, (beautiful anime girl: 1.3), (young adult woman: 1.5), (detailed huge eyes), (soft skin), (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, vibrant pastel colors, cute, 18-22 years old`
+        const femaleDesc = isRealisticStyle
+            ? "(beautiful young woman:1.5), (attractive woman:1.4), (natural beauty:1.3), (soft natural makeup:1.1)"
+            : "(beautiful anime girl: 1.3), (young adult woman: 1.5), (detailed huge eyes)"
+        enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${femaleDesc}, (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, ${isRealisticStyle ? 'natural skin, realistic eyes, natural lighting, portrait photography, 18-28 years old' : 'vibrant pastel colors, cute, 18-22 years old'}`
     } else {
-        // Fallback also anime
-        enhancedPrompt = `masterpiece, best quality, ${animeStyleBase}, ${defaultBackground}, ${prompt}, highly detailed, sharp focus, vibrant colors, clear background`
+        enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${prompt}, highly detailed, sharp focus, ${isRealisticStyle ? 'natural colors, realistic lighting, professional photo' : 'vibrant colors, clear background'}`
     }
 
     const seed = Math.floor(Math.random() * 1000000)

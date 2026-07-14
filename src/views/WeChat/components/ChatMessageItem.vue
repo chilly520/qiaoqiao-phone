@@ -1545,7 +1545,8 @@ const emit = defineEmits([
     'click-avatar', 'dblclick-avatar', 'context-menu', 'avatar-longpress',
     'toggle-select', 'click-pay', 'play-voice', 'click-gift',
     'payment-response', 'click-order', 'accept-request', 'ignore-request',
-    'longpress-avatar', 'show-rank', 'click-moment', 'vote', 'end-vote', 'resend'
+    'longpress-avatar', 'show-rank', 'click-moment', 'vote', 'end-vote', 'resend',
+    'preview-image'
 ])
 
 const stickerStore = useStickerStore()
@@ -3623,8 +3624,7 @@ function handleImageError(e) {
 }
 
 function previewImage(src) {
-    // We could emit or just open. Original used window.open
-    window.open(src, '_blank')
+    emit('preview-image', src)
 }
 
 function handleToggleVoice() {

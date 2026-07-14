@@ -194,12 +194,45 @@
           <span>{{ character.appearanceImage ? '更换形象图' : '上传形象图(生图参考)' }}</span>
         </button>
 
+        <!-- 生图风格切换 -->
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-3">
+          <div class="text-xs font-bold text-blue-900 mb-2 flex items-center gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles text-blue-500"></i>
+            <span>生图风格（人像/环境/食物等）</span>
+          </div>
+          <div class="flex gap-2">
+            <button 
+              @click="setGlobalImageStyle('realistic')"
+              class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              :class="settingsStore.drawing.globalImageStyle === 'realistic' 
+                ? 'bg-blue-500 text-white shadow-md shadow-blue-500/30' 
+                : 'bg-white text-gray-600 border border-gray-200 hover:border-blue-300'">
+              <i class="fa-solid fa-camera"></i>
+              <span>真实照片</span>
+            </button>
+            <button 
+              @click="setGlobalImageStyle('anime')"
+              class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              :class="settingsStore.drawing.globalImageStyle === 'anime' 
+                ? 'bg-purple-500 text-white shadow-md shadow-purple-500/30' 
+                : 'bg-white text-gray-600 border border-gray-200 hover:border-purple-300'">
+              <i class="fa-solid fa-star"></i>
+              <span>动漫插画</span>
+            </button>
+          </div>
+          <div class="text-[10px] text-blue-600/70 mt-2 leading-relaxed">
+            {{ settingsStore.drawing.globalImageStyle === 'realistic' 
+              ? '真实版：生成照片级写实图像，适合真人形象参考' 
+              : '漫画版：生成日系动漫风格插画，色彩明亮可爱' }}
+          </div>
+        </div>
+
         <div v-if="character.appearanceImage" class="bg-pink-50 border border-pink-100 rounded-2xl p-3 space-y-2">
           <div class="flex items-center gap-2">
             <img :src="character.appearanceImage" class="w-16 h-16 rounded-xl object-cover border border-pink-200" alt="appearance">
             <div class="flex-1 min-w-0">
               <div class="text-xs font-bold text-pink-900">🎨 形象参考图已设置</div>
-              <div class="text-[10px] text-pink-700 mt-0.5 leading-relaxed">生图服务(火山引擎)将以这张图作为参考,生成的形象会更接近 TA</div>
+              <div class="text-[10px] text-pink-700 mt-0.5 leading-relaxed">生图服务将以这张图作为参考,生成的形象会更接近 TA</div>
             </div>
             <button @click="clearAppearanceImage" class="text-pink-400 hover:text-pink-600 p-1" title="删除形象图">
               <i class="fa-solid fa-trash-can text-sm"></i>
@@ -609,6 +642,12 @@ const clearAppearanceImage = async () => {
     console.error('删除形象图失败:', error)
     chatStore.triggerToast('删除失败', 'error')
   }
+}
+
+const setGlobalImageStyle = (style) => {
+  settingsStore.drawing.globalImageStyle = style
+  settingsStore.saveToStorage()
+  chatStore.triggerToast(style === 'realistic' ? '已切换为真实照片风格' : '已切换为动漫插画风格', 'success')
 }
 </script>
 
