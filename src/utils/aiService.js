@@ -3351,14 +3351,19 @@ async function _generateImageInternal(prompt, options = {}) {
 
         // 决定走文生图还是图生图:有参考图 + 开启 useAppearanceImage → 图生图
         let useImageModel = false
-        let refImageBase64 = referenceImage
+        let refImages = []  // v1.11.0: 改为数组,支持多图参考(Seedream 4.0+ 最多14张)
         // v1.10.112: 智能人像/非人像检测
         // - portraitKeywords: 触发形象图参考(人像)
         // - nonPortraitKeywords: 跳过形象图参考(风景/美食/动物/物品)
         // - isNonPortraitOnly: 提示词里只有非人像关键词(明确不要人)
         const portraitKeywords = /\b(我|你|他|她|它|角色|人物|人像|自拍|全身|头像|肖像|真人|拟人|合影|情侣|我的|你的|他的|她的|它的|我们|他们|她们|我的|我的角色|这个角色|那个角色|character|portrait|selfie|person|people|face|me|him|her|himself|herself|myself|us|them|couple|kiss|hug|romantic|boyfriend|girlfriend|husband|wife|waifu|husbando)\b/i
         const nonPortraitKeywords = /\b(风景|山水|风景照|风景画|街景|建筑|城市|夜景|日出|日落|天空|云彩|海洋|大海|森林|树木|花草|花卉|花园|公园|室内|房间|客厅|卧室|厨房|餐厅|食物|美食|菜|菜品|甜点|蛋糕|咖啡|餐|料理|水果|蔬菜|动物|猫|狗|鸟|鱼|兔子|仓鼠|物品|家具|装饰|车|汽车|单车|工具|书|画|海报|logo|icon|图标|风景图|风景壁纸|手机壁纸|scenery|landscape|cityscape|building|sky|cloud|sunset|sunrise|night view|forest|tree|flower|garden|park|room|interior|kitchen|food|dish|meal|cake|coffee|dessert|fruit|animal|cat|dog|bird|fish|object|tool|car|book|logo|wallpaper|background only|no person|no people|without person)\b/i
+        // v1.11.0: 合照/两个人关键词
+        const coupleKeywords = /\b(我们|我俩|俩人|两人|两个人|合照|合影|一起|合照|情侣照|双人|合照|couple|us|we|together|both|two people|group photo|selfie together)\b/i
         const isNonPortraitOnly = nonPortraitKeywords.test(prompt) && !portraitKeywords.test(prompt)
+        const isCouplePrompt = coupleKeywords.test(prompt) || (/我|me|myself|us/i.test(prompt) && /你|角色|TA|her|him|you/i.test(prompt) && portraitKeywords.test(prompt))
+        const isSelfOnly = !isCouplePrompt && /\b(我|自拍|我自己|给我|帮我|我的照片|myself|selfie of me|photo of me|picture of me)\b/i.test(prompt) && !/\b(你|角色|her|him|you|TA)\b/i.test(prompt)
+        const isCharOnly = !isCouplePrompt && /\b(你|你的照片|你自己|角色|TA|her|him|you|your photo)\b/i.test(prompt) && !/\b(我|me|myself|my photo)\b/i.test(prompt)
 
         // v1.10.112: 选项 useAppearance: 'auto'(默认) | true | false
         // 兼容旧版 volc.useAppearanceImage: true/false/'force'
@@ -3368,34 +3373,51 @@ async function _generateImageInternal(prompt, options = {}) {
         const configForced = volc.useAppearanceImage === 'force' || options.useAppearance === true
         const configAuto = volc.useAppearanceImage !== false && options.useAppearance !== false
 
-        // 决定是否拉角色形象图作参考
+        // 决定是否拉形象图作参考(角色 + 用户)
+        if (referenceImage) {
+            refImages.push(referenceImage)
+        }
+
         const shouldLookupAppearance = !callerForbidsAppearance && !configDisabled && configAuto && !referenceImage
+        let charAppearance = null
+        let userAppearance = drawingVal.userAppearanceImage || null
+
         if (shouldLookupAppearance && chatId) {
             try {
                 const { useChatStore } = await import('@/stores/chatStore')
                 const chatStore = useChatStore()
                 const chat = chatStore.chars?.[chatId] || chatStore.chats?.[chatId]
                 if (chat && chat.appearanceImage) {
-                    refImageBase64 = chat.appearanceImage
+                    charAppearance = chat.appearanceImage
                 }
             } catch (e) {
                 console.warn('[AI Image] volcengine: failed to look up appearance image', e)
             }
         }
-        if (refImageBase64) {
-            // 走图生图的判定:
-            // 1. 用户显式要求(appearanceRef / isCharacter)
-            // 2. config 强制 (useAppearanceImage === 'force' / useAppearance === true)
-            // 3. 提示词里有人像关键词,且不是「非人像」场景
+
+        // v1.11.0: 智能选择参考图(合照/单人/角色)
+        if (!referenceImage && !isNonPortraitOnly && shouldLookupAppearance) {
+            if (isCouplePrompt) {
+                if (userAppearance) refImages.push(userAppearance)
+                if (charAppearance) refImages.push(charAppearance)
+                console.log('[AI Image] volcengine: couple/duo mode, ref count:', refImages.length)
+            } else if (isSelfOnly && userAppearance) {
+                refImages.push(userAppearance)
+                console.log('[AI Image] volcengine: self-only mode')
+            } else if (charAppearance) {
+                refImages.push(charAppearance)
+                console.log('[AI Image] volcengine: character mode')
+            }
+        }
+        if (refImages.length > 0) {
             const isExplicitPortrait = options.isCharacter === true || options.appearanceRef === true
             const isForced = configForced
             const hasPortraitHint = portraitKeywords.test(prompt)
             if (isExplicitPortrait || isForced || (hasPortraitHint && !isNonPortraitOnly)) {
                 useImageModel = true
             } else if (isNonPortraitOnly) {
-                // 明确是风景/美食/物品等场景,不要参考形象图 → 改走文生图
-                console.log('[AI Image] volcengine: detected non-portrait prompt, skipping appearance image ref')
-                refImageBase64 = null
+                refImages = []
+                console.log('[AI Image] volcengine: non-portrait, no ref')
             }
         }
 
@@ -3405,36 +3427,43 @@ async function _generateImageInternal(prompt, options = {}) {
 
         const chosenSize = volc.size || `${width}x${height}`
 
-        // v1.10.113: 火山引擎 ARK images/generations 不支持独立的 negative_prompt 字段
-        // 只能把负向关键词 inline 到 prompt 里。给 negativeBoost 加一层 (no ... :1.9) 包装
-        // 强负向放在 prompt 末尾,Seedream/SeedEdit 对末尾指令权重最高
         const volcInlineNegative = negativeBoost
             .replace(/\(([^()]+):([\d.]+)\)/g, '(no $1:$2)')
-        const finalPrompt = `${enhancedPrompt}, AVOID: ${volcInlineNegative}`
+        const refImageCount = refImages.length
+        let mode = 'none'
+        let promptPrefix = ''
+        if (refImageCount >= 2) {
+            mode = 'couple'
+            promptPrefix = '(two distinct people in the same frame:1.3), '
+        } else if (refImageCount === 1) {
+            mode = isSelfOnly ? 'self' : 'character'
+        }
+        const finalPrompt = `${promptPrefix}${enhancedPrompt}, AVOID: ${volcInlineNegative}`
 
         const body = {
             model: chosenModel,
             prompt: finalPrompt,
             size: chosenSize,
             response_format: 'url',
-            watermark: false
+            watermark: false,
+            sequential_image_generation: 'disabled'
         }
-        if (useImageModel && refImageBase64) {
-            // 火山引擎 image 字段: 接受 URL 或 base64(data:image/...;base64,...)
-            body.image = refImageBase64
+        if (useImageModel && refImageCount > 0) {
+            body.image = refImageCount === 1 ? refImages[0] : refImages
             if (typeof volc.appearanceStrength === 'number') {
-                body.strength = volc.appearanceStrength  // 不同模型可能叫 scale / strength / guidance
+                body.strength = volc.appearanceStrength
             }
         }
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 120000)  // 2 分钟超时
+        const timeoutId = setTimeout(() => controller.abort(), 120000)
 
         try {
             console.log('[AI Image] Volcengine request:', {
                 model: chosenModel,
                 useImageModel,
-                hasRefImage: !!refImageBase64,
+                refImageCount,
+                mode,
                 size: chosenSize
             })
             const resp = await fetch('https://ark.cn-beijing.volces.com/api/v3/images/generations', {

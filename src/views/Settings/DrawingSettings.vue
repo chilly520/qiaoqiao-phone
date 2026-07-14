@@ -70,6 +70,10 @@ const testRefPrompt = ref('a beautiful girl with star-shaped hair holding an umb
 const isTestingI2I = ref(false)
 const testRefFileInput = ref(null)
 
+// 用户自己的形象图（用于合照/单人）
+const userAppearanceFileInput = ref(null)
+const userAppearancePreview = computed(() => drawingConfig.value.userAppearanceImage || '')
+
 const testGenerate = async () => {
     if (isTesting.value) return
     if (!testPrompt.value.trim()) {
@@ -96,6 +100,40 @@ const testGenerate = async () => {
 
 const triggerTestRefUpload = () => {
     if (testRefFileInput.value) testRefFileInput.value.click()
+}
+
+const triggerUserAppearanceUpload = () => {
+    if (userAppearanceFileInput.value) userAppearanceFileInput.value.click()
+}
+
+const handleUserAppearanceChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+        showToast('请选择图片文件')
+        e.target.value = ''
+        return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('图片不能超过 10MB')
+        e.target.value = ''
+        return
+    }
+    try {
+        const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.85 })
+        drawingConfig.value.userAppearanceImage = compressed
+        showToast('我的形象图已上传')
+    } catch (err) {
+        console.error('用户形象图压缩失败', err)
+        showToast('图片处理失败')
+    } finally {
+        e.target.value = ''
+    }
+}
+
+const clearUserAppearanceImage = () => {
+    drawingConfig.value.userAppearanceImage = ''
+    showToast('已清除我的形象图')
 }
 
 const handleTestRefChange = async (e) => {
@@ -254,8 +292,9 @@ const testI2IGenerate = async () => {
                             <p class="font-bold mb-1">🌋 火山引擎 ARK 使用说明</p>
                             <ul class="list-disc list-inside space-y-0.5 text-blue-700">
                                 <li>API Key 在 <span class="font-mono">火山引擎控制台 → 在线推理 → ARK</span> 创建(单个字符串,不是 AccessKey/SecretKey)</li>
-                                <li>启用 <b>角色形象图参考</b> 后,生成人像时会自动以该角色上传的形象图为参考(图生图)</li>
-                                <li>形象图由角色编辑页单独上传,与"头像"是两套图</li>
+                                <li>启用 <b>形象图参考</b> 后,AI 会自动判断使用哪张参考图：提到"我/自拍/我的照片"→ 用我的形象图；提到角色名/你/TA → 用角色形象图；提到"我们/合照/情侣/合影/两个人" → 同时参考两张图生成合照</li>
+                                <li>Seedream 4.0+ 支持最多 14 张参考图多图融合,合照功能需要分别上传「我的形象图」和「角色形象图」</li>
+                                <li>角色形象图由角色资料页单独上传,与"头像"是两套图</li>
                             </ul>
                         </div>
                     </div>
@@ -334,6 +373,38 @@ const testI2IGenerate = async () => {
                     <input type="range" min="0" max="1" step="0.05" v-model.number="drawingConfig.volcengine.appearanceStrength"
                         class="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-pink-500">
                     <p class="text-[10px] text-gray-400 ml-1">0 = 几乎忽略参考图, 1 = 强参考(更接近原图)</p>
+                </div>
+
+                <!-- 我的形象图上传 -->
+                <div v-if="drawingConfig.volcengine.useAppearanceImage" class="space-y-3 p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border border-blue-100">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-user text-blue-500"></i>
+                        <span class="text-xs font-bold text-gray-800">我的形象图（用于"我"的生图和合照）</span>
+                    </div>
+                    
+                    <div v-if="userAppearancePreview" class="flex items-center gap-3">
+                        <img :src="userAppearancePreview" class="w-20 h-20 rounded-xl object-cover border-2 border-white shadow-md" alt="我的形象图">
+                        <div class="flex-1 space-y-2">
+                            <p class="text-[10px] text-blue-700 leading-relaxed">
+                                已设置。提示词提到"我/自拍/我的照片"时会参考此图；提到"我们/合照/情侣"时会同时使用此图和角色形象图生成合照
+                            </p>
+                            <div class="flex gap-2">
+                                <button @click="triggerUserAppearanceUpload" class="px-3 py-1.5 bg-blue-500 text-white text-[11px] font-bold rounded-lg active:scale-95 transition-transform">
+                                    更换
+                                </button>
+                                <button @click="clearUserAppearanceImage" class="px-3 py-1.5 bg-white text-gray-500 text-[11px] font-bold rounded-lg border border-gray-200 active:scale-95 transition-transform">
+                                    删除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button v-else @click="triggerUserAppearanceUpload" class="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-blue-500 text-xs font-bold flex items-center justify-center gap-2 hover:border-blue-400 hover:bg-blue-100/50 transition-colors">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>上传我的照片</span>
+                    </button>
+                    
+                    <input ref="userAppearanceFileInput" type="file" accept="image/*" class="hidden" @change="handleUserAppearanceChange">
                 </div>
             </div>
         </section>

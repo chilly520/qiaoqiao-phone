@@ -282,6 +282,7 @@ export const useSettingsStore = defineStore('settings', () => {
         },
         quality: 'standard',
         globalImageStyle: 'realistic',
+        userAppearanceImage: '',
         // 火山引擎(豆包)专属配置
         volcengine: {
             text2imageModel: 'doubao-seedream-4-0-250828',  // 文生图(默认 Seedream 4.0,4.0+ 同时支持 i2i)
