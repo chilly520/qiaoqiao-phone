@@ -351,7 +351,7 @@ const testI2IGenerate = async () => {
                 </div>
 
                 <!-- v1.10.113: 火山引擎专用的图生图测试入口 -->
-                <div v-if="drawingConfig.provider === 'volcengine' && drawingConfig.volcengine.apiKey"
+                <div v-if="drawingConfig.provider === 'volcengine' && drawingConfig.apiKey"
                     class="bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-100 rounded-xl p-3 space-y-3">
                     <div class="flex items-center justify-between">
                         <div class="text-xs font-bold text-gray-700 flex items-center gap-1.5">
