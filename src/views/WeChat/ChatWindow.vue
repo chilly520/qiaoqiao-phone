@@ -462,11 +462,12 @@ const closeSettings = () => {
     }
 }
 
+// v1.10.108: 移除 300ms 延迟,直接 emit 让父组件导航
+// 原延迟是为了等设置面板关闭动画,但会导致 emit 不可靠
 const handleProfileNavigation = (id) => {
+    console.log('[ChatWindow] handleProfileNavigation called with id:', id)
     showSettings.value = false
-    setTimeout(() => {
-        emit('show-profile', id)
-    }, 300)
+    emit('show-profile', id)
 }
 
 const handleShowRank = (chatId) => {
@@ -3484,6 +3485,13 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                         @click="openGMMenu">
                         <i
                             class="fa-solid fa-wand-magic-sparkles text-purple-600 transition-transform group-hover:rotate-12"></i>
+                    </div>
+
+                    <!-- v1.10.108: 个人档案页入口(对所有非群聊显示) -->
+                    <div v-if="!chatData?.isGroup"
+                        class="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-black/5"
+                        @click.stop="handleProfileNavigation(chatData.id)" title="个人档案">
+                        <i class="fa-solid fa-id-card text-indigo-500"></i>
                     </div>
 
                     <!-- Settings -->

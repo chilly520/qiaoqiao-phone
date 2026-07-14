@@ -746,6 +746,7 @@ const openChat = (chatId) => {
 }
 
 const openProfileFromChat = (charId) => {
+    console.log('[WeChatApp] openProfileFromChat called with charId:', charId)
     if (charId === 'user') {
         // Go directly to Moments (My Album)
         momentsInitialProfileId.value = 'user' // This will trigger filterAuthorId = 'user' in MomentsView
@@ -754,6 +755,7 @@ const openProfileFromChat = (charId) => {
         if (!currentState.profileOpen) history.pushState({ ...currentState, profileOpen: true }, '')
     } else {
         // Navigate to dedicated Character Profile View (Card Info first)
+        console.log('[WeChatApp] router.push character-info', { charId })
         router.push({ name: 'character-info', params: { charId } })
     }
 }

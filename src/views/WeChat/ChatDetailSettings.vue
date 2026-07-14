@@ -2431,6 +2431,7 @@ const handleCropCancel = () => {
 }
 
 const handleShowProfile = () => {
+    console.log('[ChatDetailSettings] handleShowProfile called with id:', props.chatData?.id)
     // Let parent handle closing and navigation
     emit('show-profile', props.chatData.id)
 }
