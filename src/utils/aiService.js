@@ -3388,19 +3388,28 @@ async function _generateImageInternal(prompt, options = {}) {
 
         const shouldLookupAppearance = !callerForbidsAppearance && !configDisabled && configAuto && !referenceImage
         let charAppearance = null
-        let userAppearance = drawingVal.userAppearanceImage || null
+        let userAppearance = null
 
         if (shouldLookupAppearance && chatId) {
             try {
                 const { useChatStore } = await import('@/stores/chatStore')
                 const chatStore = useChatStore()
                 const chat = chatStore.chars?.[chatId] || chatStore.chats?.[chatId]
-                if (chat && chat.appearanceImage) {
-                    charAppearance = chat.appearanceImage
+                if (chat) {
+                    if (chat.appearanceImage) {
+                        charAppearance = chat.appearanceImage
+                    }
+                    if (chat.userAppearanceImage) {
+                        userAppearance = chat.userAppearanceImage
+                    }
                 }
             } catch (e) {
                 console.warn('[AI Image] volcengine: failed to look up appearance image', e)
             }
+        }
+
+        if (!userAppearance) {
+            userAppearance = drawingVal.userAppearanceImage || null
         }
 
         // v1.11.0: 智能选择参考图(合照/单人/角色)

@@ -375,19 +375,19 @@ const testI2IGenerate = async () => {
                     <p class="text-[10px] text-gray-400 ml-1">0 = 几乎忽略参考图, 1 = 强参考(更接近原图)</p>
                 </div>
 
-                <!-- 我的形象图上传 -->
+                <!-- 我的形象图上传 (全局默认,角色设置中可按角色覆盖) -->
                 <div v-if="drawingConfig.volcengine.useAppearanceImage" class="space-y-3 p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl border border-blue-100">
                     <div class="flex items-center gap-2">
                         <i class="fa-solid fa-user text-blue-500"></i>
-                        <span class="text-xs font-bold text-gray-800">我的形象图（用于"我"的生图和合照）</span>
+                        <span class="text-xs font-bold text-gray-800">我的形象图（全局默认）</span>
                     </div>
+                    <p class="text-[10px] text-blue-600 leading-relaxed">
+                        💡 提示：每个角色可在「角色设置 → 形象图」中单独设置"我的形象"，与不同角色聊天时可使用不同形象。此处设置为全局默认，未单独设置的角色将使用此图。
+                    </p>
                     
                     <div v-if="userAppearancePreview" class="flex items-center gap-3">
                         <img :src="userAppearancePreview" class="w-20 h-20 rounded-xl object-cover border-2 border-white shadow-md" alt="我的形象图">
                         <div class="flex-1 space-y-2">
-                            <p class="text-[10px] text-blue-700 leading-relaxed">
-                                已设置。提示词提到"我/自拍/我的照片"时会参考此图；提到"我们/合照/情侣"时会同时使用此图和角色形象图生成合照
-                            </p>
                             <div class="flex gap-2">
                                 <button @click="triggerUserAppearanceUpload" class="px-3 py-1.5 bg-blue-500 text-white text-[11px] font-bold rounded-lg active:scale-95 transition-transform">
                                     更换
@@ -401,7 +401,7 @@ const testI2IGenerate = async () => {
                     
                     <button v-else @click="triggerUserAppearanceUpload" class="w-full py-3 border-2 border-dashed border-blue-200 rounded-xl text-blue-500 text-xs font-bold flex items-center justify-center gap-2 hover:border-blue-400 hover:bg-blue-100/50 transition-colors">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span>上传我的照片</span>
+                        <span>上传全局默认我的照片</span>
                     </button>
                     
                     <input ref="userAppearanceFileInput" type="file" accept="image/*" class="hidden" @change="handleUserAppearanceChange">

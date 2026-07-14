@@ -828,51 +828,89 @@
                     </div>
                 </div>
 
-                <!-- v1.10.110: 角色生图形象图(独立于头像,用作火山引擎/AI 生图的参考图) -->
+                <!-- v1.10.110: 生图形象图(角色+用户,独立于头像,用作火山引擎/AI 生图的参考图) -->
                 <div>
                     <h3 class="section-title"
                         :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-600'">
-                        🎨 角色形象图(生图参考)</h3>
-                    <div class="flex items-start gap-3 p-3 rounded-xl border"
-                        :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
-                        <!-- 形象图预览 -->
-                        <div class="relative shrink-0">
-                            <div class="w-20 h-20 rounded-lg overflow-hidden border cursor-pointer group relative"
-                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'"
-                                @click="triggerAppearanceUpload">
-                                <img v-if="localData.appearanceImage" :src="localData.appearanceImage"
-                                    class="w-full h-full object-cover">
-                                <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400">
-                                    <i class="fa-solid fa-id-card text-xl mb-1"></i>
-                                    <span class="text-[9px]">点击上传</span>
+                        🎨 形象图(生图参考)</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- 角色形象图 -->
+                        <div class="p-3 rounded-xl border"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
+                            <div class="text-[10px] font-bold mb-2 text-center"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'text-pink-400' : 'text-pink-600'">
+                                <i class="fa-solid fa-id-card mr-1"></i>角色形象
+                            </div>
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-20 h-20 rounded-lg overflow-hidden border cursor-pointer group relative"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'"
+                                    @click="triggerAppearanceUpload">
+                                    <img v-if="localData.appearanceImage" :src="localData.appearanceImage"
+                                        class="w-full h-full object-cover">
+                                    <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                                        <i class="fa-solid fa-user text-xl mb-1"></i>
+                                        <span class="text-[9px]">点击上传</span>
+                                    </div>
+                                    <div
+                                        class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i class="fa-solid fa-camera text-white text-sm"></i>
+                                    </div>
                                 </div>
-                                <div
-                                    class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <i class="fa-solid fa-camera text-white text-sm"></i>
+                                <div class="flex gap-1">
+                                    <button @click="triggerAppearanceUpload"
+                                        class="text-[9px] text-pink-600 bg-pink-50 px-1.5 py-1 rounded border border-pink-100 hover:bg-pink-100 transition-colors">
+                                        {{ localData.appearanceImage ? '更换' : '上传' }}
+                                    </button>
+                                    <button v-if="localData.appearanceImage" @click="clearAppearanceImage"
+                                        class="text-[9px] text-red-500 bg-red-50 px-1.5 py-1 rounded border border-red-100 hover:bg-red-100 transition-colors">
+                                        删除
+                                    </button>
                                 </div>
                             </div>
                         </div>
-                        <!-- 说明 + 操作 -->
-                        <div class="flex-1 min-w-0">
-                            <p class="text-[11px] leading-relaxed mb-2"
-                                :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'">
-                                上传角色的形象图后,使用火山引擎(豆包)生图时会以此为参考生成同角色画面。建议 1:1 比例,自动压缩到 768px。
-                            </p>
-                            <div class="flex gap-1.5 flex-wrap">
-                                <button @click="triggerAppearanceUpload"
-                                    class="text-[10px] text-pink-600 bg-pink-50 px-2 py-1 rounded border border-pink-100 flex items-center gap-1 hover:bg-pink-100 transition-colors">
-                                    <i class="fa-solid fa-upload"></i>
-                                    {{ localData.appearanceImage ? '更换图片' : '上传图片' }}
-                                </button>
-                                <button v-if="localData.appearanceImage" @click="clearAppearanceImage"
-                                    class="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded border border-red-100 flex items-center gap-1 hover:bg-red-100 transition-colors">
-                                    <i class="fa-solid fa-trash"></i>删除
-                                </button>
+                        <!-- 我的形象图 -->
+                        <div class="p-3 rounded-xl border"
+                            :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] border-white/10' : 'bg-white/50 border-white/20'">
+                            <div class="text-[10px] font-bold mb-2 text-center"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'text-blue-400' : 'text-blue-600'">
+                                <i class="fa-solid fa-user mr-1"></i>我的形象
+                            </div>
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-20 h-20 rounded-lg overflow-hidden border cursor-pointer group relative"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'"
+                                    @click="triggerUserAppearanceUpload">
+                                    <img v-if="localData.userAppearanceImage" :src="localData.userAppearanceImage"
+                                        class="w-full h-full object-cover">
+                                    <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                                        <i class="fa-solid fa-camera text-xl mb-1"></i>
+                                        <span class="text-[9px]">点击上传</span>
+                                    </div>
+                                    <div
+                                        class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i class="fa-solid fa-camera text-white text-sm"></i>
+                                    </div>
+                                </div>
+                                <div class="flex gap-1">
+                                    <button @click="triggerUserAppearanceUpload"
+                                        class="text-[9px] text-blue-600 bg-blue-50 px-1.5 py-1 rounded border border-blue-100 hover:bg-blue-100 transition-colors">
+                                        {{ localData.userAppearanceImage ? '更换' : '上传' }}
+                                    </button>
+                                    <button v-if="localData.userAppearanceImage" @click="clearUserAppearanceImage"
+                                        class="text-[9px] text-red-500 bg-red-50 px-1.5 py-1 rounded border border-red-100 hover:bg-red-100 transition-colors">
+                                        删除
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
+                    <p class="text-[10px] mt-2 px-1 leading-relaxed"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
+                        上传形象图后,生图时会以此为参考。提到"我/自拍"→用我的形象;提到"你/角色"→用角色形象;提到"我们/合照"→同时用两张图生成合照。建议 1:1 比例,自动压缩到 768px。
+                    </p>
                     <input type="file" ref="appearanceFileInput" class="hidden" accept="image/*"
                         @change="handleAppearanceUpload">
+                    <input type="file" ref="userAppearanceFileInput" class="hidden" accept="image/*"
+                        @change="handleUserAppearanceUpload">
                 </div>
 
                 <!-- Pat Settings -->
@@ -2143,6 +2181,7 @@ const localData = ref({
     doubaoSpeaker: 'zh_female_sichuan',
     voiceSpeed: 1.0,
     appearanceImage: '', // v1.10.110: 角色形象图(生图参考)
+    userAppearanceImage: '', // v1.11.0: 我的形象图(生图参考,按角色存储)
     patAction: '',
     patSuffix: '',
     bubbleSize: 15,
@@ -2433,6 +2472,7 @@ const handleCallAvatarChange = async (e) => {
 
 // v1.10.110: 角色形象图(生图参考)上传
 const appearanceFileInput = ref(null)
+const userAppearanceFileInput = ref(null)
 
 const triggerAppearanceUpload = () => {
     if (appearanceFileInput.value) appearanceFileInput.value.click()
@@ -2468,12 +2508,53 @@ const handleAppearanceUpload = async (e) => {
 }
 
 const clearAppearanceImage = async () => {
-    if (!confirm('确定要删除形象图吗?删除后生图将不再以该形象作为参考。')) return
+    if (!confirm('确定要删除角色形象图吗?删除后生图将不再以该形象作为参考。')) return
     localData.value.appearanceImage = ''
     if (props.chatData?.id) {
         await chatStore.updateCharacter(props.chatData.id, { appearanceImage: '' })
     }
-    chatStore.triggerToast('已删除形象图', 'success')
+    chatStore.triggerToast('已删除角色形象图', 'success')
+}
+
+const triggerUserAppearanceUpload = () => {
+    if (userAppearanceFileInput.value) userAppearanceFileInput.value.click()
+}
+
+const handleUserAppearanceUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+        chatStore.triggerToast('请选择图片文件', 'error')
+        e.target.value = ''
+        return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        chatStore.triggerToast('图片不能超过 10MB', 'error')
+        e.target.value = ''
+        return
+    }
+    try {
+        const compressed = await compressImage(file, 768, 0.8)
+        localData.value.userAppearanceImage = compressed
+        if (props.chatData?.id) {
+            await chatStore.updateCharacter(props.chatData.id, { userAppearanceImage: compressed })
+        }
+        chatStore.triggerToast('我的形象图已设置 📸', 'success')
+    } catch (err) {
+        console.error('我的形象图上传失败', err)
+        chatStore.triggerToast('上传失败', 'error')
+    } finally {
+        e.target.value = ''
+    }
+}
+
+const clearUserAppearanceImage = async () => {
+    if (!confirm('确定要删除我的形象图吗?删除后生图将不再以该形象作为参考。')) return
+    localData.value.userAppearanceImage = ''
+    if (props.chatData?.id) {
+        await chatStore.updateCharacter(props.chatData.id, { userAppearanceImage: '' })
+    }
+    chatStore.triggerToast('已删除我的形象图', 'success')
 }
 
 const promptCallAvatarUrl = (target) => {

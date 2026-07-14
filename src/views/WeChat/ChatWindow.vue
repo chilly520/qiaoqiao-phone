@@ -1468,6 +1468,7 @@ const seeImageRefImage = ref('') // base64
 const seeImageRefPreview = ref('') // preview url
 const seeImageUseAppearance = ref(true) // 图生图模式下,是否用角色形象图
 const seeImageFileInput = ref(null)
+const seeImageStyle = ref('realistic')
 
 // 判断火山引擎是否配置可用
 const isVolcengineReady = computed(() => {
@@ -1722,7 +1723,14 @@ const generateSeeImage = async () => {
 
     seeImageLoading.value = true
     try {
-        const prompt = seeImagePrompt.value.trim()
+        let prompt = seeImagePrompt.value.trim()
+        
+        if (seeImageStyle.value === 'comic') {
+            prompt = `${prompt}, anime style, manga style, comic style, 2D illustration, cel shading, cartoon style`
+        } else if (seeImageStyle.value === 'realistic') {
+            prompt = `${prompt}, photorealistic, realistic photo, 8k uhd, dslr, high quality, natural lighting, detailed skin texture`
+        }
+        
         const options = { chatId: chatStore.currentChatId }
 
         if (seeImageMode.value === 'i2i') {
@@ -4026,6 +4034,23 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
                                 上传参考图,生成同风格/同角色的新图片
                             </span>
                         </p>
+                    </div>
+
+                    <!-- 漫画/真实风格切换 -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-600 mb-2">画面风格</label>
+                        <div class="grid grid-cols-2 gap-2 p-1 bg-gray-200/60 rounded-xl">
+                            <button @click="seeImageStyle = 'realistic'" :disabled="seeImageLoading"
+                                class="py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5"
+                                :class="seeImageStyle === 'realistic' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'">
+                                <i class="fa-solid fa-camera"></i> 真实照片
+                            </button>
+                            <button @click="seeImageStyle = 'comic'" :disabled="seeImageLoading"
+                                class="py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-1.5"
+                                :class="seeImageStyle === 'comic' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500'">
+                                <i class="fa-solid fa-palette"></i> 漫画动漫
+                            </button>
+                        </div>
                     </div>
 
                     <!-- v1.10.112: 图生图模式下的参考图上传区 -->
