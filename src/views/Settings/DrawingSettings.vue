@@ -142,7 +142,7 @@ const testGenerate = async () => {
                     </p>
                 </div>
 
-                <div class="space-y-1.5">
+                <div v-if="drawingConfig.provider !== 'volcengine'" class="space-y-1.5">
                     <label class="text-xs font-bold text-gray-700 ml-1">模型名称 (Model)</label>
                     <input
                         v-model="drawingConfig.model"
