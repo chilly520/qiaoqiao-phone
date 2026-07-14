@@ -1128,18 +1128,37 @@ onMounted(() => {
 
             <!-- MY PROFILE / STANDARD LAYOUT (Clean Overlap) -->
             <div v-else class="relative w-full h-[300px]">
-                <div class="w-full h-full cursor-pointer bg-gray-200" @click="openBackgroundModal">
-                    <img :src="viewingProfile.background" class="w-full h-full object-cover">
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                <!-- v1.10.111: 没有背景时给一个默认渐变,避免白屏 -->
+                <div class="w-full h-full cursor-pointer relative overflow-hidden"
+                    :class="!viewingProfile.background ? 'bg-gradient-to-br from-pink-300 via-purple-300 to-indigo-400' : 'bg-gray-200'"
+                    @click="openBackgroundModal">
+                    <img v-if="viewingProfile.background" :src="viewingProfile.background"
+                        class="w-full h-full object-cover">
+                    <!-- 默认渐变上叠加图案,让页面不那么空 -->
+                    <div v-else class="absolute inset-0 flex items-center justify-center text-white/30">
+                        <i class="fa-solid fa-image text-7xl"></i>
+                    </div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
+                    <!-- 提示文字:点击更换背景 -->
+                    <div
+                        class="absolute bottom-3 left-4 text-white/70 text-[10px] flex items-center gap-1 drop-shadow">
+                        <i class="fa-solid fa-camera"></i> 点击更换封面
+                    </div>
                 </div>
 
                 <!-- User Info Row (Overlapping bottom) -->
                 <div class="absolute bottom-0 right-4 flex items-end gap-4 transform translate-y-[24px] z-30">
                     <span class="text-white font-bold text-xl drop-shadow-md mb-8 tracking-tight">{{ viewingProfile.name
-                    }}</span>
+                        || '我' }}</span>
+                    <!-- v1.10.111: 没有头像时显示一个圆形默认图标,避免白底上完全看不到 -->
                     <div class="w-20 h-20 rounded-2xl overflow-hidden border-[4px] border-white shadow-lg bg-white relative active:scale-95 transition-all"
                         @click.stop="handleUserAvatarClick">
-                        <img :src="viewingProfile.avatar" class="w-full h-full object-cover">
+                        <img v-if="viewingProfile.avatar" :src="viewingProfile.avatar"
+                            class="w-full h-full object-cover">
+                        <div v-else
+                            class="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
+                            <i class="fa-solid fa-user text-white text-3xl"></i>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1171,9 +1190,14 @@ onMounted(() => {
 
                 <!-- Moments Feed List -->
                 <div v-if="filteredMoments.length === 0"
-                    class="flex flex-col items-center justify-center py-20 opacity-30">
-                    <i class="fa-solid fa-earth-asia text-5xl mb-4"></i>
-                    <p>{{ filterAuthorId ? '该角色暂时没有动态' : '暂无动态，快去发布或点击一键生成吧' }}</p>
+                    class="flex flex-col items-center justify-center py-20 text-gray-400">
+                    <i class="fa-solid fa-earth-asia text-5xl mb-4 text-gray-300"></i>
+                    <p class="text-sm">{{ filterAuthorId ? '该角色暂时没有动态' : '暂无动态,快去发布或点击一键生成吧' }}</p>
+                    <!-- v1.10.111: 我的相册加一个发朋友圈的入口 -->
+                    <button v-if="filterAuthorId === 'user'" @click="showPostModal = true"
+                        class="mt-4 px-5 py-2 bg-gradient-to-r from-[#07c160] to-[#00a854] text-white text-sm rounded-full font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen-to-square"></i> 发条朋友圈
+                    </button>
                 </div>
 
                 <MomentItem v-for="moment in filteredMoments" :key="moment.id" :id="moment.id" :moment="moment"
