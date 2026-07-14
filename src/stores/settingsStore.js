@@ -82,7 +82,7 @@ export const useSettingsStore = defineStore('settings', () => {
         },
         userProfile: {
             name: '我',
-            avatar: '/avatars/default.jpg',
+            avatar: '/avatars/小猫举爪.jpg',
             wechatId: '',
             signature: ''
         },
@@ -583,6 +583,12 @@ export const useSettingsStore = defineStore('settings', () => {
                         customCss: '',
                         wallpaperOverlayOpacity: 0.5
                     });
+                }
+
+                // Fix broken default avatar paths from old versions
+                const brokenAvatars = ['/avatars/default.jpg', '/avatars/default.png', '/avatars/default-user.jpg'];
+                if (personalization.value.userProfile && brokenAvatars.includes(personalization.value.userProfile.avatar)) {
+                    personalization.value.userProfile.avatar = '/avatars/小猫举爪.jpg';
                 }
             }
 

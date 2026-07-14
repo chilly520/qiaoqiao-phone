@@ -238,7 +238,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 addNotification({
                     type: 'mention',
                     actorName: char ? (char.remark || char.name) : '神秘好友',
-                    actorAvatar: char ? char.avatar : '/avatars/default.png',
+                    actorAvatar: char ? char.avatar : '/avatars/小猫举爪.jpg',
                     content: '提到了你',
                     momentId: moment.id,
                     momentImage: moment.images[0] || null,
@@ -423,7 +423,7 @@ export const useMomentsStore = defineStore('moments', () => {
                 addNotification({
                     type: 'like',
                     actorName: displayName,
-                    actorAvatar: realChar ? (realChar.avatar || '/avatars/default.png') : `https://api.dicebear.com/7.x/notionists/svg?seed=${displayName}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
+                    actorAvatar: realChar ? (realChar.avatar || '/avatars/小猫举爪.jpg') : `https://api.dicebear.com/7.x/notionists/svg?seed=${displayName}&backgroundColor=b6e3f4,c0aede,d1d4f9`,
                     content: '赞了你的动态',
                     momentId: moment.id,
                     momentImage: moment.images[0] || null,
@@ -493,7 +493,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
             if (realChar) {
                 finalAuthorName = realChar.remark || realChar.name
-                finalAuthorAvatar = realChar.avatar || '/avatars/default.png'
+                finalAuthorAvatar = realChar.avatar || '/avatars/小猫举爪.jpg'
             }
         }
 

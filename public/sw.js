@@ -21,7 +21,7 @@
 
 const APP_ICON = '/pwa-192x192.png?v=4';
 // v1.10.117: bump 到 v29 + 强制清理 v3-v28 旧 cache
-const SHELL_CACHE = 'chilly-shell-v29';
+const SHELL_CACHE = 'chilly-shell-v30';
 const RUNTIME_CACHE = 'chilly-runtime-v24';
 
 // 关键 shell 资源,install 时主动 precache
