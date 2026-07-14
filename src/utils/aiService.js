@@ -3073,8 +3073,28 @@ async function _generateImageInternal(prompt, options = {}) {
     let apiKey = (drawingVal.keys?.[provider] || drawingVal.apiKey || '').trim()
     let model = drawingVal.models?.[provider] || drawingVal.model || (provider === 'pollinations' ? 'flux' : '')
     const volc = drawingVal.volcengine || {}
-    const globalImageStyle = drawingVal.globalImageStyle || 'realistic'
-    const isRealisticStyle = globalImageStyle === 'realistic'
+    let globalImageStyle = drawingVal.globalImageStyle || 'realistic'
+    
+    // v1.10.118: 优先使用角色设置中的默认生图风格,同时预读取角色形象图和用户形象图(避免后续分支重复import)
+    let charImageStyle = null
+    let preloadedCharAppearance = null
+    let preloadedUserAppearance = null
+    if (chatId) {
+        try {
+            const { useChatStore } = await import('@/stores/chatStore')
+            const chatStore = useChatStore()
+            const chat = chatStore.chars?.[chatId] || chatStore.chats?.[chatId]
+            if (chat) {
+                if (chat.imageStyle) charImageStyle = chat.imageStyle
+                if (chat.appearanceImage) preloadedCharAppearance = chat.appearanceImage
+                if (chat.userAppearanceImage) preloadedUserAppearance = chat.userAppearanceImage
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
+    const effectiveStyle = options.imageStyle || charImageStyle || globalImageStyle
+    const isRealisticStyle = effectiveStyle === 'realistic'
 
     // REDUNDANT FALLBACK: If store seems empty, try reading directly from localStorage
     if (!apiKey && provider !== 'pollinations') {
@@ -3387,19 +3407,20 @@ async function _generateImageInternal(prompt, options = {}) {
         }
 
         const shouldLookupAppearance = !callerForbidsAppearance && !configDisabled && configAuto && !referenceImage
-        let charAppearance = null
-        let userAppearance = null
+        let charAppearance = preloadedCharAppearance
+        let userAppearance = preloadedUserAppearance
 
-        if (shouldLookupAppearance && chatId) {
+        // 若预加载没拿到(例如 chatStore 还没初始化完),再尝试一次读取
+        if (shouldLookupAppearance && chatId && (!charAppearance || !userAppearance)) {
             try {
                 const { useChatStore } = await import('@/stores/chatStore')
                 const chatStore = useChatStore()
                 const chat = chatStore.chars?.[chatId] || chatStore.chats?.[chatId]
                 if (chat) {
-                    if (chat.appearanceImage) {
+                    if (!charAppearance && chat.appearanceImage) {
                         charAppearance = chat.appearanceImage
                     }
-                    if (chat.userAppearanceImage) {
+                    if (!userAppearance && chat.userAppearanceImage) {
                         userAppearance = chat.userAppearanceImage
                     }
                 }

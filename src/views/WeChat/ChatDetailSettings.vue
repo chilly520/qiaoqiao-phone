@@ -911,6 +911,40 @@
                         @change="handleAppearanceUpload">
                     <input type="file" ref="userAppearanceFileInput" class="hidden" accept="image/*"
                         @change="handleUserAppearanceUpload">
+
+                    <!-- 默认生图风格 -->
+                    <div class="mt-4 pt-3 border-t"
+                        :class="settingsStore.personalization.theme === 'dark' ? 'border-white/10' : 'border-gray-100'">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="text-xs font-bold"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-300' : 'text-gray-700'">
+                                    默认生图风格
+                                </label>
+                                <p class="text-[9px] mt-0.5"
+                                    :class="settingsStore.personalization.theme === 'dark' ? 'text-gray-500' : 'text-gray-400'">
+                                    AI自动生图时使用此风格
+                                </p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1 p-0.5 rounded-lg"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'">
+                                <button @click="localData.imageStyle = 'realistic'"
+                                    class="px-3 py-1.5 text-[10px] font-bold rounded transition-all flex items-center gap-1"
+                                    :class="localData.imageStyle === 'realistic' 
+                                        ? (settingsStore.personalization.theme === 'dark' ? 'bg-gray-800 text-blue-400 shadow-sm' : 'bg-white text-blue-600 shadow-sm')
+                                        : (settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500')">
+                                    <i class="fa-solid fa-camera"></i> 真实照片
+                                </button>
+                                <button @click="localData.imageStyle = 'comic'"
+                                    class="px-3 py-1.5 text-[10px] font-bold rounded transition-all flex items-center gap-1"
+                                    :class="localData.imageStyle === 'comic' 
+                                        ? (settingsStore.personalization.theme === 'dark' ? 'bg-gray-800 text-purple-400 shadow-sm' : 'bg-white text-purple-600 shadow-sm')
+                                        : (settingsStore.personalization.theme === 'dark' ? 'text-gray-400' : 'text-gray-500')">
+                                    <i class="fa-solid fa-palette"></i> 漫画动漫
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Pat Settings -->
@@ -2182,6 +2216,7 @@ const localData = ref({
     voiceSpeed: 1.0,
     appearanceImage: '', // v1.10.110: 角色形象图(生图参考)
     userAppearanceImage: '', // v1.11.0: 我的形象图(生图参考,按角色存储)
+    imageStyle: 'realistic', // v1.10.118: 默认生图风格 'realistic' | 'comic'
     patAction: '',
     patSuffix: '',
     bubbleSize: 15,

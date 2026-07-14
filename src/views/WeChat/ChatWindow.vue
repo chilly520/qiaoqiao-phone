@@ -1508,6 +1508,7 @@ const handlePanelAction = (type) => {
         showFamilyCardModal.value = true
     } else if (type === 'see-image') {
         // Show see image modal
+        seeImageStyle.value = chatData.value?.imageStyle || 'realistic'
         showSeeImageModal.value = true
     } else if (type === 'voice-call') {
         const char = chatData.value
@@ -1725,13 +1726,10 @@ const generateSeeImage = async () => {
     try {
         let prompt = seeImagePrompt.value.trim()
         
-        if (seeImageStyle.value === 'comic') {
-            prompt = `${prompt}, anime style, manga style, comic style, 2D illustration, cel shading, cartoon style`
-        } else if (seeImageStyle.value === 'realistic') {
-            prompt = `${prompt}, photorealistic, realistic photo, 8k uhd, dslr, high quality, natural lighting, detailed skin texture`
+        const options = { 
+            chatId: chatStore.currentChatId,
+            imageStyle: seeImageStyle.value
         }
-        
-        const options = { chatId: chatStore.currentChatId }
 
         if (seeImageMode.value === 'i2i') {
             // 图生图:必传 referenceImage,后端必然走 i2i 模型
