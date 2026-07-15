@@ -1775,7 +1775,7 @@ onMounted(() => {
     </div>
 
     <!-- Generation Choice Modal -->
-    <div v-if="showGenChoiceModal" class="absolute inset-0 z-[120] bg-black/60 flex items-center justify-center p-6"
+    <div v-if="showGenChoiceModal" class="fixed inset-0 z-[20100] bg-black/60 flex items-center justify-center p-6"
         @click.self="showGenChoiceModal = false">
         <div
             class="bg-white w-full max-w-[340px] rounded-3xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[70vh]">
@@ -1830,7 +1830,7 @@ onMounted(() => {
 
     <!-- Signature Edit Modal -->
     <div v-if="showSignatureModal"
-        class="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
+        class="fixed inset-0 z-[20100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
         <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-scale-up">
             <div class="p-6">
                 <h3 class="text-lg font-bold text-gray-900 mb-4">修改个性签名</h3>
@@ -1852,7 +1852,7 @@ onMounted(() => {
     </div>
 
     <!-- Mentions Selection Modal -->
-    <div v-if="showMentionModal" class="fixed inset-0 z-[300] bg-black/60 flex items-center justify-center p-6"
+    <div v-if="showMentionModal" class="fixed inset-0 z-[20100] bg-black/60 flex items-center justify-center p-6"
         @click.self="showMentionModal = false">
         <div
             class="bg-white w-full max-w-[340px] rounded-2xl overflow-hidden shadow-2xl animate-scale-up flex flex-col max-h-[80vh]">

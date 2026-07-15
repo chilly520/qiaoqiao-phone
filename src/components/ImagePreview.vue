@@ -286,7 +286,7 @@ onUnmounted(() => {
 <template>
     <Teleport to="body">
         <Transition name="fade">
-            <div v-if="show && currentImage" class="fixed inset-0 z-[9999] bg-black" @click.self="handleClose">
+            <div v-if="show && currentImage" class="fixed inset-0 z-[20100] bg-black" @click.self="handleClose">
                 <div class="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-4 z-10 bg-gradient-to-b from-black/60 to-transparent">
                     <span v-if="images.length > 1" class="text-white text-sm font-medium">{{ currentIndex + 1 }} / {{ images.length }}</span>
                     <span v-else class="w-0"></span>

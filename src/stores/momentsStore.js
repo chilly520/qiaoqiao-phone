@@ -502,8 +502,14 @@ export const useMomentsStore = defineStore('moments', () => {
         const moment = moments.value.find(m => m.id === momentId)
         if (!moment) return
 
+        // v1.10.124: 防御 content 为空/undefined 时 .trim() 抛 TypeError 中断后续互动
+        if (!comment || !comment.content || typeof comment.content !== 'string') {
+            console.warn('[MomentsStore] addComment 跳过: content 为空', comment)
+            return
+        }
+
         // Duplicate check: prevent identical comments in the same moment
-        const isDuplicate = moment.comments.some(c => c.content.trim() === comment.content.trim())
+        const isDuplicate = moment.comments.some(c => c.content && c.content.trim() === comment.content.trim())
         if (isDuplicate) return
 
         const settingsStore = useSettingsStore()
@@ -747,28 +753,33 @@ export const useMomentsStore = defineStore('moments', () => {
             for (const interaction of interactions) {
                 await new Promise(r => setTimeout(r, 300 + Math.random() * 800))
 
-                let avatarUrl = interaction.authorAvatar || ''
-                if (interaction.isVirtual) {
-                    const catAvatars = ['/avatars/小猫举爪.jpg', '/avatars/小猫星星眼.jpg', '/avatars/小猫开心.jpg', '/avatars/小猫挥手.jpg']
-                    avatarUrl = catAvatars[Math.floor(Math.random() * catAvatars.length)]
-                }
+                // v1.10.124: 单条互动独立 try/catch,避免一条失败中断后续所有互动
+                try {
+                    let avatarUrl = interaction.authorAvatar || ''
+                    if (interaction.isVirtual) {
+                        const catAvatars = ['/avatars/小猫举爪.jpg', '/avatars/小猫星星眼.jpg', '/avatars/小猫开心.jpg', '/avatars/小猫挥手.jpg']
+                        avatarUrl = catAvatars[Math.floor(Math.random() * catAvatars.length)]
+                    }
 
-                if (interaction.type === 'like') {
-                    addLike(momentId, interaction.authorId || interaction.authorName, interaction.authorName)
-                } else if ((interaction.type === 'comment' || interaction.type === 'reply') && interaction.content) {
-                    addComment(momentId, {
-                        authorId: interaction.authorId,
-                        authorName: interaction.authorName,
-                        authorAvatar: avatarUrl,
-                        content: interaction.content,
-                        mentions: interaction.mentions || [],
-                        replyTo: interaction.replyTo || null,
-                        isVirtual: interaction.isVirtual
-                    })
+                    if (interaction.type === 'like') {
+                        addLike(momentId, interaction.authorId || interaction.authorName, interaction.authorName)
+                    } else if ((interaction.type === 'comment' || interaction.type === 'reply') && interaction.content) {
+                        addComment(momentId, {
+                            authorId: interaction.authorId,
+                            authorName: interaction.authorName,
+                            authorAvatar: avatarUrl,
+                            content: interaction.content,
+                            mentions: interaction.mentions || [],
+                            replyTo: interaction.replyTo || null,
+                            isVirtual: interaction.isVirtual
+                        })
+                    }
+                } catch (singleErr) {
+                    console.warn('[MomentsStore] 单条互动处理失败,跳过继续:', singleErr, interaction)
                 }
             }
             if (interactions && interactions.length > 0) {
-                chatStore.triggerToast(`召功成功！收到 ${interactions.length} 条互动`, 'success')
+                chatStore.triggerToast(`召唤成功！收到 ${interactions.length} 条互动`, 'success')
             } else {
                 chatStore.triggerToast('大家都还在忙，暂时没人回复...', 'warning')
             }
