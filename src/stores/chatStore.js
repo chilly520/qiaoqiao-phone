@@ -16,7 +16,7 @@ import { appendLog } from '../utils/memoryLog'
 import { backgroundManager } from '../utils/backgroundManager'
 import autoBackup from '../utils/autoBackup'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
-import { ensureString, getRandomAvatar, DEFAULT_AVATARS, getLastNTurns, countTurnsBetween } from '../utils/common'
+import { ensureString, getRandomAvatar, DEFAULT_AVATARS, getLastNTurns, countTurnsBetween, dateRangeToMsgIndices, turnRangeToMsgIndices } from '../utils/common'
 import { compressAllChatImages as chatImageUtils_compressAll, extractLSActions as chatImageUtils_extractLSActions } from '../utils/chatImageUtils'
 import localforage from 'localforage'
 
@@ -2225,13 +2225,33 @@ export const useChatStore = defineStore('chat', () => {
             // Acquire lock INSIDE try so it's released by finally on any error
             chat.isSummarizing = true
 
-            if (options.startIndex !== undefined && options.endIndex !== undefined) {
-                // Manual Range
-                if (options.startIndex < 0) options.startIndex = 0
-                if (options.endIndex > chat.msgs.length) options.endIndex = chat.msgs.length
+            // v1.10.129: 按日期总结(优先级最高)
+            if (options.startDate && options.endDate) {
+                const idxRange = dateRangeToMsgIndices(chat.msgs, options.startDate, options.endDate)
+                if (!idxRange) {
+                    throw new Error(`日期 ${options.startDate}~${options.endDate} 范围内没有消息`)
+                }
+                const turnCount = countTurnsBetween(chat.msgs, idxRange.startIndex, idxRange.endIndex)
+                targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
+                rangeDesc = `日期 ${options.startDate}~${options.endDate} (${turnCount}轮, 消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
+            } else if (options.startIndex !== undefined && options.endIndex !== undefined) {
+                // v1.10.128: 手动总结改为按轮次计数。
+                // options.startTurn/endTurn (1-based) 优先;旧 options.startIndex/endIndex 仍兼容(按消息条数)。
+                if (options.startTurn !== undefined && options.endTurn !== undefined) {
+                    const idxRange = turnRangeToMsgIndices(chat.msgs, options.startTurn, options.endTurn)
+                    if (!idxRange) {
+                        throw new Error(`轮次 ${options.startTurn}-${options.endTurn} 超出已完成轮次范围`)
+                    }
+                    targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
+                    rangeDesc = `轮次 ${options.startTurn}-${options.endTurn} (消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
+                } else {
+                    // 兼容旧调用方:直接用消息索引
+                    if (options.startIndex < 0) options.startIndex = 0
+                    if (options.endIndex > chat.msgs.length) options.endIndex = chat.msgs.length
 
-                targetMsgs = chat.msgs.slice(options.startIndex, options.endIndex)
-                rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
+                    targetMsgs = chat.msgs.slice(options.startIndex, options.endIndex)
+                    rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
+                }
             } else {
                 // Auto Mode: Chunked Catch-Up
                 const lastIndex = chat.lastSummaryIndex || 0
@@ -2392,7 +2412,13 @@ export const useChatStore = defineStore('chat', () => {
             latestChat.summary = response.content
 
             // Update indices after successful summary
-            if (options.startIndex === undefined && options.endIndex === undefined) {
+            // v1.10.130: 日期模式(startDate/endDate)同样不应推进自动总结的索引/计数,
+            // 否则会把"按日期手动总结"误判为"自动增量总结",污染 lastSummaryTime 等
+            const isAutoSummaryMode = options.startIndex === undefined
+                && options.endIndex === undefined
+                && !options.startDate
+                && !options.endDate
+            if (isAutoSummaryMode) {
                 latestChat.lastSummaryIndex = nextIndex
                 latestChat.lastSummaryCount = latestChat.msgs.length // Sync checkCount
                 latestChat.lastSummaryTime = Date.now()
@@ -2420,7 +2446,8 @@ export const useChatStore = defineStore('chat', () => {
 
         } catch (error) {
             console.error('[Summarize Error]', error)
-            useLoggerStore().error(`自动总结失败 (${rangeDesc})`, error.message)
+            const isManualMode = options.startDate || options.endDate || options.startIndex !== undefined || options.endIndex !== undefined
+            useLoggerStore().error(`${isManualMode ? '总结失败' : '自动总结失败'} (${rangeDesc})`, error.message)
             if (!options.silent) triggerToast(`总结失败: ${error.message}`, 'error')
             return { success: false, error: error.message }
         } finally {
@@ -2430,7 +2457,12 @@ export const useChatStore = defineStore('chat', () => {
                 finalChat.isSummarizing = false
 
                 // Auto-trigger next chunk if backlog remains
-                if (options.startIndex === undefined && options.endIndex === undefined) {
+                // v1.10.130: 日期模式也不应触发后续自动增量总结链
+                const isAutoSummaryModeFinally = options.startIndex === undefined
+                    && options.endIndex === undefined
+                    && !options.startDate
+                    && !options.endDate
+                if (isAutoSummaryModeFinally) {
                     const msgs = finalChat.msgs || []
                     const lastIndex = finalChat.lastSummaryIndex || 0
                     const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
