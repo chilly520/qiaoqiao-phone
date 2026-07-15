@@ -1,4 +1,6 @@
-// Notification Service for handling push notifications and background tasks
+// v1.10.120: Notification Service - 前台通知 + Service Worker注册
+// Web Push 相关功能已移除,保留SW注册(用于PWA离线缓存)和前台Notification API
+// 发送通知仅在应用前台打开时可见,不再支持App完全关闭时的后台推送
 
 class NotificationService {
   constructor() {
@@ -6,7 +8,7 @@ class NotificationService {
     this.isSupported = 'Notification' in window
   }
 
-  // Request notification permission
+  // Request notification permission (仅在用户主动操作时调用,不再启动时自动请求)
   async requestPermission() {
     if (!this.isSupported) {
       console.log('Notifications are not supported in this browser')
@@ -24,7 +26,7 @@ class NotificationService {
     return Notification.permission === 'granted'
   }
 
-  // Send a notification
+  // Send a notification (前台通知,App打开时可见)
   async sendNotification(title, options = {}) {
     if (!this.hasPermission()) {
       console.log('Notification permission not granted')
@@ -40,7 +42,7 @@ class NotificationService {
       ...options
     };
 
-    // Try Service Worker registration first (More reliable for mobile/background)
+    // Try Service Worker registration first (More reliable for mobile)
     if ('serviceWorker' in navigator) {
       try {
         const registration = await navigator.serviceWorker.ready;
@@ -83,12 +85,12 @@ class NotificationService {
     }, delay)
   }
 
-  // Register service worker for background tasks
+  // Register service worker for PWA offline cache
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        // v1.10.72: bump v=10 -> v=11 强制 SW 重新检测
-        const registration = await navigator.serviceWorker.register('/sw.js?v=12', { scope: '/' })
+        // v1.10.120: bump v=13 强制 SW 重新检测(移除Web Push后升级)
+        const registration = await navigator.serviceWorker.register('/sw.js?v=13', { scope: '/' })
         console.log('ServiceWorker registration successful with scope:', registration.scope)
 
         // 如果有等待中的新 SW，立即激活它（替换旧版本）
@@ -105,8 +107,7 @@ class NotificationService {
                 // 新 SW 已安装且当前有旧 SW 在控制页面，通知新 SW 跳过等待
                 newWorker.postMessage({ type: 'SKIP_WAITING' })
               }
-              // [FIX] v1.10.66: 新 SW 激活后,通知所有客户端强制 reload
-              // 否则旧 SW 一直控制页面,新 SW 装上了也没用
+              // 新 SW 激活后,通知所有客户端强制 reload
               if (newWorker.state === 'activated') {
                 navigator.serviceWorker.controller?.postMessage({ type: 'CLIENTS_RELOAD' })
               }

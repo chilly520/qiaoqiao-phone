@@ -31,9 +31,8 @@ const updateTime = () => {
     currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 
-// Persistent trigger for keep-alive
+// v1.10.120: 移除通知权限请求,Web Push 已删除
 const unlockKeepAlive = () => {
-    notificationService.requestPermission()
     backgroundManager.enable()
 }
 
@@ -90,9 +89,6 @@ onMounted(() => {
     useLoveSpaceStore().loadFromStorage()
     worldBookStore.loadEntries()
 
-    // 初始化 Web Push 服务 (无 VITE_PUSH_SERVER_URL 时静默 no-op)
-    import('./utils/pushService').then(m => m.default.init()).catch(() => {})
-
     // 自动恢复前台保活(v1.10.55):
     // 如果用户之前点过"开启前台保活"按钮,会持久化到 localStorage;
     // App 启动时自动调用 tryAutoResumeKeepAlive() 重启 audio + MediaSession。
@@ -134,26 +130,9 @@ onMounted(() => {
     window.addEventListener('click', unlockKeepAlive)
     window.addEventListener('touchstart', unlockKeepAlive)
 
-    // [FIX] 处理 Service Worker 转发的"打开指定 chat"请求(由通知点击触发)
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'OPEN_CHAT' && event.data.chatId) {
-                chatStore.currentChatId = event.data.chatId
-                router.push('/wechat')
-            }
-            // 订阅失效/变更时,前端重新订阅并更新后端
-            if (event.data && event.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && event.data.subscription) {
-                const sub = event.data.subscription
-                // 重新 POST 到后端
-                import('./utils/pushService').then(m => m.default.schedule(
-                    0, // ignored
-                    { title: '__resubscribe', data: { subscription: sub } }
-                )).catch(() => {})
-            }
-        })
-    }
+    // [FIX] v1.10.120: 移除 SW push 订阅变更处理 (Web Push 已删除)
 
-    // [FIX] 处理从通知点击打开的新窗口,URL 里带 ?openChat=xxx
+    // [FIX] 处理从通知/外部链接打开的新窗口,URL 里带 ?openChat=xxx
     try {
         const params = new URLSearchParams(window.location.search)
         const openChat = params.get('openChat')

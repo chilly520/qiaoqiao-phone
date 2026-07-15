@@ -20,9 +20,9 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-// v1.10.117: bump 到 v29 + 强制清理 v3-v28 旧 cache
-const SHELL_CACHE = 'chilly-shell-v30';
-const RUNTIME_CACHE = 'chilly-runtime-v24';
+// v1.10.120: bump v31 强制清理旧 cache (移除 Web Push 相关功能后升级)
+const SHELL_CACHE = 'chilly-shell-v31';
+const RUNTIME_CACHE = 'chilly-runtime-v25';
 
 // 关键 shell 资源,install 时主动 precache
 const SHELL_URLS = [
@@ -144,84 +144,8 @@ function refreshInBackground(cache, req) {
     }).catch(() => {});
 }
 
-// --- Web Push 接收 ---
-self.addEventListener('push', (event) => {
-    let payload = {
-        title: 'Chilly Phone',
-        body: '你有一条新消息',
-        tag: 'proactive',
-        icon: APP_ICON,
-        badge: APP_ICON,
-        url: '/',
-        data: {},
-    };
-
-    if (event.data) {
-        try {
-            const text = event.data.text();
-            if (text) {
-                const parsed = JSON.parse(text);
-                payload = { ...payload, ...parsed };
-            }
-        } catch (e) {
-            payload.body = event.data.text();
-        }
-    }
-
-    const notifOptions = {
-        body: payload.body,
-        icon: payload.icon || APP_ICON,
-        badge: payload.badge || APP_ICON,
-        tag: payload.tag || 'proactive',
-        renotify: true,
-        requireInteraction: false,
-        data: {
-            ...(payload.data || {}),
-            url: payload.url || '/',
-            chatId: payload.data?.chatId || null,
-            title: payload.title,
-        },
-    };
-
-    event.waitUntil(
-        self.registration.showNotification(payload.title, notifOptions)
-    );
-});
-
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    const targetChatId = event.notification && event.notification.data && event.notification.data.chatId;
-    const targetUrl = event.notification.data?.url || '/';
-
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            for (const client of clientList) {
-                if (client.url && 'focus' in client) {
-                    return client.focus().then(() => {
-                        if (targetChatId) {
-                            client.postMessage({
-                                type: 'OPEN_CHAT',
-                                chatId: targetChatId
-                            });
-                        } else if (targetUrl && targetUrl !== '/') {
-                            client.postMessage({
-                                type: 'NAVIGATE',
-                                url: targetUrl
-                            });
-                        }
-                    });
-                }
-            }
-            if (clients.openWindow) {
-                let url = targetUrl;
-                if (targetChatId) {
-                    url = `/?openChat=${encodeURIComponent(targetChatId)}`;
-                }
-                return clients.openWindow(url);
-            }
-        })
-    );
-});
+// --- v1.10.120: 移除 Web Push 相关事件监听(push/notificationclick/pushsubscriptionchange) ---
+// Service Worker 仅保留 PWA 离线缓存和版本更新热重载功能。
 
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -241,24 +165,4 @@ self.addEventListener('message', (event) => {
     if (event.data === 'ping') {
         // 接收到消息本身会重置 SW 休眠倒计时
     }
-});
-
-self.addEventListener('pushsubscriptionchange', (event) => {
-    console.log('[ServiceWorker] Push subscription changed/expired');
-    event.waitUntil(
-        self.registration.pushManager.subscribe(event.oldSubscription.options)
-            .then((newSub) => {
-                return self.clients.matchAll().then((clientList) => {
-                    clientList.forEach((client) => {
-                        client.postMessage({
-                            type: 'PUSH_SUBSCRIPTION_CHANGED',
-                            subscription: newSub.toJSON(),
-                        });
-                    });
-                });
-            })
-            .catch((err) => {
-                console.error('[ServiceWorker] Failed to re-subscribe:', err);
-            })
-    );
 });

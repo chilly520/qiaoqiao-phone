@@ -1,7 +1,10 @@
 // Background utility for PWA.
 //
+// v1.10.120: Web Push 相关功能已移除。后台定时/主动消息需要 App 处于前台或
+// 通过前台保活(audio+MediaSession)维持在后台不被杀来触发。
+//
 // 真保活机制(可选,需用户主动点击开启):
-//   - 创建一个真实播放的 <audio> 元素 (volume≈0.02,人耳几乎听不到,浏览器认为有音频输出)
+//   - 创建一个真实播放的 <audio> 元素 (volume≈0.01,15Hz超低频,人耳听不到,浏览器认为有音频输出)
 //   - 设置 MediaSession metadata 让手机通知栏出现媒体卡片
 //   - 监听 pause / ended / visibilitychange 自动续播
 //   - 失败时降级为 wake lock + visibility 监听
@@ -9,9 +12,6 @@
 // 注意:现代移动浏览器 (iOS Safari / Chrome Android) 对 autoplay 限制很严,
 // 必须由用户点击 / touchstart 事件触发 audio.play(),否则会被静默拒绝。
 // 所以这里只提供 enableRealKeepAlive() 方法,由 UI 开关按钮调用。
-//
-// 真正能穿透 App 完全关闭的方案是 Web Push (pushService.schedule),
-// 由 chatStore 的 proactive / scheduler / 定时任务模块调用。
 
 import { useLoggerStore } from '../stores/loggerStore';
 
@@ -468,78 +468,12 @@ class BackgroundManager {
     }
 
     /**
-     * 扫描所有聊天,预测"下一次"通知应该何时弹 -> 走 Web Push。
-     * 真正能穿透 App 完全关闭,跟 backgroundManager 本身的保活无关。
+     * v1.10.120: Web Push 已移除,本方法改为 no-op。
+     * 以前用于扫描所有聊天,预测"下一次"通知应该何时弹 -> 走 Web Push。
+     * 现在后台定时/主动消息只能在 App 存活期间(前台或保活维持的后台)触发。
      */
     async computeAndScheduleNextNotification() {
-        try {
-            const { useChatStore } = await import('../stores/chatStore.js');
-            const { useSchedulerStore } = await import('../stores/schedulerStore.js');
-            const chatStore = useChatStore();
-            const schedulerStore = useSchedulerStore();
-            const chats = chatStore.chats;
-            if (!chats) return false;
-
-            const now = Date.now();
-            const candidates = [];
-
-            Object.keys(chats).forEach(chatId => {
-                const chat = chats[chatId];
-                if (!chat || chat.hidden) return;
-                const chatName = chat.name || 'TA';
-
-                if (Array.isArray(chat.countdowns)) {
-                    chat.countdowns.filter(c => c.date > now).forEach(c => {
-                        candidates.push({
-                            time: c.date, title: chatName,
-                            body: c.title || '纪念日到了', chatId, type: 'countdown'
-                        });
-                    });
-                }
-
-                if (chat.proactiveEnabled && chat.proactiveInterval > 0 && chat.proactiveNext > now) {
-                    candidates.push({
-                        time: chat.proactiveNext, title: chatName,
-                        body: `${chatName} 想找你聊聊`, chatId, type: 'proactive'
-                    });
-                }
-
-                const tasks = schedulerStore.tasks || [];
-                tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp > now).forEach(task => {
-                    candidates.push({
-                        time: task.timestamp, title: chatName,
-                        body: task.content || '定时提醒', chatId, type: 'scheduled'
-                    });
-                });
-
-                const randomConfig = schedulerStore.randomConfigs?.[chatId];
-                if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > now) {
-                    candidates.push({
-                        time: randomConfig.nextTrigger, title: chatName,
-                        body: `${chatName} 想找你聊聊`, chatId, type: 'random'
-                    });
-                }
-            });
-
-            if (candidates.length === 0) return false;
-
-            candidates.sort((a, b) => a.time - b.time);
-            const next = candidates[0];
-
-            try {
-                const { pushService } = await import('./pushService');
-                const result = await pushService.schedule(next.time, {
-                    title: next.title, body: next.body, tag: 'proactive-msg',
-                    data: { chatId: next.chatId, type: next.type },
-                    url: `/wechat?openChat=${encodeURIComponent(next.chatId)}`,
-                });
-                return !!result?.ok;
-            } catch (e) {
-                return false;
-            }
-        } catch (e) {
-            return false;
-        }
+        return false;
     }
 
     destroy() {

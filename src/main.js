@@ -79,20 +79,16 @@ app.config.warnHandler = (msg, vm, trace) => {
 
 app.mount('#app')
 
-// Initialize Notification Service
+// Initialize Notification Service (v1.10.120: 仅注册SW用于PWA离线缓存,不再启动时请求通知权限)
 const initNotificationService = async () => {
     try {
-        // Register Service Worker for PWA and background features
+        // Register Service Worker for PWA offline cache
         if (notificationService.isServiceWorkerSupported()) {
             await notificationService.registerServiceWorker()
             logger.sys('Service Worker 注册成功')
         }
-
-        // Request notification permission
-        const hasPermission = await notificationService.requestPermission()
-        logger.sys(`通知权限: ${hasPermission ? '已授予' : '已拒绝'}`)
     } catch (error) {
-        logger.error('通知服务初始化失败', { error: error.message })
+        logger.error('Service Worker 注册失败', { error: error.message })
     }
 }
 
