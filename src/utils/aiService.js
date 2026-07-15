@@ -3718,6 +3718,12 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
         jsonStr = jsonStr.replace(/[\[【]\s*(?:\/?\s*(?:INNER[-_ ]?VOICE|心声|OFFLINE|ONLINE|DONE|DONE_TOKEN|CARD|TIMER|MCP)[^\]]*)\s*[\]】]/gi, '')
         jsonStr = jsonStr.trim()
 
+        // v1.10.125: 全面加固解析逻辑
+        // 1. 先用 _repairJsonStrings 修复未转义引号/换行
+        jsonStr = _repairJsonStrings(jsonStr)
+        // 去尾逗号
+        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
+
         // 方法1: Brace-counting 提取 JSON 数组（最可靠）
         let interactions = null
         const arrayStart = jsonStr.indexOf('[')
@@ -3744,12 +3750,47 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
             }
         }
 
+        // 方法1.5: AI 可能返回对象包裹的数组,如 {"interactions":[...]} 或 {"data":[...]}
+        if (!interactions || !Array.isArray(interactions)) {
+            const objStart = jsonStr.indexOf('{')
+            if (objStart !== -1) {
+                let depth = 0, inStr = false, escaped = false, objEnd = -1
+                for (let i = objStart; i < jsonStr.length; i++) {
+                    const ch = jsonStr[i]
+                    if (escaped) { escaped = false; continue }
+                    if (ch === '\\') { escaped = true; continue }
+                    if (ch === '"') { inStr = !inStr; continue }
+                    if (inStr) continue
+                    if (ch === '{') depth++
+                    else if (ch === '}') {
+                        depth--
+                        if (depth === 0) { objEnd = i; break }
+                    }
+                }
+                if (objEnd > objStart) {
+                    try {
+                        const parsedObj = JSON.parse(jsonStr.substring(objStart, objEnd + 1))
+                        // 从对象中提取数组字段
+                        const arrayField = parsedObj.interactions || parsedObj.data || parsedObj.list || parsedObj.results
+                        if (Array.isArray(arrayField)) {
+                            interactions = arrayField
+                        } else if (Array.isArray(parsedObj)) {
+                            interactions = parsedObj
+                        }
+                    } catch (e) {
+                        console.warn('[aiService] Object-wrapper extraction failed', e.message)
+                    }
+                }
+            }
+        }
+
         // 方法2: 简单正则回退（兼容旧格式）
         if (!interactions || !Array.isArray(interactions)) {
             const jsonMatch = rawContent.match(/\[[\s\S]*\]/)
             if (jsonMatch) {
                 try {
-                    interactions = JSON.parse(jsonMatch[0])
+                    const repaired = _repairJsonStrings(jsonMatch[0]).replace(/,(\s*[}\]])/g, '$1')
+                    interactions = JSON.parse(repaired)
                 } catch (e2) {
                     console.warn('[aiService] Regex fallback parse failed', e2.message)
                 }
@@ -3774,7 +3815,8 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
         }
 
         if (!interactions || !Array.isArray(interactions) || interactions.length === 0) {
-            useLoggerStore().addLog('WARN', 'Batch interactions 解析为空 (Raw)', { content: rawContent.substring(0, 500) })
+            console.error('[aiService] Batch interactions 全部解析方法失败,原始内容:', rawContent.substring(0, 1000))
+            useLoggerStore().addLog('ERROR', 'Batch interactions 解析失败 (Raw)', { content: rawContent.substring(0, 1000) })
             return []
         }
         const VALID_TYPES = new Set(['like', 'comment', 'reply'])
@@ -3979,19 +4021,24 @@ export async function generateCompleteProfile(character, userProfile = {}, optio
         try {
             data = JSON.parse(jsonText)
         } catch (parseError) {
-            // 尝试修复常见问题
+            // v1.10.125: 先用 _repairJsonStrings 修复未转义引号/换行(和其他解析器对齐)
             try {
-                // 修复末尾逗号
-                const fixed = jsonText.replace(/,(\s*[}\]])/g, '$1')
-                data = JSON.parse(fixed)
-            } catch (e2) {
-                // 修复未转义的换行符
+                const repaired = _repairJsonStrings(jsonText).replace(/,(\s*[}\]])/g, '$1')
+                data = JSON.parse(repaired)
+            } catch (e1) {
+                // 尝试修复末尾逗号
                 try {
-                    const fixed2 = jsonText.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
-                    data = JSON.parse(fixed2)
-                } catch (e3) {
-                    console.error('[aiService] JSON parse failed, raw content:', jsonText.substring(0, 200))
-                    throw new Error('Invalid JSON: ' + parseError.message)
+                    const fixed = jsonText.replace(/,(\s*[}\]])/g, '$1')
+                    data = JSON.parse(fixed)
+                } catch (e2) {
+                    // 修复未转义的换行符
+                    try {
+                        const fixed2 = jsonText.replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+                        data = JSON.parse(fixed2)
+                    } catch (e3) {
+                        console.error('[aiService] JSON parse failed, raw content:', jsonText.substring(0, 200))
+                        throw new Error('Invalid JSON: ' + parseError.message)
+                    }
                 }
             }
         }
@@ -4094,10 +4141,23 @@ JSON 示例：
         const result = await apiQueue.enqueue(_generateReplyInternal, [[{ role: 'system', content: systemPrompt }], { name: 'PersonaManager' }, null, { skipVisualContext: true }])
         if (result.error) throw new Error(result.error)
 
-        const jsonMatch = result.content.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) throw new Error('AI Response is not valid JSON')
-
-        return JSON.parse(jsonMatch[0])
+        // v1.10.125: 加固解析(剥离围栏 + _repairJsonStrings + 多层兜底)
+        let personaJsonText = (result.content || '').trim()
+        // 剥离 markdown 围栏
+        personaJsonText = personaJsonText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+        const personaStart = personaJsonText.indexOf('{')
+        const personaEnd = personaJsonText.lastIndexOf('}')
+        if (personaStart === -1 || personaEnd === -1 || personaEnd <= personaStart) {
+            throw new Error('AI Response is not valid JSON')
+        }
+        personaJsonText = personaJsonText.substring(personaStart, personaEnd + 1)
+        try {
+            return JSON.parse(personaJsonText)
+        } catch (e) {
+            // 兜底: 修复未转义引号 + 尾逗号
+            const repaired = _repairJsonStrings(personaJsonText).replace(/,(\s*[}\]])/g, '$1')
+            return JSON.parse(repaired)
+        }
     } catch (e) {
         console.error('[aiService] generateCharacterPersona failed', e)
         throw e
