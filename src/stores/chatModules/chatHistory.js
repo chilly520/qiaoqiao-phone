@@ -2,7 +2,7 @@ import { useSettingsStore } from '../settingsStore'
 import { useLoggerStore } from '../loggerStore'
 import { generateReply } from '../../utils/aiService'
 import { appendLog } from '../../utils/memoryLog'
-import { getLastNTurns, countTurnsBetween } from '../../utils/common'
+import { getLastNTurns, countTurnsBetween, turnRangeToMsgIndices } from '../../utils/common'
 
 export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats) => {
     async function summarizeHistory(chatId, options = {}) {
@@ -24,12 +24,22 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
         try {
             if (options.startIndex !== undefined && options.endIndex !== undefined) {
-                // Manual Range
-                if (options.startIndex < 0) options.startIndex = 0
-                if (options.endIndex > chat.msgs.length) options.endIndex = chat.msgs.length
-
-                targetMsgs = chat.msgs.slice(options.startIndex, options.endIndex)
-                rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
+                // v1.10.128: 手动总结改为按轮次计数。
+                // options.startTurn/endTurn (1-based) 优先;旧 options.startIndex/endIndex 仍兼容(按消息条数)。
+                if (options.startTurn !== undefined && options.endTurn !== undefined) {
+                    const idxRange = turnRangeToMsgIndices(chat.msgs, options.startTurn, options.endTurn)
+                    if (!idxRange) {
+                        throw new Error(`轮次 ${options.startTurn}-${options.endTurn} 超出已完成轮次范围`)
+                    }
+                    targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
+                    rangeDesc = `轮次 ${options.startTurn}-${options.endTurn} (消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
+                } else {
+                    // 兼容旧调用方:直接用消息索引
+                    if (options.startIndex < 0) options.startIndex = 0
+                    if (options.endIndex > chat.msgs.length) options.endIndex = chat.msgs.length
+                    targetMsgs = chat.msgs.slice(options.startIndex, options.endIndex)
+                    rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
+                }
                 // We don't advance auto index for manual summary
             } else {
                 // Auto Mode: Chunked Catch-Up

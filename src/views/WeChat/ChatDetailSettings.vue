@@ -3410,8 +3410,9 @@ const handleConfirmManualSummary = async () => {
     if (manualSummaryRange.value && manualSummaryRange.value.trim()) {
         const parts = manualSummaryRange.value.split(/[-: ]+/)
         if (parts.length === 2) {
-            options.startIndex = parseInt(parts[0]) - 1 // 1-based to 0-based
-            options.endIndex = parseInt(parts[1])
+            // v1.10.128: 手动总结改为按轮次计数(1-based)
+            options.startTurn = parseInt(parts[0])
+            options.endTurn = parseInt(parts[1])
         }
     }
 

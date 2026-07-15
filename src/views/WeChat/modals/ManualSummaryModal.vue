@@ -5,7 +5,7 @@
         <div class="bg-white w-[85%] max-w-[320px] rounded-2xl overflow-hidden shadow-2xl p-6 animate-scale-up"
             @click.stop>
             <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">手动触发总结</h3>
-            <p class="text-xs text-gray-500 mb-4">输入要总结的消息范围（如 <b>1-50</b>），留空则总结全部未总结消息。</p>
+            <p class="text-xs text-gray-500 mb-4">输入要总结的<b>轮次</b>范围（如 <b>1-50</b>），1 轮 = 1 条用户消息 + AI 回复。留空则总结全部未总结消息。</p>
             <input :value="range" @input="$emit('update:range', $event.target.value)" type="text"
                 class="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
                 placeholder="如: 1-50（留空总结全部）">

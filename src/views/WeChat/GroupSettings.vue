@@ -456,8 +456,9 @@ async function executeManualSummary() {
 
   let options = {}
   if (match) {
-    options.startIndex = parseInt(match[1]) - 1
-    options.endIndex = parseInt(match[2])
+    // v1.10.128: 手动总结改为按轮次计数(1-based)
+    options.startTurn = parseInt(match[1])
+    options.endTurn = parseInt(match[2])
   }
 
   showManualSummaryModal.value = false
@@ -1953,8 +1954,8 @@ onMounted(() => {
       <div class="bg-white w-full max-w-[320px] rounded-3xl overflow-hidden shadow-2xl p-6 animate-scale-in"
         @click.stop>
         <h3 class="text-lg font-bold text-gray-900 mb-4 text-center">手动触发总结</h3>
-        <p class="text-xs text-gray-500 mb-4 leading-relaxed text-center bg-gray-50 p-3 rounded-xl">输入要总结的消息范围（如 <b
-            class="text-purple-600">1-50</b>），留空则总结全部未总结消息。</p>
+        <p class="text-xs text-gray-500 mb-4 leading-relaxed text-center bg-gray-50 p-3 rounded-xl">输入要总结的<b class="text-purple-600">轮次</b>范围（如 <b
+            class="text-purple-600">1-50</b>），1 轮 = 1 条用户消息 + AI 回复。留空则总结全部未总结消息。</p>
         <input v-model="manualSummaryRange" type="text"
           class="w-full border-2 border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:bg-white transition-all text-center mb-5 font-mono shadow-inner"
           placeholder="如: 1-50（留空则全部）">

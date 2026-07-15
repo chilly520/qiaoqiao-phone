@@ -148,3 +148,62 @@ export function countTurnsBetween(msgs, startIndex, endIndex) {
     }
     return count
 }
+
+/**
+ * v1.10.128: 获取所有已完成轮次的边界索引
+ * 一轮 = 1 个 user 消息 + 后续(直到下一个 user 之前)的 AI 回复
+ * @param {Array} msgs - 消息数组
+ * @returns {Array<{start: number, end: number}>} 每轮的 [起始索引, 结束索引(不含)]
+ */
+export function getTurnBoundaries(msgs) {
+    if (!msgs || !msgs.length) return []
+    const boundaries = []
+    let turnStart = -1
+    let awaitingAi = false
+    for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i]
+        if (!m) continue
+        if (m.role === 'user') {
+            // 如果上一轮还在等 AI 回复,说明上一轮没完成,直接覆盖
+            if (turnStart !== -1 && awaitingAi) {
+                // 上一轮未完成,不记录
+            }
+            turnStart = i
+            awaitingAi = true
+        } else if (isAIResponse(m) && awaitingAi) {
+            // 找到 AI 回复,这一轮完成
+            // 继续往后找,把连续的 AI 消息都纳入这一轮
+            let end = i + 1
+            while (end < msgs.length) {
+                const next = msgs[end]
+                if (!next) break
+                if (next.role === 'user') break
+                end++
+            }
+            boundaries.push({ start: turnStart, end })
+            turnStart = -1
+            awaitingAi = false
+            i = end - 1 // 跳到 end-1,for 循环会 +1
+        }
+    }
+    return boundaries
+}
+
+/**
+ * v1.10.128: 将轮次范围(1-based)转换为消息数组索引范围(0-based)
+ * @param {Array} msgs - 消息数组
+ * @param {number} startTurn - 起始轮次(1-based)
+ * @param {number} endTurn - 结束轮次(1-based,包含)
+ * @returns {{startIndex: number, endIndex: number}|null} 消息数组索引范围,失败返回 null
+ */
+export function turnRangeToMsgIndices(msgs, startTurn, endTurn) {
+    const boundaries = getTurnBoundaries(msgs)
+    if (boundaries.length === 0) return null
+    const s = Math.max(1, startTurn)
+    const e = Math.min(boundaries.length, endTurn)
+    if (s > e) return null
+    return {
+        startIndex: boundaries[s - 1].start,
+        endIndex: boundaries[e - 1].end
+    }
+}
