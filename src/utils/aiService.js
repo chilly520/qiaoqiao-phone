@@ -3380,18 +3380,52 @@ async function _generateImageInternal(prompt, options = {}) {
         // 决定走文生图还是图生图:有参考图 + 开启 useAppearanceImage → 图生图
         let useImageModel = false
         let refImages = []  // v1.11.0: 改为数组,支持多图参考(Seedream 4.0+ 最多14张)
-        // v1.10.112: 智能人像/非人像检测
-        // - portraitKeywords: 触发形象图参考(人像)
-        // - nonPortraitKeywords: 跳过形象图参考(风景/美食/动物/物品)
-        // - isNonPortraitOnly: 提示词里只有非人像关键词(明确不要人)
-        const portraitKeywords = /\b(我|你|他|她|它|角色|人物|人像|自拍|全身|头像|肖像|真人|拟人|合影|情侣|我的|你的|他的|她的|它的|我们|他们|她们|我的|我的角色|这个角色|那个角色|character|portrait|selfie|person|people|face|me|him|her|himself|herself|myself|us|them|couple|kiss|hug|romantic|boyfriend|girlfriend|husband|wife|waifu|husbando)\b/i
-        const nonPortraitKeywords = /\b(风景|山水|风景照|风景画|街景|建筑|城市|夜景|日出|日落|天空|云彩|海洋|大海|森林|树木|花草|花卉|花园|公园|室内|房间|客厅|卧室|厨房|餐厅|食物|美食|菜|菜品|甜点|蛋糕|咖啡|餐|料理|水果|蔬菜|动物|猫|狗|鸟|鱼|兔子|仓鼠|物品|家具|装饰|车|汽车|单车|工具|书|画|海报|logo|icon|图标|风景图|风景壁纸|手机壁纸|scenery|landscape|cityscape|building|sky|cloud|sunset|sunrise|night view|forest|tree|flower|garden|park|room|interior|kitchen|food|dish|meal|cake|coffee|dessert|fruit|animal|cat|dog|bird|fish|object|tool|car|book|logo|wallpaper|background only|no person|no people|without person)\b/i
-        // v1.11.0: 合照/两个人关键词
-        const coupleKeywords = /\b(我们|我俩|俩人|两人|两个人|合照|合影|一起|合照|情侣照|双人|合照|couple|us|we|together|both|two people|group photo|selfie together)\b/i
-        const isNonPortraitOnly = nonPortraitKeywords.test(prompt) && !portraitKeywords.test(prompt)
-        const isCouplePrompt = coupleKeywords.test(prompt) || (/我|me|myself|us/i.test(prompt) && /你|角色|TA|her|him|you/i.test(prompt) && portraitKeywords.test(prompt))
-        const isSelfOnly = !isCouplePrompt && /\b(我|自拍|我自己|给我|帮我|我的照片|myself|selfie of me|photo of me|picture of me)\b/i.test(prompt) && !/\b(你|角色|her|him|you|TA)\b/i.test(prompt)
-        const isCharOnly = !isCouplePrompt && /\b(你|你的照片|你自己|角色|TA|her|him|you|your photo)\b/i.test(prompt) && !/\b(我|me|myself|my photo)\b/i.test(prompt)
+        // v1.10.122: 重写人像/非人像检测
+        // 旧逻辑用 \b 包中文关键词,但 JS 的 \b 只在 ASCII \w 边界生效,中文之间不算边界,
+        // 导致"一个男人给我送礼"这种含"我"但主体是别人的句子也被判为 self-only。
+        // 新逻辑:
+        //   - 中文关键词用 includes 子串匹配(更宽松但配合主体规则更准确)
+        //   - 英文关键词用 \b 边界匹配
+        //   - isSelfOnly 只在"我"作为主体出现时才成立(画我/我的照片/自拍/我自己),
+        //     而不是任意位置出现"我"字就触发
+        //   - 移除"未明确提及角色也兜底附加 charAppearance"的旧逻辑,
+        //     提示词没明确说"你/角色名"就不附加角色形象图,避免误用
+        const includesAny = (text, words) => words.some(w => text.includes(w))
+        const testEnglishWords = (text, words) => {
+            if (!words.length) return false
+            return new RegExp(`\\b(${words.join('|')})\\b`, 'i').test(text)
+        }
+
+        // 合照关键词
+        const coupleZh = ['我们', '我俩', '俩人', '两人', '两个人', '合照', '合影', '一起', '情侣照', '双人', '我和你', '你和我']
+        const coupleEn = ['couple', 'us', 'we', 'together', 'both', 'two people', 'group photo', 'selfie together']
+        const isCouplePrompt = includesAny(prompt, coupleZh) || testEnglishWords(prompt, coupleEn) ||
+            (includesAny(prompt, ['我']) && includesAny(prompt, ['你', '角色']) && includesAny(prompt, ['一起', '合影', '合照', '和']))
+
+        // 主体明确是"我"——只在"我"作为图片主体时才成立
+        // 排除"一个男人给我送礼"这种含"我"但主体是别人的歧义句
+        const selfSubjectZh = ['画我', '我的照片', '我的自拍', '自拍', '我自己', '给我画', '帮我画', '我拍照', '我站在', '我坐在', '我在', '给我生成', '照片中的我', '主角是我']
+        const selfSubjectEn = ['myself', 'selfie of me', 'photo of me', 'picture of me', 'draw me', 'of me', 'me taking', 'me standing', 'me sitting']
+        // 含"我"但主体是别人的歧义模式:某人 + 给/对/向 + 我
+        const ambiguousSelfPattern = /(男|女|人|哥|姐|孩|客|老板|医生|老师|学生|路人)[^，。、,.\s]*[给对向跟][我]/i
+        const hasExplicitSelfSubject = includesAny(prompt, selfSubjectZh) || testEnglishWords(prompt, selfSubjectEn)
+        const isSelfOnly = !isCouplePrompt && hasExplicitSelfSubject && !ambiguousSelfPattern.test(prompt) &&
+            !includesAny(prompt, ['你', '角色']) && !testEnglishWords(prompt, ['you', 'your', 'her', 'him', 'his', 'character'])
+
+        // 主体明确是"你/角色"
+        const charSubjectZh = ['画你', '你的照片', '你的自拍', '你自己', '你在', '你站在', '你坐在', '你拍照', '角色', 'TA']
+        const charSubjectEn = ['yourself', 'your photo', 'your selfie', 'draw you', 'you standing', 'you sitting', 'you taking', 'you in', 'character']
+        const isCharOnly = !isCouplePrompt && !isSelfOnly &&
+            (includesAny(prompt, charSubjectZh) || testEnglishWords(prompt, charSubjectEn)) &&
+            !includesAny(prompt, ['我']) && !testEnglishWords(prompt, ['me', 'my', 'myself', 'i '])
+
+        // 风景/物品等非人像
+        const nonPortraitZh = ['风景', '山水', '风景照', '风景画', '街景', '建筑', '城市', '夜景', '日出', '日落', '天空', '云彩', '海洋', '大海', '森林', '树木', '花草', '花卉', '花园', '公园', '室内', '房间', '客厅', '卧室', '厨房', '餐厅', '食物', '美食', '甜点', '蛋糕', '咖啡', '料理', '水果', '蔬菜', '动物', '物品', '家具', '装饰', '汽车', '单车', '工具', '海报', '图标', '风景图', '风景壁纸', '手机壁纸']
+        const nonPortraitEn = ['scenery', 'landscape', 'cityscape', 'building', 'sky', 'cloud', 'sunset', 'sunrise', 'forest', 'tree', 'flower', 'garden', 'park', 'room', 'interior', 'kitchen', 'food', 'dish', 'meal', 'cake', 'coffee', 'dessert', 'fruit', 'animal', 'object', 'tool', 'car', 'book', 'logo', 'wallpaper', 'background only', 'no person', 'no people', 'without person']
+        const portraitHintZh = ['人', '男人', '女人', '男孩', '女孩', '人像', '肖像', '全身', '头像', '自拍', '真人', '合影', '情侣']
+        const portraitHintEn = ['person', 'people', 'man', 'woman', 'boy', 'girl', 'portrait', 'selfie', 'face', 'human']
+        const hasPortraitHint = includesAny(prompt, portraitHintZh) || testEnglishWords(prompt, portraitHintEn)
+        const isNonPortraitOnly = (includesAny(prompt, nonPortraitZh) || testEnglishWords(prompt, nonPortraitEn)) && !hasPortraitHint
 
         // v1.10.112: 选项 useAppearance: 'auto'(默认) | true | false
         // 兼容旧版 volc.useAppearanceImage: true/false/'force'
@@ -3433,7 +3467,8 @@ async function _generateImageInternal(prompt, options = {}) {
             userAppearance = drawingVal.userAppearanceImage || null
         }
 
-        // v1.11.0: 智能选择参考图(合照/单人/角色)
+        // v1.10.122: 智能选择参考图(合照/单人我/单人角色/无参考)
+        // 严格按提示词主体判断,未明确提及就不附加,避免"一个男人"误用形象图
         if (!referenceImage && !isNonPortraitOnly && shouldLookupAppearance) {
             if (isCouplePrompt) {
                 if (userAppearance) refImages.push(userAppearance)
@@ -3441,16 +3476,18 @@ async function _generateImageInternal(prompt, options = {}) {
                 console.log('[AI Image] volcengine: couple/duo mode, ref count:', refImages.length)
             } else if (isSelfOnly && userAppearance) {
                 refImages.push(userAppearance)
-                console.log('[AI Image] volcengine: self-only mode')
-            } else if (charAppearance) {
+                console.log('[AI Image] volcengine: self-only mode (用户主体明确)')
+            } else if (isCharOnly && charAppearance) {
                 refImages.push(charAppearance)
-                console.log('[AI Image] volcengine: character mode')
+                console.log('[AI Image] volcengine: character mode (角色主体明确)')
+            } else {
+                // v1.10.122: 提示词没明确说"我/你/角色",不附加任何形象图,走纯文生图
+                console.log('[AI Image] volcengine: no explicit subject, pure text2image (no appearance ref)')
             }
         }
         if (refImages.length > 0) {
             const isExplicitPortrait = options.isCharacter === true || options.appearanceRef === true
             const isForced = configForced
-            const hasPortraitHint = portraitKeywords.test(prompt)
             if (isExplicitPortrait || isForced || (hasPortraitHint && !isNonPortraitOnly)) {
                 useImageModel = true
             } else if (isNonPortraitOnly) {
@@ -3465,18 +3502,27 @@ async function _generateImageInternal(prompt, options = {}) {
 
         const chosenSize = volc.size || `${width}x${height}`
 
-        const volcInlineNegative = negativeBoost
-            .replace(/\(([^()]+):([\d.]+)\)/g, '(no $1:$2)')
+        // v1.10.122: 火山引擎 Seedream 是中文模型,英文 (keyword:1.5) 权重语法它不支持,
+        // 直接把英文 enhancedPrompt 喂过去效果差。这里:
+        //   1. 把 SD 权重语法 (xxx:1.5) 拆成纯文本(去权重)
+        //   2. 追加中文风格说明,让模型明确要什么风格
+        const stripSDWeights = (s) => s.replace(/\(([^()]+):[\d.]+\)/g, '$1').replace(/[()]/g, '')
+        const volcStyleHint = isRealisticStyle
+            ? '真实照片风格，高清细节，自然光线，专业摄影'
+            : '动漫插画风格，精细线条，鲜艳色彩，二次元'
+        const volcInlineNegative = stripSDWeights(negativeBoost)
+            .replace(/no\s+/g, '不要').replace(/,/g, '，')
         const refImageCount = refImages.length
         let mode = 'none'
         let promptPrefix = ''
         if (refImageCount >= 2) {
             mode = 'couple'
-            promptPrefix = '(two distinct people in the same frame:1.3), '
+            promptPrefix = '画面中是两个不同的人在同一场景里，'
         } else if (refImageCount === 1) {
             mode = isSelfOnly ? 'self' : 'character'
         }
-        const finalPrompt = `${promptPrefix}${enhancedPrompt}, AVOID: ${volcInlineNegative}`
+        // v1.10.122: 火山引擎用中文风格描述 + 去权重的英文提示词 + 中文负面词
+        const finalPrompt = `${promptPrefix}${stripSDWeights(enhancedPrompt)}，${volcStyleHint}。不要：${volcInlineNegative}`
 
         const body = {
             model: chosenModel,
@@ -3502,7 +3548,13 @@ async function _generateImageInternal(prompt, options = {}) {
                 useImageModel,
                 refImageCount,
                 mode,
-                size: chosenSize
+                size: chosenSize,
+                isCouplePrompt,
+                isSelfOnly,
+                isCharOnly,
+                isNonPortraitOnly,
+                originalPrompt: prompt,
+                finalPrompt: finalPrompt.substring(0, 300)
             })
             const resp = await fetch('https://ark.cn-beijing.volces.com/api/v3/images/generations', {
                 method: 'POST',
