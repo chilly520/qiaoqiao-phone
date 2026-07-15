@@ -1774,10 +1774,8 @@ const sendSeeImage = () => {
         image: seeImageResult.value
     })
 
-    // 自动触发 AI 回复，让角色对图片做出评价
-    setTimeout(() => {
-        chatStore.sendMessageToAI(chatStore.currentChatId)
-    }, 500)
+    // v1.10.119: 取消发送图片后自动触发AI回复,避免不必要的API调用
+    // 如需AI对图片做出评价,用户可手动点击输入框旁的"生成回复"按钮
 
     // 关闭模态框
     showSeeImageModal.value = false
