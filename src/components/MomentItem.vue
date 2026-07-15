@@ -201,6 +201,27 @@ const getAuthorName = (id) => {
     return id
 }
 
+// v1.10.121: 评论显示名称解析(修复神秘好友 bug)
+// 1. 优先用存储的 authorName(如果不是"神秘好友")
+// 2. 否则尝试通过 authorId 解析真实角色名
+// 3. 都失败时保留原存储值(可能是历史遗留的"神秘好友")
+const getCommentDisplayName = (comment) => {
+    if (!comment) return '神秘好友'
+    // 1. 存储的 authorName 有效(非空且非兜底值),直接使用
+    if (comment.authorName && comment.authorName !== '神秘好友') {
+        return comment.authorName
+    }
+    // 2. 尝试通过 authorId 解析
+    if (comment.authorId) {
+        const resolved = getAuthorName(comment.authorId)
+        if (resolved && resolved !== '神秘好友') {
+            return resolved
+        }
+    }
+    // 3. 兜底
+    return comment.authorName || '神秘好友'
+}
+
 const getAuthorAvatar = (id) => {
     if (id === 'user') return settingsStore.personalization.userProfile.avatar
 
@@ -758,8 +779,7 @@ const navigateToAuthor = () => {
                         @contextmenu="handleCommentContextMenu($event, comment)" title="长按操作">
 
                         <div class="flex-1">
-                            <span class="text-[#576b95] font-bold">{{ comment.authorName ||
-                                getAuthorName(comment.authorId) }}</span>
+                            <span class="text-[#576b95] font-bold">{{ getCommentDisplayName(comment) }}</span>
                             <span v-if="comment.replyTo" class="text-gray-900 mx-1">回复</span>
                             <span v-if="comment.replyTo" class="text-[#576b95] font-bold hover:underline">{{
                                 getDisplayReplyName(comment.replyTo) }}</span>

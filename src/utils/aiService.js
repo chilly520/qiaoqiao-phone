@@ -3585,12 +3585,13 @@ export async function generateBatchInteractions(moment, charInfos, historicalMom
         : ""
 
     // 简化现有角色信息，减少Token
+    // v1.10.121: 显式列出每个角色的 ID,避免 AI 凭空捏造 authorId 导致评论被兜底成"神秘好友"
     const friendsList = charInfos.map((c, index) => {
         const uName = c.userName || userProfile?.name || '用户'
         const uPersona = c.userPersona ? ` | 用户身份建议: ${c.userPersona}` : ''
         const chatSnippet = c.recentChats ? ` | 最近聊天: ${c.recentChats.substring(0, 300).replace(/\n/g, ' ')}` : ''
         const emojiHint = c.emojis && c.emojis.length > 0 ? ` | 可用表情包(插入格式 [表情包:名字]): ${c.emojis.map(e => e.name).join(', ')}` : ''
-        return `${index + 1}. ${c.name}, 人设: ${c.persona.substring(0, 100)}...${uPersona}${emojiHint}${chatSnippet}`
+        return `${index + 1}. ID="${c.id}" | 名字: ${c.name} | 人设: ${c.persona.substring(0, 100)}...${uPersona}${emojiHint}${chatSnippet}`
     }).join('\n')
 
     let userInformation = ""
@@ -3625,13 +3626,16 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
 3. 内容要简短、自然、口语化，像真实朋友圈互动。
 4. 必须包含一部分虚构 NPC 互动，但不要冒充用户本人。
 5. 严禁生成 authorName 为 ${userProfile.name} 的互动。
+6. 真实角色互动: authorId 必须是上面列出的 ID="xxx" 中的字符串,authorName 必须是该角色的名字(不能用 ID)。
+7. 虚构 NPC 互动: 设置 isVirtual=true,authorId 留空字符串,authorName 用一个真实的中文姓名(如"小芳"、"陈哥"、"路人甲"),严禁用纯数字或长串字母作为 authorName。
 
 【输出格式】
 直接返回 JSON 数组：
 [
-  { "type": "like", "authorId": "角色ID", "authorName": "显示名称", "isVirtual": false },
-  { "type": "comment", "authorId": "角色ID", "authorName": "显示名称", "content": "内容", "isVirtual": false },
-  { "type": "reply", "authorId": "角色ID", "authorName": "显示名称", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false }
+  { "type": "like", "authorId": "上面列出的真实角色ID", "authorName": "真实角色名字", "isVirtual": false },
+  { "type": "comment", "authorId": "上面列出的真实角色ID", "authorName": "真实角色名字", "content": "评论内容", "isVirtual": false },
+  { "type": "reply", "authorId": "上面列出的真实角色ID", "authorName": "真实角色名字", "content": "回复内容", "replyTo": "被回复者姓名", "isVirtual": false },
+  { "type": "comment", "authorId": "", "authorName": "虚构NPC姓名", "content": "评论内容", "isVirtual": true }
 ]
 
 不要输出 Markdown，不要补充解释。`

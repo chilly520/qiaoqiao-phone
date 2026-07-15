@@ -22,6 +22,10 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['back', 'closeProfile'])
+// v1.10.121: 修复多根节点导致 WeChatApp 传入的内联样式(fixed/z-index:20000)被 Vue 丢弃,
+// 进而让 moments-view 被 WeChatApp 的 bg-gray-100 盖住(白色涂层 bug)。
+// 显式关闭 inheritAttrs,通过 v-bind="$attrs" 把 style 应用到主根 div。
+defineOptions({ inheritAttrs: false })
 const isCharacterMode = ref(!!props.initialProfileId) // New: track if opened for a specific character
 const momentsStore = useMomentsStore()
 const chatStore = useChatStore()
@@ -976,7 +980,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="moments-view w-full h-full bg-[#ededed] flex flex-col overflow-hidden" @contextmenu.prevent>
+    <div class="moments-view w-full h-full bg-[#ededed] flex flex-col overflow-hidden" v-bind="$attrs" @contextmenu.prevent>
         <!-- Notifications Page (Overlay) -->
         <div v-if="showNotifications" class="absolute inset-0 z-50 bg-white">
             <MomentsNotifications @back="showNotifications = false" @jump="handleNotificationJump" />

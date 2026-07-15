@@ -499,11 +499,21 @@ export const useMomentsStore = defineStore('moments', () => {
 
         // Fallback for Virtual characters (NPCs) or failed lookups
         if (!finalAuthorName) {
-            const isIdLike = (str) => str && (str.startsWith('char_') || str.startsWith('virtual-') || /^virtual\s*-/i.test(str) || /^[a-z0-9-]{20,}$/.test(str) || /^\d{10,}$/.test(str))
-            if (isIdLike(comment.authorName)) {
+            // v1.10.121: 修复 AI 生成的评论一律显示"神秘好友"。
+            // 旧逻辑用 /^[a-z0-9-]{20,}$/ 和 /^\d{10,}$/ 把 AI 返回的纯数字/长串 authorName
+            // 也判定为 ID-like 并强制改成"神秘好友",导致 NPC 评论也消失。
+            // 新逻辑只兜底"明确是系统内部 ID"的情况,其余信任 AI 给的 authorName。
+            const isSystemId = (str) => typeof str === 'string' && (
+                str.startsWith('char_') ||
+                str.startsWith('virtual-') ||
+                /^virtual\s*-/i.test(str) ||
+                /^m-\d/.test(str) ||
+                /^c-\d/.test(str)
+            )
+            if (isSystemId(comment.authorName) || !comment.authorName) {
                 finalAuthorName = '神秘好友'
             } else {
-                finalAuthorName = comment.authorName || '神秘好友'
+                finalAuthorName = comment.authorName
             }
         }
         if (!finalAuthorAvatar) finalAuthorAvatar = comment.authorAvatar || `https://api.dicebear.com/7.x/notionists/svg?seed=${finalAuthorName}&backgroundColor=b6e3f4,c0aede,d1d4f9`

@@ -810,6 +810,8 @@ const navigateToSettings = () => {
 }
 
 const handleOpenMoments = () => {
+    // v1.10.121: 显式重置,避免上一次 openProfileFromChat('user') 残留导致从发现 tab 进去变成"我的相册"
+    momentsInitialProfileId.value = null
     showMoments.value = true
     const currentState = history.state || {}
     if (!currentState.profileOpen) {
