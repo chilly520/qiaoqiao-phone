@@ -78,11 +78,11 @@ const settingsCards = [
         page: 'backup'
     },
     {
-        title: '后台通知',
-        subtitle: 'Web Push, 关闭 App 也能收消息',
-        icon: 'fa-solid fa-bell',
-        gradient: 'from-rose-100 to-rose-200',
-        iconColor: 'text-rose-600',
+        title: '前台保活',
+        subtitle: '媒体卡片保活, 切后台不被杀',
+        icon: 'fa-solid fa-music',
+        gradient: 'from-indigo-100 to-violet-200',
+        iconColor: 'text-indigo-600',
         subtitleColor: 'text-gray-500',
         page: 'push'
     },

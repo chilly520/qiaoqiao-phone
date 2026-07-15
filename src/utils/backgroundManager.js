@@ -460,8 +460,8 @@ class BackgroundManager {
     }
 
     /**
-     * 调度未来某时刻的后台通知 (v1.10.34: Notification Triggers API 已被 Chrome
-     * 移除,改用 Web Push,具体实现在 pushService.schedule,本方法仅为兼容保留 no-op)。
+     * v1.10.120: 原生后台通知已不再支持(Web Push 和 Notification Triggers API 均已移除)。
+     * 保留 no-op 方法避免外部调用报错。
      */
     async scheduleNativeNotification() {
         return false;
