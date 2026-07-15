@@ -185,77 +185,13 @@
         </button>
       </div>
 
-      <!-- v1.10.107: 形象图独立上传(对所有角色可见,用于火山引擎图生图参考) -->
-      <div class="mt-8 space-y-3 border-t border-gray-100 pt-6">
-        <button
-          @click="triggerAppearanceUpload"
-          class="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-2xl font-bold shadow-lg shadow-pink-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2">
-          <i class="fa-solid fa-id-card"></i>
-          <span>{{ character.appearanceImage ? '更换形象图' : '上传形象图(生图参考)' }}</span>
-        </button>
-
-        <!-- 生图风格切换 -->
-        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-3">
-          <div class="text-xs font-bold text-blue-900 mb-2 flex items-center gap-1.5">
-            <i class="fa-solid fa-wand-magic-sparkles text-blue-500"></i>
-            <span>生图风格（人像/环境/食物等）</span>
-          </div>
-          <div class="flex gap-2">
-            <button 
-              @click="setGlobalImageStyle('realistic')"
-              class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-              :class="settingsStore.drawing.globalImageStyle === 'realistic' 
-                ? 'bg-blue-500 text-white shadow-md shadow-blue-500/30' 
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-blue-300'">
-              <i class="fa-solid fa-camera"></i>
-              <span>真实照片</span>
-            </button>
-            <button 
-              @click="setGlobalImageStyle('anime')"
-              class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-              :class="settingsStore.drawing.globalImageStyle === 'anime' 
-                ? 'bg-purple-500 text-white shadow-md shadow-purple-500/30' 
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-purple-300'">
-              <i class="fa-solid fa-star"></i>
-              <span>动漫插画</span>
-            </button>
-          </div>
-          <div class="text-[10px] text-blue-600/70 mt-2 leading-relaxed">
-            {{ settingsStore.drawing.globalImageStyle === 'realistic' 
-              ? '真实版：生成照片级写实图像，适合真人形象参考' 
-              : '漫画版：生成日系动漫风格插画，色彩明亮可爱' }}
-          </div>
-        </div>
-
-        <div v-if="character.appearanceImage" class="bg-pink-50 border border-pink-100 rounded-2xl p-3 space-y-2">
-          <div class="flex items-center gap-2">
-            <img :src="character.appearanceImage" class="w-16 h-16 rounded-xl object-cover border border-pink-200" alt="appearance">
-            <div class="flex-1 min-w-0">
-              <div class="text-xs font-bold text-pink-900">🎨 形象参考图已设置</div>
-              <div class="text-[10px] text-pink-700 mt-0.5 leading-relaxed">生图服务将以这张图作为参考,生成的形象会更接近 TA</div>
-            </div>
-            <button @click="clearAppearanceImage" class="text-pink-400 hover:text-pink-600 p-1" title="删除形象图">
-              <i class="fa-solid fa-trash-can text-sm"></i>
-            </button>
-          </div>
-        </div>
-
-        <input
-          ref="avatarFileInput"
-          type="file"
-          class="hidden"
-          accept="image/*"
-          @change="handleAvatarUpload"
-        />
-
-        <input
-          ref="appearanceFileInput"
-          type="file"
-          class="hidden"
-          accept="image/*"
-          @change="handleAppearanceUpload"
-        />
-      </div>
+      <input
+        ref="avatarFileInput"
+        type="file"
+        class="hidden"
+        accept="image/*"
+        @change="handleAvatarUpload"
+      />
 
       <!-- Loading Overlay -->
     <Transition name="fade">
@@ -372,7 +308,6 @@ const settingsStore = useSettingsStore()
 const charId = route.params.charId
 const isAnalysisTyping = computed(() => !!chatStore.isProfileProcessing[charId])
 const avatarFileInput = ref(null)
-const appearanceFileInput = ref(null)  // v1.10.97: 形象图
 const showMemoryLog = ref(false)
 const memoryLogs = computed(() => searchMemoryLog(charId, { limit: 100 }))
 const memoryFacts = computed(() => getFacts(charId))
@@ -597,58 +532,6 @@ const handleAvatarUpload = async (event) => {
   }
 }
 
-// v1.10.97: 形象图上传(独立于头像,用于火山引擎图生图参考)
-// 比例推荐 1:1, 压缩到 768 以减少 base64 体积(localStorage 容量有限)
-const triggerAppearanceUpload = () => {
-  if (appearanceFileInput.value) {
-    appearanceFileInput.value.click()
-  }
-}
-
-const handleAppearanceUpload = async (event) => {
-  const file = event.target.files[0]
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    chatStore.triggerToast('请选择图片文件', 'error')
-    event.target.value = ''
-    return
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    chatStore.triggerToast('图片不能超过 10MB', 'error')
-    event.target.value = ''
-    return
-  }
-
-  try {
-    const base64 = await compressImage(file, { maxWidth: 768, quality: 0.8 })
-    await chatStore.updateCharacter(charId, { appearanceImage: base64 })
-    character.value.appearanceImage = base64
-    chatStore.triggerToast('形象图已设置 🎨', 'success')
-  } catch (error) {
-    console.error('上传形象图失败:', error)
-    chatStore.triggerToast('上传失败', 'error')
-  } finally {
-    event.target.value = ''
-  }
-}
-
-const clearAppearanceImage = async () => {
-  if (!confirm('确定要删除形象图吗?删除后生图将不再以该形象作为参考。')) return
-  try {
-    await chatStore.updateCharacter(charId, { appearanceImage: '' })
-    character.value.appearanceImage = ''
-    chatStore.triggerToast('已删除形象图', 'success')
-  } catch (error) {
-    console.error('删除形象图失败:', error)
-    chatStore.triggerToast('删除失败', 'error')
-  }
-}
-
-const setGlobalImageStyle = (style) => {
-  settingsStore.drawing.globalImageStyle = style
-  settingsStore.saveToStorage()
-  chatStore.triggerToast(style === 'realistic' ? '已切换为真实照片风格' : '已切换为动漫插画风格', 'success')
-}
 </script>
 
 <style scoped>
