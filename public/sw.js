@@ -20,8 +20,8 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-// v1.10.122: bump v33 强制清理旧 cache (修复火山引擎生图主体误判 + 中文提示词)
-const SHELL_CACHE = 'chilly-shell-v33';
+// v1.10.123: bump v34 强制清理旧 cache (迁移历史神秘好友评论数据)
+const SHELL_CACHE = 'chilly-shell-v34';
 const RUNTIME_CACHE = 'chilly-runtime-v25';
 
 // 关键 shell 资源,install 时主动 precache

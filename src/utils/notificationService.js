@@ -89,8 +89,8 @@ class NotificationService {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        // v1.10.122: bump v=15 强制 SW 重新检测(修复火山引擎生图主体误判 + 中文提示词)
-        const registration = await navigator.serviceWorker.register('/sw.js?v=15', { scope: '/' })
+        // v1.10.123: bump v=16 强制 SW 重新检测(迁移历史神秘好友评论数据)
+        const registration = await navigator.serviceWorker.register('/sw.js?v=16', { scope: '/' })
         console.log('ServiceWorker registration successful with scope:', registration.scope)
 
         // 如果有等待中的新 SW，立即激活它（替换旧版本）

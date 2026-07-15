@@ -62,6 +62,58 @@ export const useMomentsStore = defineStore('moments', () => {
                 }
             }
 
+            // v1.10.123: 迁移历史污染的"神秘好友"评论
+            // 旧代码(v1.10.120 及以前)会把 AI 返回的真实 authorName 强制覆盖成"神秘好友",
+            // 且当时 AI 没收到角色 ID,会编造不存在的 authorId(数字长串)。
+            // v1.10.121 修了 addComment 和 AI prompt,但历史已存储的评论名字已永久丢失。
+            // 这里做一次性迁移:
+            //   - 能通过 authorId 在 chatStore 反查到角色的 → 更新为真实名字
+            //   - 反查不到的(名字已永久丢失) → 删除该评论(留着只会显示"神秘好友")
+            const migratedFlag = localStorage.getItem('moments_migrated_mystery_v1123')
+            if (!migratedFlag) {
+                try {
+                    const { useChatStore } = await import('./chatStore')
+                    const chatStore = useChatStore()
+                    // chatStore 可能还没初始化(空对象),如果空就跳过,下次启动再迁移
+                    if (Object.keys(chatStore.chats || {}).length > 0) {
+                        let changed = false
+                        let removedCount = 0
+                        let recoveredCount = 0
+                        for (const moment of moments.value) {
+                            if (!moment.comments || moment.comments.length === 0) continue
+                            const before = moment.comments.length
+                            moment.comments = moment.comments.filter(c => {
+                                if (c.authorName !== '神秘好友') return true
+                                // 尝试用 authorId 反查真实角色
+                                if (c.authorId && c.authorId !== 'user') {
+                                    const char = chatStore.chats[c.authorId] ||
+                                        Object.values(chatStore.chats).find(ch =>
+                                            ch.id === c.authorId || ch.wechatId === c.authorId ||
+                                            ch.name === c.authorId || ch.remark === c.authorId)
+                                    if (char) {
+                                        c.authorName = char.remark || char.name
+                                        recoveredCount++
+                                        changed = true
+                                        return true
+                                    }
+                                }
+                                // 名字已永久丢失,删除
+                                removedCount++
+                                changed = true
+                                return false
+                            })
+                        }
+                        if (changed) {
+                            await momentsDB.setItem('all_moments', JSON.parse(JSON.stringify(moments.value)))
+                            console.log(`[MomentsStore] 迁移完成: 恢复 ${recoveredCount} 条, 删除 ${removedCount} 条神秘好友评论`)
+                        }
+                        localStorage.setItem('moments_migrated_mystery_v1123', 'done')
+                    }
+                } catch (e) {
+                    console.warn('[MomentsStore] 神秘好友迁移失败,下次启动重试', e)
+                }
+            }
+
             isInitialized.value = true
             startAutoGeneration()
             return true

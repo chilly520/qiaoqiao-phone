@@ -858,7 +858,7 @@ const navigateToAuthor = () => {
                 <div class="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                     <span class="font-bold text-gray-700 text-sm">评论操作</span>
                     <span class="text-xs text-gray-400 font-normal">
-                        {{ activeComment?.authorName || '未知用户' }}
+                        {{ activeComment ? getCommentDisplayName(activeComment) : '未知用户' }}
                     </span>
                 </div>
                 <div class="p-2 space-y-1">
