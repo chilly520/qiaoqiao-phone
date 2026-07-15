@@ -195,7 +195,13 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             latestChat.summary = response.content
 
             // Update indices after successful summary
-            if (options.startIndex === undefined && options.endIndex === undefined) {
+            // v1.10.130: 日期模式(startDate/endDate)同样不应推进自动总结的索引/计数,
+            // 否则会把"按日期手动总结"误判为"自动增量总结",污染 lastSummaryTime 等
+            const isAutoSummaryMode = options.startIndex === undefined
+                && options.endIndex === undefined
+                && !options.startDate
+                && !options.endDate
+            if (isAutoSummaryMode) {
                 latestChat.lastSummaryIndex = nextIndex
                 latestChat.lastSummaryCount = latestChat.msgs.length // Sync checkCount
                 latestChat.lastSummaryTime = Date.now()
@@ -231,7 +237,12 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             chat.isSummarizing = false
 
             // Auto-trigger next chunk if backlog remains
-            if (options.startIndex === undefined && options.endIndex === undefined) {
+            // v1.10.130: 日期模式也不应触发后续自动增量总结链
+            const isAutoSummaryModeFinally = options.startIndex === undefined
+                && options.endIndex === undefined
+                && !options.startDate
+                && !options.endDate
+            if (isAutoSummaryModeFinally) {
                 const currentTotal = chat.msgs.length
                 const backlog = currentTotal - (chat.lastSummaryIndex || 0)
                 const summaryLimit = parseInt(chat.summaryLimit) || 50

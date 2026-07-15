@@ -389,7 +389,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
     const charStickers = charId ? stickerStore.getStickers(charId, char.emojis || []) : []
     let memoryText = ''
 
-    if (charId && !isSimpleTask && !isCommandTask) {
+    // v1.10.130: skipContext=true 时(如 summarizeHistory 按日期/轮次总结)跳过
+    // 1) recallOriginalMessages —— 它会从 char.msgs 全量历史中检索关键词,
+    //    把"最近5条消息"(可能是今天的对话)附加到用户消息后,导致总结时
+    //    AI 收到的是最新日期的内容而不是选定日期的内容
+    // 2) memoryText 构建 —— 包含 chat.summary(最新摘要)和 memoryLog(最近事件),
+    //    会让总结请求被无关的最新上下文污染
+    if (charId && !isSimpleTask && !isCommandTask && !skipContext) {
         const lastUserMsg = [...(messages || [])].reverse().find(m => m.role === 'user')
         if (lastUserMsg?.content) {
             const recallResult = await recallOriginalMessages(charId, String(lastUserMsg.content))
