@@ -207,3 +207,49 @@ export function turnRangeToMsgIndices(msgs, startTurn, endTurn) {
         endIndex: boundaries[e - 1].end
     }
 }
+
+/**
+ * v1.10.129: 统计每天的轮次数
+ * @param {Array} msgs - 消息数组
+ * @returns {Object<string, number>} key 为 'YYYY-MM-DD', value 为该天已完成轮次数
+ */
+export function getDailyTurnCounts(msgs) {
+    const boundaries = getTurnBoundaries(msgs)
+    const dailyCounts = {}
+    for (const b of boundaries) {
+        // 用轮次起始 user 消息的 timestamp 代表这一天
+        const m = msgs[b.start]
+        if (!m || !m.timestamp) continue
+        const d = new Date(m.timestamp)
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        dailyCounts[key] = (dailyCounts[key] || 0) + 1
+    }
+    return dailyCounts
+}
+
+/**
+ * v1.10.129: 将日期范围转为消息数组索引范围(0-based)
+ * 按消息 timestamp 过滤,返回覆盖该日期范围的所有消息索引
+ * @param {Array} msgs - 消息数组
+ * @param {string} startDate - 起始日期 'YYYY-MM-DD'
+ * @param {string} endDate - 结束日期 'YYYY-MM-DD' (包含)
+ * @returns {{startIndex: number, endIndex: number}|null} 消息数组索引范围,失败返回 null
+ */
+export function dateRangeToMsgIndices(msgs, startDate, endDate) {
+    if (!msgs || !msgs.length || !startDate || !endDate) return null
+    const startTs = new Date(startDate + 'T00:00:00').getTime()
+    const endTs = new Date(endDate + 'T23:59:59.999').getTime()
+    if (isNaN(startTs) || isNaN(endTs) || startTs > endTs) return null
+    let startIndex = -1
+    let endIndex = -1
+    for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i]
+        if (!m || !m.timestamp) continue
+        if (m.timestamp >= startTs && m.timestamp <= endTs) {
+            if (startIndex === -1) startIndex = i
+            endIndex = i + 1
+        }
+    }
+    if (startIndex === -1) return null
+    return { startIndex, endIndex }
+}

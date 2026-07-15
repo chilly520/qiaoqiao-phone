@@ -7,6 +7,7 @@ import { useWorldBookStore } from '../../stores/worldBookStore'
 import AvatarCropper from '../../components/AvatarCropper.vue'
 import GroupAnnouncementModal from './modals/GroupAnnouncementModal.vue'
 import GroupRankModal from './modals/GroupRankModal.vue'
+import MessageHistoryCalendar from './modals/MessageHistoryCalendar.vue'
 import { compressImage } from '../../utils/imageUtils'
 import { countTurns, countTurnsBetween } from '../../utils/common'
 
@@ -438,6 +439,7 @@ function updatePrivateMemoryLimit(e) {
 
 const showManualSummaryModal = ref(false)
 const manualSummaryRange = ref('')
+const showCalendarSummaryModal = ref(false)
 
 function triggerManualSummary() {
   const chatId = existingChat.value?.id
@@ -469,6 +471,31 @@ async function executeManualSummary() {
   } catch (e) {
     console.error(e)
     chatStore.triggerToast('总结请求发生错误', 'error')
+  }
+}
+
+function triggerCalendarSummary() {
+  const chatId = existingChat.value?.id
+  if (!chatId) {
+    chatStore.triggerToast('请先创建或保存群聊', 'error')
+    return
+  }
+  showCalendarSummaryModal.value = true
+}
+
+async function executeCalendarSummary({ startDate, endDate }) {
+  showCalendarSummaryModal.value = false
+  try {
+    chatStore.triggerToast(`正在总结 ${startDate}~${endDate} 的对话...`, 'info')
+    const result = await chatStore.summarizeHistory(existingChat.value?.id, { startDate, endDate })
+    if (!result.success && result.error) {
+      chatStore.triggerToast('总结失败: ' + result.error, 'error')
+    } else {
+      chatStore.triggerToast('总结完成', 'success')
+    }
+  } catch (e) {
+    console.error(e)
+    chatStore.triggerToast('总结失败: ' + (e.message || '未知错误'), 'error')
   }
 }
 
@@ -1547,10 +1574,15 @@ onMounted(() => {
                   :class="settingsStore.personalization.theme === 'dark' ? 'bg-blue-900/20 text-blue-400 border-blue-900/30 hover:bg-blue-900/40' : 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'">
                   <i class="fa-solid fa-brain mr-1.5 text-sm"></i>手动总结
                 </button>
+                <button @click="triggerCalendarSummary"
+                  class="flex-1 py-4 rounded-xl text-xs font-bold border transition-all flex items-center justify-center active:scale-95"
+                  :class="settingsStore.personalization.theme === 'dark' ? 'bg-green-900/20 text-green-400 border-green-900/30 hover:bg-green-900/40' : 'bg-green-50 text-green-600 border-green-100 hover:bg-green-100'">
+                  <i class="fa-solid fa-calendar-days mr-1.5 text-sm"></i>消息日历
+                </button>
                 <button @click="showMemoryModal = true"
                   class="flex-1 py-4 rounded-xl text-xs font-bold border transition-all flex items-center justify-center active:scale-95"
                   :class="settingsStore.personalization.theme === 'dark' ? 'bg-purple-900/20 text-purple-400 border-purple-900/30 hover:bg-purple-900/40' : 'bg-purple-50 text-purple-600 border-purple-100 hover:bg-purple-100'">
-                  <i class="fa-solid fa-database mr-1.5 text-sm"></i>记忆管理库
+                  <i class="fa-solid fa-database mr-1.5 text-sm"></i>记忆库
                 </button>
               </div>
             </div>
@@ -1971,6 +2003,13 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Message History Calendar Modal -->
+    <MessageHistoryCalendar
+      :show="showCalendarSummaryModal"
+      :msgs="existingChat?.msgs || []"
+      @close="showCalendarSummaryModal = false"
+      @summary="executeCalendarSummary" />
 
     <!-- AI Member Generator Modal -->
     <div v-if="state.showAiModal"

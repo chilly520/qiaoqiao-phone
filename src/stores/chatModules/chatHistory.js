@@ -2,7 +2,7 @@ import { useSettingsStore } from '../settingsStore'
 import { useLoggerStore } from '../loggerStore'
 import { generateReply } from '../../utils/aiService'
 import { appendLog } from '../../utils/memoryLog'
-import { getLastNTurns, countTurnsBetween, turnRangeToMsgIndices } from '../../utils/common'
+import { getLastNTurns, countTurnsBetween, turnRangeToMsgIndices, dateRangeToMsgIndices } from '../../utils/common'
 
 export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats) => {
     async function summarizeHistory(chatId, options = {}) {
@@ -23,7 +23,16 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
         let nextIndex = chat.lastSummaryIndex || 0
 
         try {
-            if (options.startIndex !== undefined && options.endIndex !== undefined) {
+            // v1.10.129: 按日期总结(优先级最高)
+            if (options.startDate && options.endDate) {
+                const idxRange = dateRangeToMsgIndices(chat.msgs, options.startDate, options.endDate)
+                if (!idxRange) {
+                    throw new Error(`日期 ${options.startDate}~${options.endDate} 范围内没有消息`)
+                }
+                const turnCount = countTurnsBetween(chat.msgs, idxRange.startIndex, idxRange.endIndex)
+                targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
+                rangeDesc = `日期 ${options.startDate}~${options.endDate} (${turnCount}轮, 消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
+            } else if (options.startIndex !== undefined && options.endIndex !== undefined) {
                 // v1.10.128: 手动总结改为按轮次计数。
                 // options.startTurn/endTurn (1-based) 优先;旧 options.startIndex/endIndex 仍兼容(按消息条数)。
                 if (options.startTurn !== undefined && options.endTurn !== undefined) {

@@ -717,7 +717,10 @@
                                 @click="triggerManualSummary">手动总结</button>
                             <button class="setting-btn secondary text-xs flex-1"
                                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : ''"
-                                @click="openMemoryLib">记忆管理库</button>
+                                @click="triggerCalendarSummary">消息日历</button>
+                            <button class="setting-btn secondary text-xs flex-1"
+                                :class="settingsStore.personalization.theme === 'dark' ? 'bg-white/5 text-gray-400 hover:bg-white/10' : ''"
+                                @click="openMemoryLib">记忆库</button>
                         </div>
                     </div>
                 </div>
@@ -1333,6 +1336,13 @@
             @execute="executeManualSummary"
             @update:range="(v) => manualSummaryRange = v" />
 
+        <!-- Message History Calendar Modal -->
+        <MessageHistoryCalendar
+            :show="showCalendarSummaryModal"
+            :msgs="props.chatData?.msgs || []"
+            @close="showCalendarSummaryModal = false"
+            @summary="executeCalendarSummary" />
+
     <!-- Spark Detail Modal -->
     <SparkDetailModal
         :visible="showSparkDetail"
@@ -1359,6 +1369,7 @@ import ExportCardModal from './modals/ExportCardModal.vue'
 import VoicePickerModal from './modals/VoicePickerModal.vue'
 import DeleteHistoryModal from './modals/DeleteHistoryModal.vue'
 import ManualSummaryModal from './modals/ManualSummaryModal.vue'
+import MessageHistoryCalendar from './modals/MessageHistoryCalendar.vue'
 import { weatherService, POPULAR_CITIES } from '../../utils/weatherService'
 import { generateSummary } from '../../utils/aiService'
 import { getEnabledServers } from '../../utils/mcpService'
@@ -1714,10 +1725,35 @@ const toggleContextExpand = (key) => {
 // --- Manual Summary Logic ---
 const showManualSummaryModal = ref(false)
 const manualSummaryRange = ref('')
+const showCalendarSummaryModal = ref(false)
 
 const triggerManualSummary = () => {
     showManualSummaryModal.value = true
     manualSummaryRange.value = ''
+}
+
+const triggerCalendarSummary = () => {
+    showCalendarSummaryModal.value = true
+}
+
+const executeCalendarSummary = async ({ startDate, endDate }) => {
+    showCalendarSummaryModal.value = false
+    if (!props.chatData?.id) {
+        showToast('无法执行总结：会话ID缺失')
+        return
+    }
+    try {
+        showToast(`正在总结 ${startDate}~${endDate} 的对话...`, 'info')
+        const result = await chatStore.summarizeHistory(props.chatData.id, { startDate, endDate })
+        if (!result.success && result.error) {
+            showToast('总结失败: ' + result.error)
+        } else {
+            showToast('总结完成', 'success')
+        }
+    } catch (e) {
+        console.error(e)
+        showToast('总结失败: ' + (e.message || '未知错误'))
+    }
 }
 
 const executeManualSummary = async () => {
