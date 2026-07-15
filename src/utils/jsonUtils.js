@@ -75,7 +75,11 @@ export function _repairJsonStrings(jsonStr) {
                 inString = false
                 result += ch
             } else {
-                result += '\\' + ch
+                // v1.10.126: 字符串内的"另一种引号"是普通字符,直接输出。
+                // 旧代码加 \\ 转义(如双引号串内的单引号变成 \'),
+                // 但 \' 在 JSON 标准里是非法转义序列,JSON.parse 直接报错,
+                // 导致任何含撇号的内容(如 "it's fine")都被破坏。
+                result += ch
             }
             continue
         }
