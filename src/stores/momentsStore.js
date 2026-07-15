@@ -1026,19 +1026,13 @@ export const useMomentsStore = defineStore('moments', () => {
                     }, { skipAutoInteraction: true })
 
 
-                    if (data.interactions) {
-                        for (const inter of data.interactions) {
-                            if (inter.type === 'like') addLike(moment.id, inter.authorName)
-                            else if (inter.type === 'comment') addComment(moment.id, {
-                                authorId: inter.authorId,
-                                authorName: inter.authorName,
-                                content: inter.content,
-                                mentions: inter.mentions || [],
-                                replyTo: inter.replyTo || null,
-                                isVirtual: inter.isVirtual
-                            })
-                        }
-                    }
+                    // v1.10.127: 移除重复处理。addMoment 内部(302-321行)已经处理了
+                    // data.interactions(无论 skipAutoInteraction 是否为 true)。
+                    // 旧代码这里又处理一遍,导致:
+                    // - 点赞重复:addLike(id, inter.authorName) 与 addMoment 内的
+                    //   addLike(id, authorId || authorName, authorName) 解析出不同
+                    //   displayName,同一人被点赞两次(一次真名、一次 AI 给的名字)
+                    // - 评论被去重静默丢弃(内容相同),浪费处理
                 }
             }
 
@@ -1066,10 +1060,8 @@ export const useMomentsStore = defineStore('moments', () => {
                     if (update.newInteractions) {
                         for (const inter of update.newInteractions) {
                             if (inter.type === 'like') {
-                                // Only add if not already liked
-                                if (!targetMoment.likes.includes(inter.authorName)) {
-                                    addLike(targetMoment.id, inter.authorName)
-                                }
+                                // v1.10.127: 与 addMoment 内部一致,传 authorId||authorName + fallbackName
+                                addLike(targetMoment.id, inter.authorId || inter.authorName, inter.authorName)
                             } else if (inter.type === 'comment' || inter.type === 'reply') {
                                 addComment(targetMoment.id, {
                                     authorId: inter.authorId,

@@ -17,7 +17,7 @@ import { recallOriginalMessages, getMemorySummary } from './memoryLog'
 import { RequestQueue } from './ai/requestQueue'
 import { ensureString, getLastNTurns } from './common'
 import { getOrFetchAvatarDesc } from './avatarDescCache'
-import { fixJsonStringValues, _repairJsonStrings, reconstructMomentsJSON, extractInnerVoiceJson } from './jsonUtils'
+import { fixJsonStringValues, _repairJsonStrings, reconstructMomentsJSON, reconstructInteractionsJSON, extractInnerVoiceJson } from './jsonUtils'
 
 const apiQueue = new RequestQueue(10, 60000); // Strict: 10 requests per 60 seconds as requested by the user
 
@@ -3797,20 +3797,15 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
             }
         }
 
-        // 方法3: reconstructMomentsJSON 兜底（逐字段提取重建）
+        // 方法3: reconstructInteractionsJSON 兜底（v1.10.127: 专用互动重建,不再误用 reconstructMomentsJSON）
         if (!interactions || !Array.isArray(interactions)) {
             try {
-                const reconstructed = reconstructMomentsJSON(rawContent)
+                const reconstructed = reconstructInteractionsJSON(rawContent)
                 if (reconstructed) {
-                    const parsed = JSON.parse(reconstructed)
-                    interactions = parsed.newMoments || []
-                    // 从 newMoments 中提取 interactions 字段作为互动数据
-                    if (interactions.length === 0 && Array.isArray(parsed.ecosystemUpdates)) {
-                        interactions = parsed.ecosystemUpdates.flatMap(u => u.newInteractions || [])
-                    }
+                    interactions = JSON.parse(reconstructed)
                 }
             } catch (e3) {
-                console.warn('[aiService] reconstructMomentsJSON fallback failed', e3.message)
+                console.warn('[aiService] reconstructInteractionsJSON fallback failed', e3.message)
             }
         }
 

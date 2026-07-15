@@ -225,6 +225,64 @@ export function reconstructMomentsJSON(rawText) {
 }
 
 /**
+ * v1.10.127: 从原始 AI 文本中提取并重建互动数据(like/comment/reply)
+ * 专门用于 generateBatchInteractions 的兜底,返回扁平的互动数组。
+ * 与 reconstructMomentsJSON 区分:后者重建的是动态结构,不能用于互动。
+ * @returns {string|null} 序列化后的互动数组 JSON,失败时返回 null
+ */
+export function reconstructInteractionsJSON(rawText) {
+    if (!rawText) return null
+    const repaired = _repairJsonStrings(rawText)
+    const clean = repaired.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+
+    const interactions = []
+    // 匹配每个包含 type 字段的对象块
+    // 用 brace-counting 提取每个 {...} 对象
+    let i = 0
+    while (i < clean.length) {
+        if (clean[i] !== '{') { i++; continue }
+        // 提取一个完整的 {...} 对象
+        let depth = 0, inStr = false, esc = false, end = -1
+        for (let j = i; j < clean.length; j++) {
+            const ch = clean[j]
+            if (esc) { esc = false; continue }
+            if (ch === '\\') { esc = true; continue }
+            if (ch === '"') { inStr = !inStr; continue }
+            if (inStr) continue
+            if (ch === '{') depth++
+            else if (ch === '}') { depth--; if (depth === 0) { end = j; break } }
+        }
+        if (end === -1) break
+        const objStr = clean.substring(i, end + 1)
+        // 只接受有 type 字段且值为 like/comment/reply 的对象
+        const typeMatch = objStr.match(/"type"\s*[:：]\s*"(comment|reply|like)"/i)
+        if (typeMatch) {
+            try {
+                const obj = JSON.parse(objStr)
+                if (obj.type && ['like', 'comment', 'reply'].includes(String(obj.type).toLowerCase())) {
+                    interactions.push(obj)
+                }
+            } catch (e) {
+                // 单个对象 parse 失败,尝试用正则提取关键字段
+                const authorName = objStr.match(/"authorName"\s*[:：]\s*"([^"]*)"/)?.[1] || ''
+                const authorId = objStr.match(/"authorId"\s*[:：]\s*"([^"]*)"/)?.[1] || ''
+                const content = objStr.match(/"content"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/)?.[1]?.replace(/\\n/g, ' ') || ''
+                const replyTo = objStr.match(/"replyTo"\s*[:：]\s*"([^"]*)"/)?.[1] || null
+                const isVirtual = /"isVirtual"\s*[:：]\s*true/i.test(objStr)
+                const type = String(typeMatch[1]).toLowerCase()
+                if (authorName || authorId) {
+                    interactions.push({ type, authorName, authorId, content, replyTo, isVirtual })
+                }
+            }
+        }
+        i = end + 1
+    }
+
+    if (interactions.length === 0) return null
+    return JSON.stringify(interactions)
+}
+
+/**
  * 从内容中提取 INNER_VOICE 的 JSON 对象
  * 支持多种格式：
  * 1. [INNER_VOICE]{...}
