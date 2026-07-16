@@ -5894,13 +5894,8 @@ export const useChatStore = defineStore('chat', () => {
     const financial = setupFinancialLogic(chats, addMessage, saveChats, playSound)
     const history = setupHistoryLogic(chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats)
 
-    // Override local functions with the properly modularized history logic (which includes date-range summary support)
-    summarizeHistory = history.summarizeHistory
-    checkAutoSummary = history.checkAutoSummary
-    analyzeCharacterArchive = history.analyzeCharacterArchive
-    searchHistory = history.searchHistory
-    toggleSearch = history.toggleSearch
-
+    // Expose modularized history logic (includes date-range summary support)
+    // External callers (ChatDetailSettings, GroupSettings) use these via store spread
     return {
         ...financial,
         ...history,
