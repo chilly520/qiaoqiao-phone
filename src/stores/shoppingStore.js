@@ -453,20 +453,23 @@ export const useShoppingStore = defineStore('shopping', () => {
         }
 
         if (saved) {
-            products.value = saved.products || []
-            cart.value = saved.cart || []
-            orders.value = saved.orders || []
-            logistics.value = saved.logistics || []
-            chatMessages.value = saved.chatMessages || {}
-            addresses.value = saved.addresses || addresses.value
-            favorites.value = saved.favorites || []
-            footprints.value = saved.footprints || []
-            coupons.value = saved.coupons || coupons.value
-            points.value = saved.points || 1250
-            reviews.value = saved.reviews || {}
-            subscribedShops.value = saved.subscribedShops || []
-            useFantasyCities.value = saved.useFantasyCities || false
-            paymentRequests.value = saved.paymentRequests || []
+            // [BUG FIX] 原代码全部用 `||` 设置默认值, 数组/对象/数字 0 等"合法的空状态"
+            // 会被静默吞掉(用户清空购物车 → 重新打开时又是默认空数组 → 看起来没生效;
+            // 积分被扣到 0 → 重新打开时又是 1250 → 扣分丢失)。改为 `??` 只在 null/undefined 时回退。
+            products.value = saved.products ?? []
+            cart.value = saved.cart ?? []
+            orders.value = saved.orders ?? []
+            logistics.value = saved.logistics ?? []
+            chatMessages.value = saved.chatMessages ?? {}
+            addresses.value = saved.addresses ?? addresses.value
+            favorites.value = saved.favorites ?? []
+            footprints.value = saved.footprints ?? []
+            coupons.value = saved.coupons ?? coupons.value
+            points.value = saved.points ?? 1250
+            reviews.value = saved.reviews ?? {}
+            subscribedShops.value = saved.subscribedShops ?? []
+            useFantasyCities.value = saved.useFantasyCities ?? false
+            paymentRequests.value = saved.paymentRequests ?? []
 
             // 检查是否有进行中的物流，如果有则启动定时器
             const hasActiveLogistics = logistics.value.some(l =>

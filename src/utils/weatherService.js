@@ -23,7 +23,7 @@ class WeatherService {
 
     // 禁用定位同步
     disableLocationSync() {
-        // this.locationEnabled = false // Removed
+        this.locationEnabled = false
     }
 
     // Helper to safely extract string from possible object location
@@ -54,8 +54,9 @@ class WeatherService {
             console.log(`[WeatherService] Fetching fresh weather for ${cacheKey}...`)
 
             // 1. 地理编码 - 取多条结果以处理同名歧义（例如"深圳"在福建、台湾、浙江都有同名点）
-            const geoRes = await fetch(
-                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cacheKey)}&count=10&language=zh&format=json`
+            const geoRes = await fetchWithTimeout(
+                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cacheKey)}&count=10&language=zh&format=json`,
+                { timeout: 8000 }
             )
             if (!geoRes.ok) throw new Error('地理编码失败')
 
@@ -82,10 +83,11 @@ class WeatherService {
 
             const { latitude, longitude, name: geoName, name_en } = chosen
             const aqiCityName = name_en || geoName
-            
+
             // 2. 天气数据
-            const weatherRes = await fetch(
-                `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&weathercode=true`
+            const weatherRes = await fetchWithTimeout(
+                `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&weathercode=true`,
+                { timeout: 8000 }
             )
             if (!weatherRes.ok) throw new Error('天气数据获取失败')
             
@@ -120,13 +122,21 @@ class WeatherService {
             
             let aqiText = ''
             try {
-                // AQI 数据
-                const WAQI_TOKEN = 'aaae869d45d449aada6f69701077db35ced2a21f'
-                const aqiRes = await fetch(`https://api.waqi.info/feed/${aqiCityName}/?token=${WAQI_TOKEN}`)
-                if (aqiRes.ok) {
-                    const aqiData = await aqiRes.json()
-                    if (aqiData.status === 'ok' && aqiData.data?.aqi) {
-                        aqiText = `AQI ${aqiData.data.aqi}`
+                // [BUG FIX] 原来 WAQI_TOKEN 硬编码在源码里,任何人打开 dev tools 就能拿到滥用。
+                // 改为读取 Vite 编译期注入的环境变量,缺失时静默跳过 AQI 获取 (不报错)。
+                const WAQI_TOKEN = import.meta.env?.VITE_WAQI_TOKEN
+                if (!WAQI_TOKEN) {
+                    // 未配置 token, 跳过 AQI 获取
+                } else {
+                    const aqiRes = await fetchWithTimeout(
+                        `https://api.waqi.info/feed/${aqiCityName}/?token=${WAQI_TOKEN}`,
+                        { timeout: 5000 }
+                    )
+                    if (aqiRes.ok) {
+                        const aqiData = await aqiRes.json()
+                        if (aqiData.status === 'ok' && aqiData.data?.aqi) {
+                            aqiText = `AQI ${aqiData.data.aqi}`
+                        }
                     }
                 }
             } catch (e) {
@@ -283,10 +293,24 @@ class WeatherService {
     }
 }
 
+// 工具: 带超时的 fetch. 默认 8 秒超时, 避免外部 API 挂起导致 UI 卡死.
+async function fetchWithTimeout(url, options = {}) {
+    const { timeout = 8000, ...fetchOptions } = options
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeout)
+    try {
+        return await fetch(url, { ...fetchOptions, signal: controller.signal })
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
 // Create singleton instance
 export const weatherService = new WeatherService()
 
 // 城市映射表（用于个人主页虚拟市同步等逻辑）
+// [BUG FIX] 原代码有 4 个重复 key: 北京/广州/杭州 各出现 2 次, 其中广州的第二次覆盖了第一次(羊城 → 花城),
+// 但视觉上无任何提示, 极易让人误以为 "羊城" 已废弃。删除冗余条目。
 export const CITY_MAPPING = {
     '上海': '魔都',
     '北京': '帝都',
@@ -294,16 +318,13 @@ export const CITY_MAPPING = {
     '深圳': '鹏城',
     '杭州': '临安',
     '东京': '东京',
-    '北京': '帝都',
     '成都': '蓉城',
     '南京': '金陵',
     '西安': '长安',
     '武汉': '江城',
     '长沙': '星城',
     '重庆': '山城',
-    '广州': '花城',
     '苏州': '姑苏',
-    '杭州': '临安',
     '台北': '台北',
     '香港': '香江',
     '澳门': '濠江'

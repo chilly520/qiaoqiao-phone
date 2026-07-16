@@ -159,14 +159,15 @@ export const useForumStore = defineStore('forum', () => {
                         forums.value[0].desc = '分享生活中的小确幸与心动瞬间。';
                     }
                 }
-                alts.value = saved.alts || alts.value
-                currentAltId.value = saved.currentAltId || currentAltId.value
-                boundCharIds.value = saved.boundCharIds || (saved.boundCharId ? [saved.boundCharId] : [])
-                currentForumId.value = saved.currentForumId || forums.value[0]?.id
-                posts.value = saved.posts || {}
-                comments.value = saved.comments || {}
-                moderators.value = saved.moderators || {}
-                likedPosts.value = saved.likedPosts || {}
+                // [BUG FIX] 同 shoppingStore, `||` 会吞掉合法空状态. 改为 `??`.
+                alts.value = saved.alts ?? alts.value
+                currentAltId.value = saved.currentAltId ?? currentAltId.value
+                boundCharIds.value = saved.boundCharIds ?? (saved.boundCharId ? [saved.boundCharId] : [])
+                currentForumId.value = saved.currentForumId ?? forums.value[0]?.id
+                posts.value = saved.posts ?? {}
+                comments.value = saved.comments ?? {}
+                moderators.value = saved.moderators ?? {}
+                likedPosts.value = saved.likedPosts ?? {}
             } else {
                 const v1 = await localforage.getItem('forum_store_v1')
                 if (v1) {
