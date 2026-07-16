@@ -827,6 +827,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
     window.removeEventListener('popstate', handlePopState)
+    // [BUG FIX] 清理长按定时器: touchstart 触发后 500ms 内导航离开, 定时器仍会触发
+    // openContextMenu 向已卸载组件的上下文操作已销毁的 DOM/响应式状态. clearLongPress
+    // 内部已判空并清零 longPressTimer, 直接调用即可.
+    clearLongPress()
 })
 
 

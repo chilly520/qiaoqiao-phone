@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWeiboStore } from '../stores/weiboStore'
 import { useChatStore } from '../stores/chatStore'
@@ -265,6 +265,10 @@ const activeSearchResultTab = ref('posts')
 
 const dmInputText = ref('')
 const dmMessagesContainer = ref(null)
+// [BUG FIX] 保存 DM 回复定时器 ID, 卸载时清理. 原代码 setTimeout ID 未保存,
+// 用户发私信后 1-3 秒延迟内离开视图, 回调仍执行 addDMChatMessage 往 store 写入
+// "对方回复" (下次进入会话会看到这条延迟回复), scrollToBottom 访问已卸载 DOM.
+const dmReplyTimer = ref(null)
 // 使用 store 中的持久化私信对话消息（不再用本地 ref）
 // 切换联系人时从 store 加载对应聊天记录
 
@@ -288,7 +292,8 @@ function sendDMMessage() {
   scrollToBottom()
   // 使用 AI 生成回复（自动带上最近聊天记录作为上下文）
   // [BUG FIX] async 回调无 try/catch, generateDMChatReply reject 时成为 unhandled rejection
-  setTimeout(async () => {
+  // [BUG FIX] 保存定时器 ID, 卸载时清理 (见 onUnmounted)
+  dmReplyTimer.value = setTimeout(async () => {
     try {
       const recentMsgs = weiboStore.getDMChatMessages(name).slice(-6) // 取最近6条作为上下文
       const reply = await weiboStore.generateDMChatReply(name, recentMsgs)
@@ -864,6 +869,13 @@ async function handleGenerateDM(dmName) {
   }
 }
 
+// [BUG FIX] 清理 DM 回复定时器, 防止卸载后回调仍往 store 写入
+onUnmounted(() => {
+  if (dmReplyTimer.value) {
+    clearTimeout(dmReplyTimer.value)
+    dmReplyTimer.value = null
+  }
+})
 
 </script>
 

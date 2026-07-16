@@ -1263,7 +1263,13 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             contents: geminiContents,
             system_instruction: systemInstruction,
             generationConfig: {
-                temperature: Number(temperature) || 0.45,
+                // [BUG FIX] `Number(temperature) || 0.45` 在 temperature=0 时被吞: 0 是 falsy,
+                // 用户想"确定性输出" (temperature=0, 做测试/固定人设) 会被静默改成 0.45.
+                // 改用: NaN 或 undefined/null 时回退, 0 保留.
+                temperature: (() => {
+                    const t = Number(temperature)
+                    return (temperature === undefined || temperature === null || Number.isNaN(t)) ? 0.45 : t
+                })(),
                 maxOutputTokens: Math.min(Number(effectiveMaxTokens) || 4096, 65536),
             },
             safetySettings: [
@@ -1369,7 +1375,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         reqBody = {
             model: model,
             messages: finalMessages,
-            temperature: Number(temperature) || 0.7,
+            // [BUG FIX] 同 Gemini 路径, `Number(temperature) || 0.7` 在 temperature=0 时被吞.
+            temperature: (() => {
+                const t = Number(temperature)
+                return (temperature === undefined || temperature === null || Number.isNaN(t)) ? 0.7 : t
+            })(),
             max_tokens: safeMaxTokens,
             stream: !!options.onChunk,
             // 流式模式下请求返回 usage 数据（OpenAI 兼容接口）
@@ -1497,13 +1507,16 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             let done = false;
             let streamUsage = null;
 
+            // [BUG FIX] buffer 保留跨 chunk 的不完整行, 防止 SSE 半行 JSON 丢失
+            let buffer = "";
             try {
                 while (!done) {
                     const { value, done: readerDone } = await reader.read();
                     done = readerDone;
                     if (value) {
-                        const chunk = decoder.decode(value, { stream: true });
-                        const lines = chunk.split("\n");
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop() || ""; // 最后一段可能不完整, 留给下个 chunk
                         for (const line of lines) {
                             if (line.startsWith("data: ")) {
                                 const dataStr = line.replace(/^data: /, "").trim();
@@ -1524,9 +1537,43 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                         }
                     }
                 }
+                // [BUG FIX] decoder flush: 用 {stream:true} 解码时, 解码器内部可能缓存
+                // 不完整 UTF-8 尾字节 (多字节字符被截断), 循环结束后必须再调一次无参
+                // decode() 把残留字节冲刷出来, 否则最后一个字符可能丢失 (中文/emoji).
+                const tail = decoder.decode();
+                if (tail) {
+                    buffer += tail;
+                    const lastLine = buffer.startsWith("data: ") ? buffer.replace(/^data: /, "").trim() : null;
+                    if (lastLine && lastLine !== "[DONE]") {
+                        try {
+                            const json = JSON.parse(lastLine);
+                            const delta = json.choices?.[0]?.delta?.content || "";
+                            if (delta) {
+                                fullContent += delta;
+                                if (options.onChunk) options.onChunk(delta, fullContent);
+                            }
+                            if (json.usage) streamUsage = json.usage;
+                        } catch (e) { /* ignore */ }
+                    }
+                }
             } catch (streamError) {
+                // [BUG FIX] 区分"用户主动 abort"和"网络中断":
+                //  - 用户点"停止生成"触发 controller.abort(), fetch 抛 AbortError.
+                //    原代码把它当成"网络中断, 用部分内容继续", 最后返回一个看起来正常的
+                //    data 对象, 调用方把残缺内容当完整 AI 回复落库, 用户以为停了实际没停.
+                //    改为: AbortError 直接 re-throw, 让调用方感知取消.
+                //  - 真正的网络中断仍用部分内容继续 (原有行为).
+                if (streamError?.name === 'AbortError') {
+                    throw streamError;
+                }
                 console.warn('[Stream Error] Connection interrupted, using partial content:', fullContent);
                 // Continue with whatever we got
+            } finally {
+                // [BUG FIX] reader 资源清理: 原代码无 finally, reader 在出错/abort 时
+                // 不会 cancel/releaseLock, 底层 HTTP 连接泄漏 (直到 GC, 可能数分钟).
+                // 频繁触发会耗尽浏览器连接池.
+                try { reader.cancel() } catch (_) {}
+                try { reader.releaseLock() } catch (_) {}
             }
             
             // Create a mock data object for the rest of the parsing pipeline
@@ -1586,14 +1633,17 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     useLoggerStore().addLog('AI', '⚠️ 400错误自动重试 (转纯文本模式/SystemOrder)', { originalError: errText })
 
                     // 3. Retry Request
+                    // [BUG FIX] 补上 signal: 用户在 400 重试期间点"停止", abort 不会传到
+                    // 重试请求, 后台仍跑完消耗 token. 对比主 fetch (line ~1468) 已传 signal.
                     const retryResp = await fetch(endpoint, {
                         method: 'POST',
                         headers: reqHeaders,
-                        body: JSON.stringify(textOnlyBody)
+                        body: JSON.stringify(textOnlyBody),
+                        signal: signal || undefined
                     })
 
                     if (retryResp.ok) {
-                        data = await retryResp.json() // [FIX] Assign to data, don't return raw
+                        data = await retryResp.json().catch(() => null) // [BUG FIX] 同主路径, json() 可能抛错
                     } else {
                         // If retry also failed, capture that error
                         const retryErrText = await retryResp.text()
@@ -2137,7 +2187,9 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                     const retryResponse = await fetch(endpoint, {
                         method: 'POST',
                         headers: reqHeaders,
-                        body: JSON.stringify(reqBody)
+                        body: JSON.stringify(reqBody),
+                        // [BUG FIX] 补 signal, 同 400 重试路径
+                        signal: signal || undefined
                     })
 
                     if (!retryResponse.ok) {
@@ -2341,7 +2393,11 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
                 response = await fetch(endpoint, {
                     method: 'POST',
                     headers: reqHeaders,
-                    body: JSON.stringify(reqBody)
+                    body: JSON.stringify(reqBody),
+                    // [BUG FIX] 补 signal: _generateSummaryInternal 接收了 signal 参数,
+                    // 但 fetch 没传, 用户切页面/取消总结时无法中断, 队列槽位被占用阻塞后续请求.
+                    // 对比 _generateReplyInternal 主 fetch (line ~1468) 已正确传 signal.
+                    signal: signal || undefined
                 })
             } catch (fetchErr) {
                 const isNetworkError = fetchErr instanceof TypeError &&
@@ -2360,7 +2416,10 @@ async function _generateSummaryInternal(messages, customPrompt = '', signal) {
 
             if (!response.ok) throw new Error(`API Error: ${response.status} ${await response.text()}`)
 
-            data = await response.json()
+            // [BUG FIX] response.json() 在 body 为空/HTML 错误页/非 JSON 时会 throw,
+            // 直接跳出 for 循环落到外层 catch, 下面的"非有效对象重试"逻辑 (line 2421)
+            // 根本没机会执行. 对比 _generateReplyInternal 主路径 (line 1546) 已用 .catch(() => null).
+            data = await response.json().catch(() => null)
 
             // [FIX] 防御 response.json() 返回 null 或非对象值（某些代理在空 body 时返回 null）
             if (!data || typeof data !== 'object') {

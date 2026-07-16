@@ -243,7 +243,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useStickerStore } from '../../stores/stickerStore'
 import { useChatStore } from '../../stores/chatStore'
 
@@ -326,6 +326,8 @@ const triggerUpload = () => {
 const deletingUrl = ref(null)
 const toastMessage = ref('')
 const toastTimer = ref(null)
+// [BUG FIX] 保存删除确认重置定时器 ID, 卸载时清理
+const deleteResetTimer = ref(null)
 
 const showToast = (msg) => {
     toastMessage.value = msg
@@ -464,7 +466,9 @@ const deleteSticker = (url) => {
     } else {
         deletingUrl.value = url
         // Auto reset confirmation after 3s
-        setTimeout(() => {
+        // [BUG FIX] 保存定时器 ID, 卸载时清理
+        deleteResetTimer.value = setTimeout(() => {
+            deleteResetTimer.value = null
             if (deletingUrl.value === url) deletingUrl.value = null
         }, 3000)
     }
@@ -487,6 +491,12 @@ const handleBatchImport = () => {
     batchCategory.value = ''
     showBatchModal.value = false
 }
+
+// [BUG FIX] 清理 toast + 删除确认重置定时器, 防止卸载后回调在已卸载组件上执行
+onUnmounted(() => {
+    if (toastTimer.value) { clearTimeout(toastTimer.value); toastTimer.value = null }
+    if (deleteResetTimer.value) { clearTimeout(deleteResetTimer.value); deleteResetTimer.value = null }
+})
 </script>
 
 <style scoped>

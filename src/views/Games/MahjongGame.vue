@@ -2420,8 +2420,14 @@ onMounted(() => {
     window.addEventListener('beforeunload', handleBeforeUnload)
 
     // 组件卸载时移除事件监听
+    // [BUG FIX] 原代码只移除 beforeunload, 没调用 stopGameTimer(). gameTimer 是 setInterval
+    // (1秒间隔), 在 onMounted 里重建 (line 2397), 卸载后仍持续触发, 向已卸载组件的
+    // gameDuration ref 写入, 并持续修改 mahjongStore.gameState.gameDuration (幽灵定时器
+    // 篡改 store). 必须清理. (onUnmounted 已在 setup 顶层, 这里只是嵌套在 onMounted 内注册,
+    // Vue 允许但不是最佳实践; 至少要确保清理逻辑执行.)
     onUnmounted(() => {
         window.removeEventListener('beforeunload', handleBeforeUnload)
+        stopGameTimer()
     })
 })
 

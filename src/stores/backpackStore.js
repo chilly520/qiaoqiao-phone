@@ -68,10 +68,15 @@ export const useBackpackStore = defineStore('backpack', () => {
     }
 
     const removeItem = (itemId, quantity = 1) => {
+        // [BUG FIX] 不校验负数: quantity 为负 (如 -5) 时 `existing.quantity > -5` 恒为真,
+        // `quantity -= (-5)` 等于 `quantity += 5`, removeItem 反而给物品加 5 个.
+        // 默认参数是 1, UI 不会主动传负, 但接口一旦被其他模块/AI 传入负数就触发.
+        const num = Number(quantity)
+        if (!Number.isFinite(num) || num <= 0) return false
         const index = items.value.findIndex(i => i.id === itemId)
         if (index !== -1) {
-            if (items.value[index].quantity > quantity) {
-                items.value[index].quantity -= quantity
+            if (items.value[index].quantity > num) {
+                items.value[index].quantity -= num
             } else {
                 items.value.splice(index, 1)
             }

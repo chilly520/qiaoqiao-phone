@@ -745,6 +745,12 @@ onUnmounted(() => {
   if (removeBackInterceptor) {
     removeBackInterceptor()
   }
+  // [BUG FIX] 清理 toast 定时器: showToast 调用后组件在 2 秒内卸载, 回调
+  // toastMsg.value = '' 会在已卸载组件上执行, 触发 Vue 告警 + 定时器残留.
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+    toastTimer = null
+  }
 })
 
 function selectForum(id) {

@@ -69,12 +69,25 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
         if (!msg.amounts || msg.amounts.length === 0) {
             const total = parseFloat(msg.amount) || 0
             const count = parseInt(msg.count) || 1
-            if (msg.packetType === 'lucky' && count > 1) {
+            // [BUG FIX] 等额路径不校验 total<=0: lucky 路径走 _splitRedPacket 有
+            // `if (!Number.isFinite(total) || total <= 0) return Array(...).fill(0)` 兜底,
+            // 但等额路径 (else 分支) 没有任何正数校验. 若 msg.amount 为负 (AI 输出异常/
+            // 消息注入), perShare 为负, 用户领取后 increaseBalance(负数) 反被扣钱
+            // (结合 walletStore.increaseBalance 不拒负数的 bug, 形成完整的扣款链).
+            // 统一校验: total<=0 或 count<=0 一律退化为全 0, 与 _splitRedPacket 守卫对齐.
+            if (!(total > 0) || !(count > 0)) {
+                msg.amounts = Array(count > 0 ? count : 0).fill(0)
+            } else if (msg.packetType === 'lucky' && count > 1) {
                 msg.amounts = _splitRedPacket(total, count)
             } else {
                 // 等额红包:每份 = total / count
                 const perShare = parseFloat((total / count).toFixed(2))
-                msg.amounts = Array(count).fill(perShare)
+                // [BUG FIX] 整除时总和会小于总额, 零头消失. 例: total=1.00, count=3
+                // -> perShare=0.33 -> [0.33,0.33,0.33] 总和 0.99, 剩余 0.01 凭空消失
+                // (既没退给发送者也没人领到). lucky 路径把余数塞到最后一份, 等额路径也要.
+                const amounts = Array(count).fill(perShare)
+                amounts[count - 1] = parseFloat((total - perShare * (count - 1)).toFixed(2))
+                msg.amounts = amounts
             }
             console.log(`[RP_SAFETY_INIT] ID=${msg.id} Total=${total} Count=${count} Amounts=`, msg.amounts)
         }

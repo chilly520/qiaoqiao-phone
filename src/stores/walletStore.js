@@ -110,7 +110,11 @@ export const useWalletStore = defineStore('wallet', () => {
                     console.error('[WalletStore] Failed even after trim:', e2)
                 }
             } else {
-                throw e
+                // [BUG FIX] 原 `throw e` 会把 SecurityError (隐私模式/禁用 localStorage)
+                // 等非 quota 错误冒泡到调用栈. balance/cards 在 save 前已被突变, 抛出会导致
+                // 支付流程后续逻辑被异常打断, 且内存状态已改但 localStorage 仍是旧值,
+                // 刷新后回滚 —— 用户看到扣款成功但余额没变. 改为吞掉并记录, 不击穿支付流程.
+                console.error('[WalletStore] save failed (non-quota):', e)
             }
         }
     }
@@ -131,6 +135,10 @@ export const useWalletStore = defineStore('wallet', () => {
         // (死代码), 非数字金额会被当成 0 记账. 应先解析再判断.
         const numAmount = parseFloat(amount)
         if (isNaN(numAmount)) return
+        // [BUG FIX] 不拒绝负数: numAmount 为负 (例如 -100) 时 balance += -100 等于偷扣 100.
+        // 触发链: chatFinancial.claimTransfer 直接透传 msg.amount, 若消息被构造为负金额
+        // (AI 输出异常/消息注入), 用户点"领取转账"反而被扣钱. 与 decreaseBalance 守卫对齐.
+        if (numAmount <= 0) return
         balance.value = parseFloat((balance.value + numAmount).toFixed(2))
         addTransaction({
             type: 'income',
@@ -353,6 +361,10 @@ export const useWalletStore = defineStore('wallet', () => {
         if (!card) return false
 
         const numAmount = parseFloat(amount)
+        // [BUG FIX] 不校验 NaN/负数: numAmount 为负 (例如 -100) 时 available >= -100 恒为真,
+        // card.usedAmount += -100 等于把已用额度减小 100, 可用额度反而被放大 100.
+        // 连续调用可无限放大亲属卡额度. 与 decreaseBalance/increaseBalance 守卫对齐.
+        if (isNaN(numAmount) || numAmount <= 0) return false
         const available = card.amount - card.usedAmount
 
         if (available >= numAmount) {

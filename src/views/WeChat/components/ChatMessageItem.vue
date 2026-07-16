@@ -3687,10 +3687,9 @@ function handleToggleVoice() {
             showTranscript: localShowTranscript.value
         })
     }
-    // Ensure isPlaying is properly initialized
-    if (props.msg.isPlaying === undefined) {
-        props.msg.isPlaying = false
-    }
+    // [BUG FIX] 移除直接突变 props.msg.isPlaying: 违反 Vue 单向数据流, 父组件无法感知
+    // 此变更, 重渲染时可能被覆盖. 模板已用 `msg.isPlaying || false` (line 846/858) 做了
+    // falsy 兜底, 无需在 JS 里初始化. 真正的播放状态应由父组件通过 emit 统一管理.
 }
 
 function handlePlayMusic() {

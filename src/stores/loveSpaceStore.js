@@ -989,9 +989,18 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
             space.scheduledGeneration.lastRunAt = new Date().toISOString()
             space.scheduledGeneration.nextRunAt = this._computeNextRunAt(space.scheduledGeneration)
             await this.saveToStorage()
-            // 还原之前的空间(如果有)
-            if (prevId && prevId !== charId) {
-              await this.selectSpace(prevId)
+            // [BUG FIX] 原代码: `if (prevId && prevId !== charId)` — 当 prevId 为 null
+            // (用户当前没在任何空间, 停在主页/列表页) 时短路为假, 不还原. currentPartnerId
+            // 被永久留在 charId 上, 用户回到界面发现自己被莫名切进某角色空间.
+            // 改为: 不论 prevId 是否为 null 都还原 (null 也要还原成 null).
+            if (prevId !== charId) {
+              if (prevId) {
+                await this.selectSpace(prevId)
+              } else {
+                // 还原成"未选中任何空间"
+                this.currentPartnerId = null
+                await this.saveToStorage()
+              }
             }
           } catch (e) {
             console.error(`[LoveSpaceStore] Scheduled generation failed for ${charId}:`, e)
@@ -1091,14 +1100,22 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       console.log('[LoveSpaceStore] === Starting Magic Magic generation ===')
       this.isMagicGenerating = true
       const charId = this.currentPartnerId
-      
-      const chatStore = (await import('./chatStore.js')).useChatStore()
-      const settingsStore = (await import('./settingsStore.js')).useSettingsStore()
-      const { generateReply } = await import('../utils/aiService.js')
-      const { LOVE_SPACE_GENERATOR_PROMPT } = await import('../utils/ai/prompts_love.js')
-      
+
+      // [BUG FIX] 原代码: `this.isMagicGenerating = true` (line 1092) 之后, 动态 import
+      // (1095-1098) 和 early return `if (!chat) return` (1100-1101) 都在 try 块 (1192)
+      // 之外. 任一 import 失败 (chunk 加载失败/网络抖动) 或 chat 不存在, 函数直接 return,
+      // finally (1239) 永不执行, isMagicGenerating 永远为 true. 此后所有 generateMagicContent
+      // / generateSingleFeature 都被入口 guard (1086, 1251) 挡回, 魔法生成功能整体瘫痪,
+      // 且只能重启应用恢复. 把 try 提到 import 之前, 用 try/finally 包裹整个逻辑体.
+      let chatStore, settingsStore, generateReply, LOVE_SPACE_GENERATOR_PROMPT
+      try {
+        chatStore = (await import('./chatStore.js')).useChatStore()
+        settingsStore = (await import('./settingsStore.js')).useSettingsStore()
+        ;({ generateReply } = await import('../utils/aiService.js'))
+        ;({ LOVE_SPACE_GENERATOR_PROMPT } = await import('../utils/ai/prompts_love.js'))
+
       const chat = chatStore.chats[charId]
-      if (!chat) return
+      if (!chat) { console.warn('[LoveSpaceStore] generateMagicContent: no chat for', charId); return }
 
       const userProfile = settingsStore.personalization.userProfile
       const dateToUse = targetDate || getTodayStr()
@@ -1189,19 +1206,22 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
 ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceHistory, charHistory, drawingConfigForLoveSpace)}${msgWarning}
 严禁输出任何多余内容，只需输出以 [LS_JSON: ...] 格式包裹的指令集。`;
 
-      try {
-        const result = await generateReply([
-          { role: 'system', content: systemPrompt }
-          // [FIX] 不再重复传递 charHistory，因为 systemPrompt 中已经包含了
-        ], { name: chat.name, id: chat.id, prompt: systemPrompt }, null, { 
-          isCommandTask: true, 
-          isSimpleTask: true 
-        })
+      // [BUG FIX] 原这里是独立的 try{...}catch{...}finally{...}, 上面新增的外层 try
+      // (line 1102) 已覆盖 import + early return. 把内层 try/catch/finally 合并到外层:
+      // - 外层 catch 接管所有错误 (import 失败 + AI 失败)
+      // - 外层 finally 统一重置 isMagicGenerating
+      const result = await generateReply([
+        { role: 'system', content: systemPrompt }
+        // [FIX] 不再重复传递 charHistory，因为 systemPrompt 中已经包含了
+      ], { name: chat.name, id: chat.id, prompt: systemPrompt }, null, {
+        isCommandTask: true,
+        isSimpleTask: true
+      })
 
-        if (result.content) {
-          console.log('[LoveSpaceStore] Calling executeSpaceCommands with result.content:', result.content.substring(0, 300))
-          const execRes = await this.executeSpaceCommands(result.content, chat.name, targetDate, charId)
-          if (execRes && execRes.executedCount > 0) {
+      if (result.content) {
+        console.log('[LoveSpaceStore] Calling executeSpaceCommands with result.content:', result.content.substring(0, 300))
+        const execRes = await this.executeSpaceCommands(result.content, chat.name, targetDate, charId)
+        if (execRes && execRes.executedCount > 0) {
             chatStore.triggerToast('💖 恋爱空间已同步更新！', 'success')
           } else {
             // [FIX] 内容回来了但 0 个命令被执行,说明 LS_JSON 解析失败
@@ -1776,14 +1796,20 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                 }
                 // 后台异步生成图片，不阻塞
                 const { generateImage } = await import('../utils/aiService.js')
+                // [BUG FIX] 捕获目标 charId, 不依赖 this.currentPartnerId:
+                // generateImage 耗时数秒, 期间用户可能切到别的角色空间, this.currentPartnerId
+                // 已变, this.currentSpace 指向另一个 space, find(tempId) 找不到, url 被丢弃,
+                // 原空间相册条目永远停留在占位 url:''. 用闭包捕获 targetCharId 显式定位.
+                const targetCharId = this.currentPartnerId
                 generateImage(drawPrompt, {
-                  chatId: this.currentPartnerId,
+                  chatId: targetCharId,
                   appearanceRef: true,
                   appearanceRefMode
                 })
                   .then(url => {
-                    // 图片生成完成后更新
-                    const album = this.currentSpace.album.find(a => a.tempId === tempId)
+                    // 图片生成完成后更新 — 显式定位目标 space, 不依赖 this.currentSpace
+                    const targetSpace = this.spaces[targetCharId]
+                    const album = targetSpace?.album?.find(a => a.tempId === tempId)
                     if (album) {
                       album.url = url
                       delete album.tempId

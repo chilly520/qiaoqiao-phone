@@ -106,7 +106,11 @@ export const useCallStore = defineStore('call', () => {
         const chatStore = useChatStore()
 
         // --- Busy Signal Logic ---
-        if (status.value !== 'none') {
+        // [BUG FIX] 原代码 `if (status.value !== 'none')` 把 'ended' 状态也当占线.
+        // endCall 后有 1.5s 窗口期 status='ended' (UI 显示"通话结束"), 在此窗口内任何
+        // AI 来电都被当作占线自动拒绝, 并塞"系统提示：你正在与其他角色通话"误导消息.
+        // 对比 startCall (line 83) 显式允许 'ended', 两路径判断不一致. 改为同 startCall.
+        if (status.value !== 'none' && status.value !== 'ended') {
             // [BUG FIX] callPartner 可能未传 name, 用可选链避免 TypeError (与同行 partner.value?.name 一致)
             console.log(`[CallStore] Auto-rejecting incoming call from ${callPartner?.name} due to active call with ${partner.value?.name}`);
 
@@ -152,14 +156,18 @@ export const useCallStore = defineStore('call', () => {
     }
 
     const acceptCall = () => {
+        // [BUG FIX] 无状态守卫: 用户快速双击"接听"时, 首击置 active, 第二击重置
+        // callStartTime 导致时长从 0 重算; 或在 none/ended 状态误调用会凭空启动 setInterval
+        // (partner 可能为 null, 后续 endCall 的 currentPartner?.id 都为空). 只允许 incoming.
+        if (status.value !== 'incoming') return
         stopRingtone()
-        
+
         // 清除超时定时器（用户已接听）
         if (incomingCallTimer) {
             clearTimeout(incomingCallTimer)
             incomingCallTimer = null
         }
-        
+
         status.value = 'active'
         callStartTime.value = Date.now()
 
@@ -170,6 +178,14 @@ export const useCallStore = defineStore('call', () => {
     }
 
     const rejectCall = () => {
+        // [BUG FIX] 原代码 `if (status.value === 'none') return` 对 'active'/'ended' 不拦截.
+        // 若在已接通状态下调用 rejectCall (UI 误触发/AI 指令), 会直接置 'none' 跳过 endCall,
+        // 丢失通话时长记录、favorite_card、transcript 摘录、收藏夹写入等全部逻辑, 不可恢复.
+        // 改为: active/ended 走 endCall 保存记录; 仅 incoming/dialing 走拒绝.
+        if (status.value === 'active' || status.value === 'ended') {
+            endCall()
+            return
+        }
         if (status.value === 'none') return
 
         const currentPartner = partner.value
