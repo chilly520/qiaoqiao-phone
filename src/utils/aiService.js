@@ -788,7 +788,26 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         const isOfflineMode = settingsStore.isOfflineMode
 
         // v1.11.0: 获取生图配置，传给系统提示词模板让AI知道形象图能力
-        const drawingConfigForPrompt = settingsStore.drawing?.value || settingsStore.drawing || {}
+        // v1.10.155: 群聊时附加可用成员名单(已上传形象图的成员),让 AI 用 @角色名 暗号
+        const baseDrawingConfig = settingsStore.drawing?.value || settingsStore.drawing || {}
+        let drawingConfigForPrompt = baseDrawingConfig
+        if (char.isGroup && Array.isArray(char.participants)) {
+            const availableMembers = []
+            for (const p of char.participants) {
+                if (!p || p.id === 'user' || p.id === char.id) continue
+                const memberChat = chatStore.chars?.[p.id] || chatStore.chats?.[p.id]
+                if (memberChat && memberChat.appearanceImage) {
+                    availableMembers.push(p.nickname || p.name || memberChat.name || '')
+                }
+            }
+            if (availableMembers.length > 0) {
+                drawingConfigForPrompt = {
+                    ...baseDrawingConfig,
+                    availableMembers,
+                    volcStyle: baseDrawingConfig.globalImageStyle === 'anime' ? '动漫插画风格' : '真实照片风格'
+                }
+            }
+        }
 
         let promptContent = options.isCall
             ? CALL_SYSTEM_PROMPT_TEMPLATE(prunedChar, userProfile, worldInfoText, memoryText, finalEnvContext, momentsContext, char.bio)
@@ -3072,7 +3091,7 @@ export async function generateImage(prompt, options = {}) {
  * Internal logic for image generation, handled by apiQueue.
  */
 async function _generateImageInternal(prompt, options = {}) {
-    const { width = 1024, height = 1024, chatId = null, referenceImage = null, appearanceRefMode = null } = options;
+    const { width = 1024, height = 1024, chatId = null, referenceImage = null, appearanceRefMode = null, appearanceRefName = null } = options;
     const settingsStore = useSettingsStore()
     const drawingVal = settingsStore.drawing?.value || settingsStore.drawing || {}
     let provider = drawingVal.provider || 'pollinations'
@@ -3082,9 +3101,11 @@ async function _generateImageInternal(prompt, options = {}) {
     let globalImageStyle = drawingVal.globalImageStyle || 'realistic'
     
     // v1.10.118: 优先使用角色设置中的默认生图风格,同时预读取角色形象图和用户形象图(避免后续分支重复import)
+    // v1.10.155: 群聊时预读所有成员的形象图,支持 @角色名 暗号
     let charImageStyle = null
     let preloadedCharAppearance = null
     let preloadedUserAppearance = null
+    let preloadedMemberAppearances = [] // [{ id, name, appearanceImage }]
     if (chatId) {
         try {
             const { useChatStore } = await import('@/stores/chatStore')
@@ -3094,6 +3115,20 @@ async function _generateImageInternal(prompt, options = {}) {
                 if (chat.imageStyle) charImageStyle = chat.imageStyle
                 if (chat.appearanceImage) preloadedCharAppearance = chat.appearanceImage
                 if (chat.userAppearanceImage) preloadedUserAppearance = chat.userAppearanceImage
+                // 群聊:遍历 participants,读取每个成员对应的 chat.appearanceImage
+                if (chat.isGroup && Array.isArray(chat.participants)) {
+                    for (const p of chat.participants) {
+                        if (!p || p.id === 'user' || p.id === chatId) continue
+                        const memberChat = chatStore.chars?.[p.id] || chatStore.chats?.[p.id]
+                        if (memberChat && memberChat.appearanceImage) {
+                            preloadedMemberAppearances.push({
+                                id: p.id,
+                                name: p.nickname || p.name || memberChat.name || '',
+                                appearanceImage: memberChat.appearanceImage
+                            })
+                        }
+                    }
+                }
             }
         } catch (e) {
             // ignore
@@ -3477,6 +3512,7 @@ async function _generateImageInternal(prompt, options = {}) {
         }
 
         // v1.10.154: 暗号控制模式 —— AI 通过 @char/@me/@us/@scene 暗号明确指定参考图
+        // v1.10.155: 群聊支持 @角色名 指定具体成员形象图,@us 群聊时包含所有成员
         // 有暗号时直接按暗号设置 refImages,跳过下方关键词检测(更准确,AI 自主决策)
         if (appearanceRefMode && !referenceImage) {
             if (appearanceRefMode === 'char' && charAppearance) {
@@ -3486,11 +3522,34 @@ async function _generateImageInternal(prompt, options = {}) {
                 refImages.push(userAppearance)
                 console.log('[AI Image] volcengine: 暗号 @me → 用户形象图')
             } else if (appearanceRefMode === 'us') {
+                // v1.10.155: 群聊 @us = 用户 + 所有有形象图的成员合照
                 if (userAppearance) refImages.push(userAppearance)
-                if (charAppearance) refImages.push(charAppearance)
-                console.log('[AI Image] volcengine: 暗号 @us → 合照, ref count:', refImages.length)
+                if (preloadedMemberAppearances.length > 0) {
+                    for (const m of preloadedMemberAppearances) {
+                        refImages.push(m.appearanceImage)
+                    }
+                    console.log('[AI Image] volcengine: 暗号 @us → 群聊合照, ref count:', refImages.length)
+                } else if (charAppearance) {
+                    refImages.push(charAppearance)
+                    console.log('[AI Image] volcengine: 暗号 @us → 双人合照, ref count:', refImages.length)
+                } else {
+                    console.log('[AI Image] volcengine: 暗号 @us → 合照(无可用形象图)')
+                }
             } else if (appearanceRefMode === 'scene') {
                 console.log('[AI Image] volcengine: 暗号 @scene → 纯文生图(无参考)')
+            } else if (appearanceRefMode === 'member' && appearanceRefName) {
+                // v1.10.155: @角色名 → 按名字模糊匹配成员形象图
+                const target = preloadedMemberAppearances.find(m =>
+                    m.name === appearanceRefName ||
+                    m.name.includes(appearanceRefName) ||
+                    appearanceRefName.includes(m.name)
+                )
+                if (target) {
+                    refImages.push(target.appearanceImage)
+                    console.log(`[AI Image] volcengine: 暗号 @${appearanceRefName} → 成员 ${target.name} 形象图`)
+                } else {
+                    console.warn(`[AI Image] volcengine: 暗号 @${appearanceRefName} 未找到匹配成员(可用: ${preloadedMemberAppearances.map(m => m.name).join(', ')})`)
+                }
             }
             // 暗号模式下,有参考图就用图生图模型,无参考图就纯文生图
             if (refImages.length > 0) useImageModel = true

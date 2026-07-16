@@ -12,7 +12,7 @@ import { GROUP_PROMPT_TEMPLATE } from './prompts_group';
  */
 export function SYSTEM_PROMPT_TEMPLATE(char, user, stickers = [], worldInfo = '', memoryText = '', patSettings = {}, locationContext = '', momentsText = '', bio = {}, groupContext = null, linkedGroupMemory = '', contactList = '', calendarContext = '', phoneContext = '', drawingConfig = null) {
   if (groupContext && groupContext.isGroup) {
-    return GROUP_PROMPT_TEMPLATE(char, user, stickers, worldInfo, memoryText, patSettings, locationContext, momentsText, bio, groupContext, linkedGroupMemory, contactList, calendarContext);
+    return GROUP_PROMPT_TEMPLATE(char, user, stickers, worldInfo, memoryText, patSettings, locationContext, momentsText, bio, groupContext, linkedGroupMemory, contactList, calendarContext, drawingConfig);
   } else {
     return PRIVATE_PROMPT_TEMPLATE(char, user, stickers, worldInfo, memoryText, patSettings, locationContext, momentsText, bio, linkedGroupMemory, contactList, calendarContext, phoneContext, drawingConfig);
   }

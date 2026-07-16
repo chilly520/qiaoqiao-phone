@@ -4801,12 +4801,24 @@ export const useChatStore = defineStore('chat', () => {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
                             // v1.10.154: 解析暗号(@char/@me/@us/@scene),剥离后传给 generateImage
+                            // v1.10.155: 群聊支持 @角色名 指定具体成员形象图(如 @小樱、@阿明)
                             let drawPrompt = drawMatch[1].trim()
                             let appearanceRefMode = null
+                            let appearanceRefName = null
+
+                            // 先匹配固定暗号 @char/@me/@us/@scene
                             const refMatch = drawPrompt.match(/^@(char|me|us|scene)\s+/i)
                             if (refMatch) {
                                 appearanceRefMode = refMatch[1].toLowerCase()
                                 drawPrompt = drawPrompt.substring(refMatch[0].length).trim()
+                            } else {
+                                // 再匹配 @角色名(群聊场景,2-10 个中文字符/字母数字)
+                                const nameMatch = drawPrompt.match(/^@([^\s]{2,10})\s+/)
+                                if (nameMatch) {
+                                    appearanceRefMode = 'member'
+                                    appearanceRefName = nameMatch[1]
+                                    drawPrompt = drawPrompt.substring(nameMatch[0].length).trim()
+                                }
                             }
 
                             // 1. Add a temporary "Generating" placeholder (System message or special type)
@@ -4838,7 +4850,7 @@ export const useChatStore = defineStore('chat', () => {
                                 aiTaskStore.createStreamingTask({
                                     taskId: drawTaskId,
                                     apiFunc: generateImage,
-                                    args: [drawPrompt, { chatId, appearanceRef: true, appearanceRefMode }],
+                                    args: [drawPrompt, { chatId, appearanceRef: true, appearanceRefMode, appearanceRefName }],
                                     onComplete: (imageUrl) => {
                                         // 任务成功：更新消息为图片
                                         console.log('[Draw] Global task completed:', imageUrl);
