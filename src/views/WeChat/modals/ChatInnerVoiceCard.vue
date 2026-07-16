@@ -406,7 +406,8 @@ const currentVoiceContent = computed(() => {
     return parseVoiceData(currentVoice.value.content) || {}
 })
 const currentHeartRate = computed(() => {
-    return currentVoiceContent.value.stats?.heartRate || 75
+    // [BUG FIX] 用 || 会把合法的 0 (心跳停止/濒死) 当成 75, 改用 ??
+    return currentVoiceContent.value.stats?.heartRate ?? 75
 })
 
 // 心电图路径 - 使用计算属性缓存

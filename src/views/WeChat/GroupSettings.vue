@@ -1022,7 +1022,7 @@ async function saveAll() {
         summaryPrompt: form.summaryPrompt
       },
       pat: { enabled: !!form.patEnabled, action: form.patAction, suffix: form.patSuffix },
-      bubbleBg: { preset: form.bubblePreset, blur: Number(form.bubbleBlur || 0), opacity: Number(form.bubbleOpacity || 1), theme: form.bubbleTheme }
+      bubbleBg: { preset: form.bubblePreset, blur: Number(form.bubbleBlur || 0), opacity: Number(form.bubbleOpacity ?? 1), theme: form.bubbleTheme }
     })
 
     // Sync top-level chat properties

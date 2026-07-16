@@ -307,7 +307,7 @@
                                     <div class="flex-1 min-w-0">
                                         <h4 class="text-[13px] font-semibold text-slate-700 line-clamp-1">{{ msg.items?.[0]?.title || '商品' }}</h4>
                                         <p v-if="(msg.items||[]).length > 1" class="text-[11px] text-slate-400 mt-0.5">+{{ (msg.items||[]).length - 1 }} 件商品</p>
-                                        <p class="text-[11px] text-slate-400 mt-0.5">x{{ msg.items?.[0]?.quantity || 1 }} · ¥{{ msg.items?.[0]?.price || '?' }}</p>
+                                        <p class="text-[11px] text-slate-400 mt-0.5">x{{ msg.items?.[0]?.quantity ?? 1 }} · ¥{{ msg.items?.[0]?.price ?? '?' }}</p>
                                     </div>
                                     <i class="fas fa-chevron-down text-[10px] text-pink-300 transition-transform duration-200" :class="{ 'rotate-180': expandedPaymentId === msg.id }"></i>
                                 </div>
@@ -1576,6 +1576,10 @@ onUnmounted(() => {
     if (localImageSrc.value && localImageSrc.value.startsWith('blob:')) {
         URL.revokeObjectURL(localImageSrc.value)
     }
+    // [BUG FIX] 组件卸载时清理长按定时器, 否则在 pending 期间离开会
+    // 向已卸载组件 emit context-menu / avatar-longpress 事件
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null }
+    if (avatarLongPressTimer) { clearTimeout(avatarLongPressTimer); avatarLongPressTimer = null }
 })
 
 // 代付卡片：切换展开/收起
@@ -1590,7 +1594,8 @@ const togglePaymentDetail = (msg) => {
 // 代付卡片：计算总金额（fallback）
 const calculatePaymentTotal = (msg) => {
     if (!msg.items) return '?'
-    return msg.items.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0).toFixed(2)
+    // [BUG FIX] quantity || 1 会把合法的 0 数量(赠品/占位)当成 1, 改用 ??
+    return msg.items.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity ?? 1)), 0).toFixed(2)
 }
 
 // --- Group Roles & Titles ---
@@ -3496,6 +3501,25 @@ function formatMessageContent(msg) {
     } catch (e) {
         html = text;
     }
+
+    // [BUG FIX] marked.parse (v5+ 无内置 sanitize) 可将 markdown 链接语法
+    // [click](javascript:alert(1)) 转为 <a href="javascript:alert(1)">click</a>,
+    // 而 marked 之前的清洗只作用于原始 text, 无法拦截 marked 新生成的危险属性/URL.
+    // 此处在 marked.parse 之后再做一次清洗, 防止 v-html 渲染时执行 XSS.
+    html = html
+        // 移除 script/iframe/style 及其内容
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        // 移除其他危险标签(含内容)
+        .replace(/<(object|embed|form|template|noscript|applet)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+        // 移除自闭合/无内容的危险标签
+        .replace(/<(?:input|button|select|textarea|link|meta|base|frame|frameset|object|embed|form|template|noscript|applet)\b[^>]*\/?>/gi, '')
+        // 移除 on* 事件处理属性 (含无引号形式)
+        .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+        // 替换 javascript:/vbscript:/data:text/html URL 方案
+        .replace(/(href|src|action|formaction)\s*=\s*(['"])\s*(?:javascript|vbscript|data:text\/html):[^'"]*\2/gi, '$1=$2#$2')
+        .replace(/(href|src|action|formaction)\s*=\s*(?:javascript|vbscript|data:text\/html):[^\s>]*/gi, '$1="#"');
 
     // Restore image URLs as <img> tags
     imageUrls.forEach((url, idx) => {
