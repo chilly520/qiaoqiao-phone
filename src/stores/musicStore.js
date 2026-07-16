@@ -244,7 +244,12 @@ export const useMusicStore = defineStore('music', () => {
 
   // API Interactions
   const Http_Get = (url) => {
-    return fetch(url).then(res => res.json())
+    // 带超时,避免外部 API 挂起
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10000)
+    return fetch(url, { signal: controller.signal })
+      .then(res => res.json())
+      .finally(() => clearTimeout(timer))
   }
 
   const searchMusic = async (name, singer, source = 'netease') => {

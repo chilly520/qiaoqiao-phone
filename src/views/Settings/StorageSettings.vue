@@ -559,7 +559,11 @@ const reCompressBase64FromUrl = async (url, quality) => {
     
     // For remote URLs, try to fetch but allow failure
     try {
-        const response = await fetch(url)
+        // 带超时,避免外部图片挂起
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 10000)
+        const response = await fetch(url, { signal: controller.signal })
+        clearTimeout(timer)
         if (!response.ok) {
             console.log(`Fetch failed for ${url}: ${response.status}`)
             return null // Return null to skip

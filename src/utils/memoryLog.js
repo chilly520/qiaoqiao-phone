@@ -18,7 +18,8 @@ function parseTimeRange(text) {
     if (text.includes(keyword)) return { from: Date.now() - days * 86400000, to: Date.now() }
   }
   if (/(\d+)天前/.test(text)) {
-    const d = parseInt(RegExp.$1) || 3
+    const match = text.match(/(\d+)天前/)
+    const d = match ? (parseInt(match[1]) || 3) : 3
     return { from: Date.now() - d * 86400000, to: Date.now() }
   }
   return null

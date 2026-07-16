@@ -1480,7 +1480,11 @@ const convertToBase64ToBlob = async (src) => {
         return
     }
     try {
-        const response = await fetch(src)
+        // 带超时,避免外部图片挂起
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 10000)
+        const response = await fetch(src, { signal: controller.signal })
+        clearTimeout(timer)
         const blob = await response.blob()
         const newUrl = URL.createObjectURL(blob)
         if (localImageSrc.value && localImageSrc.value.startsWith('blob:')) {

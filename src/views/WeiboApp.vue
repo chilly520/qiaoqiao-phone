@@ -1525,7 +1525,7 @@ async function handleGenerateDM(dmName) {
         <button class="send-btn" :class="{ ready: postText.trim().length > 0 }">发布</button>
       </div>
       <div class="modal-content">
-        <textarea class="post-textarea" v-model="postText" placeholder="分享新鲜事..."></textarea>
+        <textarea class="post-textarea" v-model="postText" placeholder="分享新鲜事..." maxlength="2000"></textarea>
         <div class="post-toolbar">
           <div class="tool-item"><i class="fa-solid fa-image" style="color: #4cd964;"></i></div>
           <div class="tool-item ai"><i class="fa-solid fa-wand-magic-sparkles"></i></div>

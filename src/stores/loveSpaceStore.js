@@ -564,7 +564,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!this.currentSpace.house) this.currentSpace.house = DEFAULT_SPACE().house
       
       const house = this.currentSpace.house
-      house.comfortLevel = (house.comfortLevel || 100) + (update.comfortIncrease || 0)
+      house.comfortLevel = (house.comfortLevel ?? 100) + (update.comfortIncrease ?? 0)
       house.lastAction = update.action || '简单打理了一下'
       house.lastActionTime = new Date().toISOString()
       

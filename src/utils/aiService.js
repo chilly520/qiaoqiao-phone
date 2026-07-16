@@ -858,7 +858,11 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
         if (!url || typeof url !== 'string') return null
         if (url.startsWith('data:image')) return url
         try {
-            const resp = await fetch(url)
+            // 带超时,避免外部图片挂起阻塞 AI 请求
+            const controller = new AbortController()
+            const timer = setTimeout(() => controller.abort(), 15000)
+            const resp = await fetch(url, { signal: controller.signal })
+            clearTimeout(timer)
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
             const blob = await resp.blob()
             return new Promise((resolve) => {

@@ -101,6 +101,7 @@
                 <textarea v-model="inputVal"
                     class="w-full bg-transparent border-none focus:ring-0 resize-none outline-none text-[15px] leading-[22px] text-gray-800 placeholder-gray-400"
                     rows="1" :disabled="isDisabled"
+                    maxlength="2000"
                     :placeholder="isDisabled ? (isExited || isDissolved ? '你已不再该群聊中' : '你已被禁言') : (isVoiceMode ? '输入文字，发送后将以语音形式显示...' : '发送消息...')"
                     @keydown.enter.prevent="handleSend" @input="handleInput" ref="textareaRef"
                     style="max-height: 66px; overflow-y: auto;"></textarea>

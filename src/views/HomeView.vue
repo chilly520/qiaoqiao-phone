@@ -99,6 +99,18 @@ const currentDate = ref('2024年1月1日 星期一')
 let clockTimer = null
 let weatherTimer = null
 
+// 带超时的 fetch,避免外部 API 挂起导致 UI 卡死
+async function fetchWithTimeout(url, options = {}) {
+    const { timeout = 8000, ...fetchOptions } = options
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeout)
+    try {
+        return await fetch(url, { ...fetchOptions, signal: controller.signal })
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
 function updateClock() {
   const now = new Date()
   currentTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
@@ -172,7 +184,7 @@ async function fetchWeather() {
     // 使用 Open-Meteo 免费天气 API（无需 API Key）
     // 文档：https://open-meteo.com/
     // 1. 先获取地理编码 - 取多条结果以处理同名歧义（深圳、上海、北京等都有多个同名点）
-    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryLoc)}&count=10&language=zh&format=json`)
+    const geoRes = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryLoc)}&count=10&language=zh&format=json`)
 
     if (!geoRes.ok) {
       throw new Error('地理位置查询失败')
@@ -204,7 +216,7 @@ async function fetchWeather() {
     const aqiCityName = name_en || name
     
     // 2. 获取天气数据
-    const weatherRes = await fetch(
+    const weatherRes = await fetchWithTimeout(
       `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&weathercode=true`
     )
     
@@ -253,7 +265,7 @@ async function fetchWeather() {
           return
         }
         console.log('[AQI] 请求城市:', aqiCityName, '(中文名:', name, ')')
-        const aqiRes = await fetch(`https://api.waqi.info/feed/${aqiCityName}/?token=${WAQI_TOKEN}`)
+        const aqiRes = await fetchWithTimeout(`https://api.waqi.info/feed/${aqiCityName}/?token=${WAQI_TOKEN}`)
         console.log('[AQI] 响应状态:', aqiRes.status)
         
         if (aqiRes.ok) {

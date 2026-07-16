@@ -1254,7 +1254,8 @@ onMounted(() => {
             <div class="p-6 flex-1 overflow-y-auto">
                 <textarea v-model="postForm.content"
                     class="w-full h-32 text-lg outline-none resize-none placeholder-gray-300"
-                    placeholder="这一刻的想法..."></textarea>
+                    placeholder="这一刻的想法..."
+                    maxlength="2000"></textarea>
 
                 <!-- Image/Sticker Upload -->
                 <div class="flex flex-wrap gap-2 mt-4">
