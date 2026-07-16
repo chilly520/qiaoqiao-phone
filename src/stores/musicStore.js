@@ -1,6 +1,6 @@
 
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onScopeDispose } from 'vue'
 import { useSettingsStore } from './settingsStore'
 import { useLoggerStore } from './loggerStore'
 
@@ -146,7 +146,12 @@ export const useMusicStore = defineStore('music', () => {
           if (altResult && altResult.url) {
             resultSong = altResult
             // [BUG FIX] 不要重建对象, 保留对原 playlist 元素的引用
-            Object.assign(playlist.value[index], altResult, { _healed: true })
+            // [BUG FIX] 增加 null 守卫: 并发 removeSong/loadSong 可能让 playlist[index] 失效,
+            // Object.assign(undefined, ...) 会抛 TypeError 中断自愈流程.
+            const target = playlist.value[index]
+            if (target) {
+              Object.assign(target, altResult, { _healed: true })
+            }
             logger.addLog('Music', `换源成功：来自 ${platform}`, { song: song.song })
             break
           }
@@ -515,7 +520,10 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   // Setup Audio Listeners
-  audio.addEventListener('timeupdate', () => {
+  // [BUG FIX] 之前用内联箭头函数注册监听, 无法 removeEventListener;
+  // HMR 或 store $dispose 后旧 Audio + 3 个闭包永不释放, 持有整个 store 响应式状态.
+  // 改为具名函数 + onScopeDispose 清理.
+  const onTimeUpdate = () => {
     currentTime.value = audio.currentTime
     duration.value = audio.duration
 
@@ -531,9 +539,9 @@ export const useMusicStore = defineStore('music', () => {
       }
       currentLyricIndex.value = activeIdx
     }
-  })
+  }
 
-  audio.addEventListener('ended', () => {
+  const onEnded = () => {
     if (repeatMode.value === 'one') {
       audio.currentTime = 0
       play()
@@ -542,12 +550,29 @@ export const useMusicStore = defineStore('music', () => {
     } else {
       isPlaying.value = false
     }
-  })
+  }
 
-  audio.addEventListener('error', (e) => {
+  const onError = (e) => {
     console.error('Audio Error', e)
     isPlaying.value = false
     currentLyrics.value = '♪ 播放出错，请尝试下一首'
+  }
+
+  audio.addEventListener('timeupdate', onTimeUpdate)
+  audio.addEventListener('ended', onEnded)
+  audio.addEventListener('error', onError)
+
+  // [BUG FIX] store 销毁/HMR 时清理: 移除监听, 停止播放, 释放定时器与媒体资源.
+  onScopeDispose(() => {
+    audio.removeEventListener('timeupdate', onTimeUpdate)
+    audio.removeEventListener('ended', onEnded)
+    audio.removeEventListener('error', onError)
+    if (togetherTimer) { clearInterval(togetherTimer); togetherTimer = null }
+    try {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    } catch (e) { /* ignore */ }
   })
 
   // Initialize

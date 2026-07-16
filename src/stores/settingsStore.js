@@ -513,16 +513,18 @@ export const useSettingsStore = defineStore('settings', () => {
                 personalization.value.icons.map = { ...defaultIconsMap, ...(personalization.value.icons?.map || {}) }
 
                 const savedBgs = personalization.value.cardBgs || {}
+                // [BUG FIX] 用 || 会把用户主动清空('')的卡片背景恢复为默认值, 改用 ??
                 personalization.value.cardBgs = {
-                    time: savedBgs.time || defaultCardBgs.time,
-                    location: savedBgs.location || defaultCardBgs.location,
-                    weather: savedBgs.weather || defaultCardBgs.weather
+                    time: savedBgs.time ?? defaultCardBgs.time,
+                    location: savedBgs.location ?? defaultCardBgs.location,
+                    weather: savedBgs.weather ?? defaultCardBgs.weather
                 }
 
                 const savedWidgets = personalization.value.widgets || {}
+                // [BUG FIX] 同上, 用 ?? 保留用户主动清空的 widget
                 personalization.value.widgets = {
-                    card1: savedWidgets.card1 || defaultWidgets.card1,
-                    card2: savedWidgets.card2 || defaultWidgets.card2
+                    card1: savedWidgets.card1 ?? defaultWidgets.card1,
+                    card2: savedWidgets.card2 ?? defaultWidgets.card2
                 }
 
                 // WeChat Backgrounds Migration
@@ -541,6 +543,10 @@ export const useSettingsStore = defineStore('settings', () => {
                                 ...personalization.value.wechatBackgrounds,
                                 ...legacyData
                             }
+                            // [BUG FIX] 迁移成功后删除旧 key, 否则每次 loadFromStorage
+                            // 在 data.personalization.wechatBackgrounds 缺失时会重复应用旧背景,
+                            // 让用户改过的背景被"复活".
+                            localStorage.removeItem('qiaqiao_background_settings')
                         } catch (e) { }
                     }
                 }
@@ -870,20 +876,12 @@ export const useSettingsStore = defineStore('settings', () => {
         drawing.value = { ...drawing.value, ...cleanConfig }
         console.log('[SettingsStore] Drawing config after update:', JSON.stringify(drawing.value))
 
+        // [BUG FIX] saveToStorage 写入 localforage(IndexedDB), 而非 localStorage.
+        // 旧代码读 localStorage 'qiaoqiao_settings' 做验证, 但该 key 已被 saveToStorage
+        // 主动清除(isInitialized 后), 所以验证永远打印 "No settings found", 误导调试.
+        // 且 saveToStorage 是 async, 验证在写入完成前执行, 读到的也是旧数据.
+        // 删除这段死代码, 保留 saveToStorage 调用即可.
         saveToStorage()
-
-        // Immediate verification from storage
-        const stored = localStorage.getItem('qiaoqiao_settings')
-        if (stored) {
-            try {
-                const parsedStored = JSON.parse(stored)
-                console.log('[SettingsStore] Drawing config in localStorage after save:', JSON.stringify(parsedStored.drawing))
-            } catch (e) {
-                console.error('[SettingsStore] Error parsing localStorage after save:', e)
-            }
-        } else {
-            console.log('[SettingsStore] No settings found in localStorage after save.')
-        }
 
         // Final sanity check
         console.log('[SettingsStore] Current drawing state after save:', JSON.stringify(drawing.value))
@@ -1071,16 +1069,19 @@ export const useSettingsStore = defineStore('settings', () => {
                 momentsStore.moments = remoteData.moments
                 momentsStore.topMoments = remoteData.momentsTop || []
                 momentsStore.notifications = remoteData.momentsNotifications || []
-                momentsStore.saveMoments?.()
+                // [BUG FIX] 缺少 await, 异步保存未完成就返回, 刷新即丢
+                await momentsStore.saveMoments?.()
             }
             if (remoteData.settings) {
                 personalization.value = { ...personalization.value, ...remoteData.settings }
-                saveToStorage()
+                // [BUG FIX] 缺少 await, importFullData 返回前 IndexedDB 写入未完成, 刷新即丢
+                await saveToStorage()
             }
             if (remoteData.apiConfigs && Array.isArray(remoteData.apiConfigs)) {
                 apiConfigs.value = remoteData.apiConfigs
                 if (typeof remoteData.currentConfigIndex === 'number') currentConfigIndex.value = remoteData.currentConfigIndex
-                saveToStorage()
+                // [BUG FIX] 缺少 await, 同上
+                await saveToStorage()
             }
             if (remoteData.voice) voice.value = { ...voice.value, ...remoteData.voice }
             if (remoteData.weather) weather.value = { ...weather.value, ...remoteData.weather }
@@ -1091,19 +1092,23 @@ export const useSettingsStore = defineStore('settings', () => {
             // 下次刷新后这些配置会丢失 (只有 apiConfigs 和 personalization 被保存了)
             if (remoteData.voice || remoteData.weather || remoteData.drawing ||
                 typeof remoteData.compressQuality === 'number' || typeof remoteData.fontScale === 'number') {
-                saveToStorage()
+                // [BUG FIX] 缺少 await, 同上
+                await saveToStorage()
             }
             if (remoteData.worldbook) {
                 worldBookStore.books = remoteData.worldbook
-                worldBookStore.saveEntries?.()
+                // [BUG FIX] 缺少 await, 同上
+                await worldBookStore.saveEntries?.()
             }
             if (remoteData.stickers) {
                 stickerStore.stickers = remoteData.stickers
-                stickerStore.saveStickers?.()
+                // [BUG FIX] 缺少 await, 同上
+                await stickerStore.saveStickers?.()
             }
             if (remoteData.favorites) {
                 chatStore.favorites = remoteData.favorites
-                chatStore.saveFavorites?.()
+                // [BUG FIX] 缺少 await, 同上
+                await chatStore.saveFavorites?.()
             }
             if (remoteData.wallet) {
                 try { const { useWalletStore } = await import('./walletStore'); const ws = useWalletStore()
