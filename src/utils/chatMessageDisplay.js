@@ -392,7 +392,15 @@ export function parseOfflineSegments(msg) {
       p.split('\n').forEach(line => {
         const l = line.trim()
         if (l) {
-          // V16: If this line is ONLY punctuation and we have a previous segment that is narration or dialogue, 
+          // v1.10.156: 线下模式图片标签 [图片:url] / [IMAGE:url] 作为独立 image 段
+          // 支持 http/data/blob URL,渲染时点击可放大预览
+          const imgMatch = l.match(/^\[(?:图片|IMAGE)[:：]\s*((?:https?:\/\/|data:image\/|blob:)[^\]]+)\]$/i)
+          if (imgMatch) {
+            segments.push({ type: 'image', content: imgMatch[1].trim() })
+            return
+          }
+
+          // V16: If this line is ONLY punctuation and we have a previous segment that is narration or dialogue,
           // merge it back instead of creating a new card.
           const isPunctuationOnly = /^[!?;.\u3002\uff01\uff1f\uff1b\u2026\u2014\u3001\uff0c,]+$/.test(l)
           if (isPunctuationOnly && segments.length > 0) {

@@ -1289,7 +1289,7 @@
                                     </div>
 
                                     <!-- Content -->
-                                    <span v-html="renderSegment(segment)" :class="(msg.type === 'html' || isHtmlCard) ? 'inline-block' : ''"></span>
+                                    <span v-html="renderSegment(segment)" :class="(msg.type === 'html' || isHtmlCard) ? 'inline-block' : ''" @click="handleContentClick"></span>
                                 </div>
                             </template>
 
@@ -3087,6 +3087,11 @@ function renderOfflineMessageHtml(msg) {
         if (segment.type === 'scene') {
             return `<div class="node-scene">${escapeHtml(segment.content)}</div>`
         }
+        // v1.10.156: 线下模式图片段,点击可放大预览
+        if (segment.type === 'image') {
+            const src = escapeHtml(segment.content)
+            return `<div class="node-image"><img src="${src}" class="offline-preview-img" data-preview-src="${src}" /></div>`
+        }
         if (segment.type === 'narration') {
             const side = msg?.role === 'user' ? 'right' : 'left'
             return `<div class="node-narration ${side}">${escapeHtml(segment.content)}</div>`
@@ -3625,6 +3630,18 @@ function handleImageError(e) {
 
 function previewImage(src) {
     emit('preview-image', src)
+}
+
+// v1.10.156: 线下模式图片点击放大(事件委托,处理 v-html 渲染的 .offline-preview-img)
+function handleContentClick(e) {
+    const target = e.target
+    if (target && target.classList && target.classList.contains('offline-preview-img')) {
+        const src = target.getAttribute('data-preview-src')
+        if (src) {
+            e.stopPropagation()
+            previewImage(src)
+        }
+    }
 }
 
 function handleToggleVoice() {
@@ -4694,6 +4711,23 @@ const scrollToVote = (refId) => {
     font-size: 13px;
     letter-spacing: 0.3em;
     width: 100%;
+}
+
+/* v1.10.156: 线下模式图片样式,点击可放大 */
+:deep(.node-image) {
+    text-align: center;
+    margin: 12px 0;
+}
+:deep(.offline-preview-img) {
+    max-width: 220px;
+    max-height: 280px;
+    border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+:deep(.offline-preview-img:active) {
+    transform: scale(0.96);
 }
 
 :deep(.node-action) {
