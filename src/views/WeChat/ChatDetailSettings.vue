@@ -1441,12 +1441,29 @@ function toggleMcpServer(serverId) {
     }
 }
 
-const showToast = (msg) => {
+const showToast = (msg, duration = 2000) => {
     toastMessage.value = msg
     clearTimeout(toastTimer.value)
     toastTimer.value = setTimeout(() => {
         toastMessage.value = ''
-    }, 2000)
+    }, duration)
+}
+
+// 持续显示toast直到手动清除(用于总结等长时间操作)
+let persistentToastTimer = null
+const showPersistentToast = (msg) => {
+    toastMessage.value = msg
+    clearTimeout(toastTimer.value)
+    clearTimeout(persistentToastTimer)
+    // 10秒兜底超时,避免极端情况toast卡住
+    persistentToastTimer = setTimeout(() => {
+        toastMessage.value = ''
+    }, 10000)
+}
+const hideToast = () => {
+    toastMessage.value = ''
+    clearTimeout(toastTimer.value)
+    clearTimeout(persistentToastTimer)
 }
 
 // Global BG for transparency effect
@@ -1737,22 +1754,26 @@ const triggerCalendarSummary = () => {
 }
 
 const executeCalendarSummary = async ({ startDate, endDate }) => {
-    showCalendarSummaryModal.value = false
     if (!props.chatData?.id) {
-        showToast('无法执行总结：会话ID缺失')
+        showCalendarSummaryModal.value = false
+        showToast('无法执行总结：会话ID缺失', 3000)
         return
     }
+    // 先关闭弹窗,再立刻显示loading反馈,避免用户以为没点到
+    showCalendarSummaryModal.value = false
+    showPersistentToast(`⏳ 正在总结 ${startDate}${startDate === endDate ? '' : ` ~ ${endDate}`} 的对话,请稍候...`)
     try {
-        showToast(`正在总结 ${startDate}~${endDate} 的对话...`, 'info')
         const result = await chatStore.summarizeHistory(props.chatData.id, { startDate, endDate })
+        hideToast()
         if (!result.success && result.error) {
-            showToast('总结失败: ' + result.error)
+            showToast('❌ 总结失败: ' + result.error, 4000)
         } else {
-            showToast('总结完成', 'success')
+            showToast('✅ 总结完成,已存入记忆网络', 3000)
         }
     } catch (e) {
         console.error(e)
-        showToast('总结失败: ' + (e.message || '未知错误'))
+        hideToast()
+        showToast('❌ 总结失败: ' + (e.message || '未知错误'), 4000)
     }
 }
 
@@ -1768,16 +1789,27 @@ const executeManualSummary = async () => {
         options.endIndex = parseInt(match[2])
     }
 
-    showManualSummaryModal.value = false
+    if (!props.chatData?.id) {
+        showManualSummaryModal.value = false
+        showToast('无法执行总结：会话ID缺失', 3000)
+        return
+    }
 
+    // 先关闭弹窗,再立刻显示loading反馈
+    showManualSummaryModal.value = false
+    showPersistentToast(`⏳ 正在总结 ${rangeInput || '所选范围'} 的对话,请稍候...`)
     try {
-        if (!props.chatData?.id) {
-            showToast('无法执行总结：会话ID缺失')
-            return
+        const result = await chatStore.summarizeHistory(props.chatData.id, options)
+        hideToast()
+        if (result && !result.success && result.error) {
+            showToast('❌ 总结失败: ' + result.error, 4000)
+        } else {
+            showToast('✅ 总结完成,已存入记忆网络', 3000)
         }
-        await chatStore.summarizeHistory(props.chatData.id, options)
     } catch (e) {
         console.error(e)
+        hideToast()
+        showToast('❌ 总结失败: ' + (e.message || '未知错误'), 4000)
     }
 }
 
