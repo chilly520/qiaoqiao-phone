@@ -160,7 +160,7 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
                 // Generate full profile (Async, don't block)
                 const momentsStore = useMomentsStore()
                 generateCompleteProfile(newChar, useSettingsStore().personalization?.userProfile)
-                    .then(profile => {
+                    .then(async profile => {
                         console.log('[WorldLoop] Full profile generated:', profile)
                         // 1. Update character metadata
                         chatStore.updateCharacter(charId, {
@@ -173,20 +173,23 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
                         })
 
                         // 2. Inject initial moments
+                        // [BUG FIX] forEach(async) 不会 await, 改用 for...of 保证顺序和错误传播
                         const initialMoments = profile.pinnedMoments || profile.moments || []
-                        if (initialMoments.length > 0) {
-                            initialMoments.forEach(async m => {
-                                await momentsStore.addMoment({
-                                    authorId: charId,
-                                    content: m.content,
-                                    images: m.images || [],
-                                    imageDescriptions: m.imageDescriptions || [],
-                                    mentions: m.mentions || [],
-                                    interactions: m.interactions || [],
-                                    visibility: 'public'
-                                }, { skipAutoInteraction: true })
-                            })
+                        for (const m of initialMoments) {
+                            await momentsStore.addMoment({
+                                authorId: charId,
+                                content: m.content,
+                                images: m.images || [],
+                                imageDescriptions: m.imageDescriptions || [],
+                                mentions: m.mentions || [],
+                                interactions: m.interactions || [],
+                                visibility: 'public'
+                            }, { skipAutoInteraction: true })
                         }
+                    })
+                    .catch(e => {
+                        // [BUG FIX] 添加 .catch 防止 generateCompleteProfile 或 then 内部抛错成为 unhandled rejection
+                        console.error('[WorldLoop] Profile generation failed', e)
                     })
             } catch (e) {
                 console.error('[WorldLoop] Visual generation failed', e)

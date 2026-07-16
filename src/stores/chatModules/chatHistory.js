@@ -236,7 +236,12 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             if (!options.silent) triggerToast(`提取记忆痛点遇到异常: ${error.message}`, 'error')
             return { success: false, error: error.message }
         } finally {
-            chat.isSummarizing = false
+            // [BUG FIX] finally 块中应使用 latestChat (或重新获取), 而非可能已过时的 chat 引用.
+            // 如果 chat 对象被并发 mutation 替换, 旧 chat 的 isSummarizing 置 false 不影响当前 chat,
+            // 导致当前 chat 的 isSummarizing 卡在 true, 永久阻塞后续自动总结.
+            const finalChat = chats.value[chatId]
+            if (!finalChat) return
+            finalChat.isSummarizing = false
 
             // Auto-trigger next chunk if backlog remains
             // v1.10.130: 日期模式也不应触发后续自动增量总结链
@@ -245,9 +250,9 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 && !options.startDate
                 && !options.endDate
             if (isAutoSummaryModeFinally) {
-                const currentTotal = chat.msgs.length
-                const backlog = currentTotal - (chat.lastSummaryIndex || 0)
-                const summaryLimit = parseInt(chat.summaryLimit) || 50
+                const currentTotal = finalChat.msgs.length
+                const backlog = currentTotal - (finalChat.lastSummaryIndex || 0)
+                const summaryLimit = parseInt(finalChat.summaryLimit) || 50
 
                 if (backlog >= summaryLimit) {
                     console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)

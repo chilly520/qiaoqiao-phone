@@ -819,6 +819,8 @@ export const useMomentsStore = defineStore('moments', () => {
 
         const chatStore = useChatStore()
         const settingsStore = useSettingsStore()
+        // [BUG FIX] stickerStore 未定义, 直接使用会抛 ReferenceError, 被 catch 吞掉导致 AI 回复永远不生成
+        const stickerStore = useStickerStore()
 
         const potentialRepliers = []
         if (moment.authorId !== 'user' && chatStore.chats[moment.authorId]) {
@@ -1284,7 +1286,9 @@ export const useMomentsStore = defineStore('moments', () => {
             if (options.includeMoments && profileData.pinnedMoments) {
                 const newMomentIds = []
                 for (const mData of profileData.pinnedMoments) {
-                    const moment = addMoment({
+                    // [BUG FIX] addMoment 是 async 函数, 缺少 await 会导致 moment 为 Promise,
+                    // moment.id 为 undefined, 后续 addLike/addComment/push 全部失效
+                    const moment = await addMoment({
                         authorId: charId,
                         authorName: char.remark || char.name,
                         content: mData.content,

@@ -54,12 +54,15 @@ export const useAITaskStore = defineStore('aiTasks', () => {
             abortController: new AbortController()
         })
 
+        // [BUG FIX] 捕获当前 task 引用, 防止旧任务的 AbortError 误覆盖新任务状态
+        const myTask = activeTasks.get(taskId)
+
         try {
             // 更新状态为运行中
-            activeTasks.get(taskId).status = TaskStatus.RUNNING
+            myTask.status = TaskStatus.RUNNING
 
             // 执行 AI 请求
-            const result = await apiFunc(...args, activeTasks.get(taskId).abortController.signal, {
+            const result = await apiFunc(...args, myTask.abortController.signal, {
                 onChunk: (delta, fullContent) => {
                     // 流式数据回调
                     if (onChunk) onChunk(delta, fullContent)
@@ -67,11 +70,10 @@ export const useAITaskStore = defineStore('aiTasks', () => {
             })
 
             // 任务完成
-            const task = activeTasks.get(taskId)
-            if (task && task.status === TaskStatus.RUNNING) {
-                task.status = TaskStatus.COMPLETED
-                task.result = result
-                task.progress = 100
+            if (myTask.status === TaskStatus.RUNNING) {
+                myTask.status = TaskStatus.COMPLETED
+                myTask.result = result
+                myTask.progress = 100
 
                 // 存储结果
                 taskResults.set(taskId, result)
@@ -81,17 +83,21 @@ export const useAITaskStore = defineStore('aiTasks', () => {
             }
         } catch (error) {
             // 任务失败处理
-            const task = activeTasks.get(taskId)
-            if (task) {
+            // [BUG FIX] 只处理属于当前 task 的错误, 旧 task 的 AbortError 不应影响新 task
+            if (activeTasks.get(taskId) !== myTask) {
+                // 当前 taskId 已被新任务覆盖, 丢弃旧任务的错误
+                return
+            }
+            if (myTask) {
                 // ✅ 区分中止错误（页面切换/用户取消）和真实错误
-                if (error.name === 'AbortError' || 
-                    error.message?.includes('aborted') || 
+                if (error.name === 'AbortError' ||
+                    error.message?.includes('aborted') ||
                     error.message?.includes('signal is aborted')) {
-                    task.status = TaskStatus.ABORTED
+                    myTask.status = TaskStatus.ABORTED
                     console.log(`[AITaskStore] Task ${taskId} was aborted (component unmounted or user cancelled)`);
                 } else {
-                    task.status = TaskStatus.FAILED
-                    task.error = error.message
+                    myTask.status = TaskStatus.FAILED
+                    myTask.error = error.message
                     logger?.addLog('ERROR', `AI 任务 ${taskId} 失败`, error.message)
                 }
 
@@ -101,8 +107,9 @@ export const useAITaskStore = defineStore('aiTasks', () => {
         } finally {
             // 清理 abortController（延迟清理，避免立即清理导致的问题）
             setTimeout(() => {
-                const task = activeTasks.get(taskId)
-                if (task && (task.status === TaskStatus.COMPLETED || task.status === TaskStatus.FAILED || task.status === TaskStatus.ABORTED)) {
+                // [BUG FIX] 只在 task 仍为当前 task 时清理
+                if (activeTasks.get(taskId) === myTask &&
+                    (myTask.status === TaskStatus.COMPLETED || myTask.status === TaskStatus.FAILED || myTask.status === TaskStatus.ABORTED)) {
                     activeTasks.delete(taskId)
                 }
             }, 5000) // 5 秒后清理已完成任务

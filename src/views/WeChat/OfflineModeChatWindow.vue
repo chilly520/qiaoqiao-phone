@@ -1225,8 +1225,15 @@ const generateAIResponse = () => { chatStore.sendMessageToAI(chatStore.currentCh
 
 const togglePanel = () => { showActionPanel.value = !showActionPanel.value }
 const toggleEmoji = () => { showEmojiPicker.value = !showEmojiPicker.value }
-const toggleMusic = () => { 
-  musicStore.isListeningTogether = !musicStore.isListeningTogether
+const toggleMusic = () => {
+  // [BUG FIX] 直接翻转 isListeningTogether 会绕过 startTogether/stopTogether,
+  // 导致计时器不启动/不停止, "一起听" 时长统计失效. 应调用 store 方法.
+  if (musicStore.isListeningTogether) {
+    musicStore.stopTogether()
+  } else {
+    const partner = chatStore.chats[chatStore.currentChatId]
+    musicStore.startTogether(partner)
+  }
   musicStore.playerVisible = musicStore.isListeningTogether
 }
 const toggleSearch = () => { /* Logic */ }

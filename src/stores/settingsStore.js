@@ -1061,7 +1061,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
             if (remoteData.chats) {
                 chatStore.chats = remoteData.chats
-                chatStore.saveChats?.()
+                // [BUG FIX] saveChats 是 async, 缺少 await 会在持久化完成前返回,
+                // 用户此时刷新页面会导致导入数据丢失
+                await chatStore.saveChats()
             }
             if (remoteData.moments) {
                 momentsStore.moments = remoteData.moments

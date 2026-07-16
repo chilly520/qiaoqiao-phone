@@ -268,20 +268,25 @@ function sendDMMessage() {
   dmInputText.value = ''
   scrollToBottom()
   // 使用 AI 生成回复（自动带上最近聊天记录作为上下文）
+  // [BUG FIX] async 回调无 try/catch, generateDMChatReply reject 时成为 unhandled rejection
   setTimeout(async () => {
-    const recentMsgs = weiboStore.getDMChatMessages(name).slice(-6) // 取最近6条作为上下文
-    const reply = await weiboStore.generateDMChatReply(name, recentMsgs)
-    if (reply) {
-      const replyTime = new Date()
-      const senderDM = weiboStore.dmMessages.find(d => d.sender === name)
-      weiboStore.addDMChatMessage(name, {
-        content: reply,
-        isMine: false,
-        avatar: senderDM?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + name,
-        time: Date.now(),
-        timeStr: `${replyTime.getHours().toString().padStart(2, '0')}:${replyTime.getMinutes().toString().padStart(2, '0')}`
-      })
-      scrollToBottom()
+    try {
+      const recentMsgs = weiboStore.getDMChatMessages(name).slice(-6) // 取最近6条作为上下文
+      const reply = await weiboStore.generateDMChatReply(name, recentMsgs)
+      if (reply) {
+        const replyTime = new Date()
+        const senderDM = weiboStore.dmMessages.find(d => d.sender === name)
+        weiboStore.addDMChatMessage(name, {
+          content: reply,
+          isMine: false,
+          avatar: senderDM?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + name,
+          time: Date.now(),
+          timeStr: `${replyTime.getHours().toString().padStart(2, '0')}:${replyTime.getMinutes().toString().padStart(2, '0')}`
+        })
+        scrollToBottom()
+      }
+    } catch (e) {
+      console.error('[WeiboApp] DM reply generation failed:', e)
     }
   }, 1000 + Math.random() * 2000)
 }

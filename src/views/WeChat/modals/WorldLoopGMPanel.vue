@@ -414,19 +414,22 @@ async function handleRedrawScene() {
     const theme = loop.value.description || '当前场景'
     
     // 1. Add placeholder message
-    const msgId = chatStore.addMessage(chatStore.currentChatId, {
+    // [BUG FIX] addMessage 是 async 函数, 缺少 await 会导致 msgId 为 Promise,
+    // updateMessage(chatId, Promise, ...) 永远找不到消息, 占位消息卡在加载状态
+    const placeholderMsg = await chatStore.addMessage(chatStore.currentChatId, {
         role: 'system',
         content: `[DRAW: ${theme} 的电影级写实背景]`,
         isDrawing: true
     })
-    
+    const msgId = placeholderMsg?.id
+
     emit('close')
 
     try {
         const { generateImage } = await import('../../../utils/aiService.js')
         // 2. Generate the image
         const imageUrl = await generateImage(`${theme}, cinematic realism, background masterpiece, high quality, no characters`)
-        
+
         // 3. Update the message to remove loading state and show the result
         chatStore.updateMessage(chatStore.currentChatId, msgId, {
             content: `[图片:${imageUrl}]`,
@@ -511,11 +514,13 @@ async function handleEditAvatar(id) {
     chatStore.triggerPrompt('重绘头像', '描述新头像的风格 (留空则使用角色默认描述):', async (theme) => {
         if (theme === null) return
 
-        const msgId = chatStore.addMessage(chatStore.currentChatId, {
+        // [BUG FIX] addMessage 是 async, 需 await 获取消息对象, 否则 msgId 为 Promise
+        const placeholderMsg = await chatStore.addMessage(chatStore.currentChatId, {
             role: 'system',
             content: `[DRAW: 正在为 ${char.name} 重新绘制头像...]`,
             isDrawing: true
         })
+        const msgId = placeholderMsg?.id
 
         try {
             const { generateImage } = await import('../../../utils/aiService.js')

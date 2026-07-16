@@ -73,7 +73,8 @@ export const useFavoritesStore = defineStore('favorites', () => {
     }
 
     function removeFavorite(id) {
-        const idx = favorites.value.findIndex(f => f.id == id)
+        // [BUG FIX] == 会隐式类型转换 (如 "123" == 123), 掩盖调用方类型错误. 改用 ===
+        const idx = favorites.value.findIndex(f => f.id === id)
         if (idx !== -1) {
             favorites.value.splice(idx, 1)
             saveFavorites()
