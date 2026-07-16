@@ -245,6 +245,25 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
      */
     async function deleteLoop(loopId) {
         if (!loops.value[loopId]) return false
+        const loop = loops.value[loopId]
+
+        // [BUG FIX] WLS-7: 删除 loop 前, 清除所有参与者 chat 上的 belongToLoop 引用.
+        // 否则这些 chat 会永久挂着 `belongToLoop = <已删除的loopId>`, 在通讯录里
+        // 仍然显示成"属于某某世界圈", 但点进去却找不到 loop (loops.value[loopId] 为 undefined),
+        // 表现为"幽灵分组". 与 removeNPCFromLoop 行为保持一致.
+        if (loop && Array.isArray(loop.participants)) {
+            const chatStore = useChatStore()
+            for (const charId of loop.participants) {
+                try {
+                    if (chatStore.chats[charId] && chatStore.chats[charId].belongToLoop === loopId) {
+                        chatStore.updateCharacter(charId, { belongToLoop: null })
+                    }
+                } catch (e) {
+                    console.warn(`[WorldLoop] Failed to clear belongToLoop for ${charId}:`, e)
+                }
+            }
+        }
+
         delete loops.value[loopId]
         if (activeLoopId.value === loopId) {
             activeLoopId.value = null
@@ -266,7 +285,11 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
         isLoading.value = true
         try {
             // Use the chat ID (not loopId) for summarizeHistory
-            const targetChatId = chatId || chatStore.contactList.find(c => c.loopId === loopId)?.id
+            // [BUG FIX] WLS-3: 原代码 `c.loopId === loopId` 永远为 false —— chat 上的
+            // 关联字段叫 belongToLoop (见 line 19/115/123/233), 没有 loopId 字段.
+            // 导致 targetChatId 永远是 undefined, 函数永远抛 '找不到世界圈关联的聊天',
+            // "世界线总结"功能永久不可用.
+            const targetChatId = chatId || chatStore.contactList.find(c => c.belongToLoop === loopId)?.id
             if (!targetChatId) {
                 throw new Error('找不到世界圈关联的聊天')
             }

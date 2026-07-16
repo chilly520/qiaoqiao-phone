@@ -710,6 +710,15 @@ export const useShoppingStore = defineStore('shopping', () => {
     }
 
     const createOrder = (items, address, remark = '', couponId = null, paymentMethod = null) => {
+        // [BUG FIX] 空购物车守卫: items 为空数组时, 后面 items[0].title 会抛 TypeError,
+        // 被外层 try/catch 吞掉后用户看到误导性的 "余额不足，支付失败" 提示.
+        // 而且如果 items[0] 恰好能取到但其他字段缺失, decreaseBalance 可能已先扣款再失败.
+        // 直接早退, 给出准确错误信息.
+        if (!Array.isArray(items) || items.length === 0) {
+            console.warn('[ShoppingStore] createOrder called with empty items')
+            alert('购物车为空，无法创建订单')
+            return null
+        }
         let total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
         let discount = 0
 
@@ -725,7 +734,9 @@ export const useShoppingStore = defineStore('shopping', () => {
         // 尝试从钱包扣款
         let paySuccess = false
         try {
-            paySuccess = walletStore.decreaseBalance(total, `购物: ${items[0].title}${items.length > 1 ? '等' : ''}`, paymentMethod)
+            // [BUG FIX] items[0].title 可能不存在 (旧订单/异常数据), 用可选链 + 默认值
+            const firstItemTitle = items[0]?.title || '商品'
+            paySuccess = walletStore.decreaseBalance(total, `购物: ${firstItemTitle}${items.length > 1 ? '等' : ''}`, paymentMethod)
         } catch (err) {
             console.error('[ShoppingStore] Payment error:', err)
         }
@@ -903,21 +914,35 @@ export const useShoppingStore = defineStore('shopping', () => {
         const addressDetail = order?.address?.detail || ''
 
         // 随机选择起点和终点城市
+        // [BUG FIX] cities.length <= 1 时下面的 while 会变成死循环 (随机永远抽出
+        // 同一个城市, destCity === originCity 永远为 true), 把整个物流生成卡死,
+        // 进而阻塞订单创建/支付成功回调. 增加早退守卫.
+        if (!cities || cities.length === 0) {
+            console.warn('[Shopping] No cities available, cannot generate logistics')
+            return null
+        }
         const originCity = cities[Math.floor(Math.random() * cities.length)]
         let destCity = cities[Math.floor(Math.random() * cities.length)]
-        while (destCity === originCity) {
-            destCity = cities[Math.floor(Math.random() * cities.length)]
+        // cities 只有 1 个时, destCity 必然 === originCity, 直接接受即可
+        if (cities.length > 1) {
+            let guard = 0
+            while (destCity === originCity && guard++ < 50) {
+                destCity = cities[Math.floor(Math.random() * cities.length)]
+            }
         }
 
         // 生成中间经过的城市（2-4 个）
         const transitCount = Math.floor(Math.random() * 3) + 2
         const transitCities = []
-        for (let i = 0; i < transitCount; i++) {
-            let city = cities[Math.floor(Math.random() * cities.length)]
-            while (city === originCity || city === destCity || transitCities.includes(city)) {
-                city = cities[Math.floor(Math.random() * cities.length)]
-            }
-            transitCities.push(city)
+        // [BUG FIX] cities 数量不足以选出 transitCount 个不同的中转城市时,
+        // 旧 while (city === originCity || city === destCity || transitCities.includes(city))
+        // 会变成死循环. 这里把需要的最小可用城市数算出来, 不够就降低 transitCount.
+        const usableCities = cities.filter(c => c !== originCity && c !== destCity)
+        const effectiveTransitCount = Math.min(transitCount, usableCities.length)
+        // 用 shuffle 取前 N 个, 完全消除 while 循环
+        const shuffledUsable = [...usableCities].sort(() => Math.random() - 0.5)
+        for (let i = 0; i < effectiveTransitCount; i++) {
+            transitCities.push(shuffledUsable[i])
         }
 
         // 生成随机路径坐标（不再固定从左下到右上）

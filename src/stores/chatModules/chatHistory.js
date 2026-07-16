@@ -240,26 +240,31 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             // 如果 chat 对象被并发 mutation 替换, 旧 chat 的 isSummarizing 置 false 不影响当前 chat,
             // 导致当前 chat 的 isSummarizing 卡在 true, 永久阻塞后续自动总结.
             const finalChat = chats.value[chatId]
-            if (!finalChat) return
-            finalChat.isSummarizing = false
+            // [BUG FIX] 不能在 finally 里用 `return`! 否则 try/catch 的 return 值
+            // (success: true/false) 会被这个 return 覆盖成 undefined, 调用方
+            // (checkAutoSummary 等) 检查 `result.success` 时会得到 false-y, 触发
+            // 错误的兜底逻辑. 改为 if-block 跳过.
+            if (finalChat) {
+                finalChat.isSummarizing = false
 
-            // Auto-trigger next chunk if backlog remains
-            // v1.10.130: 日期模式也不应触发后续自动增量总结链
-            const isAutoSummaryModeFinally = options.startIndex === undefined
-                && options.endIndex === undefined
-                && !options.startDate
-                && !options.endDate
-            if (isAutoSummaryModeFinally) {
-                const currentTotal = finalChat.msgs.length
-                const backlog = currentTotal - (finalChat.lastSummaryIndex || 0)
-                const summaryLimit = parseInt(finalChat.summaryLimit) || 50
+                // Auto-trigger next chunk if backlog remains
+                // v1.10.130: 日期模式也不应触发后续自动增量总结链
+                const isAutoSummaryModeFinally = options.startIndex === undefined
+                    && options.endIndex === undefined
+                    && !options.startDate
+                    && !options.endDate
+                if (isAutoSummaryModeFinally) {
+                    const currentTotal = finalChat.msgs.length
+                    const backlog = currentTotal - (finalChat.lastSummaryIndex || 0)
+                    const summaryLimit = parseInt(finalChat.summaryLimit) || 50
 
-                if (backlog >= summaryLimit) {
-                    console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)
-                    // Delay slightly to prevent rapid-fire API calls
-                    setTimeout(() => {
-                        checkAutoSummary(chatId)
-                    }, 5000)
+                    if (backlog >= summaryLimit) {
+                        console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)
+                        // Delay slightly to prevent rapid-fire API calls
+                        setTimeout(() => {
+                            checkAutoSummary(chatId)
+                        }, 5000)
+                    }
                 }
             }
         }
@@ -421,7 +426,10 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 year: 'numeric', month: '2-digit', day: '2-digit',
                 hour: '2-digit', minute: '2-digit'
             })
-            const sender = m.sender === 'user' ? (chat.userName || '用户') : chat.name
+            // [BUG FIX] 原代码 `m.sender === 'user'` 永远为 false (消息 schema 用的是
+            // m.role: 'user'|'ai'|'system', 没有 sender 字段), 导致所有命中消息都被
+            // 错误归属为 chat.name (AI 名字), 用户自己说的话在搜索结果里全变成 AI 说的.
+            const sender = m.role === 'user' ? (chat.userName || '用户') : chat.name
             return `[${timeStr}] ${sender}: ${typeof m.content === 'object' ? JSON.stringify(m.content) : m.content}`
         }
 

@@ -2562,6 +2562,21 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
+    // [BUG FIX] 暴露 stopProactiveLoop 用于在 store dispose / 测试 teardown 时清理
+    // setInterval(60s) 和 pageshow 监听器, 否则它们会一直挂着造成内存/事件泄漏,
+    // HMR 重复实例化 store 时尤其明显 (旧实例的 interval 仍会持续触发 checkProactive,
+    // 操作已被新实例接管的 chats.value, 引发竞态).
+    function stopProactiveLoop() {
+        if (proactiveTimer) {
+            clearInterval(proactiveTimer)
+            proactiveTimer = null
+        }
+        if (proactivePageShowHandler && typeof window !== 'undefined') {
+            window.removeEventListener('pageshow', proactivePageShowHandler)
+            proactivePageShowHandler = null
+        }
+    }
+
     async function checkProactive(chatId) {
         const callStore = useCallStore()
         const logger = useLoggerStore()
@@ -3188,6 +3203,22 @@ export const useChatStore = defineStore('chat', () => {
                 onChunk: onChunk
             })
 
+            // [BUG FIX] 重新获取 chat 引用. await generateReply 可能耗时数秒到数十秒,
+            // 在此期间 resetCharacter / 其他更新可能已用 Object.assign 原地修改了 chat,
+            // 但也可能用 deleteChat 把它从 chats.value 移除 (此时 chat 变成游离对象).
+            // 重新获取引用保证后续 chat.tokenStats/patAction/statusText 的写入落到当前
+            // 真实对象上, 且若聊天已被删除则跳过所有后续状态写入.
+            const chatAfter = chats.value[chatId]
+            if (!chatAfter) {
+                console.log('[ChatStore] Chat was deleted during generation, discarding result')
+                delete abortControllers[chatId]
+                clearRequestPending(chatId)
+                if (currentMessageId) deleteMessage(chatId, currentMessageId)
+                return
+            }
+            // 后续代码用 chatAfter 而非 chat 进行写入; chat 仍可用于读"调用前快照"
+            // (但任何写入都必须用 chatAfter).
+
 
 
             // Clear controller on success
@@ -3218,8 +3249,8 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Pre-process: Strip Character Name Prefixes (防止剧本格式) ---
                 // Regex matches names like "乔笙: ", "乔笙：", "乔笙 " at start of lines or message
-                if (chat.name) {
-                    const nameEscaped = chat.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                if (chatAfter.name) {
+                    const nameEscaped = chatAfter.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const nameRegex = new RegExp(`^\\s*${nameEscaped}\\s*[:：\\s-]\\s*`, 'gm');
                     fullContent = fullContent.replace(nameRegex, '').trim();
                 }
@@ -3383,7 +3414,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // Log AI reply content for debugging
-                useLoggerStore().info(`接收AI回复: ${chat.name}`, {
+                useLoggerStore().info(`接收AI回复: ${chatAfter.name}`, {
                     contentLength: fullContent.length,
                     content: fullContent,
                     hasInnerVoice: !!result.innerVoice,
@@ -3392,7 +3423,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // --- Save Token Stats ---
                 if (result.usage) {
-                    chat.tokenStats = {
+                    chatAfter.tokenStats = {
                         total: result.usage.total_tokens || 0,
                         system: 0, // Not detailed in standard usage
                         persona: 0,
@@ -3411,20 +3442,20 @@ export const useChatStore = defineStore('chat', () => {
 
                     // AI Status Update Feature
                     const newStatus = result.innerVoice.status || result.innerVoice.状态;
-                    if (newStatus && chat) {
-                        chat.statusText = String(newStatus).substring(0, 30); // Limit length
-                        chat.isOnline = true; // AI is active
+                    if (newStatus && chatAfter) {
+                        chatAfter.statusText = String(newStatus).substring(0, 30); // Limit length
+                        chatAfter.isOnline = true; // AI is active
                     }
 
                     // Auto-write to Memory Log from Inner Voice data
                     const iv = result.innerVoice
-                    if (iv['心声']) appendLog(chat.id, { type: '💭', content: iv['心声'].substring(0, 200), time: Date.now() })
+                    if (iv['心声']) appendLog(chatAfter.id, { type: '💭', content: iv['心声'].substring(0, 200), time: Date.now() })
                     if (iv['着装'] && iv['着装'] !== '上装：日常穿搭 下装：休闲裤 鞋子：小白鞋 装饰：无') {
-                        appendLog(chat.id, { type: '👔', content: iv['着装'], time: Date.now() })
+                        appendLog(chatAfter.id, { type: '👔', content: iv['着装'], time: Date.now() })
                     }
-                    if (iv['环境']) appendLog(chat.id, { type: '📍', content: iv['环境'].substring(0, 100), time: Date.now() })
+                    if (iv['环境']) appendLog(chatAfter.id, { type: '📍', content: iv['环境'].substring(0, 100), time: Date.now() })
                     if (iv['行为'] && !iv['行为'].includes('正拿着手机回复')) {
-                        appendLog(chat.id, { type: '🎭', content: iv['行为'].substring(0, 200), time: Date.now() })
+                        appendLog(chatAfter.id, { type: '🎭', content: iv['行为'].substring(0, 200), time: Date.now() })
                     }
 
                     // Write key facts (persistent attributes)
@@ -3432,7 +3463,7 @@ export const useChatStore = defineStore('chat', () => {
                         const emotionVal = iv.stats.emotion
                         const emotionLabel = typeof emotionVal === 'object' ? (emotionVal.label || '未知') : String(emotionVal).replace(/\d+$/, '').trim()
                         const emotionNum = typeof emotionVal === 'object' ? (emotionVal.value || 0) : (String(emotionVal).match(/(\d+)/)?.[1] || 0)
-                        appendLog(chat.id, { type: '😊', content: `心情: ${emotionLabel} (${emotionNum}%)`, time: Date.now() })
+                        appendLog(chatAfter.id, { type: '😊', content: `心情: ${emotionLabel} (${emotionNum}%)`, time: Date.now() })
                     }
                 }
 
@@ -3544,9 +3575,9 @@ export const useChatStore = defineStore('chat', () => {
                                             
                                             const newStatus = ivObj.status || ivObj.状态 || 
                                                 (typeof ivObj["心声"] === 'string' ? ivObj["心声"] : null);
-                                            if (newStatus && chat) {
-                                                chat.statusText = String(newStatus).substring(0, 30);
-                                                chat.isOnline = true;
+                                            if (newStatus && chatAfter) {
+                                                chatAfter.statusText = String(newStatus).substring(0, 30);
+                                                chatAfter.isOnline = true;
                                             }
                                             charInfo.mindscape = ivObj;
                                             useLoggerStore().debug('Successfully updated Mindscape from balanced fallback', ivObj);
@@ -3618,19 +3649,19 @@ export const useChatStore = defineStore('chat', () => {
                 if (patMatch) {
                     const newAction = patMatch[1].trim()
                     if (newAction.toLowerCase() === 'reset') {
-                        chat.patAction = ''
-                        chat.patSuffix = ''
+                        chatAfter.patAction = ''
+                        chatAfter.patSuffix = ''
                     } else {
-                        chat.patAction = newAction
-                        if (patMatch[2]) chat.patSuffix = patMatch[2].trim()
+                        chatAfter.patAction = newAction
+                        if (patMatch[2]) chatAfter.patSuffix = patMatch[2].trim()
                     }
                     saveChats()
                 }
 
                 // --- Handle Quote (REPLY) ---
-                if (replyMatch && chat.msgs) {
+                if (replyMatch && chatAfter.msgs) {
                     const keyword = replyMatch[1].trim();
-                    const quotedMsg = chat.msgs.findLast(m =>
+                    const quotedMsg = chatAfter.msgs.findLast(m =>
                         m.role === 'user' &&
                         (m.content?.includes(keyword) || (m.type === 'text' && m.content === keyword))
                     );
@@ -3702,12 +3733,12 @@ export const useChatStore = defineStore('chat', () => {
                     command = nudgeMatch[1].toUpperCase();
                     modifier = nudgeMatch[2] ? nudgeMatch[2].trim() : '';
 
-                    action = chat.patAction || '拍了拍';
+                    action = chatAfter.patAction || '拍了拍';
                     target = 'user';
-                    suffix = chat.patSuffix || '的头'; // Default suffix fixes "user undefined" issue
+                    suffix = chatAfter.patSuffix || '的头'; // Default suffix fixes "user undefined" issue
 
                     if (command === 'NUDGE_SELF' || modifier === 'self' || modifier === '自己' || modifier === 'me') {
-                        suffix = '自己' + (chat.patSuffix || '的脸'); // Contextual suffix
+                        suffix = '自己' + (chatAfter.patSuffix || '的脸'); // Contextual suffix
                         target = 'ai';
                         // System message: "AI 拍了拍 自己XXX"
                         // To make it look like "AI patted themselves", we need special handling in stored msg?
@@ -3718,7 +3749,7 @@ export const useChatStore = defineStore('chat', () => {
                         // System message: "ChatName 拍了拍 CharacterName"
                     } else {
                         // Nudge User
-                        suffix = '我' + (chat.patSuffix ? '' : '的头'); // "我" here means User from AI perspective?
+                        suffix = '我' + (chatAfter.patSuffix ? '' : '的头'); // "我" here means User from AI perspective?
                         // Wait, logic at line 471 in ChatWindow says:
                         // targetName = msg.role === 'user' ? '我' : '对方'
                         // Here we are creating a SYSTEM message.
@@ -5203,35 +5234,41 @@ export const useChatStore = defineStore('chat', () => {
         addMessage('char_tester', { role: 'ai', content: '大小姐，您的专属测试员——测试酱已就位！请随时吩咐我测试任何功能哦！(｀・ω・´)', mode: 'online' })
     }
 
-    function clearAllChats() {
+    async function clearAllChats() {
         Object.keys(chats.value).forEach(key => {
             chats.value[key].msgs = []
         })
-        saveChats()
+        // [BUG FIX] force-flush: 否则清空后立刻关标签页会丢失清理结果.
+        await saveChats(true)
     }
 
 
-    function clearHistory(chatId, options = {}) {
+    async function clearHistory(chatId, options = {}) {
         if (chats.value[chatId]) {
             chats.value[chatId].msgs = []
             // Keep in chat list so user can continue chatting
-            // chats.value[chatId].inChatList = false 
+            // chats.value[chatId].inChatList = false
 
             if (options.includeMemory) {
                 chats.value[chatId].memory = []
                 chats.value[chatId].summary = ''
             }
-            saveChats()
+            // [BUG FIX] force-flush: 清空历史是破坏性操作, 必须立即落盘.
+            await saveChats(true)
         }
     }
 
-    function resetCharacter(chatId) {
+    async function resetCharacter(chatId) {
         if (!chats.value[chatId]) return
         const chat = chats.value[chatId]
 
-        // Reset fields BUT keep core persona
-        // We reconstruct the object to ensure clean slate for UI settings
-        chats.value[chatId] = {
+        // [BUG FIX] 用 Object.assign 原地更新以保留原对象引用.
+        // 原代码 chats.value[chatId] = {...} 会替换为新对象, 所有外部持有的 chat 引用
+        // (例如 sendMessageToAI 在 await generateReply 期间捕获的引用、ChatDetailSettings
+        // 的 props.chatData 等) 全部变成指向"游离旧对象"的悬空引用, 后续对其字段的写入
+        // (tokenStats/patAction/statusText/isOnline 等) 都会丢失, 表现为重置后 AI 回复
+        // 不更新状态、拍一拍动作不生效等"幽灵 bug". 与本文件 updateCharacter 的写法保持一致.
+        Object.assign(chat, {
             // Preserved Identity
             id: chat.id,
             name: chat.name,
@@ -5272,16 +5309,19 @@ export const useChatStore = defineStore('chat', () => {
             activeChat: false,
             activeInterval: 30,
             autoTTS: false,
-            // Ensure any new fields from system updates are initialized (by omission or explicit default)
-        }
-        saveChats()
+        })
+        // [BUG FIX] 删除/重置类操作必须 force-flush 立即落盘, 否则用户在 debounce 500ms
+        // 窗口内关闭标签页会丢失重置状态, 重启后旧设置仍在.
+        return saveChats(true)
     }
 
-    function deleteChat(chatId) {
+    async function deleteChat(chatId) {
         if (chats.value[chatId]) {
             delete chats.value[chatId]
             if (currentChatId.value === chatId) currentChatId.value = null
-            saveChats()
+            // [BUG FIX] force-flush: 否则用户删除后立刻关标签页, debounce 没触发,
+            // 重启后已被删除的聊天会"复活".
+            await saveChats(true)
         }
     }
 
@@ -5951,6 +5991,7 @@ export const useChatStore = defineStore('chat', () => {
         getMemberTitle, calculateMemberLevel, castVote, endVote,
         streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState,
         compressAllChatImages,
+        stopProactiveLoop,  // [BUG FIX] 暴露清理入口
         collectBackupPayload  // [FIX] 暴露给 BackupSettings 用,手动备份时能拿到 payload
     }
 })

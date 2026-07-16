@@ -11,28 +11,28 @@ export function processBioUpdate(text, charId) {
     const bioUpdateRegex = /\[BIO_UPDATE:([^\]]+)\]/g
     let match
     let cleanedText = text
-    
+
     while ((match = bioUpdateRegex.exec(text)) !== null) {
         const newBio = match[1].trim()
-        
+
         // Update localStorage
         localStorage.setItem(`char_bio_${charId}`, newBio)
-        
-        // Add context message
-        const timestamp = new Date().toLocaleString('zh-CN')
-        const contextMsg = charId === 'user' 
-            ? `用户的个性签名为：${newBio}，更改时间为 ${timestamp}`
-            : `${charId} 的个性签名已更新为：${newBio}`
-        
-        // This would need to be called from chatStore context
-        // chatStore.addSystemMessage(contextMsg)
-        
+
+        // [BUG FIX] 移除死代码 contextMsg: 原代码声明了 contextMsg + timestamp,
+        // 但唯一消费者 `chatStore.addSystemMessage(contextMsg)` 是注释掉的, 且本文件
+        // 没有 chatStore 注入, 即使取消注释也会 ReferenceError. 这段代码每条 BIO_UPDATE
+        // 都白白构造一个字符串 + 一次 Date.toLocaleString, 纯死代码, 直接删除.
+        // (如果未来需要在聊天里记录 bio 变更, 应由调用方 (chatStore) 在调用本函数后
+        // 自行 addSystemMessage, 而不是在这里隐式副作用.)
+
         // Remove the command from display text
-        cleanedText = cleanedText.replace(match[0], '')
-        
+        // [BUG FIX] replace → replaceAll, 同 taskUtils.js 的 BUG 7.3 修复理由:
+        // 多次重复的 [BIO_UPDATE:...] 命令只清掉第一处.
+        cleanedText = cleanedText.replaceAll(match[0], '')
+
         console.log('[Bio Update]', charId, '->', newBio)
     }
-    
+
     return cleanedText.trim()
 }
 

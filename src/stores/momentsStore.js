@@ -33,7 +33,15 @@ export const useMomentsStore = defineStore('moments', () => {
 
     // Async Initialization
     const isInitialized = ref(false)
+    // [BUG FIX] MS-10: initStore 并发去重. 原代码 isInitialized 仅在函数末尾置 true,
+    // 若两个组件并发调用 initStore (例如路由切换 + 500ms setTimeout 同时触发),
+    // 两者都会进入 line 40-42 的 `[...savedMoments, ...moments.value]` 分支,
+    // 第一次写入后 moments.value 已含 savedMoments, 第二次再 prepend 一次,
+    // 导致所有朋友圈动态被复制成两份. 用 initPromise 做幂等锁.
+    let initPromise = null
     async function initStore() {
+        if (initPromise) return initPromise
+        initPromise = (async () => {
         try {
             // 1. Load Moments
             const savedMoments = await momentsDB.getItem('all_moments')
@@ -131,6 +139,8 @@ export const useMomentsStore = defineStore('moments', () => {
             } catch (le) { }
             isInitialized.value = true
         }
+        })()  // end IIFE for initPromise
+        return initPromise
     }
 
     // DELAY initialization to prevent circular store dependency errors during boot
@@ -1182,7 +1192,16 @@ export const useMomentsStore = defineStore('moments', () => {
             };
         `;
         const blob = new Blob([workerScript], { type: 'application/javascript' });
-        autoGenWorker = new Worker(URL.createObjectURL(blob));
+        // [BUG FIX] MS-1: 原 URL.createObjectURL(blob) 创建的 Blob URL 从未被 revoke,
+        // 每次 startAutoGeneration (用户改设置/重启) 都泄漏一份 Blob 引用, 浏览器
+        // 永远无法 GC. Worker 一旦构造完成就已加载脚本, 可以立即 revoke URL 释放 Blob.
+        const workerBlobUrl = URL.createObjectURL(blob)
+        try {
+            autoGenWorker = new Worker(workerBlobUrl)
+        } finally {
+            // Worker 已加载脚本, 即使 revoke 也不会影响它运行
+            URL.revokeObjectURL(workerBlobUrl)
+        }
 
         autoGenWorker.onmessage = (e) => {
             if (e.data === 'tick') {

@@ -128,13 +128,19 @@ export const useForumStore = defineStore('forum', () => {
 
     const isUserModerator = computed(() => {
         if (!currentForumId.value) return false
-        const mod = getModeratorData(currentForumId.value)
+        // [BUG FIX] 原代码调用 getModeratorData(forumId), 该函数在 moderators.value[forumId]
+        // 不存在时会 *写入* moderators.value[forumId] = {...}. 在 computed getter 里 mutate
+        // reactive state 是 Vue 的反模式: 会触发 "mutating state inside computed" 警告,
+        // 且依赖追踪可能产生额外的 re-evaluation. 改为纯读 moderators.value[forumId],
+        // 未初始化时返回 false (合理: moderator 数据都没初始化, 用户当然不是 mod).
+        const mod = moderators.value[currentForumId.value]
         return mod?.moderatorAltId === currentAltId.value
     })
 
     const isUserAdmin = computed(() => {
         if (!currentForumId.value) return false
-        const mod = getModeratorData(currentForumId.value)
+        // [BUG FIX] 同上, 不在 computed 里触发副作用
+        const mod = moderators.value[currentForumId.value]
         return mod?.admins?.some(a => a.altId === currentAltId.value) || false
     })
 
@@ -143,7 +149,8 @@ export const useForumStore = defineStore('forum', () => {
 
     const isUserBanned = computed(() => {
         if (!currentForumId.value) return false
-        const mod = getModeratorData(currentForumId.value)
+        // [BUG FIX] 同上, 不在 computed 里触发副作用
+        const mod = moderators.value[currentForumId.value]
         return mod?.bannedUsers?.includes(currentUser.value?.name) || false
     })
 
@@ -803,10 +810,13 @@ export const useForumStore = defineStore('forum', () => {
         }
     }
 
-    const generateMoreComments = async (postId) => {
+    const generateMoreComments = async (postId, explicitForumId = null) => {
         // [BUG FIX] 缺少重入保护, 用户快速点击"加载更多评论"会并发触发 AI 请求
         if (isGenerating.value) return;
-        const forumId = currentForumId.value;
+        // [BUG FIX] 接受 explicitForumId 参数, 避免 sendPost 的 setTimeout(3s) 期间
+        // 用户切到其它论坛后, currentForumId.value 已变, 导致评论生成走错 forumId,
+        // 找不到原帖并静默失败 (论坛切换后原帖永远等不到自动评论).
+        const forumId = explicitForumId || currentForumId.value;
         // [BUG FIX] posts.value[forumId] 可能不存在, 直接 .find() 会抛 TypeError
         const postList = posts.value[forumId];
         if (!postList) return;
@@ -949,8 +959,10 @@ export const useForumStore = defineStore('forum', () => {
         saveStore();
         
         // Auto-generate some initial replies
+        // [BUG FIX] 把已捕获的 forumId 透传给 generateMoreComments, 否则 3 秒后用户
+        // 若切到别的论坛, currentForumId.value 已变, 会去新论坛找原帖导致评论丢失.
         setTimeout(() => {
-            generateMoreComments(newPost.id);
+            generateMoreComments(newPost.id, forumId);
         }, 3000);
         
         return newPost;

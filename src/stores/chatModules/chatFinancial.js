@@ -7,8 +7,22 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
      * Fair lucky money splitting algorithm
      */
     function _splitRedPacket(total, count) {
+        // [BUG FIX] 输入合法性守卫:
+        //   - total <= 0 或 count <= 0 → 返回空/全 0, 避免后续算出负数红包.
+        //   - total < count * 0.01 → 总额不足以让每份至少 0.01, 旧的循环兜底
+        //     (line 26 的 `amt = max(0.01, remainingTotal - (remainingCount-1)*0.01)`)
+        //     会让每份扣 0.01, 导致最后一份 `remainingTotal` 变成负数 (例如 total=0.05,
+        //     count=10 → 最后一份会是 -0.05). 抢到该份的用户 wallet.decreaseBalance
+        //     会用 NaN/负数, 反而把钱包余额扣成负数.
+        total = parseFloat(total)
+        if (!Number.isFinite(total) || total <= 0) return Array(Math.max(0, count | 0)).fill(0)
         if (count <= 0) return [];
         if (count === 1) return [total];
+        if (total < count * 0.01) {
+            // 总额不足均分, 退化为等额(每份可能 <0.01 但不会负)
+            const perShare = parseFloat((total / count).toFixed(2))
+            return Array(count).fill(perShare)
+        }
 
         const results = [];
         let remainingTotal = total;
@@ -32,7 +46,9 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
             remainingCount--;
         }
 
-        results.push(remainingTotal);
+        // [BUG FIX] 最后一份若因浮点累积误差变成负数, 强制夹到 0.
+        if (remainingTotal < 0) remainingTotal = 0
+        results.push(parseFloat(remainingTotal.toFixed(2)));
         // Shuffle to avoid bias
         return results.sort(() => Math.random() - 0.5);
     }

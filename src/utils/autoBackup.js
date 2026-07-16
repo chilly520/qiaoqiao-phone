@@ -101,15 +101,33 @@ class AutoBackupService {
 
         this.inFlight = true
         try {
-            const payload = await this.pendingPayload()
-            this.pendingPayload = null
+            // [BUG FIX] 8.2 + 竞态: 原代码 `const payload = await this.pendingPayload()`
+            // 后立即 `this.pendingPayload = null`, 但 await 期间 notifyChange 可能写入
+            // 新的 payloadCollector, 这里 null 会把新数据也一起丢掉.
+            // 而且 upload 失败时 pendingPayload 已被清空, 数据永久丢失.
+            // 改为: 先 capture-then-clear 原子取出 (避免被 notifyChange 覆盖),
+            // 上传成功后才提交清空; 失败时把 payloadCollector 退还, 下次重试.
+            const payloadCollector = this.pendingPayload
+            if (!payloadCollector) {
+                return { skipped: true, reason: 'no_payload' }
+            }
+            const payload = await payloadCollector()
 
             if (!payload) {
+                // 空 payload 视为已消费, 不退还
+                this.pendingPayload = null
                 return { skipped: true, reason: 'empty_payload' }
             }
 
             const service = new GitHubBackup(config)
             await service.uploadFull(payload)
+
+            // [BUG FIX] 上传成功后才清空 pendingPayload. 失败时保留, 下次 flush 重试.
+            // 注意: 若在 inFlight 期间 notifyChange 写入了新的 payloadCollector,
+            // 这里不能覆盖它 (它代表上传之后的新变化). 只在仍是同一个 collector 时清空.
+            if (this.pendingPayload === payloadCollector) {
+                this.pendingPayload = null
+            }
 
             this.lastBackupTime = Date.now()
             localStorage.setItem(LAST_BACKUP_TIME_KEY, this.lastBackupTime.toString())
@@ -119,6 +137,8 @@ class AutoBackupService {
         } catch (err) {
             this.consecutiveFailures++
             console.error(`[AutoBackup] upload failed (${this.consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, err)
+            // [BUG FIX] 失败时保留 pendingPayload, 下次 flush 会重试上传.
+            // (上面 empty_payload 分支已处理过空 payload 清空; 真正失败时 collector 仍在)
             return { success: false, error: err.message }
         } finally {
             this.inFlight = false

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useWeiboStore } from '../stores/weiboStore'
 import { useChatStore } from '../stores/chatStore'
 import { useWorldBookStore } from '../stores/worldBookStore'
+import { useMomentsStore } from '../stores/momentsStore'
 
 const router = useRouter()
 import { useSettingsStore } from '../stores/settingsStore'
@@ -12,6 +13,7 @@ const weiboStore = useWeiboStore()
 const chatStore = useChatStore()
 const worldBookStore = useWorldBookStore()
 const settingsStore = useSettingsStore()
+const momentsStore = useMomentsStore()
 
 onMounted(async () => {
   await weiboStore.initStore()
@@ -191,6 +193,23 @@ function sendComment(postId) {
     if (!parentComment) {
       // 最终回退：使用第一条评论
       parentComment = post.comments[0]
+    }
+    // [BUG FIX] 当 post.comments 为空数组时, 上一行 post.comments[0] 为 undefined,
+    // 下一行 `parentComment.replies` 会抛 TypeError: Cannot read properties of
+    // undefined (reading 'replies'), 把整个回复提交流程崩掉. 回退为直接顶层评论.
+    if (!parentComment) {
+      post.comments.unshift({
+        author: 'Chilly',
+        isAuthor: true,
+        isVip: true,
+        content: commentInputText.value
+      })
+      commentInputText.value = ''
+      activeReplyCommentId.value = null
+      activeReplyUser.value = null
+      if (post.stats) post.stats.comment++
+      chatStore.triggerToast('评论成功', 'success')
+      return
     }
     if (!parentComment.replies) parentComment.replies = []
 
@@ -441,8 +460,10 @@ function sharePostTo(contactId) {
 async function shareToMoments() {
   if (!selectedPostToShare.value) return
   const post = selectedPostToShare.value
-  const momentsStore = window.useMomentsStore?.()
-  if (momentsStore) {
+  // [BUG FIX] 原代码 `window.useMomentsStore?.()` 永远返回 undefined (Pinia 的 useStore
+  // 工厂函数不会被挂到 window), 导致这条分支永远走 else 提示"朋友圈模块未加载",
+  // 微博→朋友圈分享功能永久不可用. 改为直接用顶部 import 的 momentsStore 实例.
+  if (momentsStore && momentsStore.addMoment) {
     await momentsStore.addMoment({
       authorId: 'user',
       content: post.content,
