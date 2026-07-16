@@ -89,15 +89,23 @@ export const useWeiboStore = defineStore('weibo', () => {
     })
 
     async function saveData() {
-        await localforage.setItem('weibo_data', {
-            user: JSON.parse(JSON.stringify(user.value)),
-            settings: JSON.parse(JSON.stringify(settings.value)),
-            posts: JSON.parse(JSON.stringify(posts.value)),
-            hotSearch: JSON.parse(JSON.stringify(hotSearch.value)),
-            dmMessages: JSON.parse(JSON.stringify(dmMessages.value)),
-            dmChatMessages: JSON.parse(JSON.stringify(dmChatMessages.value)),
-            searchHistory: JSON.parse(JSON.stringify(searchHistory.value))
-        })
+        // [BUG FIX] 原 saveData 直接 await localforage.setItem, 任何 rejection
+        // 都会作为 unhandled promise rejection 冒泡 (因为大部分调用点是 fire-and-forget).
+        // IndexedDB 在隐私模式/配额满/容器 size 超限时都会 reject, 调用方没 catch 时
+        // 会变成 console 噪音 + 用户操作"看起来成功但实际没保存". 这里集中捕获并打日志.
+        try {
+            await localforage.setItem('weibo_data', {
+                user: JSON.parse(JSON.stringify(user.value)),
+                settings: JSON.parse(JSON.stringify(settings.value)),
+                posts: JSON.parse(JSON.stringify(posts.value)),
+                hotSearch: JSON.parse(JSON.stringify(hotSearch.value)),
+                dmMessages: JSON.parse(JSON.stringify(dmMessages.value)),
+                dmChatMessages: JSON.parse(JSON.stringify(dmChatMessages.value)),
+                searchHistory: JSON.parse(JSON.stringify(searchHistory.value))
+            })
+        } catch (e) {
+            console.error('[WeiboStore] saveData failed:', e)
+        }
     }
 
     async function initStore() {
@@ -210,10 +218,13 @@ export const useWeiboStore = defineStore('weibo', () => {
             isLiked: false
         }
         posts.value.unshift(newPost)
-        saveData()
-
         // 原帖分享数+1
         if (original.stats) original.stats.share++
+        // [BUG FIX] 原 repost 调了两次 saveData(): line 213 (unshift 后) + line 217 (stats.share++ 后).
+        // 两次都在同一同步流程内, 第二次会覆盖第一次. 但 localforage 是 async, 两次 fire-and-forget
+        // 会产生竞争: 第一次写入的 posts 数组里 original.stats.share 还是旧值, 第二次写入才是新值.
+        // 如果第二次因 IndexedDB 竞争比第一次先完成 (实测可能), 最终落盘的是旧 stats.share.
+        // 删掉第一次 saveData, 只在 stats 更新完后保存一次, 既省一次 IO 又避免竞争.
         saveData()
 
         return newPost
@@ -281,9 +292,21 @@ export const useWeiboStore = defineStore('weibo', () => {
 
     function deleteComment(postId, commentIndex) {
         const post = posts.value.find(p => p.id === postId)
-        if (post && post.comments) {
+        // [BUG FIX] 原代码:
+        //   if (post && post.comments) {
+        //       post.comments.splice(commentIndex, 1)
+        //       if (post.stats) post.stats.comment--
+        //       saveData()
+        //   }
+        // 问题1: 没校验 commentIndex 边界, 若上层传 -1 或越界 splice 不会删除任何东西,
+        //        但 post.stats.comment-- 仍然执行, 导致评论数为负.
+        // 问题2: post.stats.comment-- 无下限保护, 历史数据 stats.comment 可能与
+        //        comments.length 不一致 (例如旧版本没同步), 多次删除后变负数显示 "-1 评论".
+        if (post && post.comments && commentIndex >= 0 && commentIndex < post.comments.length) {
             post.comments.splice(commentIndex, 1)
-            if (post.stats) post.stats.comment--
+            if (post.stats && post.stats.comment > 0) {
+                post.stats.comment--
+            }
             saveData()
         }
     }
@@ -417,9 +440,13 @@ export const useWeiboStore = defineStore('weibo', () => {
                     author: c.authorName || randomUser.name,
                     avatar: randomUser.avatar,
                     content: c.content,
-                    likes: c.likes || Math.floor(Math.random() * 50),
-                    isVip: c.isVip || Math.random() > 0.8,
-                    isChar: c.isChar || false
+                    // [BUG FIX] `||` 会把合法的 0 / false 当 falsy 吞掉:
+                    //  - likes: 0 (合法的"0 个赞") 会被随机成 0-49, 让"没人点赞"的评论永远显示赞数
+                    //  - isVip: false (合法的"非 VIP") 会被随机成 30% 概率变 VIP
+                    // 改用 ?? 只在 null/undefined 时回退.
+                    likes: c.likes ?? Math.floor(Math.random() * 50),
+                    isVip: c.isVip ?? Math.random() > 0.8,
+                    isChar: c.isChar ?? false
                 })
                 if (newComment) addedComments.push(newComment)
             }
@@ -536,7 +563,9 @@ export const useWeiboStore = defineStore('weibo', () => {
                 title: t.title,
                 tag: t.tag || '热',
                 meta: t.meta || '100万',
-                isTop: t.isTop || i < 3
+                // [BUG FIX] `||` 在 t.isTop === false (显式置顶=false) 时被吞,
+                // 仍然按 i<3 强制置顶, 用户/AI 设置的"非置顶"失效. 改用 ??.
+                isTop: t.isTop ?? (i < 3)
             }))
 
             await saveData()

@@ -571,7 +571,10 @@ export const useMahjongStore = defineStore('mahjong', () => {
             
             // 房间模式：流局也分享结算卡片
             if (currentRoom.value?.mode !== 'quick') {
+                // [BUG FIX] autoShareResultToChat 是 async, 不 await (不阻塞游戏流程),
+                // 但要 .catch 防止未处理的 promise rejection (chatStore 不可用时静默失败).
                 autoShareResultToChat(gameState.value.roundResult, null, 0, false, '流局')
+                    .catch(e => console.error('[MahjongStore] 流局分享卡片失败:', e))
             }
             return
         }
@@ -688,7 +691,9 @@ export const useMahjongStore = defineStore('mahjong', () => {
 
         // 房间模式：自动分享结算卡片到所有房间内玩家的聊天
         if (currentRoom.value?.mode !== 'quick') {
+            // [BUG FIX] 同上, 不阻塞游戏流程但 catch 防止 unhandled rejection
             autoShareResultToChat(gameState.value.roundResult, winner, fan, realIsZiMo, winInfo.name)
+                .catch(e => console.error('[MahjongStore] 胡牌分享卡片失败:', e))
         }
 
         // --- 排行榜记录 ---
@@ -1032,7 +1037,14 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
 
         const winnerHandDisplay = result.winnerHand?.map(t => getTileEmoji(t)).join(' ') || ''
         const winningTileDisplay = result.winningTile ? getTileEmoji(result.winningTile) : ''
-        const changesDisplay = result.changes?.map(c => `${c.name}: ${c.amount > 0 ? '+' : ''}${c.amount}豆`).join('<br>') || ''
+        // [BUG FIX] XSS: c.name 是玩家名 (用户可自定义), winTypeName 来自引擎但防御性转义.
+        // 原代码直接 `${c.name}` 拼到 HTML, 玩家取名叫 `<img src=x onerror=alert(1)>` 就触发存储型 XSS,
+        // 通过 [CARD]...[/CARD] 发到所有玩家聊天, 所有人查看卡片时执行. 转义后再拼.
+        const _esc = (s) => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+        const changesDisplay = result.changes?.map(c => `${_esc(c.name)}: ${c.amount > 0 ? '+' : ''}${c.amount}豆`).join('<br>') || ''
+        const safeWinTypeName = _esc(winTypeName)
 
         const htmlContent = `
 <div style="background: ${bgColor}; border-radius: 16px; border: 2px solid ${color}55; padding: 16px; font-family: system-ui; overflow: visible; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-height: 200px; height: auto; word-break: break-word; overflow-wrap: break-word;">
@@ -1041,7 +1053,7 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
         <span style="font-size: 10px; color: ${color}aa;">${new Date().toLocaleTimeString()}</span>
     </div>
     <div style="background: white; border-radius: 12px; padding: 12px; margin-bottom: 12px; border: 1px solid ${color}22; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <div style="font-size: 12px; color: #666; margin-bottom: 4px;">本局结算：${winTypeName}${fan ? ` (${fan}番)` : ''}</div>
+        <div style="font-size: 12px; color: #666; margin-bottom: 4px;">本局结算：${safeWinTypeName}${fan ? ` (${fan}番)` : ''}</div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
             <div style="font-size: 20px; font-weight: 900; color: ${isUserWin ? '#e11d48' : '#333'};">
                 ${isLiuju ? '0' : (isUserWin ? '+' : '') + (result.changes?.find(c => c.isWinner)?.amount || 0)} 豆
@@ -1062,17 +1074,25 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
 `.trim()
 
         // 向所有房间内的非用户玩家发送结算卡片（不触发AI回复）
+        // [BUG FIX] 原代码 players.forEach + 同步回调里调 chatStore.addMessage (async),
+        // 多个 addMessage 并发执行, 内部 await saveChats 会竞争 (last-writer-wins),
+        // 部分 chat 的卡片消息可能未落盘就丢失. 改用 for...of 串行 await, 保证顺序落盘.
+        // (这里不并发是为了避免 saveChats 竞态; 卡片消息量小, 串行开销可接受)
         const timestamp = Date.now()
-        players.forEach(player => {
+        for (const player of players) {
             if (player.id !== 'user') {
-                chatStore.addMessage(player.id, {
-                    role: 'user',
-                    content: `[CARD]${htmlContent}[/CARD]`,
-                    timestamp: timestamp,
-                    skipAI: true // 标记不触发AI回复
-                })
+                try {
+                    await chatStore.addMessage(player.id, {
+                        role: 'user',
+                        content: `[CARD]${htmlContent}[/CARD]`,
+                        timestamp: timestamp,
+                        skipAI: true // 标记不触发AI回复
+                    })
+                } catch (e) {
+                    console.error('[MahjongStore] autoShareResultToChat addMessage failed for', player.id, e)
+                }
             }
-        })
+        }
     }
 
     loadData()

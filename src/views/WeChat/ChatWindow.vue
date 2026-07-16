@@ -2032,7 +2032,7 @@ const openSendDialog = (type) => {
     showActionPanel.value = false
 }
 
-const confirmSend = () => {
+const confirmSend = async () => {
     if (!sendAmount.value) return showToast('请输入金额', 'warning')
 
     const amount = parseFloat(sendAmount.value)
@@ -2060,17 +2060,27 @@ const confirmSend = () => {
         return showToast(`支付失败：余额不足 (当前余额 ¥${walletStore.balance.toFixed(2)})`, 'error')
     }
 
-    chatStore.addMessage(chatStore.currentChatId, {
-        role: 'user',
-        type: sendType.value,
-        content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (amount + '元')}`,
-        amount: amount,
-        count: isRP ? parseInt(sendCount.value) || 1 : 1,
-        packetType: isRP ? packetType.value : null,
-        note: sendNote.value || (isRP ? '恭喜发财，大吉大利' : '转账给您'),
-        coverImage: isRP ? (coverImageUrl.value || coverImage.value) : null,
-        status: 'sent' // Initial status
-    })
+    // [BUG FIX] addMessage 是 async (内部 await saveChats). 原代码没 await,
+    // 扣款已成功但消息持久化失败时用户不会感知, 刷新后"钱没了消息也没了".
+    // 退款逻辑在 chatStore 内部按需处理, 这里只保证消息落盘成功.
+    try {
+        await chatStore.addMessage(chatStore.currentChatId, {
+            role: 'user',
+            type: sendType.value,
+            content: `[${isRP ? '红包' : '转账'}] ${isRP ? (sendNote.value || '恭喜发财') : (amount + '元')}`,
+            amount: amount,
+            count: isRP ? parseInt(sendCount.value) || 1 : 1,
+            packetType: isRP ? packetType.value : null,
+            note: sendNote.value || (isRP ? '恭喜发财，大吉大利' : '转账给您'),
+            coverImage: isRP ? (coverImageUrl.value || coverImage.value) : null,
+            status: 'sent' // Initial status
+        })
+    } catch (e) {
+        // 消息持久化失败, 退款回滚
+        walletStore.increaseBalance?.(actualTotalAmount, `${title}-退款`)
+        console.error('[ChatWindow] addMessage failed after deduct, refund applied:', e)
+        return showToast('发送失败，已退还金额', 'error')
+    }
 
     // Reset fields
     coverImage.value = null
@@ -2196,6 +2206,13 @@ const closePanels = () => {
 const ttsQueue = ref([]);
 const isSpeaking = ref(false);
 const spokenMsgIds = new Set(); // 已朗读的消息ID，避免重复朗读
+
+// [BUG FIX] 内存泄漏: spokenMsgIds 是 module 级 Set, 切换聊天后旧 chat 的
+// 已朗读 msgId 永远不会清理, 长时间使用累积成千上万条 ID.
+// 切换 currentChatId 时清空它 (新聊天重新朗读无影响, force=true 也仍可朗读).
+watch(() => chatStore.currentChatId, () => {
+    spokenMsgIds.clear()
+})
 
 // Sync with callStore for animations
 watch(isSpeaking, (val) => {
@@ -2786,7 +2803,7 @@ const generateAIResponse = () => {
     chatStore.sendMessageToAI(chatStore.currentChatId, options)
 }
 
-const regenerateLastMessage = () => {
+const regenerateLastMessage = async () => {
     const chat = chatStore.chats[chatStore.currentChatId]
     if (!chat || !chat.msgs || !chat.msgs.length) {
         return
@@ -2803,11 +2820,15 @@ const regenerateLastMessage = () => {
             else break
         }
         chat.msgs.splice(msgs.length - count, count)
-        chatStore.saveChats()
+        // [BUG FIX] saveChats 是 async 函数 (returns Promise), 没 await 时若用户在
+        // 同一帧内立即触发 sendMessageToAI, 删除的 AI 消息可能还没落盘就被覆盖,
+        // 刷新页面后会"复活"被删除的 AI 消息. 强制 await + force flush.
+        await chatStore.saveChats(true)
     }
 
     // Trigger AI response (Reply to the new last message, which should be User's)
-    chatStore.sendMessageToAI(chatStore.currentChatId)
+    // [BUG FIX] 同理, sendMessageToAI 是 async, 没 await 会导致后续错误无法捕获.
+    await chatStore.sendMessageToAI(chatStore.currentChatId)
 }
 // Red Packet & Wallet Logic
 const {

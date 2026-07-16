@@ -145,10 +145,17 @@ export const useSchedulerStore = defineStore('scheduler', () => {
     }
 
     function setRandomConfig(chatId, { enabled, min, max }) {
+        // [BUG FIX] `parseInt(min) || 30` 在 min=0 时被吞: parseInt(0) === 0 是 falsy,
+        // 结果变成 30. 用户想"立刻触发" (min=0) 会被静默改成 30 分钟后.
+        // 改用 ?? 只在 null/undefined/NaN 时回退.
+        // 注意 parseInt 返回 NaN 时, NaN ?? 30 仍是 NaN (NaN 不是 null/undefined),
+        // 所以单独判 isNaN.
+        const parsedMin = parseInt(min)
+        const parsedMax = parseInt(max)
         const config = {
             enabled,
-            min: parseInt(min) || 30,
-            max: parseInt(max) || 120,
+            min: Number.isFinite(parsedMin) ? parsedMin : 30,
+            max: Number.isFinite(parsedMax) ? parsedMax : 120,
             nextTrigger: 0
         }
 

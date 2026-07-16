@@ -317,15 +317,58 @@ function renderMarkdown(text) {
   // post.content / comment.content 来自用户/AI, 含 <script>/<img onerror>/<a href="javascript:">
   // 会通过 v-html 执行, 构成存储型 XSS (每个查看者都中招).
   // 此处剥离危险标签/属性/URL 方案.
+  //
+  // [BUG FIX v2] 原正则有 4 个已知绕过:
+  //   1. 斜杠分隔符: `<img/onerror=alert(1)>` — 原 \son\w+ 要求空白, / 不匹配, onerror 存活.
+  //   2. HTML 实体编码的 javascript: 方案: `href="javascript&#58;alert(1)"` — 原正则只查字面 javascript:.
+  //   3. URL 属性白名单不全: srcset/poster/cite/background/xlink:href 等没查, 可挂 javascript:.
+  //   4. svg/math 标签没剥: `<svg><script>...<` + `/script></svg>` 内层 script 被剥但 svg 包装留下,
+  //      配合 svg onload=... 或 svg/a xlink:href=javascript:... 仍可执行.
+  // 由于不能引入 DOMPurify 依赖 (沙箱网络受限), 这里用更强化的正则堵住已知绕过.
+  // 仍非完美方案, 若未来条件允许应迁移到 DOMPurify.
+  //
+  // Step 1: 先把 HTML 实体解码后再判断 javascript:/vbscript: (解码后才能识别实体编码的 scheme).
+  // 仅解码 URL 属性值内的实体, 不影响正文 (正文里的 &amp; 等仍正常显示).
+  html = html.replace(/(href|src|action|formaction|srcset|poster|cite|background|xlink:href|data|dynsrc|lowsrc)\s*=\s*(['"])([\s\S]*?)\2/gi,
+    (m, attr, q, val) => {
+      // 解码常见 HTML 实体用于判断
+      const decoded = val
+        .replace(/&#x([0-9a-f]+);?/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        .replace(/&#(\d+);?/g, (_, d) => String.fromCharCode(parseInt(d, 10)))
+        .replace(/&colon;/gi, ':').replace(/&tab;/gi, '\t').replace(/&newline;/gi, '\n')
+        .replace(/&NewLine;/gi, '\n').replace(/&Tab;/gi, '\t')
+      if (/\s*(?:javascript|vbscript|data:text\/html|data:application\/x-javascript):/i.test(decoded)) {
+        return `${attr}=${q}#${q}`
+      }
+      return m
+    })
+  // 同时处理无引号的 URL 属性
+  html = html.replace(/(href|src|action|formaction|srcset|poster|cite|background|xlink:href|data|dynsrc|lowsrc)\s*=\s*(?:javascript|vbscript|data:text\/html|data:application\/x-javascript):[^\s>]*/gi,
+    '$1="#"')
+
+  // Step 2: 剥离 svg/math/foreignobject 标签 (整段内容一起删, 防嵌套 XSS)
+  html = html
+    .replace(/<svg[\s\S]*?<\/svg>/gi, '')
+    .replace(/<math[\s\S]*?<\/math>/gi, '')
+    .replace(/<foreignobject[\s\S]*?<\/foreignobject>/gi, '')
+    // 没闭合的 svg/math 自闭合或单开标签也剥
+    .replace(/<(?:svg|math|foreignobject)\b[^>]*\/?>/gi, '')
+
+  // Step 3: 剥离 script/iframe/style/object/embed/form/template/noscript/applet
   html = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<(object|embed|form|template|noscript|applet)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<(?:input|button|select|textarea|link|meta|base|frame|frameset|object|embed|form|template|noscript|applet)\b[^>]*\/?>/gi, '')
-    .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
-    .replace(/(href|src|action|formaction)\s*=\s*(['"])\s*(?:javascript|vbscript|data:text\/html):[^'"]*\2/gi, '$1=$2#$2')
-    .replace(/(href|src|action|formaction)\s*=\s*(?:javascript|vbscript|data:text\/html):[^\s>]*/gi, '$1="#"')
+
+  // Step 4: 剥离事件处理器. 原代码 \son\w+ 要求空白前缀, 被 `<img/onerror=...>` 绕过.
+  // HTML5 属性分隔符实际是空白或斜杠, 用 [\/\s] 覆盖两种.
+  // 注意不能用 [\/\s"'], 否则会误匹配属性值内的 "on...=..." 文本 (例如 alt="click on=submit").
+  html = html.replace(/[\/\s]on\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+
+  // Step 5: 剥离其他危险属性 (style 可挂 expression(), xmlns 可触发 namespace XSS)
+  html = html.replace(/\s(?:style|xmlns|xlink:[\w-]+)\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
 
   // Render emoji tags [表情包：名称]
   const stickerRegex = /\[表情包:([^\]]+)\]/g

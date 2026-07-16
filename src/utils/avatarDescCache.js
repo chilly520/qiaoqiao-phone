@@ -91,9 +91,41 @@ export async function getOrFetchAvatarDesc(url, b64, name, provider, apiKey, end
                 }],
                 generationConfig: { temperature: 0.4, maxOutputTokens: 100 }
             }
+            // [BUG FIX] 原代码:
+            //   const sep = targetUrl.includes('?') ? '&' : '?'
+            //   targetUrl = `${targetUrl}${sep}key=${apiKey}`
+            //   if (!targetUrl.includes(':generateContent'))
+            //       targetUrl = targetUrl.replace(/\/v1beta\/.*/, '') + `/v1beta/models/${model}:generateContent?key=${apiKey}`
+            //
+            // 问题:
+            //  1. 第一行 append ?key= 后, 第二行的 if 检查 includes(':generateContent')
+            //     对不带 generateContent 的 URL 命中, 然后 replace(/\/v1beta\/.*/, '')
+            //     在 URL 不含 /v1beta/ 时是 NO-OP, 拼接 `/v1beta/models/...` 产生
+            //     双路径 URL (例如 .../v1/chat/completions/v1beta/models/...),
+            //     最终 fetch 必然 404/400.
+            //  2. 而且末尾又拼一次 ?key=, 加上前面的 ?key= 变成 ?key=xxx?key=yyy.
+            //
+            // 修复策略: 先决定 final endpoint (含 generateContent 路径), 再单次 append key.
+            // 处理顺序: 如果 URL 已包含 :generateContent 就原样用; 否则剥离 /v1beta/* 或
+            // /v1/* 后缀, 再拼接 /v1beta/models/<model>:generateContent.
+            if (!targetUrl.includes(':generateContent')) {
+                // 剥离已有的版本前缀路径 (保留 origin + 自定义 path 前缀)
+                // 例如 https://xxx/v1beta/models/old:foo?bar  ->  https://xxx
+                //      https://xxx/v1/chat/completions       ->  https://xxx
+                //      https://xxx                           ->  https://xxx (无变化)
+                const v1betaIdx = targetUrl.indexOf('/v1beta/')
+                const v1Idx = targetUrl.indexOf('/v1/')
+                let cutIdx = -1
+                if (v1betaIdx !== -1) cutIdx = v1betaIdx
+                else if (v1Idx !== -1) cutIdx = v1Idx
+                if (cutIdx !== -1) {
+                    targetUrl = targetUrl.substring(0, cutIdx)
+                }
+                targetUrl = `${targetUrl}/v1beta/models/${model}:generateContent`
+            }
+            // 单次附加 key (origin 已不带 query)
             const sep = targetUrl.includes('?') ? '&' : '?'
             targetUrl = `${targetUrl}${sep}key=${apiKey}`
-            if (!targetUrl.includes(':generateContent')) targetUrl = targetUrl.replace(/\/v1beta\/.*/, '') + `/v1beta/models/${model}:generateContent?key=${apiKey}`
         } else {
             if (targetUrl && !targetUrl.includes('/chat/completions')) {
                 if (targetUrl.endsWith('/v1')) {

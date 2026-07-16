@@ -9,6 +9,36 @@ export const useStickerStore = defineStore('sticker', () => {
     const STORAGE_KEY = 'wechat_global_emojis'
     const chatStore = useChatStore()
 
+    // [BUG FIX] 按 scope 串行化角色表情的 read-modify-write 操作.
+    // 原代码 deleteSticker / deleteBatchStickers / clearAllStickers 都是:
+    //   1. 读 chat.emojis
+    //   2. filter 出 newEmojis
+    //   3. await chatStore.updateCharacter(scope, { emojis: newEmojis })
+    //
+    // 如果用户连续点删除 url1 + url2 (间隔 < 100ms), 两次调用都读到同一份 chat.emojis,
+    // 第一次 await 完成后写入 [b, c] (删了 a), 第二次 await 完成后写入 [a, c] (删了 b),
+    // 但第二次写入的 [a, c] 是基于"原始 [a,b,c] 删 b"的结果, a 又回来了! 删了 a 等于没删.
+    // 用 per-scope promise 链串行化, 保证第二次读时第一次的写入已完成.
+    const _scopeLocks = new Map()
+    async function _withScopeLock(scope, fn) {
+        const prev = _scopeLocks.get(scope) || Promise.resolve()
+        let release
+        const next = new Promise(r => { release = r })
+        // 链尾 promise: 等 prev 完成后再等 next (即等本次 release)
+        const tail = prev.then(() => next)
+        _scopeLocks.set(scope, tail)
+        await prev
+        try {
+            return await fn()
+        } finally {
+            release()
+            // 如果没人排队, tail 已 settle, 可清理; 若有人在排, _scopeLocks 仍是新 tail
+            if (_scopeLocks.get(scope) === tail) {
+                _scopeLocks.delete(scope)
+            }
+        }
+    }
+
     // Load Global Stickers
     function loadStickers() {
         const stored = localStorage.getItem(STORAGE_KEY)
@@ -131,13 +161,14 @@ export const useStickerStore = defineStore('sticker', () => {
             stickers.value = stickers.value.filter(s => s.url !== strUrl)
             saveStickers()
         } else {
-            const chat = chatStore.chats[scope]
-            if (chat && chat.emojis) {
-                const newEmojis = chat.emojis.filter(s => s.url !== strUrl)
-                // [BUG FIX] 缺少 await, 删除后 IndexedDB 持久化未完成就返回,
-                // 页面刷新会导致删除丢失.
-                await chatStore.updateCharacter(scope, { emojis: newEmojis })
-            }
+            // [BUG FIX] 用 _withScopeLock 串行化, 防止并发删除时 read-modify-write 丢更新
+            await _withScopeLock(scope, async () => {
+                const chat = chatStore.chats[scope]
+                if (chat && chat.emojis) {
+                    const newEmojis = chat.emojis.filter(s => s.url !== strUrl)
+                    await chatStore.updateCharacter(scope, { emojis: newEmojis })
+                }
+            })
         }
     }
 
@@ -148,12 +179,14 @@ export const useStickerStore = defineStore('sticker', () => {
             stickers.value = stickers.value.filter(s => !urls.includes(s.url))
             saveStickers()
         } else {
-            const chat = chatStore.chats[scope]
-            if (chat && chat.emojis) {
-                const newEmojis = chat.emojis.filter(s => !urls.includes(s.url))
-                // [BUG FIX] 缺少 await, 同 deleteSticker.
-                await chatStore.updateCharacter(scope, { emojis: newEmojis })
-            }
+            // [BUG FIX] 同 deleteSticker, 串行化
+            await _withScopeLock(scope, async () => {
+                const chat = chatStore.chats[scope]
+                if (chat && chat.emojis) {
+                    const newEmojis = chat.emojis.filter(s => !urls.includes(s.url))
+                    await chatStore.updateCharacter(scope, { emojis: newEmojis })
+                }
+            })
         }
     }
 
@@ -162,15 +195,23 @@ export const useStickerStore = defineStore('sticker', () => {
             stickers.value = []
             saveStickers()
         } else {
-            if (chatStore.chats[scope]) {
-                // [BUG FIX] 缺少 await, 同 deleteSticker.
-                await chatStore.updateCharacter(scope, { emojis: [] })
-            }
+            // [BUG FIX] 同 deleteSticker, 串行化
+            await _withScopeLock(scope, async () => {
+                if (chatStore.chats[scope]) {
+                    await chatStore.updateCharacter(scope, { emojis: [] })
+                }
+            })
         }
     }
 
     // Import from text content
     function importStickersFromText(content, scope = 'global', category = null) {
+        // [BUG FIX] content 可能是 null/undefined/非字符串 (例如上传文件解析失败返回 null,
+        // 或者用户复制粘贴空内容). 原代码 `content.split` 会 TypeError 直接抛错,
+        // 调用方 catch 后 UI 显示"导入失败"但实际原因不明. 显式 guard + 返回空结果.
+        if (!content || typeof content !== 'string') {
+            return { success: 0, duplicate: 0, failed: 0, newStickers: [] }
+        }
         const lines = content.split(/\r?\n/)
         let successCount = 0
         let dupCount = 0

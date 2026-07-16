@@ -39,6 +39,9 @@ const startY = ref(0)
 const startTranslateX = ref(0)
 const startTranslateY = ref(0)
 const isSwipeTransitioning = ref(false)
+// [BUG FIX] 保存 prev/next 切换动画的 setTimeout ID, 快速连续切换时清理上一个,
+// 避免多个定时器同时 pending, 在组件卸载后还触发 ref 写入.
+let swipeTransitionTimer = null
 
 const currentImage = computed(() => images.value[currentIndex.value] || '')
 
@@ -79,7 +82,12 @@ const prevImage = () => {
         isSwipeTransitioning.value = true
         currentIndex.value--
         resetTransform()
-        setTimeout(() => { isSwipeTransitioning.value = false }, 300)
+        // [BUG FIX] 清理上一个 pending timer 再设新的, 避免快速连点堆积
+        if (swipeTransitionTimer) clearTimeout(swipeTransitionTimer)
+        swipeTransitionTimer = setTimeout(() => {
+            swipeTransitionTimer = null
+            isSwipeTransitioning.value = false
+        }, 300)
     }
 }
 
@@ -88,7 +96,12 @@ const nextImage = () => {
         isSwipeTransitioning.value = true
         currentIndex.value++
         resetTransform()
-        setTimeout(() => { isSwipeTransitioning.value = false }, 300)
+        // [BUG FIX] 同上
+        if (swipeTransitionTimer) clearTimeout(swipeTransitionTimer)
+        swipeTransitionTimer = setTimeout(() => {
+            swipeTransitionTimer = null
+            isSwipeTransitioning.value = false
+        }, 300)
     }
 }
 
@@ -280,6 +293,11 @@ onMounted(() => {
 onUnmounted(() => {
     window.removeEventListener('keydown', handleKeydown)
     document.body.style.overflow = ''
+    // [BUG FIX] 清理切换动画定时器, 防止卸载后仍触发 ref 写入
+    if (swipeTransitionTimer) {
+        clearTimeout(swipeTransitionTimer)
+        swipeTransitionTimer = null
+    }
 })
 </script>
 

@@ -89,10 +89,17 @@ export const useAITaskStore = defineStore('aiTasks', () => {
                 return
             }
             if (myTask) {
-                // ✅ 区分中止错误（页面切换/用户取消）和真实错误
-                if (error.name === 'AbortError' ||
+                // [BUG FIX] 原代码 status 判断用宽谓词 (name === 'AbortError' || message 含 aborted),
+                // 但 onError 调用判断用窄谓词 (仅 name !== 'AbortError'). 这导致:
+                // 当 error.name 不是 AbortError 但 message 包含 'aborted' (例如某些 fetch wrapper
+                // 把 AbortError 重命名为 DOMException 或自定义 Error) 时, status 被设为 ABORTED
+                // (认为已取消), 但 onError 仍被调用 (认为真实错误). 监听 onError 的 UI 会弹出
+                // 错误 toast, 同时状态条显示"已取消", 行为自相矛盾. 用统一的 isAbort 标志.
+                const isAbort = error.name === 'AbortError' ||
                     error.message?.includes('aborted') ||
-                    error.message?.includes('signal is aborted')) {
+                    error.message?.includes('signal is aborted')
+
+                if (isAbort) {
                     myTask.status = TaskStatus.ABORTED
                     console.log(`[AITaskStore] Task ${taskId} was aborted (component unmounted or user cancelled)`);
                 } else {
@@ -102,11 +109,14 @@ export const useAITaskStore = defineStore('aiTasks', () => {
                 }
 
                 // 回调 - 只在非中止错误时调用 onError
-                if (onError && error.name !== 'AbortError') onError(error)
+                if (onError && !isAbort) onError(error)
             }
         } finally {
             // 清理 abortController（延迟清理，避免立即清理导致的问题）
-            setTimeout(() => {
+            // [BUG FIX] 保存 setTimeout ID 到 task 上, 若 task 在 5s 内被同 ID 新任务覆盖,
+            // 旧定时器仍会触发但被 `=== myTask` 守卫挡住, 这里把 timer 也存一下便于排查.
+            myTask._cleanupTimer = setTimeout(() => {
+                myTask._cleanupTimer = null
                 // [BUG FIX] 只在 task 仍为当前 task 时清理
                 if (activeTasks.get(taskId) === myTask &&
                     (myTask.status === TaskStatus.COMPLETED || myTask.status === TaskStatus.FAILED || myTask.status === TaskStatus.ABORTED)) {
