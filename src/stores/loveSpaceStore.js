@@ -1574,9 +1574,15 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                 // 2. 检查是否有业务名称命名的字段
                 const knownTypes = ['diary', 'footprint', 'message', 'question', 'letter', 'gacha', 'album', 'anniversary', 'house', 'sticky', 'answer', 'schedule'];
                 let foundDirectField = false;
+                // [BUG FIX] 不规则复数要单独映射, 不能简单 + 's' (anniversary -> anniversaries, 不是 anniversarys)
+                const pluralMap = {
+                    diary: 'diaries',
+                    sticky: 'stickies',
+                    anniversary: 'anniversaries',
+                    category: 'categories'
+                }
                 knownTypes.forEach(t => {
-                    // 支持单数和复数形式 (如 sticky 和 stickies, message 和 messages)
-                    const pluralKey = t === 'diary' ? 'diaries' : (t === 'sticky' ? 'stickies' : t + 's');
+                    const pluralKey = pluralMap[t] || (t + 's');
                     const key = data[t] ? t : (data[pluralKey] ? pluralKey : null);
 
                     if (key) {

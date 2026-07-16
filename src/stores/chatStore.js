@@ -346,11 +346,14 @@ export const useChatStore = defineStore('chat', () => {
 
     function updateGroupProfile(chatId, profile) {
         if (chats.value[chatId]) {
-            chats.value[chatId] = { 
-                ...chats.value[chatId], 
-                ...profile,
-                groupProfile: { ...(chats.value[chatId].groupProfile || {}), ...profile }
-            };
+            // [BUG FIX] 保留对原 chat 对象的引用, 避免外部引用失效
+            Object.assign(chats.value[chatId], profile)
+            if (profile) {
+                chats.value[chatId].groupProfile = {
+                    ...(chats.value[chatId].groupProfile || {}),
+                    ...profile
+                }
+            }
             saveChats();
             return true;
         }

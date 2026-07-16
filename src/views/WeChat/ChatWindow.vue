@@ -2815,6 +2815,11 @@ const recognition = ref(null)
 const voiceStart = () => {
     // console.log('Voice Start')
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        // [BUG FIX] 如果已经有实例在运行, 先 stop + 清理, 避免叠层实例导致事件错乱
+        if (recognition.value) {
+            try { recognition.value.stop() } catch (e) {}
+            recognition.value = null
+        }
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
         recognition.value = new SpeechRecognition()
         recognition.value.lang = 'zh-CN'
@@ -2829,8 +2834,21 @@ const voiceStart = () => {
                 chatInputBarRef.value.setInput(transcript)
             }
         }
-
-        recognition.value.start()
+        // [BUG FIX] 没有 onerror 处理, 没有权限或麦克风失败会静默崩溃
+        recognition.value.onerror = (event) => {
+            console.warn('[VoiceRecognition] error:', event.error)
+            recognition.value = null
+        }
+        recognition.value.onend = () => {
+            // 浏览器可能自动 end, 清理引用以便下次能重新创建
+            recognition.value = null
+        }
+        try {
+            recognition.value.start()
+        } catch (e) {
+            console.warn('[VoiceRecognition] start failed:', e)
+            recognition.value = null
+        }
     }
 }
 
