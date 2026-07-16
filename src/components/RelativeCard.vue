@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useChatStore } from '@/stores/chatStore'
-import { crypto } from 'node:crypto'
 
 const chatStore = useChatStore()
 const relativeCard = ref(null)
@@ -10,16 +9,18 @@ const relativeCard = ref(null)
 const getRelativeCardData = () => {
   const chatId = chatStore.currentChatId
   if (!chatId) return null
-  
+
   const phoneData = chatStore.chats[chatId]?.phoneData
   if (!phoneData?.apps?.wallet?.relativeCards) return null
-  
+
   let card = phoneData.apps.wallet.relativeCards.find(card => card.type === 'family')
-  
+
   // 如果没有找到卡片，创建一个默认卡片并生成唯一ID
   if (!card) {
     card = {
-      id: crypto.randomUUID(), // 生成唯一ID
+      // [BUG FIX] 浏览器环境没有 node:crypto, 改用原生 crypto.randomUUID
+      // (现代浏览器均支持 window.crypto.randomUUID)
+      id: (window.crypto?.randomUUID?.() || 'card_' + Date.now() + '_' + Math.random().toString(36).slice(2)),
       type: 'family',
       status: 'pending',
       cardNumber: '**** **** **** 1234',

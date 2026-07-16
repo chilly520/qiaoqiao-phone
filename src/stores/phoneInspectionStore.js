@@ -697,14 +697,18 @@ JSON 结构样例：
       if (seedData.meituan) apps.meituan = sortListNewestFirst({ orders: seedData.meituan })
       if (seedData.email) apps.email = sortListNewestFirst({ mails: seedData.email })
       if (seedData.wallet) {
-        if (seedData.wallet.balance !== undefined) apps.wallet = { ...apps.wallet, balance: seedData.wallet.balance }
+        // [BUG FIX] 之前用 apps.wallet = { ...apps.wallet, ... } 会替换对象引用,
+        // 可能断开外部已持有的引用. 改为就地修改, 保留原对象引用.
+        if (!apps.wallet) apps.wallet = {}
+        if (seedData.wallet.balance !== undefined) apps.wallet.balance = seedData.wallet.balance
         if (seedData.wallet.transactions?.length) {
-          const existingTx = apps.wallet?.transactions || []
-          apps.wallet = sortListNewestFirst({ ...apps.wallet, transactions: [...existingTx, ...seedData.wallet.transactions] })
+          const existingTx = apps.wallet.transactions || []
+          apps.wallet.transactions = [...existingTx, ...seedData.wallet.transactions]
+          sortListNewestFirst(apps.wallet)
         }
         if (seedData.wallet.bankCards?.length) {
-          const existingCards = apps.wallet?.bankCards || []
-          apps.wallet = { ...apps.wallet, bankCards: [...existingCards, ...seedData.wallet.bankCards] }
+          const existingCards = apps.wallet.bankCards || []
+          apps.wallet.bankCards = [...existingCards, ...seedData.wallet.bankCards]
         }
       }
       if (seedData.moments) apps.moments = sortListNewestFirst({ posts: seedData.moments })
@@ -1195,11 +1199,11 @@ JSON 结构样例：
   async function setWallpaper(wallpaperData) {
     if (!currentChar.value?.phoneData) return
 
-    currentChar.value.phoneData.wallpaper = {
-      ...currentChar.value.phoneData.wallpaper,
-      ...wallpaperData,
-      lastChanged: Date.now()
+    // [BUG FIX] 就地合并, 保留 wallpaper 对象引用, 避免断开外部已持有的引用
+    if (!currentChar.value.phoneData.wallpaper) {
+      currentChar.value.phoneData.wallpaper = {}
     }
+    Object.assign(currentChar.value.phoneData.wallpaper, wallpaperData, { lastChanged: Date.now() })
 
     const chatStore = useChatStore()
     await chatStore.saveChats()
@@ -1351,10 +1355,12 @@ JSON 结构样例：
    */
   async function updateAnniversary(data) {
     if (!currentChar.value?.phoneData) return
-    currentChar.value.phoneData.anniversary = {
-      ...currentChar.value.phoneData.anniversary,
-      ...data
+    // [BUG FIX] anniversary 初始为 null, Object.assign(null, ...) 会抛错, 需先初始化.
+    // 同时就地合并以保留对象引用.
+    if (!currentChar.value.phoneData.anniversary) {
+      currentChar.value.phoneData.anniversary = {}
     }
+    Object.assign(currentChar.value.phoneData.anniversary, data)
     const chatStore = useChatStore()
     await chatStore.saveChats()
   }
