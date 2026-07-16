@@ -738,6 +738,15 @@ const processMusicCommand = async (text) => {
     const match = text.match(/\[MUSIC:\s*(.*?)\s*\]/)
     if (!match) return
 
+    // [BUG FIX] 原代码 7 个分支都引用了未定义的 `addMessage` 和 `chatId`,
+    // 函数体从未真正执行过 (一旦命中 [MUSIC:...] 分支立即 ReferenceError 抛错,
+    // 且因为这是 watcher 内调用没有 try/catch, 异常会冒泡到 Vue watcher 报错).
+    // 实际可用的 API 是 `chatStore.addMessage(chatId, msg)` 且 chatId 来自
+    // `chatData.value.id` (computed -> chatStore.currentChat).
+    // 这里加统一 null guard + 替换全部 7 处引用.
+    if (!chatData.value?.id) return
+    const chatId = chatData.value.id
+
     const commandStr = match[1].trim()
     const parts = commandStr.split(/\s+/)
     const action = parts[0].toLowerCase()
@@ -746,11 +755,11 @@ const processMusicCommand = async (text) => {
 
     // ✅ 修复：不显示原始指令文本，改为插入系统提示消息
     const chatName = chatData.value.name || '对方'
-    
+
     if (action === 'open') {
         if (!musicStore.playerVisible) {
             musicStore.togglePlayer()
-            addMessage(chatId, {
+            chatStore.addMessage(chatId, {
                 role: 'system',
                 type: 'system',
                 content: `【系统提示】${chatName} 开启了音乐播放器`
@@ -759,7 +768,7 @@ const processMusicCommand = async (text) => {
     } else if (action === 'close') {
         if (musicStore.playerVisible) {
             musicStore.togglePlayer()
-            addMessage(chatId, {
+            chatStore.addMessage(chatId, {
                 role: 'system',
                 type: 'system',
                 content: `【系统提示】${chatName} 关闭了音乐播放器`
@@ -769,7 +778,7 @@ const processMusicCommand = async (text) => {
         musicStore.play()
         if (!musicStore.playerVisible) {
             musicStore.togglePlayer()
-            addMessage(chatId, {
+            chatStore.addMessage(chatId, {
                 role: 'system',
                 type: 'system',
                 content: `【系统提示】${chatName} 开始播放音乐`
@@ -777,21 +786,21 @@ const processMusicCommand = async (text) => {
         }
     } else if (action === 'pause') {
         musicStore.pause()
-        addMessage(chatId, {
+        chatStore.addMessage(chatId, {
             role: 'system',
             type: 'system',
             content: `【系统提示】${chatName} 暂停了播放`
         })
     } else if (action === 'next') {
         musicStore.next()
-        addMessage(chatId, {
+        chatStore.addMessage(chatId, {
             role: 'system',
             type: 'system',
             content: `【系统提示】${chatName} 切换了歌曲`
         })
     } else if (action === 'prev') {
         musicStore.prev()
-        addMessage(chatId, {
+        chatStore.addMessage(chatId, {
             role: 'system',
             type: 'system',
             content: `【系统提示】${chatName} 切换到了上一首歌曲`
@@ -806,13 +815,13 @@ const processMusicCommand = async (text) => {
                     musicStore.addSong(fullSong)
                     musicStore.loadSong(musicStore.playlist.length - 1)
                     if (!musicStore.playerVisible) musicStore.togglePlayer()
-                    
+
                     // 提取歌曲信息
-                    const songInfo = query.includes('-') 
-                        ? query.split('-')[1].trim() 
+                    const songInfo = query.includes('-')
+                        ? query.split('-')[1].trim()
                         : query
-                    
-                    addMessage(chatId, {
+
+                    chatStore.addMessage(chatId, {
                         role: 'system',
                         type: 'system',
                         content: `【系统提示】${chatName} 分享了歌曲《${songInfo}》，邀请你一起聆听`
@@ -826,6 +835,16 @@ const processMusicCommand = async (text) => {
 
 
 // --- Iframe / Card Communication Handler ---
+// [BUG FIX] 把 handleVisibilityChange 提到 script-setup 顶层声明,
+// 让 onUnmounted 能引用同一个引用. 原代码 const 声明在 onMounted(async () => {})
+// 回调内部, onUnmounted 是另一个独立闭包, 拿不到 handleVisibilityChange,
+// removeEventListener 会 ReferenceError 直接抛错, 导致 visibilitychange 监听器
+// 永久泄漏 (组件每次挂载都加一次, 永远移不掉).
+let handleVisibilityChange = null
+// [BUG FIX] iframe 自动回复 setTimeout ID 没保存, 组件卸载后若定时器未触发,
+// 回调仍会调用 generateAIResponse(), 引用已卸载的 store/computed 会报错.
+let iframeAutoReplyTimer = null
+
 const handleIframeMessage = (event) => {
     const data = event.data
     if (!data) return
@@ -844,13 +863,21 @@ const handleIframeMessage = (event) => {
         if (action === 'SEND_TEXT') {
             if (!content || typeof content !== 'string') return
 
+            // [BUG FIX] chatData.value 在组件卸载/切聊天后会变 null,
+            // 直接 chatData.value.id 会 TypeError. 加 null guard.
+            if (!chatData.value?.id) return
             chatStore.addMessage(chatData.value.id, {
                 role: 'user',
                 content: content
             })
 
             if (data.autoReply) {
-                setTimeout(() => generateAIResponse(), 500)
+                // [BUG FIX] 保存 timer ID, 在 onUnmounted 中清理
+                if (iframeAutoReplyTimer) clearTimeout(iframeAutoReplyTimer)
+                iframeAutoReplyTimer = setTimeout(() => {
+                    iframeAutoReplyTimer = null
+                    generateAIResponse()
+                }, 500)
             }
         }
     }
@@ -927,19 +954,25 @@ onMounted(async () => {
     }, 100)
 
     // Ensure typing indicator is handled when returning to app
-    const handleVisibilityChange = () => {
+    // [BUG FIX] 把函数赋给顶层 let handleVisibilityChange, 让 onUnmounted 能引用.
+    handleVisibilityChange = () => {
         if (document.visibilityState === 'visible' && chatStore.currentChatId) {
             console.log('[ChatWindow] App became visible');
             // If we're still waiting for AI, the typingStatus[chatId] should still be true
             // if it wasn't cleared by the network response yet.
         }
     };
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
 })
 
 onUnmounted(() => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // [BUG FIX] 加 null 守卫: handleVisibilityChange 在 onMounted 异步流程里赋值,
+    // 理论上 onUnmounted 可能比 onMounted 早完成 (组件秒切), 此时为 null 不能调用 removeEventListener.
+    if (handleVisibilityChange) {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        handleVisibilityChange = null
+    }
 })
 
 onUnmounted(() => {
@@ -953,6 +986,8 @@ onUnmounted(() => {
     if (avatarClickTimer) { clearTimeout(avatarClickTimer); avatarClickTimer = null }
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null }
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null }
+    // [BUG FIX] 清理 iframe 自动回复定时器
+    if (iframeAutoReplyTimer) { clearTimeout(iframeAutoReplyTimer); iframeAutoReplyTimer = null }
 })
 
 watch(() => msgs.value.length, (newLen, oldLen) => {
@@ -1918,7 +1953,11 @@ const clearSeeImageRef = () => {
 
 // Handle sending family card after user fills form
 const confirmSendFamilyCard = () => {
-    if (!familyCardAmount.value || parseFloat(familyCardAmount.value) <= 0) {
+    // [BUG FIX] parseFloat('abc') 返回 NaN, NaN <= 0 === false, 会绕过校验,
+    // 用户填 'abc' / '一笔钱' 等非数字字符串就能直接发卡, 后续扣款时 wallet.decreaseBalance
+    // 拿到 NaN 金额, 数据库里存一个 NaN 余额. 加 Number.isFinite 守卫.
+    const amountNum = parseFloat(familyCardAmount.value)
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
         showToast('请输入有效的额度', 'error')
         return
     }
