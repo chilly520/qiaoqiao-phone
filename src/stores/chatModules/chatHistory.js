@@ -173,11 +173,13 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             const response = await generateReply(
                 summaryContext,
                 chat,
-                (chunk) => {
-                    summaryContent += chunk
-                },
+                null, // No abort signal needed for summary
                 {
-                    skipContext: true // Don't include other history
+                    skipContext: true, // Don't include other history
+                    disableTools: true, // 禁用工具调用，防止 Gemini 在总结时调用 web_search
+                    onChunk: (chunk) => {
+                        summaryContent += chunk
+                    }
                 }
             )
 
