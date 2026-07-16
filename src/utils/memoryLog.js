@@ -32,6 +32,9 @@ function extractKeywords(text) {
   return cleaned.split(/\s+/).filter(w => w.length >= 2).slice(0, 5)
 }
 
+// 导出供测试
+export { parseTimeRange, extractKeywords }
+
 export function initMemoryLog(char) {
   if (!char.memoryLog) char.memoryLog = []
   if (!char.memoryFacts) char.memoryFacts = {}
@@ -51,7 +54,7 @@ export function appendLog(charId, entry, providedChar = null) {
 }
 
 export async function recallOriginalMessages(charId, userMessage) {
-  const chatStore = awaitImportChatStore()
+  const chatStore = await awaitImportChatStore()
   const char = chatStore?.chats?.[charId]
   if (!char || !RECALL_TRIGGERS.test(userMessage)) return null
 
@@ -207,13 +210,17 @@ function formatTime(d) {
 }
 
 let _chatStore = null
+// 改为静态 import 以便 vitest 可以 mock
+// 循环依赖通过延迟到函数调用时再读取 useChatStore 来打破
+import { useChatStore } from '../stores/chatStore'
+
 function useChatStoreSync() {
   if (!_chatStore) {
-    try { const { useChatStore } = require('../stores/chatStore'); _chatStore = useChatStore() } catch(e) { try { _chatStore = window.__pinia?._s.get('chat') } catch(e2) {} }
+    try { _chatStore = useChatStore() } catch(e) { try { _chatStore = window.__pinia?._s.get('chat') } catch(e2) {} }
   }
   return _chatStore
 }
 async function awaitImportChatStore() {
   if (_chatStore) return _chatStore
-  try { const mod = await import('../stores/chatStore'); _chatStore = mod.useChatStore(); return _chatStore } catch(e) { return null }
+  try { _chatStore = useChatStore(); return _chatStore } catch(e) { return null }
 }
