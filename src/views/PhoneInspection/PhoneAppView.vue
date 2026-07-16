@@ -124,12 +124,13 @@ function handleBack() {
   emit('back')
 }
 
-function handleUpdatePhoto({ index, url }) {
+// [BUG FIX] async + await saveChats 确保 AI 生成图片 URL 持久化
+async function handleUpdatePhoto({ index, url }) {
   // Update the data in chatStore to persist it
   if (props.phoneData?.apps?.photos?.photos) {
     props.phoneData.apps.photos.photos[index].url = url
     props.phoneData.apps.photos.photos[index].generated = true
-    chatStore.saveChats()
+    await chatStore.saveChats()
   }
 }
 </script>

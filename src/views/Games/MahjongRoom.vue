@@ -347,7 +347,7 @@ const addNPC = (npc) => {
     showInvite.value = false
 }
 
-const addContact = (contact) => {
+const addContact = async (contact) => {
     const players = mahjongStore.currentRoom.players
     players.push({
         id: contact.id,
@@ -373,7 +373,8 @@ const addContact = (contact) => {
         hour: '2-digit',
         minute: '2-digit'
     })
-    chatStore.addMessage(contact.id, {
+    // [BUG FIX] addMessage 是异步函数, 需 await 确保系统消息落库 (与 MahjongLobby.vue 一致)
+    await chatStore.addMessage(contact.id, {
         role: 'system',
         content: `${currentUserName}正在与你一起打麻将 [TIMESTAMP:${formattedTime}]`,
         timestamp: timestamp

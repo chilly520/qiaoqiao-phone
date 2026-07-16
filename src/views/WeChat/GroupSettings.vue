@@ -419,7 +419,7 @@ function togglePrivateMemoryIntero(e) {
   if (idx !== -1) {
     if (form.participants[idx].privateMemoryIntero === undefined) {
       // Setup reactively if missed
-      form.participants[idx] = { ...form.participants[idx], privateMemoryIntero: checked, privateMemoryLimit: 20 }
+      Object.assign(form.participants[idx], { privateMemoryIntero: checked, privateMemoryLimit: 20 })
     } else {
       form.participants[idx].privateMemoryIntero = checked
     }

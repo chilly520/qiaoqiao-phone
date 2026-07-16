@@ -1004,7 +1004,7 @@ const processAtomicReset = () => {
   }
 }
 
-function handleManualClean() {
+async function handleManualClean() {
   let cleanedCount = 0
   Object.values(chatStore.chats || {}).forEach(chat => {
     if (chat.msgs && chat.msgs.length > 1000) {
@@ -1012,7 +1012,8 @@ function handleManualClean() {
       chat.msgs = chat.msgs.slice(-1000)
     }
   })
-  chatStore.saveChats()
+  // [BUG FIX] await saveChats 确保持久化完成后再提示用户
+  await chatStore.saveChats()
   chatStore.triggerToast(`🧹 已清理 ${cleanedCount} 条冗余消息`, 'success')
 }
 

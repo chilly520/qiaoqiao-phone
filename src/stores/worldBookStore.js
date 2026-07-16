@@ -130,9 +130,8 @@ export const useWorldBookStore = defineStore('worldBook', {
 
             const idx = this.books.findIndex(b => b.id === id)
             if (idx !== -1 && updates) {
-                const oldEntries = this.books[idx].entries
-                this.books[idx] = { ...this.books[idx], ...updates }
-                if (!updates.entries) this.books[idx].entries = oldEntries
+                // [BUG FIX] 用 Object.assign 保留原对象引用
+                Object.assign(this.books[idx], updates)
                 await this.saveEntries()
             }
         },
@@ -192,7 +191,8 @@ export const useWorldBookStore = defineStore('worldBook', {
                     finalUpdates.keys = this._normalizeKeys(finalUpdates.keys)
                 }
                 
-                book.entries[idx] = { ...book.entries[idx], ...finalUpdates }
+                // [BUG FIX] 用 Object.assign 保留原对象引用
+                Object.assign(book.entries[idx], finalUpdates)
                 await this.saveEntries()
             }
         },

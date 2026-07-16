@@ -909,9 +909,11 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   // 设置AI角色访问权限
   function setAIAccess(charId, permissions) {
-    aiAccessSettings.value[charId] = {
-      ...aiAccessSettings.value[charId],
-      ...permissions
+    // [BUG FIX] 用 Object.assign 保留原对象引用, 避免外部 watch/computed 失效
+    if (aiAccessSettings.value[charId]) {
+      Object.assign(aiAccessSettings.value[charId], permissions)
+    } else {
+      aiAccessSettings.value[charId] = { ...permissions }
     }
   }
 

@@ -40,10 +40,10 @@
                         <div class="flex-1">
                             <div class="flex justify-between items-center">
                                 <h4 class="font-bold text-sm">{{ shopId }}</h4>
-                                <span class="text-[10px] text-gray-300">{{ formatTime(msgs[msgs.length - 1].timestamp)
+                                <span class="text-[10px] text-gray-300">{{ formatTime(msgs[msgs.length - 1]?.timestamp)
                                 }}</span>
                             </div>
-                            <p class="text-[10px] text-gray-400 mt-1 line-clamp-1 italic">{{ msgs[msgs.length - 1].content
+                            <p class="text-[10px] text-gray-400 mt-1 line-clamp-1 italic">{{ msgs[msgs.length - 1]?.content
                                 }}
                             </p>
                         </div>
