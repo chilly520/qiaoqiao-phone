@@ -979,39 +979,55 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                 // 支持图片ID：在消息中查找对应图片的URL
                 if (url && !url.startsWith('http') && !url.startsWith('data:image')) {
                     console.log('[更换头像] 收到图片ID，尝试查找对应图片:', url)
+                    // v1.10.158: 提取图片 URL 的统一函数
+                    // 图片消息有两种存储形式:
+                    //   1. { type: 'image', content: '[图片]', image: <base64或URL> }  ← 用户上传的图片
+                    //   2. { type: 'image', content: '[图片:URL]' 或 URL }               ← AI 生成的图片
+                    //   3. 文本消息内嵌 [图片:URL] 标签
+                    const extractImageUrl = (m) => {
+                        if (!m) return null
+                        // 优先: image 字段(用户上传的图片)
+                        if (m.image && typeof m.image === 'string' &&
+                            (m.image.startsWith('http') || m.image.startsWith('data:image') || m.image.startsWith('blob:'))) {
+                            return m.image
+                        }
+                        // 其次: content 直接是 URL
+                        const c = typeof m.content === 'string' ? m.content : ''
+                        if (c.startsWith('http') || c.startsWith('data:image')) {
+                            return c
+                        }
+                        // 最后: content 内嵌 [图片:URL] / [IMAGE:URL] 标签
+                        const embedded = c.match(/\[(?:图片|IMAGE)[:：]\s*((?:https?:\/\/|data:image\/|blob:)[^\]]+)\]/i)
+                        if (embedded) return embedded[1]
+                        return null
+                    }
                     // 查找该ID对应的聊天消息中的图片
                     const targetMsg = msgs.value.find(m =>
                         m.id === url || (m.id && url.includes(m.id))
                     )
                     if (targetMsg) {
-                        // 消息本身就是图片类型
-                        if (targetMsg.type === 'image' && targetMsg.content) {
-                            url = targetMsg.content
-                            console.log('[更换头像] 从图片消息找到URL')
-                        } else {
-                            // 从文本消息中提取内嵌图片URL
-                            const embedded = targetMsg.content?.match(/\[(?:图片|IMAGE)[:：]\s*((?:https?:\/\/|data:image\/)[^\]]+)\]/i)
-                            if (embedded) {
-                                url = embedded[1]
-                                console.log('[更换头像] 从消息内容提取到图片URL')
-                            }
+                        const extracted = extractImageUrl(targetMsg)
+                        if (extracted) {
+                            url = extracted
+                            console.log('[更换头像] 从目标消息提取到图片URL')
                         }
                     }
                     // 如果还没找到，回退到最近一张图片
-                    if (!url || (!url.startsWith('http') && !url.startsWith('data:image'))) {
+                    if (!url || (!url.startsWith('http') && !url.startsWith('data:image') && !url.startsWith('blob:'))) {
                         for (let i = msgs.value.length - 1; i >= 0; i--) {
                             const m = msgs.value[i]
                             // v1.10.59: 跳过 sticker 类型,避免把表情包当头像
                             if (m.type === 'sticker') continue
-                            if (m.type === 'image' && m.content && (m.content.startsWith('http') || m.content.startsWith('data:image'))) {
-                                url = m.content
+                            const extracted = extractImageUrl(m)
+                            if (extracted) {
+                                url = extracted
                                 console.log('[更换头像] 回退到最近图片:', url.substring(0, 50))
                                 break
                             }
                         }
                     }
                 }
-                if (url && (url.startsWith('http') || url.startsWith('https:') || url.startsWith('data:image'))) {
+                if (url && (url.startsWith('http') || url.startsWith('https:') || url.startsWith('data:image') || url.startsWith('blob:'))) {
                     console.log('更换头像指令被触发:', url?.substring(0, 60) + '...')
                     handleChangeAvatar(url)
                 } else {
@@ -1261,9 +1277,12 @@ const handleChangeAvatar = (url) => {
         return
     }
 
+    // v1.10.158: base64 / blob: 不需要 crossOrigin,设了反而可能触发 CORS 错误
+    const isLocalUrl = url.startsWith('data:image') || url.startsWith('blob:')
+
     // 验证图片URL是否有效
     const img = new Image()
-    img.crossOrigin = 'Anonymous'
+    if (!isLocalUrl) img.crossOrigin = 'Anonymous'
     img.onload = () => {
         let finalUrl = url;
         try {
@@ -1274,7 +1293,11 @@ const handleChangeAvatar = (url) => {
                 c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, s, s);
                 finalUrl = c.toDataURL('image/png');
             }
-        } catch (e) { }
+        } catch (e) {
+            // canvas 被污染(tainted)时无法 toDataURL,直接用原 URL
+            console.warn('[更换头像] canvas 裁剪失败,使用原 URL:', e)
+            finalUrl = url
+        }
         chatStore.updateCharacter(chatData.value.id, { avatar: finalUrl })
         showToast('头像已更换', 'success')
     }

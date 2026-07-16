@@ -20,8 +20,8 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-// v1.10.158: bump v47 强制清理旧 cache (情侣空间相册生图支持形象图暗号)
-const SHELL_CACHE = 'chilly-shell-v47';
+// v1.10.159: bump v48 强制清理旧 cache (修复 AI 用图片ID换头像失效)
+const SHELL_CACHE = 'chilly-shell-v48';
 const RUNTIME_CACHE = 'chilly-runtime-v25';
 
 // 关键 shell 资源,install 时主动 precache
