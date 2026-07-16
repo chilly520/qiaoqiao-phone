@@ -231,8 +231,12 @@ const cleanMessage = (content) => {
             .replace(/@keyframes[\s\S]{5,}?\}\s*/g, '')
             // 移除HTML标签属性
             .replace(/\b(?:class|id|src|alt|href|title|type|value|name|placeholder)\s*=\s*['"][^'"]*['"]\s*/gi, ' ')
-            // 移除裸露的HTML标签
-            .replace(/<\/?(?:span|div|p|br|hr|img|a|b|i|u|em|strong|code|pre|details|summary|section|article|header|footer|nav|main|svg)[^>]*>/gi, '')
+            // [BUG FIX] 移除 on* 事件处理属性 (含无引号形式), 防止 XSS
+            .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+            // [BUG FIX] 移除 javascript: URL 方案
+            .replace(/(href|src|action)\s*=\s*['"]\s*javascript:[^'"]*['"]/gi, '$1="#"')
+            // 移除裸露的HTML标签 (含危险标签)
+            .replace(/<\/?(?:span|div|p|br|hr|img|a|b|i|u|em|strong|code|pre|details|summary|section|article|header|footer|nav|main|svg|script|iframe|object|embed|form|input|button|select|style|link|meta|noscript|template)\b[^>]*>/gi, '')
             // 清理多余空白
             .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n')
             .trim()
@@ -358,12 +362,22 @@ const renderMarkdown = (text) => {
         .replace(/\{[^{}]*(?:opacity|animation)[^{}]*\}/gi, '')
         .replace(/<\/?(?:span|div|p|br|style)[^>]*>/gi, '')
         .trim()
-    
+
     try {
+        let html
         if (typeof marked.parse === 'function') {
-            return marked.parse(preprocessed)
+            html = marked.parse(preprocessed)
+        } else {
+            html = marked(preprocessed)
         }
-        return marked(preprocessed)
+        // [BUG FIX] marked.parse 不会过滤 HTML (v5+ 移除了内置 sanitize).
+        // 需对输出做后处理: 移除危险标签、on* 事件属性、javascript: URL
+        html = html
+            .replace(/<\/?(?:script|iframe|object|embed|param|form|input|button|select|option|textarea|label|style|link|meta|noscript|template|base|frame|frameset|applet)\b[^>]*>/gi, '')
+            .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+            .replace(/(href|src|action|formaction|data)\s*=\s*['"]\s*javascript:[^'"]*['"]/gi, '$1="#"')
+            .replace(/(href|src|action|formaction)\s*=\s*javascript:[^\s>]*/gi, '$1="#"')
+        return html
     } catch (e) {
         console.error('Markdown render error:', e)
         return preprocessed

@@ -3445,8 +3445,14 @@ function formatMessageContent(msg) {
     .replace(/@keyframes[\s\S]{5,}?\}\s*/g, '')
     // 移除裸露的HTML标签属性（标签已被getCleanContent剥离，但属性文本可能残留）
     .replace(/\b(?:class|id|src|alt|href|title|target|rel|type|value|name|placeholder|disabled|readonly|required|checked|selected|autofocus|autocomplete|role|aria-\w+|data-\w+)\s*=\s*['"][^'"]*['"]\s*/gi, ' ')
+    // [BUG FIX] 移除 on* 事件处理属性 (含无引号形式), 之前仅匹配有引号属性, onfocus=alert(1) 可绕过
+    .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+    // [BUG FIX] 移除 javascript: URL 方案, 防止 <a href="javascript:..."> 类 XSS
+    .replace(/(href|src|action|formaction)\s*=\s*['"]\s*javascript:[^'"]*['"]/gi, '$1="#"')
+    .replace(/(href|src|action|formaction)\s*=\s*javascript:[^\s>]*/gi, '$1="#"')
     // 移除残留的自闭合或孤立HTML标签（防御性）
-    .replace(/<\/?(?:span|div|p|br|hr|img|a|b|i|u|em|strong|small|big|sub|sup|code|pre|details|summary|section|article|header|footer|nav|main|aside|figure|figcaption|picture|source|video|audio|track|canvas|svg|path|circle|rect|text|tspan|g|defs|use|linearGradient|stop|filter|fe[\w]+|clipPath|mask|pattern|symbol|animate|set|animateTransform|animateMotion)\b[^>]*>/gi, '')
+    // [BUG FIX] 补充 script|iframe|object|embed|form|input|button|select|style|link|meta|noscript|template 等危险标签
+    .replace(/<\/?(?:span|div|p|br|hr|img|a|b|i|u|em|strong|small|big|sub|sup|code|pre|details|summary|section|article|header|footer|nav|main|aside|figure|figcaption|picture|source|video|audio|track|canvas|svg|path|circle|rect|text|tspan|g|defs|use|linearGradient|stop|filter|fe[\w]+|clipPath|mask|pattern|symbol|animate|set|animateTransform|animateMotion|script|iframe|object|embed|param|form|input|button|select|option|textarea|label|style|link|meta|noscript|template|base|frame|frameset|applet)\b[^>]*>/gi, '')
     // 清理多余空格和空白行
     .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n')
     .trim();

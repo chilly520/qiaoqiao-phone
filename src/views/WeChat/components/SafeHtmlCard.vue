@@ -29,7 +29,7 @@ const iframeRef = ref(null)
 const sanitizedContent = computed(() => {
   if (!props.content) return ''
   let c = String(props.content || '').trim()
-  
+
   // Try to clean up markdown backticks for HTML/JSON blocks
   c = c.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
@@ -37,13 +37,22 @@ const sanitizedContent = computed(() => {
   if (c.startsWith('{') && c.endsWith('}')) {
     try {
       const parsed = JSON.parse(c)
-      if (parsed.html) return parsed.html
-      if (parsed.card) return parsed.card
-      if (parsed.content) return parsed.content
+      if (parsed.html) c = parsed.html
+      else if (parsed.card) c = parsed.card
+      else if (parsed.content) c = parsed.content
     } catch (e) {
       // Not valid JSON or failed to parse, proceed with raw string
     }
   }
+
+  // [BUG FIX] 之前 sanitizedContent 并未做任何 sanitize, 直接通过 v-html 渲染.
+  // isInteractive 黑名单无法拦截 javascript: URL、<iframe>、<style> 等 XSS 向量.
+  // 对非交互分支的内容做基本净化: 移除危险标签、on* 属性、javascript: URL.
+  c = c
+    .replace(/<\/?(?:script|iframe|object|embed|param|form|input|button|select|option|textarea|label|style|link|meta|noscript|template|base|frame|frameset|applet)\b[^>]*>/gi, '')
+    .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+    .replace(/(href|src|action|formaction|data)\s*=\s*['"]\s*javascript:[^'"]*['"]/gi, '$1="#"')
+    .replace(/(href|src|action|formaction)\s*=\s*javascript:[^\s>]*/gi, '$1="#"')
 
   return c
 })
