@@ -299,9 +299,9 @@ function hydrateFromChat(chat) {
 
   form.bgTheme = chat.bgTheme || 'light'
   form.bgUrl = chat.bgUrl || ''
-  form.bgBlur = chat.bgBlur || 0
+  form.bgBlur = chat.bgBlur ?? 0
   form.bgOpacity = chat.bgOpacity ?? 1
-  form.bubbleSize = chat.bubbleSize || 15
+  form.bubbleSize = chat.bubbleSize ?? 15
   form.bubbleCss = chat.bubbleCss || ''
   form.summaryPrompt = gs.memory?.summaryPrompt || '请用客观中性的语气总结以下对话的主要内容、关键信息和双方达成的共识。'
   form.levelTitles = Array.isArray(gs.levelTitles) ? [...gs.levelTitles] : ['潜水', '冒泡', '吐槽', '活跃', '话痨', '传说']

@@ -2520,12 +2520,18 @@ export const useChatStore = defineStore('chat', () => {
 
     // --- Proactive Chat Logic ---
     let proactiveTimer = null
+    // [BUG FIX] 保存 pageshow handler 引用, 重复调用 startProactiveLoop 时才能正确移除旧监听器
+    let proactivePageShowHandler = null
 
     function startProactiveLoop() {
         // 清理旧的
         if (proactiveTimer) {
             clearInterval(proactiveTimer)
             proactiveTimer = null
+        }
+        if (proactivePageShowHandler && typeof window !== 'undefined') {
+            window.removeEventListener('pageshow', proactivePageShowHandler)
+            proactivePageShowHandler = null
         }
 
         // 用 setInterval 替代 Worker，更可靠
@@ -2543,13 +2549,14 @@ export const useChatStore = defineStore('chat', () => {
 
         // 3. 页面刷新补偿
         if (typeof window !== 'undefined') {
-            window.addEventListener('pageshow', () => {
+            proactivePageShowHandler = () => {
                 const logger = useLoggerStore()
                 logger.sys('[Proactive] Page loaded/refreshed, checking missed triggers...')
                 Object.keys(chats.value).forEach(chatId => {
                     checkProactive(chatId)
                 })
-            });
+            };
+            window.addEventListener('pageshow', proactivePageShowHandler);
         }
     }
 

@@ -128,7 +128,7 @@
       ref="msgContainer" 
       class="offline-scroll flex-1 overflow-y-auto px-5 pt-1 pb-6 flex flex-col gap-1 relative" 
       style="z-index: 30;" 
-      :style="{ '--offline-font-scale': settingsStore.fontScale || 1 }"
+      :style="{ '--offline-font-scale': settingsStore.fontScale ?? 1 }"
       @scroll="handleScroll"
     >
       

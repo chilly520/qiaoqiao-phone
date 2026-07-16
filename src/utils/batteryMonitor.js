@@ -62,12 +62,15 @@ class BatteryMonitor {
         }
 
         // Event Listeners
-        this.battery.addEventListener('levelchange', updateHandler)
-        this.battery.addEventListener('chargingchange', () => {
+        // [BUG FIX] 保存 handler 引用, destroy 时才能 removeEventListener
+        this._levelHandler = updateHandler
+        this._chargingHandler = () => {
             // 充电状态切换不再重置 hasNotified，仅依赖电量恢复阈值来解除锁定，
             // 避免用户反复插拔时刷出多条相同的低电量提醒。
             updateHandler()
-        })
+        }
+        this.battery.addEventListener('levelchange', this._levelHandler)
+        this.battery.addEventListener('chargingchange', this._chargingHandler)
 
         // Polling Fallback (Every 30s) - Fixes "imprecise sync" on some devices
         if (this.pollInterval) clearInterval(this.pollInterval)
@@ -143,6 +146,14 @@ class BatteryMonitor {
 
     destroy() {
         if (this.pollInterval) clearInterval(this.pollInterval)
+        // [BUG FIX] 之前没移除 BatteryManager 上的事件监听器, 导致 destroy 后回调仍被触发
+        if (this.battery) {
+            try {
+                this.battery.removeEventListener('levelchange', this._levelHandler)
+                this.battery.removeEventListener('chargingchange', this._chargingHandler)
+            } catch (e) {}
+            this.battery = null
+        }
         this.callbacks = { onChange: [], onLowBattery: [] }
     }
 }

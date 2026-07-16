@@ -243,14 +243,22 @@ const getAuthorAvatar = (id) => {
     return `https://api.dicebear.com/7.x/notionists/svg?seed=${id || 'Anon'}&backgroundColor=b6e3f4,c0aede,d1d4f9`
 }
 
+// [BUG FIX] v-html 内容必须先转义, 防止 AI/用户文本里的 <script> 等触发 XSS.
+// 转义后再叠加自定义的 span / img 标签.
+function escapeHtml(str) {
+    if (str == null) return ''
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
+
 const renderCommentContent = (comment) => {
     if (!comment || !comment.content) return ''
-    let content = comment.content
-
-    // escape logic removed to support HTML rendering
-    // const div = document.createElement('div')
-    // div.textContent = content
-    // content = div.innerHTML
+    // [BUG FIX] 先转义原始内容, 再叠加自定义 HTML 标签
+    let content = escapeHtml(comment.content)
 
     // 1. Handle Hashtags FIRST (#Topic ) - prevent collision with hex colors in span tags
     content = content.replace(/#([^\s#]+)(\s|$)/g, (match, topic, spacer) => {
@@ -267,7 +275,7 @@ const renderCommentContent = (comment) => {
         if (/^\d+$/.test(nameOrId)) {
             const resolvedName = getAuthorName(nameOrId)
             if (resolvedName && resolvedName !== '神秘人') {
-                displayName = resolvedName
+                displayName = escapeHtml(resolvedName)
             }
         }
 
@@ -292,7 +300,7 @@ const renderCommentContent = (comment) => {
             }
 
             if (sticker) {
-                return `<img src="${sticker.url}" class="inline-block w-6 h-6 mx-0.5 align-bottom" title="${name}" />`
+                return `<img src="${escapeHtml(sticker.url)}" class="inline-block w-6 h-6 mx-0.5 align-bottom" title="${name}" />`
             }
             return match
         })
@@ -311,15 +319,11 @@ const parsedContent = computed(() => {
     const rawContent = props.moment?.content
     if (!rawContent) return ''
 
-    let content = rawContent
-    // escape logic removed to support HTML rendering
-    // const div = document.createElement('div')
-    // div.textContent = content
-    // content = div.innerHTML
+    let content = escapeHtml(rawContent)
 
     // 1. Handle raw template literals that AI often leaks (e.g. ${user.name})
     if (content.includes('${user.name}')) {
-        const uName = settingsStore.personalization.userProfile.name
+        const uName = escapeHtml(settingsStore.personalization.userProfile.name)
         content = content.replace(/\$\{user\.name\}/g, uName)
     }
 
@@ -338,7 +342,7 @@ const parsedContent = computed(() => {
         if (/^\d+$/.test(nameOrId)) {
             const resolvedName = getAuthorName(nameOrId)
             if (resolvedName && resolvedName !== '神秘人') {
-                displayName = resolvedName
+                displayName = escapeHtml(resolvedName)
             }
         }
 
@@ -361,7 +365,7 @@ const parsedContent = computed(() => {
         }
 
         if (sticker) {
-            return `<img src="${sticker.url}" class="inline-block w-10 h-10 mx-0.5 align-top" title="${name}" />`
+            return `<img src="${escapeHtml(sticker.url)}" class="inline-block w-10 h-10 mx-0.5 align-top" title="${name}" />`
         }
         return match
     })

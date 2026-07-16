@@ -210,15 +210,16 @@ const fileInput = ref(null)
 
 // 新增：主题模式和调节参数
 const themeMode = ref(props.initialSettings.themeMode || 'day')
-const opacity = ref(props.initialSettings.opacity || 1)
-const blur = ref(props.initialSettings.blur || 0)
+// [BUG FIX] opacity=0 (全透明) 会被 || 吞掉变成 1 (不透明). 用 ??
+const opacity = ref(props.initialSettings.opacity ?? 1)
+const blur = ref(props.initialSettings.blur ?? 0)
 
 // 监听 visible 变化，重置设置
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     themeMode.value = props.initialSettings.themeMode || 'day'
-    opacity.value = props.initialSettings.opacity || 1
-    blur.value = props.initialSettings.blur || 0
+    opacity.value = props.initialSettings.opacity ?? 1
+    blur.value = props.initialSettings.blur ?? 0
   }
 })
 

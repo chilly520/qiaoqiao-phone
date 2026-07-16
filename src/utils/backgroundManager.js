@@ -30,6 +30,10 @@ class BackgroundManager {
         this.keepAliveAudio = null;
         this.keepAliveMonitorTimer = null;
         this.keepAliveVisibilityHandler = null;
+        // [BUG FIX] 保存 yield/resume 监听器引用和音乐轮询定时器, destroy 时才能清理
+        this._onYield = null;
+        this._onResume = null;
+        this._musicPollTimer = null;
     }
 
     init() {
@@ -72,7 +76,8 @@ class BackgroundManager {
         if (this._visibilityHandlerInstalled) return;
         this._visibilityHandlerInstalled = true;
 
-        document.addEventListener('visibilitychange', () => {
+        // [BUG FIX] 保存 handler 引用, destroy() 才能正确移除
+        this._visibilityHandler = () => {
             if (document.visibilityState === 'visible') {
                 this.requestWakeLock();
                 // 切回前台时立即兜底 catch-up
@@ -82,7 +87,8 @@ class BackgroundManager {
                     this.resumeKeepAliveAudio();
                 }
             }
-        });
+        };
+        document.addEventListener('visibilitychange', this._visibilityHandler);
     }
 
     /**
@@ -354,6 +360,21 @@ class BackgroundManager {
             this.keepAliveAudio = null;
         }
 
+        // [BUG FIX] 清理 yield/resume 全局事件监听器和音乐轮询定时器
+        if (this._onYield) {
+            window.removeEventListener('keepalive:yield', this._onYield);
+            this._onYield = null;
+        }
+        if (this._onResume) {
+            window.removeEventListener('keepalive:resume', this._onResume);
+            this._onResume = null;
+        }
+        if (this._musicPollTimer) {
+            clearInterval(this._musicPollTimer);
+            this._musicPollTimer = null;
+        }
+        this._yieldListenersInstalled = false;
+
         if ('mediaSession' in navigator) {
             try {
                 navigator.mediaSession.metadata = null;
@@ -417,10 +438,11 @@ class BackgroundManager {
         this._yieldListenersInstalled = true;
 
         // 全局事件
-        const onYield = () => this.yieldToOtherAudio();
-        const onResume = () => this.resumeFromYield();
-        window.addEventListener('keepalive:yield', onYield);
-        window.addEventListener('keepalive:resume', onResume);
+        // [BUG FIX] 保存引用, disableRealKeepAlive 时才能 removeEventListener
+        this._onYield = () => this.yieldToOtherAudio();
+        this._onResume = () => this.resumeFromYield();
+        window.addEventListener('keepalive:yield', this._onYield);
+        window.addEventListener('keepalive:resume', this._onResume);
 
         // 监听 useMusicStore 的播放状态(一起听音乐)
         // 用 setTimeout 0 异步加载,避免在 _startKeepAliveAudio 阶段就 import Vue store
@@ -441,7 +463,8 @@ class BackgroundManager {
                                 else this.resumeFromYield();
                             }
                         };
-                        setInterval(check, 500);
+                        // [BUG FIX] 保存 interval ID, disableRealKeepAlive 时才能 clearInterval
+                        this._musicPollTimer = setInterval(check, 500);
                     } catch (e) { /* 静默 */ }
                 }).catch(() => {});
             } catch (e) { /* 静默 */ }
@@ -482,8 +505,13 @@ class BackgroundManager {
             try { this.wakeLock.release(); } catch (e) { /* 静默 */ }
             this.wakeLock = null;
         }
-        this.initialized = false;
+        // [BUG FIX] 之前从未移除 visibilitychange 监听器
+        if (this._visibilityHandler) {
+            document.removeEventListener('visibilitychange', this._visibilityHandler);
+            this._visibilityHandler = null;
+        }
         this._visibilityHandlerInstalled = false;
+        this.initialized = false;
     }
 }
 

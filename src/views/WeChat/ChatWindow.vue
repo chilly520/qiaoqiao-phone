@@ -1077,7 +1077,7 @@ const computedBgStyle = computed(() => {
 
         const theme = chatData.value.bgTheme
         const url = chatData.value.bgUrl
-        const blur = chatData.value.bgBlur || 0
+        const blur = chatData.value.bgBlur ?? 0
         const opacity = chatData.value.bgOpacity !== undefined ? chatData.value.bgOpacity : 1
 
         console.log('[ChatWindow] Computing background style:', {

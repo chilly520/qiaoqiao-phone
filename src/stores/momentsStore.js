@@ -1114,7 +1114,7 @@ export const useMomentsStore = defineStore('moments', () => {
     // --- Background Loop (Web Worker based for resilience) ---
     let autoGenWorker = null
     let autoGenTimer = null
-
+    let visibilityHandler = null
     function startAutoGeneration() {
         if (autoGenWorker) {
             autoGenWorker.terminate()
@@ -1123,6 +1123,12 @@ export const useMomentsStore = defineStore('moments', () => {
         if (autoGenTimer) {
             clearInterval(autoGenTimer)
             autoGenTimer = null
+        }
+        // [BUG FIX] 之前每次重启都 addEventListener 但从不 removeEventListener,
+        // 改设置几次后就会叠出多个 visibilitychange 监听器, 一次性触发多次 batchGenerate.
+        if (visibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', visibilityHandler)
+            visibilityHandler = null
         }
 
         const intervalMs = config.value.autoGenerateInterval * 60 * 1000
@@ -1188,7 +1194,7 @@ export const useMomentsStore = defineStore('moments', () => {
 
         // 4. Foreground Compensation (critical fix!)
         if (typeof document !== 'undefined') {
-            document.addEventListener('visibilitychange', () => {
+            visibilityHandler = () => {
                 if (document.visibilityState === 'visible') {
                     const catchupElapsed = Date.now() - lastGenerateTime.value
                     logger.sys(`[MomentsStore] Page visible, checking overdue (elapsed: ${Math.round(catchupElapsed / 60000)}min, threshold: ${config.value.autoGenerateInterval}min)`)
@@ -1197,7 +1203,8 @@ export const useMomentsStore = defineStore('moments', () => {
                         batchGenerateAIMoments(1)
                     }
                 }
-            })
+            }
+            document.addEventListener('visibilitychange', visibilityHandler)
         }
 
         // 5. Log startup status

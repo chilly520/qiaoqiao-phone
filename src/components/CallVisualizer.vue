@@ -40,12 +40,14 @@ const userAvatarFallback = computed(() => {
 })
 
 // Event listeners for expanding
+// [BUG FIX] 保存 handler 引用, onUnmounted 用同一个引用才能正确 removeEventListener
+const handleExpand = () => isExpanded.value = true
 onMounted(() => {
-    window.addEventListener('expand-call-visualizer', () => isExpanded.value = true)
+    window.addEventListener('expand-call-visualizer', handleExpand)
 })
 
 onUnmounted(() => {
-    window.removeEventListener('expand-call-visualizer', () => isExpanded.value = true)
+    window.removeEventListener('expand-call-visualizer', handleExpand)
 })
 
 const handleHangup = () => {

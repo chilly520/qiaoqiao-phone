@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useShoppingStore } from '@/stores/shoppingStore'
 
 const store = useShoppingStore()
@@ -300,6 +300,9 @@ const formatTime = (ts) => {
     return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
+// [BUG FIX] 保存 handler 引用, onUnmounted 才能正确 removeEventListener
+let handleEnterChat = null
+
 onMounted(() => {
     if (activeChatId.value) {
         scrollToBottom()
@@ -308,12 +311,21 @@ onMounted(() => {
     }
     
     // 监听进入聊天的事件
-    window.addEventListener('enter-chat', (e) => {
+    handleEnterChat = (e) => {
         const shopId = e.detail
         if (shopId) {
             enterChat(shopId)
         }
-    })
+    }
+    window.addEventListener('enter-chat', handleEnterChat)
+})
+
+// [BUG FIX] 组件卸载时移除监听器, 防止内存泄漏
+onUnmounted(() => {
+    if (handleEnterChat) {
+        window.removeEventListener('enter-chat', handleEnterChat)
+        handleEnterChat = null
+    }
 })
 </script>
 

@@ -302,6 +302,13 @@ const handleStickerSelect = (sticker) => {
   if (replyInput.value) replyInput.value.focus()
 }
 
+function escapeHtml(str) {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
 function renderMarkdown(text) {
   if (!text) return ''
   let html = typeof marked.parse === 'function' ? marked.parse(text) : marked(text)
@@ -312,10 +319,11 @@ function renderMarkdown(text) {
     // Try to find sticker in store
     const sticker = stickerStore.stickers.find(s => s.name === name)
     if (sticker) {
-      return `<img src="${sticker.url}" alt="${name}" class="inline-block w-16 h-16 object-contain align-middle mx-1" />`
+      // [BUG FIX] sticker.url / name 直接拼到 HTML 属性会触发属性注入 XSS, 需转义
+      return `<img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(name)}" class="inline-block w-16 h-16 object-contain align-middle mx-1" />`
     }
     // Fallback: show text
-    return `<span class="text-sm text-slate-400">[${name}]</span>`
+    return `<span class="text-sm text-slate-400">[${escapeHtml(name)}]</span>`
   })
   
   html = html.replace(/<img /g, '<img class="rounded-2xl shadow-sm border border-slate-100 max-w-full my-3" ')

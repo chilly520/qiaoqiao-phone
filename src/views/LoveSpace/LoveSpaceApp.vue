@@ -646,7 +646,8 @@ function syncContextMemFromStore() {
   if (cfg) {
     contextMem.value = {
       mode: cfg.mode || 'turns',
-      turns: parseInt(cfg.turns) || 30,
+      // [BUG FIX] parseInt('0') -> 0, 0 || 30 会变 30. 用户想填 0(不限制) 时不生效. 改用 ??
+      turns: parseInt(cfg.turns) ?? 30,
       injectDays: parseInt(cfg.injectDays) ?? 7
     }
   }

@@ -846,7 +846,7 @@
                                         (msg.isPlaying || false) ? 'voice-playing-effect' : ''
                                     ]"
                                     :style="[
-                                        { width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px', fontSize: (chatData?.bubbleSize || 15) + 'px' },
+                                        { width: Math.max(80, 40 + getDuration(msg) * 5) + 'px', maxWidth: '200px', fontSize: (chatData?.bubbleSize ?? 15) + 'px' },
                                         computedBubbleStyle
                                     ]"
                                     @click="handleToggleVoice" @contextmenu.prevent="emitContextMenu"
@@ -1272,7 +1272,7 @@
                                         forceOffline ? 'no-bubble-offline w-full' : (msg.role === 'user' ? 'chat-bubble-right shadow-sm' : 'chat-bubble-left shadow-sm'),
                                         (msg.type === 'html' || isHtmlCard) ? 'flex justify-center !w-auto max-w-[90%]' : ''
                                     ]" :style="{
-                                        fontSize: (chatData?.bubbleSize || 15) + 'px',
+                                        fontSize: (chatData?.bubbleSize ?? 15) + 'px',
                                         ...(computedBubbleStyle || {})
                                     }">
                                     <!-- Arrow (only show on last segment for multi-segment messages) -->

@@ -345,7 +345,7 @@ onMounted(() => {
 
     // Also pull visual settings from the generic chat object (synchronized)
     localData.bgUrl = props.chatData?.bgUrl || ''
-    localData.bgBlur = props.chatData?.bgBlur || 0
+    localData.bgBlur = props.chatData?.bgBlur ?? 0
     localData.bgOpacity = props.chatData?.bgOpacity !== undefined ? props.chatData.bgOpacity : 0.8
 })
 
