@@ -1096,7 +1096,9 @@ export const useChatStore = defineStore('chat', () => {
                 .replace(/\[(拒收|退回)(红包|转账|亲属卡):[^\]]+\]/g, '')
                 .trim();
 
-            if (!newMsg.content && (claimMatch || rejectMatch)) return saveChats(); // Pure operation
+            // [BUG FIX] return saveChats() 会返回 Promise, 调用方若做 if(result) 判断会得到 truthy Promise,
+            // 且 reject 时成为 unhandled rejection. 改为 fire-and-forget + return.
+            if (!newMsg.content && (claimMatch || rejectMatch)) { saveChats().catch(() => {}); return; }
 
             // Add system messages for claims/rejects (AFTER AI's message is added)
             if (claimedPayments.length > 0 || rejectedPayments.length > 0) {

@@ -137,8 +137,13 @@ export function toDateStr(date) {
 
 // 工具:日期差
 export function daysBetween(a, b) {
-  const da = new Date(a.toString().split('T')[0])
-  const db = new Date(b.toString().split('T')[0])
+  // [BUG FIX] 之前用 a.toString().split('T')[0] 处理 Date 对象时,
+  // Date.toString() 返回 "Mon Jan 01 2024 ..." (无 T), split 无效.
+  // 且 ISO 字符串 split('T')[0] 会被 new Date() 解析为 UTC 午夜,
+  // 在东八区变成前一天, 产生 off-by-one.
+  // 改用 toDateStr (基于本地 getFullYear/Month/Date) 归一化后计算.
+  const da = new Date(toDateStr(a))
+  const db = new Date(toDateStr(b))
   return Math.round((db - da) / 86400000)
 }
 

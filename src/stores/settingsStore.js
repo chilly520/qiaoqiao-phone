@@ -681,7 +681,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
             isInitialized.value = true
             // Save back to ensure migration
-            saveToStorage()
+            // [BUG FIX] 缺少 await, 迁移后的保存在函数返回后才异步执行,
+            // 与重复的 loadFromStorage 竞争 (已修复重复调用), 但仍需 await 保证迁移持久化完成
+            await saveToStorage()
         } catch (e) {
             console.error('[SettingsStore] Failed to load settings:', e)
             isInitialized.value = true

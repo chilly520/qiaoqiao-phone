@@ -102,7 +102,7 @@ export const useStickerStore = defineStore('sticker', () => {
             }
 
             compressImage(file, { maxWidth: 300, maxHeight: 300, quality: 0.8 })
-                .then(base64 => {
+                .then(async base64 => {
                     const name = file.name.split('.')[0] || `Custom_${Date.now()}`
                     const result = addSticker(base64, name, scope)
 
@@ -110,7 +110,10 @@ export const useStickerStore = defineStore('sticker', () => {
                         const chat = chatStore.chats[scope]
                         if (chat) {
                             const newEmojis = [...(chat.emojis || []), result]
-                            chatStore.updateCharacter(scope, { emojis: newEmojis })
+                            // [BUG FIX] 缺少 await, resolve(base64) 立即返回后
+                            // 角色表情列表的 IndexedDB 持久化仍在进行中,
+                            // 此时若页面刷新或快速切换会导致表情丢失.
+                            await chatStore.updateCharacter(scope, { emojis: newEmojis })
                         }
                     }
 
@@ -123,7 +126,7 @@ export const useStickerStore = defineStore('sticker', () => {
         })
     }
 
-    function deleteSticker(strUrl, scope = 'global') {
+    async function deleteSticker(strUrl, scope = 'global') {
         if (scope === 'global') {
             stickers.value = stickers.value.filter(s => s.url !== strUrl)
             saveStickers()
@@ -131,12 +134,14 @@ export const useStickerStore = defineStore('sticker', () => {
             const chat = chatStore.chats[scope]
             if (chat && chat.emojis) {
                 const newEmojis = chat.emojis.filter(s => s.url !== strUrl)
-                chatStore.updateCharacter(scope, { emojis: newEmojis })
+                // [BUG FIX] 缺少 await, 删除后 IndexedDB 持久化未完成就返回,
+                // 页面刷新会导致删除丢失.
+                await chatStore.updateCharacter(scope, { emojis: newEmojis })
             }
         }
     }
 
-    function deleteBatchStickers(urls, scope = 'global') {
+    async function deleteBatchStickers(urls, scope = 'global') {
         if (!urls || urls.length === 0) return
 
         if (scope === 'global') {
@@ -146,18 +151,20 @@ export const useStickerStore = defineStore('sticker', () => {
             const chat = chatStore.chats[scope]
             if (chat && chat.emojis) {
                 const newEmojis = chat.emojis.filter(s => !urls.includes(s.url))
-                chatStore.updateCharacter(scope, { emojis: newEmojis })
+                // [BUG FIX] 缺少 await, 同 deleteSticker.
+                await chatStore.updateCharacter(scope, { emojis: newEmojis })
             }
         }
     }
 
-    function clearAllStickers(scope = 'global') {
+    async function clearAllStickers(scope = 'global') {
         if (scope === 'global') {
             stickers.value = []
             saveStickers()
         } else {
             if (chatStore.chats[scope]) {
-                chatStore.updateCharacter(scope, { emojis: [] })
+                // [BUG FIX] 缺少 await, 同 deleteSticker.
+                await chatStore.updateCharacter(scope, { emojis: [] })
             }
         }
     }
