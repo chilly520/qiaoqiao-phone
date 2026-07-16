@@ -947,6 +947,14 @@ onUnmounted(() => {
     window.removeEventListener('popstate', handleSettingsPopState)
 })
 
+// [BUG FIX] 清理三个 setTimeout 定时器: 卸载时若 pending 会向已卸载组件
+// 触发 handleContextMenu / showToast / 长按事件
+onUnmounted(() => {
+    if (avatarClickTimer) { clearTimeout(avatarClickTimer); avatarClickTimer = null }
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null }
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null }
+})
+
 watch(() => msgs.value.length, (newLen, oldLen) => {
     if (newLen > oldLen && newLen > 0) {
         const lastMsg = msgs.value[newLen - 1]

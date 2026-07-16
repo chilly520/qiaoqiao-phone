@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 
 const props = defineProps({
   imageSrc: {
@@ -201,6 +201,13 @@ const handleImageTouchEnd = () => {
   document.removeEventListener('touchmove', handleImageTouchMove)
   document.removeEventListener('touchend', handleImageTouchEnd)
 }
+
+// [BUG FIX] 拖拽/缩放进行中关闭模态框时, mouseup/touchend 不会触发,
+// 4 个 document 监听永不释放, 继续向已卸载 canvas 写入. 卸载时强制清理.
+onUnmounted(() => {
+  handleImageMouseUp()
+  handleImageTouchEnd()
+})
 
 // Handle Wheel for zooming
 const handleWheel = (e) => {

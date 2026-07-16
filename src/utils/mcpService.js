@@ -343,8 +343,14 @@ const handleExchange = async (p) => {
 const handleNews = async (p) => {
     const country = String(p.country || 'cn').toLowerCase().trim()
     const cat = String(p.category || 'general').toLowerCase().trim()
+    // [BUG FIX] API key 硬编码在源码里, 任何人查看构建产物即可提取滥用.
+    // 改为读取 Vite 编译期注入的环境变量, 缺失时返回提示 (与 weatherService 的 WAQI_TOKEN 同模式).
+    const NEWSDATA_APIKEY = import.meta.env?.VITE_NEWSDATA_APIKEY
+    if (!NEWSDATA_APIKEY) {
+        return { error: '新闻功能未配置 API key, 请在环境变量 VITE_NEWSDATA_APIKEY 中设置 newsdata.io 的 key' }
+    }
     try {
-        const r = await fetch(`https://newsdata.io/api/1/news?apikey=pub_508120bcb16dd64ff929c2d8f5b6b556e6e44&country=${country}&language=zh&category=${cat}`, { signal: AbortSignal.timeout(10000) })
+        const r = await fetch(`https://newsdata.io/api/1/news?apikey=${NEWSDATA_APIKEY}&country=${country}&language=zh&category=${cat}`, { signal: AbortSignal.timeout(10000) })
         const d = await r.json()
         const articles = (d.results || []).slice(0, 6).map(a => ({ title: a.title, source: a.source_id, url: a.link, published: a.pubDate }))
         return { success: true, category: cat, country, articles, count: articles.length }

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, getCurrentInstance } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useMusicStore } from '../stores/musicStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useChatStore } from '../stores/chatStore'
@@ -82,6 +82,12 @@ const endDrag = () => {
     window.removeEventListener('touchmove', onDrag)
     window.removeEventListener('touchend', endDrag)
 }
+
+// [BUG FIX] 拖拽进行中卸载组件时 endDrag 不会触发, 4 个 window 监听永不释放,
+// 继续向已卸载组件的 ref 写入. 卸载时强制清理.
+onUnmounted(() => {
+    if (isDragging.value) endDrag()
+})
 
 // UI Helpers
 const formatTime = (s) => {
