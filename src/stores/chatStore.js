@@ -397,8 +397,9 @@ export const useChatStore = defineStore('chat', () => {
                     { name: '爱之物 I', image: '' }, { name: '爱之物 II', image: '' }, { name: '爱之物 III', image: '' }
                 ]
             };
-            // Force re-assignment to ensure reactivity and persistence
-            chats.value[chatId] = { ...chat, bio: chat.bio };
+            // [BUG FIX] 原代码用 `chats.value[chatId] = { ...chat, bio: chat.bio }` 重建对象,
+            // 会让所有外部保存的 chat 引用失效(突然变成旧对象的快照,新增消息看不到).
+            // Vue 3 ref + reactive 已经能自动追踪属性赋值, 直接 chat.bio = {...} 即可触发响应式.
         }
 
         // Parse special tags (Mission: Priority)

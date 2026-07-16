@@ -144,12 +144,12 @@ export function daysBetween(a, b) {
 
 // =================================================================
 // 干支纪日(真算法)
-// 基准:1900-01-31 = 甲辰日
+// 基准:1900-01-31 = 甲子日 (index 0)
 // 干支序号:甲子=0,乙丑=1,...,癸亥=59
 // =================================================================
 export function getDayGanZhi(date) {
   const d = new Date(date)
-  const base = new Date(1900, 0, 31)  // 1900-01-31
+  const base = new Date(1900, 0, 31)  // 1900-01-31 = 甲子日
   const diff = Math.floor((d - base) / 86400000)
   const idx = ((diff % 60) + 60) % 60
   return {

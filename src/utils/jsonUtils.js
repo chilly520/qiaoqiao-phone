@@ -112,7 +112,10 @@ export function reconstructMomentsJSON(rawText) {
     // 先做一次智能修复,确保 AI 常见的"内容中含未转义中文引号/换行"问题被处理
     const repaired = _repairJsonStrings(rawText)
     const clean = repaired.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
-        .replace(/[\[【][^\]]*?[\]】]/g, '')
+    // [BUG FIX] 原正则 `/[\[【][^\]]*?[\]】]/g` 会把 JSON 数组 `[{...}]` 整个删掉,
+    // 导致标准 JSON 输入解析失败。改为状态机版本,只在 JSON 字符串外(且不在 JSON
+    // 对象/数组结构内)删除看起来像元数据的方括号对(如 `[心情:好]`、`【备注】`)。
+    const stripped = stripMetaBrackets(clean)
     const moments = []
     // 允许 content 内部出现中文/英文双引号、换行、制表符、转义序列(但不能是未转义的英文 " 或 \)
     const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi
@@ -124,11 +127,11 @@ export function reconstructMomentsJSON(rawText) {
     const typePositions = []
     const typeRegexGlobal = new RegExp('"type"\\s*[:：]\\s*"(comment|reply|like)"', 'gi')
     let tMatch
-    while ((tMatch = typeRegexGlobal.exec(clean)) !== null) {
+    while ((tMatch = typeRegexGlobal.exec(stripped)) !== null) {
         typePositions.push(tMatch.index)
     }
 
-    while ((match = contentRegex.exec(clean)) !== null && idx < 10) {
+    while ((match = contentRegex.exec(stripped)) !== null && idx < 10) {
         const contentStart = match.index
         const isInInteraction = typePositions.some(tp => tp < contentStart && contentStart - tp < 300)
         if (isInInteraction) continue
@@ -137,9 +140,9 @@ export function reconstructMomentsJSON(rawText) {
         const authorRegexLocal = new RegExp('"authorId"\\s*[:：]\\s*"', 'gi')
         authorRegexLocal.lastIndex = 0
         let aMatch
-        while ((aMatch = authorRegexLocal.exec(clean)) !== null) {
+        while ((aMatch = authorRegexLocal.exec(stripped)) !== null) {
             if (aMatch.index < contentStart && aMatch.index > lastAuthorPos) {
-                const afterQuote = clean.substring(aMatch.index + aMatch[0].length)
+                const afterQuote = stripped.substring(aMatch.index + aMatch[0].length)
                 const endQuote = afterQuote.indexOf('"')
                 if (endQuote > 0) {
                     foundAuthor = afterQuote.substring(0, endQuote).trim()
@@ -169,14 +172,14 @@ export function reconstructMomentsJSON(rawText) {
         //       遇到 ecosystemUpdates 块或 interactions 块直接跳过。
         //       如果实在无法定位 newMoments 块, 返回 null 而不是制造错数据。
         try {
-            const newMomentsStart = clean.indexOf('"newMoments"')
-            const ecosystemStart = clean.indexOf('"ecosystemUpdates"')
+            const newMomentsStart = stripped.indexOf('"newMoments"')
+            const ecosystemStart = stripped.indexOf('"ecosystemUpdates"')
             if (newMomentsStart !== -1) {
                 // 找到 newMoments 数组的范围
-                const arrStart = clean.indexOf('[', newMomentsStart)
+                const arrStart = stripped.indexOf('[', newMomentsStart)
                 let arrEnd = -1, depth = 0, inStr = false, esc = false
-                for (let i = arrStart; i < clean.length; i++) {
-                    const ch = clean[i]
+                for (let i = arrStart; i < stripped.length; i++) {
+                    const ch = stripped[i]
                     if (esc) { esc = false; continue }
                     if (ch === '\\') { esc = true; continue }
                     if (ch === '"') { inStr = !inStr; continue }
@@ -185,7 +188,7 @@ export function reconstructMomentsJSON(rawText) {
                     else if (ch === ']') { depth--; if (depth === 0) { arrEnd = i; break } }
                 }
                 if (arrEnd !== -1) {
-                    const newMomentsBlock = clean.substring(arrStart, arrEnd + 1)
+                    const newMomentsBlock = stripped.substring(arrStart, arrEnd + 1)
                     // 在 newMoments 块内找每个 authorId + content 对
                     const itemRegex = /\{\s*"authorId"\s*:\s*"([^"]+)"[\s\S]*?"content"\s*:\s*"([^"]*)"[\s\S]*?(?:"imagePrompts"\s*:\s*\[([\s\S]*?)\])?/g
                     let m
@@ -222,6 +225,103 @@ export function reconstructMomentsJSON(rawText) {
 
     if (moments.length === 0) return null
     return JSON.stringify({ newMoments: moments, ecosystemUpdates: [] })
+}
+
+/**
+ * 删除 AI 输出中的"元数据方括号" (如 [心情:好] / 【备注】),
+ * 但不破坏 JSON 结构内的 `[]` / `{}` / 字符串内的方括号。
+ */
+function stripMetaBrackets(text) {
+    let out = ''
+    let inStr = false
+    let escaped = false
+    // 用 brace 跟踪 JSON 结构深度 (遇到 `[{` 或 `}]` 我们视为在 JSON 内)
+    let jsonDepth = 0
+    // 当前是否在 [..] 方括号对中(可能是 JSON 数组也可能是元数据)
+    let bracketContent = ''
+    // 记录每个 [ 的"是否为元数据"判断: 看内部是否像 JSON (含 { , : " 等)
+    let bracketStartIsJson = false
+    let bracketStart = -1
+    const brackets = [] // 栈,每个元素: { start, isJson }
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+
+        if (escaped) {
+            if (bracketStart !== -1) bracketContent += ch
+            else out += ch
+            escaped = false
+            continue
+        }
+
+        // 字符串状态
+        if (ch === '\\') {
+            if (bracketStart !== -1) bracketContent += ch
+            else out += ch
+            escaped = true
+            continue
+        }
+
+        if (ch === '"') {
+            inStr = !inStr
+            if (bracketStart !== -1) bracketContent += ch
+            else out += ch
+            continue
+        }
+
+        if (inStr) {
+            if (bracketStart !== -1) bracketContent += ch
+            else out += ch
+            continue
+        }
+
+        // [ 或 【 - 开始一个方括号块
+        if (ch === '[' || ch === '【') {
+            if (bracketStart === -1) {
+                bracketStart = i
+                bracketContent = ''
+                // 窥探下一个非空字符: 如果是 `{` 或 `"` 则是 JSON 数组
+                let j = i + 1
+                while (j < text.length && /\s/.test(text[j])) j++
+                bracketStartIsJson = text[j] === '{' || text[j] === '"'
+            } else {
+                // 嵌套的方括号,继续累积内容
+                bracketContent += ch
+            }
+            continue
+        }
+
+        // ] 或 】 - 结束方括号
+        if (ch === ']' || ch === '】') {
+            if (bracketStart !== -1) {
+                // 结束当前方括号块
+                if (!bracketStartIsJson) {
+                    // 元数据,丢弃
+                    // 不写入 out
+                } else {
+                    // JSON 数组,保留
+                    out += text.substring(bracketStart, i + 1)
+                }
+                bracketStart = -1
+                bracketContent = ''
+                bracketStartIsJson = false
+            } else {
+                // 孤立的 ],保留
+                out += ch
+            }
+            continue
+        }
+
+        // 普通字符
+        if (bracketStart !== -1) {
+            bracketContent += ch
+        } else {
+            out += ch
+        }
+    }
+
+    // 如果字符串以未闭合的 [ 结尾,丢弃它
+    return out
 }
 
 /**

@@ -367,15 +367,19 @@ export function startPeriodToday(cycles) {
   const today = normalizeDate(new Date())
   const todayStr = toDateStr(today)
   const data = normalizeCycles(cycles)
-  // 如果已有进行中的,直接返回
-  const current = getCurrentPeriod(cycles)
-  if (current) {
-    return { cycles: data, message: '今天已在经期中', alreadyActive: true }
-  }
-  // 检查今天是否已存在记录
+  // [BUG FIX] 原代码先调 getCurrentPeriod (范围匹配), 再查 existing (精确匹配 startDate).
+  // 这导致 existing 分支是死代码: 当 startDate===today 时, duration > 0,
+  // getCurrentPeriod 必返回 current, 永远到不了 existing 检查。
+  // 修复: 直接做精确匹配, 把 current 的存在性检查也合并到此分支.
   const existing = data.find(c => c.startDate === todayStr)
   if (existing) {
-    return { cycles: data, message: '今天已记录开始', alreadyExists: true }
+    const hasOpenPeriod = !existing.endDate  // 还在经期中 vs 已是历史记录
+    return {
+      cycles: data,
+      message: hasOpenPeriod ? '今天已在经期中' : '今天已记录开始',
+      alreadyActive: hasOpenPeriod,
+      alreadyExists: !hasOpenPeriod
+    }
   }
   // 默认经期 5 天
   const newCycle = {
