@@ -135,6 +135,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useCalendarStore } from '@/stores/calendarStore'
+import { formatDate } from '@/utils/common'
 
 const props = defineProps({
   date: {
@@ -183,7 +184,7 @@ watch(() => form.value.startDate, (newStart) => {
     const start = new Date(newStart)
     const end = new Date(start)
     end.setDate(start.getDate() + 4)
-    form.value.endDate = end.toISOString().split('T')[0]
+    form.value.endDate = formatDate(end)
   }
 }, { immediate: true })
 
@@ -192,7 +193,7 @@ if (!form.value.endDate) {
   const start = new Date(form.value.startDate)
   const end = new Date(start)
   end.setDate(start.getDate() + 4)
-  form.value.endDate = end.toISOString().split('T')[0]
+  form.value.endDate = formatDate(end)
 }
 
 const showSettings = ref(false)

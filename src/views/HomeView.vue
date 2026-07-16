@@ -97,6 +97,7 @@ const currentTime = ref('00:00:00')
 const currentDate = ref('2024年1月1日 星期一')
 
 let clockTimer = null
+let weatherTimer = null
 
 function updateClock() {
   const now = new Date()
@@ -246,7 +247,11 @@ async function fetchWeather() {
       // 3. 获取 AQI 数据（使用 WAQI - 世界空气质量指数项目）
       // 这是免费的，使用你的专属 token
       try {
-        const WAQI_TOKEN = 'aaae869d45d449aada6f69701077db35ced2a21f'
+        const WAQI_TOKEN = import.meta.env.VITE_WAQI_TOKEN || ''
+        if (!WAQI_TOKEN) {
+          weatherAqi.value = 'AQI --'
+          return
+        }
         console.log('[AQI] 请求城市:', aqiCityName, '(中文名:', name, ')')
         const aqiRes = await fetch(`https://api.waqi.info/feed/${aqiCityName}/?token=${WAQI_TOKEN}`)
         console.log('[AQI] 响应状态:', aqiRes.status)
@@ -326,7 +331,7 @@ onMounted(() => {
   fetchWeather()
 
   // Background refresh
-  setInterval(fetchWeather, cacheDuration)
+  weatherTimer = setInterval(fetchWeather, cacheDuration)
 
   // Fix scroll position after reload
   if (sessionStorage.getItem('justReloaded') === 'true') {
@@ -343,6 +348,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
+  if (weatherTimer) clearInterval(weatherTimer)
 })
 </script>
 

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import localforage from 'localforage'
 import { LOVE_SPACE_GENERATOR_PROMPT } from '@/utils/ai/prompts_love'
 import { useChatStore } from './chatStore.js'
-import { getLastNTurns } from '@/utils/common'
+import { getLastNTurns, getTodayStr } from '@/utils/common'
 
 const loveSpaceDB = localforage.createInstance({
   name: 'qiaoqiao-phone',
@@ -1101,7 +1101,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       if (!chat) return
 
       const userProfile = settingsStore.personalization.userProfile
-      const dateToUse = targetDate || new Date().toISOString().split('T')[0]
+      const dateToUse = targetDate || getTodayStr()
       // v1.10.91: 注入记忆天数(只把最近 N 天内的内容灌到 system prompt)
       const injectDays = this.currentSpace?.contextMemory?.injectDays ?? 7
       // 辅助:过滤+按时间倒序

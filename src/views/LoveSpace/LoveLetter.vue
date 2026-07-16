@@ -197,7 +197,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 
@@ -470,10 +470,15 @@ async function deleteLetter(id) {
   await loveSpaceStore.saveToStorage()
 }
 
+let timeTimer = null
 onMounted(() => {
   // 初始化时间和季节
   updateTime()
-  setInterval(updateTime, 1000) // 每秒更新时间
+  timeTimer = setInterval(updateTime, 1000) // 每秒更新时间
+})
+
+onUnmounted(() => {
+  if (timeTimer) clearInterval(timeTimer)
 })
 </script>
 

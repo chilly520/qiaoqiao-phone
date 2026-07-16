@@ -36,28 +36,29 @@ function updateTime() {
   currentTime.value = `${hours}:${minutes}`
 }
 
+let timeTimer = null
 onMounted(async () => {
   updateTime()
-  const timer = setInterval(updateTime, 1000)
-  
+  timeTimer = setInterval(updateTime, 1000)
+
   // 初始化电池监控
   const initialized = await batteryMonitor.init()
   if (initialized) {
     const info = batteryMonitor.getBatteryInfo()
     batteryLevel.value = info.level
     batteryCharging.value = info.charging
-    
+
     // 监听电池状态变化
     batteryMonitor.onChange((info) => {
       batteryLevel.value = info.level
       batteryCharging.value = info.charging
     })
   }
-  
-  onUnmounted(() => {
-    clearInterval(timer)
-    batteryMonitor.destroy()
-  })
+})
+
+onUnmounted(() => {
+  if (timeTimer) clearInterval(timeTimer)
+  batteryMonitor.destroy()
 })
 </script>
 

@@ -95,6 +95,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useChatStore } from '@/stores/chatStore'
+import { getTodayStr, formatDate } from '@/utils/common'
 
 const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
@@ -105,15 +106,15 @@ const partnerName = computed(() => loveSpaceStore.partner?.name || 'TA')
 const isGenerating = computed(() => loveSpaceStore.isMagicGenerating)
 const scrollContainer = ref(null)
 
-const selectedDate = ref(new Date().toISOString().split('T')[0])
-const todayStr = new Date().toISOString().split('T')[0]
+const selectedDate = ref(getTodayStr())
+const todayStr = getTodayStr()
 const currentMonth = ref(new Date())
 
 const footprintDates = computed(() => {
   const dates = new Set()
   footprints.value.forEach(f => {
     if (f.createdAt) {
-      dates.add(new Date(f.createdAt).toISOString().split('T')[0])
+      dates.add(formatDate(f.createdAt))
     }
   })
   return dates
@@ -132,10 +133,10 @@ const calendarDays = computed(() => {
   const prevMonthLastDay = new Date(d.getFullYear(), d.getMonth(), 0).getDate()
   for (let i = startOffset - 1; i >= 0; i--) {
      const date = new Date(d.getFullYear(), d.getMonth() - 1, prevMonthLastDay - i)
-     days.push({ 
-       day: date.getDate(), 
-       dateStr: date.toISOString().split('T')[0],
-       isCurrentMonth: false 
+     days.push({
+       day: date.getDate(),
+       dateStr: formatDate(date),
+       isCurrentMonth: false
      })
   }
 
@@ -143,21 +144,21 @@ const calendarDays = computed(() => {
   const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
   for (let i = 1; i <= lastDay; i++) {
     const date = new Date(d.getFullYear(), d.getMonth(), i)
-    days.push({ 
-       day: i, 
-       dateStr: date.toISOString().split('T')[0],
-       isCurrentMonth: true 
-    })
+    days.push({
+       day: i,
+       dateStr: formatDate(date),
+       isCurrentMonth: true
+     })
   }
-  
+
   // Fill remaining days
   const remaining = 42 - days.length
   for (let i = 1; i <= remaining; i++) {
     const date = new Date(d.getFullYear(), d.getMonth() + 1, i)
-    days.push({ 
-      day: i, 
-      dateStr: date.toISOString().split('T')[0],
-      isCurrentMonth: false 
+    days.push({
+      day: i,
+      dateStr: formatDate(date),
+      isCurrentMonth: false
     })
   }
   
@@ -186,7 +187,7 @@ const groupedFootprints = computed(() => {
   
   // 过滤出选中的日期
   const filtered = list.filter(f => {
-    const dStr = new Date(f.createdAt).toISOString().split('T')[0]
+    const dStr = formatDate(f.createdAt)
     return dStr === selectedDate.value
   })
 

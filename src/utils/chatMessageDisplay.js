@@ -260,7 +260,9 @@ export function getOnlineRenderableContent(msg) {
   const partitioned = getModePartitionedContent(raw, 'ONLINE')
   if (partitioned) return partitioned;
 
-  return getModePartitionedContent(raw, 'ONLINE')
+  // 没有 [ONLINE] 标签时,若内容是纯线上文本(没有剧场标记),则返回原文,
+  // 否则返回空字符串以避免把线下内容错误地展示到线上.
+  return hasOfflineTheaterContent(msg) ? '' : raw
 }
 
 export function getOfflineTextContent(msg) {
@@ -606,10 +608,7 @@ export function extractInnerVoiceData(content, msg) {
       ? raw.indexOf('[INNERVOICE]')
       : -1
 
-  console.log(`[extractInnerVoice] Searching for INNER_VOICE in content (length: ${raw.length}), found at: ${innerVoiceStart}`)
-
   if (innerVoiceStart === -1) {
-    console.log('[extractInnerVoice] No INNER_VOICE tag found')
     return null
   }
 

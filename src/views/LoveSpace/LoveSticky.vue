@@ -26,7 +26,7 @@
         <button class="delete-note-btn" @click.stop="deleteSticky(note.id)">
           <i class="fa-solid fa-xmark"></i>
         </button>
-        <div class="note-content" v-html="note.content"></div>
+        <div class="note-content">{{ note.content }}</div>
         <div class="note-footer">
           <span class="note-author">{{ getAuthorName(note.author) }}</span>
           <span class="note-date">{{ formatDetailedDate(note.createdAt) }}</span>
@@ -360,6 +360,7 @@ h2 {
   border-radius: 8px;
   position: relative;
   z-index: 10;
+  white-space: pre-wrap;
 }
 
 .note-footer {

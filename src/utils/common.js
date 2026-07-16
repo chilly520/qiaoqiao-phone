@@ -4,6 +4,31 @@
  */
 
 /**
+ * 获取今天的本地日期字符串 (YYYY-MM-DD).
+ * [BUG FIX] 替代 `new Date().toISOString().split('T')[0]`, 后者返回 UTC 日期,
+ * 在 UTC+8 时区凌晨 0-8 点会取到"昨天", 导致日期判断错误.
+ * @returns {string} 'YYYY-MM-DD'
+ */
+export function getTodayStr() {
+    const d = new Date()
+    return formatDate(d)
+}
+
+/**
+ * 将 Date 对象格式化为本地日期字符串 (YYYY-MM-DD).
+ * 统一项目中所有 `date.toISOString().split('T')[0]` 模式,
+ * 避免 UTC 转换导致的日期错位.
+ * @param {Date|string|number} d
+ * @returns {string} 'YYYY-MM-DD'
+ */
+export function formatDate(d) {
+    if (!d) return ''
+    const dt = d instanceof Date ? d : new Date(d)
+    if (isNaN(dt.getTime())) return ''
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+/**
  * 将任意类型的值安全转换为字符串
  * 处理字符串、字符串数组、对象（含 text/content 字段）等情况
  *

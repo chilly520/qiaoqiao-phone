@@ -108,9 +108,17 @@ const defaultBed = new Date(defaultWake)
 defaultBed.setHours(23, 0, 0, 0)
 defaultBed.setDate(defaultBed.getDate() - 1)
 
+// 把本地时间格式化为 datetime-local 需要的 "YYYY-MM-DDTHH:mm" 字符串
+// (用 toISOString() 会把本地时间错转成 UTC, 凌晨 0-8 点会出现日期错位)
+function toLocalInputStr(d) {
+    const dt = d instanceof Date ? d : new Date(d)
+    if (isNaN(dt.getTime())) return ''
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}T${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`
+}
+
 const form = ref({
-  bedTime: defaultBed.toISOString().slice(0, 16),
-  wakeTime: defaultWake.toISOString().slice(0, 16),
+  bedTime: toLocalInputStr(defaultBed),
+  wakeTime: toLocalInputStr(defaultWake),
   quality: 'good',
   tags: [],
   note: ''

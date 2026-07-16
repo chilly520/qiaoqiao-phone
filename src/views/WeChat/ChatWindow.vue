@@ -936,11 +936,10 @@ onMounted(async () => {
     };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    // Cleanup on unmount
-    onUnmounted(() => {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-    });
+})
+
+onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
 })
 
 onUnmounted(() => {
