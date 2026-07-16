@@ -2,10 +2,58 @@
  * 情侣空间专用生成提示词 - JSON 协议版
  */
 
-export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceHistory, history) {
+export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceHistory, history, drawingConfig = null) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString();
   const dateStr = spaceHistory.targetDate || now.toLocaleDateString();
+
+  // v1.10.157: 情侣空间相册生图暗号说明(参考 prompts_private.js)
+  // 让 AI 在 draw_cmd 里加前缀暗号控制系统参考哪张形象图
+  const drawCfg = drawingConfig || {};
+  const isVolcEngine = drawCfg.provider === 'volcengine' && drawCfg.keys?.volcengine;
+  const volcEnabled = isVolcEngine && drawCfg.volcengine?.useAppearanceImage !== false;
+  const hasCharAppearance = !!drawCfg.charAppearanceImage;
+  const hasUserAppearance = !!drawCfg.userAppearanceImage;
+  const hasBothAppearance = hasCharAppearance && hasUserAppearance;
+  const volcStyle = drawCfg.globalImageStyle === 'anime' ? '动漫插画风格' : '真实照片风格';
+
+  let albumDrawInstruction = `7. **相册与绘画 (album)**：
+   - 你可以直接上传照片 (imageUrl) 或使用 \`[DRAW: 暗号 中文图片提示词]\` 指令现场创作。
+   - **火山引擎是中文生图模型,提示词必须用中文写**,描述要具体(人物外貌、服装、场景、动作、光线、风格)。不要写英文,不要用 (keyword:1.5) 权重语法,火山引擎不支持。`;
+  if (isVolcEngine && volcEnabled) {
+      if (hasBothAppearance) {
+          albumDrawInstruction += `
+   - **🎯 形象图参考暗号(已开启)**：你已上传你的形象图和${charName}的形象图。在 DRAW 提示词前加暗号,控制系统参考哪张形象图：
+     * \`@us\` → **同时参考两张图,生成你俩的合照**(强烈建议!相册默认就是两人的甜蜜瞬间,多用此暗号)
+     * \`@char\` → 参考${charName}的形象图(画${charName}单人照时用)
+     * \`@me\` → 参考你的形象图(画用户本人单人照时用)
+     * \`@scene\` → 不参考任何形象图,纯文生图(风景/美食/物品/动物/第三方路人时用)
+     * 不加暗号 → 系统自动判断(但相册场景下建议总是加暗号,避免生成不像你俩的路人照)
+   - **示例**：
+     * 合照：\`[DRAW: @us 我们在樱花树下牵手对视微笑,夕阳余晖,${volcStyle}]\`
+     * ${charName}单人：\`[DRAW: @char ${charName}穿着白色连衣裙在海边散步,${volcStyle}]\`
+     * 风景：\`[DRAW: @scene 雨后的城市街道,霓虹灯倒影在水洼里]\`
+   - 当前生图风格：${volcStyle}`;
+      } else if (hasCharAppearance) {
+          albumDrawInstruction += `
+   - **🎯 形象图参考暗号(已开启)**：已设置${charName}的形象图。在 DRAW 提示词前加暗号：
+     * \`@char\` → 参考${charName}的形象图(画${charName}时用,如自拍/写真)
+     * \`@scene\` → 不参考形象图(风景/物品/第三方路人时用)
+     * 不加暗号 → 系统自动判断
+   - **示例**：\`[DRAW: @char ${charName}在咖啡馆看书,午后阳光,${volcStyle}]\`
+   - 当前生图风格：${volcStyle}`;
+      } else if (hasUserAppearance) {
+          albumDrawInstruction += `
+   - **🎯 形象图参考暗号(已开启)**：已上传你的形象图。在 DRAW 提示词前加暗号：
+     * \`@me\` → 参考你的形象图(画用户本人时用)
+     * \`@scene\` → 不参考形象图(风景/物品/第三方路人时用)
+     * 不加暗号 → 系统自动判断
+   - 当前生图风格：${volcStyle}`;
+      } else {
+          albumDrawInstruction += `
+   - 提示：你俩都还没上传形象图。如需生成更像你们的相册照片,可引导用户去角色资料页和"我的"页面上传形象图。`;
+      }
+  }
 
   return `你是 ${charName}。你现在正在与 ${userName} 经营你们专属的情侣空间（Love Space）。
 当前系统参考日期：${dateStr} (当前实际时间：${timeStr})。
@@ -71,8 +119,7 @@ export function LOVE_SPACE_GENERATOR_PROMPT(charName, userName, loveDays, spaceH
 6. **扭蛋奖励 (gacha)**：
    - 【重要】奖励要极度丰富多样！涵盖：衣（情侣装、饰品）、食（浪漫大餐、奇怪的小零食）、住（小屋装修券、同枕共眠券）、行（说走就走的旅行、公园漫步）、生活礼物（鲜花、电子产品）、金钱（恋爱基金、清空购物车）、行为（一个深吻、揉头杀、做饭给你吃）、或是抽象特权（免死金牌、翻牌权、决策权）。
    - 格式：{ "name": "奖励名", "desc": "具体的承诺或描述（带点调情或温馨感）", "icon": "fa-solid 图标" }。
-7. **相册与绘画 (album)**：
-   - 你可以直接上传照片 (imageUrl) 或使用 [DRAW] 指令现场创作。
+${albumDrawInstruction}
 8. **个性化纪念日 (anniversary)**：
    - 记录值得纪念的小瞬间。格式：{ "name": "...", "date": "YYYY-MM-DD" }。
 9. **两人小屋 (house)**：

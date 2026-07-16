@@ -1175,9 +1175,18 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       // v1.10.91: 用 contextMemory 配置(turns/daily)取上下文,默认 30 轮
       const charHistory = this._getRecentChats(charId)
 
+      // v1.10.157: 准备 drawingConfig 传给 LOVE_SPACE_GENERATOR_PROMPT,
+      // 让 AI 知道形象图能力,在 album draw_cmd 里用 @暗号控制参考图
+      const baseDrawingConfig = settingsStore.drawing?.value || settingsStore.drawing || {}
+      const drawingConfigForLoveSpace = {
+        ...baseDrawingConfig,
+        charAppearanceImage: chat.appearanceImage || null,
+        userAppearanceImage: chat.userAppearanceImage || baseDrawingConfig.userAppearanceImage || null
+      }
+
       const msgWarning = spaceHistory.recentUserMessages ? "" : "\n【重要】甜蜜留言板当前是空的，不要尝试回复任何不存在的消息（replyToId 也要为空）。";
       const systemPrompt = `你现在是 ${chat.name}。你正在与 ${userProfile.name} 经营专属情侣空间。
-${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceHistory, charHistory)}${msgWarning}
+${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceHistory, charHistory, drawingConfigForLoveSpace)}${msgWarning}
 严禁输出任何多余内容，只需输出以 [LS_JSON: ...] 格式包裹的指令集。`;
 
       try {
@@ -1740,19 +1749,32 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
               if (!imageUrl && cmd.draw_cmd) {
                 // 先保存占位符，后台生成图片
                 const tempId = Date.now()
-                await this.addToAlbum({ 
-                  title: cmd.title, 
+                await this.addToAlbum({
+                  title: cmd.title,
                   url: '', // 占位符
-                  desc: cmd.desc, 
-                  draw_cmd: cmd.draw_cmd, 
+                  desc: cmd.desc,
+                  draw_cmd: cmd.draw_cmd,
                   author: 'partner',
                   tempId: tempId
                 })
                 chatStore.triggerToast('🖼️ 相册已生成 (图片生成中...)', 'success')
+                // v1.10.157: 解析 draw_cmd 中的暗号(@char/@me/@us/@scene),
+                // 剥离后传给 generateImage 控制参考图(参考 chatStore draw 处理逻辑)
+                let drawPrompt = cmd.draw_cmd.replace(/\[DRAW:\s*([\s\S]*?)\]/i, '$1').trim()
+                let appearanceRefMode = null
+                // 先匹配固定暗号 @char/@me/@us/@scene
+                const refMatch = drawPrompt.match(/^@(char|me|us|scene)\s+/i)
+                if (refMatch) {
+                  appearanceRefMode = refMatch[1].toLowerCase()
+                  drawPrompt = drawPrompt.substring(refMatch[0].length).trim()
+                }
                 // 后台异步生成图片，不阻塞
                 const { generateImage } = await import('../utils/aiService.js')
-                const prompt = cmd.draw_cmd.replace(/\[DRAW:\s*(.*?)\s*\]/i, '$1')
-                generateImage(prompt, { chatId: this.currentPartnerId })
+                generateImage(drawPrompt, {
+                  chatId: this.currentPartnerId,
+                  appearanceRef: true,
+                  appearanceRefMode
+                })
                   .then(url => {
                     // 图片生成完成后更新
                     const album = this.currentSpace.album.find(a => a.tempId === tempId)
