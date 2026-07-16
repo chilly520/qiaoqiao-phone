@@ -21,6 +21,11 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   const mutteringQueue = ref([])         // 碎碎念队列
   const isDiscovered = ref(false)        // 是否被发现
 
+  // [BUG FIX] 保存 setTimeout ID 以便在 closeInspection 时清理,
+  // 避免回调在会话关闭后仍触发 (例如 discoverUser 延迟关闭会误关新会话)
+  let _discoverTimer = null
+  const _mutteringTimers = []
+
   // Custom Modal State
   const modalState = ref({
     show: false,
@@ -222,6 +227,12 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     isDiscovered.value = false
     mutteringQueue.value = []
 
+    // [BUG FIX] 清理待执行的 setTimeout, 避免回调在会话关闭后仍触发
+    if (_discoverTimer) { clearTimeout(_discoverTimer); _discoverTimer = null }
+    while (_mutteringTimers.length > 0) {
+      clearTimeout(_mutteringTimers.pop())
+    }
+
     // 重置风险值（每次退出后刷新）
     if (currentChar.value?.phoneData) {
       currentChar.value.phoneData.riskSystem.currentRisk = 0
@@ -276,8 +287,11 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
     // 先保存角色名, 再在 setTimeout 回调中使用.
     const charName = currentChar.value?.name || '对方'
 
-    // 延迟关闭页面
-    setTimeout(() => {
+    // [BUG FIX] 保存 timer ID, 在 closeInspection 时清理,
+    // 避免用户在 2 秒内重开会话时延迟回调误关新会话
+    if (_discoverTimer) clearTimeout(_discoverTimer)
+    _discoverTimer = setTimeout(() => {
+      _discoverTimer = null
       closeInspection()
       // 触发 ChatStore 的警告消息
       const chatStore = useChatStore()
@@ -310,9 +324,13 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
         type: isHacking ? 'caught' : 'allowed',
         timestamp: Date.now()
       })
-      setTimeout(() => {
+      // [BUG FIX] 保存 timer ID 以便在 closeInspection 时清理, 避免会话关闭后回调仍执行
+      const timer = setTimeout(() => {
         if (mutteringQueue.value.length > 0) mutteringQueue.value.shift()
+        const idx = _mutteringTimers.indexOf(timer)
+        if (idx > -1) _mutteringTimers.splice(idx, 1)
       }, 5000)
+      _mutteringTimers.push(timer)
       return
     }
 

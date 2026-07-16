@@ -264,6 +264,8 @@ export const useShoppingStore = defineStore('shopping', () => {
 
     // 生成 AI 评价和晒图
     const generateReviewsAI = async (product, force = false) => {
+        // [BUG FIX] 缺少重入保护, 与 generateProductsAI/triggerAIReply 共用 loading 标记
+        if (loading.value) return
         if (!force && reviews.value[product.id] && reviews.value[product.id].length > 0) {
             console.log('评价已存在，跳过生成')
             return

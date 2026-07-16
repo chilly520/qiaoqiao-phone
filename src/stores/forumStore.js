@@ -804,6 +804,8 @@ export const useForumStore = defineStore('forum', () => {
     }
 
     const generateMoreComments = async (postId) => {
+        // [BUG FIX] 缺少重入保护, 用户快速点击"加载更多评论"会并发触发 AI 请求
+        if (isGenerating.value) return;
         const forumId = currentForumId.value;
         // [BUG FIX] posts.value[forumId] 可能不存在, 直接 .find() 会抛 TypeError
         const postList = posts.value[forumId];
