@@ -170,8 +170,9 @@ export const useMahjongStore = defineStore('mahjong', () => {
         currentRoom.value = {
             id: roomId,
             mode: config.mode || 'quick',
-            baseStake: config.baseStake || 100,
-            totalRounds: config.totalRounds || 4,
+            // [BUG FIX] || 会把合法的 0 (免费/零底注) 当成 falsy 改成默认值, 改用 ??
+            baseStake: config.baseStake ?? 100,
+            totalRounds: config.totalRounds ?? 4,
             currentRound: 1,
             players: [],
             status: 'waiting'
@@ -598,7 +599,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
         const fan = winInfo.fan
 
         // 底分 calculation: baseStake * 2^(fan)
-        const baseScore = currentRoom.value.baseStake || 100
+        // [BUG FIX] || 会把合法的 0 底注当成 100, 算出错误结算金额, 改用 ??
+        const baseScore = currentRoom.value.baseStake ?? 100
         const totalScore = baseScore * Math.pow(2, fan)
 
         const isZiMo = (typeof gameState.value.leftTileCount !== 'undefined') ? (gameState.value.currentPlayer === players.indexOf(winner)) : false
@@ -1015,9 +1017,15 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
 
         const getTileEmoji = (tile) => {
             if (!tile) return ''
-            if (tile.startsWith('w')) return ['一','二','三','四','五','六','七','八','九'][parseInt(tile[1]) - 1] + '万'
-            if (tile.startsWith('t')) return ['一','二','三','四','五','六','七','八','九'][parseInt(tile[1]) - 1] + '条'
-            if (tile.startsWith('b')) return ['一','二','三','四','五','六','七','八','九'][parseInt(tile[1]) - 1] + '筒'
+            // [BUG FIX] parseInt(tile[1]) 对非法 tile (如 'w' 无数字/'w0') 返回 NaN,
+            // 数组索引为 NaN-1 得到 undefined, 拼出 "undefined万". 增加范围校验.
+            const numNames = ['一','二','三','四','五','六','七','八','九']
+            if (tile.startsWith('w') || tile.startsWith('t') || tile.startsWith('b')) {
+                const n = parseInt(tile.slice(1), 10)
+                if (isNaN(n) || n < 1 || n > 9) return tile
+                const suffix = tile.startsWith('w') ? '万' : (tile.startsWith('t') ? '条' : '筒')
+                return numNames[n - 1] + suffix
+            }
             const honorMap = { 'east': '东', 'south': '南', 'west': '西', 'north': '北', 'red': '红中', 'green': '发财', 'white': '白板' }
             return honorMap[tile] || tile
         }

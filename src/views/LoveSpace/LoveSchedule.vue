@@ -196,9 +196,14 @@ const calendarDays = computed(() => {
   const selected = selectedDate.value
   
   // 上月日期
+  // [BUG FIX] month 是 0-indexed, 原代码直接用 String(month) 当月份, 1 月(month=0)会生成
+  // "2026-00-31" 这种非法日期; 且年份未回退, 12 月的 trailing day 应属于上年 12 月.
+  // 改为计算真实的上月月份/年份.
+  const prevMonth = month === 0 ? 11 : month - 1
+  const prevYear = month === 0 ? year - 1 : year
   for (let i = startWeekday - 1; i >= 0; i--) {
     const day = prevMonthLastDay.getDate() - i
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const dateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     days.push({
       day,
       date: dateStr,

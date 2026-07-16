@@ -312,7 +312,21 @@ function escapeHtml(str) {
 function renderMarkdown(text) {
   if (!text) return ''
   let html = typeof marked.parse === 'function' ? marked.parse(text) : marked(text)
-  
+
+  // [BUG FIX] marked.parse (v5+ 无内置 sanitize) 会原样输出原始 HTML,
+  // post.content / comment.content 来自用户/AI, 含 <script>/<img onerror>/<a href="javascript:">
+  // 会通过 v-html 执行, 构成存储型 XSS (每个查看者都中招).
+  // 此处剥离危险标签/属性/URL 方案.
+  html = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<(object|embed|form|template|noscript|applet)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(?:input|button|select|textarea|link|meta|base|frame|frameset|object|embed|form|template|noscript|applet)\b[^>]*\/?>/gi, '')
+    .replace(/\son\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+    .replace(/(href|src|action|formaction)\s*=\s*(['"])\s*(?:javascript|vbscript|data:text\/html):[^'"]*\2/gi, '$1=$2#$2')
+    .replace(/(href|src|action|formaction)\s*=\s*(?:javascript|vbscript|data:text\/html):[^\s>]*/gi, '$1="#"')
+
   // Render emoji tags [表情包：名称]
   const stickerRegex = /\[表情包:([^\]]+)\]/g
   html = html.replace(stickerRegex, (match, name) => {
@@ -325,7 +339,7 @@ function renderMarkdown(text) {
     // Fallback: show text
     return `<span class="text-sm text-slate-400">[${escapeHtml(name)}]</span>`
   })
-  
+
   html = html.replace(/<img /g, '<img class="rounded-2xl shadow-sm border border-slate-100 max-w-full my-3" ')
   return html
 }

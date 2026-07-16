@@ -18,7 +18,22 @@ export const useFavoritesStore = defineStore('favorites', () => {
     }
 
     function saveFavorites() {
-        localStorage.setItem('wechat_favorites', JSON.stringify(favorites.value))
+        // [BUG FIX] 无 try/catch, localStorage 满时 setItem 抛 QuotaExceededError,
+        // 而 addFavorite 等已先 mutate 内存, 抛出后内存与磁盘不一致且无恢复.
+        try {
+            localStorage.setItem('wechat_favorites', JSON.stringify(favorites.value))
+        } catch (e) {
+            if (e.name === 'QuotaExceededError' || e.code === 22) {
+                console.warn('[FavoritesStore] localStorage 配额已满, 尝试裁剪最近 200 条保存')
+                try {
+                    localStorage.setItem('wechat_favorites', JSON.stringify(favorites.value.slice(-200)))
+                } catch (e2) {
+                    console.error('[FavoritesStore] 裁剪后仍无法保存', e2)
+                }
+            } else {
+                console.error('[FavoritesStore] saveFavorites failed', e)
+            }
+        }
     }
 
     function addFavorite(msg, chatName, avatarUrl) {

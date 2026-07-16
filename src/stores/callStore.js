@@ -28,6 +28,9 @@ export const useCallStore = defineStore('call', () => {
     let timer = null
     let ringtone = null
     let incomingCallTimer = null // 来电超时定时器
+    // [BUG FIX] endCall 的 setTimeout ID 原来未保存, 连续两次通话结束(如通话A结束→
+    // 开始通话B→结束B)时, A 的定时器会先触发, 把 B 的 'ended' 状态提前清成 'none'.
+    let endCallTimer = null
 
     // ACTIONS
     const updateStatus = (newStatus) => {
@@ -82,6 +85,8 @@ export const useCallStore = defineStore('call', () => {
             chatStore.triggerToast('当前通话尚未结束', 'warning')
             return
         }
+        // [BUG FIX] 清理上一次 endCall 残留的 pending 定时器, 否则它会把新通话状态清成 'none'
+        if (endCallTimer) { clearTimeout(endCallTimer); endCallTimer = null }
         status.value = 'dialing'
         initiator.value = 'user'
         type.value = callType
@@ -102,7 +107,8 @@ export const useCallStore = defineStore('call', () => {
 
         // --- Busy Signal Logic ---
         if (status.value !== 'none') {
-            console.log(`[CallStore] Auto-rejecting incoming call from ${callPartner.name} due to active call with ${partner.value?.name}`);
+            // [BUG FIX] callPartner 可能未传 name, 用可选链避免 TypeError (与同行 partner.value?.name 一致)
+            console.log(`[CallStore] Auto-rejecting incoming call from ${callPartner?.name} due to active call with ${partner.value?.name}`);
 
             // Add system message to the new partner's chat history
             chatStore.addMessage(callPartner.id, {
@@ -120,6 +126,8 @@ export const useCallStore = defineStore('call', () => {
             return
         }
 
+        // [BUG FIX] 清理上一次 endCall 残留的 pending 定时器, 同 startCall
+        if (endCallTimer) { clearTimeout(endCallTimer); endCallTimer = null }
         status.value = 'incoming'
         initiator.value = 'ai'
         type.value = callType
@@ -422,12 +430,16 @@ export const useCallStore = defineStore('call', () => {
         const wasDialingOrIncoming = wasDialing || wasIncoming
         const exitDelay = wasDialingOrIncoming ? 0 : 1500
 
-        setTimeout(() => {
+        // [BUG FIX] 清理上一次 endCall 的 pending 定时器, 再挂新的, 避免旧定时器
+        // 把后续通话的 'ended' 状态提前清成 'none'
+        if (endCallTimer) { clearTimeout(endCallTimer); endCallTimer = null }
+        endCallTimer = setTimeout(() => {
             if (status.value === 'ended') {
                 status.value = 'none'
                 // Only clear partner AFTER the delay so UI can show "Call Ended" correctly
                 partner.value = null
             }
+            endCallTimer = null
         }, exitDelay)
     }
 

@@ -19,11 +19,12 @@ export const useWorldBookStore = defineStore('worldBook', {
 
             this.loadingPromise = (async () => {
                 const timeout = setTimeout(() => {
-                    if (this.loadingPromise) {
-                        console.error('[WorldBook] Load timed out');
-                        this.loadingPromise = null;
-                        // We DON'T set isLoaded = true on timeout to prevent unsafe save
-                    }
+                    // [BUG FIX] 原来超时会 this.loadingPromise = null, 但底层 IIFE 仍在运行,
+                    // 此时再次调用 loadEntries 会绕过第 15 行的 guard 启动第二个并发加载,
+                    // 两者竞争写 this.books/isLoaded. 改为只记日志, loadingPromise 仍由
+                    // finally 块统一清理, 避免并发加载竞态.
+                    console.error('[WorldBook] Load timed out (still running in background)');
+                    // We DON'T set isLoaded = true on timeout to prevent unsafe save
                 }, 5000);
 
                 try {

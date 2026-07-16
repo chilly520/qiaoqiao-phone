@@ -127,7 +127,9 @@ export const useWalletStore = defineStore('wallet', () => {
 
     // Increase Balance (Receive Red Packet / Top up from Bank)
     function increaseBalance(amount, title, sourceInfo = '零钱') {
-        const numAmount = parseFloat(amount) || 0
+        // [BUG FIX] parseFloat(amount) || 0 会把 NaN 转成 0, 导致下面 isNaN(numAmount) 永远为 false
+        // (死代码), 非数字金额会被当成 0 记账. 应先解析再判断.
+        const numAmount = parseFloat(amount)
         if (isNaN(numAmount)) return
         balance.value = parseFloat((balance.value + numAmount).toFixed(2))
         addTransaction({
@@ -143,7 +145,9 @@ export const useWalletStore = defineStore('wallet', () => {
     // Supports intelligent payment method selection
     function decreaseBalance(amount, title, preferredMethod = null) {
         const numAmount = parseFloat(amount)
-        if (numAmount <= 0) return false
+        // [BUG FIX] NaN <= 0 为 false, 非数字金额会绕过此守卫进入支付逻辑.
+        // 显式拒绝 NaN.
+        if (isNaN(numAmount) || numAmount <= 0) return false
 
         // Determine Payment Order
         // If preferredMethod is passed (e.g. from UI selection), try that first.
@@ -297,7 +301,9 @@ export const useWalletStore = defineStore('wallet', () => {
                         amount: numAmount,
                         title: title || '支出',
                         source: 'bank',
-                        methodDetail: `${capableCard.bankName}(${capableCard.number.slice(-4)})`
+                        // [BUG FIX] capableCard.number 可能为 undefined (addBankCard 未默认 number),
+                        // .slice(-4) 会抛 TypeError 中断支付流程. 用可选链 + 空串兜底.
+                        methodDetail: `${capableCard.bankName}(${(capableCard.number || '').slice(-4)})`
                     })
                     return true
                 }

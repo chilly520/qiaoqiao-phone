@@ -273,7 +273,9 @@ async function requestAIQuestion() {
 
 function refreshData() {
   isRefreshing.value = true
-  loveSpaceStore.loadFromStorage().then(() => {
+  // [BUG FIX] 原来用 .then, loadFromStorage reject 时 isRefreshing 永远停在 true,
+  // 刷新按钮永久禁用. 改用 .finally (与 SoulQuestion.vue 同模式).
+  loveSpaceStore.loadFromStorage().finally(() => {
     setTimeout(() => { isRefreshing.value = false }, 500)
   })
 }

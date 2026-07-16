@@ -32,23 +32,35 @@ export const useLoggerStore = defineStore('logger', () => {
             }
 
             if (saved && Array.isArray(saved)) {
-                logs.value = saved
+                // [BUG FIX] loadLogs 是 async 且启动时未 await, 在它 resolve 前 addLog 可能已 push 新日志.
+                // 直接 logs.value = saved 会丢弃这些新日志, 且此时 isLoaded=false 导致它们也从未 saveLogs,
+                // 造成静默数据丢失. 改为合并: 已加载的旧日志在前, 启动后新增的日志在后.
+                logs.value = [...saved, ...logs.value]
             }
             isLoaded.value = true
+            // [BUG FIX] 合并后立即保存一次, 把启动期间新增的日志持久化
+            saveLogs()
         } catch (e) {
             console.warn('[LoggerStore] Failed to load logs', e)
             isLoaded.value = true
         }
     }
 
+    // [BUG FIX] 串行化保存: 多次 addLog 快速触发时, 各 saveLogs 捕获快照后异步写入 IndexedDB,
+    // 写入顺序不保证, 后写的旧快照可能覆盖先写的新快照, 丢失日志. 改用单飞链式队列.
+    let _saveChain = Promise.resolve()
     const saveLogs = async () => {
         if (!isLoaded.value) return
-        try {
-            // Use JSON.parse(JSON.stringify()) to ensure we're saving plain objects, not Vue proxies
-            await logStorage.setItem('system_logs_v2', JSON.parse(JSON.stringify(logs.value)))
-        } catch (e) {
-            console.error('[LoggerStore] IndexedDB storage failed:', e)
-        }
+        // 捕获当前快照, 链到上一个保存之后执行, 保证写入顺序
+        const snapshot = JSON.parse(JSON.stringify(logs.value))
+        _saveChain = _saveChain.then(async () => {
+            try {
+                await logStorage.setItem('system_logs_v2', snapshot)
+            } catch (e) {
+                console.error('[LoggerStore] IndexedDB storage failed:', e)
+            }
+        }).catch(() => {})
+        return _saveChain
     }
 
     const addLog = (type, title, detail = null) => {

@@ -430,7 +430,9 @@ const sendPaymentRequest = async (friend) => {
     const paymentCard = {
         role: 'user',
         type: 'payment_request',
-        content: `[代付请求] ${payingOrder.value.items[0]?.title} ¥${payingOrder.value.total}`,
+        // [BUG FIX] items[0]?.title 为 undefined 时会拼出 "代付请求] undefined ¥xx",
+        // 发到聊天卡片给好友. 加 fallback (与 selectFriend 同模式).
+        content: `[代付请求] ${payingOrder.value.items[0]?.title || '商品'} ¥${payingOrder.value.total}`,
         paymentRequestId: paymentReq.id,
         orderId: payingOrder.value.id,
         amount: payingOrder.value.total,

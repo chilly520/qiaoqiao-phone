@@ -52,7 +52,7 @@
       <div class="modal animate-pop-in">
         <h3>{{ replyTarget ? '回复 TA' : '发送新留言' }}</h3>
         <div v-if="replyTarget" class="reply-target-preview">
-          回复：{{ replyTarget.content.substring(0, 30) }}...
+          回复：{{ (replyTarget.content || '').substring(0, 30) }}...
         </div>
         <textarea v-model="newMessage" placeholder="想对 TA 说点什么呢？" class="msg-input"></textarea>
         <div class="modal-actions">
