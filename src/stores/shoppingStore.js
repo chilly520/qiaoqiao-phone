@@ -205,6 +205,8 @@ export const useShoppingStore = defineStore('shopping', () => {
             const char = { name: '商品系统', prompt: '你只输出符合要求的 JSON 数组。不要文字废话。' }
 
             const result = await generateReply(messages, char, null, { isSimpleTask: true })
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return
             const cleanContent = result.content.replace(/```json|```/g, '').trim()
             const newProducts = JSON.parse(cleanContent)
 
@@ -291,6 +293,8 @@ export const useShoppingStore = defineStore('shopping', () => {
                 null,
                 { isSimpleTask: true }
             )
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return
             let cleanContent = result.content.trim()
 
             console.log('AI 原始返回:', cleanContent)
@@ -385,6 +389,8 @@ export const useShoppingStore = defineStore('shopping', () => {
             }))
 
             const result = await generateReply(history, char, null, { isSimpleTask: true })
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return
             let finalContent = result.content
 
             // 处理指令解析

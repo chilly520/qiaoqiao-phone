@@ -272,12 +272,16 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   function discoverUser() {
     isDiscovered.value = true
 
+    // [BUG FIX] closeInspection 会把 currentCharId 置 null, 导致 currentChar.value 为 null.
+    // 先保存角色名, 再在 setTimeout 回调中使用.
+    const charName = currentChar.value?.name || '对方'
+
     // 延迟关闭页面
     setTimeout(() => {
       closeInspection()
       // 触发 ChatStore 的警告消息
       const chatStore = useChatStore()
-      chatStore.triggerToast(`被${currentChar.value.name}发现了！`, 'error')
+      chatStore.triggerToast(`被${charName}发现了！`, 'error')
     }, 2000)
   }
 
@@ -977,6 +981,8 @@ JSON 结构样例：
         null
       )
 
+      // [BUG FIX] generateReply may return null when the AI request fails
+      if (!result || !result.content) return { allowed: false, response: '现在不太方便呢...' }
       let response = result.content
       const isAllowed = response.includes('【允许】') || response.includes('[允许]')
 
@@ -1492,6 +1498,8 @@ ${selectedPrompts}
 
     try {
       const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true })
+      // [BUG FIX] generateReply may return null when the AI request fails
+      if (!result || !result.content) return false
       const rawContent = result.content || ''
       console.log('[BatchGenerate] Raw AI response length:', rawContent.length)
       console.log('[BatchGenerate] Raw preview (first 300 chars):', rawContent.substring(0, 300))

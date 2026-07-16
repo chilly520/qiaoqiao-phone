@@ -650,6 +650,8 @@ export const useForumStore = defineStore('forum', () => {
             const char = { name: '论坛引擎', prompt: '你只输出符合格式规则的 JSON。绝对不要输出 markdown 语法块（如 ```json）。' };
             const result = await generateReply([{ role: 'user', content: prompt }], char, null, { isSimpleTask: true, skipProcessing: true });
             
+            // [BUG FIX] generateReply 失败时可能返回 null, 直接访问 .content 会抛 TypeError
+            if (!result || !result.content) return;
             let cleanJSON = result.content.replace(/```json|```/g, '').trim();
             
             // Try to parse as object first (new format), fallback to array (old format)
@@ -803,7 +805,10 @@ export const useForumStore = defineStore('forum', () => {
 
     const generateMoreComments = async (postId) => {
         const forumId = currentForumId.value;
-        const post = posts.value[forumId].find(p => p.id === postId);
+        // [BUG FIX] posts.value[forumId] 可能不存在, 直接 .find() 会抛 TypeError
+        const postList = posts.value[forumId];
+        if (!postList) return;
+        const post = postList.find(p => p.id === postId);
         if (!post) return;
         
         // Cannot comment on banned posts
@@ -811,7 +816,9 @@ export const useForumStore = defineStore('forum', () => {
 
         isGenerating.value = true;
         try {
-            const currentComments = comments.value[forumId][postId] || [];
+            // [BUG FIX] comments.value[forumId] 可能不存在, 需防空指针
+            const forumComments = comments.value[forumId];
+            const currentComments = (forumComments && forumComments[postId]) || [];
             
             // To provide context, let's include who is real user and who is thread starter
             const realUsers = alts.value.filter(a => a.isRealUser).map(u=>u.name);
@@ -932,6 +939,9 @@ export const useForumStore = defineStore('forum', () => {
             isHot: false,
             isBanned: false
         };
+        // [BUG FIX] 防御 posts.value[forumId] / comments.value[forumId] 不存在
+        if (!posts.value[forumId]) posts.value[forumId] = [];
+        if (!comments.value[forumId]) comments.value[forumId] = {};
         posts.value[forumId].unshift(newPost);
         comments.value[forumId][newPost.id] = [];
         saveStore();

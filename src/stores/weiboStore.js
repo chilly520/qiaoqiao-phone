@@ -402,6 +402,8 @@ export const useWeiboStore = defineStore('weibo', () => {
                 skipProcessing: true
             })
 
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return []
             let cleanJSON = result.content.replace(/```json|```/g, '').trim()
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/)
             if (listMatch) cleanJSON = listMatch[0]
@@ -453,6 +455,8 @@ export const useWeiboStore = defineStore('weibo', () => {
                 skipProcessing: true
             })
 
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return null
             let cleanJSON = result.content.replace(/```json|```/g, '').trim()
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/)
             if (listMatch) cleanJSON = listMatch[0]
@@ -519,6 +523,8 @@ export const useWeiboStore = defineStore('weibo', () => {
                 skipProcessing: true
             })
 
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return []
             let cleanJSON = result.content.replace(/```json|```/g, '').trim()
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/)
             if (listMatch) cleanJSON = listMatch[0]
@@ -560,6 +566,8 @@ export const useWeiboStore = defineStore('weibo', () => {
                 skipProcessing: true
             })
 
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return []
             let cleanJSON = result.content.replace(/```json|```/g, '').trim()
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/)
             if (listMatch) cleanJSON = listMatch[0]
@@ -603,6 +611,8 @@ export const useWeiboStore = defineStore('weibo', () => {
                 skipProcessing: true
             })
 
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return null
             let cleanJSON = result.content.replace(/```json|```/g, '').trim()
             const objMatch = cleanJSON.match(/\{[\s\S]*\}/)
             if (objMatch) cleanJSON = objMatch[0]
@@ -635,6 +645,8 @@ export const useWeiboStore = defineStore('weibo', () => {
                 skipProcessing: true
             })
 
+            // [BUG FIX] generateReply may return null when the AI request fails
+            if (!result || !result.content) return []
             let cleanJSON = result.content.replace(/```json|```/g, '').trim()
             const listMatch = cleanJSON.match(/\[[\s\S]*\]/)
             if (listMatch) cleanJSON = listMatch[0]
