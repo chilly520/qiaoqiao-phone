@@ -861,16 +861,21 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // 带超时,避免外部图片挂起阻塞 AI 请求
             const controller = new AbortController()
             const timer = setTimeout(() => controller.abort(), 15000)
-            const resp = await fetch(url, { signal: controller.signal })
-            clearTimeout(timer)
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-            const blob = await resp.blob()
-            return new Promise((resolve) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result)
-                reader.onerror = () => resolve(null)
-                reader.readAsDataURL(blob)
-            })
+            // [BUG FIX] clearTimeout 原来放在 await fetch 之后, 若 fetch reject 会跳过清理,
+            // 定时器泄漏 15s 后对已 settled 的请求 abort. 改用 try/finally 保证清理.
+            try {
+                const resp = await fetch(url, { signal: controller.signal })
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+                const blob = await resp.blob()
+                return new Promise((resolve) => {
+                    const reader = new FileReader()
+                    reader.onloadend = () => resolve(reader.result)
+                    reader.onerror = () => resolve(null)
+                    reader.readAsDataURL(blob)
+                })
+            } finally {
+                clearTimeout(timer)
+            }
         } catch (e) {
             console.warn('[AI Vision] Failed to resolve image to base64:', url, e)
             return null // Fallback will use original URL
@@ -3266,19 +3271,25 @@ async function _generateImageInternal(prompt, options = {}) {
 
             console.log('[AI Image] Requesting (Sanitized):', url.replace(apiKey, 'REDACTED'))
 
-            // DOUBLE LAYER AUTH: Some Pollinations gateways prefer query param, others prefer header. 
+            // DOUBLE LAYER AUTH: Some Pollinations gateways prefer query param, others prefer header.
             // We use both for pk_ keys to maximize success.
             // Timeout controller to prevent queue hang
             const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 45000) 
+            const timeoutId = setTimeout(() => controller.abort(), 45000)
 
-            const response = await fetch(url, {
-                signal: controller.signal,
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`
-                }
-            })
-            clearTimeout(timeoutId)
+            // [BUG FIX] clearTimeout 原来放在 await fetch 之后, 若 fetch reject 会跳过清理,
+            // 定时器泄漏 45s. 改用 try/finally 保证清理.
+            let response
+            try {
+                response = await fetch(url, {
+                    signal: controller.signal,
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                })
+            } finally {
+                clearTimeout(timeoutId)
+            }
 
             if (!response.ok) {
                 const errText = await response.text()
@@ -3356,22 +3367,28 @@ async function _generateImageInternal(prompt, options = {}) {
                 timeout: '90s'
             })
 
-            const response = await fetch(`${baseUrl}/images/generations`, {
-                method: 'POST',
-                signal: controller.signal,
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: model || 'flux-v1',
-                    prompt: enhancedPrompt,
-                    negative_prompt: negativeBoost,
-                    width: width,
-                    height: height
+            // [BUG FIX] clearTimeout 原来放在 await fetch 之后, 若 fetch reject 会跳过清理,
+            // 定时器泄漏 90s. 改用 try/finally 保证清理.
+            let response
+            try {
+                response = await fetch(`${baseUrl}/images/generations`, {
+                    method: 'POST',
+                    signal: controller.signal,
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model || 'flux-v1',
+                        prompt: enhancedPrompt,
+                        negative_prompt: negativeBoost,
+                        width: width,
+                        height: height
+                    })
                 })
-            })
-            clearTimeout(timeoutId)
+            } finally {
+                clearTimeout(timeoutId)
+            }
 
             if (!response.ok) {
                 const err = await response.text()
@@ -3660,7 +3677,6 @@ async function _generateImageInternal(prompt, options = {}) {
                 },
                 body: JSON.stringify(body)
             })
-            clearTimeout(timeoutId)
 
             const text = await resp.text()
             if (!resp.ok) {
@@ -3702,13 +3718,16 @@ async function _generateImageInternal(prompt, options = {}) {
             }
             return imageUrl
         } catch (e) {
-            clearTimeout(timeoutId)
             console.error('[AI Image] Volcengine failed:', e)
             useLoggerStore().addLog('ERROR', '图片生成失败 (火山引擎)', e.message)
             if (e.name === 'AbortError' || e.message.includes('aborted')) {
                 throw new Error('请求火山引擎超时(120 秒),请检查网络或模型响应')
             }
             throw new Error(`火山引擎生图失败: ${e.message}`)
+        } finally {
+            // [BUG FIX] 原来 clearTimeout 在 try 和 catch 各放一处, 容易漏.
+            // 统一放 finally, 任何路径都保证清理 120s 定时器.
+            clearTimeout(timeoutId)
         }
     }
 

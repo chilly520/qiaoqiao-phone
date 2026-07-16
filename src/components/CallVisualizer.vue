@@ -180,6 +180,11 @@ const isListening = ref(false)
 const interimTranscript = ref('')
 let recognition = null
 let isRestarting = false // 避免重复重启的标志
+// [BUG FIX] 卸载标志 + 待清理定时器: 原来两个 setTimeout(error 重启 / 自动启动 STT)
+// 未在 onUnmounted 清理, 卸载后仍会 recognition.start() 重新激活麦克风(隐私风险)
+let isDisposed = false
+let sttErrorTimer = null
+let sttAutoStartTimer = null
 
 const initRecognition = () => {
     if ('webkitSpeechRecognition' in window) {
@@ -335,7 +340,8 @@ const startListening = () => {
                 console.error('Recognition start failed', e)
                 chatStore.triggerToast('麦克风启动失败，请检查权限', 'warning')
                 // 尝试重新初始化
-                setTimeout(() => {
+                sttErrorTimer = setTimeout(() => {
+                    if (isDisposed) return
                     initRecognition()
                     if (recognition) {
                         try {
@@ -407,7 +413,8 @@ watch(() => callStore.status, (newStatus, oldStatus) => {
             initRecognition()
         }
         // Small delay to ensure DOM/call state is ready
-        setTimeout(() => {
+        sttAutoStartTimer = setTimeout(() => {
+            if (isDisposed) return
             try { startListening() } catch(e) { console.warn('Auto-start STT failed:', e) }
         }, 500)
     }
@@ -484,6 +491,11 @@ const toggleVirtualAvatar = () => {
 
 // Cleanup
 onUnmounted(() => {
+    // [BUG FIX] 设置卸载标志, 待执行的 setTimeout 回调检查后直接 return,
+    // 不再重新 recognition.start() 激活麦克风
+    isDisposed = true
+    if (sttErrorTimer) { clearTimeout(sttErrorTimer); sttErrorTimer = null }
+    if (sttAutoStartTimer) { clearTimeout(sttAutoStartTimer); sttAutoStartTimer = null }
     stopListening()
     stopCamera()
 })
