@@ -149,7 +149,7 @@ const sortedAlbum = computed(() => {
 })
 
 const albumCountToday = computed(() => {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayStr()
   return album.value.filter(p => p.createdAt && p.createdAt.startsWith(today)).length
 })
 

@@ -101,7 +101,7 @@ const props = defineProps({
 
 const form = ref({
   title: '',
-  targetDate: new Date().toISOString().split('T')[0],
+  targetDate: getTodayStr(),
   type: props.type,
   isRecurring: props.type === 'anniversary' || props.type === 'birthday',
   color: '#ff9eb5',

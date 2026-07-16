@@ -192,7 +192,7 @@ const calendarDays = computed(() => {
   const daysInMonth = lastDay.getDate()
   
   const days = []
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayStr()
   const selected = selectedDate.value
   
   // 上月日期
@@ -386,7 +386,7 @@ function closeModal() {
 
 function resetForm() {
   formData.value = {
-    date: selectedDate.value || new Date().toISOString().split('T')[0],
+    date: selectedDate.value || getTodayStr(),
     time: '09:00',
     title: '',
     description: '',
@@ -420,7 +420,7 @@ function getMoodLabel(mood) {
 onMounted(() => {
   resetForm()
   // 默认选中今天
-  const today = new Date().toISOString().split('T')[0]
+  const today = getTodayStr()
   selectedDate.value = today
 })
 </script>

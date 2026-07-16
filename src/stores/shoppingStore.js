@@ -453,9 +453,9 @@ export const useShoppingStore = defineStore('shopping', () => {
         }
 
         if (saved) {
-            // [BUG FIX] 原代码全部用 `||` 设置默认值, 数组/对象/数字 0 等"合法的空状态"
-            // 会被静默吞掉(用户清空购物车 → 重新打开时又是默认空数组 → 看起来没生效;
-            // 积分被扣到 0 → 重新打开时又是 1250 → 扣分丢失)。改为 `??` 只在 null/undefined 时回退。
+            // [BUG FIX] 原代码用 `||` 设置默认值, 数组/对象/数字 0 等"合法的空状态"
+            // 会被静默吞掉. 真实受影响的是数字 0 (积分扣到 0 会被还原 1250).
+            // 数组型 `|| []` 在空数组场景不会触发 (空数组 truthy), 但 `??` 更明确且处理 null.
             products.value = saved.products ?? []
             cart.value = saved.cart ?? []
             orders.value = saved.orders ?? []

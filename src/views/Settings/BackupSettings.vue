@@ -723,7 +723,7 @@ async function handleConfirmExport() {
     const downloadUrl = window.URL.createObjectURL(backupBlob)
     const anchor = window.document.createElement('a')
     anchor.href = downloadUrl
-    anchor.download = `Chilly_Full_Migration_${new Date().toISOString().split('T')[0]}.json`
+    anchor.download = `Chilly_Full_Migration_${getTodayStr()}.json`
     window.document.body.appendChild(anchor)
     anchor.click()
     window.document.body.removeChild(anchor)

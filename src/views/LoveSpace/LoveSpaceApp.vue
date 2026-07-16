@@ -735,7 +735,7 @@ async function handleSelectSpace(role) {
   if (loveSpaceStore.startDate) {
     tempStartDate.value = loveSpaceStore.startDate.split('T')[0]
   } else {
-    tempStartDate.value = new Date().toISOString().split('T')[0]
+    tempStartDate.value = getTodayStr()
   }
 }
 
@@ -820,7 +820,7 @@ function confirmInvite() {
 【如果接受】
 请你以极度深情、惊喜且甜蜜的口吻接受这个邀请，文字要撩人。
 然后添加以下两个协议标签：
-1. 绑定指令：[LS_JSON:{"commands":[{"type":"bind","startDate":"${new Date().toISOString().split('T')[0]}","days":0}]}]
+1. 绑定指令：[LS_JSON:{"commands":[{"type":"bind","startDate":"${getTodayStr()}","days":0}]}]
 2. 契约卡片：[LOVESPACE_CONTRACT:1]
 
 【如果拒绝】
@@ -899,7 +899,7 @@ async function handleExportLoveSpace() {
     const a = document.createElement('a')
     const safeName = (space.partner?.name || 'couple').replace(/[\\/:*?"<>|]/g, '_')
     a.href = url
-    a.download = `love_space_${safeName}_${new Date().toISOString().split('T')[0]}.json`
+    a.download = `love_space_${safeName}_${getTodayStr()}.json`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

@@ -145,9 +145,10 @@ export const useMomentsStore = defineStore('moments', () => {
     try {
         const savedConfig = JSON.parse(localStorage.getItem('wechat_moments_config') || '{}')
         if (savedConfig.autoGenerateInterval !== undefined) config.value.autoGenerateInterval = savedConfig.autoGenerateInterval
-        config.value.enabledCharacters = savedConfig.enabledCharacters || []
-        config.value.enabledWorldBookEntries = savedConfig.enabledWorldBookEntries || []
-        config.value.customPrompt = savedConfig.customPrompt || ''
+        // [BUG FIX] 同 shopping/forumStore, `||` 吞掉合法空状态
+        config.value.enabledCharacters = savedConfig.enabledCharacters ?? []
+        config.value.enabledWorldBookEntries = savedConfig.enabledWorldBookEntries ?? []
+        config.value.customPrompt = savedConfig.customPrompt ?? ''
     } catch (e) { }
 
     // Persistence
