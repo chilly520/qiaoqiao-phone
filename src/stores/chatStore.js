@@ -16,6 +16,7 @@ import { appendLog } from '../utils/memoryLog'
 import { backgroundManager } from '../utils/backgroundManager'
 import autoBackup from '../utils/autoBackup'
 import { setupFinancialLogic } from './chatModules/chatFinancial'
+import { setupHistoryLogic } from './chatModules/chatHistory'
 import { ensureString, getRandomAvatar, DEFAULT_AVATARS, getLastNTurns, countTurnsBetween, dateRangeToMsgIndices, turnRangeToMsgIndices } from '../utils/common'
 import { compressAllChatImages as chatImageUtils_compressAll, extractLSActions as chatImageUtils_extractLSActions } from '../utils/chatImageUtils'
 import localforage from 'localforage'
@@ -2209,6 +2210,8 @@ export const useChatStore = defineStore('chat', () => {
         const chat = chats.value[chatId]
         if (!chat) return { success: false, error: 'Chat not found' }
 
+        console.log('[SummarizeHistory] Called with options:', JSON.stringify(options))
+
         // Double check lock (before try to avoid entering if already locked)
         if (chat.isSummarizing) return { success: false, error: 'Summarization already in progress' }
 
@@ -2226,14 +2229,20 @@ export const useChatStore = defineStore('chat', () => {
             chat.isSummarizing = true
 
             // v1.10.129: 按日期总结(优先级最高)
-            if (options.startDate && options.endDate) {
+            const hasDateRange = options.startDate !== undefined && options.endDate !== undefined && options.startDate && options.endDate
+            console.log('[SummarizeHistory] Branch check - hasDateRange:', hasDateRange, 'startDate:', options.startDate, 'endDate:', options.endDate)
+            
+            if (hasDateRange) {
+                console.log('[SummarizeHistory] Entering DATE RANGE mode')
                 const idxRange = dateRangeToMsgIndices(chat.msgs, options.startDate, options.endDate)
+                console.log('[SummarizeHistory] dateRangeToMsgIndices result:', idxRange)
                 if (!idxRange) {
                     throw new Error(`日期 ${options.startDate}~${options.endDate} 范围内没有消息`)
                 }
                 const turnCount = countTurnsBetween(chat.msgs, idxRange.startIndex, idxRange.endIndex)
                 targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
                 rangeDesc = `日期 ${options.startDate}~${options.endDate} (${turnCount}轮, 消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
+                console.log('[SummarizeHistory] Date range targetMsgs count:', targetMsgs.length, 'rangeDesc:', rangeDesc)
             } else if (options.startIndex !== undefined && options.endIndex !== undefined) {
                 // v1.10.128: 手动总结改为按轮次计数。
                 // options.startTurn/endTurn (1-based) 优先;旧 options.startIndex/endIndex 仍兼容(按消息条数)。
@@ -5883,19 +5892,28 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const financial = setupFinancialLogic(chats, addMessage, saveChats, playSound)
+    const history = setupHistoryLogic(chats, typingStatus, isProfileProcessing, addMessage, triggerToast, saveChats)
+
+    // Override local functions with the properly modularized history logic (which includes date-range summary support)
+    summarizeHistory = history.summarizeHistory
+    checkAutoSummary = history.checkAutoSummary
+    analyzeCharacterArchive = history.analyzeCharacterArchive
+    searchHistory = history.searchHistory
+    toggleSearch = history.toggleSearch
 
     return {
         ...financial,
+        ...history,
         notificationEvent, patEvent, toastEvent, triggerToast, triggerPatEffect,
         promptEvent, triggerPrompt, triggerConfirm,  // 新增：prompt相关功能
         stopGeneration, chats, currentChatId, isTyping, typingStatus, chatList, contactList,
         groupNpcs, pendingRequests, acceptPendingRequest, rejectPendingRequest,
         currentChat, addMessage, updateMessage, createChat, deleteChat,
         deleteMessage, deleteMessages, pinChat, clearHistory, clearAllChats,
-        checkProactive, summarizeHistory, updateCharacter, initDemoData,
+        checkProactive, updateCharacter, initDemoData,
         sendMessageToAI, saveChats, getTokenCount, getTokenBreakdown, addSystemMessage, estimateTokens,
         getDisplayedMessages, loadMoreMessages, resetPagination, hasMoreMessages, resetCharacter,
-        getPreviewContext, analyzeCharacterArchive, isLoaded, toggleSearch, triggerConfirm,
+        getPreviewContext, isLoaded,
         isProfileProcessing, createChat, createGroupChat, updateGroupProfile, updateGroupParticipants, updateGroupSettings,
         getMemberTitle, calculateMemberLevel, castVote, endVote,
         streamingState, setStreamingMessage, updateStreamingContent, markStreamingComplete, recoverStreamingMessages: loadStreamingState,
