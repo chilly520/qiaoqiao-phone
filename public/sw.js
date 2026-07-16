@@ -21,7 +21,7 @@
 
 const APP_ICON = '/pwa-192x192.png?v=4';
 // v1.10.129: bump v40 强制清理旧 cache (新增消息历史日历按日期总结)
-const SHELL_CACHE = 'chilly-shell-v41';
+const SHELL_CACHE = 'chilly-shell-v42';
 const RUNTIME_CACHE = 'chilly-runtime-v25';
 
 // 关键 shell 资源,install 时主动 precache

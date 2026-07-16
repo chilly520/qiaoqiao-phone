@@ -3394,8 +3394,11 @@ async function _generateImageInternal(prompt, options = {}) {
         //   - 英文关键词用 \b 边界匹配
         //   - isSelfOnly 只在"我"作为主体出现时才成立(画我/我的照片/自拍/我自己),
         //     而不是任意位置出现"我"字就触发
-        //   - 移除"未明确提及角色也兜底附加 charAppearance"的旧逻辑,
-        //     提示词没明确说"你/角色名"就不附加角色形象图,避免误用
+        //   - v1.10.153: 恢复"含人像提示词时兜底附加角色形象图"的逻辑。
+        //     v1.10.122 曾移除该兜底,要求提示词明确出现"你/角色/TA"才附加,
+        //     但用户描述角色场景时(如"一个穿白裙的女孩在海边散步")通常不带这些词,
+        //     导致走纯文生图生成出别的人像。现在只要检测到人像提示词且不是
+        //     "我"主体明确,就默认用角色形象图作参考;仅风景/物品等非人像才不附加。
         const includesAny = (text, words) => words.some(w => text.includes(w))
         const testEnglishWords = (text, words) => {
             if (!words.length) return false
@@ -3486,8 +3489,13 @@ async function _generateImageInternal(prompt, options = {}) {
             } else if (isCharOnly && charAppearance) {
                 refImages.push(charAppearance)
                 console.log('[AI Image] volcengine: character mode (角色主体明确)')
+            } else if (charAppearance && hasPortraitHint && !isSelfOnly) {
+                // v1.10.153: 提示词含人像但主体未明示时,默认用角色形象图作参考
+                // 避免"一个女孩在海边散步"这类描述角色的提示词走纯文生图生成别的人像
+                refImages.push(charAppearance)
+                console.log('[AI Image] volcengine: default character ref (人像提示但主体未明示)')
             } else {
-                // v1.10.122: 提示词没明确说"我/你/角色",不附加任何形象图,走纯文生图
+                // v1.10.122: 非人像(风景/物品)且无形象图可用,走纯文生图
                 console.log('[AI Image] volcengine: no explicit subject, pure text2image (no appearance ref)')
             }
         }
