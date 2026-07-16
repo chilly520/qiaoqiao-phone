@@ -56,7 +56,9 @@ export const setupFinancialLogic = (chats, addMessage, saveChats, playSound) => 
             if (msg.packetType === 'lucky' && count > 1) {
                 msg.amounts = _splitRedPacket(total, count)
             } else {
-                msg.amounts = Array(count).fill(parseFloat(total.toFixed(2)))
+                // 等额红包:每份 = total / count
+                const perShare = parseFloat((total / count).toFixed(2))
+                msg.amounts = Array(count).fill(perShare)
             }
             console.log(`[RP_SAFETY_INIT] ID=${msg.id} Total=${total} Count=${count} Amounts=`, msg.amounts)
         }
