@@ -3062,10 +3062,12 @@ export const useChatStore = defineStore('chat', () => {
             }
 
             // Inject Drawing Capability Hint globally if not explicitly disabled
-            const drawingHint = `\n\n【生图功能激活】\n你可以通过指令 [DRAW: 英文提示词] 直接在聊天中发送图片给用户。
-例如：你想给用户发张自拍，可以说：“等等，我给你发张自拍 [DRAW: a cute anime girl taking a selfie, looking at camera]”
+            // v1.10.154: 加暗号说明(@char/@me/@us/@scene)让 AI 控制参考图
+            const drawingHint = `\n\n【生图功能激活】\n你可以通过指令 [DRAW: 暗号 中文提示词] 直接在聊天中发送图片给用户。
+暗号控制系统参考哪张形象图：@char(角色形象图) @me(用户形象图) @us(两人合照) @scene(纯文生图,风景/物品)
+示例：“等等，我给你发张自拍 [DRAW: @char 一个女孩对着镜头自拍，动漫插画风格]”
 请注意：
-1. 提示词必须是英文。
+1. 火山引擎是中文生图模型,提示词用中文写,描述要具体(人物外貌、服装、场景、光线、风格)。
 2. 只有在真正需要发图时才使用该指令。`
             charInfo.description += drawingHint
 
@@ -4798,6 +4800,15 @@ export const useChatStore = defineStore('chat', () => {
                     } else if (type === 'draw') {
                         const drawMatch = content.match(/\[DRAW:\s*([\s\S]*?)\]/i);
                         if (drawMatch) {
+                            // v1.10.154: 解析暗号(@char/@me/@us/@scene),剥离后传给 generateImage
+                            let drawPrompt = drawMatch[1].trim()
+                            let appearanceRefMode = null
+                            const refMatch = drawPrompt.match(/^@(char|me|us|scene)\s+/i)
+                            if (refMatch) {
+                                appearanceRefMode = refMatch[1].toLowerCase()
+                                drawPrompt = drawPrompt.substring(refMatch[0].length).trim()
+                            }
+
                             // 1. Add a temporary "Generating" placeholder (System message or special type)
                             // OR add the image message immediately with a "loading" state if supported.
                             // For now, we will add a text message with the command HIDDEN (or temporary text) then replace it.
@@ -4822,12 +4833,12 @@ export const useChatStore = defineStore('chat', () => {
                                 // ✅ 使用全局 AI 任务 Store 管理绘画请求（不受组件生命周期影响）
                                 const aiTaskStore = useAITaskStore()
                                 const drawTaskId = `draw_${chatId}_${targetMsgId}_${Date.now()}`
-                                
+
                                 // 创建全局绘画任务
                                 aiTaskStore.createStreamingTask({
                                     taskId: drawTaskId,
                                     apiFunc: generateImage,
-                                    args: [drawMatch[1].trim(), { chatId, appearanceRef: true }],
+                                    args: [drawPrompt, { chatId, appearanceRef: true, appearanceRefMode }],
                                     onComplete: (imageUrl) => {
                                         // 任务成功：更新消息为图片
                                         console.log('[Draw] Global task completed:', imageUrl);

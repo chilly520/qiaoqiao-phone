@@ -3072,7 +3072,7 @@ export async function generateImage(prompt, options = {}) {
  * Internal logic for image generation, handled by apiQueue.
  */
 async function _generateImageInternal(prompt, options = {}) {
-    const { width = 1024, height = 1024, chatId = null, referenceImage = null } = options;
+    const { width = 1024, height = 1024, chatId = null, referenceImage = null, appearanceRefMode = null } = options;
     const settingsStore = useSettingsStore()
     const drawingVal = settingsStore.drawing?.value || settingsStore.drawing || {}
     let provider = drawingVal.provider || 'pollinations'
@@ -3476,9 +3476,27 @@ async function _generateImageInternal(prompt, options = {}) {
             userAppearance = drawingVal.userAppearanceImage || null
         }
 
-        // v1.10.122: 智能选择参考图(合照/单人我/单人角色/无参考)
+        // v1.10.154: 暗号控制模式 —— AI 通过 @char/@me/@us/@scene 暗号明确指定参考图
+        // 有暗号时直接按暗号设置 refImages,跳过下方关键词检测(更准确,AI 自主决策)
+        if (appearanceRefMode && !referenceImage) {
+            if (appearanceRefMode === 'char' && charAppearance) {
+                refImages.push(charAppearance)
+                console.log('[AI Image] volcengine: 暗号 @char → 角色形象图')
+            } else if (appearanceRefMode === 'me' && userAppearance) {
+                refImages.push(userAppearance)
+                console.log('[AI Image] volcengine: 暗号 @me → 用户形象图')
+            } else if (appearanceRefMode === 'us') {
+                if (userAppearance) refImages.push(userAppearance)
+                if (charAppearance) refImages.push(charAppearance)
+                console.log('[AI Image] volcengine: 暗号 @us → 合照, ref count:', refImages.length)
+            } else if (appearanceRefMode === 'scene') {
+                console.log('[AI Image] volcengine: 暗号 @scene → 纯文生图(无参考)')
+            }
+            // 暗号模式下,有参考图就用图生图模型,无参考图就纯文生图
+            if (refImages.length > 0) useImageModel = true
+        } else if (!referenceImage && !isNonPortraitOnly && shouldLookupAppearance) {
+        // v1.10.122: 智能选择参考图(无暗号时的兜底,严格按提示词主体判断)
         // 严格按提示词主体判断,未明确提及就不附加,避免"一个男人"误用形象图
-        if (!referenceImage && !isNonPortraitOnly && shouldLookupAppearance) {
             if (isCouplePrompt) {
                 if (userAppearance) refImages.push(userAppearance)
                 if (charAppearance) refImages.push(charAppearance)
