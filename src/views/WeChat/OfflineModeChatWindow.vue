@@ -189,6 +189,7 @@
                       :msg="msg"
                       :chatData="chatData"
                       :suppressInitialAvatar="shouldSuppressInitialAvatar(index)"
+                      @preview-image="handlePreviewImage"
                     />
                     <ChatMessageItem
                       v-else
@@ -200,6 +201,7 @@
                       @click-pay="handlePayClick"
                       @click-gift="handleGiftClick"
                       @payment-response="handlePaymentResponse"
+                      @preview-image="handlePreviewImage"
                     />
                     <button v-if="hasInnerVoiceBlockInMsg(msg) && !isMultiSelectMode" 
                       @click.stop="openInnerVoiceFromMsg(msg)"
@@ -407,6 +409,9 @@
 
     <!-- History Modal -->
     <ChatHistoryModal v-model="showHistoryModal" :targetMsgId="historyTargetId" />
+
+    <!-- v1.10.156: 线下模式图片放大预览 -->
+    <ImagePreview :show="showImagePreview" :src="previewImageSrc" @close="closeImagePreview" />
   </div>
 </template>
 
@@ -427,6 +432,7 @@ import OfflineChatInputBar from './components/OfflineChatInputBar.vue'
 import { usePhoneInspectionStore } from '../../stores/phoneInspectionStore'
 import ChatInnerVoiceCard from './modals/ChatInnerVoiceCard.vue'
 import BackgroundUploadModal from './modals/BackgroundUploadModal.vue'
+import ImagePreview from '../../components/ImagePreview.vue'
 import { ensureString } from '../../utils/common'
 import ChatActionPanel from './ChatActionPanel.vue'
 import EmojiPicker from './EmojiPicker.vue'
@@ -504,6 +510,17 @@ const editingContent = ref('')
 const editingMsgId = ref(null)
 const showSettingsMenu = ref(false)
 const autoRead = ref(false)
+
+// v1.10.156: 线下模式图片放大预览
+const showImagePreview = ref(false)
+const previewImageSrc = ref('')
+const handlePreviewImage = (src) => {
+  previewImageSrc.value = src
+  showImagePreview.value = true
+}
+const closeImagePreview = () => {
+  showImagePreview.value = false
+}
 
 // Multi-select State
 const isMultiSelectMode = ref(false)

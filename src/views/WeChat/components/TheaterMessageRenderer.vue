@@ -31,6 +31,17 @@
         </div>
       </div>
 
+      <!-- v1.10.156: 图片段 - 点击可放大预览 -->
+      <div v-else-if="segment.type === 'image'" class="theater-image-card">
+        <img
+          :src="segment.content"
+          class="theater-preview-img"
+          @click="emit('preview-image', segment.content)"
+          referrerpolicy="no-referrer"
+          alt=""
+        />
+      </div>
+
       <!-- 对话 - 优化气泡样式 -->
       <div v-else class="dialogue-row" :class="[getDialogueClass(segment)]">
         <!-- 头像：仅角色和用户显示，NPC不显示 -->
@@ -76,6 +87,8 @@ const props = defineProps({
     default: false
   }
 })
+
+const emit = defineEmits(['preview-image'])
 
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
@@ -339,6 +352,29 @@ function formatTimestamp(timestamp) {
 .system-icon {
   font-size: 10px;
   opacity: 0.8;
+}
+
+/* v1.10.156: 线下模式图片段 */
+.theater-image-card {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 6px 0;
+}
+
+.theater-preview-img {
+  max-width: 220px;
+  max-height: 280px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  object-fit: contain;
+}
+
+.theater-preview-img:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
 /* 时间戳标签 */
