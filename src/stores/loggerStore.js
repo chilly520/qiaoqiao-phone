@@ -5,8 +5,36 @@ import localforage from 'localforage'
 export const useLoggerStore = defineStore('logger', () => {
     const logs = ref([])
     const isLoaded = ref(false)
-    const MAX_LOGS = 2000 // Increased significantly for permanent history
+    // [BUG FIX] 2000 条 × 200KB = 400MB 最坏情况会 OOM. 收紧到 1000 条.
+    const MAX_LOGS = 1000
     const autoScroll = ref(true)
+
+    // [BUG FIX] 敏感信息脱敏: 防止 apiKey/token/Authorization/cookie 等被持久化到 IndexedDB
+    // (用户导出日志或 IndexedDB 被读取时会泄漏). 在 addLog 入口处统一脱敏.
+    const _SENSITIVE_JSON_RE = /(["'])(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|passwd|pwd|secret|token|cookie)\1\s*:\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,}\s]+)/gi
+    const _SENSITIVE_URL_PARAM_RE = /([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig)=)[^&\s"']+/gi
+
+    const _redactString = (s) => {
+        if (typeof s !== 'string') return s
+        return s
+            .replace(_SENSITIVE_URL_PARAM_RE, '$1***REDACTED***')
+            .replace(_SENSITIVE_JSON_RE, '$1$2$1:"***REDACTED***"')
+    }
+
+    const _redactDetail = (detail) => {
+        if (detail == null) return detail
+        if (typeof detail === 'string') return _redactString(detail)
+        if (typeof detail === 'object') {
+            try {
+                const s = JSON.stringify(detail)
+                const sanitized = _redactString(s)
+                try { return JSON.parse(sanitized) } catch (_) { return sanitized }
+            } catch (e) {
+                return '[Un-serializable Object]'
+            }
+        }
+        return detail
+    }
 
     // Configuration for localforage
     const logStorage = localforage.createInstance({
@@ -46,15 +74,20 @@ export const useLoggerStore = defineStore('logger', () => {
         }
     }
 
-    // [BUG FIX] 串行化保存: 多次 addLog 快速触发时, 各 saveLogs 捕获快照后异步写入 IndexedDB,
-    // 写入顺序不保证, 后写的旧快照可能覆盖先写的新快照, 丢失日志. 改用单飞链式队列.
+    // [BUG FIX] 串行化保存 + 合并: 原实现在调用时捕获快照, 高频调用时 N 个旧快照在 _saveChain
+    // 队列里堆积, 每个最大 50KB-200KB, 1000 次调用 = 50-200MB 内存爆炸.
+    // 改为: 调用时只标记 pending, 写入时才读取最新 logs.value 取快照, 多次调用合并为一次写入.
     let _saveChain = Promise.resolve()
-    const saveLogs = async () => {
+    let _savePending = false
+    const saveLogs = () => {
         if (!isLoaded.value) return
-        // 捕获当前快照, 链到上一个保存之后执行, 保证写入顺序
-        const snapshot = JSON.parse(JSON.stringify(logs.value))
+        // 已有写入排队? 跳过 - 写入执行时会读最新 logs.value, 自然包含本次变更
+        if (_savePending) return
+        _savePending = true
         _saveChain = _saveChain.then(async () => {
+            _savePending = false
             try {
+                const snapshot = JSON.parse(JSON.stringify(logs.value))
                 await logStorage.setItem('system_logs_v2', snapshot)
             } catch (e) {
                 console.error('[LoggerStore] IndexedDB storage failed:', e)
@@ -64,31 +97,35 @@ export const useLoggerStore = defineStore('logger', () => {
     }
 
     const addLog = (type, title, detail = null) => {
+        // [BUG FIX] 先脱敏, 再截断 - 否则截断会破坏 JSON 结构使脱敏 regex 失效
+        const sanitizedDetail = _redactDetail(detail)
+
         // Dynamic truncation for individual log entries
         const isCriticalAI = /网络请求|AI响应|Request|Response/i.test(title)
         const isAIRelated = /AI|生成|Generation/i.test(title)
 
+        // [BUG FIX] 收紧截断上限: 200000×2000=400MB 会 OOM. 改为 50000/20000/2000.
         let maxDetailLength
         if (isCriticalAI) {
-            maxDetailLength = 200000
-        } else if (isAIRelated) {
             maxDetailLength = 50000
+        } else if (isAIRelated) {
+            maxDetailLength = 20000
         } else {
-            maxDetailLength = 5000 // Increased from 1k for better detail
+            maxDetailLength = 2000
         }
 
         // Truncate overly large details
-        let truncatedDetail = detail
-        if (detail && typeof detail === 'string' && detail.length > maxDetailLength) {
-            truncatedDetail = detail.substring(0, maxDetailLength) + '... (truncated)'
-        } else if (detail && typeof detail === 'object') {
+        let truncatedDetail = sanitizedDetail
+        if (sanitizedDetail && typeof sanitizedDetail === 'string' && sanitizedDetail.length > maxDetailLength) {
+            truncatedDetail = sanitizedDetail.substring(0, maxDetailLength) + '... (truncated)'
+        } else if (sanitizedDetail && typeof sanitizedDetail === 'object') {
             try {
-                const detailStr = JSON.stringify(detail)
+                const detailStr = JSON.stringify(sanitizedDetail)
                 if (detailStr.length > maxDetailLength) {
                     // If too big, store as truncated string instead of trying to parse back
                     truncatedDetail = detailStr.substring(0, maxDetailLength) + '... (truncated object string)'
                 } else {
-                    truncatedDetail = detail // Store as object (reactive proxy will be cleaned in saveLogs)
+                    truncatedDetail = sanitizedDetail // Store as object (reactive proxy will be cleaned in saveLogs)
                 }
             } catch (e) {
                 truncatedDetail = '[Un-serializable Object]'

@@ -436,8 +436,17 @@ export const tarotSpreads = [
 ]
 
 // 获取随机牌
+// [BUG FIX] 原 Array.sort(() => Math.random() - 0.5) 是有偏洗牌:
+//   1. 比较函数对相同输入返回不一致结果 (a vs b 和 b vs a 不对称), V8 引擎排序算法
+//      会使某些位置的概率显著偏高/偏低, 抽牌分布不均.
+//   2. 不同浏览器引擎排序算法不同, 结果不可预测.
+// 改用 Fisher-Yates 洗牌, O(n) 时间, 数学上证明每个排列概率相等.
 export function getRandomCards(count = 1) {
-  const shuffled = [...allTarotCards].sort(() => Math.random() - 0.5)
+  const shuffled = [...allTarotCards]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
   return shuffled.slice(0, count).map(card => ({
     ...card,
     isReversed: Math.random() < 0.15, // 15%概率逆位

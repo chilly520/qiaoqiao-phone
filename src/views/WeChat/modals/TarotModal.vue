@@ -261,7 +261,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { tarotSpreads, getRandomCards, getSpread, generateTarotPrompt } from '../../../utils/tarotData'
 import { useSettingsStore } from '../../../stores/settingsStore'
 
@@ -306,7 +306,27 @@ const close = () => {
 }
 
 // 开始抽牌
+// [BUG FIX] 原实现 setInterval 和 3 个 setTimeout 的 ID 都没保存, 组件卸载/关闭时
+// 仍会触发 step.value 状态变更和 drawnCards.push, 引发已卸载组件的响应式更新报错.
+let drawIntervalId = null
+const pendingTimeoutIds = []
+
+const clearDrawTimers = () => {
+  if (drawIntervalId) { clearInterval(drawIntervalId); drawIntervalId = null }
+  while (pendingTimeoutIds.length) {
+    const id = pendingTimeoutIds.pop()
+    clearTimeout(id)
+  }
+}
+
+onBeforeUnmount(() => {
+  clearDrawTimers()
+})
+
 const startDraw = () => {
+  // 先清理上一轮残留定时器 (用户连续点抽牌)
+  clearDrawTimers()
+
   step.value = 'drawing'
   drawnCards.value = []
   drawingCards.value = []
@@ -317,12 +337,14 @@ const startDraw = () => {
 
   // 动画抽牌
   let currentIndex = 0
-  const drawInterval = setInterval(() => {
+  drawIntervalId = setInterval(() => {
     if (currentIndex >= cards.length) {
-      clearInterval(drawInterval)
-      setTimeout(() => {
+      clearInterval(drawIntervalId)
+      drawIntervalId = null
+      const t = setTimeout(() => {
         step.value = 'revealing'
       }, 500)
+      pendingTimeoutIds.push(t)
       return
     }
 
@@ -334,11 +356,12 @@ const startDraw = () => {
     // 添加飞出的牌动画
     drawingCards.value.push({ ...card, flyIndex: currentIndex })
 
-    setTimeout(() => {
+    const t2 = setTimeout(() => {
       drawnCards.value.push(card)
       drawingCards.value = drawingCards.value.filter(c => c.uuid !== card.uuid)
       drawProgress.value++
     }, 400)
+    pendingTimeoutIds.push(t2)
 
     currentIndex++
   }, 600)

@@ -261,7 +261,9 @@ function hydrateFromChat(chat) {
   form.name = gp.name || chat.name || '未命名群聊'
   form.groupNo = gp.groupNo || deriveGroupNoFromId(chat.id)
   form.announcement = gp.announcement || ''
-  form.participants = Array.isArray(chat.participants) ? [...chat.participants] : []
+  form.participants = Array.isArray(chat.participants)
+    ? chat.participants.map(p => ({ ...p }))
+    : []
 
   form.myAvatar = gs.myAvatar ?? chat.userAvatar ?? (settingsStore.personalization?.userProfile?.avatar) ?? ''
   form.myNickname = gs.myNickname ?? ''
@@ -882,9 +884,11 @@ function triggerMemberAvatarUpload(target) {
     try {
       // 压缩图片
       const compressed = await compressImage(file, 0.7)
-      const base64 = await new Promise((resolve) => {
+      const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = (e) => resolve(e.target.result)
+        // [BUG FIX] 缺 onerror: read 失败时 Promise 永远 pending, await 永久挂起
+        reader.onerror = () => reject(new Error('FileReader 读取失败'))
         reader.readAsDataURL(compressed)
       })
       

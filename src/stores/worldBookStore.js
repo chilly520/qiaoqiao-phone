@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import localforage from 'localforage'
 
+// 串行化写入链: 防止并发 saveEntries 调用导致旧快照覆盖新快照
+// (例如连续 addEntry + updateEntry + deleteEntry, 后启动但先完成的旧快照会覆盖最新数据)
+let _saveChain = Promise.resolve()
+
 export const useWorldBookStore = defineStore('worldBook', {
     state: () => ({
         // Structure: [{ id, name, description, entries: [{ id, name, keys: [], content: '' }] }]
@@ -13,25 +17,28 @@ export const useWorldBookStore = defineStore('worldBook', {
         async loadEntries() {
             // Return existing promise if already loading
             if (this.loadingPromise) return this.loadingPromise;
-            
+
             // If already loaded, return resolved
             if (this.isLoaded) return Promise.resolve();
 
             this.loadingPromise = (async () => {
-                const timeout = setTimeout(() => {
-                    // [BUG FIX] 原来超时会 this.loadingPromise = null, 但底层 IIFE 仍在运行,
-                    // 此时再次调用 loadEntries 会绕过第 15 行的 guard 启动第二个并发加载,
-                    // 两者竞争写 this.books/isLoaded. 改为只记日志, loadingPromise 仍由
-                    // finally 块统一清理, 避免并发加载竞态.
-                    console.error('[WorldBook] Load timed out (still running in background)');
-                    // We DON'T set isLoaded = true on timeout to prevent unsafe save
-                }, 5000);
+                let timeoutId
+                // 超时 Promise: 5s 后 reject, 让 IIFE 进入 catch -> finally, 从而清理
+                // loadingPromise, 允许后续调用重新发起加载. 否则若 localforage 真的挂起,
+                // loadingPromise 永远 pending, 所有后续调用都返回同一个 pending promise.
+                const timeoutPromise = new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error('WorldBookLoadTimeout')), 5000)
+                })
 
                 try {
-                    // 1. Try localforage
-                    const data = await localforage.getItem('wechat_worldbook_books')
-                    clearTimeout(timeout)
-                    
+                    // 1. Try localforage, 与超时竞速.
+                    // 给 localforage promise 挂一个 .catch 吞掉 eventual rejection,
+                    // 否则超时后它的 reject 会变成 unhandled rejection.
+                    const lfPromise = localforage.getItem('wechat_worldbook_books')
+                        .catch(e => { console.error('[WorldBook] localforage eventual error', e); return null })
+                    const data = await Promise.race([lfPromise, timeoutPromise])
+                    clearTimeout(timeoutId)
+
                     if (data && Array.isArray(data)) {
                         this.books = data
                         console.log('[WorldBook] Loaded from localForage:', data.length)
@@ -51,10 +58,11 @@ export const useWorldBookStore = defineStore('worldBook', {
                     }
                     this.isLoaded = true
                 } catch (e) {
-                    clearTimeout(timeout)
-                    console.error('[WorldBook] Load error', e)
-                    // CRITICAL: Do NOT set isLoaded = true here. 
+                    clearTimeout(timeoutId)
+                    console.error('[WorldBook] Load error (or timeout)', e)
+                    // CRITICAL: Do NOT set isLoaded = true here.
                     // This prevents saveEntries from wiping the disk if loading failed.
+                    // 不向调用方抛出: 多数调用方是 fire-and-forget, 抛出会变 unhandled rejection.
                 } finally {
                     this.loadingPromise = null;
                 }
@@ -66,21 +74,27 @@ export const useWorldBookStore = defineStore('worldBook', {
         async saveEntries() {
             // Wait for load to finish if it's in progress
             if (this.loadingPromise) await this.loadingPromise;
-            
+
             if (!this.isLoaded) {
                 // If still not loaded (load error?), we MUST NOT SAVE
                 // otherwise we might wipe existing data with [].
                 console.warn('[WorldBook] Save aborted: Store not in a safe state to save')
                 return
             }
-            
-            try {
-                // Deep clone to avoid reactivity issues with localforage
-                const dataToSave = JSON.parse(JSON.stringify(this.books))
-                await localforage.setItem('wechat_worldbook_books', dataToSave)
-                // Also trigger a storage event for multi-tab sync if needed
-                localStorage.setItem('wechat_worldbook_last_save', Date.now().toString());
-            } catch (e) { console.error('[WorldBook] Save failed', e) }
+
+            // 链式排队: 每次 saveEntries 都等待上一次完成后再读取最新 books 并写入
+            const run = _saveChain.then(async () => {
+                try {
+                    // Deep clone to avoid reactivity issues with localforage
+                    const dataToSave = JSON.parse(JSON.stringify(this.books))
+                    await localforage.setItem('wechat_worldbook_books', dataToSave)
+                    // Also trigger a storage event for multi-tab sync if needed
+                    localStorage.setItem('wechat_worldbook_last_save', Date.now().toString());
+                } catch (e) { console.error('[WorldBook] Save failed', e) }
+            })
+            // 保存链: 即使本次出错也释放链, 不阻塞后续 saveEntries
+            _saveChain = run.catch(() => {})
+            return run
         },
 
         // Ensure store is ready before any modification
@@ -216,10 +230,20 @@ export const useWorldBookStore = defineStore('worldBook', {
                 throw new Error('无效的世界书格式：缺少名称')
             }
 
+            // [BUG FIX] 规范化导入的 entries: 为缺失 id 的项生成 id, 统一 keys 为数组.
+            // 否则后续 updateEntry/deleteEntry 通过 id 查找会失败, _normalizeKeys 也不会被调用.
+            const rawEntries = Array.isArray(data.entries) ? data.entries : []
+            const entries = rawEntries.map(e => ({
+                ...e,
+                id: (e && typeof e.id === 'string' && e.id) ||
+                    ('wb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 11)),
+                keys: this._normalizeKeys(e && e.keys)
+            }))
+
             const newBook = {
                 ...data,
                 id: 'book_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                entries: Array.isArray(data.entries) ? data.entries : []
+                entries
             }
 
             this.books.push(newBook)

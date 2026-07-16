@@ -126,15 +126,21 @@ function handleBackToDesktop() {
 }
 
 // Lifecycle
+// [BUG FIX] onMounted 是 async, 中间有多个 await. 如果用户在 await 期间快速返回
+// (组件卸载), 后续代码仍会继续执行并修改 store (startInspection / generatePhoneData),
+// 导致已卸载组件污染全局 store 状态. 加 isMounted 标志, await 后检查再继续.
+let isMounted = true
 onMounted(async () => {
   const charId = route.params.charId
   if (charId) {
     // 确保数据已加载
     await phoneInspection.startInspection(charId)
+    if (!isMounted) return
 
     // 如果没有手机数据，生成一份
     if (!phoneInspection.phoneData) {
       await phoneInspection.generatePhoneData(charId)
+      if (!isMounted) return
       // 重新加载
       await phoneInspection.startInspection(charId)
     }
@@ -142,14 +148,22 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  isMounted = false
   phoneInspection.closeInspection()
 })
 
 // Watch route changes
+// [BUG FIX] 原回调非 async 但调用 startInspection (返回 Promise), 用户快速切换路由时
+// 多个 startInspection 并发执行, 后启动的先完成会覆盖先启动的结果, 状态错乱.
+// 用 latestReqId 标记最新请求, 只让最新一次的 startInspection 生效.
+let latestRouteReqId = 0
 watch(() => route.params.charId, (newCharId) => {
-  if (newCharId && !phoneInspection.isOpen) {
-    phoneInspection.startInspection(newCharId)
-  }
+  if (!newCharId || phoneInspection.isOpen) return
+  const myReqId = ++latestRouteReqId
+  phoneInspection.startInspection(newCharId).then(() => {
+    // 如果在本次启动期间又触发了新的路由切换, 忽略本次结果
+    if (myReqId !== latestRouteReqId) return
+  }).catch(() => {})
 })
 </script>
 

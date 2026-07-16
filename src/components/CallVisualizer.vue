@@ -180,13 +180,29 @@ const isListening = ref(false)
 const interimTranscript = ref('')
 let recognition = null
 let isRestarting = false // 避免重复重启的标志
-// [BUG FIX] 卸载标志 + 待清理定时器: 原来两个 setTimeout(error 重启 / 自动启动 STT)
-// 未在 onUnmounted 清理, 卸载后仍会 recognition.start() 重新激活麦克风(隐私风险)
+// [BUG FIX] 卸载标志 + 待清理定时器: 原来多个 setTimeout (error 重启 / 自动启动 STT /
+// 网络错误恢复 / STT 完成后触发 AI) 未在 onUnmounted 清理, 卸载后仍会 recognition.start()
+// 重新激活麦克风(隐私风险) 或访问 partner.value (已失效)
 let isDisposed = false
 let sttErrorTimer = null
 let sttAutoStartTimer = null
+let sttNetworkRecoveryTimer = null
+let sttGenerateTimer = null
 
 const initRecognition = () => {
+    // [BUG FIX] 先清理旧 recognition 实例: 否则旧实例的 onend/onerror 仍可能触发,
+    // 且各实例都持有麦克风, 多次 initRecognition 会泄漏麦克风硬件.
+    if (recognition) {
+        try {
+            recognition.onstart = null
+            recognition.onresult = null
+            recognition.onend = null
+            recognition.onerror = null
+            try { recognition.abort() } catch (_) {}
+        } catch (_) {}
+        recognition = null
+    }
+
     if ('webkitSpeechRecognition' in window) {
         recognition = new window.webkitSpeechRecognition()
         recognition.continuous = true
@@ -203,9 +219,9 @@ const initRecognition = () => {
              if (partner.value) {
                  chatStore.stopGeneration(true, partner.value.id)
              }
-             
+
              let finalStr = ''
-             let interimStr = '' 
+             let interimStr = ''
 
              for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
@@ -217,20 +233,29 @@ const initRecognition = () => {
 
              // Show interim real-time
              interimTranscript.value = interimStr
-             
+
              // If we have final result, send it
              if (finalStr) {
                  userInput.value = finalStr
-                 sendText() 
+                 sendText()
                  interimTranscript.value = ''
                  // Auto-triggering AI to respond to the spoken input
-                 setTimeout(() => handleGenerate(), 300)
+                 // [BUG FIX] 跟踪定时器 ID, 卸载时清理; 加 isDisposed + partner 检查
+                 if (sttGenerateTimer) { clearTimeout(sttGenerateTimer); sttGenerateTimer = null }
+                 sttGenerateTimer = setTimeout(() => {
+                     sttGenerateTimer = null
+                     if (isDisposed) return
+                     if (!partner.value) return
+                     handleGenerate()
+                 }, 300)
              }
         }
 
         recognition.onend = () => {
              // Keep listening even after a sentence is finalized, unless manually stopped
              // Ensure we don't restart if an error-triggered restart is already in progress
+             // [BUG FIX] 加 isDisposed 检查: 卸载后不再重启 recognition (否则会重新激活麦克风)
+             if (isDisposed) return
              if (isListening.value && recognition && !isRestarting) {
                  try {
                      recognition.start()
@@ -266,9 +291,13 @@ const initRecognition = () => {
                                  recognition.stop()
                              } catch (e) {}
                          }
-                         
+
                          // 延迟更长时间后重新初始化并启动，确保系统释放资源
-                         setTimeout(() => {
+                         // [BUG FIX] 跟踪定时器 ID + isDisposed 检查: 卸载后不再重启麦克风
+                         if (sttNetworkRecoveryTimer) { clearTimeout(sttNetworkRecoveryTimer); sttNetworkRecoveryTimer = null }
+                         sttNetworkRecoveryTimer = setTimeout(() => {
+                            sttNetworkRecoveryTimer = null
+                            if (isDisposed) { isRestarting = false; return; }
                             if (!isListening.value) {
                                 isRestarting = false;
                                 return;
@@ -340,7 +369,10 @@ const startListening = () => {
                 console.error('Recognition start failed', e)
                 chatStore.triggerToast('麦克风启动失败，请检查权限', 'warning')
                 // 尝试重新初始化
+                // [BUG FIX] 先清旧定时器, 防止多次失败时多个定时器排队同时触发 initRecognition
+                if (sttErrorTimer) { clearTimeout(sttErrorTimer); sttErrorTimer = null }
                 sttErrorTimer = setTimeout(() => {
+                    sttErrorTimer = null
                     if (isDisposed) return
                     initRecognition()
                     if (recognition) {
@@ -413,7 +445,10 @@ watch(() => callStore.status, (newStatus, oldStatus) => {
             initRecognition()
         }
         // Small delay to ensure DOM/call state is ready
+        // [BUG FIX] 先清旧定时器, 防止多次进入 active 时多个定时器排队
+        if (sttAutoStartTimer) { clearTimeout(sttAutoStartTimer); sttAutoStartTimer = null }
         sttAutoStartTimer = setTimeout(() => {
+            sttAutoStartTimer = null
             if (isDisposed) return
             try { startListening() } catch(e) { console.warn('Auto-start STT failed:', e) }
         }, 500)
@@ -439,12 +474,30 @@ const isVirtualAvatarMode = ref(false)
 
 const startCamera = async () => {
     try {
+        // [BUG FIX] 先停掉旧 cameraStream: 否则多次 startCamera 会泄漏摄像头硬件,
+        // 旧 tracks 仍占用摄像头指示灯, 新流也拿不到设备.
+        if (cameraStream.value) {
+            try {
+                cameraStream.value.getTracks().forEach(track => track.stop())
+            } catch (_) {}
+            cameraStream.value = null
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        // [BUG FIX] 卸载或通话已结束时, 不要再保留新拿到的 stream
+        if (isDisposed) {
+            stream.getTracks().forEach(t => t.stop())
+            return
+        }
         cameraStream.value = stream
+        callStore.isCameraOff = false
+        // [BUG FIX] videoElement 由 v-if="!callStore.isCameraOff && ..." 控制,
+        // 我们刚把 isCameraOff 设为 false, 但 Vue 重新渲染是异步的, 此时 ref 还是 null.
+        // 用 nextTick 等待 DOM 挂载后再赋 srcObject.
+        await nextTick()
         if (videoElement.value) {
             videoElement.value.srcObject = stream
         }
-        callStore.isCameraOff = false
     } catch (err) {
         console.error('Camera access failed', err)
         chatStore.triggerToast('无法访问摄像头，请检查权限。', 'error')
@@ -456,6 +509,11 @@ const stopCamera = () => {
     if (cameraStream.value) {
         cameraStream.value.getTracks().forEach(track => track.stop())
         cameraStream.value = null
+    }
+    // [BUG FIX] 清掉 videoElement.srcObject: 否则 video 标签仍持有 MediaStream 引用,
+    // 即使 tracks 已 stop, 浏览器可能仍显示最后一帧 / 占用资源.
+    if (videoElement.value) {
+        try { videoElement.value.srcObject = null } catch (_) {}
     }
     callStore.isCameraOff = true
 }
@@ -496,6 +554,8 @@ onUnmounted(() => {
     isDisposed = true
     if (sttErrorTimer) { clearTimeout(sttErrorTimer); sttErrorTimer = null }
     if (sttAutoStartTimer) { clearTimeout(sttAutoStartTimer); sttAutoStartTimer = null }
+    if (sttNetworkRecoveryTimer) { clearTimeout(sttNetworkRecoveryTimer); sttNetworkRecoveryTimer = null }
+    if (sttGenerateTimer) { clearTimeout(sttGenerateTimer); sttGenerateTimer = null }
     stopListening()
     stopCamera()
 })

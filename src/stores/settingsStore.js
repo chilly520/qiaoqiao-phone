@@ -445,37 +445,45 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // --- 5. Persistence Helpers ---
     const isInitialized = ref(false)
+    // 串行化写入链: 防止并发 saveToStorage 调用导致旧快照覆盖新快照
+    // (例如用户连续切换多个设置项, 各自触发 saveToStorage, 后启动但先完成的旧快照会覆盖最新数据)
+    let _saveChain = Promise.resolve()
 
     async function saveToStorage() {
-        try {
-            // Revert to JSON-based deep clone as it is the most reliable way to strip 
-            // reactive proxies and ensure the object is cloneable for IndexedDB.
-            // Using toRaw on the main fields first to improve performance.
-            const dataToSave = {
-                apiConfigs: JSON.parse(JSON.stringify(toRaw(apiConfigs.value))),
-                currentConfigIndex: toRaw(currentConfigIndex.value),
-                personalization: JSON.parse(JSON.stringify(toRaw(personalization.value))),
-                voice: JSON.parse(JSON.stringify(toRaw(voice.value))),
-                weather: JSON.parse(JSON.stringify(toRaw(weather.value))),
-                compressQuality: toRaw(compressQuality.value),
-                drawing: JSON.parse(JSON.stringify(toRaw(drawing.value))),
-                chatOfflineModes: JSON.parse(JSON.stringify(toRaw(chatOfflineModes.value))),
-                fontScale: toRaw(fontScale.value),
-                mcpServers: JSON.parse(JSON.stringify(toRaw(mcpServers.value))),
-                mcpBuiltinToggles: JSON.parse(JSON.stringify(toRaw(mcpBuiltinToggles.value)))
+        // 链式排队: 每次 saveToStorage 都等待上一次完成后再读取最新状态并写入
+        const run = _saveChain.then(async () => {
+            try {
+                // Revert to JSON-based deep clone as it is the most reliable way to strip
+                // reactive proxies and ensure the object is cloneable for IndexedDB.
+                // Using toRaw on the main fields first to improve performance.
+                const dataToSave = {
+                    apiConfigs: JSON.parse(JSON.stringify(toRaw(apiConfigs.value))),
+                    currentConfigIndex: toRaw(currentConfigIndex.value),
+                    personalization: JSON.parse(JSON.stringify(toRaw(personalization.value))),
+                    voice: JSON.parse(JSON.stringify(toRaw(voice.value))),
+                    weather: JSON.parse(JSON.stringify(toRaw(weather.value))),
+                    compressQuality: toRaw(compressQuality.value),
+                    drawing: JSON.parse(JSON.stringify(toRaw(drawing.value))),
+                    chatOfflineModes: JSON.parse(JSON.stringify(toRaw(chatOfflineModes.value))),
+                    fontScale: toRaw(fontScale.value),
+                    mcpServers: JSON.parse(JSON.stringify(toRaw(mcpServers.value))),
+                    mcpBuiltinToggles: JSON.parse(JSON.stringify(toRaw(mcpBuiltinToggles.value)))
+                }
+
+                // Save to IndexedDB (localforage)
+                await settingsDB.setItem('qiaoqiao_settings_v2', dataToSave)
+                // To fully resolve the user's issue, we gradually remove it from localStorage once migrated
+                if (isInitialized.value && localStorage.getItem('qiaoqiao_settings')) {
+                    localStorage.removeItem('qiaoqiao_settings')
+                }
+            } catch (e) {
+                console.error('[SettingsStore] Failed to save to localforage:', e)
+                // Fallback: don't let the crash bubble up and kill the UI thread
             }
-            
-            // Save to IndexedDB (localforage)
-            await settingsDB.setItem('qiaoqiao_settings_v2', dataToSave)
-            console.log('[SettingsStore] Saved to localforage.')
-            // To fully resolve the user's issue, we gradually remove it from localStorage once migrated
-            if (isInitialized.value && localStorage.getItem('qiaoqiao_settings')) {
-                localStorage.removeItem('qiaoqiao_settings')
-            }
-        } catch (e) {
-            console.error('[SettingsStore] Failed to save to localforage:', e)
-            // Fallback: don't let the crash bubble up and kill the UI thread
-        }
+        })
+        // 保存链: 即使本次出错也释放链, 不阻塞后续 saveToStorage
+        _saveChain = run.catch(() => {})
+        return run
     }
 
     async function loadFromStorage() {
@@ -898,20 +906,41 @@ export const useSettingsStore = defineStore('settings', () => {
     function exportData(options = {}) {
         const exportContent = { timestamp: Date.now(), version: '2.0', type: 'qiaoqiao_backup' }
         if (options.settings) {
-            const settings = localStorage.getItem('qiaoqiao_settings')
-            if (settings) exportContent.settings = JSON.parse(settings)
+            // [BUG FIX] 原代码 `localStorage.getItem('qiaoqiao_settings')` 永远返回 null:
+            // saveToStorage (line 469) 把数据写入 IndexedDB 后, 在 line 472-474 主动删除了
+            // localStorage 里的旧 key. 正常使用后导出设置永远为空, 备份/恢复功能静默失效.
+            // 改为直接从 store 内存状态导出.
+            try {
+                exportContent.settings = JSON.parse(JSON.stringify({
+                    apiConfigs: apiConfigs.value,
+                    currentConfigIndex: currentConfigIndex.value,
+                    personalization: personalization.value,
+                    voice: voice.value,
+                    weather: weather.value,
+                    compressQuality: compressQuality.value,
+                    drawing: drawing.value,
+                    fontScale: fontScale.value,
+                    chatOfflineModes: chatOfflineModes.value,
+                    mcpServers: mcpServers.value,
+                    mcpBuiltinToggles: mcpBuiltinToggles.value
+                }))
+            } catch (e) { console.error('[SettingsStore] export settings failed:', e) }
         }
         if (options.wechat) {
-            const chatData = localStorage.getItem('qiaoqiao_chats')
-            if (chatData) {
-                let chats = JSON.parse(chatData)
-                if (options.selectedChats?.length > 0) chats = chats.filter(c => options.selectedChats.includes(c.id))
-                exportContent.chats = chats
-            }
+            try {
+                const chatData = localStorage.getItem('qiaoqiao_chats')
+                if (chatData) {
+                    let chats = JSON.parse(chatData)
+                    if (options.selectedChats?.length > 0) chats = chats.filter(c => options.selectedChats.includes(c.id))
+                    exportContent.chats = chats
+                }
+            } catch (e) { console.error('[SettingsStore] export chats failed:', e) }
         }
         if (options.wallet) {
-            const wallet = localStorage.getItem('qiaoqiao_wallet')
-            if (wallet) exportContent.wallet = JSON.parse(wallet)
+            try {
+                const wallet = localStorage.getItem('qiaoqiao_wallet')
+                if (wallet) exportContent.wallet = JSON.parse(wallet)
+            } catch (e) { console.error('[SettingsStore] export wallet failed:', e) }
         }
         return JSON.stringify(exportContent, null, 2)
     }
@@ -921,10 +950,23 @@ export const useSettingsStore = defineStore('settings', () => {
             const data = JSON.parse(jsonContent)
             let importCount = 0
             if (data.settings) {
-                const currentSettings = JSON.parse(localStorage.getItem('qiaoqiao_settings') || '{}')
-                const mergedSettings = { ...currentSettings, ...data.settings }
-                localStorage.setItem('qiaoqiao_settings', JSON.stringify(mergedSettings))
-                loadFromStorage()
+                const s = data.settings
+                // [BUG FIX] 原代码 `localStorage.setItem('qiaoqiao_settings', ...)` 写 localStorage,
+                // 但 loadFromStorage 优先读 IndexedDB (localforage), 只有 IndexedDB 没数据时才读
+                // localStorage (migration 分支). 正常用户设置已在 IndexedDB, 导入数据被完全忽略.
+                // 改为直接更新 store 内存状态 + await saveToStorage 持久化到 IndexedDB.
+                if (s.apiConfigs) apiConfigs.value = s.apiConfigs
+                if (s.currentConfigIndex !== undefined) currentConfigIndex.value = s.currentConfigIndex
+                if (s.personalization) personalization.value = { ...personalization.value, ...s.personalization }
+                if (s.voice) voice.value = { ...voice.value, ...s.voice }
+                if (s.weather) weather.value = { ...weather.value, ...s.weather }
+                if (s.compressQuality !== undefined) compressQuality.value = s.compressQuality
+                if (s.drawing) drawing.value = { ...drawing.value, ...s.drawing }
+                if (s.fontScale !== undefined) fontScale.value = s.fontScale
+                if (s.chatOfflineModes) chatOfflineModes.value = s.chatOfflineModes
+                if (s.mcpServers) mcpServers.value = s.mcpServers
+                if (s.mcpBuiltinToggles) mcpBuiltinToggles.value = s.mcpBuiltinToggles
+                await saveToStorage()
                 importCount++
             }
             if (data.chats) {

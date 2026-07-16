@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useChatStore } from '../../stores/chatStore'
 import { storeToRefs } from 'pinia'
 import ManualIconCropper from '../../components/ManualIconCropper.vue'
+import { compressImage } from '../../utils/imageUtils'
 
 const router = useRouter()
 const store = useSettingsStore()
@@ -42,14 +43,31 @@ const showToastMsg = (msg) => {
 }
 
 // --- Helpers ---
-const handleFileUpload = (event, callback) => {
+// [BUG FIX] 原实现直接 FileReader.readAsDataURL 不压缩, 大图(5MB 照片)会生成 ~6.7MB base64,
+// 写入 localStorage (5-10MB 限制) 时抛 QuotaExceededError; 且缺 onerror, 读取失败时 callback
+// 永远不触发, 用户无反馈. 改为走 compressImage (Canvas 缩放 + JPEG 转换) + onerror 兜底.
+const handleFileUpload = async (event, callback) => {
     const file = event.target.files[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (e) => {
-        callback(e.target.result)
+    try {
+        const compressed = await compressImage(file, { maxWidth: 800, maxHeight: 800, quality: 0.7 })
+        callback(compressed)
+    } catch (err) {
+        console.error('[PersonalizationSettings] 图片上传失败:', err)
+        // 压缩失败时回退到原图 (仍有 onerror 保证不挂起)
+        try {
+            const fallback = await new Promise((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onload = (e) => resolve(e.target.result)
+                reader.onerror = () => reject(new Error('FileReader 读取失败'))
+                reader.readAsDataURL(file)
+            })
+            callback(fallback)
+        } catch (e2) {
+            console.error('[PersonalizationSettings] 回退原图也失败:', e2)
+            showToastMsg('图片读取失败，请重试')
+        }
     }
-    reader.readAsDataURL(file)
     // Reset input
     event.target.value = ''
 }

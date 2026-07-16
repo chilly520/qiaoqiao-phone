@@ -255,6 +255,58 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;')
 }
 
+// [BUG FIX] moment.html 是 AI 生成的原始 HTML, 直接 v-html 会执行 <script>/<img onerror>/
+// <a href="javascript:"> 等, 构成存储型 XSS (任何查看朋友圈的人都会中招).
+// 这里复用 ForumPostDetail.vue 的强化正则净化方案, 堵住 4 个已知绕过:
+//   1. 斜杠分隔符 <img/onerror=...>
+//   2. HTML 实体编码的 javascript: 方案
+//   3. URL 属性白名单不全 (srcset/poster/cite/background/xlink:href/data/dynsrc/lowsrc)
+//   4. svg/math/foreignobject 标签未剥
+// 若未来条件允许应迁移到 DOMPurify.
+function sanitizeMomentHtml(input) {
+    if (!input) return ''
+    let html = String(input)
+
+    // Step 1: 解码 URL 属性值内的实体后判断 javascript:/vbscript:/data:text-html
+    html = html.replace(/(href|src|action|formaction|srcset|poster|cite|background|xlink:href|data|dynsrc|lowsrc)\s*=\s*(['"])([\s\S]*?)\2/gi,
+        (m, attr, q, val) => {
+            const decoded = val
+                .replace(/&#x([0-9a-f]+);?/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+                .replace(/&#(\d+);?/g, (_, d) => String.fromCharCode(parseInt(d, 10)))
+                .replace(/&colon;/gi, ':').replace(/&tab;/gi, '\t').replace(/&newline;/gi, '\n')
+                .replace(/&NewLine;/gi, '\n').replace(/&Tab;/gi, '\t')
+            if (/\s*(?:javascript|vbscript|data:text\/html|data:application\/x-javascript):/i.test(decoded)) {
+                return `${attr}=${q}#${q}`
+            }
+            return m
+        })
+    html = html.replace(/(href|src|action|formaction|srcset|poster|cite|background|xlink:href|data|dynsrc|lowsrc)\s*=\s*(?:javascript|vbscript|data:text\/html|data:application\/x-javascript):[^\s>]*/gi,
+        '$1="#"')
+
+    // Step 2: 剥离 svg/math/foreignobject (整段删除防嵌套)
+    html = html
+        .replace(/<svg[\s\S]*?<\/svg>/gi, '')
+        .replace(/<math[\s\S]*?<\/math>/gi, '')
+        .replace(/<foreignobject[\s\S]*?<\/foreignobject>/gi, '')
+        .replace(/<(?:svg|math|foreignobject)\b[^>]*\/?>/gi, '')
+
+    // Step 3: 剥离 script/iframe/style/object/embed/form/template/noscript/applet
+    html = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<(object|embed|form|template|noscript|applet)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+        .replace(/<(?:input|button|select|textarea|link|meta|base|frame|frameset|object|embed|form|template|noscript|applet)\b[^>]*\/?>/gi, '')
+
+    // Step 4: 剥离事件处理器 (用 [\/\s] 覆盖 <img/onerror=...> 绕过)
+    html = html.replace(/[\/\s]on\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+
+    // Step 5: 剥离 style/xmlns/xlink:* (可挂 expression() / namespace XSS)
+    html = html.replace(/\s(?:style|xmlns|xlink:[\w-]+)\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]*)/gi, '')
+
+    return html
+}
+
 const renderCommentContent = (comment) => {
     if (!comment || !comment.content) return ''
     // [BUG FIX] 先转义原始内容, 再叠加自定义 HTML 标签
@@ -643,7 +695,7 @@ const navigateToAuthor = () => {
 
                 <!-- HTML Content -->
                 <div v-if="props.moment?.html" class="html-content mb-3 text-gray-900 text-base leading-relaxed"
-                    v-html="props.moment?.html"></div>
+                    v-html="sanitizeMomentHtml(props.moment?.html)"></div>
             </div>
 
             <!-- Location -->

@@ -926,6 +926,16 @@ const handleImportTrigger = () => {
 function onFileSelected(event) {
   const file = event.target.files[0]
   if (!file) return
+
+  // [BUG FIX] 大文件 OOM 保护: readAsText 把整个文件读成字符串(UTF-16) 再 JSON.parse
+  // 构建对象图, 50MB 文件峰值可达 200MB+ 内存, 浏览器 tab 直接崩. 限制 50MB.
+  const MAX_IMPORT_SIZE = 50 * 1024 * 1024
+  if (file.size > MAX_IMPORT_SIZE) {
+    chatStore.triggerToast(`文件过大 (${(file.size / 1024 / 1024).toFixed(1)}MB), 超过 50MB 限制`, 'error')
+    event.target.value = ''
+    return
+  }
+
   selectedImportFile.value = file
 
   const reader = new window.FileReader()
@@ -937,18 +947,39 @@ function onFileSelected(event) {
       return
     }
     try {
-      selectedImportData.value = JSON.parse(result)
-      chatStore.triggerToast('数据包加载成功', 'success')
+      const parsed = JSON.parse(result)
+      // [BUG FIX] 导入前基本结构校验: 防止用户选了任意 JSON (如 package.json) 后
+      // importFullData 静默把所有数据覆盖成无效内容
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('数据格式不符: 期望一个对象')
+      }
+      selectedImportData.value = parsed
+      chatStore.triggerToast('数据包加载成功，请点击"确认导入"', 'success')
     } catch (err) {
       chatStore.triggerToast('解析失败: ' + err.message, 'error')
       selectedImportFile.value = null
     }
+  }
+  // [BUG FIX] 缺 onerror: 读取失败时无反馈, 用户以为还在加载
+  reader.onerror = () => {
+    chatStore.triggerToast('文件读取失败', 'error')
+    selectedImportFile.value = null
   }
   reader.readAsText(file)
 }
 
 async function handleFileImport() {
   if (!selectedImportData.value) return
+  // [BUG FIX] 导入会覆盖所有数据, 无二次确认 + 无预备份极易导致数据永久丢失.
+  // 弹出确认框, 提醒用户先备份; 用户必须明确同意才执行.
+  const confirmed = window.confirm(
+    '⚠️ 危险操作\n\n' +
+    '导入将覆盖当前所有数据(聊天/设置/钱包/朋友圈等), 且不可撤销。\n\n' +
+    '建议先点击"下载本地 JSON"做一次预备份。\n\n' +
+    '确认继续导入?'
+  )
+  if (!confirmed) return
+
   try {
     const success = await settingsStore.importFullData(selectedImportData.value)
     if (success) {
