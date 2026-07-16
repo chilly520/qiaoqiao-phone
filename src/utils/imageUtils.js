@@ -75,8 +75,8 @@ export function compressImage(file, options = {}) {
                 const base64 = canvas.toDataURL(outputType, outputQuality);
                 resolve(base64);
             };
-            img.onerror = (err) => reject(err);
+            img.onerror = () => reject(new Error('图片解码失败，可能是不支持的格式或损坏的文件'));
         };
-        reader.onerror = (err) => reject(err);
+        reader.onerror = () => reject(new Error('文件读取失败'));
     });
 }

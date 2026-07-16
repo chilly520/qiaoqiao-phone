@@ -17,7 +17,17 @@ class GitHubBackup {
      */
     async uploadFull(data) {
         try {
-            const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))))
+            // [BUG FIX] escape/unescape 已弃用, 且对 4 字节 CJK/emoji 字符会损坏.
+            // 改用 TextEncoder/TextDecoder 做 UTF-8 base64 编解码.
+            const jsonStr = JSON.stringify(data, null, 2)
+            const encoder = new TextEncoder()
+            const bytes = encoder.encode(jsonStr)
+            let binaryStr = ''
+            const chunkSize = 8192
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binaryStr += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+            }
+            const content = btoa(binaryStr)
 
             // 获取现有文件的 SHA（如果存在）
             let sha = null
@@ -65,7 +75,13 @@ class GitHubBackup {
             const rawContent = file.content.replace(/\n/g, '')
             let content = ''
             try {
-                content = decodeURIComponent(escape(atob(rawContent)))
+                // [BUG FIX] escape/unescape 已弃用, 改用 TextDecoder 做 UTF-8 base64 解码
+                const binaryStr = atob(rawContent)
+                const bytes = new Uint8Array(binaryStr.length)
+                for (let i = 0; i < binaryStr.length; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i)
+                }
+                content = new TextDecoder().decode(bytes)
             } catch (e) {
                 // Fallback for different encoding strategies
                 content = atob(rawContent)
@@ -222,8 +238,10 @@ class GitHubBackup {
         if (!config.token || !config.owner || !config.repo) {
             return { valid: false, error: '请填写完整的 GitHub 配置' }
         }
-        if (!config.token.startsWith('ghp_')) {
-            return { valid: false, error: 'Token 格式不正确' }
+        // [BUG FIX] 仅允许 ghp_ 前缀会拒绝 fine-grained PAT (github_pat_) 和
+        // OAuth/app tokens (gho_/ghu_/ghs_). 放宽为支持所有 GitHub token 前缀.
+        if (!/^ghp_|^github_pat_|^gh[ous]_/.test(config.token)) {
+            return { valid: false, error: 'Token 格式不正确（需以 ghp_、github_pat_ 或 gh[o/u/s]_ 开头）' }
         }
         return { valid: true }
     }

@@ -66,13 +66,18 @@ export const useMahjongStore = defineStore('mahjong', () => {
     ]) // 牌背预设列表
     const customTileBackImage = ref('') // 自定义牌背图片
 
-    // 获取当前生效的牌背颜色/图片 (支持随机)
-    const currentTileBack = computed(() => {
+    // 获取当前生效的牌背颜色/图片
+    // [BUG FIX] computed 中使用 Math.random() 是非响应式的, Vue 会缓存第一次的值且
+    // 不同组件读取时可能得到不同结果, 导致牌背不一致. 改为 ref + 显式刷新.
+    const currentTileBack = ref({ type: 'color', value: '#10b981' })
+    function refreshTileBack() {
         const actives = tileBacks.value.filter(b => b.active)
-        if (actives.length === 0) return { type: 'color', value: '#10b981' } // 如果都不勾选，用默认绿
-        // 随机选一个
-        return actives[Math.floor(Math.random() * actives.length)]
-    })
+        if (actives.length === 0) {
+            currentTileBack.value = { type: 'color', value: '#10b981' }
+        } else {
+            currentTileBack.value = actives[Math.floor(Math.random() * actives.length)]
+        }
+    }
 
     // 更新排行榜数据
     const recordPlayerStats = (player) => {
@@ -270,6 +275,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
     const startGame = () => {
         if (!currentRoom.value) return
         currentRoom.value.status = 'playing'
+        // [BUG FIX] 每局开始时随机选择牌背, 避免在 computed 中使用 Math.random()
+        refreshTileBack()
         const tiles = shuffle(createDeck())
         gameState.value = {
             deck: tiles,
@@ -640,7 +647,8 @@ export const useMahjongStore = defineStore('mahjong', () => {
             }
 
             // 更新玩家豆子和分数
-            p.beans += amount
+            // [BUG FIX] AI 玩家的 beans 不应变为负数
+            p.beans = Math.max(0, (p.beans || 0) + amount)
             p.score = (p.score || 0) + amount
 
             // 如果是用户(索引0)，更新全局状态
@@ -649,8 +657,10 @@ export const useMahjongStore = defineStore('mahjong', () => {
                     addBeans(amount)
                     updateScore(fan * 10) // 赢了加分
                 } else if (amount < 0) {
-                    deductBeans(Math.abs(amount))
-                    updateScore(-10) // 输了扣分
+                    // [BUG FIX] deductBeans 返回 false 表示豆子不足, 此时不应扣分
+                    if (deductBeans(Math.abs(amount))) {
+                        updateScore(-10) // 输了扣分
+                    }
                 }
             }
 
@@ -1062,7 +1072,7 @@ ${charContexts.map((c, i) => `### 角色 ${i + 1}: 【${c.name}】(${c.position}
     return {
         beans, score, rank, wins, losses, winStreak, currentRoom, gameState, chatMessages, gameChatMessages, activeReplies,
         cheatMode, soundEnabled, bgmEnabled, sfxVolume, bgmVolume, lastAction, winRate, rankInfo, unreadChatCount,
-        playerStats, tablecloth, tileBacks, currentTileBack, leaderboard,
+        playerStats, tablecloth, tileBacks, currentTileBack, refreshTileBack, leaderboard,
         rechargeBeans, deductBeans, addBeans, updateScore, createRoom, addAIPlayers, startGame, playTile, nextTurn, handleAction, aiPlayTile,
         exitRoom, endRound, startNextRound: () => { if (gameState.value) gameState.value.roundResult = null; if (currentRoom.value) currentRoom.value.currentRound++ },
         sendGameChat, recordPlayerStats, saveData, toggleSound, toggleBGM

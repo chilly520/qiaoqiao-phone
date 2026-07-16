@@ -370,12 +370,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
             // 最多保留20条历史记录
             if (current.backgroundHistory.length > 20) {
-                current.backgroundHistory = current.backgroundHistory.slice(0, 20)
+                // [BUG FIX] 直接截断长度, 避免替换数组引用
+                current.backgroundHistory.length = 20
             }
 
-            chatOfflineModes.value[chatId] = { ...current }
+            // [BUG FIX] 不再重建对象 { ...current }, 直接就地 mutate 保留外部引用
             saveToStorage()
-            console.log(`[SettingsStore] 背景图已添加到历史，当前共 ${current.backgroundHistory.length} 条`)
         }
 
         return current.backgroundHistory
@@ -1085,6 +1085,12 @@ export const useSettingsStore = defineStore('settings', () => {
             if (remoteData.drawing) drawing.value = { ...drawing.value, ...remoteData.drawing }
             if (typeof remoteData.compressQuality === 'number') compressQuality.value = remoteData.compressQuality
             if (typeof remoteData.fontScale === 'number') fontScale.value = remoteData.fontScale
+            // [BUG FIX] 导入 voice/weather/drawing/compressQuality/fontScale 后缺少 saveToStorage(),
+            // 下次刷新后这些配置会丢失 (只有 apiConfigs 和 personalization 被保存了)
+            if (remoteData.voice || remoteData.weather || remoteData.drawing ||
+                typeof remoteData.compressQuality === 'number' || typeof remoteData.fontScale === 'number') {
+                saveToStorage()
+            }
             if (remoteData.worldbook) {
                 worldBookStore.books = remoteData.worldbook
                 worldBookStore.saveEntries?.()
@@ -1226,7 +1232,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     // --- Initialization ---
-    loadFromStorage()
+    // [BUG FIX] 移除重复的 loadFromStorage() 调用 (第一次在 line 692).
+    // 两次并发加载会竞争 IDB 读写, 第二次的旧快照可能覆盖用户在此期间的修改.
+    // loadFromStorage()  // removed duplicate
 
     return {
         apiConfigs, currentConfigIndex, currentConfig, apiConfig,
