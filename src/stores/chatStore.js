@@ -374,8 +374,10 @@ export const useChatStore = defineStore('chat', () => {
                 ...settings
             };
             // Also sync to top level for legacy support
-            chats.value[chatId] = { ...chats.value[chatId], ...settings };
-            
+            // [BUG FIX] 不要重建对象 (`chats.value[chatId] = {...}`), 否则外部持有的引用全部失效.
+            // Vue 3 ref + reactive 会自动追踪属性赋值, 用 Object.assign 即可.
+            Object.assign(chats.value[chatId], settings);
+
             await saveChats();
             return true;
         }

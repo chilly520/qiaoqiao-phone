@@ -352,7 +352,8 @@ export const useMomentsStore = defineStore('moments', () => {
                     } catch (e) { }
                 }
             }
-            moments.value[idx] = { ...moments.value[idx], ...updates }
+            // [BUG FIX] 不要重建对象 (`moments.value[idx] = {...}`), 会让外部持有的引用失效
+            Object.assign(moments.value[idx], updates)
             return true
         }
         return false

@@ -110,10 +110,22 @@ function formatTime(ts) {
 }
 
 const previewContent = computed(() => {
-  let text = props.post.content || '';
+  // [BUG FIX] post.content 是用户/AI 可控内容, 直接拼到 v-html 会触发 XSS.
+  // 先做 HTML 转义, 再叠加我们的图片占位 span.
+  let text = escapeHtml(props.post.content || '');
   text = text.replace(/!\[.*?\]\((.*?)\)/g, '<span class="text-teal-500 text-xs font-bold tracking-widest ml-1 bg-teal-50 px-1 rounded"> [图片] </span>');
   return text;
 });
+
+function escapeHtml(str) {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
 
 function confirmDelete() {
   if (confirm('确定要删除这个帖子吗？删除后无法恢复。')) {

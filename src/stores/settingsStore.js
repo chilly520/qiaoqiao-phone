@@ -329,7 +329,8 @@ export const useSettingsStore = defineStore('settings', () => {
     function setChatOfflineMode(chatId, config) {
         if (!chatId) return
         const current = getChatOfflineMode(chatId)
-        chatOfflineModes.value[chatId] = { ...current, ...config }
+        // [BUG FIX] 不要重建对象, 直接 mutate 保留外部引用
+        Object.assign(current, config)
         saveToStorage()
     }
     
@@ -337,7 +338,7 @@ export const useSettingsStore = defineStore('settings', () => {
     function toggleChatOfflineMode(chatId) {
         if (!chatId) return
         const current = getChatOfflineMode(chatId)
-        chatOfflineModes.value[chatId] = { ...current, isOfflineMode: !current.isOfflineMode }
+        current.isOfflineMode = !current.isOfflineMode
         saveToStorage()
     }
     
@@ -345,7 +346,7 @@ export const useSettingsStore = defineStore('settings', () => {
     function toggleChatAIBackground(chatId) {
         if (!chatId) return
         const current = getChatOfflineMode(chatId)
-        chatOfflineModes.value[chatId] = { ...current, enableAIBackground: !current.enableAIBackground }
+        current.enableAIBackground = !current.enableAIBackground
         saveToStorage()
     }
 
@@ -411,7 +412,8 @@ export const useSettingsStore = defineStore('settings', () => {
     function updateMCPServer(id, updates) {
         const idx = mcpServers.value.findIndex(s => s.id === id)
         if (idx === -1) return false
-        mcpServers.value[idx] = { ...mcpServers.value[idx], ...updates }
+        // [BUG FIX] 保留对原 server 对象的引用
+        Object.assign(mcpServers.value[idx], updates)
         saveToStorage()
         return true
     }
@@ -696,7 +698,8 @@ export const useSettingsStore = defineStore('settings', () => {
     function updateConfig(index, newConfig) {
         if (index >= 0 && index < apiConfigs.value.length) {
             const oldName = apiConfigs.value[index].name
-            apiConfigs.value[index] = { ...newConfig }
+            // [BUG FIX] 保留对原 config 对象的引用, 避免外部计算属性失效
+            Object.assign(apiConfigs.value[index], newConfig)
             saveToStorage()
             useLoggerStore().sys(`更新API配置: ${oldName} -> ${newConfig.name}`)
         }

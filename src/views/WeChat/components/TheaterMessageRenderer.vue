@@ -150,12 +150,24 @@ const renderedSegments = computed(() => {
 const processInlineStyles = (text, side) => {
     if (!text) return ''
     const content = formatDialogueContent(text)
-    // 处理内联括号动作
-    return content
+    // [BUG FIX] 原始内容直接拼到 v-html, AI/用户可控内容里若带 <script> 等会直接执行 XSS.
+    // 先做 HTML 转义, 再叠加我们自己的 span/<br> 标签.
+    const escaped = escapeHtml(content)
+    return escaped
         .replace(/([\uff08\(][^\uff09\)]*[\uff09\)])/g, (match) => {
             return `<span class="inline-action-tag ${side}">${match}</span>`
         })
         .replace(/\n/g, '<br>')
+}
+
+function escapeHtml(str) {
+    if (str == null) return ''
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
 }
 
 function isRightAligned(segment) {

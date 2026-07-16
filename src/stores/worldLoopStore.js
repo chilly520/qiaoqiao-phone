@@ -215,7 +215,8 @@ export const useWorldLoopStore = defineStore('worldLoop', () => {
 
     function updateLoop(id, data) {
         if (loops.value[id]) {
-            loops.value[id] = { ...loops.value[id], ...data }
+            // [BUG FIX] 保留对原 loop 对象的引用, 直接 mutate, 避免外部引用失效
+            Object.assign(loops.value[id], data)
             saveLoops()
         }
     }

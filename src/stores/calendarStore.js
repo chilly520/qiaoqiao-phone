@@ -683,7 +683,8 @@ export const useCalendarStore = defineStore('calendar', () => {
   function updateEvent(id, updates) {
     const idx = events.value.findIndex(e => e.id === id)
     if (idx !== -1) {
-      events.value[idx] = { ...events.value[idx], ...updates, updatedAt: new Date().toISOString() }
+      // [BUG FIX] 保留外部对原 event 对象的引用,直接 mutate 而非重建
+      Object.assign(events.value[idx], updates, { updatedAt: new Date().toISOString() })
     }
   }
 
@@ -899,7 +900,8 @@ export const useCalendarStore = defineStore('calendar', () => {
       updatedAt: new Date().toISOString()
     }
     if (existing !== -1) {
-      diaries.value[existing] = { ...diaries.value[existing], ...diary }
+      // [BUG FIX] 保留外部对原 diary 对象的引用
+      Object.assign(diaries.value[existing], diary)
     } else {
       diaries.value.push({ ...diary, createdAt: new Date().toISOString() })
     }

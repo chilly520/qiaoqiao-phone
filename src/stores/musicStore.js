@@ -145,7 +145,8 @@ export const useMusicStore = defineStore('music', () => {
           const altResult = await tryGetUrl(searchResults[0])
           if (altResult && altResult.url) {
             resultSong = altResult
-            playlist.value[index] = { ...altResult, _healed: true }
+            // [BUG FIX] 不要重建对象, 保留对原 playlist 元素的引用
+            Object.assign(playlist.value[index], altResult, { _healed: true })
             logger.addLog('Music', `换源成功：来自 ${platform}`, { song: song.song })
             break
           }
