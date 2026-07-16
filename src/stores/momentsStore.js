@@ -19,9 +19,16 @@ export const useMomentsStore = defineStore('moments', () => {
 
     // --- State ---
     const moments = ref([])
-    const lastGenerateTime = ref(parseInt(localStorage.getItem('wechat_moments_last_gen') || '0'))
-    const notifications = ref(JSON.parse(localStorage.getItem('wechat_moments_notifications') || '[]'))
-    const topMoments = ref(JSON.parse(localStorage.getItem('wechat_moments_top') || '[]'))
+    // [BUG FIX] localStorage 值可能损坏/非数字, parseInt 会返回 NaN, 后续时间比较全部失效.
+    // 在 store 定义期执行, 无 try/catch 会中断整个 app 启动.
+    const _parsedLastGen = parseInt(localStorage.getItem('wechat_moments_last_gen') || '0')
+    const lastGenerateTime = ref(isNaN(_parsedLastGen) ? 0 : _parsedLastGen)
+    // [BUG FIX] JSON.parse 未包 try/catch, localStorage 损坏时会在 store 初始化期抛错, 中断 app 启动
+    const _safeParse = (key, fallback) => {
+        try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch (e) { return fallback }
+    }
+    const notifications = ref(_safeParse('wechat_moments_notifications', []))
+    const topMoments = ref(_safeParse('wechat_moments_top', []))
     const summoningIds = ref(new Set())
 
     // Async Initialization

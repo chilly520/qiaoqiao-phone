@@ -150,7 +150,7 @@
               position: 'absolute',
               left: '62px',
               right: '20px',
-              top: (parseInt(event.startTime?.split(':')[0] || 0) * 60 + parseInt(event.startTime?.split(':')[1] || 0)) + 'px',
+              top: ((parseInt(event.startTime?.split(':')[0]) || 0) * 60 + (parseInt(event.startTime?.split(':')[1]) || 0)) + 'px',
               height: '60px',
               borderRadius: '8px',
               padding: '8px 12px',

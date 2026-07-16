@@ -28,8 +28,10 @@ class AutoBackupService {
         this.pendingPayload = null
         this.inFlight = false
         this.consecutiveFailures = 0
-        this.lastBackupTime = parseInt(localStorage.getItem(LAST_BACKUP_TIME_KEY) || '0', 10)
-        this.lastLocalPromptTime = parseInt(localStorage.getItem(LAST_LOCAL_DOWNLOAD_PROMPT_KEY) || '0', 10)
+        // [BUG FIX] localStorage 值可能损坏/非数字, parseInt 返回 NaN 后所有时间比较失效
+        const _safeInt = (key) => { const n = parseInt(localStorage.getItem(key) || '0', 10); return isNaN(n) ? 0 : n }
+        this.lastBackupTime = _safeInt(LAST_BACKUP_TIME_KEY)
+        this.lastLocalPromptTime = _safeInt(LAST_LOCAL_DOWNLOAD_PROMPT_KEY)
     }
 
     /**

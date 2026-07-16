@@ -648,7 +648,9 @@ const favoriteSelectedMessages = () => {
     const chatId = chatStore.currentChatId
     if (!chatId) return
     
-    const favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+    // [BUG FIX] localStorage 值可能损坏/非 JSON, JSON.parse 会抛错中断收藏操作
+    let favorites = []
+    try { favorites = JSON.parse(localStorage.getItem('favorites') || '[]') } catch (e) { favorites = [] }
     let addedCount = 0
     
     selectedMsgIds.value.forEach(msgId => {
@@ -1435,7 +1437,9 @@ const handleMenuAction = (action) => {
       }
       break
     case 'fav':
-      const favorites = JSON.parse(localStorage.getItem('favorites') || '[]')
+      // [BUG FIX] localStorage 值可能损坏/非 JSON, JSON.parse 会抛错中断操作
+      let favorites = []
+      try { favorites = JSON.parse(localStorage.getItem('favorites') || '[]') } catch (e) { favorites = [] }
       favorites.push({
         id: selectedMsg.value.id,
         content: selectedMsg.value.content,

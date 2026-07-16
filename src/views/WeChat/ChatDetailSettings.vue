@@ -3528,8 +3528,13 @@ const handleConfirmManualSummary = async () => {
         const parts = manualSummaryRange.value.split(/[-: ]+/)
         if (parts.length === 2) {
             // v1.10.128: 手动总结改为按轮次计数(1-based)
+            // [BUG FIX] parseInt 非数字返回 NaN, 需校验否则 summarizeHistory 收到 NaN 参数
             options.startTurn = parseInt(parts[0])
             options.endTurn = parseInt(parts[1])
+            if (isNaN(options.startTurn) || isNaN(options.endTurn)) {
+                showToast('请输入有效的起止轮次（如 1-10）', 'error')
+                return
+            }
         }
     }
 

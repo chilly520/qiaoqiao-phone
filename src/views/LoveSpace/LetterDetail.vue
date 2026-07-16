@@ -80,7 +80,12 @@ const router = useRouter()
 const loveSpaceStore = useLoveSpaceStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
+// [BUG FIX] route.params.id 来自 URL, 非数字时 parseInt 返回 NaN,
+// 后续 find(l => l.id === NaN) 永远为 false, 页面渲染空白信件.
 const letterId = parseInt(route.params.id)
+if (isNaN(letterId)) {
+  router.replace('/love-space')
+}
 
 // 自定义弹窗状态
 const showConfirmModal = ref(false)

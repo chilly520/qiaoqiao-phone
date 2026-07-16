@@ -357,7 +357,10 @@ export const useCallStore = defineStore('call', () => {
                     .trim();
 
                 // Advanced Stage 4: Remove possible repeated character prefixes ONLY if they exactly match the expected pattern
-                const namePrefix = new RegExp(`^${currentPartner.name}\\s*[:：]\\s*`, 'i');
+                // [BUG FIX] 角色名可能包含正则元字符 (如 "Cute (Cat"), 直接插入 new RegExp 会抛 SyntaxError.
+                // 需先转义, 与 chatStore.js / momentsStore.js 中的转义方式保持一致.
+                const escapedName = String(currentPartner.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                const namePrefix = new RegExp(`^${escapedName}\\s*[:：]\\s*`, 'i');
                 clean = clean.replace(namePrefix, '');
                 clean = clean.replace(/^我\s*[:：]\s*/, '');
 

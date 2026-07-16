@@ -644,11 +644,13 @@ const contextMem = ref({
 function syncContextMemFromStore() {
   const cfg = loveSpaceStore.currentSpace?.contextMemory
   if (cfg) {
+    // [BUG FIX] parseInt 非数字字符串返回 NaN, ?? 不会捕获 NaN (只捕获 null/undefined).
+    // 改用显式 isNaN 检查, 否则 contextMem.turns 会变成 NaN 泄漏到 UI.
+    const _safeInt = (v, def) => { const n = parseInt(v); return isNaN(n) ? def : n }
     contextMem.value = {
       mode: cfg.mode || 'turns',
-      // [BUG FIX] parseInt('0') -> 0, 0 || 30 会变 30. 用户想填 0(不限制) 时不生效. 改用 ??
-      turns: parseInt(cfg.turns) ?? 30,
-      injectDays: parseInt(cfg.injectDays) ?? 7
+      turns: _safeInt(cfg.turns, 30),
+      injectDays: _safeInt(cfg.injectDays, 7)
     }
   }
 }
@@ -797,7 +799,9 @@ function confirmInvite() {
   }
   
   // 获取亲密度数据
-  const intimacyData = JSON.parse(localStorage.getItem('chat_intimacy_' + currentId) || '{}')
+  // [BUG FIX] localStorage 值可能损坏/非 JSON, JSON.parse 会抛错中断 selectSpace 流程
+  let intimacyData = {}
+  try { intimacyData = JSON.parse(localStorage.getItem('chat_intimacy_' + currentId) || '{}') } catch (e) { intimacyData = {} }
   const intimacy = intimacyData.intimacy || 0
   const level = intimacyData.level || 1
 

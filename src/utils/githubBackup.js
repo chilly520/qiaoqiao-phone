@@ -195,7 +195,13 @@ class GitHubBackup {
      */
     async getMetadata() {
         const file = await this.getFile(`${this.fileName}.meta`)
-        return JSON.parse(atob(file.content.replace(/\n/g, '')))
+        // [BUG FIX] atob/JSON.parse 在 base64 损坏或内容非 JSON 时会抛错, 需 try/catch
+        try {
+            return JSON.parse(atob(file.content.replace(/\n/g, '')))
+        } catch (e) {
+            console.error('[GitHubBackup] Failed to parse metadata:', e)
+            return null
+        }
     }
 
     /**
