@@ -25,10 +25,30 @@
         <!-- Content -->
         <div class="flex-1 overflow-y-auto overflow-x-visible p-4 space-y-6 pb-20">
             <!-- Toast -->
-            <div v-if="toastMessage"
-                class="fixed top-14 left-1/2 -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-full text-sm z-50 animate-fade-in shadow-lg">
-                {{ toastMessage }}
-            </div>
+            <Teleport to="body">
+                <Transition
+                    enter-active-class="transition-all duration-300 ease-out"
+                    enter-from-class="opacity-0 translate-y-3 scale-95"
+                    enter-to-class="opacity-100 translate-y-0 scale-100"
+                    leave-active-class="transition-all duration-200 ease-in"
+                    leave-from-class="opacity-100 translate-y-0 scale-100"
+                    leave-to-class="opacity-0 translate-y-2 scale-95"
+                >
+                    <div
+                        v-if="toastMessage"
+                        class="fixed top-20 left-1/2 -translate-x-1/2 z-[99999] max-w-[90vw]"
+                        style="pointer-events: none;"
+                    >
+                        <div
+                            :class="['flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-2xl border backdrop-blur-md', toastStyleClass]"
+                            style="min-width: 200px; pointer-events: auto;"
+                        >
+                            <i :class="['fa-solid text-base', toastIcon]"></i>
+                            <span class="text-sm font-medium whitespace-nowrap">{{ toastMessage }}</span>
+                        </div>
+                    </div>
+                </Transition>
+            </Teleport>
             <!-- Avatar & Basic Info -->
             <div class="flex items-center gap-3 p-3 rounded-xl shadow-sm"
                 :class="settingsStore.personalization.theme === 'dark' ? 'bg-[#1e293b] text-white' : 'bg-white text-gray-800'">
@@ -1410,6 +1430,7 @@ const currentAvatarType = ref('character') // 'character' or 'user'
 
 // Toast & Confirm State
 const toastMessage = ref('')
+const toastType = ref('info') // info | success | error | loading
 const toastTimer = ref(null)
 const confirmingClear = ref(false)
 const confirmingDelete = ref(false)
@@ -1441,9 +1462,11 @@ function toggleMcpServer(serverId) {
     }
 }
 
-const showToast = (msg, duration = 2000) => {
+const showToast = (msg, type = 'info', duration = 2000) => {
     toastMessage.value = msg
+    toastType.value = type
     clearTimeout(toastTimer.value)
+    clearTimeout(persistentToastTimer)
     toastTimer.value = setTimeout(() => {
         toastMessage.value = ''
     }, duration)
@@ -1451,8 +1474,9 @@ const showToast = (msg, duration = 2000) => {
 
 // 持续显示toast直到手动清除(用于总结等长时间操作)
 let persistentToastTimer = null
-const showPersistentToast = (msg) => {
+const showPersistentToast = (msg, type = 'loading') => {
     toastMessage.value = msg
+    toastType.value = type
     clearTimeout(toastTimer.value)
     clearTimeout(persistentToastTimer)
     // 10秒兜底超时,避免极端情况toast卡住
@@ -1465,6 +1489,31 @@ const hideToast = () => {
     clearTimeout(toastTimer.value)
     clearTimeout(persistentToastTimer)
 }
+
+// Toast 样式映射
+const toastStyleClass = computed(() => {
+    switch (toastType.value) {
+        case 'success':
+            return 'bg-gradient-to-r from-emerald-500 to-green-500 text-white border-emerald-400/30'
+        case 'error':
+            return 'bg-gradient-to-r from-rose-500 to-red-500 text-white border-rose-400/30'
+        case 'loading':
+            return 'bg-gradient-to-r from-violet-500 to-purple-600 text-white border-violet-400/30'
+        case 'info':
+        default:
+            return 'bg-gradient-to-r from-slate-700 to-slate-800 text-white border-slate-500/30'
+    }
+})
+
+const toastIcon = computed(() => {
+    switch (toastType.value) {
+        case 'success': return 'fa-check-circle'
+        case 'error': return 'fa-circle-exclamation'
+        case 'loading': return 'fa-circle-notch fa-spin'
+        case 'info':
+        default: return 'fa-circle-info'
+    }
+})
 
 // Global BG for transparency effect
 const globalBgStyle = computed(() => {
@@ -1756,24 +1805,24 @@ const triggerCalendarSummary = () => {
 const executeCalendarSummary = async ({ startDate, endDate }) => {
     if (!props.chatData?.id) {
         showCalendarSummaryModal.value = false
-        showToast('无法执行总结：会话ID缺失', 3000)
+        showToast('无法执行总结：会话ID缺失', 'error', 3000)
         return
     }
     // 先关闭弹窗,再立刻显示loading反馈,避免用户以为没点到
     showCalendarSummaryModal.value = false
-    showPersistentToast(`⏳ 正在总结 ${startDate}${startDate === endDate ? '' : ` ~ ${endDate}`} 的对话,请稍候...`)
+    showPersistentToast(`⏳ 正在总结 ${startDate}${startDate === endDate ? '' : ` ~ ${endDate}`} 的对话,请稍候...`, 'loading')
     try {
         const result = await chatStore.summarizeHistory(props.chatData.id, { startDate, endDate })
         hideToast()
         if (!result.success && result.error) {
-            showToast('❌ 总结失败: ' + result.error, 4000)
+            showToast('总结失败: ' + result.error, 'error', 4000)
         } else {
-            showToast('✅ 总结完成,已存入记忆网络', 3000)
+            showToast('总结完成,已存入记忆网络', 'success', 3000)
         }
     } catch (e) {
         console.error(e)
         hideToast()
-        showToast('❌ 总结失败: ' + (e.message || '未知错误'), 4000)
+        showToast('总结失败: ' + (e.message || '未知错误'), 'error', 4000)
     }
 }
 
@@ -1791,25 +1840,25 @@ const executeManualSummary = async () => {
 
     if (!props.chatData?.id) {
         showManualSummaryModal.value = false
-        showToast('无法执行总结：会话ID缺失', 3000)
+        showToast('无法执行总结：会话ID缺失', 'error', 3000)
         return
     }
 
     // 先关闭弹窗,再立刻显示loading反馈
     showManualSummaryModal.value = false
-    showPersistentToast(`⏳ 正在总结 ${rangeInput || '所选范围'} 的对话,请稍候...`)
+    showPersistentToast(`⏳ 正在总结 ${rangeInput || '所选范围'} 的对话,请稍候...`, 'loading')
     try {
         const result = await chatStore.summarizeHistory(props.chatData.id, options)
         hideToast()
         if (result && !result.success && result.error) {
-            showToast('❌ 总结失败: ' + result.error, 4000)
+            showToast('总结失败: ' + result.error, 'error', 4000)
         } else {
-            showToast('✅ 总结完成,已存入记忆网络', 3000)
+            showToast('总结完成,已存入记忆网络', 'success', 3000)
         }
     } catch (e) {
         console.error(e)
         hideToast()
-        showToast('❌ 总结失败: ' + (e.message || '未知错误'), 4000)
+        showToast('总结失败: ' + (e.message || '未知错误'), 'error', 4000)
     }
 }
 
