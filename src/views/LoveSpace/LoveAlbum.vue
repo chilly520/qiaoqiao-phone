@@ -120,6 +120,7 @@ import { ref, computed } from 'vue'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 import { useChatStore } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { getTodayStr } from '@/utils/common'
 
 const loveSpaceStore = useLoveSpaceStore()
 const chatStore = useChatStore()

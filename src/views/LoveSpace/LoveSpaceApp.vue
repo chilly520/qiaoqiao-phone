@@ -465,6 +465,7 @@ import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { getTodayStr } from '@/utils/common'
 
 const router = useRouter()
 const chatStore = useChatStore()

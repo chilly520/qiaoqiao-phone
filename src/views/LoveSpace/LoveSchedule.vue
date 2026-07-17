@@ -162,6 +162,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useLoveSpaceStore } from '@/stores/loveSpaceStore'
 import { useChatStore } from '@/stores/chatStore'
+import { getTodayStr } from '@/utils/common'
 
 const loveSpaceStore = useLoveSpaceStore()
 const chatStore = useChatStore()
