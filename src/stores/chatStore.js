@@ -3262,6 +3262,87 @@ export const useChatStore = defineStore('chat', () => {
                     fullContent = fullContent.replace(nameRegex, '').trim();
                 }
 
+                // --- EARLY: Extract and Execute LS_JSON blocks BEFORE any other processing ---
+                // This is critical because LS_JSON contains nested brackets/JSON that break naive regexes.
+                // We use balanced brace matching on the raw fullContent to ensure complete extraction.
+                let lsJsonExecuted = false;
+                try {
+                    const earlyLsMarkerRegex = /\[\s*LS_JSON[:：]?\s*/gi;
+                    const earlyLsBlocks = [];
+                    let earlyLsMatch;
+                    const earlyLsSearch = new RegExp(earlyLsMarkerRegex.source, earlyLsMarkerRegex.flags);
+                    while ((earlyLsMatch = earlyLsSearch.exec(fullContent)) !== null) {
+                        const lsStartIdx = earlyLsMatch.index;
+                        const lsContentStart = lsStartIdx + earlyLsMatch[0].length;
+                        const lsFirstBrace = fullContent.indexOf('{', lsContentStart);
+                        if (lsFirstBrace === -1) continue;
+                        let bd = 0, biStr = false, biEsc = false, lsEndIdx = -1;
+                        for (let i = lsFirstBrace; i < fullContent.length; i++) {
+                            const c = fullContent[i];
+                            if (biEsc) { biEsc = false; continue; }
+                            if (c === '\\') { biEsc = true; continue; }
+                            if (c === '"') { biStr = !biStr; continue; }
+                            if (!biStr) {
+                                if (c === '{') bd++;
+                                else if (c === '}') { bd--; if (bd === 0) { lsEndIdx = i; break; } }
+                            }
+                        }
+                        if (lsEndIdx === -1) continue;
+                        let blockEnd = lsEndIdx + 1;
+                        const afterBrace = fullContent.substring(lsEndIdx + 1, lsEndIdx + 10);
+                        const bracketMatch = afterBrace.match(/^\s*[\]】]/);
+                        if (bracketMatch) blockEnd = lsEndIdx + 1 + bracketMatch[0].length;
+                        const lsBlock = fullContent.substring(lsStartIdx, blockEnd);
+                        earlyLsBlocks.push({ start: lsStartIdx, end: blockEnd, content: lsBlock });
+                        earlyLsSearch.lastIndex = blockEnd;
+                    }
+                    if (earlyLsBlocks.length > 0) {
+                        console.log(`[ChatStore] Early extraction: Found ${earlyLsBlocks.length} LS_JSON blocks, executing...`);
+                        const { useLoveSpaceStore } = await import('./loveSpaceStore');
+                        const loveSpaceStore = useLoveSpaceStore();
+                        for (const block of earlyLsBlocks) {
+                            const braceStart = block.content.indexOf('{');
+                            const braceEnd = block.content.lastIndexOf('}');
+                            if (braceStart !== -1 && braceEnd > braceStart) {
+                                let jsonStr = block.content.substring(braceStart, braceEnd + 1);
+                                jsonStr = jsonStr.replace(/^[\s,]+/, '');
+                                let parseOk = false;
+                                try {
+                                    JSON.parse(jsonStr);
+                                    parseOk = true;
+                                } catch (e) {
+                                    const repaired = jsonStr.replace(/\\\\"/g, '\\"').replace(/\\\\\\\\/g, '\\\\');
+                                    try {
+                                        JSON.parse(repaired);
+                                        jsonStr = repaired;
+                                        parseOk = true;
+                                    } catch (e2) {
+                                        console.warn('[ChatStore] Early LS_JSON parse failed:', e2.message, 'raw:', jsonStr.substring(0, 100));
+                                    }
+                                }
+                                if (parseOk) {
+                                    console.log('[ChatStore] Early LS_JSON executing:', jsonStr.substring(0, 120));
+                                    const execResult = await loveSpaceStore.executeSpaceCommands(jsonStr, chat.name, null, chatId);
+                                    console.log('[ChatStore] Early LS_JSON executed:', execResult);
+                                    if (execResult && execResult.success !== false) {
+                                        lsJsonExecuted = true;
+                                    }
+                                }
+                            }
+                        }
+                        for (let i = earlyLsBlocks.length - 1; i >= 0; i--) {
+                            const b = earlyLsBlocks[i];
+                            fullContent = fullContent.substring(0, b.start).replace(/[,，:：\s\r\n]+$/, '') + fullContent.substring(b.end);
+                        }
+                        fullContent = fullContent.trim();
+                        if (lsJsonExecuted) {
+                            triggerToast(`${chat.name} 更新了情侣空间`, 'success');
+                        }
+                    }
+                } catch (lsErr) {
+                    console.error('[ChatStore] Early LS_JSON extraction failed:', lsErr);
+                }
+
                 updateStreamingContent(chatId, fullContent)
 
                 // --- Handle Call Signal Interception ([接听] / [拒绝]) ---
@@ -3480,7 +3561,7 @@ export const useChatStore = defineStore('chat', () => {
                 // Stop at closing tag, OR start of another command, OR end of file.
                 // NOTE: We do NOT use Lookahead for Newline+Bracket as strict delimiter here, to allow AI to continue comfortably.
                 // The explicit closing tag is preferred, but we must stop if we see another major system tag.
-                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n\s*\[(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|红包|转账|表情包|图片))|$)/gi;
+                const innerVoiceRegex = /\[\s*INNER[\s-_]*VOICE\s*\]([\s\S]*?)(?:\[\/\s*(?:INNER[\s-_]*)?VOICE\s*\]|(?=\n?\s*\[\/?(?:CARD|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE|MOMENT|LS_JSON|DRAW|MUSIC|DICE|TAROT|红包|转账|表情包|图片|SET_|NUDGE|REPLY|FAMILY_CARD|LIKE|COMMENT))|$)/gi;
 
                 // Extract ALL inner voice blocks for canonical storage
                 const allVoiceMatches = [...fullContent.matchAll(innerVoiceRegex)];
@@ -3608,10 +3689,8 @@ export const useChatStore = defineStore('chat', () => {
                         theaterMatches.forEach(t => appendLog(chat.id, { type: '🎬', content: t.replace(/‖/g, '').trim().substring(0, 150), time: Date.now() }))
                     } else {
                         const cleanContent = pureDialogue
-                            .replace(/\[(ONLINE|OFFLINE|INNER_VOICE|\/INNER_VOICE|表情包|图片)\][\s]*/gi, '')
+                            .replace(/\[\/?(?:ONLINE|OFFLINE|INNER_VOICE|LS_JSON|表情包|图片|MOMENT)[^\]]*\][\s]*/gi, '')
                             .replace(/__CARD_PLACEHOLDER_\d+__/gi, '[卡片]')
-                            .replace(/\[MOMENT[^\]]*\]/gi, '')
-                            .replace(/\[LS_JSON[^\]]*\]/gi, '')
                             .trim()
                         if (cleanContent.length > 15) {
                             appendLog(chat.id, { type: '💬', content: cleanContent.substring(0, 150), time: Date.now() })
@@ -3630,7 +3709,7 @@ export const useChatStore = defineStore('chat', () => {
                 let replyRegex = /\[REPLY:\s*(.*?)\]/i;
                 let nudgeRegex = /\[(NUDGE(?:_SELF)?)(?::(.+?))?\]/i;
                 let recallRegex = /\[(?:RECALL|撤回)(?::(.+?))?\]/i;
-                let momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
+                let momentRegex = /\[(?:MOMENT|朋友圈)\]([\s\S]*?)(?:\[\/(?:MOMENT|朋友圈)\]|(?=\[\s*(?:INNER_VOICE|DRAW|CARD|LS_JSON|SET_AVATAR|SET_PAT|NUDGE|REPLY|红包|转账|图片|表情包))|$)/i;
                 let momentShareRegex = /\[(?:MOMENT_SHARE|分享朋友圈):\s*([\s\S]+?)\](?=\s*(?:\[[A-Z_]|【|\[INNER_VOICE|\[\/\w|$))/i;
                 
                 // Matches and temporary variables
@@ -4157,7 +4236,7 @@ export const useChatStore = defineStore('chat', () => {
                 cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
 
                 // Pass 1.8: Extract [INNER_VOICE] blocks for context but remove from cleanContent.
-                const ivStripRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n\s*\[(?:CARD|DRAW|MOMENT|红包|转账|表情包|图片|SET_|NUDGE))|$)/gi;
+                const ivStripRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n?\s*\[\/?(?:CARD|DRAW|MOMENT|LS_JSON|红包|转账|表情包|图片|SET_|NUDGE|REPLY|FAMILY_CARD|LIKE|COMMENT|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE))|$)/gi;
                 const activeInnerVoice = rawInnerVoiceBlock || ""; // 使用之前通过平衡括号法提取的完整块
                 cleanContent = cleanContent.replace(ivStripRegex, ""); 
 
