@@ -387,6 +387,10 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
     },
     
     async loadFromStorage() {
+      // [BUG FIX] promise 去重: App.vue 启动时调用一次, executeSpaceCommands 守卫可能再调一次,
+      // 防止并发加载重复读 IndexedDB + 互相覆盖 this.spaces.
+      if (this._loadPromise) return this._loadPromise
+      this._loadPromise = (async () => {
       this.isMagicGenerating = false
       try {
         let data = await loveSpaceDB.getItem('all_spaces_v2')
@@ -403,7 +407,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
         if (data) {
           this.spaces = data.spaces || {}
           this.currentPartnerId = data.currentPartnerId || null
-          
+
           // 兼容旧数据：给问题添加 authorId 和 authorName
           Object.values(this.spaces).forEach(space => {
             if (space.questions && Array.isArray(space.questions)) {
@@ -435,7 +439,7 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
               }
             }
           })
-          
+
           this.updateLoveDays()
         }
         this.isLoaded = true
@@ -444,7 +448,11 @@ export const useLoveSpaceStore = defineStore('loveSpace', {
       } catch (e) {
         console.error('[LoveSpaceStore] Load failed', e)
         this.isLoaded = true
+      } finally {
+        this._loadPromise = null
       }
+      })()
+      return this._loadPromise
     },
 
     async addDiary(entry) {
@@ -1454,9 +1462,21 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
     async executeSpaceCommands(text, partnerName, targetDate = null, forcedCharId = null) {
       if (!text) return { success: false, reason: 'No text' }
       const chatStore = (await import('./chatStore.js')).useChatStore()
-      
+
+      // [BUG FIX] 加载守卫: App.vue 启动时 loadFromStorage 未 await, 若用户在加载完成前
+      // 收到 AI 回复触发此函数, selectSpace 会创建空空间并 saveToStorage, 覆盖 IndexedDB
+      // 里已有的空间数据. 执行前确保数据已加载.
+      if (!this.isLoaded) {
+          await this.loadFromStorage()
+      }
+
       // 关键修复：如果当前没有选择空间，或者强制指定了空间ID，则先进行选择
-      if (forcedCharId && this.currentPartnerId !== forcedCharId) {
+      // [BUG FIX] 原条件 `this.currentPartnerId !== forcedCharId` 漏了一种情况:
+      // currentPartnerId 已等于 forcedCharId 但 spaces[forcedCharId] 不存在(数据未加载/竞态),
+      // 此时 currentSpace getter 返回临时 DEFAULT_SPACE()(未存入 this.spaces),
+      // 所有 add* 方法往临时对象 push, saveToStorage 只序列化 this.spaces, 数据全部丢失.
+      // 加 `|| !this.spaces[forcedCharId]` 确保空间一定存在.
+      if (forcedCharId && (this.currentPartnerId !== forcedCharId || !this.spaces[forcedCharId])) {
           console.log('[LoveSpaceStore] Switching/Setting partner for command execution:', forcedCharId)
           await this.selectSpace(forcedCharId)
       }
@@ -1632,7 +1652,15 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
           const toastQueue = []
           
           // 串行执行，确保图片生成不被阻塞
-          for (const cmd of commands) {
+          for (const cmdRaw of commands) {
+            // [BUG FIX] 提示词(prompts_private.js:436)要求 AI 用 data 包装格式:
+            //   {"type":"diary","data":{"title":"...","content":"..."}}
+            // 但原代码读扁平字段 cmd.title/cmd.content, 从未解包 cmd.data,
+            // 导致 AI 遵循提示词时所有字段读成 undefined, 指令"无效".
+            // 解包: 优先用 data 里的字段覆盖, 保留顶层 type 等元字段, 兼容扁平格式.
+            const cmd = cmdRaw && cmdRaw.data && typeof cmdRaw.data === 'object'
+              ? { ...cmdRaw, ...cmdRaw.data }
+              : cmdRaw
             const type = cmd.type?.toLowerCase()
             console.log('[LoveSpaceStore] Executing command:', type)
             
@@ -1644,8 +1672,20 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
             } else if (type === 'footprint') {
               // Support both single footprint and footprints array
               const footprintItems = cmd.footprints ? cmd.footprints : [cmd]
-              
-              for (const fpCmd of footprintItems) {
+
+              // [BUG FIX] 提示词(prompts_private.js:438)用 description 字段, 代码读 content.
+              // 统一映射: description -> content, 兼容两种字段名.
+              const fpCmds = footprintItems.map(fp => ({
+                ...fp,
+                content: fp.content || fp.description || ''
+              }))
+
+              for (const fpCmd of fpCmds) {
+                // Skip empty footprint content
+                if (!fpCmd.content || !fpCmd.content.trim()) {
+                  console.warn('[LoveSpaceStore] Skipping empty footprint:', fpCmd)
+                  continue
+                }
                 // Duplicate check for footprint
                 const isDup = (this.currentSpace.footprints || []).some(f => f.content === fpCmd.content && f.location === fpCmd.location)
                 if (isDup) {
@@ -1653,16 +1693,18 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
                 } else {
                 const baseTime = targetDate ? new Date(targetDate) : new Date()
                 let createdAt = baseTime.toISOString()
-                if (cmd.time) {
-                  const [h, m] = cmd.time.split(':')
+                if (fpCmd.time) {
+                  const [h, m] = fpCmd.time.split(':')
                   const d = new Date(baseTime)
                   d.setHours(parseInt(h) || 0)
                   d.setMinutes(parseInt(m) || 0)
                   createdAt = d.toISOString()
-                } else if (commands.filter(c => c.type === 'footprint').length > 1) {
+                } else if (fpCmds.length > 1) {
                   // 如果 AI 给了多条足迹但没给时间，按顺序往前倒推分布
-                  const fpIndex = commands.filter(c => c.type === 'footprint').indexOf(cmd)
-                  const totalFp = commands.filter(c => c.type === 'footprint').length
+                  // [BUG FIX] 原代码用 commands.filter(...).indexOf(cmd), 但 cmd 是解包后的新对象,
+                  // 不在原 commands 数组里, indexOf 返回 -1, 时间偏移算错. 改用 fpCmds 自身索引.
+                  const fpIndex = fpCmds.indexOf(fpCmd)
+                  const totalFp = fpCmds.length
                   const jitterMinutes = (totalFp - 1 - fpIndex) * 45 // 往前倒推，每隔 45 分钟左右
                   const d = new Date(baseTime)
                   d.setMinutes(d.getMinutes() - jitterMinutes)
@@ -1871,9 +1913,11 @@ ${LOVE_SPACE_GENERATOR_PROMPT(chat.name, userProfile.name, this.loveDays, spaceH
       
       // 执行完成后全局保存一次
       await this.saveToStorage()
-      
+
       // 返回执行结果
-      return { success: true, executedCount: totalExecutedCount }
+      // [BUG FIX] 原代码即使 0 条命令执行也返回 success:true, 调用方据此弹"更新了情侣空间"toast,
+      // 严重误导排查. 改为基于实际执行数.
+      return { success: totalExecutedCount > 0, executedCount: totalExecutedCount }
     }
   }
 })

@@ -418,7 +418,9 @@ export const useChatStore = defineStore('chat', () => {
                 
                 if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
                     try {
-                        const parsed = JSON.parse(trimmedContent.replace(/['"]/g, '"')); 
+                        // [BUG FIX] 原代码 .replace(/['"]/g, '"') 会把 JSON 值里的单引号(如
+                        // "content":"Bob's diary")也替换成双引号, 破坏 JSON. 标准双引号 JSON 直接 parse 即可.
+                        const parsed = JSON.parse(trimmedContent);
                         if (parsed.commands || (parsed.type && ['diary', 'footprint', 'message', 'sticky', 'anniversary', 'letter', 'question', 'album', 'house', 'gacha', 'schedule'].includes(parsed.type))) {
                             console.log('[ChatStore] Detected raw JSON LS_JSON format, wrapping with tag...');
                             processedContent = `[LS_JSON:${trimmedContent}]`;
@@ -507,19 +509,25 @@ export const useChatStore = defineStore('chat', () => {
                         const braceEnd = block.content.lastIndexOf('}')
                         if (braceStart !== -1 && braceEnd !== -1 && braceEnd > braceStart) {
                             let jsonStr = block.content.substring(braceStart, braceEnd + 1)
-                            // [FIX] Unescape double-escaped quotes that AI sometimes produces
-                            // e.g. {,\"data\":{\"title\":...} → {"data":{"title":...
-                            jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\')
                             // Strip leading comma if present (AI artifact)
                             jsonStr = jsonStr.replace(/^[\s,]+/, '')
 
-                            // [FIX] 验证 JSON 是否可解析，若失败则尝试扩大范围重新提取
-                            try {
-                                JSON.parse(jsonStr)
-                                console.log('[ChatStore] Cleaned LS_JSON payload OK:', jsonStr.substring(0, 120) + '...')
-                                jsonPayloads.push(jsonStr)
-                            } catch (parseErr) {
-                                console.warn('[ChatStore] LS_JSON parse failed, trying extended extraction:', parseErr.message, 'raw:', jsonStr.substring(0, 100))
+                            // [BUG FIX] 原代码无条件 replace(/\\"/g, '"') 会破坏合法 JSON 里的转义引号
+                            // (如 content:"她说\"你好\"" → 替换后字符串提前闭合, JSON.parse 必失败).
+                            // 改为: 先原样 parse, 失败后才尝试修复真正的双重转义.
+                            const tryParseLenient = (s) => {
+                                try { JSON.parse(s); return s } catch (_) {
+                                    const repaired = s.replace(/\\\\"/g, '\\"').replace(/\\\\\\\\/g, '\\\\')
+                                    try { JSON.parse(repaired); return repaired } catch (__) { return null }
+                                }
+                            }
+
+                            const parsed = tryParseLenient(jsonStr)
+                            if (parsed) {
+                                console.log('[ChatStore] Cleaned LS_JSON payload OK:', parsed.substring(0, 120) + '...')
+                                jsonPayloads.push(parsed)
+                            } else {
+                                console.warn('[ChatStore] LS_JSON parse failed, trying extended extraction:', jsonStr.substring(0, 100))
                                 // 兜底：从原始 processedContent 中用正则提取完整的 JSON 对象
                                 const fullText = processedContent
                                 const markerIdx = fullText.toLowerCase().indexOf('ls_json')
@@ -529,13 +537,12 @@ export const useChatStore = defineStore('chat', () => {
                                     const extStart = afterMarker.indexOf('{')
                                     const extEnd = afterMarker.lastIndexOf('}')
                                     if (extStart !== -1 && extEnd > extStart) {
-                                        let extJson = afterMarker.substring(extStart, extEnd + 1)
-                                        extJson = extJson.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/^[\s,]+/, '')
-                                        try {
-                                            JSON.parse(extJson)
-                                            console.log('[ChatStore] Extended LS_JSON extraction OK:', extJson.substring(0, 120) + '...')
-                                            jsonPayloads.push(extJson)
-                                        } catch {
+                                        let extJson = afterMarker.substring(extStart, extEnd + 1).replace(/^[\s,]+/, '')
+                                        const extParsed = tryParseLenient(extJson)
+                                        if (extParsed) {
+                                            console.log('[ChatStore] Extended LS_JSON extraction OK:', extParsed.substring(0, 120) + '...')
+                                            jsonPayloads.push(extParsed)
+                                        } else {
                                             console.warn('[ChatStore] Extended extraction also failed, skipping payload')
                                         }
                                     }
@@ -4421,17 +4428,32 @@ export const useChatStore = defineStore('chat', () => {
                             const braceEnd = block.content.lastIndexOf('}');
                             if (braceStart !== -1 && braceEnd > braceStart) {
                                 let jsonStr = block.content.substring(braceStart, braceEnd + 1);
-                                jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/^[\s,]+/, '');
+                                jsonStr = jsonStr.replace(/^[\s,]+/, '');
+                                // [BUG FIX] 原代码无条件 replace(/\\"/g, '"') 会破坏合法 JSON 里的转义引号
+                                // (如 content:"她说\"你好\"" → 替换后字符串提前闭合, JSON.parse 必失败,
+                                // 整个指令块被静默丢弃, 用户看到指令消失却无任何执行). 改为: 先原样 parse,
+                                // 失败后才尝试修复真正的双重转义 (\\" → \").
+                                let parseOk = false;
                                 try {
                                     JSON.parse(jsonStr);
+                                    parseOk = true;
+                                } catch (e) {
+                                    const repaired = jsonStr.replace(/\\\\"/g, '\\"').replace(/\\\\\\\\/g, '\\\\');
+                                    try {
+                                        JSON.parse(repaired);
+                                        jsonStr = repaired;
+                                        parseOk = true;
+                                    } catch (e2) {
+                                        console.warn('[ChatStore] Pre-split LS_JSON parse failed:', e2.message, 'raw:', jsonStr.substring(0, 100));
+                                    }
+                                }
+                                if (parseOk) {
                                     console.log('[ChatStore] Pre-split LS_JSON OK:', jsonStr.substring(0, 120));
                                     const execResult = await loveSpaceStore.executeSpaceCommands(jsonStr, chat.name, null, chatId);
                                     console.log('[ChatStore] Pre-split LS_JSON executed:', execResult);
                                     if (execResult && execResult.success !== false) {
                                         triggerToast(`${chat.name} 更新了情侣空间`, 'success');
                                     }
-                                } catch (e) {
-                                    console.warn('[ChatStore] Pre-split LS_JSON parse failed:', e.message);
                                 }
                             }
                         }
