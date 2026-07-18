@@ -327,6 +327,14 @@ async function fetchGeneric(url, wantComments) {
     const html = await resp.text();
     const meta = extractMeta(html, url);
     const platform = detectPlatform(url);
+
+    // v1.10.172: 视频平台补 videoUrl 标记(只标记,不抓真实直链,
+    // 让前端和AI知道这是视频类型即可)
+    let videoUrl = '';
+    if (platform === 'bilibili' || platform === 'youtube' || platform === 'douyin') {
+        videoUrl = url; // 用原 URL 作为视频标记
+    }
+
     const result = {
         url,
         title: meta.title,
@@ -338,6 +346,7 @@ async function fetchGeneric(url, wantComments) {
         favicon: meta.favicon,
         hostname: meta.hostname,
     };
+    if (videoUrl) result.videoUrl = videoUrl;
 
     // v1.10.170: 提取评论(通用兜底)
     if (wantComments) {

@@ -51,6 +51,13 @@ const comments = computed(() => {
 const hasComments = computed(() => comments.value.length > 0)
 const displayComments = computed(() => showComments.value ? comments.value : comments.value.slice(0, 2))
 
+// v1.10.172: 是否是视频内容(有 videoUrl 或 platform 是视频类)
+const isVideo = computed(() => {
+  if (linkData.value.videoUrl) return true
+  const p = linkData.value.platform
+  return p === 'douyin' || p === 'bilibili' || p === 'youtube'
+})
+
 function openLink() {
   const url = linkData.value.url
   if (url) window.open(url, '_blank')
@@ -66,9 +73,15 @@ function toggleComments(e) {
   <div class="link-share-card bg-white rounded-[4px] border border-gray-200 shadow-sm w-[240px] overflow-hidden select-none cursor-pointer active:scale-95 transition-transform"
     @click="openLink">
     <!-- 缩略图 -->
-    <div v-if="linkData.image" class="w-full h-[120px] bg-gray-100 overflow-hidden">
+    <div v-if="linkData.image" class="w-full h-[120px] bg-gray-100 overflow-hidden relative">
       <img :src="linkData.image" class="w-full h-full object-cover" referrerpolicy="no-referrer"
         @error="$event.target.style.display='none'">
+      <!-- v1.10.172: 视频播放图标 -->
+      <div v-if="isVideo" class="absolute inset-0 flex items-center justify-center bg-black/20">
+        <div class="w-9 h-9 rounded-full bg-black/60 flex items-center justify-center">
+          <i class="fa-solid fa-play text-white text-[14px] ml-0.5"></i>
+        </div>
+      </div>
     </div>
 
     <!-- 标题 + 描述 -->

@@ -2859,10 +2859,16 @@ export const useChatStore = defineStore('chat', () => {
                 // v1.10.171: 修复空回BUG——原来用 let content 误开了块级作用域,
                 //   导致赋值只在 try 内生效,外层 content 仍是原始 JSON 字符串,
                 //   AI 收到的是裸 JSON 而非格式化文本,产生空回。去掉 let 即可。
+                // v1.10.172: 视频标注——AI 看不到视频本身,提示它基于封面/描述/评论讨论,
+                //   不要瞎编视频剧情。
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     const role = m.role === 'user' ? '用户' : '我';
                     content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
+                    // v1.10.172: 视频标注(抖音/B站等有 videoUrl 的)
+                    if (data.videoUrl) {
+                        content += `。(这是视频内容,我只能看到封面图${data.image ? '(已附)' : ''}和作者描述,无法观看视频本身,请不要瞎编视频里演了什么,基于标题/描述/评论来讨论)`;
+                    }
                     // v1.10.170: 注入评论
                     if (Array.isArray(data.comments) && data.comments.length > 0) {
                         const commentsText = data.comments.slice(0, 10).map((c, i) =>
