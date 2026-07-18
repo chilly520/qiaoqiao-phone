@@ -1231,6 +1231,8 @@ export const useChatStore = defineStore('chat', () => {
                         generateImage(cleanVal, { chatId }).then(url => {
                             chat.bio.loveItems[index].image = url;
                             saveChats();
+                        }).catch(err => {
+                            console.warn('[ChatStore] Love item image generation failed:', err);
                         });
                         bioUpdated = true;
                     }
@@ -2122,6 +2124,15 @@ export const useChatStore = defineStore('chat', () => {
             }
         };
 
+        const isQuotaError = (e) => {
+            return e && (e.name === 'QuotaExceededError' || e.code === 22 ||
+                   (e.message && (e.message.includes('quota') || e.message.includes('QuotaExceeded') ||
+                    e.message.includes('Invalid string length') || e.message.includes('storage limit'))));
+        };
+
+        let metaWriteFailed = false;
+        let quotaError = null;
+
         try {
             // Directly mutate the chat object to leverage Vue 3's deep reactivity.
             Object.assign(chats.value[chatId], updates)
@@ -2138,13 +2149,20 @@ export const useChatStore = defineStore('chat', () => {
                 await localforage.setItem(`qiaoqiao_chat_meta_${chatId}`, toRawObj(meta))
             } catch (perChatErr) {
                 console.warn('[updateCharacter] per-chat meta write failed:', perChatErr)
+                if (isQuotaError(perChatErr)) {
+                    quotaError = perChatErr;
+                }
+                metaWriteFailed = true;
             }
 
-            if (Array.isArray(msgs)) {
+            if (Array.isArray(msgs) && !quotaError) {
                 try {
                     await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, toRawObj(msgs))
                 } catch (msgsErr) {
                     console.warn('[updateCharacter] msgs write failed:', msgsErr)
+                    if (isQuotaError(msgsErr)) {
+                        quotaError = msgsErr;
+                    }
                 }
             }
 
@@ -2154,9 +2172,18 @@ export const useChatStore = defineStore('chat', () => {
                 console.warn('[updateCharacter] V3 metadata sync failed (per-chat key 已保存):', e)
             })
 
+            // 如果是quota错误且per-chat meta写入失败，向外抛出错误让调用者处理
+            if (quotaError && metaWriteFailed) {
+                throw quotaError;
+            }
+
             return true
         } catch (err) {
             console.error('[updateCharacter] Error:', err)
+            // 如果是QuotaExceededError，向外抛出让调用者有机会清理缓存重试
+            if (isQuotaError(err)) {
+                throw err;
+            }
             return false
         }
     }
@@ -5149,7 +5176,7 @@ export const useChatStore = defineStore('chat', () => {
                                 const tp = dp[0].trim(), ip = (dp[1]||'').trim()
                                 if (tp.length <= 20 && tp.length > 0) { gNote = tp; gDesc = '' }
                                 else if (tp.length > 20) { gDesc = tp; gNote = '' }
-                                if (ip) import('@/utils/aiService').then(m => m.generateImage(ip, { chatId }).then(url => { gImage = url; saveChats() }))
+                                if (ip) import('@/utils/aiService').then(m => m.generateImage(ip, { chatId }).then(url => { gImage = url; saveChats() }).catch(err => console.warn('[ChatStore] Gift image generation failed:', err)))
                             } else if (gDesc.length > 50) {} else if (gDesc.length > 0) { gNote = gDesc; gDesc = '' }
                         }
                         if (!gDesc) gDesc = `${gName} - 一份珍贵的礼物`

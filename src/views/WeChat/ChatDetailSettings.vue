@@ -3441,10 +3441,20 @@ const saveSettings = async () => {
         // --- 核心优化：空间检查与静默清理 ---
         const clearQuota = () => {
             try {
-                // 清理视觉描述缓存（通常很大且非核心数据）
-                localStorage.removeItem('qiaoqiao_avatar_descriptions');
-                console.log('[Settings] Cleared avatar descriptions cache to free up space.');
-            } catch (e) {}
+                // 清理各种非核心缓存来释放空间
+                const nonCriticalKeys = [
+                    'qiaoqiao_avatar_descriptions',
+                    'qiaoqiao-image-cache',
+                    'qiaoqiao-moment-cache',
+                    'qiaoqiao_sticker_cache'
+                ];
+                nonCriticalKeys.forEach(key => {
+                    try { localStorage.removeItem(key); } catch(e) {}
+                });
+                console.log('[Settings] Cleared non-critical caches to free up space.');
+            } catch (e) {
+                console.warn('[Settings] clearQuota error:', e);
+            }
         }
 
         // 1. Update character in centralized store
@@ -3483,7 +3493,17 @@ const saveSettings = async () => {
         console.error('[Settings] Save failed with error:', error)
         
         // 根据错误类型给出具体提示和解决方案
-        if (error.name === 'QuotaExceededError' || error.message?.includes('quota') || error.message?.includes('storage') || error.message?.includes('Invalid string length')) {
+        const isQuotaError = error.name === 'QuotaExceededError' || 
+                            error.code === 22 ||
+                            (error.message && (
+                                error.message.includes('quota') || 
+                                error.message.includes('QuotaExceeded') ||
+                                error.message.includes('Invalid string length') ||
+                                error.message.includes('the maximum size') ||
+                                error.message.includes('storage limit') ||
+                                error.message.includes('exceeded the storage')
+                            ));
+        if (isQuotaError) {
             showToast('存储空间不足！请使用URL方式设置头像（点击头像旁的URL按钮）')
             console.error('[Settings] Storage quota exceeded. Suggest using URL avatar instead of base64.')
             
