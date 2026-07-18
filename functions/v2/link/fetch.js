@@ -1,10 +1,11 @@
 // Cloudflare Pages Function: 网页链接内容抓取
-// 路径: /v2/link/fetch?url=xxx  → 抓取网页标题/描述/图片/评论
+// 路径: /v2/link/fetch?url=xxx           → 抓取网页标题/描述/图片/评论
+//       /v2/link/fetch?url=xxx&comments=1 → 强制抓取评论
 // 支持: 通用网页(OG meta)、抖音、小红书
-// v1.10.169: 新增,为"分享链接"功能提供后端
+// v1.10.170: 新增评论抓取(从分享页SSR HTML提取)
 //
 // 返回格式:
-// { data: { url, title, description, image, source, favicon, platform, author, comments: [...] } }
+// { data: { url, title, description, image, source, favicon, platform, author, comments: [{user, text, likes, time}] } }
 
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -99,8 +100,126 @@ const PLATFORM_LABELS = {
     web: '网页',
 };
 
+// v1.10.170: 从抖音 SSR HTML 提取评论
+// 抖音分享页 iesdouyin.com/share/video/{id}/ 的 HTML 里嵌入了 RENDER_DATA 或 _ROUTER_DATA
+// 里面含有 comments 数组
+function extractDouyinComments(html) {
+    const comments = [];
+
+    // 方式1: 从 RENDER_DATA (urlencode JSON) 提取
+    const renderDataMatch = html.match(/id=["']RENDER_DATA["'][^>]*>([^<]+)</i);
+    if (renderDataMatch) {
+        try {
+            const decoded = decodeURIComponent(renderDataMatch[1]);
+            // 在解码后的 JSON 里找 comments 数组
+            // 评论结构: {"text":"评论内容","user":{"nickname":"用户名"},"digg_count":10}
+            const commentRegex = /\{"text"\s*:\s*"([^"]+)"[^}]*?"user"\s*:\s*\{[^}]*?"nickname"\s*:\s*"([^"]*)"[^}]*\}[^}]*?"digg_count"\s*:\s*(\d+)/g;
+            let m;
+            while ((m = commentRegex.exec(decoded)) !== null && comments.length < 20) {
+                comments.push({
+                    user: m[2] || '匿名用户',
+                    text: m[1],
+                    likes: parseInt(m[3]) || 0,
+                });
+            }
+        } catch (e) {}
+    }
+
+    // 方式2: 直接从 HTML 里找 comment 结构(兜底)
+    if (comments.length === 0) {
+        const commentRegex2 = /"text"\s*:\s*("([^"]{2,200})")[^}]{0,300}?"user"[^}]*?"nickname"\s*:\s*"([^"]*)"/g;
+        let m;
+        while ((m = commentRegex2.exec(html)) !== null && comments.length < 20) {
+            // 过滤掉明显是视频描述而不是评论的(描述通常很长)
+            if (m[2].length < 200) {
+                comments.push({
+                    user: m[3] || '匿名用户',
+                    text: m[2],
+                    likes: 0,
+                });
+            }
+        }
+    }
+
+    return comments;
+}
+
+// v1.10.170: 从小红书 SSR HTML 提取评论
+// 小红书分享页 HTML 里嵌入了 window.__INITIAL_STATE__ 或 meta 里的评论
+function extractXiaohongshuComments(html) {
+    const comments = [];
+
+    // 方式1: window.__INITIAL_STATE__ 注入
+    const stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*<\/script>/i);
+    if (stateMatch) {
+        try {
+            const jsonStr = stateMatch[1].replace(/undefined/g, 'null');
+            const state = JSON.parse(jsonStr);
+            // 小红书 state 结构: note.noteDetailMap.{noteId}.comments
+            const noteDetailMap = state?.note?.noteDetailMap || {};
+            for (const key in noteDetailMap) {
+                const noteData = noteDetailMap[key]?.note;
+                if (noteData?.comments) {
+                    for (const c of noteData.comments) {
+                        if (comments.length >= 20) break;
+                        comments.push({
+                            user: c.user?.nickname || '匿名用户',
+                            text: c.content || '',
+                            likes: c.likeCount || 0,
+                            time: c.createTime || '',
+                        });
+                    }
+                    break;
+                }
+            }
+        } catch (e) {}
+    }
+
+    // 方式2: 从 HTML 里找评论结构(兜底)
+    if (comments.length === 0) {
+        // 小红书评论结构: {"content":"评论","user":{"nickname":"用户"},"likeCount":5}
+        const commentRegex = /"content"\s*:\s*"([^"]{2,300})"[^}]{0,200}?"user"[^}]*?"nickname"\s*:\s*"([^"]*)"[^}]{0,100}?"likeCount"\s*:\s*(\d+)/g;
+        let m;
+        while ((m = commentRegex.exec(html)) !== null && comments.length < 20) {
+            comments.push({
+                user: m[2] || '匿名用户',
+                text: m[1],
+                likes: parseInt(m[3]) || 0,
+            });
+        }
+    }
+
+    return comments;
+}
+
+// v1.10.170: 通用网页评论提取(从常见评论结构)
+function extractGenericComments(html) {
+    const comments = [];
+    // 尝试常见的评论 JSON 结构
+    const patterns = [
+        // {"author":"用户","text":"评论","likes":5}
+        /"(?:author|user|name|nickname)"\s*:\s*"([^"]{1,50})"[^}]{0,200}?"(?:text|content|comment|body)"\s*:\s*"([^"]{2,300})"/g,
+        // {"text":"评论","author":"用户"}
+        /"(?:text|content|comment|body)"\s*:\s*"([^"]{2,300})"[^}]{0,200}?"(?:author|user|name|nickname)"\s*:\s*"([^"]{1,50})"/g,
+    ];
+    for (const re of patterns) {
+        let m;
+        while ((m = re.exec(html)) !== null && comments.length < 10) {
+            // 两种 pattern 顺序不同,统一处理
+            const user = re.source.includes('author.*text') ? m[1] : m[2];
+            const text = re.source.includes('author.*text') ? m[2] : m[1];
+            // 过滤明显非评论的内容
+            if (text.length > 5 && !text.includes('\\n') && user.length > 0) {
+                comments.push({ user, text, likes: 0 });
+            }
+        }
+        if (comments.length > 0) break;
+    }
+    return comments;
+}
+
 // 抖音:从分享链接提取视频 ID,调用分享页 API
-async function fetchDouyin(url) {
+async function fetchDouyin(url, wantComments) {
     // 抖音分享链接通常是 https://v.douyin.com/xxxxx/ 或 https://www.douyin.com/video/xxxxx
     // 先跟随重定向拿到真实 URL
     let realUrl = url;
@@ -131,7 +250,7 @@ async function fetchDouyin(url) {
         const coverMatch = html.match(/"cover"\s*:\s*\{[^}]*"url_list"\s*:\s*\["([^"]+)"/);
         const videoUrlMatch = html.match(/"play_addr"\s*:\s*\{[^}]*"url_list"\s*:\s*\["([^"]+)"/);
 
-        return {
+        const result = {
             url: realUrl,
             title: descMatch ? descMatch[1] : '',
             description: descMatch ? descMatch[1] : '',
@@ -143,13 +262,20 @@ async function fetchDouyin(url) {
             favicon: 'https://www.douyin.com/favicon.ico',
             hostname: 'douyin.com',
         };
+
+        // v1.10.170: 提取评论
+        if (wantComments) {
+            result.comments = extractDouyinComments(html);
+        }
+
+        return result;
     } catch (e) {
         return null;
     }
 }
 
 // 小红书:从分享链接提取 note ID
-async function fetchXiaohongshu(url) {
+async function fetchXiaohongshu(url, wantComments) {
     let realUrl = url;
     try {
         const resp = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': UA } });
@@ -169,7 +295,7 @@ async function fetchXiaohongshu(url) {
         });
         const html = await resp.text();
         const meta = extractMeta(html, realUrl);
-        return {
+        const result = {
             url: realUrl,
             title: meta.title,
             description: meta.description,
@@ -180,13 +306,20 @@ async function fetchXiaohongshu(url) {
             favicon: 'https://www.xiaohongshu.com/favicon.ico',
             hostname: 'xiaohongshu.com',
         };
+
+        // v1.10.170: 提取评论
+        if (wantComments) {
+            result.comments = extractXiaohongshuComments(html);
+        }
+
+        return result;
     } catch (e) {
         return null;
     }
 }
 
 // 通用网页抓取
-async function fetchGeneric(url) {
+async function fetchGeneric(url, wantComments) {
     const resp = await fetch(url, {
         headers: { 'User-Agent': UA },
         cf: { cacheTtl: 3600 },
@@ -194,7 +327,7 @@ async function fetchGeneric(url) {
     const html = await resp.text();
     const meta = extractMeta(html, url);
     const platform = detectPlatform(url);
-    return {
+    const result = {
         url,
         title: meta.title,
         description: meta.description,
@@ -205,12 +338,21 @@ async function fetchGeneric(url) {
         favicon: meta.favicon,
         hostname: meta.hostname,
     };
+
+    // v1.10.170: 提取评论(通用兜底)
+    if (wantComments) {
+        result.comments = extractGenericComments(html);
+    }
+
+    return result;
 }
 
 export async function onRequestGet(context) {
     const { request } = context;
     const urlObj = new URL(request.url);
     const targetUrl = urlObj.searchParams.get('url');
+    // v1.10.170: comments=1 时强制抓取评论
+    const wantComments = urlObj.searchParams.get('comments') === '1' || true; // 默认抓评论
 
     if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -240,13 +382,13 @@ export async function onRequestGet(context) {
 
         // 按平台分发
         if (platform === 'douyin') {
-            data = await fetchDouyin(validUrl);
-            if (!data) data = await fetchGeneric(validUrl);
+            data = await fetchDouyin(validUrl, wantComments);
+            if (!data) data = await fetchGeneric(validUrl, wantComments);
         } else if (platform === 'xiaohongshu') {
-            data = await fetchXiaohongshu(validUrl);
-            if (!data) data = await fetchGeneric(validUrl);
+            data = await fetchXiaohongshu(validUrl, wantComments);
+            if (!data) data = await fetchGeneric(validUrl, wantComments);
         } else {
-            data = await fetchGeneric(validUrl);
+            data = await fetchGeneric(validUrl, wantComments);
         }
 
         // 补充平台标签

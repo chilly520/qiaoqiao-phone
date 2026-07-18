@@ -2855,10 +2855,18 @@ export const useChatStore = defineStore('chat', () => {
                 } catch (e) { content = '[收藏内容]' }
             } else if (m.type === 'link_card') {
                 // v1.10.169: 链接分享卡片,把抓取到的网页内容注入 AI 上下文
+                // v1.10.170: 同时注入评论内容,让AI能讨论评论
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     const role = m.role === 'user' ? '用户' : '我';
-                    content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
+                    let content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
+                    // v1.10.170: 注入评论
+                    if (Array.isArray(data.comments) && data.comments.length > 0) {
+                        const commentsText = data.comments.slice(0, 10).map((c, i) =>
+                            `${i + 1}. ${c.user || '匿名'}: "${c.text}"${c.likes > 0 ? `(赞${c.likes})` : ''}`
+                        ).join('; ');
+                        content += `。热门评论: ${commentsText}`;
+                    }
                     if (data.image) m.image = data.image;
                 } catch (e) { content = '[网页链接]' }
             } else if (m.type === 'tarot_card' || m.type === 'tarot_interpretation') {
