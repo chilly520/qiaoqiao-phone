@@ -3,11 +3,17 @@
     <iframe ref="iframeRef" :srcdoc="fullContent" class="w-full h-full border-none"
       sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals allow-pointer-lock allow-top-navigation-by-user-activation"
       allowtransparency="true" :scrolling="allowScroll ? 'auto' : 'no'" @load="onLoad"></iframe>
+    <!-- v1.10.168: 加载骨架,避免 iframe CDN 加载期间留空一块 -->
+    <div v-if="!loaded" class="card-skeleton">
+      <div class="skeleton-line w-3/4"></div>
+      <div class="skeleton-line w-1/2"></div>
+      <div class="skeleton-line w-5/6"></div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 const props = defineProps({
   content: {
@@ -21,6 +27,8 @@ const height = ref(280)
 const width = ref(290)
 const resizeObserver = ref(null)
 const isFullPage = ref(false)
+// v1.10.168: 加载状态,onLoad 触发后才显示内容、隐藏骨架
+const loaded = ref(false)
 
 const fullContent = computed(() => {
   const content = props.content || ''
@@ -178,9 +186,9 @@ function adjustHeight() {
     }
 
     updateSize()
-    setTimeout(updateSize, 300)
-    setTimeout(updateSize, 1000)
 
+    // v1.10.168: ResizeObserver 提前设置(首次 adjustHeight 就 observe),
+    // 这样 tailwind CDN 异步加载导致 body 高度变化时能自动捕获,不用等下次重试
     if (!resizeObserver.value) {
       resizeObserver.value = new ResizeObserver(updateSize)
       resizeObserver.value.observe(body)
@@ -189,16 +197,33 @@ function adjustHeight() {
 }
 
 function onLoad() {
-  setTimeout(adjustHeight, 100)
-  setTimeout(adjustHeight, 500)
-  setTimeout(adjustHeight, 1500)
+  // v1.10.168: onLoad 立即标记加载完成 + 立即 adjustHeight(不等 100ms),
+  // 让 ResizeObserver 尽早 observe,捕获 CDN 加载导致的高度变化
+  loaded.value = true
+  adjustHeight()
+  // CDN(tailwindcss/font-awesome)异步加载,分阶段重试测量高度
+  setTimeout(adjustHeight, 50)
+  setTimeout(adjustHeight, 200)
+  setTimeout(adjustHeight, 600)
+  setTimeout(adjustHeight, 1200)
+  setTimeout(adjustHeight, 2500)
+  setTimeout(adjustHeight, 4000)
 }
+
+onMounted(() => {
+  // v1.10.168: 组件挂载后也尝试一次,应对 iframe 已缓存 srcdoc 不触发 load 的边界情况
+  nextTick(() => {
+    setTimeout(adjustHeight, 300)
+  })
+})
 
 onUnmounted(() => {
   if (resizeObserver.value) resizeObserver.value.disconnect()
 })
 
 watch(() => props.content, () => {
+  // v1.10.168: content 变化时重置加载状态,显示骨架;iframe 会重新 load
+  loaded.value = false
   nextTick(() => adjustHeight())
 })
 </script>
@@ -214,6 +239,7 @@ watch(() => props.content, () => {
   overflow: hidden;
   -ms-overflow-style: none;
   scrollbar-width: none;
+  position: relative;
 }
 .safe-html-card::-webkit-scrollbar { display: none !important; }
 .safe-html-card iframe {
@@ -226,5 +252,30 @@ watch(() => props.content, () => {
 }
 @media (max-width: 480px) {
   .safe-html-card { padding: 0; border-radius: 0; box-shadow: none; }
+}
+
+/* v1.10.168: 加载骨架,避免 iframe CDN 加载期间留空一块 */
+.card-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(245, 245, 245, 0.6);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e8e8e8 25%, #f5f5f5 50%, #e8e8e8 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 </style>

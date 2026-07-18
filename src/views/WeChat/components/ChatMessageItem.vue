@@ -651,9 +651,9 @@
                             @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
-                            <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
+                            <SafeHtmlCard :content="pureHtmlContent" />
                         </div>
-                        
+
                         <!-- CASE: Forum Share Card -->
                         <div v-else-if="parsedForumCard"
                             class="max-w-[280px] bg-white rounded-2xl shadow-sm border border-teal-50 overflow-hidden cursor-pointer active:scale-95 transition-transform duration-200 select-none animate-fade-in group mt-1"
@@ -1435,7 +1435,7 @@
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 @message="handleIframeMessage">
-                                <SafeHtmlCard :content="getPureHtml(msg.html || msg.content)" />
+                                <SafeHtmlCard :content="pureHtmlContent" />
                             </div>
 
                             <!-- 4. Empty/Protocol Placeholder (Clickable Fallback) -->
@@ -2093,6 +2093,12 @@ const shouldRenderCard = computed(() => {
     if (props.msg.forceCard) return hasHtmlContent.value;
     if (props.msg.type === 'card') return hasHtmlContent.value;  // 只有有有效内容时才渲染
     return (props.msg.type === 'html' || isHtmlCard.value) && hasHtmlContent.value
+})
+
+// v1.10.168: 缓存 getPureHtml 结果,避免模板每次重渲染都全量重算(4趟正则+JSON解析)
+// 依赖 props.msg.html / props.msg.content,两者变化时才重新计算
+const pureHtmlContent = computed(() => {
+    return getPureHtml(props.msg.html || props.msg.content)
 })
 
 // 收藏卡片检测 - 支持 type: 'favorite_card' 或内容包含收藏标签/JSON
