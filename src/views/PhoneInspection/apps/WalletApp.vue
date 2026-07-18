@@ -336,7 +336,8 @@ import { useSettingsStore } from '@/stores/settingsStore'
 const props = defineProps({
     walletData: Object,
     charName: String,
-    charId: String
+    charId: String,
+    charAvatar: String
 })
 
 defineEmits(['back'])

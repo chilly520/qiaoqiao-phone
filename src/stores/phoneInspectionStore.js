@@ -26,6 +26,9 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   let _discoverTimer = null
   const _mutteringTimers = []
 
+  // v1.10.177: AI 碎碎念节流记录(每个 app 30 秒内只调一次 AI 生成,避免 429)
+  const _aiMutteringCooldown = new Map() // key: `${charId}_${appName}`, value: timestamp
+
   // Custom Modal State
   const modalState = ref({
     show: false,
@@ -319,6 +322,7 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
 
     if (muttering) {
       mutteringQueue.value.push({
+        id: `mutter_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         app: appName,
         text: muttering,
         type: isHacking ? 'caught' : 'allowed',
@@ -334,8 +338,56 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
       return
     }
 
-    // 如果没有本地数据，且不是初次启动，不自动调用 API 避免 429
-    console.warn(`[PhoneInspection] No local muttering for ${appName}, generation skipped to save API quota.`)
+    // v1.10.177: 没有本地碎碎念时,AI 兜底生成(带节流,30秒内同一app只调一次)
+    // (上面的 hasPermission/hacking 检查已经 return,这里无需重复判断)
+    const cooldownKey = `${currentCharId.value}_${appName}`
+    const lastCall = _aiMutteringCooldown.get(cooldownKey) || 0
+    if (Date.now() - lastCall < 30000) {
+      console.log(`[PhoneInspection] AI muttering for ${appName} on cooldown`)
+      return
+    }
+    _aiMutteringCooldown.set(cooldownKey, Date.now())
+
+    try {
+      const prompt = `你是角色"${char.name}"。用户正在${isHacking ? '偷看' : '查看'}你的手机里的${getAppDisplayName(appName)}。
+请用一句简短的话(15字内)反应一下,要符合你的性格(${char.prompt || '温柔可爱'})。
+${isHacking ? '你不知道用户在看,所以是自言自语的内心OS,带点被偷看的紧张感' : '你已经授权了,可以大方地吐槽或撒娇'}
+直接输出反应文本,不要引号和其他格式。`
+      const result = await generateReply(
+        [{ role: 'user', content: prompt }],
+        char,
+        null,
+        { isSimpleTask: true }
+      )
+      if (result?.content) {
+        const text = result.content.trim().replace(/^["'"]|["'"]$/g, '').slice(0, 50)
+        if (text) {
+          mutteringQueue.value.push({
+            id: `mutter_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            app: appName,
+            text,
+            type: isHacking ? 'caught' : 'allowed',
+            timestamp: Date.now()
+          })
+          const timer = setTimeout(() => {
+            if (mutteringQueue.value.length > 0) mutteringQueue.value.shift()
+            const idx = _mutteringTimers.indexOf(timer)
+            if (idx > -1) _mutteringTimers.splice(idx, 1)
+          }, 5000)
+          _mutteringTimers.push(timer)
+          // 缓存到 appData,下次直接用
+          if (phoneData.value?.apps?.[appName]) {
+            if (isHacking) {
+              phoneData.value.apps[appName].caughtMuttering = text
+            } else {
+              phoneData.value.apps[appName].allowedMuttering = text
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[PhoneInspection] AI muttering generation failed:', e.message)
+    }
   }
 
   /**
@@ -379,32 +431,8 @@ export const usePhoneInspectionStore = defineStore('phoneInspection', () => {
   }
 
   /**
-   * 获取应用显示名称
+   * 获取应用显示名称 (v1.10.177: 统一实现见文件末尾,此处不再重复定义)
    */
-  function getAppDisplayName(appKey) {
-    const names = {
-      calls: '通话记录',
-      messages: '短信',
-      wechat: '微信',
-      wallet: '钱包',
-      shopping: '购物',
-      footprints: '足迹',
-      backpack: '背包',
-      notes: '便签',
-      reminders: '备忘录',
-      browser: '浏览器',
-      history: '使用记录',
-      photos: '相册',
-      music: '歌单',
-      calendar: '日程',
-      meituan: '美团',
-      forum: '论坛',
-      recorder: '录音',
-      files: '文件夹',
-      settings: '设置'
-    }
-    return names[appKey] || appKey
-  }
 
   /**
    * 正式接入：生成并同步手机数据
@@ -1879,16 +1907,29 @@ ${selectedPrompts}
   }
 
   function getAppDisplayName(appId) {
+     // v1.10.177: 合并两处重复定义,统一完整的应用名映射
      const names = {
-       calls: '最近通话',
+       calls: '通话记录',
+       messages: '短信',
+       wechat: '微信',
+       wallet: '钱包',
+       shopping: '购物',
+       footprints: '足迹',
+       backpack: '背包',
+       notes: '便签',
+       reminders: '备忘录',
        browser: '浏览器',
-       shopping: '购物商城',
-       meituan: '外卖记录',
-       photos: '相册内容',
-       email: '邮件往来',
+       history: '使用记录',
+       photos: '相册',
+       music: '歌单',
+       calendar: '日程',
+       meituan: '美团',
+       forum: '论坛',
+       recorder: '录音',
+       files: '文件夹',
+       email: '邮件',
+       settings: '设置',
        moments: '朋友圈',
-       wallet: '我的钱包',
-       calendar: '日程表',
        muttering: '碎碎念'
      }
      return names[appId] || appId
@@ -1953,6 +1994,7 @@ ${selectedPrompts}
     updateAnniversary,
     batchGenerateAppData,
     clearAppData,
+    removeBackpackItem,
     modalState,
     triggerCustomModal,
     triggerAlert,

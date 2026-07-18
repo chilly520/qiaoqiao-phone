@@ -201,6 +201,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
+import { generateReply } from '@/utils/aiService'
 
 const props = defineProps({
     settingsData: Object
@@ -331,9 +332,44 @@ function saveAnniversary() {
     phoneStore.triggerAlert('成功', '纪念日已永久封存喵~ 💖')
 }
 
-function generateAIAnniversary() {
-    // This is a UI trigger, real logic would involve AI calling the tool
-    phoneStore.triggerAlert('魔法预警', '✨ AI 正在努力分析你们的回忆... 请稍候再试 (或对我说：帮我规划纪念日)')
+async function generateAIAnniversary() {
+    const char = phoneStore.currentChar
+    if (!char) {
+        phoneStore.triggerAlert('错误', '未找到角色信息')
+        return
+    }
+    if (!anniversaryTitle.value || !anniversaryDate.value) {
+        phoneStore.triggerAlert('提示', '请先填写纪念日标题和起始日期')
+        return
+    }
+    phoneStore.triggerToast('AI 正在分析回忆...', 'info')
+    try {
+        const days = Math.floor((Date.now() - new Date(anniversaryDate.value).getTime()) / 86400000)
+        const prompt = `你是角色"${char.name}"。今天是和用户相识第${days}天。
+请用第一人称写一段纪念日描述(50字以内),要符合你的性格(${char.prompt || '温柔可爱'}),
+体现这${days}天里的某个温馨瞬间或感受。直接输出描述文本,不要加引号或其他格式。`
+        const result = await generateReply(
+            [{ role: 'user', content: prompt }],
+            char,
+            null,
+            { isSimpleTask: true }
+        )
+        if (result?.content) {
+            const desc = result.content.trim().replace(/^["'"]|["'"]$/g, '')
+            // 保存到 phoneData
+            await phoneStore.updateAnniversary({
+                title: anniversaryTitle.value,
+                date: anniversaryDate.value,
+                desc
+            })
+            phoneStore.triggerAlert('成功', `✨ ${desc}`)
+        } else {
+            phoneStore.triggerAlert('提示', 'AI 暂时没有灵感,稍后再试')
+        }
+    } catch (e) {
+        console.error('[generateAIAnniversary]', e)
+        phoneStore.triggerAlert('错误', 'AI 生成失败: ' + (e.message || '未知错误'))
+    }
 }
 
 function readFileAsBase64(file) {

@@ -4,13 +4,14 @@
       <!-- Specific Apps -->
       <WeChatApp v-if="appId === 'wechat'" :wechat-data="phoneData?.apps?.wechat" :char-avatar="currentChar?.avatar"
         :char-name="currentChar?.userName || currentChar?.name" :char-id="currentChar?.id"
-        :user-avatar="settingsStore.personalization.userProfile.avatar" @back="handleBack" />
+        @back="handleBack" />
 
       <PhotosApp v-else-if="appId === 'photos'" :photos-data="phoneData?.apps?.photos" @back="handleBack"
         @update-photo="handleUpdatePhoto" />
 
       <WalletApp v-else-if="appId === 'wallet'" :wallet-data="phoneData?.apps?.wallet" 
         :char-name="currentChar?.userName || currentChar?.name"
+        :char-avatar="currentChar?.avatar"
         @back="handleBack" />
 
       <CallsApp v-else-if="appId === 'calls'" :calls-data="phoneData?.apps?.calls" @back="handleBack" />
@@ -64,7 +65,6 @@
 
 <script setup>
 import { computed, defineAsyncComponent } from 'vue'
-import { useSettingsStore } from '@/stores/settingsStore'
 import { useChatStore } from '@/stores/chatStore'
 import { usePhoneInspectionStore } from '@/stores/phoneInspectionStore'
 
@@ -87,7 +87,6 @@ const props = defineProps({
 
 const emit = defineEmits(['back'])
 
-const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const phoneInspection = usePhoneInspectionStore()
 
