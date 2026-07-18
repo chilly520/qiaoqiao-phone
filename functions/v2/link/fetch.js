@@ -17,6 +17,8 @@ const CORS_HEADERS = {
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
 
 // 从 HTML 提取 meta 信息(og:title, og:description, og:image 等)
+// v1.10.175: 修复 og:image 多个时取错的问题——小红书页面里第一个 og:image 是站点默认图,
+//   真实笔记封面是第二个。改为取最后一个非默认 og:image。
 function extractMeta(html, url) {
     const get = (re) => {
         const m = html.match(re);
@@ -28,6 +30,28 @@ function extractMeta(html, url) {
             if (v) return v;
         }
         return '';
+    };
+    // v1.10.175: 取所有 og:image,过滤掉明显的站点默认图(如 picasso-static),
+    // 优先返回笔记真实封面
+    const getAllImages = () => {
+        const re = /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi;
+        const reRev = /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi;
+        const all = [];
+        let m;
+        while ((m = re.exec(html)) !== null) all.push(m[1]);
+        while ((m = reRev.exec(html)) !== null) all.push(m[1]);
+        if (all.length === 0) {
+            // twitter:image 兜底
+            const t = get(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+            if (t) all.push(t);
+        }
+        if (all.length === 0) return '';
+        // 过滤站点默认图(picasso-static 是小红书默认图,常见站点 logo 也跳过)
+        const filtered = all.filter(u =>
+            !u.includes('picasso-static') &&
+            !/logo|favicon|default/i.test(u)
+        );
+        return filtered.length > 0 ? filtered[filtered.length - 1] : all[all.length - 1];
     };
 
     const title = getAll([
@@ -41,11 +65,7 @@ function extractMeta(html, url) {
         /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
         /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i,
     ]);
-    const image = getAll([
-        /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
-        /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
-    ]);
+    const image = getAllImages();
     const author = getAll([
         /<meta[^>]+property=["']og:author["'][^>]+content=["']([^"']+)["']/i,
         /<meta[^>]+name=["']author["'][^>]+content=["']([^"']+)["']/i,
