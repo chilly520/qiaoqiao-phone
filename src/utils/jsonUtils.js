@@ -104,127 +104,467 @@ export function _repairJsonStrings(jsonStr) {
 }
 
 /**
+ * 深度移除JSON中的尾逗号 (trailing commas)
+ * 使用状态机逐字符遍历，只在非字符串区域移除逗号后紧跟的 } 或 ]
+ * 能处理任意深度的嵌套结构，比简单正则更可靠
+ */
+export function deepRemoveTrailingCommas(jsonStr) {
+    let result = ''
+    let inString = false
+    let escaped = false
+    let stringChar = ''
+    let commaResultPos = -1
+    let pendingComma = false
+
+    for (let i = 0; i < jsonStr.length; i++) {
+        const ch = jsonStr[i]
+
+        if (escaped) {
+            result += ch
+            escaped = false
+            if (pendingComma && !/\s/.test(ch)) {
+                pendingComma = false
+            }
+            continue
+        }
+
+        if (ch === '\\' && inString) {
+            result += ch
+            escaped = true
+            continue
+        }
+
+        if ((ch === '"' || ch === "'") && !escaped) {
+            if (!inString) {
+                inString = true
+                stringChar = ch
+            } else if (ch === stringChar) {
+                inString = false
+            }
+            result += ch
+            pendingComma = false
+            continue
+        }
+
+        if (inString) {
+            result += ch
+            continue
+        }
+
+        // 不在字符串内
+        if (ch === ',') {
+            if (pendingComma) {
+                // 之前已经有一个待处理的逗号了，说明那个逗号后面不是}或]，保留它
+                pendingComma = false
+            }
+            pendingComma = true
+            commaResultPos = result.length
+            result += ch
+            continue
+        }
+
+        if (ch === '}' || ch === ']') {
+            if (pendingComma) {
+                // 回溯移除逗号
+                result = result.substring(0, commaResultPos)
+                pendingComma = false
+            }
+            result += ch
+            continue
+        }
+
+        if (!/\s/.test(ch)) {
+            pendingComma = false
+        }
+
+        result += ch
+    }
+
+    return result
+}
+
+/**
  * 从原始 AI 文本中提取并重建朋友圈动态结构
+ * 使用 brace-counting 状态机可靠地识别 JSON 结构，确保 interactions 内的
+ * comment/like/reply 不会被误判为独立动态。
  * @returns {string|null} 序列化后的 { newMoments, ecosystemUpdates }，失败时返回 null
  */
 export function reconstructMomentsJSON(rawText) {
     if (!rawText) return null
     // 先做一次智能修复,确保 AI 常见的"内容中含未转义中文引号/换行"问题被处理
     const repaired = _repairJsonStrings(rawText)
-    const clean = repaired.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
-    // [BUG FIX] 原正则 `/[\[【][^\]]*?[\]】]/g` 会把 JSON 数组 `[{...}]` 整个删掉,
-    // 导致标准 JSON 输入解析失败。改为状态机版本,只在 JSON 字符串外(且不在 JSON
-    // 对象/数组结构内)删除看起来像元数据的方括号对(如 `[心情:好]`、`【备注】`)。
-    const stripped = stripMetaBrackets(clean)
+    let clean = repaired.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+    clean = deepRemoveTrailingCommas(clean)
+
     const moments = []
-    // 允许 content 内部出现中文/英文双引号、换行、制表符、转义序列(但不能是未转义的英文 " 或 \)
-    const contentRegex = /"content"\s*[:：]\s*"((?:[^"\\]|\\.|\u201c|\u201d|\n|\r|\t)*)"/gi
-    const authorRegex = /"authorId"\s*[:：]\s*"((?:[^"\\]|\\.)*)"/gi
-    const typeRegex = /"type"\s*[:：]\s*"(comment|reply|like)"/gi
 
-    let match, idx = 0
-    let lastAuthorPos = -1
-    const typePositions = []
-    const typeRegexGlobal = new RegExp('"type"\\s*[:：]\\s*"(comment|reply|like)"', 'gi')
-    let tMatch
-    while ((tMatch = typeRegexGlobal.exec(stripped)) !== null) {
-        typePositions.push(tMatch.index)
-    }
-
-    while ((match = contentRegex.exec(stripped)) !== null && idx < 10) {
-        const contentStart = match.index
-        const isInInteraction = typePositions.some(tp => tp < contentStart && contentStart - tp < 300)
-        if (isInInteraction) continue
-
-        let foundAuthor = null
-        const authorRegexLocal = new RegExp('"authorId"\\s*[:：]\\s*"', 'gi')
-        authorRegexLocal.lastIndex = 0
-        let aMatch
-        while ((aMatch = authorRegexLocal.exec(stripped)) !== null) {
-            if (aMatch.index < contentStart && aMatch.index > lastAuthorPos) {
-                const afterQuote = stripped.substring(aMatch.index + aMatch[0].length)
-                const endQuote = afterQuote.indexOf('"')
-                if (endQuote > 0) {
-                    foundAuthor = afterQuote.substring(0, endQuote).trim()
-                    lastAuthorPos = aMatch.index
+    try {
+        // 策略1: 优先寻找 "newMoments" 数组，用 brace-counting 精确定位
+        const newMomentsKeyPos = findKeyPosition(clean, 'newMoments')
+        if (newMomentsKeyPos !== -1) {
+            const arrStart = clean.indexOf('[', newMomentsKeyPos)
+            if (arrStart !== -1) {
+                const arrRange = findMatchingBracket(clean, arrStart)
+                if (arrRange) {
+                    const [arrStartIdx, arrEndIdx] = arrRange
+                    const newMomentsBlock = clean.substring(arrStartIdx + 1, arrEndIdx)
+                    extractMomentsFromBlock(newMomentsBlock, moments)
                 }
             }
         }
 
-        const contentText = match[1].replace(/\\n/g, ' ').substring(0, 500)
-        if (!foundAuthor || contentText.length < 10) continue
-
-        moments.push({
-            authorId: foundAuthor,
-            content: contentText,
-            location: '',
-            images: [],
-            mentions: [],
-            interactions: []
-        })
-        idx++
+        // 策略2: 如果没找到newMoments，尝试找顶级数组（旧格式）
+        if (moments.length === 0) {
+            // 找到第一个顶级 [ 位置
+            let firstTopLevelBracket = -1
+            let braceDepth = 0, bracketDepth = 0, inStr = false, esc = false
+            for (let i = 0; i < clean.length; i++) {
+                const ch = clean[i]
+                if (esc) { esc = false; continue }
+                if (ch === '\\') { esc = true; continue }
+                if (ch === '"') { inStr = !inStr; continue }
+                if (inStr) continue
+                if (ch === '{') braceDepth++
+                else if (ch === '}') braceDepth--
+                else if (ch === '[' && braceDepth === 0) {
+                    firstTopLevelBracket = i
+                    break
+                }
+            }
+            if (firstTopLevelBracket !== -1) {
+                const arrRange = findMatchingBracket(clean, firstTopLevelBracket)
+                if (arrRange) {
+                    const blockContent = clean.substring(arrRange[0] + 1, arrRange[1])
+                    extractMomentsFromBlock(blockContent, moments)
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[reconstructMomentsJSON] parse failed:', e.message)
     }
 
     if (moments.length === 0) {
-        // [FIX] 终极兜底: 这里之前的逻辑是"凡是 content 字段就当 moment", 导致评论/回复被误判成新动态,
-        // 同时 imagePrompts/interactions 全部丢失, 生图无效。
-        // 修复: 用 brace-counting 跟踪 JSON 结构, 只在 newMoments 数组块内的 content 才算 moment;
-        //       遇到 ecosystemUpdates 块或 interactions 块直接跳过。
-        //       如果实在无法定位 newMoments 块, 返回 null 而不是制造错数据。
-        try {
-            const newMomentsStart = stripped.indexOf('"newMoments"')
-            const ecosystemStart = stripped.indexOf('"ecosystemUpdates"')
-            if (newMomentsStart !== -1) {
-                // 找到 newMoments 数组的范围
-                const arrStart = stripped.indexOf('[', newMomentsStart)
-                let arrEnd = -1, depth = 0, inStr = false, esc = false
-                for (let i = arrStart; i < stripped.length; i++) {
-                    const ch = stripped[i]
-                    if (esc) { esc = false; continue }
-                    if (ch === '\\') { esc = true; continue }
-                    if (ch === '"') { inStr = !inStr; continue }
-                    if (inStr) continue
-                    if (ch === '[') depth++
-                    else if (ch === ']') { depth--; if (depth === 0) { arrEnd = i; break } }
-                }
-                if (arrEnd !== -1) {
-                    const newMomentsBlock = stripped.substring(arrStart, arrEnd + 1)
-                    // 在 newMoments 块内找每个 authorId + content 对
-                    const itemRegex = /\{\s*"authorId"\s*:\s*"([^"]+)"[\s\S]*?"content"\s*:\s*"([^"]*)"[\s\S]*?(?:"imagePrompts"\s*:\s*\[([\s\S]*?)\])?/g
-                    let m
-                    while ((m = itemRegex.exec(newMomentsBlock)) !== null && idx < 5) {
-                        const authorId = m[1]
-                        const content = m[2].replace(/\\n/g, ' ').substring(0, 500)
-                        if (content.length < 10) continue
-                        const imagePromptsStr = m[3] || ''
-                        const imagePrompts = imagePromptsStr
-                            ? imagePromptsStr.match(/"([^"]+)"/g)?.map(s => s.slice(1, -1)) || []
-                            : []
-                        moments.push({
-                            authorId,
-                            content,
-                            location: '',
-                            images: [],
-                            imagePrompts,
-                            mentions: [],
-                            interactions: []
-                        })
-                        idx++
+        console.warn('[reconstructMomentsJSON] 无法可靠恢复,返回 null 避免制造错数据')
+        return null
+    }
+    return JSON.stringify({ newMoments: moments, ecosystemUpdates: [] })
+}
+
+/**
+ * 在文本中查找JSON key的位置（考虑字符串状态）
+ * @returns {number} 返回key冒号后的位置（即value开始位置），-1表示没找到
+ */
+function findKeyPosition(text, key) {
+    const keyStr = `"${key}"`
+    let inStr = false, esc = false, strChar = ''
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        if (esc) { esc = false; continue }
+        if (ch === '\\' && inStr) { esc = true; continue }
+        if ((ch === '"' || ch === "'") && !esc) {
+            if (!inStr) { inStr = true; strChar = ch }
+            else if (ch === strChar) { inStr = false }
+            continue
+        }
+        if (inStr) continue
+
+        // 不在字符串中，检查是否匹配key
+        if (text.substring(i, i + keyStr.length) === keyStr) {
+            // 找到key，跳过空白和冒号
+            let j = i + keyStr.length
+            while (j < text.length && /\s/.test(text[j])) j++
+            if (text[j] === ':') {
+                j++
+                while (j < text.length && /\s/.test(text[j])) j++
+                return j
+            }
+        }
+    }
+    return -1
+}
+
+/**
+ * 找到匹配的括号位置（[ 对应 ]，{ 对应 }），考虑字符串和转义
+ * @returns {[number, number]|null} [start, end] 位置
+ */
+function findMatchingBracket(text, startPos) {
+    const openCh = text[startPos]
+    const closeCh = openCh === '[' ? ']' : openCh === '{' ? '}' : null
+    if (!closeCh) return null
+
+    let depth = 0, inStr = false, esc = false, strChar = ''
+    for (let i = startPos; i < text.length; i++) {
+        const ch = text[i]
+        if (esc) { esc = false; continue }
+        if (ch === '\\' && inStr) { esc = true; continue }
+        if ((ch === '"' || ch === "'") && !esc) {
+            if (!inStr) { inStr = true; strChar = ch }
+            else if (ch === strChar) { inStr = false }
+            continue
+        }
+        if (inStr) continue
+        if (ch === openCh) depth++
+        else if (ch === closeCh) {
+            depth--
+            if (depth === 0) return [startPos, i]
+        }
+    }
+    return null
+}
+
+/**
+ * 从一个数组块（不含外层[]）中提取moment对象
+ * 关键：每个moment是一个顶级对象{}，在对象内部遇到"interactions"字段时
+ * 跳过整个interactions数组，不解析里面的like/comment为独立moment
+ */
+function extractMomentsFromBlock(blockContent, momentsOut) {
+    let i = 0
+    let maxMoments = 10
+
+    while (i < blockContent.length && momentsOut.length < maxMoments) {
+        // 找下一个 { 开始一个对象
+        while (i < blockContent.length && blockContent[i] !== '{') i++
+        if (i >= blockContent.length) break
+
+        const objRange = findMatchingBracket(blockContent, i)
+        if (!objRange) break
+
+        const [objStart, objEnd] = objRange
+        const objText = blockContent.substring(objStart, objEnd + 1)
+
+        // 检查这个对象是不是interaction（有type=like/comment/reply）
+        // 但只有在对象内且不在嵌套对象内的type才是判断依据
+        const topLevelType = getTopLevelStringField(objText, 'type')
+        if (topLevelType === 'like' || topLevelType === 'comment' || topLevelType === 'reply') {
+            // 这是一个互动对象，跳过，不当作moment
+            i = objEnd + 1
+            continue
+        }
+
+        // 提取moment的关键字段
+        const authorId = getTopLevelStringField(objText, 'authorId')
+        let content = getTopLevelStringField(objText, 'content')
+        const location = getTopLevelStringField(objText, 'location') || ''
+
+        // 提取imagePrompts（在顶级，不在interactions内）
+        const imagePrompts = getTopLevelStringArrayField(objText, 'imagePrompts')
+
+        // 提取interactions数组（如果存在，正确解析它）
+        const interactions = extractInteractionsFromObject(objText)
+
+        if (authorId && content && content.length >= 5) {
+            content = content.replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500)
+            if (content.length >= 5) {
+                momentsOut.push({
+                    authorId,
+                    content,
+                    location,
+                    images: [],
+                    imagePrompts: imagePrompts || [],
+                    mentions: getTopLevelStringArrayField(objText, 'mentions') || [],
+                    interactions: interactions || []
+                })
+            }
+        }
+
+        i = objEnd + 1
+    }
+}
+
+/**
+ * 从对象文本中提取顶级字符串字段值（不进入嵌套对象/数组）
+ * objText 应该以 { 开头
+ */
+function getTopLevelStringField(objText, fieldName) {
+    let depth = 0, inStr = false, esc = false, strChar = ''
+    let i = 0
+
+    while (i < objText.length) {
+        const ch = objText[i]
+        if (esc) { esc = false; i++; continue }
+        if (ch === '\\' && inStr) { esc = true; i++; continue }
+
+        if ((ch === '"' || ch === "'") && !esc) {
+            if (!inStr) { inStr = true; strChar = ch; i++; continue }
+            else if (ch === strChar) { inStr = false; i++; continue }
+        }
+
+        if (inStr) { i++; continue }
+
+        if (ch === '{' || ch === '[') depth++
+        else if (ch === '}' || ch === ']') depth--
+        else if (depth === 1) {
+            // 在顶级对象内（depth=1因为刚进入外层{）
+            const keyStr = `"${fieldName}"`
+            if (objText.substring(i, i + keyStr.length) === keyStr) {
+                // 找到key，解析: "value"
+                let j = i + keyStr.length
+                while (j < objText.length && /\s/.test(objText[j])) j++
+                if (objText[j] === ':') {
+                    j++
+                    while (j < objText.length && /\s/.test(objText[j])) j++
+                    if (objText[j] === '"') {
+                        // 字符串值开始
+                        const valueStart = j + 1
+                        j++
+                        let vEsc = false
+                        while (j < objText.length) {
+                            const vch = objText[j]
+                            if (vEsc) { vEsc = false; j++; continue }
+                            if (vch === '\\') { vEsc = true; j++; continue }
+                            if (vch === '"') {
+                                return objText.substring(valueStart, j)
+                            }
+                            j++
+                        }
                     }
                 }
             }
-        } catch (e) {
-            console.warn('[reconstructMomentsJSON] structured fallback failed:', e.message)
         }
-
-        if (moments.length === 0) {
-            console.warn('[reconstructMomentsJSON] 无法可靠恢复,返回 null 避免制造错数据')
-            return null
-        }
+        i++
     }
+    return null
+}
 
-    if (moments.length === 0) return null
-    return JSON.stringify({ newMoments: moments, ecosystemUpdates: [] })
+/**
+ * 从对象文本中提取顶级字符串数组字段值（返回字符串数组）
+ */
+function getTopLevelStringArrayField(objText, fieldName) {
+    let depth = 0, inStr = false, esc = false, strChar = ''
+    let i = 0
+
+    while (i < objText.length) {
+        const ch = objText[i]
+        if (esc) { esc = false; i++; continue }
+        if (ch === '\\' && inStr) { esc = true; i++; continue }
+
+        if ((ch === '"' || ch === "'") && !esc) {
+            if (!inStr) { inStr = true; strChar = ch; i++; continue }
+            else if (ch === strChar) { inStr = false; i++; continue }
+        }
+
+        if (inStr) { i++; continue }
+
+        if (ch === '{' || ch === '[') depth++
+        else if (ch === '}' || ch === ']') depth--
+        else if (depth === 1) {
+            const keyStr = `"${fieldName}"`
+            if (objText.substring(i, i + keyStr.length) === keyStr) {
+                let j = i + keyStr.length
+                while (j < objText.length && /\s/.test(objText[j])) j++
+                if (objText[j] === ':') {
+                    j++
+                    while (j < objText.length && /\s/.test(objText[j])) j++
+                    if (objText[j] === '[') {
+                        // 找到数组开始
+                        const arrRange = findMatchingBracket(objText, j)
+                        if (arrRange) {
+                            const arrContent = objText.substring(arrRange[0] + 1, arrRange[1])
+                            const results = []
+                            // 简单提取所有字符串字面量
+                            let ai = 0, aInStr = false, aEsc = false, aStrChar = ''
+                            let strStart = -1
+                            while (ai < arrContent.length) {
+                                const ach = arrContent[ai]
+                                if (aEsc) { aEsc = false; ai++; continue }
+                                if (ach === '\\' && aInStr) { aEsc = true; ai++; continue }
+                                if ((ach === '"' || ach === "'") && !aEsc) {
+                                    if (!aInStr) { aInStr = true; aStrChar = ach; strStart = ai + 1; ai++; continue }
+                                    else if (ach === aStrChar) {
+                                        results.push(arrContent.substring(strStart, ai))
+                                        aInStr = false; ai++; continue
+                                    }
+                                }
+                                ai++
+                            }
+                            return results
+                        }
+                    }
+                }
+            }
+        }
+        i++
+    }
+    return null
+}
+
+/**
+ * 从moment对象文本中提取interactions数组
+ */
+function extractInteractionsFromObject(objText) {
+    let depth = 0, inStr = false, esc = false, strChar = ''
+    let i = 0
+
+    while (i < objText.length) {
+        const ch = objText[i]
+        if (esc) { esc = false; i++; continue }
+        if (ch === '\\' && inStr) { esc = true; i++; continue }
+
+        if ((ch === '"' || ch === "'") && !esc) {
+            if (!inStr) { inStr = true; strChar = ch; i++; continue }
+            else if (ch === strChar) { inStr = false; i++; continue }
+        }
+
+        if (inStr) { i++; continue }
+
+        if (ch === '{' || ch === '[') depth++
+        else if (ch === '}' || ch === ']') depth--
+        else if (depth === 1) {
+            const keyStr = `"interactions"`
+            if (objText.substring(i, i + keyStr.length) === keyStr) {
+                let j = i + keyStr.length
+                while (j < objText.length && /\s/.test(objText[j])) j++
+                if (objText[j] === ':') {
+                    j++
+                    while (j < objText.length && /\s/.test(objText[j])) j++
+                    if (objText[j] === '[') {
+                        const arrRange = findMatchingBracket(objText, j)
+                        if (arrRange) {
+                            return parseInteractionsArray(objText.substring(arrRange[0] + 1, arrRange[1]))
+                        }
+                    }
+                }
+            }
+        }
+        i++
+    }
+    return []
+}
+
+/**
+ * 解析interactions数组内容（不含外层[]）
+ */
+function parseInteractionsArray(arrContent) {
+    const interactions = []
+    let j = 0
+    while (j < arrContent.length) {
+        while (j < arrContent.length && arrContent[j] !== '{') j++
+        if (j >= arrContent.length) break
+        const itemRange = findMatchingBracket(arrContent, j)
+        if (!itemRange) break
+        const itemText = arrContent.substring(itemRange[0], itemRange[1] + 1)
+
+        const type = getTopLevelStringField(itemText, 'type')
+        if (type === 'like' || type === 'comment' || type === 'reply') {
+            const interaction = {
+                type: type,
+                authorId: getTopLevelStringField(itemText, 'authorId') || '',
+                authorName: getTopLevelStringField(itemText, 'authorName') || '',
+                isVirtual: getTopLevelStringField(itemText, 'isVirtual') === 'true'
+            }
+            if (type === 'comment' || type === 'reply') {
+                interaction.content = getTopLevelStringField(itemText, 'content') || ''
+                const replyTo = getTopLevelStringField(itemText, 'replyTo')
+                if (replyTo) interaction.replyTo = replyTo
+            }
+            if (interaction.authorId) {
+                interactions.push(interaction)
+            }
+        }
+        j = itemRange[1] + 1
+    }
+    return interactions
 }
 
 /**

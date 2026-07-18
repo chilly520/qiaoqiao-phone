@@ -17,7 +17,7 @@ import { recallOriginalMessages, getMemorySummary } from './memoryLog'
 import { RequestQueue } from './ai/requestQueue'
 import { ensureString, getLastNTurns } from './common'
 import { getOrFetchAvatarDesc } from './avatarDescCache'
-import { fixJsonStringValues, _repairJsonStrings, reconstructMomentsJSON, reconstructInteractionsJSON, extractInnerVoiceJson } from './jsonUtils'
+import { fixJsonStringValues, _repairJsonStrings, reconstructMomentsJSON, reconstructInteractionsJSON, extractInnerVoiceJson, deepRemoveTrailingCommas } from './jsonUtils'
 
 const apiQueue = new RequestQueue(10, 60000); // Strict: 10 requests per 60 seconds as requested by the user
 
@@ -2929,32 +2929,49 @@ ${"```"}
 
         jsonStr = jsonStr.substring(startIndex, endIndex + 1)
 
-        // 4. 基础清理：只移除尾逗号（最常见的问题）
-        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
+        // 4. 深度移除尾逗号（使用状态机处理任意嵌套）
+        jsonStr = deepRemoveTrailingCommas(jsonStr)
 
         // [FIX] 5. 智能修复常见 AI 输出的 JSON 语法错误（减少落入兜底的几率）
         // AI 常在 content 字段值中包含未转义的引号/换行，导致 parse 失败
         jsonStr = _repairJsonStrings(jsonStr)
 
+        // 5.5 修复后再次清理尾逗号（防止_repairJsonStrings处理过程中产生的问题）
+        jsonStr = deepRemoveTrailingCommas(jsonStr)
+
         // 6. 直接尝试解析（与 v1.5.x 一致）
         let parsedData
+        let lastParseError = null
         try {
             parsedData = JSON.parse(jsonStr)
         } catch (parseError) {
-            console.error('[Batch Moments] JSON Parse Error:', parseError.message)
-            console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1000))
-            // [FIX] 使用 reconstructMomentsJSON 兜底重建，而非直接抛出异常
-            const reconstructed = reconstructMomentsJSON(jsonStr)
-            if (reconstructed) {
-                try {
-                    parsedData = JSON.parse(reconstructed)
-                    useLoggerStore().addLog('AI', '⚠️ 朋友圈JSON解析失败，已通过容错恢复', { originalError: parseError.message })
-                } catch (reconstructErr) {
-                    console.error('[Batch Moments] Reconstruct fallback also failed:', reconstructErr.message)
-                    throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
+            lastParseError = parseError
+            console.warn('[Batch Moments] First JSON parse failed:', parseError.message)
+            
+            // 6.1 尝试更激进的修复：移除所有在字符串外的BOM/零宽字符
+            let aggressiveClean = jsonStr.replace(/[\u200B-\u200D\uFEFF]/g, '')
+            aggressiveClean = deepRemoveTrailingCommas(aggressiveClean)
+            try {
+                parsedData = JSON.parse(aggressiveClean)
+                console.log('[Batch Moments] Recovered with aggressive cleaning')
+            } catch (e2) {
+                lastParseError = e2
+                console.warn('[Batch Moments] Aggressive clean also failed:', e2.message)
+                console.error('[Batch Moments] Attempted to parse:', jsonStr.substring(0, 1500))
+
+                // [FIX] 使用 reconstructMomentsJSON 兜底重建，而非直接抛出异常
+                const reconstructed = reconstructMomentsJSON(jsonStr)
+                if (reconstructed) {
+                    try {
+                        parsedData = JSON.parse(reconstructed)
+                        useLoggerStore().addLog('AI', '⚠️ 朋友圈JSON解析失败，已通过容错恢复', { originalError: lastParseError?.message || parseError.message })
+                    } catch (reconstructErr) {
+                        console.error('[Batch Moments] Reconstruct fallback also failed:', reconstructErr.message)
+                        throw new Error(`Failed to parse AI response as JSON: ${lastParseError?.message || parseError.message} `)
+                    }
+                } else {
+                    throw new Error(`Failed to parse AI response as JSON: ${lastParseError?.message || parseError.message} `)
                 }
-            } else {
-                throw new Error(`Failed to parse AI response as JSON: ${parseError.message} `)
             }
         }
 
@@ -3894,8 +3911,8 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
         // v1.10.125: 全面加固解析逻辑
         // 1. 先用 _repairJsonStrings 修复未转义引号/换行
         jsonStr = _repairJsonStrings(jsonStr)
-        // 去尾逗号
-        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1')
+        // 2. 深度去尾逗号（状态机方式，处理任意嵌套）
+        jsonStr = deepRemoveTrailingCommas(jsonStr)
 
         // 方法1: Brace-counting 提取 JSON 数组（最可靠）
         let interactions = null
@@ -3962,7 +3979,8 @@ ${uniqueCustomPrompt ? `【自定义生成要求】\n${uniqueCustomPrompt}\n` : 
             const jsonMatch = rawContent.match(/\[[\s\S]*\]/)
             if (jsonMatch) {
                 try {
-                    const repaired = _repairJsonStrings(jsonMatch[0]).replace(/,(\s*[}\]])/g, '$1')
+                    let repaired = _repairJsonStrings(jsonMatch[0])
+                    repaired = deepRemoveTrailingCommas(repaired)
                     interactions = JSON.parse(repaired)
                 } catch (e2) {
                     console.warn('[aiService] Regex fallback parse failed', e2.message)
