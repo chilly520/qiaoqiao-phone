@@ -40,6 +40,7 @@ import GroupVoteModal from './modals/GroupVoteModal.vue'
 import GroupRankModal from './modals/GroupRankModal.vue'
 import DiceModal from './modals/DiceModal.vue'
 import TarotModal from './modals/TarotModal.vue'
+import LinkShareModal from './modals/LinkShareModal.vue'
 import BackpackModal from './modals/BackpackModal.vue'
 import GiftDetailModal from './modals/GiftDetailModal.vue'
 import SparkIcon from './components/SparkIcon.vue'
@@ -172,6 +173,7 @@ const showMissionScheduler = ref(false)
 const showVoteModal = ref(false)
 const showDiceModal = ref(false)
 const showTarotModal = ref(false)
+const showLinkShareModal = ref(false)
 const showBackpackModal = ref(false)
 const showScrollToBottom = ref(false)
 const showRankModal = ref(false)
@@ -1621,7 +1623,23 @@ const handlePanelAction = (type) => {
         showActionPanel.value = false
     } else if (type === 'lovespace') {
         router.push('/couple')
+    } else if (type === 'share-link') {
+        showLinkShareModal.value = true
+        showActionPanel.value = false
     }
+}
+
+// Handle Link Share (v1.10.169)
+const handleLinkShare = async (linkData) => {
+    const chatId = chatData.value?.id
+    if (!chatId || !linkData) return
+    await chatStore.addMessage(chatId, {
+        role: 'user',
+        type: 'link_card',
+        content: JSON.stringify(linkData),
+    })
+    // 触发 AI 回复(AI 能在上下文里看到链接内容)
+    chatStore.sendMessageToAI(chatId)
 }
 
 // Handle Dice Roll
@@ -2763,6 +2781,30 @@ const handleSendMessage = async (payload) => {
                 forceCard: true
             })
         } else {
+            // v1.10.169: 自动检测纯链接消息(用户直接粘贴抖音/小红书/网页链接)
+            const trimmedContent = (content || '').trim()
+            const urlMatch = trimmedContent.match(/^https?:\/\/[^\s]+$/i)
+            if (urlMatch && trimmedContent.length < 500) {
+                // 纯链接,转为 link_card
+                try {
+                    const fetchResp = await fetch(`/v2/link/fetch?url=${encodeURIComponent(trimmedContent)}`)
+                    const fetchJson = await fetchResp.json()
+                    if (fetchJson.data) {
+                        await chatStore.addMessage(chatId, {
+                            role: 'user',
+                            type: 'link_card',
+                            content: JSON.stringify(fetchJson.data),
+                            quote: currentQuote.value,
+                            mode: 'online'
+                        })
+                        currentQuote.value = null
+                        scrollToBottom(true)
+                        setTimeout(() => scrollToBottom(false), 100)
+                        chatStore.sendMessageToAI(chatId)
+                        return
+                    }
+                } catch (e) { /* 抓取失败,降级为普通文本 */ }
+            }
             await chatStore.addMessage(chatId, {
                 role: 'user',
                 content: content,
@@ -4085,6 +4127,9 @@ window.qiaoqiao_receiveFamilyCard = (uuid, amount, note, fromCharId) => {
         <!-- Tarot Modal -->
         <TarotModal :show="showTarotModal" @close="showTarotModal = false" @share="handleTarotShare"
             @share-interpretation="handleTarotInterpretationShare" />
+
+        <!-- Link Share Modal (v1.10.169) -->
+        <LinkShareModal :show="showLinkShareModal" @close="showLinkShareModal = false" @send="handleLinkShare" />
 
         <!-- Backpack Modal -->
         <BackpackModal ref="backpackModal" v-if="showBackpackModal" @close="showBackpackModal = false"

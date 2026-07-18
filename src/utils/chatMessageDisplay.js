@@ -551,7 +551,8 @@ export function shouldShowInOnlineMode(msg) {
 
   const isSpecialCard =  msg.type === 'gift' || msg.type === 'tarot' || msg.type === 'dice' || 
                          msg.type === 'tarot_card' || msg.type === 'tarot_interpretation' ||
-                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer';
+                         msg.type === 'html' || msg.type === 'redpacket' || msg.type === 'transfer' ||
+                         msg.type === 'link_card'; // v1.10.169: 链接分享卡片
   if (isSpecialCard) return true;
 
   if (getModePartitionedContent(raw, 'ONLINE').length > 0) return true

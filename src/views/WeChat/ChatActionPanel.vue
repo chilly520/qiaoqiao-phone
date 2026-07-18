@@ -138,6 +138,15 @@
         </div>
         <span class="text-xs text-[#888]">一起听歌</span>
       </div>
+
+      <!-- Share Link (v1.10.169) -->
+      <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="$emit('action', 'share-link')">
+        <div
+          class="w-14 h-14 bg-white rounded-xl flex items-center justify-center border border-[#dcdcdc] group-active:bg-gray-100">
+          <i class="fa-solid fa-link text-2xl text-[#576b95]"></i>
+        </div>
+        <span class="text-xs text-[#888]">分享链接</span>
+      </div>
     </div>
   </div>
 </template>

@@ -2853,6 +2853,14 @@ export const useChatStore = defineStore('chat', () => {
                     content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: ${data.fullContent || data.preview || '暂无内容'}`
                     if (data.image) m.image = data.image;
                 } catch (e) { content = '[收藏内容]' }
+            } else if (m.type === 'link_card') {
+                // v1.10.169: 链接分享卡片,把抓取到的网页内容注入 AI 上下文
+                try {
+                    const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                    const role = m.role === 'user' ? '用户' : '我';
+                    content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
+                    if (data.image) m.image = data.image;
+                } catch (e) { content = '[网页链接]' }
             } else if (m.type === 'tarot_card' || m.type === 'tarot_interpretation') {
                 // 塔罗牌分享：将牌面和解析详情发送到AI上下文
                 try {
@@ -5304,6 +5312,41 @@ export const useChatStore = defineStore('chat', () => {
                                 mode: finalMode
                             });
                         }
+                    } else if (type === 'link') {
+                        // v1.10.169: AI 主动分享链接 → 抓取内容 → 渲染 link_card
+                        try {
+                            const linkMatch = content.match(/\[(?:链接|LINK|URL)[:：]?\s*(.*?)\]\s*$/i);
+                            let linkPayload = linkMatch ? linkMatch[1].trim() : '';
+                            let linkData = null;
+
+                            // 尝试 JSON 格式: [LINK:{"url":"...","title":"..."}]
+                            if (linkPayload.startsWith('{')) {
+                                try { linkData = JSON.parse(linkPayload); } catch (e) {}
+                            } else {
+                                // 纯 URL 格式: [LINK:https://...]
+                                linkData = { url: linkPayload.replace(/^["']|["']$/g, '') };
+                            }
+
+                            if (linkData && linkData.url) {
+                                // 调后端抓取网页内容(补全 title/description/image)
+                                try {
+                                    const fetchResp = await fetch(`/v2/link/fetch?url=${encodeURIComponent(linkData.url)}`);
+                                    const fetchJson = await fetchResp.json();
+                                    if (fetchJson.data) {
+                                        linkData = { ...fetchJson.data, ...linkData, reason: linkData.reason };
+                                    }
+                                } catch (e) { /* 抓取失败也允许发送 */ }
+
+                                await addMessage(chatId, {
+                                    role: 'ai',
+                                    type: 'link_card',
+                                    content: JSON.stringify(linkData),
+                                    quote: i === 0 ? aiQuote : null,
+                                    hidden: isCallMode,
+                                    mode: finalMode
+                                });
+                            }
+                        } catch (e) { /* 解析失败,忽略 */ }
                     }
 
                     // Sequential Delay — [FIX] 固定 500ms 每条气泡，不再按内容长度动态计算

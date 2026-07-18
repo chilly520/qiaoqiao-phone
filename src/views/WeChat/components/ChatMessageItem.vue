@@ -644,6 +644,15 @@
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
                             <MomentShareCard :data="msg.content" />
                         </div>
+
+                        <!-- CASE: Link Share Card (v1.10.169) -->
+                        <div v-else-if="msg.type === 'link_card'"
+                            class="w-full max-w-[280px] mt-1 animate-fade-in"
+                            @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <LinkShareCard :data="msg.content" />
+                        </div>
                         
                         <!-- CASE: HTML Card (from [CARD] tag or type: html) -->
                         <div v-else-if="msg.type === 'card' || msg.type === 'html'"
@@ -1195,6 +1204,16 @@
                             <MomentShareCard :data="momentDataValue" />
                         </div>
 
+                        <!-- CASE: Link Share Card (v1.10.169, 通用分支) -->
+                        <div v-else-if="msg.type === 'link_card'"
+                            class="max-w-[260px] animate-fade-in mt-1 overflow-hidden"
+                            :class="msg.role === 'user' ? 'mr-1' : 'ml-1'"
+                            @contextmenu.prevent="emitContextMenu"
+                            @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
+                            @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
+                            <LinkShareCard :data="msg.content" />
+                        </div>
+
                         <!-- CASE: Location / Scene Tag (Premium Glassmorphism) -->
                         <div v-else-if="msg.type === 'location'"
                             class="w-full flex justify-center my-6 px-4 animate-scale-in"
@@ -1521,6 +1540,7 @@ import {
 import { ensureString } from '../../../utils/common'
 import SafeHtmlCard from '../../../components/SafeHtmlCard.vue'
 import MomentShareCard from '../../../components/MomentShareCard.vue'
+import LinkShareCard from '../../../components/LinkShareCard.vue'
 import FamilyCardClaimModal from '../FamilyCardClaimModal.vue'
 import FamilyCardDetailModal from '../FamilyCardDetailModal.vue'
 
@@ -2012,6 +2032,7 @@ const isValidMessage = computed(() => {
                          props.msg.type === 'gift' || props.msg.type === 'gift_claimed' || 
                          props.msg.type === 'card' || props.msg.type === 'order_share' ||
                          props.msg.type === 'payment_request' || // 代付请求
+                         props.msg.type === 'link_card' || // v1.10.169: 链接分享卡片
                          isDiceMsg.value || isTarotMsg.value ||
                          parsedInnerVoice.value !== null
 
