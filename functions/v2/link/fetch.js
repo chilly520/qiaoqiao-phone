@@ -324,42 +324,118 @@ async function fetchDouyin(url, wantComments) {
 }
 
 // 小红书:从分享链接提取 note ID
+// v1.10.174: 小红书改版,移动 UA 拿到的 __INITIAL_STATE__.noteData.data 是空,
+//   必须 PC UA 才能拿到完整的 __INITIAL_STATE__.note.noteDetailMap[noteId].note 结构。
+//   数据路径:note.noteDetailMap[noteId].note.{title, desc, user.nickname,
+//   imageList[0].urlDefault, video.media.stream.h264[0].masterUrl, comments/interactInfo}
 async function fetchXiaohongshu(url, wantComments) {
+    // PC UA(移动 UA 拿不到 note 详情)
+    const PC_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
     let realUrl = url;
+    let noteId = '';
     try {
-        const resp = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': UA } });
+        const resp = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': PC_UA } });
         realUrl = resp.url || url;
     } catch (e) {}
 
-    const idMatch = realUrl.match(/\/explore\/([a-zA-Z0-9]+)/) || realUrl.match(/\/discovery\/item\/([a-zA-Z0-9]+)/) || realUrl.match(/xhslink\.com\/([a-zA-Z0-9]+)/);
-    if (!idMatch) return null;
+    // 提取 noteId(explore/{id} 或 discovery/item/{id} 或 xhslink 重定向后的 URL)
+    const idMatch = realUrl.match(/\/explore\/([a-zA-Z0-9]+)/)
+        || realUrl.match(/\/discovery\/item\/([a-zA-Z0-9]+)/)
+        || realUrl.match(/\/note\/([a-zA-Z0-9]+)/);
+    if (idMatch) noteId = idMatch[1];
 
     try {
         const resp = await fetch(realUrl, {
             headers: {
-                'User-Agent': UA,
+                'User-Agent': PC_UA,
                 'Referer': 'https://www.xiaohongshu.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             },
             cf: { cacheTtl: 3600 },
         });
         const html = await resp.text();
         const meta = extractMeta(html, realUrl);
+
+        // v1.10.174: 优先从 __INITIAL_STATE__.note.noteDetailMap 提取
+        let title = meta.title || '';
+        let desc = meta.description || '';
+        let image = meta.image || '';
+        let author = meta.author || '';
+        let videoUrl = '';
+        let comments = [];
+
+        const stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*<\/script>/i);
+        if (stateMatch) {
+            try {
+                const state = JSON.parse(stateMatch[1].replace(/undefined/g, 'null'));
+                const noteDetailMap = state?.note?.noteDetailMap || {};
+                // 找到当前笔记(优先用 noteId 匹配,否则取第一个)
+                let noteData = null;
+                if (noteId && noteDetailMap[noteId]) {
+                    noteData = noteDetailMap[noteId]?.note;
+                } else {
+                    // 取 noteDetailMap 里第一个有 note 的
+                    for (const k in noteDetailMap) {
+                        if (noteDetailMap[k]?.note) {
+                            noteData = noteDetailMap[k].note;
+                            noteId = noteId || k;
+                            break;
+                        }
+                    }
+                }
+
+                if (noteData) {
+                    title = noteData.title || title;
+                    desc = noteData.desc || desc;
+                    author = noteData.user?.nickname || author;
+
+                    // 图片: imageList[0].urlDefault 优先
+                    if (Array.isArray(noteData.imageList) && noteData.imageList.length > 0) {
+                        const img = noteData.imageList[0];
+                        image = img.urlDefault || img.url || img.original || image;
+                    }
+
+                    // 视频: video.media.stream.h264[0].masterUrl
+                    if (noteData.video?.media?.stream?.h264) {
+                        const h264 = noteData.video.media.stream.h264;
+                        if (Array.isArray(h264) && h264.length > 0) {
+                            videoUrl = h264[0].masterUrl || h264[0].backupUrls?.[0] || '';
+                        }
+                    }
+
+                    // 评论: noteData.comments 或 noteData.commentList
+                    const rawComments = noteData.comments || noteData.commentList || [];
+                    if (Array.isArray(rawComments) && rawComments.length > 0) {
+                        comments = rawComments.slice(0, 20).map(c => ({
+                            user: c.user?.nickname || '匿名',
+                            text: c.content || c.text || '',
+                            likes: c.likeCount || c.likecount || 0,
+                            time: c.createTime || c.createtime || '',
+                        })).filter(c => c.text);
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // v1.10.170: 兜底用通用评论提取(如果上面没拿到)
+        if (comments.length === 0 && wantComments) {
+            comments = extractXiaohongshuComments(html);
+        }
+
         const result = {
             url: realUrl,
-            title: meta.title,
-            description: meta.description,
-            image: meta.image,
-            author: meta.author,
+            title: title || '小红书笔记',
+            description: desc,
+            image: image,
+            author: author,
+            videoUrl: videoUrl,
             platform: 'xiaohongshu',
             source: '小红书',
             favicon: 'https://www.xiaohongshu.com/favicon.ico',
             hostname: 'xiaohongshu.com',
         };
-
-        // v1.10.170: 提取评论
-        if (wantComments) {
-            result.comments = extractXiaohongshuComments(html);
-        }
+        if (wantComments) result.comments = comments;
 
         return result;
     } catch (e) {
