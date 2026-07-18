@@ -2797,6 +2797,43 @@ export const useChatStore = defineStore('chat', () => {
         // 🔑 在发起请求前立即持久化，页面刷新后能检测到并重发
         markRequestPending(chatId, options.mode || 'online')
 
+        // v1.10.176: 热门榜上下文注入(异步,不阻塞主流程)
+        // 让 AI 知道当前抖音/小红书有啥热门,主动分享时有的可分
+        // 2 小时刷新一次,用 chat._lastHotInject 时间戳控制
+        if (!options._isToolContinuation && !options._isContinuation) {
+            const lastHot = chat._lastHotInject || 0
+            if (Date.now() - lastHot > 2 * 60 * 60 * 1000) {
+                chat._lastHotInject = Date.now()
+                // 异步抓,不 await(失败不影响主流程)
+                Promise.all([
+                    fetch('/v2/hot?platform=douyin').then(r => r.json()).catch(() => null),
+                    fetch('/v2/hot?platform=xiaohongshu').then(r => r.json()).catch(() => null),
+                ]).then(([dy, xhs]) => {
+                    const dyList = Array.isArray(dy?.data) ? dy.data.slice(0, 5) : []
+                    const xhsList = Array.isArray(xhs?.data) ? xhs.data.slice(0, 5) : []
+                    if (dyList.length === 0 && xhsList.length === 0) return
+                    let hotText = '[当前热门内容(可选择性分享给用户)]'
+                    if (dyList.length > 0) {
+                        hotText += '\n抖音热门:\n' + dyList.map((r, i) =>
+                            `${i + 1}. ${r.title} - ${r.url}`
+                        ).join('\n')
+                    }
+                    if (xhsList.length > 0) {
+                        hotText += '\n小红书热门:\n' + xhsList.map((r, i) =>
+                            `${i + 1}. ${r.title} - ${r.url}`
+                        ).join('\n')
+                    }
+                    hotText += '\n(你可以基于这些内容,在合适时机用 [LINK:URL] 主动分享给用户,但要自然,不要硬塞)'
+                    addMessage(chatId, {
+                        role: 'system',
+                        content: hotText,
+                        hidden: true,
+                        mode: 'online'
+                    }).catch(() => {})
+                }).catch(() => {})
+            }
+        }
+
         // --- 时间感知逻辑 ---
         const now = Date.now()
         // 查找 AI 的最后一条消息，以此计算时隔多久回复
@@ -4767,6 +4804,9 @@ export const useChatStore = defineStore('chat', () => {
                         finalSegments.push({ type: 'timer', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[搜索:') || content.startsWith('[SEARCH:') || content.startsWith('[查找:')) {
                         finalSegments.push({ type: 'search', content: content.trim(), mode: activeMode });
+                    } else if (content.startsWith('[浏览:') || content.startsWith('[BROWSE:') || content.startsWith('[阅读:') || content.startsWith('[READ:')) {
+                        // v1.10.176: AI 浏览网页工具
+                        finalSegments.push({ type: 'browse', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[黄历:') || content.startsWith('[ALMANAC:') || content.startsWith('[运势:') || content.startsWith('[今日运势:]')) {
                         finalSegments.push({ type: 'almanac', content: content.trim(), mode: activeMode });
                     } else if (content.startsWith('[OFFLINE]')) {
@@ -5281,10 +5321,13 @@ export const useChatStore = defineStore('chat', () => {
                             }, delayMs);
                         }
                     } else if (type === 'search') {
-                        // 处理搜索指令
+                        // v1.10.176: 工具调用——AI 输出 [SEARCH:关键词] 后,
+                        // 系统调用 /v2/search 拿真实结果,作为 hidden 系统消息注入,
+                        // 再递归触发 sendMessageToAI 让 AI 看到结果后回复。
                         const searchMatch = content.match(/\[(?:搜索|SEARCH|查找)[:：]\s*(.+?)\]/i);
                         if (searchMatch) {
                             const searchKeyword = searchMatch[1].trim();
+                            // 显示一个搜索气泡让用户看到 AI 在搜什么
                             await addMessage(chatId, {
                                 role: 'ai',
                                 type: 'search',
@@ -5293,6 +5336,81 @@ export const useChatStore = defineStore('chat', () => {
                                 hidden: isCallMode,
                                 mode: finalMode
                             });
+
+                            // 调后端搜索
+                            try {
+                                const searchResp = await fetch(`/v2/search/bing?q=${encodeURIComponent(searchKeyword)}&platform=web`);
+                                const searchJson = await searchResp.json();
+                                const results = Array.isArray(searchJson.data) ? searchJson.data.slice(0, 8) : [];
+                                if (results.length > 0) {
+                                    // 作为 hidden 系统消息注入,不显示给用户但 AI 能看到
+                                    const resultList = results.map((r, idx) =>
+                                        `${idx + 1}. ${r.title}\n   URL: ${r.url}\n   摘要: ${r.snippet || '(无)'}`
+                                    ).join('\n');
+                                    await addMessage(chatId, {
+                                        role: 'system',
+                                        content: `[搜索结果: "${searchKeyword}"]\n${resultList}\n\n你现在可以基于这些结果,挑一个最相关的用 [LINK:URL] 分享给用户,并附上你的点评。或直接讨论其中内容。`,
+                                        hidden: true,
+                                        mode: finalMode
+                                    });
+                                    // 触发 AI 下一轮生成(看到搜索结果后再回复)
+                                    setTimeout(() => sendMessageToAI(chatId, { _isToolContinuation: true }), 300);
+                                    return; // 中断当前循环,等下一轮 AI 回复
+                                } else {
+                                    await addMessage(chatId, {
+                                        role: 'system',
+                                        content: `[搜索 "${searchKeyword}" 没有找到结果]`,
+                                        hidden: true,
+                                        mode: finalMode
+                                    });
+                                    setTimeout(() => sendMessageToAI(chatId, { _isToolContinuation: true }), 300);
+                                    return;
+                                }
+                            } catch (e) {
+                                console.warn('[ChatStore] Search tool failed:', e);
+                                // 搜索失败,继续处理其他 segments
+                            }
+                        }
+                    } else if (type === 'browse') {
+                        // v1.10.176: 工具调用——AI 输出 [BROWSE:URL] 后,
+                        // 系统调用 /v2/link/fetch 抓取页面内容,作为 hidden 系统消息注入,
+                        // 再递归触发 sendMessageToAI 让 AI 看到内容后回复。
+                        const browseMatch = content.match(/\[(?:浏览|BROWSE|阅读|READ)[:：]\s*(.+?)\]/i);
+                        if (browseMatch) {
+                            const targetUrl = browseMatch[1].trim().replace(/^["']|["']$/g, '');
+                            await addMessage(chatId, {
+                                role: 'ai',
+                                type: 'search', // 复用搜索气泡样式
+                                content: `正在浏览 ${targetUrl}`,
+                                quote: i === 0 ? aiQuote : null,
+                                hidden: isCallMode,
+                                mode: finalMode
+                            });
+                            try {
+                                const fetchResp = await fetch(`/v2/link/fetch?url=${encodeURIComponent(targetUrl)}`);
+                                const fetchJson = await fetchResp.json();
+                                if (fetchJson.data) {
+                                    const d = fetchJson.data;
+                                    let browseContent = `[浏览结果: ${targetUrl}]\n标题: ${d.title || '(无标题)'}\n描述: ${d.description || '(无)'}\n作者: ${d.author || '(未知)'}`;
+                                    if (Array.isArray(d.comments) && d.comments.length > 0) {
+                                        browseContent += `\n热门评论: ${d.comments.slice(0, 5).map((c, idx) => `${idx + 1}. ${c.user || '匿名'}: "${c.text}"`).join('; ')}`;
+                                    }
+                                    if (d.videoUrl) {
+                                        browseContent += `\n(这是视频内容,你只能看到封面图和描述,无法观看视频本身)`;
+                                    }
+                                    browseContent += `\n\n你现在可以基于这些内容讨论,或用 [LINK:${targetUrl}] 分享给用户并附上你的点评。`;
+                                    await addMessage(chatId, {
+                                        role: 'system',
+                                        content: browseContent,
+                                        hidden: true,
+                                        mode: finalMode
+                                    });
+                                    setTimeout(() => sendMessageToAI(chatId, { _isToolContinuation: true }), 300);
+                                    return;
+                                }
+                            } catch (e) {
+                                console.warn('[ChatStore] Browse tool failed:', e);
+                            }
                         }
                     } else if (type === 'payment') {
                         // 处理红包/转账指令（AI 发起）
