@@ -110,6 +110,61 @@
                         </div>
                     </div>
 
+                    <!-- v1.10.167: 生理状态条 (活人感 - 吃饭/睡觉/上厕所) -->
+                    <div v-if="hasPhysioStats" class="stats-bars-group">
+                        <div class="physio-section-title">PHYSIOLOGY · 生理状态</div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>HUNGER {{ getStatLabel('hunger', currentVoiceContent.stats?.hunger) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.hunger) }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill hunger"
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.hunger) + '%' }"></div>
+                            </div>
+                        </div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>THIRST {{ getStatLabel('thirst', currentVoiceContent.stats?.thirst) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.thirst) }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill thirst"
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.thirst) + '%' }"></div>
+                            </div>
+                        </div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>BLADDER {{ getStatLabel('bladder', currentVoiceContent.stats?.bladder) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.bladder) }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill bladder"
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.bladder) + '%' }"></div>
+                            </div>
+                        </div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>ENERGY {{ getStatLabel('energy', currentVoiceContent.stats?.energy) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.energy) }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill energy"
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.energy) + '%' }"></div>
+                            </div>
+                        </div>
+                        <div class="bar-entry">
+                            <div class="bar-label-row">
+                                <span>SLEEPINESS {{ getStatLabel('sleepiness', currentVoiceContent.stats?.sleepiness) }}</span>
+                                <span>{{ getStatValue(currentVoiceContent.stats?.sleepiness) }}%</span>
+                            </div>
+                            <div class="bar-track">
+                                <div class="bar-fill sleepiness"
+                                    :style="{ width: getStatValue(currentVoiceContent.stats?.sleepiness) + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Heart Rate Display -->
                     <div class="heart-rate-container" :class="getHeartRateClass(currentHeartRate)">
                         <div class="heart-rate-header">
@@ -410,6 +465,14 @@ const currentHeartRate = computed(() => {
     return currentVoiceContent.value.stats?.heartRate ?? 75
 })
 
+// v1.10.167: 检测是否有任何生理状态数据,没有则隐藏整块生理状态条
+const hasPhysioStats = computed(() => {
+    const s = currentVoiceContent.value.stats
+    if (!s) return false
+    const keys = ['hunger', 'thirst', 'bladder', 'energy', 'sleepiness']
+    return keys.some(k => s[k] !== undefined && s[k] !== null && s[k] !== '')
+})
+
 // 心电图路径 - 使用计算属性缓存
 const ecgPath = computed(() => {
     return getECGPath(currentHeartRate.value)
@@ -613,10 +676,16 @@ const getStatValue = (val) => {
 const getStatLabel = (key, val) => {
     if (typeof val === 'object' && val !== null && val.label) return val.label
     if (typeof val === 'string') {
+        // v1.10.167: 对于"饱腹30"这种"中文标签+数字"格式,提取中文标签
         const labelMatch = val.match(/^([^\d]+)/)
         return labelMatch ? labelMatch[1].trim() : val
     }
-    const defaults = { emotion: '情绪', spirit: '精神', mood: '心情' }
+    // v1.10.167: 新增生理状态的默认标签
+    const defaults = {
+        emotion: '情绪', spirit: '精神', mood: '心情',
+        hunger: '饥饿', thirst: '口渴', bladder: '膀胱',
+        energy: '精力', sleepiness: '困意'
+    }
     return defaults[key] || key.toUpperCase()
 }
 
@@ -1132,6 +1201,38 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 
 .bar-fill.mood {
     background: linear-gradient(to right, #615a4b, #8c7e63);
+}
+
+/* v1.10.167: 生理状态条配色 */
+.physio-section-title {
+    font-size: 10px;
+    color: #6d5e4a;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: bold;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.bar-fill.hunger {
+    background: linear-gradient(to right, #b8543d, #e8704a);
+}
+
+.bar-fill.thirst {
+    background: linear-gradient(to right, #3d7ab8, #4a9be8);
+}
+
+.bar-fill.bladder {
+    background: linear-gradient(to right, #5a4a8c, #7a64b8);
+}
+
+.bar-fill.energy {
+    background: linear-gradient(to right, #4a8c5a, #6ab87a);
+}
+
+.bar-fill.sleepiness {
+    background: linear-gradient(to right, #6a5a8c, #8a7ab8);
 }
 
 /* Heart Rate Display */
