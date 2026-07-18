@@ -287,7 +287,10 @@ export const useSettingsStore = defineStore('settings', () => {
         volcengine: {
             text2imageModel: 'doubao-seedream-4-0-250828',  // 文生图(默认 Seedream 4.0,4.0+ 同时支持 i2i)
             image2imageModel: 'doubao-seedream-4-0-250828', // 图生图(4.0+ 传 image 字段即走 i2i,无需单独模型)
-            size: '1024x1024',                                  // 输出尺寸
+            // v1.10.164: 默认改为 2048x2048 (4194304px)
+            // 火山引擎 Seedream 4.0/4.5/5.0 要求 size 像素 ≥ 3686400 (1920x1920),
+            // 之前的 1024x1024 (1048576px) 会导致 400 报错
+            size: '2048x2048',                                  // 输出尺寸
             useAppearanceImage: true,                           // 自动用角色形象图作参考
             appearanceStrength: 0.6                             // 图生图参考强度 0~1
         }

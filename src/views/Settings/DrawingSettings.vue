@@ -34,9 +34,19 @@ const volcengineModels = [
     { id: 'doubao-seedream-5-0-pro-260628', name: 'Seedream 5.0 Pro (最新旗舰)', type: 'all' },
     { id: 'doubao-seededit-3-0-i2i-250315', name: 'SeedEdit 3.0 (旧版 i2i,可能已下架)', type: 'i2i' }
 ]
+// v1.10.164: 火山引擎 Seedream 4.0/4.5/5.0 要求 size 像素 ≥ 3686400 (1920x1920)
+// 1024x1024 / 864x1152 / 1152x864 / 1280x720 / 720x1280 均不满足 → 报 400
+// 仅保留 ≥ 3686400 像素的合法尺寸
 const volcengineSizes = [
-    '1024x1024', '864x1152', '1152x864', '1280x720', '720x1280', '2048x2048'
+    '1920x1920', '2048x2048', '2560x1440', '1440x2560', '3072x3072'
 ]
+// v1.10.164: 给尺寸加上像素数标注(千分位),方便用户看到具体像素值
+const formatPixels = (sizeStr) => {
+    const m = /^(\d+)x(\d+)$/.exec(sizeStr || '')
+    if (!m) return ''
+    const px = parseInt(m[1], 10) * parseInt(m[2], 10)
+    return px.toLocaleString('en-US')
+}
 
 // Toast State
 const toastVisible = ref(false)
@@ -348,8 +358,13 @@ const testI2IGenerate = async () => {
                     <label class="text-xs font-bold text-gray-700 ml-1">输出尺寸</label>
                     <select v-model="drawingConfig.volcengine.size"
                         class="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-                        <option v-for="s in volcengineSizes" :key="s" :value="s">{{ s }}</option>
+                        <option v-for="s in volcengineSizes" :key="s" :value="s">
+                            {{ s }} ({{ formatPixels(s) }}px,≥ 1920×1920)
+                        </option>
                     </select>
+                    <p class="text-[10px] text-gray-500 ml-1 leading-relaxed">
+                        ⚠ 火山引擎 Seedream 4.0/4.5/5.0 要求像素 ≥ 3,686,400 (约 1920×1920),小于此值会 400 报错
+                    </p>
                 </div>
 
                 <div class="flex items-center justify-between p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-100">

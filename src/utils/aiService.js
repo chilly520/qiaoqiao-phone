@@ -3688,7 +3688,58 @@ async function _generateImageInternal(prompt, options = {}) {
             ? (volc.image2imageModel || 'doubao-seedream-4-0-250828')
             : (volc.text2imageModel || 'doubao-seedream-4-0-250828')
 
-        const chosenSize = volc.size || `${width}x${height}`
+        let chosenSize = volc.size || `${width}x${height}`
+
+        // v1.10.164: 火山引擎 Seedream 4.0/4.5/5.0 系列对 size 有最小像素要求
+        // 经验值(参考火山方舟文档):
+        //   - Seedream 3.0/4.0: ≥ 3686400 像素(约 1920x1920)
+        //   - Seedream 4.5/5.0: ≥ 3686400 像素(2K 分辨率)
+        // 当用户配置的 size 像素不足时,自动缩放到满足要求的最小尺寸,
+        // 保持原比例,避免 400 "image size must be at least 3686400 pixels"
+        const MIN_PIXELS = 3686400
+        const sizeMatch = /^(\d+)x(\d+)$/.exec(chosenSize)
+        if (sizeMatch) {
+            const w = parseInt(sizeMatch[1], 10)
+            const h = parseInt(sizeMatch[2], 10)
+            const pixels = w * h
+            if (pixels < MIN_PIXELS) {
+                const scale = Math.sqrt(MIN_PIXELS / pixels)
+                // 火山引擎支持的常见尺寸,按接近度匹配
+                const supportedSizes = [
+                    '1024x1024', '864x1152', '1152x864', '1280x720', '720x1280',
+                    '1536x1536', '1920x1920', '2048x2048', '2560x1440', '1440x2560',
+                    '3072x3072'
+                ]
+                const newW = Math.ceil(w * scale / 8) * 8  // 8 对齐
+                const newH = Math.ceil(h * scale / 8) * 8
+                // 找最接近的合法 size
+                let bestSize = null
+                let bestDiff = Infinity
+                for (const s of supportedSizes) {
+                    const sm = /^(\d+)x(\d+)$/.exec(s)
+                    if (!sm) continue
+                    const sw = parseInt(sm[1], 10)
+                    const sh = parseInt(sm[2], 10)
+                    if (sw * sh < MIN_PIXELS) continue  // 跳过不达标的
+                    // 算与新尺寸的接近度(同时考虑比例)
+                    const aspectDiff = Math.abs((sw / sh) - (newW / newH))
+                    const sizeDiff = Math.abs(sw * sh - newW * newH)
+                    const diff = aspectDiff * 1000000 + sizeDiff
+                    if (diff < bestDiff) {
+                        bestDiff = diff
+                        bestSize = s
+                    }
+                }
+                if (bestSize) {
+                    console.warn(`[AI Image] volcengine: size ${chosenSize}(${pixels}px) < ${MIN_PIXELS}, 自动调整为 ${bestSize}`)
+                    chosenSize = bestSize
+                } else {
+                    // 兜底: 直接用 1920x1920
+                    console.warn(`[AI Image] volcengine: size ${chosenSize}(${pixels}px) < ${MIN_PIXELS}, 兜底使用 1920x1920`)
+                    chosenSize = '1920x1920'
+                }
+            }
+        }
 
         // v1.10.122: 火山引擎 Seedream 是中文模型,英文 (keyword:1.5) 权重语法它不支持,
         // 直接把英文 enhancedPrompt 喂过去效果差。这里:
@@ -3773,6 +3824,10 @@ async function _generateImageInternal(prompt, options = {}) {
                 // v1.10.117: 给"未开通模型"加清晰引导
                 else if (/not activated|model.*not.*exist|does not exist|model_not_found|NoModel|endpoint.*not.*found/i.test(errorDetail)) {
                     msg = `火山引擎模型未开通或不存在:「${chosenModel}」。请去火山方舟控制台 → 模型管理 开通该模型,或创建"在线推理"接入点后填 ep-xxx。${errorDetail}`
+                }
+                // v1.10.164: 专门处理 size 像素不足的错误,引导用户调整配置
+                else if (/image\s*size|size.*pixel|at least.*pixel/i.test(errorDetail)) {
+                    msg = `火山引擎 ${resp.status}: size 像素不足。模型「${chosenModel}」要求 size 像素 ≥ 3,686,400 (约 1920×1920),当前配置为「${chosenSize}」。请到「生图配置」把输出尺寸改为 1920×1920 或更大。${errorDetail}`
                 }
                 else if (resp.status === 400 && useImageModel) msg += ' (图生图请求体可能不被当前模型接受,试试切到文生图模型)'
                 throw new Error(msg)
