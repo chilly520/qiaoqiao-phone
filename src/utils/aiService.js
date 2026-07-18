@@ -1926,7 +1926,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // ====== 策略 B：字段级正则（兜底）======
 
             // 裸露英文 stats 子字段检测
-            const nakedStatsPattern = /(?:^|\n)\s*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][ \t]*[\s\S]*?(?=\n\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|status|stats|emotion|speech|action|behavior|outfit|environment|mind|thought)["']?\s*[:：]|\n\s*[\/\[{"']|$)/gi;
+            const nakedStatsPattern = /(?:^|\n)\s*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|hunger|thirst|bladder|sleepiness|emotion)["']?\s*[:：][ \t]*[\s\S]*?(?=\n\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|hunger|thirst|bladder|sleepiness|status|stats|emotion|speech|action|behavior|outfit|environment|mind|thought)["']?\s*[:：]|\n\s*[\/\[{"']|$)/gi;
             const nakedStatsMatches = [...text.matchAll(nakedStatsPattern)];
             if (nakedStatsMatches.length >= 2) {
                 let statsObj = {};
@@ -1972,7 +1972,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
                 }
 
                 // 策略3：通用兜底 — 用逗号+已知字段名或闭合花括号作前瞻（兼容单行和多行）
-                const knownKeys = 'status|state|心声|心心声|着装|环境|行为|stats|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature';
+                const knownKeys = 'status|state|心声|心心声|着装|环境|行为|stats|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|hunger|thirst|bladder|sleepiness|emotion|date|time';
                 const nextKeyLookahead = `(?:\\s*,\\s*["']?(?:${knownKeys})["']?\\s*[:：]|\\s*["']?\\s*\\}[\\s\\S]*$)`;
                 const regex = new RegExp(`["']?(?:${keyRegexStr})["']?\\s*[:：]\\s*["「]?([\\s\\S]*)(?:${nextKeyLookahead})`, 'i');
                 const match = sourceText.match(regex);
@@ -2095,7 +2095,7 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             // 🗑️ 统一清洁工：拔除哪怕一点点外泄可能存在的残留结构
             // 清理裸露的 stats 块和散落的英文属性行
             content = content.replace(/[\r\n\s]*[,，]?\s*["']?(?:stats|type|footprint|diary|sticky|commands)["']?\s*[:：]\s*(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[^,\n\]]+)/gi, '');
-            content = content.replace(/[\r\n\s]*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature)["']?\s*[:：][^\n]*/gi, '');
+            content = content.replace(/[\r\n\s]*["']?(spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|hunger|thirst|bladder|sleepiness|emotion|date|time)["']?\s*[:：][^\n]*/gi, '');
             
             // 对散落的中文特征属性，进行安全、保守行清理（仅当以"key": "value"开头单独占行时清理）
             const chineseKeys = ['status', 'state', '心声', '心心声', '着装', '环境', '行为'];

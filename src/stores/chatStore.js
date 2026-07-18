@@ -4260,7 +4260,7 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Pass 1.5: Catch emoji-prefixed metadata (e.g., "😡 心情：", "🥺 渴望：")
                 // We do this before HTML extraction so it doesn't get tangled
-                cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy)\s*[:：].*?(?:\n|$)/gm, '');
+                cleanContent = cleanContent.replace(/^[ \t]*[\u2700-\u27bf\u1f300-\u1faff\ud83c\ud83d\ud83e][ \t]*(?:心情|渴望|结论|心声|着装|环境|行为|stats|mind|mood|status|spirit|heartRate|location|distance|energy|stress|intimacy|hunger|thirst|bladder|sleepiness)\s*[:：].*?(?:\n|$)/gm, '');
 
                 // Pass 1.8: Extract [INNER_VOICE] blocks for context but remove from cleanContent.
                 const ivStripRegex = /\[\s*INNER[-_ ]?VOICE\s*\]([\s\S]*?)(\[\/\s*(?:INNER[-_ ]?)?VOICE\s*\]|(?=\n?\s*\[\/?(?:CARD|DRAW|MOMENT|LS_JSON|红包|转账|表情包|图片|SET_|NUDGE|REPLY|FAMILY_CARD|LIKE|COMMENT|ONLINE|OFFLINE|IMAGE|VIDEO|AUDIO|FILE))|$)/gi;
@@ -4430,7 +4430,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
 
                 // Pass 3.5: Aggressive Metadata Strip (Including Multiline & Tag Prepends)
-                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking|spirit|location|distance|energy|stress|intimacy';
+                const allMetadataKeywords = 'type|card|json|html|content|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|status|speech|thought|thinking|spirit|location|distance|energy|stress|intimacy|hunger|thirst|bladder|sleepiness';
                 const metaLinePattern = new RegExp(`(?:^|\\n)\\s*(?:${allMetadataKeywords})\\s*[:：][^\\n\\[\\<{]*`, 'gim');
                 processedContent = processedContent.replace(metaLinePattern, '').trim();
                 
@@ -4443,9 +4443,9 @@ export const useChatStore = defineStore('chat', () => {
 
                 // Pass 3.8: Remove leaked stats field lines (spirit:/mood:/heartRate:/location:/distance: appearing as standalone text)
                 // Remove multi-line block leaks first:
-                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|hunger|thirst|bladder|sleepiness)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
                 // Remove single-line leaks:
-                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats)["']?\s*[:：][^\n]*/gi, '\n');
+                processedContent = processedContent.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|hunger|thirst|bladder|sleepiness)["']?\s*[:：][^\n]*/gi, '\n');
                 
                 processedContent = processedContent.replace(/\n{2,}/g, '\n').trim();
 
@@ -4784,7 +4784,7 @@ export const useChatStore = defineStore('chat', () => {
                             const isLeakedVoice = false; // Disable aggressive parenthetical swallowing to preserve roleplay nuance
                             
                             // Aggressively catch card metadata remnants (e.g., "type: html, html:")
-                            const isTrashMetadata = /^\s*[,，:：]?\s*["']?(?:type|card|json|html|content|data|commands|postId|interactions|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|下装|上装|鞋子|装饰|作者|名字|地点|visibility|status|speech|thought|thinking)["']?\s*[:：]/i.test(filtered.trim());
+                            const isTrashMetadata = /^\s*[,，:：]?\s*["']?(?:type|card|json|html|content|data|commands|postId|interactions|mood|heartRate|stats|mind|心声|着装|环境|行为|渴望|结论|心情|下装|上装|鞋子|装饰|作者|名字|地点|visibility|status|speech|thought|thinking|hunger|thirst|bladder|sleepiness|spirit|location|distance|energy|emotion)["']?\s*[:：]/i.test(filtered.trim());
                             const containsMetadata = /(?:type|card|html|json|data|commands)\s*[:：]/i.test(filtered);
                             const isJsonFragment = /^\s*[,，]?\s*[\{\}\[\]]\s*["']?\w+["']?\s*[:：]\s*[\{\[]?\s*$/i.test(filtered.trim());
 

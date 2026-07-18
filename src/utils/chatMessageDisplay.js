@@ -104,7 +104,7 @@ export function stripInnerVoiceBlocks(content) {
   cleaned = cleaned.replace(/\[(OFFLINE|ONLINE)\]\s*\[\/(OFFLINE|ONLINE)\]/gi, '').trim();
 
   // Aggressively remove multi-line naked JSON stat objects that got leaked outside tags
-  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|label|value|date|time|行为|着装|环境|心声|心情|状态|装饰|上装|下装|鞋子|角色状态|实时状态)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
+  cleaned = cleaned.replace(/(?:^|\n)\s*["']?(?:spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|label|value|date|time|hunger|thirst|bladder|sleepiness|行为|着装|环境|心声|心情|状态|装饰|上装|下装|鞋子|角色状态|实时状态)["']?\s*[:：]\s*\{[\s\S]*?\}(?:,)?/gi, '\n');
 
   // Aggressively remove single-line metadata that might have been leaked
   // REMOVED ^ anchor to catch debris with prefixes like "; 下装" or ", 心声"
@@ -116,7 +116,7 @@ export function stripInnerVoiceBlocks(content) {
 
   // NEW: Catch naked JSON debris strings like ',"html": "' or '"label": "充沛",'
   // This version is much more aggressive and matches open-ended keys too.
-  cleaned = cleaned.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|行为|着装|环境|心声|装饰)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+|\\?["'][^"]*$|\\?["']$|[^,}\n]*$),?/gi, '')
+  cleaned = cleaned.replace(/,?\s*\\?["'](?:html|type|content|label|value|source|amount|note|savedAt|date|time|spirit|mood|heartRate|distance|location|energy|stress|intimacy|trust|temperature|emotion|stats|outfit|scene|action|thoughts|hunger|thirst|bladder|sleepiness|行为|着装|环境|心声|装饰)\\?["']\s*[:：]\s*(?:\\?["'][^"']*\\?["']|[^,}\n]+|\\?["'][^"]*$|\\?["']$|[^,}\n]*$),?/gi, '')
 
   // Final sweep: remove any lines that are just a single JSON key debris or common AI junk
   cleaned = cleaned.replace(/^\s*["']?(?:html|type|content|label|value|行为|着装|环境|心声|装饰)["']?\s*[:：]?\s*["']?\s*$/gim, '')
@@ -588,6 +588,7 @@ const INNER_VOICE_FIELDS = [
   '想法', '心情', '情绪', '感受', '思考', '内心', 'inner', '心理',
   'state', 'mind', 'mental', 'activity', 'behavior', '行为', 'heartRate', 'location', 'distance', 'stats',
   'outfit', 'scene', 'action', 'thoughts', 'date', 'time', 'label', 'value', 'heart',
+  'hunger', 'thirst', 'bladder', 'sleepiness', 'energy',
   '场景', '环境', '姿态', '表情', '目标', '任务', '属性', '状态', '位置', '距离', '穿搭', '动作',
   'type', 'html', 'content', 'note', 'amount', 'source', 'savedAt', 'title', 'author', 'url', '日期', '时间'
 ]
@@ -916,7 +917,7 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
                       if (depth === 0) break
                   }
                   const block = str.substring(start, i)
-                  if (/"(?:status|stats|heartRate|着装|环境|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit)"/i.test(block)) {
+                  if (/"(?:status|stats|heartRate|着装|环境|心声|行为|mind|outfit|scene|action|thoughts|mood|spirit|hunger|thirst|bladder|sleepiness|energy|emotion)"/i.test(block)) {
                       // Skip
                   } else {
                       result += block
@@ -940,7 +941,7 @@ export function getUnifiedCleanContent(content, isHtml = false, role = 'ai') {
       }
 
       // 针对仍然顽固残留的无引号长文本（例如多属性混杂在同一行，或带有中括号、小括号前缀的情况）
-      const metaFields = "行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期";
+      const metaFields = "行为|着装|环境|心声|装饰|stats|time|date|location|emotion|heartRate|html|type|content|label|value|source|amount|note|savedAt|spirit|mood|distance|energy|stress|intimacy|trust|temperature|outfit|scene|action|thoughts|hunger|thirst|bladder|sleepiness|心情|状态|上装|下装|鞋子|角色状态|实时状态|剧情|动作|姿态|表情|目标|任务|属性|位置|距离|穿搭|日期";
       
       // 1. 如果以关键字开头，删除整行
       const startMetaRegex = new RegExp(`^\\s*\\\\?["']?(?:${metaFields})\\\\?["']?\\s*[:：][^\\n]*`, 'gim');
