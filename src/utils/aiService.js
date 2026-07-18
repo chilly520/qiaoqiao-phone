@@ -3246,6 +3246,19 @@ async function _generateImageInternal(prompt, options = {}) {
 
     console.log(`[AI Image] Drawing Triggered - Provider: ${provider}, Model: ${model}, Has Key: ${!!apiKey}`)
 
+    // v1.10.165: 内置中文质量提示词
+    // 解决 Seedream 等中文模型经常忘记风格、出胡子、生出小孩、身体比例崩坏的问题
+    // 对所有 provider 都生效(volcengine / siliconflow / pollinations 都用)
+    const QUALITY_PROMPT_ANIME = ',二次元动漫插画风格，精细线稿，赛璐璐上色，鲜艳色彩，平面光影，'
+    const QUALITY_PROMPT_REALISTIC = ',真实摄影风格，4K高清照片质感，自然光线，专业构图，写实人像，'
+    // 通用质量护栏(动漫 + 真人 都加): 强制成年 + 干净面容 + 正常体型
+    const QUALITY_POSITIVE_GUARD = ',所有人物均为22-28岁成年男女，面容干净无胡须无体毛，身材匀称比例正常，'
+    // 强制年龄 + 干净面容 + 比例的中文 negative(火山引擎对 negative_prompt 字段支持有限,直接写进 prompt 更稳)
+    const QUALITY_NEGATIVE = '不要出现：小孩、儿童、未成年人；不要出现：胡子、胡须、络腮胡、胡茬、体毛、皱纹；不要出现：畸形的脸、变形的手、错误的眼睛、坏掉的四肢、比例失调、多手指少手指、错位的手指、错位的手指并连；不要出现：低质量、模糊、噪点、水印、文字、签名、边框；'
+    // 英文版质量护栏,给 SiliconFlow / Pollinations / SDXL 系列模型用
+    const QUALITY_POSITIVE_GUARD_EN = ', all characters are 22-28 years old adult, clean shaven face, no facial hair, no body hair, normal anatomy, correct body proportions, '
+    const QUALITY_NEGATIVE_EN = 'child, kid, minor, underage, baby, toddler, loli, shota, beard, mustache, stubble, facial hair, body hair, wrinkles, old, elderly, bad anatomy, bad hands, extra fingers, fewer fingers, fused fingers, missing fingers, mutated hands, poorly drawn face, deformed, ugly, blurry, low quality, worst quality, watermark, text, signature, '
+
     if (provider !== 'pollinations') {
         console.log(`[AI Image] Using Custom Generator API (${provider})...`)
     }
@@ -3291,7 +3304,7 @@ async function _generateImageInternal(prompt, options = {}) {
         negativeBoost = "(human:1.8), (person:1.8), (people:1.8), (face:1.8), (hands:1.8), (body:1.8), (fingers:1.8), (model:1.8), (ugly:1.3), (worst quality), (low quality), (blurry), (watermark)"
         enhancedPrompt = `masterpiece, highly detailed, professional product photography, (photorealistic:1.5), (realistic:1.5), studio lighting, 8k resolution, crisp focus, (product only:1.5), (no humans:1.8), ${prompt}`
     } else if (isCouple) {
-        const coupleDesc = isRealisticStyle 
+        const coupleDesc = isRealisticStyle
             ? "(realistic couple portrait:1.5), (natural skin texture:1.3), (candid photo:1.2)"
             : "(two distinct individuals), (young adult couple: 1.5)"
         enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${coupleDesc}, ${prompt}, (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), romantic atmosphere, highly detailed, 18-25 years old`
@@ -3311,6 +3324,13 @@ async function _generateImageInternal(prompt, options = {}) {
         enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${femaleDesc}, (perfect anatomy: 1.3), (correct proportions: 1.3), (well drawn hands: 1.3), (detailed fingers: 1.2), ${prompt}, sharp focus, ${isRealisticStyle ? 'natural skin, realistic eyes, natural lighting, portrait photography, 18-28 years old' : 'vibrant pastel colors, cute, 18-22 years old'}`
     } else {
         enhancedPrompt = `masterpiece, best quality, ${styleBase}, ${defaultBackground}, ${prompt}, highly detailed, sharp focus, ${isRealisticStyle ? 'natural colors, realistic lighting, professional photo' : 'vibrant colors, clear background'}`
+    }
+
+    // v1.10.165: 把英文质量护栏注入 enhancedPrompt,确保 SiliconFlow / Pollinations 也记住风格 + 排除儿童/胡须
+    // (火山引擎走自己的 finalPrompt 拼装,这里只影响 SiliconFlow / Pollinations)
+    if (!options.isProduct) {
+        enhancedPrompt = `${enhancedPrompt}${QUALITY_POSITIVE_GUARD_EN}`
+        negativeBoost = `${QUALITY_NEGATIVE_EN}, ${negativeBoost}`
     }
 
     const seed = Math.floor(Math.random() * 1000000)
@@ -3760,8 +3780,12 @@ async function _generateImageInternal(prompt, options = {}) {
         } else if (refImageCount === 1) {
             mode = isSelfOnly ? 'self' : 'character'
         }
-        // v1.10.122: 火山引擎用中文风格描述 + 去权重的英文提示词 + 中文负面词
-        const finalPrompt = `${promptPrefix}${stripSDWeights(enhancedPrompt)}，${volcStyleHint}。不要：${volcInlineNegative}`
+        // v1.10.165: 火山引擎用中文风格描述 + 去权重的英文提示词 + 中文负面词
+        // 同时把 QUALITY_POSITIVE_GUARD(强制成年+干净面容)和 QUALITY_NEGATIVE(明确不要什么)
+        // 直接拼到 prompt 末尾,让中文模型明确知道风格和质量要求
+        // (火山引擎的 negative_prompt 字段对 Seedream 4.0 实际不生效,所以直接拼进 prompt)
+        const styleHint = isRealisticStyle ? QUALITY_PROMPT_REALISTIC : QUALITY_PROMPT_ANIME
+        const finalPrompt = `${promptPrefix}${stripSDWeights(enhancedPrompt)}，${volcStyleHint}${styleHint}${QUALITY_POSITIVE_GUARD}绝对禁止：${QUALITY_NEGATIVE}`
 
         const body = {
             model: chosenModel,
@@ -3771,6 +3795,8 @@ async function _generateImageInternal(prompt, options = {}) {
             watermark: false,
             sequential_image_generation: 'disabled'
         }
+        // v1.10.165: 仍然传 negative_prompt 字段,以防未来 4.5+ 启用
+        body.negative_prompt = QUALITY_NEGATIVE
         if (useImageModel && refImageCount > 0) {
             body.image = refImageCount === 1 ? refImages[0] : refImages
             if (typeof volc.appearanceStrength === 'number') {
