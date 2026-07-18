@@ -219,6 +219,10 @@ function extractGenericComments(html) {
 }
 
 // 抖音:从分享链接提取视频 ID,调用分享页 API
+// v1.10.173: 抖音改版,SSR 数据从 RENDER_DATA 改到 window._ROUTER_DATA,
+//   结构为 loaderData["video_(id)/page"].videoInfoRes.item_list[0]
+//   旧的正则提取 desc/cover/nickname 在新结构下取到的是非目标字段,
+//   导致返回 image 为空 → 前端卡片没有封面,只显示一条文字。改为 JSON 解析。
 async function fetchDouyin(url, wantComments) {
     // 抖音分享链接通常是 https://v.douyin.com/xxxxx/ 或 https://www.douyin.com/video/xxxxx
     // 先跟随重定向拿到真实 URL
@@ -244,19 +248,64 @@ async function fetchDouyin(url, wantComments) {
         });
         const html = await resp.text();
 
-        // 从 SSR 渲染的 JSON 里提取数据
-        const descMatch = html.match(/"desc"\s*:\s*"([^"]*)"/);
-        const nicknameMatch = html.match(/"nickname"\s*:\s*"([^"]*)"/);
-        const coverMatch = html.match(/"cover"\s*:\s*\{[^}]*"url_list"\s*:\s*\["([^"]+)"/);
-        const videoUrlMatch = html.match(/"play_addr"\s*:\s*\{[^}]*"url_list"\s*:\s*\["([^"]+)"/);
+        // v1.10.173: 优先解析 window._ROUTER_DATA JSON 结构
+        let desc = '';
+        let nickname = '';
+        let coverUrl = '';
+        let videoPlayUrl = '';
+
+        const routerDataMatch = html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*<\/script>/i);
+        if (routerDataMatch) {
+            try {
+                const routerData = JSON.parse(routerDataMatch[1]);
+                // 路径: loaderData["video_(id)/page"].videoInfoRes.item_list[0]
+                const loaderData = routerData?.loaderData || {};
+                const videoPage = loaderData['video_(id)/page'] || loaderData['video_(id)\\u002Fpage'] || null;
+                const itemList = videoPage?.videoInfoRes?.item_list || [];
+                if (itemList.length > 0) {
+                    const item = itemList[0];
+                    desc = item.desc || '';
+                    nickname = item.author?.nickname || '';
+                    // cover 优先,origin_cover 兜底
+                    coverUrl = item.video?.cover?.url_list?.[0] || item.video?.origin_cover?.url_list?.[0] || '';
+                    videoPlayUrl = item.video?.play_addr?.url_list?.[0] || '';
+                    // URL 里的 \u002f 转成 /
+                    coverUrl = coverUrl.replace(/\\u002f/g, '/');
+                    videoPlayUrl = videoPlayUrl.replace(/\\u002f/g, '/');
+                }
+            } catch (e) {}
+        }
+
+        // v1.10.173: _ROUTER_DATA 解析失败时,回退到旧正则(可能匹配到非目标字段,
+        //   但总比啥都没有强)
+        if (!desc) {
+            const descMatch = html.match(/"desc"\s*:\s*"([^"]{2,500})"/);
+            if (descMatch) desc = descMatch[1];
+        }
+        if (!nickname) {
+            const nicknameMatch = html.match(/"nickname"\s*:\s*"([^"]+)"/);
+            if (nicknameMatch) nickname = nicknameMatch[1];
+        }
+        if (!coverUrl) {
+            const coverMatch = html.match(/"cover"\s*:\s*\{[^}]*"url_list"\s*:\s*\["([^"]+)"/);
+            if (coverMatch) coverUrl = coverMatch[1].replace(/\\u002f/g, '/');
+        }
+        if (!videoPlayUrl) {
+            const videoUrlMatch = html.match(/"play_addr"\s*:\s*\{[^}]*"url_list"\s*:\s*\["([^"]+)"/);
+            if (videoUrlMatch) videoPlayUrl = videoUrlMatch[1].replace(/\\u002f/g, '/');
+        }
+
+        // 视频标记(即使没抓到真实直链,只要是抖音视频就标记为视频类型,
+        // 让 AI 知道这是视频而非图文)
+        const videoUrlForMark = videoPlayUrl || realUrl;
 
         const result = {
             url: realUrl,
-            title: descMatch ? descMatch[1] : '',
-            description: descMatch ? descMatch[1] : '',
-            image: coverMatch ? coverMatch[1].replace(/\\u002f/g, '/') : '',
-            author: nicknameMatch ? nicknameMatch[1] : '',
-            videoUrl: videoUrlMatch ? videoUrlMatch[1].replace(/\\u002f/g, '/') : '',
+            title: desc || `抖音视频 ${awemeId}`,
+            description: desc,
+            image: coverUrl,
+            author: nickname,
+            videoUrl: videoUrlForMark,
             platform: 'douyin',
             source: '抖音',
             favicon: 'https://www.douyin.com/favicon.ico',
