@@ -1638,8 +1638,7 @@ const handleLinkShare = async (linkData) => {
         type: 'link_card',
         content: JSON.stringify(linkData),
     })
-    // 触发 AI 回复(AI 能在上下文里看到链接内容)
-    chatStore.sendMessageToAI(chatId)
+    // v1.10.171: 不自动调用AI,让用户自己决定何时触发AI回复(避免空回)
 }
 
 // Handle Dice Roll
@@ -2781,13 +2780,18 @@ const handleSendMessage = async (payload) => {
                 forceCard: true
             })
         } else {
-            // v1.10.169: 自动检测纯链接消息(用户直接粘贴抖音/小红书/网页链接)
+            // v1.10.169: 自动检测消息中的链接(用户直接粘贴抖音/小红书/网页链接)
+            // v1.10.171: 修复带中文/描述文字的分享文本无法识别的问题
+            // v1.10.171: 分享后不自动调用AI,让用户自己决定何时发送(避免空回)
             const trimmedContent = (content || '').trim()
-            const urlMatch = trimmedContent.match(/^https?:\/\/[^\s]+$/i)
-            if (urlMatch && trimmedContent.length < 500) {
-                // 纯链接,转为 link_card
+            // 从文本中提取URL(支持带前后描述文字,如"7.99 复制打开抖音 https://v.douyin.com/xxx/")
+            const urlInTextMatch = trimmedContent.match(/(https?:\/\/[^\s，。！？、；]+(?:\/[^\s，。！？、；]*)?)/i)
+            // 纯链接(只有URL)才自动转卡片,带描述文字的分享文本不自动转
+            const isPureUrl = /^https?:\/\/[^\s]+$/i.test(trimmedContent)
+            if (isPureUrl || (urlInTextMatch && trimmedContent.length < 500 && urlInTextMatch[1].length > 15)) {
+                const targetUrl = isPureUrl ? trimmedContent : urlInTextMatch[1]
                 try {
-                    const fetchResp = await fetch(`/v2/link/fetch?url=${encodeURIComponent(trimmedContent)}`)
+                    const fetchResp = await fetch(`/v2/link/fetch?url=${encodeURIComponent(targetUrl)}`)
                     const fetchJson = await fetchResp.json()
                     if (fetchJson.data) {
                         await chatStore.addMessage(chatId, {
@@ -2800,7 +2804,7 @@ const handleSendMessage = async (payload) => {
                         currentQuote.value = null
                         scrollToBottom(true)
                         setTimeout(() => scrollToBottom(false), 100)
-                        chatStore.sendMessageToAI(chatId)
+                        // v1.10.171: 不自动调用AI,让用户自己决定何时触发AI回复
                         return
                     }
                 } catch (e) { /* 抓取失败,降级为普通文本 */ }

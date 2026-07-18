@@ -2856,10 +2856,13 @@ export const useChatStore = defineStore('chat', () => {
             } else if (m.type === 'link_card') {
                 // v1.10.169: 链接分享卡片,把抓取到的网页内容注入 AI 上下文
                 // v1.10.170: 同时注入评论内容,让AI能讨论评论
+                // v1.10.171: 修复空回BUG——原来用 let content 误开了块级作用域,
+                //   导致赋值只在 try 内生效,外层 content 仍是原始 JSON 字符串,
+                //   AI 收到的是裸 JSON 而非格式化文本,产生空回。去掉 let 即可。
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     const role = m.role === 'user' ? '用户' : '我';
-                    let content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
+                    content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
                     // v1.10.170: 注入评论
                     if (Array.isArray(data.comments) && data.comments.length > 0) {
                         const commentsText = data.comments.slice(0, 10).map((c, i) =>
