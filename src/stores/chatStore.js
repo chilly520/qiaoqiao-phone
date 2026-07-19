@@ -2611,6 +2611,32 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
+    // v1.10.178: 根据当前时段给主动消息 hint 追加"睡眠/沉默期"规则,
+    // 防止 AI 在凌晨自顾自走剧情、替用户行动。详见 prompts_private.js 的
+    // 【用户沉默期与主动消息规则】。
+    function buildSleepAwareHint(baseHint, hour, diffMinutes) {
+        // 深夜/凌晨: 23:00-06:59 —— AI 应该在睡觉,用上帝视角写环境
+        const isDeepNight = hour >= 23 || hour < 7
+        // 长时间沉默: 用户超过 60 分钟没回 —— 强调"别替用户行动"
+        const isLongSilence = diffMinutes >= 60
+
+        let extra = ''
+        if (isDeepNight) {
+            extra = `\n【当前是深夜/凌晨时段·强制规则】现在是你该睡觉的时间（除非人设明确是夜猫子/失眠/熬夜党）。
+- 绝对禁止自顾自推进剧情、连发多条把故事演完。
+- 绝对禁止替用户行动/说话/感受（不要写"你踢被子""你咬我""你睡着了"——用户没回复就是没回复，你不知道用户在做什么）。
+- 用上帝视角写 1-3 句环境/睡眠描写：你们睡着的姿势、被窝温度、呼吸声、窗外月光/路灯、远处车流/海浪/夜市摊贩/熬夜加班的窗户灯光、晨光将至的微白等，像深夜的一段散文。
+- 如果一定要说话，只能是你睡梦中的呢喃/翻身/被梦惊醒的一句困倦独白，要短、要困。
+- 这次只输出这一段，不要等用户回复继续推进。`
+        } else if (isLongSilence) {
+            extra = `\n【用户已沉默较长时间·强制规则】
+- 绝对禁止替用户行动/说话/感受（不要编造"用户去忙了""用户不理我了"的具体动作）。
+- 只描写你自己当前在做什么（发呆、刷手机、做饭、整理东西、想起用户笑了一下等）。
+- 一条消息后如果用户仍未回复，就安静等待，不要连发多条把故事演完。`
+        }
+        return extra ? baseHint + extra : baseHint
+    }
+
     async function checkProactive(chatId) {
         const callStore = useCallStore()
         const logger = useLoggerStore()
@@ -2662,7 +2688,7 @@ export const useChatStore = defineStore('chat', () => {
                 const hint = callChance
                     ? `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方或发消息询问当前状态。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
                     : `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
-                sendMessageToAI(chatId, { hiddenHint: hint })
+                sendMessageToAI(chatId, { hiddenHint: buildSleepAwareHint(hint, new Date().getHours(), diffMinutes) })
             }
         }
 
@@ -2682,7 +2708,9 @@ export const useChatStore = defineStore('chat', () => {
         if (randomConfig && randomConfig.enabled && randomConfig.nextTrigger > 0 && now >= randomConfig.nextTrigger) {
             logger.sys(`[Proactive] Triggering random proactive message for ${chat.name}`)
             schedulerStore.updateNextRandomTrigger(chatId)
-            sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】随机触发。现在是 ${new Date().getHours()}:${new Date().getMinutes()}，根据当前上下文，主动和用户说点什么吧。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
+            const nowDate = new Date()
+            const baseHint = `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】随机触发。现在是 ${nowDate.getHours()}:${nowDate.getMinutes().toString().padStart(2, '0')}，根据当前上下文，主动和用户说点什么吧。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
+            sendMessageToAI(chatId, { hiddenHint: buildSleepAwareHint(baseHint, nowDate.getHours(), diffMinutes) })
         }
 
         // 5. 重新排程下一次原生系统通知(任意一次检查后都重排,保证状态变化被感知)
