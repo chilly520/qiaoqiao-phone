@@ -2766,8 +2766,8 @@ export async function generateBatchMomentsWithInteractions(options) {
         const userSpecificName = c.userName || userProfile?.name || '用户'
         const userSpecificPersona = c.userPersona ? `\n   【用户（${userSpecificName}）在此角色剧本中的身份/设定】：${c.userPersona}` : ''
    
-        const chatText = c.recentChats ? `\n   最近 15 条聊天碎片：${c.recentChats.substring(0, 1000)}` : ''
-        const personalHistoryText = c.personalHistory ? `\n   TA 最近发过：${c.personalHistory}` : ''
+        const chatText = c.recentChats ? `\n   最近聊天碎片：${c.recentChats.substring(0, 500)}` : ''
+        const personalHistoryText = c.personalHistory ? `\n   TA 最近发过：${c.personalHistory.substring(0, 300)}` : ''
    
         // 收集所有表情包（去重），不在每个角色后重复
         if (c.emojis && c.emojis.length > 0) {
@@ -2775,7 +2775,7 @@ export async function generateBatchMomentsWithInteractions(options) {
         }
    
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
-   核心人设：${(c.persona || '').substring(0, 1500)}${bioText}${userSpecificPersona}
+   核心人设：${c.persona || ''}${bioText}${userSpecificPersona}
    --- 
    当前与用户关系：${c.name} 称呼用户为"${userSpecificName}"${chatText}${personalHistoryText}`
     }).join('\n\n')
