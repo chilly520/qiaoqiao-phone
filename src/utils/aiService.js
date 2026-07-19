@@ -2775,7 +2775,7 @@ export async function generateBatchMomentsWithInteractions(options) {
         }
    
         return `${idx + 1}. 【${c.name}】(ID: ${c.id})
-   核心人设：{c.persona.substring(0, 1000)}${bioText}${userSpecificPersona}
+   核心人设：${(c.persona || '').substring(0, 1500)}${bioText}${userSpecificPersona}
    --- 
    当前与用户关系：${c.name} 称呼用户为"${userSpecificName}"${chatText}${personalHistoryText}`
     }).join('\n\n')
@@ -2814,81 +2814,50 @@ ${commentsStr || '   (暂无评论)'}`
     const worldBookText = worldContext ? `\n\n【世界观设定 (参考以下信息生成符合设定的内容)】\n${worldContext}` : ""
     const userCustomPrompt = customPrompt ? `\n\n【用户的特别生成要求 (必须严格执行)】\n${customPrompt}` : ""
 
-    const systemPrompt = `你现在是"朋友圈拟真生态引擎"。当前虚拟时间：${currentVirtualTime}。
+    const systemPrompt = `你是"朋友圈动态生成器"。当前虚拟时间：${currentVirtualTime}。
 
-【⚠️ 核心规则一：多身份用户隔离（最高优先级）】
-每个角色都是独立的个体，有自己的社交圈和人际关系。
-- 角色A不知道角色B的存在（除非他们在同一个群聊里明确认识）
-- 角色A的"用户"和角色B的"用户"是**完全不同的平行世界个体**，即使同名也不认识
-- **严禁制造"大杂烩"式社交场景**：不要让所有备选角色在一条动态下互相评论、点赞、@提及
-- 每个角色只关注自己的生活和自己的"用户"，其他角色的动态对TA来说是不可见的
-
-【⚠️ 核心规则二：基于真实聊天记录生成内容】
-- 你必须仔细阅读每个角色的「最近聊天碎片」，从中提取：
-  - TA最近在做什么、聊什么话题、情绪状态如何
-  - TA和用户的最新进展（刚认识/热恋中/冷战/日常）
-  - 最近发生的具体事件（可以引用！）
-- 朋友圈内容必须**反映最近聊天中的真实事件和状态**，不要凭空编造无关内容
-- 如果聊天记录显示TA心情不好，就不要发开心的旅游照；如果刚和用户吵架，就不要发秀恩爱的内容
+【核心规则】
+1. 从下方【备选发帖角色】中选择${count}个角色，为每个角色生成1条朋友圈动态。
+2. 每条动态必须基于该角色的「核心人设」和「最近聊天碎片」，反映最近发生的真实事件和情绪。
+3. 动态内容要自然生活化，像真实的微信朋友圈，不要太文艺或太官方。
+4. 每条动态必须附带3-6条来自虚拟NPC好友的评论/点赞互动（isVirtual: true）。
+5. 🚫 绝对禁止生成用户（${userProfile?.name || '用户'}）发的动态、评论或点赞。
+6. 🚫 不要让不同备选角色互相评论/点赞，他们是平行世界不认识的。
+7. 🚫 不要输出任何解释、思考、分析、markdown代码块标记，只输出纯JSON。
 
 【备选发帖角色】
 ${charList}
 ${globalEmojiList}
-
 ${worldBookText}
-
 ${userCustomPrompt}
-
 ${historyText}
-
 ${userContextText}
 
-【输出格式要求】必须是一个 JSON 对象，禁止包含任何 ID 作为展示名称。
-${"```"}json
+【输出格式——严格遵守，只输出JSON，不要加任何其他内容】
 {
-    "newMoments": [
-        {
-            "authorId": "选中的角色 ID（如：char_123）",
-            "content": "发帖正文内容（自然生活化，可包含 [表情包:名字] 和 @提及）",
-            "html": "可选：自定义 HTML 卡片内容（完整 HTML 字符串，包含内联样式）",
-            "mentions": ["提及的角色姓名"],
-            "location": "地点",
-            "imagePrompts": ["英文生图提示词 1", "英文生图提示词 2"],
-            "imageDescriptions": ["中文图片描述 1", "中文图片描述 2"],
-            "interactions": [
-                { "type": "comment", "authorId": "互动者角色 ID", "authorName": "角色姓名", "content": "评论内容", "isVirtual": false },
-                { "type": "like", "authorId": "虚拟 NPC 角色 ID", "authorName": "虚拟 NPC 名字", "isVirtual": true }
-            ]
-        }
-    ],
-    "ecosystemUpdates": [
-        {
-            "momentId": "旧动态的ID",
-            "newInteractions": [
-                { "type": "comment", "authorId": "角色 ID", "authorName": "姓名", "content": "内容", "replyTo": "被回复者姓名", "isVirtual": false },
-                { "type": "like", "authorId": "角色ID", "authorName": "姓名", "isVirtual": false }
-            ]
-        }
-    ]
+  "newMoments": [
+    {
+      "authorId": "角色ID",
+      "content": "动态正文（可使用[表情包:名字]，不要用未提供的表情名）",
+      "location": "地点或空字符串",
+      "imagePrompts": ["English image prompt 1", "English image prompt 2"],
+      "imageDescriptions": ["图片中文描述1", "图片中文描述2"],
+      "mentions": [],
+      "interactions": [
+        {"type": "like", "authorName": "虚拟好友名字", "isVirtual": true},
+        {"type": "comment", "authorName": "虚拟好友名字", "content": "评论内容", "isVirtual": true}
+      ]
+    }
+  ],
+  "ecosystemUpdates": []
 }
-${"```"}
 
-【角色互动准则】
-1. **角色独立性**：每个角色的朋友圈是TA自己的私人空间。其他备选角色**不应该**出现在TA的动态评论区（除非他们在同一个群聊且明确认识）。
-2. **真实好友互动**：凡是备选角色列表中的人，必须使用其对应的 authorId 和 authorName。严禁在展示用的 authorName 中填入 char_xxx 这种内部 ID。
-3. **回复逻辑**：如果旧动态下有用户的评论，对应的动态作者角色必须进行回复。
-4. **互动来源**：评论和点赞应主要来自该动态作者的**虚拟NPC朋友**（isVirtual: true）。不要让其他备选角色跨圈互动。
-5. **强制数量准则**：每生成一条新的动态，【必须】为其生成 3-8 条评论回复等互动信息以及 3-8 个点赞信息，两者缺一不可。
-6. **🚫 严禁扮演用户**：**绝对禁止**生成任何以用户身份发布的动态、评论或点赞。用户的行为只能由真实用户自己操作，AI 只能生成 NPC 角色的互动。
-7. **🔒 隔离原则（再次强调）**：角色A的动态只能被角色A的虚拟NPC朋友互动。其他备选角色不应参与。
-
-【生成细节指南】
-1. **内容源于聊天**：每条动态的文字内容必须与该角色的最近聊天记录相关（引用最近事件、反映当前情绪、延续最近话题）。
-2. **多图配比**：根据动态内容决定图片数量（常见配图数为 0, 1, 3, 4, 6, 9）。生活感强的动态建议 3-6 张。
-3. **图文契合**：每一张图片的 imagePrompts 都要与 content 紧密相关且风格统一。
-4. **表情包融入**：优先使用角色资料中提供的"可用表情包"，格式为 [表情包：名称]。**必须确保名称与提供的列表完全一致**。
-5. **@-提及**：仅在评论虚拟NPC朋友时使用@，**禁止@其他备选角色**。
-6. **用户身份禁令**：再次强调，严禁在 newMoments 或 ecosystemUpdates 中生成任何 authorName 为全局用户名的互动。所有互动必须来自虚构第三方人物（虚拟NPC）。`
+【重要提醒】
+- content中的引号必须转义为\\"
+- 字符串中不要有未转义的换行符，用\\n代替
+- imagePrompts必须是英文，用于AI生图
+- 每条动态至少1张配图，生活感强的动态配3-6张
+- 评论内容要符合朋友间的语气，有趣自然`
 
     const messages = [{ role: 'system', content: systemPrompt }]
 
@@ -2900,8 +2869,7 @@ ${"```"}
         let jsonStr = rawContent.trim()
         if (!jsonStr) throw new Error('AI 返回内容为空串')
 
-        // ===== 回退到 v1.5.x 简单解析方式 =====
-        // 1. 清除 markdown 代码块
+        // 1. 清除 markdown 代码块标记
         jsonStr = jsonStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
         // 2. 清除协议标签（INNER_VOICE/OFFLINE 等）
@@ -2910,27 +2878,37 @@ ${"```"}
         jsonStr = jsonStr.trim()
         if (!jsonStr) throw new Error('AI 返回内容仅包含协议标签，无有效 JSON')
 
-        // 3. 简单查找 JSON 容器边界（与 v1.5.x 一致）
-        let startIndex = -1
-        let endIndex = -1
-
-        const startBrace = jsonStr.indexOf('{')
-        const startBracket = jsonStr.indexOf('[')
-
-        if (startBrace !== -1 && (startBracket === -1 || startBrace < startBracket)) {
-            startIndex = startBrace
-            endIndex = jsonStr.lastIndexOf('}')
-        } else if (startBracket !== -1) {
-            startIndex = startBracket
-            endIndex = jsonStr.lastIndexOf(']')
+        // 3. 使用 brace-counting 状态机精确查找第一个完整的顶层 JSON 对象（避免thinking/reasoning内容干扰）
+        function findTopLevelJsonBounds(text) {
+            let inStr = false, esc = false, strChar = ''
+            let depth = 0, start = -1
+            for (let i = 0; i < text.length; i++) {
+                const ch = text[i]
+                if (esc) { esc = false; continue }
+                if (ch === '\\' && inStr) { esc = true; continue }
+                if ((ch === '"' || ch === "'") && !esc) {
+                    if (!inStr) { inStr = true; strChar = ch }
+                    else if (ch === strChar) { inStr = false }
+                    continue
+                }
+                if (inStr) continue
+                if (ch === '{') {
+                    if (depth === 0) start = i
+                    depth++
+                } else if (ch === '}') {
+                    depth--
+                    if (depth === 0 && start !== -1) return { start, end: i }
+                }
+            }
+            return null
         }
 
-        if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
-            console.error('[Batch Moments] Cannot find JSON container in response:', jsonStr.substring(0, 500))
-            throw new Error('AI Response does not contain a valid JSON container')
+        const bounds = findTopLevelJsonBounds(jsonStr)
+        if (!bounds) {
+            console.error('[Batch Moments] Cannot find JSON object in response:', jsonStr.substring(0, 500))
+            throw new Error('AI Response does not contain a valid JSON object')
         }
-
-        jsonStr = jsonStr.substring(startIndex, endIndex + 1)
+        jsonStr = jsonStr.substring(bounds.start, bounds.end + 1)
 
         // 4. 深度移除尾逗号（使用状态机处理任意嵌套）
         jsonStr = deepRemoveTrailingCommas(jsonStr)
