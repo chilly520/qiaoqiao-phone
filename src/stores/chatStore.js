@@ -2660,16 +2660,22 @@ export const useChatStore = defineStore('chat', () => {
             if (diffMinutes >= pInterval && timeSinceLastTrigger >= pInterval * 60000) {
                 chat._lastProactiveTriggeredTime = now
                 saveChats() // 保存时间戳
+                const nowDate = new Date()
+                const currentHour = nowDate.getHours()
+                const isDeepNight = currentHour >= 23 || currentHour < 7
                 const rand = Math.random()
                 logger.sys(`[Proactive] Triggering idle response for ${chat.name}`)
-                if (rand < 0.2) {
+                // v1.10.178 修复: 深夜时段不发起通话,只走普通消息+睡眠规则
+                if (!isDeepNight && rand < 0.2) {
                     const callType = Math.random() > 0.5 ? 'video' : 'voice'
+                    const callHint = `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
                     sendMessageToAI(chatId, {
-                        hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在，请你立即主动发起一个${callType === 'video' ? '视频' : '语音'}通话给用户。只需回复：[${callType === 'video' ? '视频通话' : '语音通话'}]。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`,
+                        hiddenHint: buildSleepAwareHint(callHint, currentHour, diffMinutes),
                         isProactiveCall: true
                     })
                 } else {
-                    sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】给用户发条简短的消息。可以带上表情包。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
+                    const idleHint = `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】给用户发条简短的消息。可以带上表情包。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
+                    sendMessageToAI(chatId, { hiddenHint: buildSleepAwareHint(idleHint, currentHour, diffMinutes) })
                 }
             }
         }
@@ -2683,12 +2689,16 @@ export const useChatStore = defineStore('chat', () => {
                 chat._lastActiveTriggeredTime = now
                 saveChats() // 保存时间戳
                 logger.sys(`[Proactive] Triggering check-in message for ${chat.name}`)
-                const timeStr = new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0')
-                const callChance = Math.random() < 0.15
+                const nowDate = new Date()
+                const currentHour = nowDate.getHours()
+                const timeStr = currentHour + ":" + nowDate.getMinutes().toString().padStart(2, '0')
+                const isDeepNight = currentHour >= 23 || currentHour < 7
+                // v1.10.178 修复: 深夜时段不发起通话,只走普通消息+睡眠规则
+                const callChance = !isDeepNight && Math.random() < 0.15
                 const hint = callChance
                     ? `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你很想念用户，请立即通过 [语音通话] 联系对方或发消息询问当前状态。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
                     : `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】现在是${timeStr}，你发现用户已经很久没理你了，发条关怀消息（或分享朋友圈）。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
-                sendMessageToAI(chatId, { hiddenHint: buildSleepAwareHint(hint, new Date().getHours(), diffMinutes) })
+                sendMessageToAI(chatId, { hiddenHint: buildSleepAwareHint(hint, currentHour, diffMinutes) })
             }
         }
 
@@ -2696,10 +2706,12 @@ export const useChatStore = defineStore('chat', () => {
         const schedulerStore = useSchedulerStore()
         const dueTasks = schedulerStore.tasks.filter(t => t.enabled && t.chatId === chatId && t.timestamp <= now)
         if (dueTasks.length > 0) {
+            const currentHour = new Date().getHours()
             dueTasks.forEach(task => {
                 logger.sys(`[Proactive] Executing scheduler task: ${task.content}`)
                 schedulerStore.removeTask(task.id)
-                sendMessageToAI(chatId, { hiddenHint: `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】执行定时任务：${task.content}。请根据当前人设发送消息通知用户。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。` })
+                const taskHint = `【系统：距离上次对话已过 ${Math.floor(diffMinutes)} 分钟。】执行定时任务：${task.content}。请根据当前人设发送消息通知用户。请勿重复、复制、抄袭前文输出内容，每次输出必须创新并保证格式正确。`
+                sendMessageToAI(chatId, { hiddenHint: buildSleepAwareHint(taskHint, currentHour, diffMinutes) })
             })
         }
 

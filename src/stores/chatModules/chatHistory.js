@@ -9,32 +9,36 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
         const chat = chats.value[chatId]
         if (!chat) return { success: false, error: 'Chat not found' }
 
-        // Double check lock
+        console.log('[SummarizeHistory] Called with options:', JSON.stringify(options))
+
         if (chat.isSummarizing) return { success: false, error: 'Summarization already in progress' }
-        chat.isSummarizing = true
 
         if (!options.silent) {
             triggerToast('正在分析上下文...', 'info')
         }
 
-        // Determine range
         let targetMsgs = []
         let rangeDesc = ''
         let nextIndex = chat.lastSummaryIndex || 0
 
         try {
-            // v1.10.129: 按日期总结(优先级最高)
-            if (options.startDate && options.endDate) {
+            chat.isSummarizing = true
+
+            const hasDateRange = options.startDate !== undefined && options.endDate !== undefined && options.startDate && options.endDate
+            console.log('[SummarizeHistory] Branch check - hasDateRange:', hasDateRange, 'startDate:', options.startDate, 'endDate:', options.endDate)
+
+            if (hasDateRange) {
+                console.log('[SummarizeHistory] Entering DATE RANGE mode')
                 const idxRange = dateRangeToMsgIndices(chat.msgs, options.startDate, options.endDate)
+                console.log('[SummarizeHistory] dateRangeToMsgIndices result:', idxRange)
                 if (!idxRange) {
                     throw new Error(`日期 ${options.startDate}~${options.endDate} 范围内没有消息`)
                 }
                 const turnCount = countTurnsBetween(chat.msgs, idxRange.startIndex, idxRange.endIndex)
                 targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
                 rangeDesc = `日期 ${options.startDate}~${options.endDate} (${turnCount}轮, 消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
+                console.log('[SummarizeHistory] Date range targetMsgs count:', targetMsgs.length, 'rangeDesc:', rangeDesc)
             } else if (options.startIndex !== undefined && options.endIndex !== undefined) {
-                // v1.10.128: 手动总结改为按轮次计数。
-                // options.startTurn/endTurn (1-based) 优先;旧 options.startIndex/endIndex 仍兼容(按消息条数)。
                 if (options.startTurn !== undefined && options.endTurn !== undefined) {
                     const idxRange = turnRangeToMsgIndices(chat.msgs, options.startTurn, options.endTurn)
                     if (!idxRange) {
@@ -43,36 +47,27 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                     targetMsgs = chat.msgs.slice(idxRange.startIndex, idxRange.endIndex)
                     rangeDesc = `轮次 ${options.startTurn}-${options.endTurn} (消息 ${idxRange.startIndex + 1}-${idxRange.endIndex})`
                 } else {
-                    // 兼容旧调用方:直接用消息索引
                     if (options.startIndex < 0) options.startIndex = 0
                     if (options.endIndex > chat.msgs.length) options.endIndex = chat.msgs.length
                     targetMsgs = chat.msgs.slice(options.startIndex, options.endIndex)
                     rangeDesc = `消息 ${options.startIndex + 1}-${options.endIndex}`
                 }
-                // We don't advance auto index for manual summary
             } else {
-                // Auto Mode: Chunked Catch-Up
                 const lastIndex = chat.lastSummaryIndex || 0
                 const currentTotal = chat.msgs.length
 
-                // FIX: clamp 而非 reset 到 0
-                // 删消息 / 数据迁移后 lastIndex 可能超过 currentTotal,
-                // 这里把 lastIndex 收紧到 currentTotal,避免把已总结过的又重做一遍
                 if (lastIndex > currentTotal) {
-                    console.warn(`[Summarize] Index exceeds total (Index: ${lastIndex}, Total: ${currentTotal}). Clamping to current total.`);
-                    chat.lastSummaryIndex = currentTotal;
-                    chat.lastSummaryCount = currentTotal;
-                    chat.isSummarizing = false;
+                    console.warn(`[Summarize] Index exceeds total (Index: ${lastIndex}, Total: ${currentTotal}). Clamping to current total.`)
+                    chat.lastSummaryIndex = currentTotal
+                    chat.lastSummaryCount = currentTotal
+                    chat.isSummarizing = false
                     return { success: false, error: 'No new messages to summarize' }
                 }
                 const summaryLimit = parseInt(chat.summaryLimit) || 50
                 const backlog = countTurnsBetween(chat.msgs, lastIndex, currentTotal)
 
-
-                // Process up to summaryLimit turns at a time
                 let endIndex = currentTotal
                 if (backlog > summaryLimit + 5) {
-                    // v1.10.103: 按「完成的轮次」找 endIndex,与 countTurnsBetween 一致
                     let turnCount = 0
                     endIndex = lastIndex
                     let awaitingAi = false
@@ -89,14 +84,13 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                         if (turnCount >= summaryLimit) break
                     }
                     rangeDesc = `自动增量 (${lastIndex + 1}-${endIndex})`
-                    console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (Remaining: ${currentTotal - endIndex})`)
+                    console.log(`[Summarize] Catch-up: Processing chunk ${lastIndex}-${endIndex} (${turnCount} turns, Remaining: ${currentTotal - endIndex})`)
                 } else {
                     rangeDesc = `自动增量`
                 }
 
                 console.log('[Summarize DEBUG]', { lastIndex, endIndex, currentTotal, msgsLen: chat.msgs.length, typeofLast: typeof lastIndex })
                 targetMsgs = chat.msgs.slice(lastIndex, endIndex)
-
 
                 if (targetMsgs.length === 0) {
                     throw new Error('No new messages to summarize')
@@ -105,7 +99,6 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 nextIndex = endIndex
             }
 
-            // --- REPLICATED FROM OLD HTML (Transcript Mode) ---
             const transcript = targetMsgs.map(m => {
                 let roleName = ''
                 if (chat.isGroup) {
@@ -122,10 +115,8 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                     content = String(m.content || '')
                 }
 
-                // Clean up internal tags for the transcript
                 content = content.replace(/\[Image Reference ID:.*?\]/g, '[图片]')
 
-                // Handle special types
                 if (m.type === 'image') content = '[图片]'
                 if (m.type === 'voice') content = '[语音]'
                 if (m.type === 'redpacket') content = '[红包]'
@@ -133,7 +124,6 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 if (m.type === 'moment_card') content = '[分享了朋友圈]'
                 if (m.type === 'dice_result') content = `[摇骰子] 合计点数：${m.diceTotal}`
 
-                // [FIX] 添加时间戳让AI知道每条消息的具体日期时间
                 let timeStr = ''
                 if (m.timestamp) {
                     const d = new Date(m.timestamp)
@@ -147,6 +137,11 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 throw new Error('Empty context (selected messages contain no valid text)')
             }
 
+            const MAX_TRANSCRIPT_CHARS = 20000
+            const finalTranscript = transcript.length > MAX_TRANSCRIPT_CHARS
+                ? transcript.substring(transcript.length - MAX_TRANSCRIPT_CHARS)
+                : transcript
+
             const groupSummaryPrompt = chat.groupSettings?.summaryPrompt
             const defaultPrompt = chat.isGroup
                 ? '请总结上述群聊对话的核心内容、主要话题以及各成员的立场，保持简明扼要。'
@@ -156,7 +151,6 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
             const systemHelper = '你是一个专业的对话总结助手。请阅读上方记录，并严格按照总结要求输出内容。直接输出总结，不要包含任何旁白。'
 
-            // Pack into messages with system prompt + user transcript (Best for LLMs)
             const summaryContext = [
                 {
                     role: 'system',
@@ -164,66 +158,60 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
                 },
                 {
                     role: 'user',
-                    content: `【对话记录】\n${transcript}\n\n【总结要求】\n${prompt}`
+                    content: `【对话记录】\n${finalTranscript}\n\n【总结要求】\n${prompt}`
                 }
             ]
-
-            let summaryContent = ''
 
             const response = await generateReply(
                 summaryContext,
                 chat,
-                null, // No abort signal needed for summary
+                null,
                 {
-                    skipContext: true, // Don't include other history
-                    disableTools: true, // 禁用工具调用，防止 Gemini 在总结时调用 web_search
-                    onChunk: (chunk) => {
-                        summaryContent += chunk
-                    }
+                    skipContext: true,
+                    disableTools: true
                 }
             )
 
             if (!response || !response.content) {
-                throw new Error('AI returned empty response')
+                const diagInfo = {
+                    response: response ? Object.keys(response) : 'null',
+                    hasError: !!response?.error,
+                    errorMsg: response?.error,
+                    transcriptLen: transcript.length,
+                    targetMsgsCount: targetMsgs.length,
+                    rangeDesc
+                }
+                console.error('[AutoSummary] Empty response diagnostics:', diagInfo)
+                useLoggerStore().addLog('WARN', `总结AI返回空 (transcript=${transcript.length}字, msgs=${targetMsgs.length}条)`, diagInfo)
+                throw new Error(`AI returned empty response (transcript=${transcript.length}chars, msgs=${targetMsgs.length})`)
             }
 
-            // --- STALE REFERENCE FIX ---
-            // Re-targeting: Use the latest object from the store because the previous 'chat' 
-            // reference might have been replaced by a concurrent mutation (e.g. in addMessage).
             const latestChat = chats.value[chatId]
             if (!latestChat) return { success: false, error: 'Chat disappeared during summarization' }
 
-            // Save the summary appropriately
             latestChat.summary = response.content
 
-            // Update indices after successful summary
-            // v1.10.130: 日期模式(startDate/endDate)同样不应推进自动总结的索引/计数,
-            // 否则会把"按日期手动总结"误判为"自动增量总结",污染 lastSummaryTime 等
             const isAutoSummaryMode = options.startIndex === undefined
                 && options.endIndex === undefined
                 && !options.startDate
                 && !options.endDate
             if (isAutoSummaryMode) {
                 latestChat.lastSummaryIndex = nextIndex
-                latestChat.lastSummaryCount = latestChat.msgs.length // Sync checkCount
+                latestChat.lastSummaryCount = latestChat.msgs.length
                 latestChat.lastSummaryTime = Date.now()
             }
 
-            // Maintain Memory Array
             if (!latestChat.memory) latestChat.memory = []
 
-            // Deduplicate: Compare last memory segment
             const lastMem = latestChat.memory.length > 0 ? latestChat.memory[latestChat.memory.length - 1] : ''
             const newMem = `[记录 ${rangeDesc}]：${response.content}`
 
             if (lastMem !== newMem) {
-                    latestChat.memory.push(newMem)
-                    appendLog(latestChat.id, `[💬 聊天总结] ${response.content.substring(0, 120)}`)
-                    // 长期记忆：不设上限，全部保留
-                } else {
-                    console.log(`[AutoSummary] Skipping duplicate memory addition.`)
-                }
-
+                latestChat.memory.push(newMem)
+                appendLog(latestChat.id, `[💬 聊天总结] ${response.content.substring(0, 120)}`)
+            } else {
+                console.log(`[AutoSummary] Skipping duplicate memory addition.`)
+            }
 
             saveChats()
             useLoggerStore().success(`上下文已总结 (${rangeDesc})`, { length: response.content.length })
@@ -232,35 +220,27 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
         } catch (error) {
             console.error('[Summarize Error]', error)
-            useLoggerStore().error(`自动总结失败 (${rangeDesc})`, error.message)
-            if (!options.silent) triggerToast(`提取记忆痛点遇到异常: ${error.message}`, 'error')
+            const isManualMode = options.startDate || options.endDate || options.startIndex !== undefined || options.endIndex !== undefined
+            useLoggerStore().error(`${isManualMode ? '总结失败' : '自动总结失败'} (${rangeDesc})`, error.message)
+            if (!options.silent) triggerToast(`总结失败: ${error.message}`, 'error')
             return { success: false, error: error.message }
         } finally {
-            // [BUG FIX] finally 块中应使用 latestChat (或重新获取), 而非可能已过时的 chat 引用.
-            // 如果 chat 对象被并发 mutation 替换, 旧 chat 的 isSummarizing 置 false 不影响当前 chat,
-            // 导致当前 chat 的 isSummarizing 卡在 true, 永久阻塞后续自动总结.
             const finalChat = chats.value[chatId]
-            // [BUG FIX] 不能在 finally 里用 `return`! 否则 try/catch 的 return 值
-            // (success: true/false) 会被这个 return 覆盖成 undefined, 调用方
-            // (checkAutoSummary 等) 检查 `result.success` 时会得到 false-y, 触发
-            // 错误的兜底逻辑. 改为 if-block 跳过.
             if (finalChat) {
                 finalChat.isSummarizing = false
 
-                // Auto-trigger next chunk if backlog remains
-                // v1.10.130: 日期模式也不应触发后续自动增量总结链
                 const isAutoSummaryModeFinally = options.startIndex === undefined
                     && options.endIndex === undefined
                     && !options.startDate
                     && !options.endDate
                 if (isAutoSummaryModeFinally) {
-                    const currentTotal = finalChat.msgs.length
-                    const backlog = currentTotal - (finalChat.lastSummaryIndex || 0)
+                    const msgs = finalChat.msgs || []
+                    const lastIndex = finalChat.lastSummaryIndex || 0
+                    const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
                     const summaryLimit = parseInt(finalChat.summaryLimit) || 50
 
                     if (backlog >= summaryLimit) {
-                        console.log(`[Summarize] Backlog remains (${backlog}), scheduling next chunk...`)
-                        // Delay slightly to prevent rapid-fire API calls
+                        console.log(`[Summarize] Backlog remains (${backlog} turns), scheduling next chunk...`)
                         setTimeout(() => {
                             checkAutoSummary(chatId)
                         }, 5000)
@@ -271,47 +251,43 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
     }
 
     function checkAutoSummary(chatId) {
-        const chat = chats.value[chatId]
-        if (!chat) return
+        try {
+            const chat = chats.value[chatId]
+            if (!chat) return
 
-        // Check if enabled (either globally or in group settings)
-        const isEnabled = chat.autoSummary || chat.groupSettings?.autoSummary
-        if (!isEnabled) return
+            const isEnabled = chat.autoSummary || chat.groupSettings?.autoSummary
+            if (!isEnabled) return
 
-        // Prevent concurrent execution (Fix Double Toast)
-        if (chat.isSummarizing) return
+            if (chat.isSummarizing) return
 
-        const msgs = chat.msgs || []
-        // Limit Priority: Chat-specific > Group Settings > Global Personalization > Default (300)
-        let summaryLimit = parseInt(chat.summaryLimit) ||
-            (chat.isGroup ? (parseInt(chat.groupSettings?.memory?.autoSummaryEvery) || parseInt(chat.groupSettings?.summaryLimit)) : 0) ||
-            useSettingsStore().personalization?.summaryLimit ||
-            50; // Default lowered from 300 to 50 for better UX
+            const msgs = chat.msgs || []
+            let summaryLimit = parseInt(chat.summaryLimit) ||
+                (chat.isGroup ? (parseInt(chat.groupSettings?.memory?.autoSummaryEvery) || parseInt(chat.groupSettings?.summaryLimit)) : 0) ||
+                useSettingsStore().personalization?.summaryLimit ||
+                50
 
-        // FIX: Use lastSummaryIndex as the single source of truth, not lastSummaryCount
-        // lastSummaryIndex represents the actual index of last summarized message
-        let lastIndex = chat.lastSummaryIndex || 0
+            let lastIndex = chat.lastSummaryIndex || 0
 
-        // PROACTIVE FIX: If lastIndex exceeds current msgs length (e.g. deletion occurred), reset it
-        if (lastIndex > msgs.length) {
-            console.log('[AutoSummary] Index reset (deletion detected)', lastIndex, '->', msgs.length)
-            chat.lastSummaryIndex = msgs.length
-            chat.lastSummaryCount = msgs.length
-            lastIndex = msgs.length
-        }
-
-        const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
-
-        // Check if new turns (since last summary) exceed limit
-        if (backlog >= summaryLimit) {
-            console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog} turns, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
-            useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex: lastIndex, totalMsgs: msgs.length })
-            summarizeHistory(chatId, { silent: true })
-        } else {
-            // Debug log to track progress
-            if (backlog > 0 && backlog < summaryLimit) {
-                console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit} turns`)
+            if (lastIndex > msgs.length) {
+                console.log('[AutoSummary] Index reset (deletion detected)', lastIndex, '->', msgs.length)
+                chat.lastSummaryIndex = msgs.length
+                chat.lastSummaryCount = msgs.length
+                lastIndex = msgs.length
             }
+
+            const backlog = countTurnsBetween(msgs, lastIndex, msgs.length)
+
+            if (backlog >= summaryLimit) {
+                console.log(`[AutoSummary] Triggered for ${chat.name}. Backlog: ${backlog} turns, Limit: ${summaryLimit}, Index: ${lastIndex}/${msgs.length}`)
+                useLoggerStore().info(`触发自动总结：${chat.name}`, { backlog, limit: summaryLimit, lastIndex: lastIndex, totalMsgs: msgs.length })
+                summarizeHistory(chatId, { silent: true })
+            } else {
+                if (backlog > 0 && backlog < summaryLimit) {
+                    console.log(`[AutoSummary] Not yet triggered. Progress: ${backlog}/${summaryLimit} turns`)
+                }
+            }
+        } catch (err) {
+            console.error('[AutoSummary] checkAutoSummary error:', err)
         }
     }
 
@@ -322,29 +298,25 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
         const settingsStore = useSettingsStore();
         const userProfile = settingsStore.personalization.userProfile;
 
-        // No toast or system message here as requested by user - let the UI spinner handle it
         typingStatus.value[chatId] = true;
         isProfileProcessing.value[chatId] = true;
 
         try {
-            // Source Data Collection - As requested by user
             const charPrompt = chat.prompt || '暂无详细设定';
             const userPersona = chat.userPersona || userProfile.persona || '无';
             const userContext = `姓名：${userProfile.name} | 性别：${userProfile.gender || '未知'} | 个性：${userProfile.signature || ''} | 针对性设定：${userPersona}`;
 
-            // Full Memory Bank (Latest Summary + Historical Summaries)
             const latestSummary = chat.summary || '';
             const historicalMemories = (chat.memory || []).join('\n');
             const fullMemoryLibrary = [latestSummary, historicalMemories].filter(s => s.trim()).join('\n\n') || '尚未建立持久记忆';
 
-            // Custom Context Limit from Chat Settings
             const contextLimit = parseInt(chat.contextLimit) || 30;
             const contextMsgs = getLastNTurns(chat.msgs, contextLimit)
                 .filter(m => m.role !== 'system')
                 .map(m => `${m.role === 'user' ? userProfile.name : chat.name}: ${m.content}`)
                 .join('\n');
 
-            const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称“我”的视角补齐你自己的「灵魂档案」(Personal Profile)。
+            const systemInstructions = `你现在是【${chat.name}】本人。请基于以下提供的【源数据库】，深度挖掘并以第一人称"我"的视角补齐你自己的「灵魂档案」(Personal Profile)。
 档案内容必须完全符合你的性格、语气和对 ${userProfile.name} 的情感底色。不要以分析师的口吻说话。
 
 【输出规范】
@@ -420,31 +392,24 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
         const results = []
         const msgs = chat.msgs
 
-        // Helper to format a message
         const formatMsg = (m) => {
             const timeStr = new Date(m.timestamp).toLocaleString('zh-CN', {
                 year: 'numeric', month: '2-digit', day: '2-digit',
                 hour: '2-digit', minute: '2-digit'
             })
-            // [BUG FIX] 原代码 `m.sender === 'user'` 永远为 false (消息 schema 用的是
-            // m.role: 'user'|'ai'|'system', 没有 sender 字段), 导致所有命中消息都被
-            // 错误归属为 chat.name (AI 名字), 用户自己说的话在搜索结果里全变成 AI 说的.
             const sender = m.role === 'user' ? (chat.userName || '用户') : chat.name
             return `[${timeStr}] ${sender}: ${typeof m.content === 'object' ? JSON.stringify(m.content) : m.content}`
         }
 
-        // Search logic
         for (let i = 0; i < msgs.length; i++) {
             const m = msgs[i]
             let isMatch = false
 
-            // Check Date
             if (date) {
                 const msgDate = new Date(m.timestamp).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-')
                 if (msgDate === date || msgDate.includes(date)) isMatch = true
             }
 
-            // Check Keyword
             if (keyword && m.content) {
                 const textContent = typeof m.content === 'object' ? JSON.stringify(m.content) : String(m.content)
                 if (textContent.includes(keyword)) {
@@ -453,7 +418,6 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             }
 
             if (isMatch && m.type !== 'system') {
-                // Return context of 2 messages before and 2 after
                 const startIdx = Math.max(0, i - 2)
                 const endIdx = Math.min(msgs.length - 1, i + 2)
 
@@ -466,12 +430,11 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
 
                 results.push(contextBlock.join('\n'))
 
-                // Skip the surrounding messages we just included to avoid overlapping duplicate blocks
                 i = endIdx
             }
         }
 
-        return results.slice(0, 5) // Return max 5 contextual blocks to save tokens
+        return results.slice(0, 5)
     }
 
     function toggleSearch(chatId) {
