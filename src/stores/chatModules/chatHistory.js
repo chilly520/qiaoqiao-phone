@@ -209,6 +209,15 @@ export const setupHistoryLogic = (chats, typingStatus, isProfileProcessing, addM
             if (lastMem !== newMem) {
                 latestChat.memory.push(newMem)
                 appendLog(latestChat.id, `[💬 聊天总结] ${response.content.substring(0, 120)}`)
+
+                const MAX_MEMORY_ENTRIES = 30
+                if (latestChat.memory.length > MAX_MEMORY_ENTRIES) {
+                    const overflow = latestChat.memory.length - MAX_MEMORY_ENTRIES
+                    const oldEntries = latestChat.memory.splice(0, overflow + 5)
+                    const mergedOld = `[早期记忆·汇总]：${oldEntries.map(e => e.replace(/^\[记录[^\]]*\]：/, '')).join(' / ').substring(0, 3000)}`
+                    latestChat.memory.unshift(mergedOld)
+                    console.log(`[Summarize] Memory pruned: merged ${oldEntries.length} old entries, now ${latestChat.memory.length} entries`)
+                }
             } else {
                 console.log(`[AutoSummary] Skipping duplicate memory addition.`)
             }

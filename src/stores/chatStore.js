@@ -2006,11 +2006,79 @@ export const useChatStore = defineStore('chat', () => {
         return newMsg
     }
 
+    function sanitizeMetaForStorage(meta) {
+        const clean = {}
+        const MAX_AVATAR_SIZE = 200 * 1024
+        const MAX_SUMMARY_SIZE = 50000
+        const MAX_MEMORY_ENTRY_SIZE = 5000
+        const MAX_MEMORY_ENTRIES = 30
+        const MAX_EMOJI_SIZE = 50 * 1024
+        const MAX_BIO_TEXT_SIZE = 100000
+
+        for (const key of Object.keys(meta)) {
+            let val = meta[key]
+            if (key === 'avatar' || key === 'userAvatar') {
+                if (typeof val === 'string' && val.startsWith('data:') && val.length > MAX_AVATAR_SIZE) {
+                    console.warn(`[Storage] Trimming oversized ${key} (${Math.round(val.length / 1024)}KB)`)
+                    val = null
+                }
+            } else if (key === 'summary') {
+                if (typeof val === 'string' && val.length > MAX_SUMMARY_SIZE) {
+                    val = val.substring(val.length - MAX_SUMMARY_SIZE)
+                }
+            } else if (key === 'memory' && Array.isArray(val)) {
+                val = val
+                    .filter(m => typeof m === 'string')
+                    .map(m => m.length > MAX_MEMORY_ENTRY_SIZE ? m.substring(0, MAX_MEMORY_ENTRY_SIZE) + '...' : m)
+                    .slice(-MAX_MEMORY_ENTRIES)
+            } else if (key === 'emojis' && Array.isArray(val)) {
+                val = val.map(e => {
+                    if (typeof e === 'string' && e.startsWith('data:') && e.length > MAX_EMOJI_SIZE) return null
+                    if (e && typeof e === 'object' && e.url && typeof e.url === 'string' && e.url.startsWith('data:') && e.url.length > MAX_EMOJI_SIZE) return { ...e, url: null }
+                    return e
+                }).filter(Boolean)
+            } else if (key === 'bio' && val && typeof val === 'object') {
+                const cleanBio = {}
+                for (const bk of Object.keys(val)) {
+                    let bv = val[bk]
+                    if (typeof bv === 'string' && bv.length > MAX_BIO_TEXT_SIZE) {
+                        bv = bv.substring(0, MAX_BIO_TEXT_SIZE) + '...'
+                    }
+                    cleanBio[bk] = bv
+                }
+                val = cleanBio
+            } else if (key === 'background' && typeof val === 'string' && val.startsWith('data:') && val.length > MAX_AVATAR_SIZE) {
+                val = null
+            }
+            clean[key] = val
+        }
+        return clean
+    }
+
+    function sanitizeMsgsForStorage(msgs) {
+        if (!Array.isArray(msgs)) return msgs
+        const MAX_IMAGE_SIZE = 500 * 1024
+        const MAX_CONTENT_SIZE = 500000
+        return msgs.map(m => {
+            const clean = { ...m }
+            if (clean.image && typeof clean.image === 'string' && clean.image.startsWith('data:') && clean.image.length > MAX_IMAGE_SIZE) {
+                clean.image = '[图片过大已清理]'
+            }
+            if (clean.content && typeof clean.content === 'string' && clean.content.startsWith('data:image') && clean.content.length > MAX_IMAGE_SIZE) {
+                clean.content = '[图片]'
+                clean.type = 'image'
+            }
+            if (clean.content && typeof clean.content === 'string' && clean.content.length > MAX_CONTENT_SIZE) {
+                clean.content = clean.content.substring(0, MAX_CONTENT_SIZE) + '... [内容过长已截断]'
+            }
+            return clean
+        })
+    }
+
     async function updateCharacter(chatId, updates) {
         const chat = chats.value[chatId]
         if (!chat) return false
 
-        // 简化的 deep toRaw (不依赖 saveChats 内部闭包)
         const toRawObj = (obj) => {
             try {
                 const r = toRaw(obj);
@@ -2034,19 +2102,16 @@ export const useChatStore = defineStore('chat', () => {
         };
 
         let metaWriteFailed = false;
+        let msgsWriteFailed = false;
         let quotaError = null;
 
         try {
-            // Directly mutate the chat object to leverage Vue 3's deep reactivity.
             Object.assign(chats.value[chatId], updates)
 
-            // v1.10.62: 优先单独写 per-chat 独立 key,绕开 V3 巨型 metadata quota 限制
-            // 之前 saveChats() 一次写整个 qiaoqiao_chats_metadata,几千轮对话后
-            // 单 key 超过 IndexedDB quota (5-50MB) 报 QuotaExceededError,
-            // 导致角色设置保存失败。
-            // 现在先写 per-chat meta + msgs(数据量小),如果 V3 metadata 也能写就同步更新。
             const chatRef = chats.value[chatId]
-            const { msgs, ...meta } = chatRef
+            const { msgs, ...rawMeta } = chatRef
+            const meta = sanitizeMetaForStorage(rawMeta)
+            const cleanMsgs = sanitizeMsgsForStorage(msgs)
 
             try {
                 await localforage.setItem(`qiaoqiao_chat_meta_${chatId}`, toRawObj(meta))
@@ -2054,28 +2119,61 @@ export const useChatStore = defineStore('chat', () => {
                 console.warn('[updateCharacter] per-chat meta write failed:', perChatErr)
                 if (isQuotaError(perChatErr)) {
                     quotaError = perChatErr;
+                    metaWriteFailed = true;
                 }
-                metaWriteFailed = true;
             }
 
-            if (Array.isArray(msgs) && !quotaError) {
+            if (Array.isArray(msgs) && !metaWriteFailed) {
                 try {
-                    await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, toRawObj(msgs))
+                    await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, toRawObj(cleanMsgs))
                 } catch (msgsErr) {
                     console.warn('[updateCharacter] msgs write failed:', msgsErr)
                     if (isQuotaError(msgsErr)) {
-                        quotaError = msgsErr;
+                        msgsWriteFailed = true;
                     }
                 }
             }
 
-            // 仍然触发整体 saveChats 同步 V3 metadata(给其他 chat 兜底)
-            // 失败不影响本次 updateCharacter 返回成功(per-chat key 已写)
+            if (msgsWriteFailed || (quotaError && metaWriteFailed)) {
+                console.log('[updateCharacter] Quota exceeded, attempting image compression retry...')
+                try {
+                    const { compressImage } = await import('../utils/imageUtils')
+                    let compressed = 0
+                    for (const m of (msgs || [])) {
+                        const imgSrc = (m.content && typeof m.content === 'string' && m.content.startsWith('data:image')) ? m.content
+                            : (m.image && typeof m.image === 'string' && m.image.startsWith('data:image')) ? m.image : null
+                        if (imgSrc && imgSrc.length > 200 * 1024) {
+                            try {
+                                const res = await fetch(imgSrc)
+                                const blob = await res.blob()
+                                const file = new File([blob], 'img.jpg', { type: 'image/jpeg' })
+                                const c = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.5 })
+                                if (c.length < imgSrc.length) {
+                                    if (m.content === imgSrc) m.content = c
+                                    if (m.image === imgSrc) m.image = c
+                                    compressed++
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    if (compressed > 0) {
+                        console.log(`[updateCharacter] Compressed ${compressed} images, retrying save...`)
+                        const retryMeta = sanitizeMetaForStorage({ ...chatRef, msgs: undefined })
+                        await localforage.setItem(`qiaoqiao_chat_meta_${chatId}`, toRawObj(retryMeta))
+                        await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, toRawObj(sanitizeMsgsForStorage(msgs)))
+                        metaWriteFailed = false
+                        msgsWriteFailed = false
+                        quotaError = null
+                    }
+                } catch (compressErr) {
+                    console.warn('[updateCharacter] Compression retry failed:', compressErr)
+                }
+            }
+
             saveChats().catch(e => {
-                console.warn('[updateCharacter] V3 metadata sync failed (per-chat key 已保存):', e)
+                console.warn('[updateCharacter] V3 metadata sync failed (per-chat key already saved):', e)
             })
 
-            // 如果是quota错误且per-chat meta写入失败，向外抛出错误让调用者处理
             if (quotaError && metaWriteFailed) {
                 throw quotaError;
             }
@@ -2083,7 +2181,6 @@ export const useChatStore = defineStore('chat', () => {
             return true
         } catch (err) {
             console.error('[updateCharacter] Error:', err)
-            // 如果是QuotaExceededError，向外抛出让调用者有机会清理缓存重试
             if (isQuotaError(err)) {
                 throw err;
             }
@@ -5342,7 +5439,7 @@ export const useChatStore = defineStore('chat', () => {
                 for (const chatId of Object.keys(chats.value)) {
                     const chat = chats.value[chatId];
                     const { msgs, ...meta } = chat;
-                    metadata[chatId] = deepToRaw(meta);
+                    metadata[chatId] = deepToRaw(sanitizeMetaForStorage(meta));
                 }
                 await localforage.setItem(METADATA_KEY, metadata);
 
@@ -5354,7 +5451,6 @@ export const useChatStore = defineStore('chat', () => {
                 for (const chatId of Object.keys(chats.value)) {
                     const msgs = chats.value[chatId].msgs;
                     if (msgs && Array.isArray(msgs)) {
-                        // LAST LINE OF DEFENSE: Filter JSON fragments before saving
                         const filteredMsgs = msgs.filter(m => {
                             if (!m.content || typeof m.content !== 'string') return true;
                             const trimmed = m.content.trim();
@@ -5363,11 +5459,10 @@ export const useChatStore = defineStore('chat', () => {
                             if (trimmed === '"' || trimmed === '"}' || trimmed === '" }' || trimmed === "'}'" || trimmed === "' }") return false;
                             return true;
                         });
-                        
-                        // Save current chat messages
-                        await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, deepToRaw(filteredMsgs));
-                        // Small delay to allow GC if needed
-                        if (filteredMsgs.length > 100) {
+
+                        const cleanedMsgs = sanitizeMsgsForStorage(filteredMsgs);
+                        await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, deepToRaw(cleanedMsgs));
+                        if (cleanedMsgs.length > 100) {
                             await new Promise(r => setTimeout(r, 0));
                         }
                     }
@@ -5389,49 +5484,29 @@ export const useChatStore = defineStore('chat', () => {
                 // CRITICAL: Before fallback, try to sanitize oversized data (especially avatars)
                 // This prevents cascading failures when base64 images are too large
                 try {
-                    const sanitizedChats = {};
+                    const sanitizedMetadata = {};
                     for (const chatId of Object.keys(chats.value)) {
                         const chat = chats.value[chatId];
-                        const sanitized = { ...chat };
-                        
-                        // Check and warn about oversized avatar
-                        if (sanitized.avatar && typeof sanitized.avatar === 'string' && sanitized.avatar.length > 100000) {
-                            console.warn(`[Storage] Oversized avatar detected for chat ${chatId}:`, Math.round(sanitized.avatar.length / 1024), 'KB. Removing from save.');
-                            delete sanitized.avatar;  // Remove oversized avatar to allow save to succeed
-                        }
-                        
-                        // Check userAvatar too
-                        if (sanitized.userAvatar && typeof sanitized.userAvatar === 'string' && sanitized.userAvatar.length > 100000) {
-                            console.warn('[Storage] Oversized userAvatar for chat ' + chatId + ':', Math.round(sanitized.userAvatar.length / 1024), 'KB. Removing.');
-                            delete sanitized.userAvatar;
-                        }
-                        
-                        sanitizedChats[chatId] = sanitized;
+                        const { msgs, ...meta } = chat;
+                        sanitizedMetadata[chatId] = deepToRaw(sanitizeMetaForStorage(meta));
                     }
-                    
-                    // Retry with sanitized data
-                    const metadata = {};
-                    for (const chatId of Object.keys(sanitizedChats)) {
-                        const { msgs, ...meta } = sanitizedChats[chatId];
-                        metadata[chatId] = deepToRaw(meta);
-                    }
-                    await localforage.setItem(METADATA_KEY, metadata);
-                    
-                    // Save messages again
-                    for (const chatId of Object.keys(sanitizedChats)) {
-                        const msgs = sanitizedChats[chatId].msgs;
+                    await localforage.setItem(METADATA_KEY, sanitizedMetadata);
+
+                    for (const chatId of Object.keys(chats.value)) {
+                        const msgs = chats.value[chatId].msgs;
                         if (msgs && Array.isArray(msgs)) {
-                            await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, deepToRaw(msgs));
+                            const cleaned = sanitizeMsgsForStorage(msgs);
+                            await localforage.setItem(`${MSGS_KEY_PREFIX}${chatId}`, deepToRaw(cleaned));
                         }
                     }
-                    
+
                     localStorage.setItem('qiaoqiao_last_save', Date.now().toString());
                     localStorage.setItem(V3_MIGRATED_KEY, 'true');
-                    
+
                     console.log('[Storage] Saved successfully after sanitizing oversized data');
                     if (resolve) resolve(true);
                     return true;
-                    
+
                 } catch (sanitizeErr) {
                     console.error('[Storage] Sanitization retry also failed:', sanitizeErr);
                 }
