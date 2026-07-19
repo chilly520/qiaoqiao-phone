@@ -656,7 +656,7 @@
                         
                         <!-- CASE: HTML Card (from [CARD] tag or type: html) -->
                         <div v-else-if="msg.type === 'card' || msg.type === 'html'"
-                            class="w-full max-w-[280px] mt-1"
+                            class="w-full max-w-[360px] mt-1 overflow-visible"
                             @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
@@ -1450,7 +1450,7 @@
 
                             <!-- 3. HTML Card Layer -->
                             <div v-if="shouldRenderCard"
-                                class="mt-1 transition-all relative z-10 w-full min-w-[280px] max-w-full overflow-hidden" @contextmenu.prevent="emitContextMenu"
+                                class="mt-1 transition-all relative z-10 w-full min-w-[280px] max-w-[360px] overflow-visible" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 @message="handleIframeMessage">

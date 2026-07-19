@@ -25,13 +25,26 @@ const props = defineProps({
 const iframeRef = ref(null)
 const height = ref(280)
 const width = ref(290)
+const overflowRight = ref(0)
+const overflowBottom = ref(0)
 const resizeObserver = ref(null)
 const isFullPage = ref(false)
 // v1.10.168: 加载状态,onLoad 触发后才显示内容、隐藏骨架
 const loaded = ref(false)
 
+function cleanAiHtmlErrors(html) {
+  if (!html || typeof html !== 'string') return html
+  let c = html
+  c = c.replace(/<\s+img\b/gi, '<img')
+  c = c.replace(/src\s*=\s*['"]`([^`]+)`['"]/gi, "src=\"$1\"")
+  c = c.replace(/src\s*=\s*`([^`]+)`/gi, 'src="$1"')
+  c = c.replace(/<\s+(\/?)(a|div|span|p|br|hr|b|i|u|strong|em|button|label|input|script|style|iframe|img)\b/gi, '<$1$2')
+  return c
+}
+
 const fullContent = computed(() => {
-  const content = props.content || ''
+  const rawContent = props.content || ''
+  const content = cleanAiHtmlErrors(rawContent)
 
   const bootstrap = `
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -39,20 +52,22 @@ const fullContent = computed(() => {
       * { box-sizing: border-box !important; }
       html, body {
         margin: 0 !important;
-        padding: 12px !important;
+        padding: 16px !important;
         border: 0 !important;
         width: 100% !important;
-        min-width: 280px !important;
+        min-width: 0 !important;
         height: auto !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
+        display: block !important;
         box-sizing: border-box !important;
         overflow-wrap: break-word !important;
         word-wrap: break-word !important;
         background: transparent !important;
+        overflow: visible !important;
+        position: relative !important;
       }
+      body { padding-bottom: 40px !important; padding-right: 40px !important; }
       * { box-sizing: border-box !important; max-width: 100% !important; }
+      img { max-width: 100% !important; height: auto !important; }
       [style*="cursor: pointer"], button, .button, a {
         transition: transform 0.1s ease, opacity 0.1s ease !important;
         user-select: none !important;
@@ -127,6 +142,7 @@ const fullContent = computed(() => {
     <html style="background: transparent !important;">
       <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         ${bootstrap}
       </head>
       <body style="background: transparent !important;">
@@ -139,10 +155,27 @@ const fullContent = computed(() => {
 const allowScroll = computed(() => isFullPage.value)
 
 const cardStyle = computed(() => ({
-  height: isFullPage.value ? Math.max(height.value, 400) + 'px' : height.value + 'px',
-  width: isFullPage.value ? '100%' : width.value + 'px',
+  height: (isFullPage.value ? Math.max(height.value, 400) : height.value) + overflowBottom.value + 'px',
+  width: (isFullPage.value ? '100%' : width.value + overflowRight.value + 'px'),
   maxWidth: '100%'
 }))
+
+function getElementBounds(root) {
+  let maxRight = 0
+  let maxBottom = 0
+  const all = root.querySelectorAll('*')
+  for (const el of all) {
+    try {
+      const rect = el.getBoundingClientRect()
+      const style = window.getComputedStyle(el)
+      if (style.position === 'absolute' || style.position === 'fixed') {
+        if (rect.right > maxRight) maxRight = rect.right
+        if (rect.bottom > maxBottom) maxBottom = rect.bottom
+      }
+    } catch (e) {}
+  }
+  return { maxRight, maxBottom }
+}
 
 function adjustHeight() {
   const iframe = iframeRef.value
@@ -150,6 +183,7 @@ function adjustHeight() {
   try {
     const doc = iframe.contentWindow.document
     const body = doc.body
+    const htmlEl = doc.documentElement
 
     const passEvent = (e) => {
       if (!e) return
@@ -176,32 +210,40 @@ function adjustHeight() {
     doc.addEventListener('touchend', passEvent)
 
     const updateSize = () => {
-      const newHeight = Math.max(
-        body.scrollHeight,
-        doc.documentElement.scrollHeight,
-        isFullPage.value ? body.offsetHeight || doc.documentElement.offsetHeight : 0,
-        280
-      )
-      if (newHeight > 0) height.value = newHeight + 4
+      const bodyRect = body.getBoundingClientRect()
+      const baseScrollH = Math.max(body.scrollHeight, htmlEl.scrollHeight, 280)
+      const baseOffsetH = Math.max(body.offsetHeight || 0, htmlEl.offsetHeight || 0, 280)
+      const newHeight = Math.max(baseScrollH, isFullPage.value ? baseOffsetH : 0, 280)
+      if (newHeight > 0) height.value = newHeight
+
+      const contentWidth = Math.max(body.scrollWidth, htmlEl.scrollWidth, 280)
+      if (!isFullPage.value && contentWidth > width.value) {
+        width.value = Math.min(contentWidth, 340)
+      }
+
+      try {
+        const bounds = getElementBounds(body)
+        const bodyBR = body.getBoundingClientRect()
+        const extraRight = Math.max(0, Math.ceil(bounds.maxRight - bodyBR.right + 8))
+        const extraBottom = Math.max(0, Math.ceil(bounds.maxBottom - bodyBR.bottom + 8))
+        overflowRight.value = Math.min(extraRight, 60)
+        overflowBottom.value = Math.min(extraBottom, 80)
+      } catch (e) {}
     }
 
     updateSize()
 
-    // v1.10.168: ResizeObserver 提前设置(首次 adjustHeight 就 observe),
-    // 这样 tailwind CDN 异步加载导致 body 高度变化时能自动捕获,不用等下次重试
     if (!resizeObserver.value) {
       resizeObserver.value = new ResizeObserver(updateSize)
       resizeObserver.value.observe(body)
+      if (htmlEl) resizeObserver.value.observe(htmlEl)
     }
   } catch (e) {}
 }
 
 function onLoad() {
-  // v1.10.168: onLoad 立即标记加载完成 + 立即 adjustHeight(不等 100ms),
-  // 让 ResizeObserver 尽早 observe,捕获 CDN 加载导致的高度变化
   loaded.value = true
   adjustHeight()
-  // CDN(tailwindcss/font-awesome)异步加载,分阶段重试测量高度
   setTimeout(adjustHeight, 50)
   setTimeout(adjustHeight, 200)
   setTimeout(adjustHeight, 600)
@@ -211,7 +253,6 @@ function onLoad() {
 }
 
 onMounted(() => {
-  // v1.10.168: 组件挂载后也尝试一次,应对 iframe 已缓存 srcdoc 不触发 load 的边界情况
   nextTick(() => {
     setTimeout(adjustHeight, 300)
   })
@@ -222,8 +263,10 @@ onUnmounted(() => {
 })
 
 watch(() => props.content, () => {
-  // v1.10.168: content 变化时重置加载状态,显示骨架;iframe 会重新 load
   loaded.value = false
+  overflowRight.value = 0
+  overflowBottom.value = 0
+  width.value = 290
   nextTick(() => adjustHeight())
 })
 </script>
@@ -232,11 +275,11 @@ watch(() => props.content, () => {
 .safe-html-card {
   display: inline-block;
   vertical-align: top;
-  transition: height 0.2s ease;
+  transition: height 0.2s ease, width 0.2s ease;
   background: transparent;
   padding: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   -ms-overflow-style: none;
   scrollbar-width: none;
   position: relative;
@@ -249,6 +292,7 @@ watch(() => props.content, () => {
   height: 100%;
   display: block;
   border-radius: inherit;
+  overflow: visible !important;
 }
 @media (max-width: 480px) {
   .safe-html-card { padding: 0; border-radius: 0; box-shadow: none; }
