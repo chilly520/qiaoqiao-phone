@@ -2587,38 +2587,29 @@ export const useChatStore = defineStore('chat', () => {
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     content = `[用户分享了一条朋友圈动态] 作者: ${data.author || '未知'}, 文案: ${data.text || '（无文案）'}${data.image ? ' (包含一张图片)' : ''}`
-                    if (data.image) m.image = data.image;
                 } catch (e) { content = '[朋友圈动态]' }
             } else if (m.type === 'favorite_card') {
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     content = `[用户分享了一条收藏内容] 来源: ${data.source || '未知'}, 内容详情: ${data.fullContent || data.preview || '暂无内容'}`
-                    if (data.image) m.image = data.image;
                 } catch (e) { content = '[收藏内容]' }
             } else if (m.type === 'link_card') {
-                // v1.10.169: 链接分享卡片,把抓取到的网页内容注入 AI 上下文
-                // v1.10.170: 同时注入评论内容,让AI能讨论评论
-                // v1.10.171: 修复空回BUG——原来用 let content 误开了块级作用域,
-                //   导致赋值只在 try 内生效,外层 content 仍是原始 JSON 字符串,
-                //   AI 收到的是裸 JSON 而非格式化文本,产生空回。去掉 let 即可。
-                // v1.10.172: 视频标注——AI 看不到视频本身,提示它基于封面/描述/评论讨论,
-                //   不要瞎编视频剧情。
                 try {
                     const data = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
                     const role = m.role === 'user' ? '用户' : '我';
                     content = `[${role}分享了一个${data.source || '网页'}链接] 标题: ${data.title || '无标题'}${data.description ? ', 描述: ' + data.description : ''}${data.author ? ', 作者: ' + data.author : ''}, 链接: ${data.url || ''}`
-                    // v1.10.172: 视频标注(抖音/B站等有 videoUrl 的)
                     if (data.videoUrl) {
                         content += `。(这是视频内容,我只能看到封面图${data.image ? '(已附)' : ''}和作者描述,无法观看视频本身,请不要瞎编视频里演了什么,基于标题/描述/评论来讨论)`;
                     }
-                    // v1.10.170: 注入评论
                     if (Array.isArray(data.comments) && data.comments.length > 0) {
                         const commentsText = data.comments.slice(0, 10).map((c, i) =>
                             `${i + 1}. ${c.user || '匿名'}: "${c.text}"${c.likes > 0 ? `(赞${c.likes})` : ''}`
                         ).join('; ');
                         content += `。热门评论: ${commentsText}`;
                     }
-                    if (data.image) m.image = data.image;
+                    if (data.image) {
+                        content += `。(注意: 这是链接封面图/截图,不是发给你换头像的,禁止用此图设置头像)`;
+                    }
                 } catch (e) { content = '[网页链接]' }
             } else if (m.type === 'tarot_card' || m.type === 'tarot_interpretation') {
                 // 塔罗牌分享：将牌面和解析详情发送到AI上下文
@@ -3863,7 +3854,8 @@ export const useChatStore = defineStore('chat', () => {
                         const findLastImage = () => {
                             const reversed = [...chat.msgs].reverse();
                             const imgMsg = reversed.find(m => {
-                                // Check message type image OR text with [图片:...]
+                                const forbiddenTypes = new Set(['link_card', 'moment_card', 'favorite_card', 'tarot_card', 'tarot_interpretation', 'html']);
+                                if (forbiddenTypes.has(m.type)) return false;
                                 if (m.type === 'image' && m.content && (m.content.startsWith('http') || m.content.startsWith('data:image'))) return true;
                                 if (typeof m.content === 'string' && /\[(?:图片|IMAGE)[:：]((?:https?:\/\/|data:image\/)[^\]]+)\]/i.test(m.content)) return true;
                                 return false;

@@ -980,7 +980,10 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
             }
 
             // 1. Priority: msg.image property (New standard)
-            if (msg.image) {
+            // v1.10.180: 排除卡片类消息的封面图(link_card/moment_card/favorite_card等),
+            //   这些图不是用户主动发送的图片,不能传给AI多模态,也不能当头像
+            const isCardType = ['link_card', 'moment_card', 'favorite_card', 'tarot_card', 'tarot_interpretation', 'html'].includes(msg.type)
+            if (msg.image && !isCardType) {
                 // Sticker (表情包) 也走视觉通道,但不当作头像图片
                 // 加上明确的【表情包】前缀,避免 AI 把它当成头像素材
                 const isSticker = msg.type === 'sticker' || /^\[表情包[:：]/.test(msg.content || '')

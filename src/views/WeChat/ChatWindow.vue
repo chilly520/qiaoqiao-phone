@@ -1058,10 +1058,10 @@ watch(() => msgs.value.length, (newLen, oldLen) => {
                     }
                     // 如果还没找到，回退到最近一张图片
                     if (!url || (!url.startsWith('http') && !url.startsWith('data:image') && !url.startsWith('blob:'))) {
+                        const forbiddenAvatarTypes = new Set(['sticker', 'link_card', 'moment_card', 'favorite_card', 'tarot_card', 'tarot_interpretation', 'html'])
                         for (let i = msgs.value.length - 1; i >= 0; i--) {
                             const m = msgs.value[i]
-                            // v1.10.59: 跳过 sticker 类型,避免把表情包当头像
-                            if (m.type === 'sticker') continue
+                            if (forbiddenAvatarTypes.has(m.type)) continue
                             const extracted = extractImageUrl(m)
                             if (extracted) {
                                 url = extracted
