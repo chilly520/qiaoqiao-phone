@@ -24,12 +24,11 @@ const props = defineProps({
 
 const iframeRef = ref(null)
 const height = ref(280)
-const width = ref(290)
+const width = ref(null)
 const overflowRight = ref(0)
 const overflowBottom = ref(0)
 const resizeObserver = ref(null)
 const isFullPage = ref(false)
-// v1.10.168: 加载状态,onLoad 触发后才显示内容、隐藏骨架
 const loaded = ref(false)
 
 function cleanAiHtmlErrors(html) {
@@ -52,7 +51,7 @@ const fullContent = computed(() => {
       * { box-sizing: border-box !important; }
       html, body {
         margin: 0 !important;
-        padding: 16px !important;
+        padding: 10px !important;
         border: 0 !important;
         width: 100% !important;
         min-width: 0 !important;
@@ -65,8 +64,7 @@ const fullContent = computed(() => {
         overflow: visible !important;
         position: relative !important;
       }
-      body { padding-bottom: 40px !important; padding-right: 40px !important; }
-      * { box-sizing: border-box !important; max-width: 100% !important; }
+      body { padding-bottom: 30px !important; padding-right: 20px !important; }
       img { max-width: 100% !important; height: auto !important; }
       [style*="cursor: pointer"], button, .button, a {
         transition: transform 0.1s ease, opacity 0.1s ease !important;
@@ -154,11 +152,21 @@ const fullContent = computed(() => {
 
 const allowScroll = computed(() => isFullPage.value)
 
-const cardStyle = computed(() => ({
-  height: (isFullPage.value ? Math.max(height.value, 400) : height.value) + overflowBottom.value + 'px',
-  width: (isFullPage.value ? '100%' : width.value + overflowRight.value + 'px'),
-  maxWidth: '100%'
-}))
+const cardStyle = computed(() => {
+  const base = {
+    height: (isFullPage.value ? Math.max(height.value, 400) : height.value) + overflowBottom.value + 'px',
+    maxWidth: '100%'
+  }
+  if (isFullPage.value) {
+    base.width = '100%'
+  } else if (width.value) {
+    base.width = Math.min(width.value + overflowRight.value, 420) + 'px'
+    base.maxWidth = '100%'
+  } else {
+    base.width = '100%'
+  }
+  return base
+})
 
 function getElementBounds(root) {
   let maxRight = 0
@@ -216,9 +224,13 @@ function adjustHeight() {
       const newHeight = Math.max(baseScrollH, isFullPage.value ? baseOffsetH : 0, 280)
       if (newHeight > 0) height.value = newHeight
 
-      const contentWidth = Math.max(body.scrollWidth, htmlEl.scrollWidth, 280)
-      if (!isFullPage.value && contentWidth > width.value) {
-        width.value = Math.min(contentWidth, 340)
+      if (!isFullPage.value) {
+        const iframeWidth = iframe.clientWidth || 300
+        const contentScrollWidth = Math.max(body.scrollWidth, htmlEl.scrollWidth, 280)
+        if (contentScrollWidth > iframeWidth + 5) {
+          const parentWidth = iframe.parentElement ? iframe.parentElement.clientWidth - 4 : 400
+          width.value = Math.min(contentScrollWidth, Math.max(parentWidth, 280), 420)
+        }
       }
 
       try {
@@ -266,7 +278,8 @@ watch(() => props.content, () => {
   loaded.value = false
   overflowRight.value = 0
   overflowBottom.value = 0
-  width.value = 290
+  width.value = null
+  height.value = 280
   nextTick(() => adjustHeight())
 })
 </script>

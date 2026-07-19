@@ -70,7 +70,7 @@
                     <!-- Content Column -->
                     <div class="flex flex-col" :class="[
                         msg.role === 'user' ? 'items-end' : 'items-start',
-                        (msg.type === 'html' || isHtmlCard) ? 'max-w-[82%]' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]'),
+                        (msg.type === 'html' || isHtmlCard) ? 'flex-1 items-center overflow-visible' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]'),
                         isCenteredContent ? 'w-full items-center' : ''
                     ]">
                         <!-- New: Sender Name and Title for Group Chats -->
@@ -656,7 +656,7 @@
                         
                         <!-- CASE: HTML Card (from [CARD] tag or type: html) -->
                         <div v-else-if="msg.type === 'card' || msg.type === 'html'"
-                            class="w-full max-w-[360px] mt-1 overflow-visible"
+                            class="w-full mt-1 overflow-visible flex justify-center"
                             @contextmenu.prevent="emitContextMenu"
                             @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                             @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress">
@@ -1286,12 +1286,13 @@
                                     @contextmenu.prevent="emitContextMenu"
                                     @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                     @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
-                                    class="px-3 py-2 text-[15px] leading-relaxed break-words relative transition-all"
                                     :class="[
+                                        (msg.type === 'html' || isHtmlCard) ? '' : 'px-3 py-2 text-[15px] leading-relaxed break-words',
+                                        'relative transition-all',
                                         forceOffline ? 'no-bubble-offline w-full' : (msg.role === 'user' ? 'chat-bubble-right shadow-sm' : 'chat-bubble-left shadow-sm'),
-                                        (msg.type === 'html' || isHtmlCard) ? 'flex justify-center !w-auto max-w-[90%]' : ''
+                                        (msg.type === 'html' || isHtmlCard) ? 'flex justify-center w-full overflow-visible' : ''
                                     ]" :style="{
-                                        fontSize: (chatData?.bubbleSize ?? 15) + 'px',
+                                        fontSize: (msg.type === 'html' || isHtmlCard) ? undefined : ((chatData?.bubbleSize ?? 15) + 'px'),
                                         ...(computedBubbleStyle || {})
                                     }">
                                     <!-- Arrow (only show on last segment for multi-segment messages) -->
@@ -1450,7 +1451,7 @@
 
                             <!-- 3. HTML Card Layer -->
                             <div v-if="shouldRenderCard"
-                                class="mt-1 transition-all relative z-10 w-full min-w-[280px] max-w-[360px] overflow-visible" @contextmenu.prevent="emitContextMenu"
+                                class="mt-1 transition-all relative z-10 w-full overflow-visible flex justify-center" @contextmenu.prevent="emitContextMenu"
                                 @touchstart="startLongPress" @touchend="cancelLongPress" @touchmove="cancelLongPress"
                                 @mousedown="startLongPress" @mouseup="cancelLongPress" @mouseleave="cancelLongPress"
                                 @message="handleIframeMessage">
