@@ -1,7 +1,7 @@
 {
   "name": "qiaqiao-phone",
   "private": true,
-  "version": "1.10.184",
+  "version": "1.10.193",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -47,8 +47,8 @@
                         (msg.type === 'html' || isHtmlCard) ? 'w-full justify-center' : 'w-full'
                     ]">
 
-                    <!-- Avatar -->
-                    <div v-if="!forceOffline && shouldShowAvatar" class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
+                    <!-- Avatar (hidden for HTML cards to allow full-width display) -->
+                    <div v-if="!forceOffline && shouldShowAvatar && !(msg.type === 'html' || isHtmlCard)" class="relative w-10 h-10 shrink-0 cursor-pointer z-10 overflow-visible"
                         @click.stop="handleAvatarClick(msg)" @dblclick="$emit('dblclick-avatar', msg)"
                         @touchstart="startAvatarLongPress(msg, $event)" @touchend="cancelAvatarLongPress"
                         @touchcancel="cancelAvatarLongPress" @mousedown="startAvatarLongPress(msg, $event)"
@@ -70,7 +70,7 @@
                     <!-- Content Column -->
                     <div class="flex flex-col" :class="[
                         msg.role === 'user' ? 'items-end' : 'items-start',
-                        (msg.type === 'html' || isHtmlCard) ? 'flex-1 items-center overflow-visible' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]'),
+                        (msg.type === 'html' || isHtmlCard) ? 'w-full items-center overflow-visible' : (parsedVoteData ? 'max-w-[80%] w-full' : 'max-w-[80%]'),
                         isCenteredContent ? 'w-full items-center' : ''
                     ]">
                         <!-- New: Sender Name and Title for Group Chats -->
