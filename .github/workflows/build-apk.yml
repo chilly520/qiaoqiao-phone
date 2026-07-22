@@ -64,10 +64,13 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
           expect << 'EXPECT_EOF'
-          set timeout 600
+          set timeout 300
           spawn npx @bubblewrap/cli update --skipPwaValidation
           expect {
-              "JDK" { send "n\r"; exp_continue }
+              "install the JDK" { send "n\r"; exp_continue }
+              "(Y/n)" { send "n\r"; exp_continue }
+              "(y/N)" { send "N\r"; exp_continue }
+              timeout { puts "\nTIMEOUT"; exit 1 }
               eof
           }
           EXPECT_EOF
@@ -82,7 +85,10 @@ jobs:
           set timeout 600
           spawn npx @bubblewrap/cli build --skipPwaValidation --force
           expect {
-              "JDK" { send "n\r"; exp_continue }
+              "install the JDK" { send "n\r"; exp_continue }
+              "(Y/n)" { send "n\r"; exp_continue }
+              "(y/N)" { send "N\r"; exp_continue }
+              timeout { puts "\nTIMEOUT"; exit 1 }
               eof
           }
           EXPECT_EOF
