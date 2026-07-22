@@ -55,6 +55,9 @@ jobs:
             -storepass android -keypass android \
             -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
 
+      - name: Install expect
+        run: sudo apt-get install -y expect
+
       - name: Bubblewrap update
         working-directory: android-app
         env:
@@ -63,10 +66,32 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: android
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
-          # script 创建 PTY 让 enquirer 检测到 isTTY=true
-          # printf 喂入答案, sleep 保持 stdin 不关闭防止 EOF 导致崩溃
-          (printf 'n\n%s\n%s\n' "$JAVA_HOME" "$ANDROID_HOME"; sleep 600) | \
-            script -qec 'npx @bubblewrap/cli update --skipPwaValidation' /dev/null
+          expect << 'EOF'
+          # 顺序匹配, 不用 exp_continue 避免重复匹配
+          set timeout 120
+          
+          # 第一问: 是否安装 JDK
+          expect {
+              "install the JDK" { send "n\r" }
+              timeout { puts "\nNo JDK prompt, skipping"; }
+          }
+          
+          # 第二问: JDK 路径
+          expect {
+              "Path to your existing JDK" { send "$env(JAVA_HOME)\r" }
+              timeout { puts "\nNo JDK path prompt, skipping"; }
+          }
+          
+          # 第三问: Android SDK 路径
+          expect {
+              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r" }
+              timeout { puts "\nNo SDK path prompt, skipping"; }
+          }
+          
+          # 等待完成
+          set timeout 600
+          expect eof
+          EOF
 
       - name: Bubblewrap build
         working-directory: android-app
@@ -76,8 +101,25 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: android
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
-          (printf 'n\n%s\n%s\n' "$JAVA_HOME" "$ANDROID_HOME"; sleep 600) | \
-            script -qec 'npx @bubblewrap/cli build --skipPwaValidation --force' /dev/null
+          expect << 'EOF'
+          set timeout 120
+          
+          expect {
+              "install the JDK" { send "n\r" }
+              timeout { puts "\nNo JDK prompt, skipping"; }
+          }
+          expect {
+              "Path to your existing JDK" { send "$env(JAVA_HOME)\r" }
+              timeout { puts "\nNo JDK path prompt, skipping"; }
+          }
+          expect {
+              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r" }
+              timeout { puts "\nNo SDK path prompt, skipping"; }
+          }
+          
+          set timeout 600
+          expect eof
+          EOF
 
       - name: Rename APK
         run: |
