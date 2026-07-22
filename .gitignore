@@ -50,3 +50,15 @@ android-app/gradlew.bat
 android-app/settings.gradle
 android-app/local.properties
 *.apk
+
+# Android Native 项目
+android-native/.gradle/
+android-native/build/
+android-native/app/build/
+android-native/.idea/
+android-native/local.properties
+android-native/android.keystore
+android-native/keystore.b64
+android-native/captures/
+android-native/.externalNativeBuild/
+android-native/app/release/

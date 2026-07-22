@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!-- 简单猫爪图标, 跟 PWA 风格一致 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2C9.24,2 7,4.24 7,7C7,8.85 8.27,10.42 10,10.83V13H14V10.83C15.73,10.42 17,8.85 17,7C17,4.24 14.76,2 12,2M12,4C13.66,4 15,5.34 15,7C15,8.66 13.66,10 12,10C10.34,10 9,8.66 9,7C9,5.34 10.34,4 12,4M5,13C3.89,13 3,13.89 3,15V18C3,19.11 3.89,20 5,20H7V18H5V15H7V13H5M17,13V15H19V18H17V20H19C20.11,20 21,19.11 21,18V15C21,13.89 20.11,13 19,13H17M10,15V18C10,19.11 10.89,20 12,20C13.11,20 14,19.11 14,18V15H10Z" />
+</vector>

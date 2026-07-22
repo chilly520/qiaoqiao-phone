@@ -1,0 +1,104 @@
+name: Build Android Native APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Default GITHUB_TOKEN is read-only; releases need contents:write
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apk:
+    name: Build & Release Native APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Read version
+        id: version
+        working-directory: android-native
+        run: |
+          # 从 src/version.json 读 (跟 TWA 共享)
+          VERSION=$(node -p "require('../src/version.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-home-cache-cleanup: true
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # 取固定的签名密钥 (第一次需要手动设置 Secrets, 见 README)
+      - name: Decode keystore
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android-native/android.keystore
+          ls -la android-native/android.keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.CHILLY_KEYSTORE_BASE64 }}
+
+      - name: Build release APK
+        working-directory: android-native
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/android-native/android.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.CHILLY_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.CHILLY_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.CHILLY_KEY_PASSWORD }}
+        run: |
+          if [ ! -f android.keystore ]; then
+            echo "::warning::No keystore, generating a temporary one (cannot upgrade later)"
+            keytool -genkeypair \
+              -keystore android.keystore \
+              -alias android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
+            KEYSTORE_PASSWORD=android
+            KEY_ALIAS=android
+            KEY_PASSWORD=android
+          fi
+          KEYSTORE_PATH=./android.keystore \
+          KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-android} \
+          KEY_ALIAS=${KEY_ALIAS:-android} \
+          KEY_PASSWORD=${KEY_PASSWORD:-android} \
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: |
+          ls -la android-native/app/build/outputs/apk/release/ 2>/dev/null
+          APK=$(find android-native/app/build/outputs/apk/release -name "*.apk" ! -name "*unsigned*" ! -name "*unaligned*" | head -1)
+          if [ -z "$APK" ]; then
+            echo "No signed APK found"
+            find android-native/app/build/outputs/ -name "*.apk"
+            exit 1
+          fi
+          cp "$APK" "chilly-phone-native-${{ steps.version.outputs.version }}.apk"
+          echo "Final: chilly-phone-native-${{ steps.version.outputs.version }}.apk"
+          ls -la "chilly-phone-native-${{ steps.version.outputs.version }}.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chilly-phone-native-apk
+          path: chilly-phone-native-*.apk
+          retention-days: 90
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-native
+          name: Chilly Phone Native ${{ steps.version.outputs.version }}
+          files: chilly-phone-native-*.apk
+          generate_release_notes: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

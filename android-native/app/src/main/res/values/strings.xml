@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Chilly Phone</string>
+
+    <!-- 通知渠道 -->
+    <string name="notif_channel_role_message">角色消息</string>
+    <string name="notif_channel_role_message_desc">角色在后台主动发来的消息</string>
+
+    <!-- 前台服务 -->
+    <string name="service_role_message_title">Chilly Phone 在运行</string>
+    <string name="service_role_message_text">角色会在合适的时候主动给你发消息</string>
+
+    <!-- 通知 -->
+    <string name="notif_role_message_default_title">你有一条新消息</string>
+
+    <!-- 权限申请 -->
+    <string name="perm_notification_rationale">需要通知权限, 才能在后台收到角色发的消息</string>
+    <string name="perm_battery_rationale">请把 Chilly Phone 加入电池优化白名单, 否则角色消息会收不到</string>
+</resources>

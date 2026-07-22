@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 108x108 自适应图标前景, 中心 72x72 安全区 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30C45.16,30 38,37.16 38,46C38,51.85 42.06,56.78 47.5,58.06V66H60.5V58.06C65.94,56.78 70,51.85 70,46C70,37.16 62.84,30 54,30M54,38C58.41,38 62,41.59 62,46C62,50.41 58.41,54 54,54C49.59,54 46,50.41 46,46C46,41.59 49.59,38 54,38M36,70C32.69,70 30,72.69 30,76V82C30,85.31 32.69,88 36,88H42V82H36V76H42V70H36M66,70V76H72V82H66V88H72C75.31,88 78,85.31 78,82V76C78,72.69 75.31,70 72,70H66M48,72V78C48,80.21 49.79,82 52,82C54.21,82 56,80.21 56,78V72H48Z" />
+</vector>
