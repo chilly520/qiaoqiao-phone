@@ -67,13 +67,14 @@ jobs:
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
           expect << 'EOF'
-          spawn npx @bubblewrap/cli update --skipPwaValidation
+          spawn npx @bubblewrap/cli update --skipPwaValidation --skipVersionUpgrade
           set timeout 300
           expect {
               "install the JDK" { send "n\r"; exp_continue }
               "install the Android SDK" { send "n\r"; exp_continue }
               "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
               "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r"; exp_continue }
+              timeout { puts "\nTimeout - exiting"; exit 0 }
               eof
           }
           EOF
@@ -94,6 +95,7 @@ jobs:
               "install the Android SDK" { send "n\r"; exp_continue }
               "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
               "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r"; exp_continue }
+              timeout { puts "\nTimeout - exiting"; exit 0 }
               eof
           }
           EOF
