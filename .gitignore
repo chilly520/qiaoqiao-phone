@@ -38,3 +38,15 @@ dist-ssr
 
 # Test project
 test-vite-project
+
+# Android / Bubblewrap 构建产物
+android-app/*.keystore
+android-app/app/
+android-app/build/
+android-app/.gradle/
+android-app/gradle/
+android-app/gradlew
+android-app/gradlew.bat
+android-app/settings.gradle
+android-app/local.properties
+*.apk
