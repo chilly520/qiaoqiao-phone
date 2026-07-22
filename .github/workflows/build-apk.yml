@@ -67,9 +67,8 @@ jobs:
           set timeout 300
           spawn npx @bubblewrap/cli update --skipPwaValidation
           expect {
+              "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
               "install the JDK" { send "n\r"; exp_continue }
-              "(Y/n)" { send "n\r"; exp_continue }
-              "(y/N)" { send "N\r"; exp_continue }
               timeout { puts "\nTIMEOUT"; exit 1 }
               eof
           }
@@ -85,9 +84,8 @@ jobs:
           set timeout 600
           spawn npx @bubblewrap/cli build --skipPwaValidation --force
           expect {
+              "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
               "install the JDK" { send "n\r"; exp_continue }
-              "(Y/n)" { send "n\r"; exp_continue }
-              "(y/N)" { send "N\r"; exp_continue }
               timeout { puts "\nTIMEOUT"; exit 1 }
               eof
           }
