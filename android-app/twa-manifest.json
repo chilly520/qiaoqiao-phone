@@ -22,10 +22,7 @@
   },
   "appVersionName": "1.10.194",
   "appVersionCode": 194,
-  "shortcuts": [
-    { "name": "微信", "shortName": "微信", "url": "/wechat" },
-    { "name": "朋友圈", "shortName": "朋友圈", "url": "/wechat/moments" }
-  ],
+  "shortcuts": [],
   "generatorSignatures": [
     { "package": "dev.qiaoqiao.phone", "version": "1.10.194" }
   ],
