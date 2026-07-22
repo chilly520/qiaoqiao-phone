@@ -25,11 +25,11 @@ android {
             // CI 通过命令行传入: android-native/android.keystore (从 Secrets 解出来)
             val keystorePath = System.getenv("KEYSTORE_PATH") ?: "android.keystore"
             val storePass = System.getenv("KEYSTORE_PASSWORD") ?: "android"
-            val keyAlias = System.getenv("KEY_ALIAS") ?: "android"
+            val keyAliasValue = System.getenv("KEY_ALIAS") ?: "android"
             val keyPass = System.getenv("KEY_PASSWORD") ?: "android"
             storeFile = file(keystorePath)
             storePassword = storePass
-            keyAlias = keyAlias
+            keyAlias = keyAliasValue
             keyPassword = keyPass
         }
     }
