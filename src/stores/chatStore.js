@@ -2227,6 +2227,8 @@ export const useChatStore = defineStore('chat', () => {
     let proactiveTimer = null
     // [BUG FIX] 保存 pageshow handler 引用, 重复调用 startProactiveLoop 时才能正确移除旧监听器
     let proactivePageShowHandler = null
+    // [BUG FIX] 保存 visibilitychange handler 引用, 同 pageshow
+    let proactiveVisibilityHandler = null
 
     function startProactiveLoop() {
         // 清理旧的
@@ -2237,6 +2239,10 @@ export const useChatStore = defineStore('chat', () => {
         if (proactivePageShowHandler && typeof window !== 'undefined') {
             window.removeEventListener('pageshow', proactivePageShowHandler)
             proactivePageShowHandler = null
+        }
+        if (proactiveVisibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', proactiveVisibilityHandler)
+            proactiveVisibilityHandler = null
         }
 
         // 用 setInterval 替代 Worker，更可靠
@@ -2263,6 +2269,24 @@ export const useChatStore = defineStore('chat', () => {
             };
             window.addEventListener('pageshow', proactivePageShowHandler);
         }
+
+        // 4. [BUG FIX] 后台切回前台补偿
+        // 微信内置浏览器 / 移动端 Safari / Chrome 在页面切到后台时会冻结 setInterval,
+        // 导致后台期间到期的定时任务 / 随机主动消息 / activeChat 关怀都不会触发,
+        // 必须等用户切回前台后下一个 60s tick 才补跑 (甚至更久).
+        // 监听 visibilitychange: 一旦页面从 hidden 变 visible, 立即补跑一次 checkProactive,
+        // 让到期的主动消息在"切回前台瞬间"就生成并显示在会话列表, 而非等用户手动点进聊天.
+        if (typeof document !== 'undefined') {
+            proactiveVisibilityHandler = () => {
+                if (document.visibilityState !== 'visible') return
+                const logger = useLoggerStore()
+                logger.sys('[Proactive] Page became visible, checking missed triggers...')
+                Object.keys(chats.value).forEach(chatId => {
+                    checkProactive(chatId)
+                })
+            };
+            document.addEventListener('visibilitychange', proactiveVisibilityHandler);
+        }
     }
 
     // [BUG FIX] 暴露 stopProactiveLoop 用于在 store dispose / 测试 teardown 时清理
@@ -2277,6 +2301,10 @@ export const useChatStore = defineStore('chat', () => {
         if (proactivePageShowHandler && typeof window !== 'undefined') {
             window.removeEventListener('pageshow', proactivePageShowHandler)
             proactivePageShowHandler = null
+        }
+        if (proactiveVisibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', proactiveVisibilityHandler)
+            proactiveVisibilityHandler = null
         }
     }
 
