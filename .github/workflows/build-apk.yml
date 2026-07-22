@@ -52,14 +52,16 @@ jobs:
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
           # 用官方 Docker 镜像, 预装 JDK17 + Android SDK, 不会弹路径提示
+          # entrypoint 默认是 bubblewrap, 用 --entrypoint sh 覆盖以链式执行
           docker run --rm \
+            --entrypoint sh \
             -v "$(pwd):/app" \
             -w /app \
             -e BUBBLEWRAP_KEYSTORE_PASSWORD=android \
             -e BUBBLEWRAP_KEY_PASSWORD=android \
             -e CI=true \
             ghcr.io/googlechromelabs/bubblewrap:latest \
-            sh -c 'npx @bubblewrap/cli update --skipPwaValidation && npx @bubblewrap/cli build --skipPwaValidation --force'
+            -c 'bubblewrap update --skipPwaValidation && bubblewrap build --skipPwaValidation --force'
 
       - name: Rename APK
         run: |
