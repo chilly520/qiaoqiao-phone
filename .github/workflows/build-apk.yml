@@ -45,6 +45,9 @@ jobs:
             fs.writeFileSync(p, JSON.stringify(m, null, 2));
           "
 
+      - name: Install expect (for PTY)
+        run: sudo apt-get install -y expect
+
       - name: Generate debug signing key
         run: |
           keytool -genkeypair \
@@ -60,7 +63,14 @@ jobs:
           JAVA_HOME: ${{ env.JAVA_HOME }}
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
-          printf 'n\n' | npx @bubblewrap/cli update --skipPwaValidation
+          expect << 'EXPECT_EOF'
+          set timeout 600
+          spawn npx @bubblewrap/cli update --skipPwaValidation
+          expect {
+              "JDK" { send "n\r"; exp_continue }
+              eof
+          }
+          EXPECT_EOF
 
       - name: Build APK with Bubblewrap
         working-directory: android-app
@@ -68,7 +78,14 @@ jobs:
           JAVA_HOME: ${{ env.JAVA_HOME }}
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
-          printf 'n\n' | npx @bubblewrap/cli build --skipPwaValidation --force
+          expect << 'EXPECT_EOF'
+          set timeout 600
+          spawn npx @bubblewrap/cli build --skipPwaValidation --force
+          expect {
+              "JDK" { send "n\r"; exp_continue }
+              eof
+          }
+          EXPECT_EOF
 
       - name: Rename APK
         run: |
