@@ -55,30 +55,26 @@ jobs:
             -storepass android -keypass android \
             -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
 
-      - name: Install expect
-        run: sudo apt-get install -y expect
+      # Pre-write bubblewrap config so it never prompts for JDK / Android SDK paths.
+      # loadOrCreateConfig() only prompts when jdkPath / androidSdkPath are empty.
+      - name: Configure bubblewrap paths (non-interactive)
+        run: |
+          mkdir -p "$HOME/.bubblewrap"
+          printf '{\n  "jdkPath": "%s",\n  "androidSdkPath": "%s"\n}\n' "$JAVA_HOME" "$ANDROID_HOME" > "$HOME/.bubblewrap/config.json"
+          echo "Wrote bubblewrap config:"
+          cat "$HOME/.bubblewrap/config.json"
 
+      # --skipVersionUpgrade: skip the "new app version name" prompt.
+      # update regenerates the Android project fresh + writes manifest-checksum.txt.
       - name: Bubblewrap update
         working-directory: android-app
         env:
           JAVA_HOME: ${{ env.JAVA_HOME }}
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          BUBBLEWRAP_KEYSTORE_PASSWORD: android
-          BUBBLEWRAP_KEY_PASSWORD: android
-        run: |
-          expect << 'EOF'
-          spawn npx @bubblewrap/cli update --skipPwaValidation --skipVersionUpgrade
-          set timeout 300
-          expect {
-              "install the JDK" { send "n\r"; exp_continue }
-              "install the Android SDK" { send "n\r"; exp_continue }
-              "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
-              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r"; exp_continue }
-              timeout { puts "\nTimeout - exiting"; exit 0 }
-              eof
-          }
-          EOF
+        run: npx @bubblewrap/cli update --skipPwaValidation --skipVersionUpgrade
 
+      # Signing passwords come from env vars (getPasswords reads them first).
+      # manifest-checksum.txt now matches, so the "update project?" prompt is skipped.
       - name: Bubblewrap build
         working-directory: android-app
         env:
@@ -86,19 +82,7 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           BUBBLEWRAP_KEYSTORE_PASSWORD: android
           BUBBLEWRAP_KEY_PASSWORD: android
-        run: |
-          expect << 'EOF'
-          spawn npx @bubblewrap/cli build --skipPwaValidation --force
-          set timeout 600
-          expect {
-              "install the JDK" { send "n\r"; exp_continue }
-              "install the Android SDK" { send "n\r"; exp_continue }
-              "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
-              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r"; exp_continue }
-              timeout { puts "\nTimeout - exiting"; exit 0 }
-              eof
-          }
-          EOF
+        run: npx @bubblewrap/cli build --skipPwaValidation
 
       - name: Find and rename APK
         run: |
