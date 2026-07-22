@@ -68,23 +68,14 @@ jobs:
         run: |
           expect << 'EOF'
           spawn npx @bubblewrap/cli update --skipPwaValidation
-          set timeout 120
-
+          set timeout 300
           expect {
-              "install the JDK" { send "n\r" }
-              timeout { puts "\nNo JDK prompt, skipping"; }
+              "install the JDK" { send "n\r"; exp_continue }
+              "install the Android SDK" { send "n\r"; exp_continue }
+              "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
+              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r"; exp_continue }
+              eof
           }
-          expect {
-              "Path to your existing JDK" { send "$env(JAVA_HOME)\r" }
-              timeout { puts "\nNo JDK path prompt, skipping"; }
-          }
-          expect {
-              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r" }
-              timeout { puts "\nNo SDK path prompt, skipping"; }
-          }
-
-          set timeout 600
-          expect eof
           EOF
 
       - name: Bubblewrap build
@@ -97,29 +88,28 @@ jobs:
         run: |
           expect << 'EOF'
           spawn npx @bubblewrap/cli build --skipPwaValidation --force
-          set timeout 120
-
-          expect {
-              "install the JDK" { send "n\r" }
-              timeout { puts "\nNo JDK prompt, skipping"; }
-          }
-          expect {
-              "Path to your existing JDK" { send "$env(JAVA_HOME)\r" }
-              timeout { puts "\nNo JDK path prompt, skipping"; }
-          }
-          expect {
-              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r" }
-              timeout { puts "\nNo SDK path prompt, skipping"; }
-          }
-
           set timeout 600
-          expect eof
+          expect {
+              "install the JDK" { send "n\r"; exp_continue }
+              "install the Android SDK" { send "n\r"; exp_continue }
+              "Path to your existing JDK" { send "$env(JAVA_HOME)\r"; exp_continue }
+              "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r"; exp_continue }
+              eof
+          }
           EOF
 
-      - name: Rename APK
+      - name: Find and rename APK
         run: |
+          echo "Searching for APK files..."
+          find android-app -name "*.apk" -o -name "*.aab" 2>/dev/null
           APK=$(find android-app -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "No APK found, listing android-app contents:"
+            ls -la android-app/ 2>/dev/null
+            exit 1
+          fi
           cp "$APK" "chilly-phone-${{ steps.version.outputs.version }}.apk"
+          echo "APK: chilly-phone-${{ steps.version.outputs.version }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
