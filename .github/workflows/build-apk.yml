@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Default GITHUB_TOKEN is read-only; releases need contents:write
+# (and pull-requests:read to auto-generate release notes).
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
   apk:
     name: Build & Release APK
