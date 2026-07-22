@@ -51,9 +51,10 @@ jobs:
           BUBBLEWRAP_KEYSTORE_PASSWORD: android
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
-          # 用官方 Docker 镜像, 预装 JDK17 + Android SDK, 不会弹路径提示
-          # entrypoint 默认是 bubblewrap, 用 --entrypoint sh 覆盖以链式执行
-          docker run --rm \
+          # -t 分配 PTY 让 enquirer 看到 isTTY=true
+          # -i 保持 stdin 开放, 管道喂入答案
+          # Docker 镜像预装 JDK17 + Android SDK, 只需回答 "n" 跳过 JDK 安装
+          printf 'n\n' | docker run --rm -i -t \
             --entrypoint sh \
             -v "$(pwd):/app" \
             -w /app \
