@@ -57,12 +57,19 @@ jobs:
 
       # Pre-write bubblewrap config so it never prompts for JDK / Android SDK paths.
       # loadOrCreateConfig() only prompts when jdkPath / androidSdkPath are empty.
+      # Also: bubblewrap's validatePath() requires $ANDROID_HOME to contain a `tools/` or `bin/`
+      # subdir. The GitHub Actions SDK only ships `cmdline-tools/`, so we symlink sdkmanager
+      # into `bin/` to satisfy validation (and installBuildTools, if ever needed).
       - name: Configure bubblewrap paths (non-interactive)
         run: |
+          mkdir -p "$ANDROID_HOME/bin"
+          ln -sf "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/bin/sdkmanager"
           mkdir -p "$HOME/.bubblewrap"
           printf '{\n  "jdkPath": "%s",\n  "androidSdkPath": "%s"\n}\n' "$JAVA_HOME" "$ANDROID_HOME" > "$HOME/.bubblewrap/config.json"
           echo "Wrote bubblewrap config:"
           cat "$HOME/.bubblewrap/config.json"
+          echo "SDK bin symlink:"
+          ls -la "$ANDROID_HOME/bin/"
 
       # --skipVersionUpgrade: skip the "new app version name" prompt.
       # update regenerates the Android project fresh + writes manifest-checksum.txt.
