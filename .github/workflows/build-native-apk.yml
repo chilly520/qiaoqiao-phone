@@ -53,6 +53,12 @@ jobs:
           KEY_ALIAS: ${{ secrets.CHILLY_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.CHILLY_KEY_PASSWORD }}
         run: |
+          # 默认密码 (临时签名时用)
+          export KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:-android}"
+          export KEY_ALIAS="${KEY_ALIAS:-android}"
+          export KEY_PASSWORD="${KEY_PASSWORD:-android}"
+          export KEYSTORE_PATH="$PWD/android.keystore"
+
           if [ ! -f android.keystore ]; then
             echo "::warning::No keystore, generating a temporary one (cannot upgrade later)"
             keytool -genkeypair \
@@ -61,14 +67,8 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass android -keypass android \
               -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
-            KEYSTORE_PASSWORD=android
-            KEY_ALIAS=android
-            KEY_PASSWORD=android
           fi
-          KEYSTORE_PATH=./android.keystore \
-          KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD:-android} \
-          KEY_ALIAS=${KEY_ALIAS:-android} \
-          KEY_PASSWORD=${KEY_PASSWORD:-android} \
+          ls -la android.keystore
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
