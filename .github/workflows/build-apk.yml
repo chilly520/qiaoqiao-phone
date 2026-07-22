@@ -67,28 +67,22 @@ jobs:
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
           expect << 'EOF'
-          # 顺序匹配, 不用 exp_continue 避免重复匹配
+          spawn npx @bubblewrap/cli update --skipPwaValidation
           set timeout 120
-          
-          # 第一问: 是否安装 JDK
+
           expect {
               "install the JDK" { send "n\r" }
               timeout { puts "\nNo JDK prompt, skipping"; }
           }
-          
-          # 第二问: JDK 路径
           expect {
               "Path to your existing JDK" { send "$env(JAVA_HOME)\r" }
               timeout { puts "\nNo JDK path prompt, skipping"; }
           }
-          
-          # 第三问: Android SDK 路径
           expect {
               "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r" }
               timeout { puts "\nNo SDK path prompt, skipping"; }
           }
-          
-          # 等待完成
+
           set timeout 600
           expect eof
           EOF
@@ -102,8 +96,9 @@ jobs:
           BUBBLEWRAP_KEY_PASSWORD: android
         run: |
           expect << 'EOF'
+          spawn npx @bubblewrap/cli build --skipPwaValidation --force
           set timeout 120
-          
+
           expect {
               "install the JDK" { send "n\r" }
               timeout { puts "\nNo JDK prompt, skipping"; }
@@ -116,7 +111,7 @@ jobs:
               "Path to your existing Android SDK" { send "$env(ANDROID_HOME)\r" }
               timeout { puts "\nNo SDK path prompt, skipping"; }
           }
-          
+
           set timeout 600
           expect eof
           EOF
