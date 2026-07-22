@@ -382,6 +382,7 @@ import { useStickerStore } from '@/stores/stickerStore'
 import { useWorldBookStore } from '@/stores/worldBookStore'
 import GitHubBackup from '@/utils/githubBackup'
 import autoBackup from '@/utils/autoBackup'
+import { getTodayStr } from '@/utils/common'
 
 const router = useRouter()
 const chatStore = useChatStore()
