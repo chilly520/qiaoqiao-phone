@@ -30,6 +30,10 @@ object AppPrefs {
     // ---- 状态 ----
     private const val KEY_LAST_MESSAGE_AT = "last_message_at"
 
+    // v1.10.232: 加载诊断, 写 SharedPreferences 让用户在下一次启动能看到"上一次卡哪"
+    private const val KEY_LAST_LOAD_DIAG = "last_load_diag"
+    private const val KEY_LAST_LOAD_ERROR = "last_load_error"
+
     private lateinit var sp: SharedPreferences
 
     fun init(context: Context) {
@@ -87,6 +91,15 @@ object AppPrefs {
     var lastMessageAt: Long
         get() = sp.getLong(KEY_LAST_MESSAGE_AT, 0L)
         set(v) = sp.edit().putLong(KEY_LAST_MESSAGE_AT, v).apply()
+
+    // v1.10.232: WebView 加载诊断 (Toast / logcat 都看不到时, 这里能看到上次卡哪)
+    var lastLoadDiag: String
+        get() = sp.getString(KEY_LAST_LOAD_DIAG, "") ?: ""
+        set(v) = sp.edit().putString(KEY_LAST_LOAD_DIAG, v).apply()
+
+    var lastLoadError: String
+        get() = sp.getString(KEY_LAST_LOAD_ERROR, "") ?: ""
+        set(v) = sp.edit().putString(KEY_LAST_LOAD_ERROR, v).apply()
 
     fun isConfigured(): Boolean {
         return llmApiKey.isNotBlank() && llmBaseUrl.isNotBlank() && llmModel.isNotBlank()

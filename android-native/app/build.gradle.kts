@@ -13,8 +13,10 @@ android {
         applicationId = "dev.qiaoqiao.phone"
         minSdk = 24
         targetSdk = 34
-        versionCode = 216
-        versionName = "1.10.216"
+        // v1.10.232: 占位符, CI workflow (build-native-apk.yml) 会从 src/version.json 动态同步
+        // 之前硬编码 216 一直没动, 导致所有 native APK 元数据停留在 1.10.216, 跟 src/version.json 脱钩
+        versionCode = 0
+        versionName = "0.0.0"
 
         // Cloudflare Pages 上 PWA 的 URL
         buildConfigField("String", "PWA_URL", "\"https://qiaqiao-phone.pages.dev\"")

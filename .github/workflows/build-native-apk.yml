@@ -100,6 +100,19 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.CHILLY_KEYSTORE_BASE64 }}
 
+      - name: Sync version into build.gradle.kts
+        # v1.10.232: 从 src/version.json 同步 versionCode/versionName 到 android-native/app/build.gradle.kts
+        # 否则 APK 元数据停留在历史硬编码值, 跟 GitHub release tag 对不上
+        # versionCode 用去掉点号的数字 (如 1.10.232 -> 110232)
+        working-directory: android-native
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_CODE=$(echo "$VERSION" | tr -d '.')
+          echo "Syncing: versionName=$VERSION  versionCode=$VERSION_CODE"
+          sed -i "s|versionCode = [0-9]*|versionCode = $VERSION_CODE|" app/build.gradle.kts
+          sed -i "s|versionName = \".*\"|versionName = \"$VERSION\"|" app/build.gradle.kts
+          grep -E "versionCode|versionName" app/build.gradle.kts
+
       - name: Build release APK
         working-directory: android-native
         env:

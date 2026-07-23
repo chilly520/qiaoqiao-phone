@@ -33,6 +33,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var assetLoader: WebViewAssetLoader
 
+    // v1.10.232: 加载诊断状态 (启动后记住, 写 SharedPreferences, 下次启动 Toast 出来)
+    private var isPageFinished = false
+    private var lastLoadedUrl = ""
+    private var resourceErrorCount = 0
+    private var httpErrorCount = 0
+
     private val loadTimeoutHandler = Handler(Looper.getMainLooper())
     private val loadTimeoutRunnable = Runnable {
         Toast.makeText(
@@ -65,7 +71,32 @@ class MainActivity : AppCompatActivity() {
 
         handleNotificationIntent(intent)
 
+        // v1.10.232: 启动时显示上一次的加载诊断, 让用户知道上次为什么卡住
+        val prevDiag = AppPrefs.lastLoadDiag
+        val prevErr = AppPrefs.lastLoadError
+        if (prevErr.isNotBlank()) {
+            Toast.makeText(this, "上次加载出错:\n$prevErr", Toast.LENGTH_LONG).show()
+        } else if (prevDiag.isNotBlank() && prevDiag.contains("TIMEOUT")) {
+            Toast.makeText(this, "上次加载卡住:\n$prevDiag", Toast.LENGTH_LONG).show()
+        }
+
+        // v1.10.232: 清掉上次状态 (诊断读完后清掉, 避免每次启动都显示)
+        AppPrefs.lastLoadError = ""
+        AppPrefs.lastLoadDiag = ""
+
+        val loadStartTime = System.currentTimeMillis()
         loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
+
+        // v1.10.232: 30 秒硬超时 (5s soft Toast + 30s hard 标记"卡在加载")
+        loadTimeoutHandler.postDelayed({
+            if (!isPageFinished) {
+                val diag = "TIMEOUT(30s)\nurl=${lastLoadedUrl}\nresourceErrors=${resourceErrorCount}\nhttpErrors=${httpErrorCount}"
+                AppPrefs.lastLoadDiag = diag
+                runOnUiThread {
+                    Toast.makeText(this, "加载超时 (30s):\n$diag", Toast.LENGTH_LONG).show()
+                }
+            }
+        }, 30000)
 
         // WebViewAssetLoader: AndroidX 官方方案.
         // 把 APK 内 assets/ 映射到 https://appassets.androidplatform.net/assets/...,
@@ -73,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         // Vite base 设为 './', 相对路径 ./assets/xxx.js 正确解析为
         // https://appassets.androidplatform.net/assets/assets/xxx.js
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+        lastLoadedUrl = webView.url ?: "https://appassets.androidplatform.net/assets/index.html"
 
         requestPermissionsIfNeeded()
         checkForUpdates()
@@ -116,28 +148,42 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 Log.d(TAG, "WebView onPageStarted: $url")
+                lastLoadedUrl = url ?: ""
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "WebView onPageFinished: $url")
+                isPageFinished = true
+                lastLoadedUrl = url ?: ""
                 loadTimeoutHandler.removeCallbacks(loadTimeoutRunnable)
 
+                // v1.10.232: 详细诊断 — 页面加载完立刻 evaluateJavascript 检查 DOM 状态,
+                // 写 SharedPreferences, 下次启动 Toast 出来 (用户不用 logcat 也能看到)
                 Handler(Looper.getMainLooper()).postDelayed({
                     webView.evaluateJavascript("""
                         (function(){
                             var app=document.getElementById('app');
-                            if(!app||app.children.length===0){
-                                return 'NOT_MOUNTED';
-                            }
-                            return 'MOUNTED';
+                            var splash=document.getElementById('native-splash');
+                            var cs=app?app.children.length:0;
+                            var rs=document.readyState;
+                            var sb=splash?getComputedStyle(splash).opacity:'none';
+                            return JSON.stringify({
+                                readyState: rs,
+                                appChildren: cs,
+                                appExists: !!app,
+                                splashOpacity: sb,
+                                title: document.title
+                            });
                         })();
                     """.trimIndent()) { result ->
-                        if (result != null && result.contains("NOT_MOUNTED")) {
+                        val safe = result?.replace("\"", "'") ?: "null"
+                        AppPrefs.lastLoadDiag = "URL=${lastLoadedUrl}\nDOM=${safe}\nerrCount=${resourceErrorCount}\nhttpErrCount=${httpErrorCount}"
+                        if (result != null && (result.contains("\"appChildren\":0") || result.contains("\"appExists\":false"))) {
                             runOnUiThread {
                                 Toast.makeText(
                                     this@MainActivity,
-                                    "PWA JS 加载失败\n请截图发给开发者",
+                                    "Vue 未挂载:\n${safe}",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -151,7 +197,10 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest,
                 error: android.webkit.WebResourceError
             ) {
-                Log.e(TAG, "WebView onReceivedError: url=${request.url} code=${error.errorCode} desc=${error.description}")
+                resourceErrorCount++
+                val msg = "url=${request.url} code=${error.errorCode} desc=${error.description}"
+                Log.e(TAG, "WebView onReceivedError: $msg")
+                AppPrefs.lastLoadError = msg
             }
 
             override fun onReceivedHttpError(
@@ -159,7 +208,11 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest,
                 errorResponse: WebResourceResponse
             ) {
-                Log.w(TAG, "WebView onReceivedHttpError: url=${request.url} code=${errorResponse.statusCode}")
+                httpErrorCount++
+                val msg = "HTTP url=${request.url} status=${errorResponse.statusCode}"
+                Log.w(TAG, "WebView onReceivedHttpError: $msg")
+                // HTTP 错误不一定是致命的 (CDN/PWA 上可能有), 不覆盖 lastLoadError,
+                // 但累加 httpErrorCount, onPageFinished 时一起写 diag
             }
 
             override fun shouldOverrideUrlLoading(
