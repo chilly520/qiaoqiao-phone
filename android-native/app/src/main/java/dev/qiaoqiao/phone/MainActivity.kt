@@ -19,7 +19,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.webkit.WebViewAssetLoader
 import dev.qiaoqiao.phone.bridge.WebAppInterface
 import dev.qiaoqiao.phone.prefs.AppPrefs
 import okhttp3.OkHttpClient
@@ -36,25 +35,6 @@ import java.util.concurrent.TimeUnit
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-
-    /**
-     * WebViewAssetLoader: 把 app/src/main/assets/ 里的 PWA 资源映射成
-     * https://appassets.androidplatform.net/ origin.
-     *
-     * 为什么不用 file:///android_asset/index.html:
-     *   Vite build 产物是 ES module (<script type="module">),
-     *   ES module 默认走 CORS mode. file:// 的 origin 是 null,
-     *   浏览器认为 null !== null → CORS 检查失败 → JS/CSS 全部加载失败.
-     *   即使删 crossorigin 属性也没用, module 脚本自带 CORS.
-     *
-     * WebViewAssetLoader 让页面跑在真正的 https origin 上,
-     * 同源请求不会被 CORS 拦截, ES module 正常加载.
-     */
-    private val assetLoader by lazy {
-        WebViewAssetLoader.Builder()
-            .addPathHandler(ASSET_PATH_PREFIX, WebViewAssetLoader.AssetsPathHandler(this))
-            .build()
-    }
 
     /**
      * 超时看门狗: WebView 加载 5 秒还没出第一帧就提示用户.
@@ -136,42 +116,39 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                // 关键: 把 https://appassets.androidplatform.net/... 的请求
-                // 交给 assetLoader 从本地 assets 读取, 返回 WebResourceResponse.
+                // 手动拦截: 从 appassets origin 拦截所有请求, 从 assets 目录读取文件.
+                // 不用 WebViewAssetLoader (某些 Android 版本可能有 bug),
+                // 完全手动控制 MIME type + CORS header + 状态码.
                 val url = request?.url ?: return null
-                val response = assetLoader.shouldInterceptRequest(url) ?: return null
+                val host = url.host ?: return null
+                if (host != "appassets.androidplatform.net") return null
 
-                // 修正 MIME type: 某些 Android 版本 URLConnection.guessContentTypeFromName
-                // 不识别 .js → 返回 null → WebViewAssetLoader 用 application/octet-stream
-                // → ES module 拒绝执行 (要求 text/javascript) → JS 加载失败 → 一直转圈.
-                val path = url.path ?: ""
-                val ext = path.substringAfterLast('.', "").lowercase()
-                when (ext) {
-                    "js", "mjs" -> {
-                        response.mimeType = "text/javascript"
-                        response.setEncoding("UTF-8")
-                    }
-                    "css" -> {
-                        response.mimeType = "text/css"
-                        response.setEncoding("UTF-8")
-                    }
-                    "html", "htm" -> {
-                        response.mimeType = "text/html"
-                        response.setEncoding("UTF-8")
-                    }
-                    "json" -> {
-                        response.mimeType = "application/json"
-                        response.setEncoding("UTF-8")
-                    }
-                    "svg" -> response.mimeType = "image/svg+xml"
-                    "woff2" -> response.mimeType = "font/woff2"
-                    "woff" -> response.mimeType = "font/woff"
-                    "ttf" -> response.mimeType = "font/ttf"
-                    "png" -> response.mimeType = "image/png"
-                    "jpg", "jpeg" -> response.mimeType = "image/jpeg"
-                    "webp" -> response.mimeType = "image/webp"
+                var path = url.path ?: return null
+                // 去掉 /pwa/ 前缀, 得到 assets 内的相对路径
+                if (path.startsWith(ASSET_PATH_PREFIX)) {
+                    path = path.removePrefix(ASSET_PATH_PREFIX)
+                } else if (path.startsWith("/")) {
+                    path = path.removePrefix("/")
                 }
-                return response
+                if (path.isEmpty()) path = "index.html"
+
+                // 去掉 query string
+                path = path.substringBefore('?')
+
+                return try {
+                    val input = assets.open(path)
+                    val mimeType = guessMimeType(path)
+                    val encoding = if (mimeType.startsWith("text/") || mimeType.contains("json")) "UTF-8" else null
+                    val headers = mapOf(
+                        "Access-Control-Allow-Origin" to "*"
+                    )
+                    Log.d(TAG, "serve asset: $path → $mimeType")
+                    WebResourceResponse(mimeType, encoding, 200, "OK", headers, input)
+                } catch (e: Exception) {
+                    Log.w(TAG, "asset not found: $path")
+                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                        emptyMap(), java.io.ByteArrayInputStream("Not found: $path".toByteArray()))
+                }
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -184,6 +161,32 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "WebView onPageFinished: $url")
                 // 加载完成, 取消超时看门狗
                 loadTimeoutHandler.removeCallbacks(loadTimeoutRunnable)
+
+                // 3 秒后检查 Vue 是否挂载, 没挂载就 Toast 提示 + 注入错误信息
+                Handler(Looper.getMainLooper()).postDelayed({
+                    webView.evaluateJavascript("""
+                        (function(){
+                            var app=document.getElementById('app');
+                            if(!app||app.children.length===0){
+                                console.error('NATIVE_DIAG: Vue not mounted 3s after onPageFinished');
+                                var s=document.getElementById('native-splash');
+                                if(s){s.innerHTML='<div style="text-align:center;padding:20px;font-family:-apple-system,sans-serif;color:#475569"><div style="font-size:48px;margin-bottom:16px">❄️</div><div style="font-size:16px;font-weight:600;color:#ef4444;margin-bottom:8px">加载失败</div><div style="font-size:11px;opacity:0.7;padding:0 16px">JS 加载失败, 请截图发给开发者</div></div>';}
+                                return 'NOT_MOUNTED';
+                            }
+                            return 'MOUNTED';
+                        })();
+                    """.trimIndent()) { result ->
+                        if (result != null && result.contains("NOT_MOUNTED")) {
+                            runOnUiThread {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "PWA JS 加载失败\n请截图发给开发者",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    }
+                }, 3000)
             }
 
             override fun onReceivedError(
@@ -374,14 +377,41 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    /**
+     * 手动 MIME type 映射, 不依赖 Android 的 URLConnection.guessContentTypeFromName
+     * (某些版本不识别 .js → 返回 null → ES module 拒绝执行).
+     */
+    private fun guessMimeType(path: String): String {
+        val ext = path.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "html", "htm" -> "text/html"
+            "js", "mjs" -> "text/javascript"
+            "css" -> "text/css"
+            "json" -> "application/json"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "webp" -> "image/webp"
+            "svg" -> "image/svg+xml"
+            "gif" -> "image/gif"
+            "woff2" -> "font/woff2"
+            "woff" -> "font/woff"
+            "ttf" -> "font/ttf"
+            "ico" -> "image/x-icon"
+            "manifest" -> "application/manifest+json"
+            "wasm" -> "application/wasm"
+            else -> "application/octet-stream"
+        }
+    }
+
     companion object {
         const val JS_BRIDGE_NAME = "ChillyNative"
         private const val TAG = "ChillyMainActivity"
 
-        // WebViewAssetLoader 把 assets/ 映射到这个 https origin.
-        // 路径前缀 /pwa/ 对应 assets 根目录, AssetsPathHandler 会去掉前缀读 assets/.
-        // 所以 https://appassets.androidplatform.net/pwa/index.html → assets/index.html
-        //     https://appassets.androidplatform.net/pwa/assets/xxx.js → assets/assets/xxx.js
+        // 用 appassets origin 让页面跑在 https 上, 避免 file:// 的 ES module CORS 问题.
+        // shouldInterceptRequest 手动拦截这个 origin 的请求, 从 assets 读取文件.
+        // 路径前缀 /pwa/ 对应 assets 根目录:
+        //   https://appassets.androidplatform.net/pwa/index.html → assets/index.html
+        //   https://appassets.androidplatform.net/pwa/assets/xxx.js → assets/assets/xxx.js
         private const val ASSET_PATH_PREFIX = "/pwa/"
         private const val PWA_BASE_URL = "https://appassets.androidplatform.net" + ASSET_PATH_PREFIX
     }

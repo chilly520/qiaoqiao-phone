@@ -77,7 +77,21 @@ app.config.warnHandler = (msg, vm, trace) => {
 //     platform: navigator.platform
 // })
 
-app.mount('#app')
+// try-catch 包裹 mount: 如果 Vue 挂载时报错 (比如路由初始化失败),
+// 显示错误信息而不是一直转圈.
+try {
+    app.mount('#app')
+} catch (e) {
+    console.error('Vue mount failed:', e)
+    var splash = document.getElementById('native-splash')
+    if (splash) {
+        splash.innerHTML = '<div style="text-align:center;padding:20px;font-family:-apple-system,sans-serif;color:#475569">' +
+            '<div style="font-size:48px;margin-bottom:16px">❄️</div>' +
+            '<div style="font-size:16px;font-weight:600;color:#ef4444;margin-bottom:8px">启动失败</div>' +
+            '<div style="font-size:11px;opacity:0.7;word-break:break-all;padding:0 16px">' +
+            (e && e.message ? e.message : String(e)) + '</div></div>'
+    }
+}
 
 // Initialize Notification Service (v1.10.120: 仅注册SW用于PWA离线缓存,不再启动时请求通知权限)
 const initNotificationService = async () => {

@@ -17,6 +17,28 @@ export default defineConfig(({ command }) => ({
       transformIndexHtml(html) {
         return html.replace(/\s+crossorigin(="[^"]*")?/g, '')
       }
+    },
+    // 注入诊断脚本: build 后在 </body> 前加 classic script,
+    // 5 秒后检测 Vue 是否挂载, 没挂载就显示错误信息.
+    // 之前写在 index.html 里被 Vite build 吃掉了, 改用插件确保保留.
+    {
+      name: 'inject-diagnostics',
+      transformIndexHtml(html) {
+        const diag = `<script>(function(){
+          window.setTimeout(function(){
+            var app=document.getElementById('app');
+            if(!app||app.children.length===0){
+              var s=document.getElementById('native-splash');
+              if(s){s.innerHTML='<div style="text-align:center;padding:20px;font-family:-apple-system,sans-serif;color:#475569">'+
+              '<div style="font-size:48px;margin-bottom:16px">❄️</div>'+
+              '<div style="font-size:16px;font-weight:600;color:#ef4444;margin-bottom:8px">加载失败</div>'+
+              '<div style="font-size:11px;opacity:0.7;word-break:break-all;padding:0 16px">JS 可能加载失败，请截图发给开发者</div>'+
+              '</div>';console.error('DIAG: Vue not mounted after 5s');}
+            }
+          },5000);
+        })();</script>`
+        return html.replace('</body>', diag + '\n</body>')
+      }
     }
   ],
   server: {
