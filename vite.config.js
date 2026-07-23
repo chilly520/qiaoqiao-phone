@@ -12,30 +12,17 @@ export default defineConfig(({ command }) => ({
     // Android WebView 用 file:// 加载时:
     // 1. <script type="module"> 走 CORS, file:// origin 是 null → 拒绝执行
     // 2. <script crossorigin> / <link crossorigin> 触发 CORS → 拒绝执行
-    // 这个插件在 build 后:
+    // 这个插件在 build 后 (IIFE 格式下):
     // - 删掉 type="module" (改成 classic script, 不走 CORS)
     // - 删掉 crossorigin 属性
     // - 把 native-diag.js 移到主 JS 之前 (确保能捕获主 JS 的加载错误)
+    // 仅在 build 阶段生效: dev 模式下 Vite 用原生 ESM, 必须保留 type="module"
+    // 当前 build 是 ES 格式 (云端 Web 部署), 此插件不做任何修改
     {
       name: 'fix-script-tags',
+      apply: 'build',
       transformIndexHtml(html) {
-        // 删 type="module": IIFE 格式的 JS 不需要 module 模式
-        html = html.replace(/\s+type="module"/g, '')
-        // 删 crossorigin 属性
-        html = html.replace(/\s+crossorigin(="[^"]*")?/g, '')
-        // 把 native-diag.js 移到主 JS 之前
-        if (html.includes('native-diag.js') && html.includes('assets/index-')) {
-          var diagMatch = html.match(/<script src="\.\/native-diag\.js"><\/script>/)
-          if (diagMatch) {
-            var diagTag = diagMatch[0]
-            html = html.replace(diagTag, '')
-            // 插入到主 JS script 之前
-            html = html.replace(
-              /(<script src="\.\/assets\/index-[^"]+\.js"><\/script>)/,
-              diagTag + '\n  $1'
-            )
-          }
-        }
+        // 临时禁用: 切到 ES 格式后, 保留 type="module" 以让浏览器正确加载
         return html
       }
     }
@@ -98,17 +85,50 @@ export default defineConfig(({ command }) => ({
   build: {
     target: 'esnext',
     // base 在 config 顶层设置 (见文件头部).
-    minify: false, // 禁用混淆，防止变量提升顺序在混淆时被破坏（解决 Cannot access before initialization 报错）
+    minify: false, // 临时关闭 minify, 排查 stack overflow
+    sourcemap: false, // 关闭 sourcemap, 减小产物体积和内存压力
     chunkSizeWarningLimit: 5000,
     // 关键: 用 IIFE 格式而不是 ES module.
     // ES module (<script type="module">) 在 file:// 下走 CORS, origin 是 null,
     // 浏览器拒绝执行 → PWA 加载失败.
     // IIFE (<script src="...">) 不走 CORS, file:// 直接能加载.
     // inlineDynamicImports: 把所有动态 import() 内联到主 bundle, IIFE 不支持代码分割.
+    // 临时关闭 IIFE: Node 25 + Windows + inlineDynamicImports=true 触发 STATUS_STACK_BUFFER_OVERRUN
+    // TODO: 等 native APP 那边也用 ES module (WebViewAssetLoader origin) 后, 这里改回 iife
+    // 强制分块: 把大文件 (chatStore, jsonUtils, aiService) 拆成独立 chunk, 避免单个 chunk 过大
     rollupOptions: {
       output: {
-        format: 'iife',
-        inlineDynamicImports: true
+        format: 'es',
+        inlineDynamicImports: false,
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+              return 'vue-vendor'
+            }
+            if (id.includes('tone') || id.includes('marked') || id.includes('localforage')) {
+              return 'utils-vendor'
+            }
+            if (id.includes('@fortawesome')) {
+              return 'fontawesome-vendor'
+            }
+            return 'vendor'
+          }
+          if (id.includes('src/stores/chatStore') || id.includes('src/utils/aiService') || id.includes('src/utils/jsonUtils')) {
+            return 'chat-core'
+          }
+          if (id.includes('src/views/WeChat')) {
+            return 'wechat'
+          }
+          if (id.includes('src/views')) {
+            return 'views'
+          }
+          if (id.includes('src/stores')) {
+            return 'stores'
+          }
+          if (id.includes('src/utils')) {
+            return 'utils'
+          }
+        }
       }
     }
   }

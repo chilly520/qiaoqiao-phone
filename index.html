@@ -38,8 +38,11 @@
     body.native-ready #native-splash { opacity: 0; pointer-events: none; }
   </style>
   <div id="app"></div>
-  <!-- 诊断脚本必须在主 JS 之前, 才能捕获主 JS 的加载错误 -->
-  <script src="./native-diag.js"></script>
+  <!-- 诊断脚本必须在主 JS 之前, 才能捕获主 JS 的加载错误.
+       type="module" 让 Vite 能处理 (脚本本身是 IIFE, 无 import/export, 安全).
+       绝对路径 /native-diag.js: Vite 把它解析为 public/native-diag.js (原样拷贝到 dist 根).
+       build 阶段 fix-script-tags 插件会去掉 type="module" 以适配 file:// WebView. -->
+  <script type="module" src="/native-diag.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 
