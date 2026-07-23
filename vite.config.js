@@ -8,7 +8,16 @@ export default defineConfig(({ command }) => ({
   // 也能在 Android WebView 加载 file:///android_asset/index.html 时跑.
   base: './',
   plugins: [
-    vue()
+    vue(),
+    // Android WebView 用 file:// 加载时, <script crossorigin> / <link crossorigin>
+    // 会触发 CORS 检查, file:// 没有 HTTP 响应头 → 浏览器拒绝执行 → PWA 加载失败.
+    // 这个插件在 build 后把 index.html 里的 crossorigin 属性全删掉.
+    {
+      name: 'remove-crossorigin',
+      transformIndexHtml(html) {
+        return html.replace(/\s+crossorigin(="[^"]*")?/g, '')
+      }
+    }
   ],
   server: {
     host: true,

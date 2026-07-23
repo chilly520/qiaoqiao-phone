@@ -23,9 +23,10 @@
 
 <body>
   <!-- 原生 APP 内置 splash: WebView 启动到 Vue 挂载之间显示,
-       避免白屏. Vue 挂载后由 App.vue 通过 #native-splash 移除. -->
+       避免白屏. Vue 挂载后由 App.vue 通过 #native-splash 移除.
+       用 cat-logo.png (冰雪猫猫) 而不是 emoji. -->
   <div id="native-splash" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#dbeafe 0%,#e0f2fe 50%,#fce7f3 100%);font-family:-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif;color:#475569;transition:opacity .3s ease;">
-    <div style="font-size:64px;margin-bottom:16px;animation:native-splash-pulse 1.6s ease-in-out infinite;">🐱</div>
+    <img src="./cat-logo.png" style="width:120px;height:120px;border-radius:28px;box-shadow:0 8px 32px rgba(0,0,0,0.15);margin-bottom:20px;animation:native-splash-pulse 1.6s ease-in-out infinite;" alt="Chilly" />
     <div style="font-size:18px;font-weight:600;letter-spacing:.05em;">Chilly Phone</div>
     <div style="font-size:12px;margin-top:8px;opacity:.6;">加载中…</div>
   </div>
