@@ -37,6 +37,13 @@ const unlockKeepAlive = () => {
 }
 
 onMounted(() => {
+    // 移除 native splash (index.html 内置, 等到 Vue 真的渲染了再隐藏)
+    document.body.classList.add('native-ready')
+    setTimeout(() => {
+        const s = document.getElementById('native-splash')
+        if (s) s.remove()
+    }, 400)
+
     updateTime()
     timer = setInterval(updateTime, 1000)
 
@@ -655,8 +662,16 @@ const handleGlobalPromptCancel = () => {
 </template>
 
 <style>
-/* Google Fonts for Love Space */
-@import url('https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&family=Long+Cang&family=Ma+Shan+Zheng&display=swap');
+/* 书法字体在 native APP 里走系统字体 fallback (PingFang/楷体/楷体-简)
+       原 @import url('https://fonts.googleapis.com/...') 在国产 ROM WebView
+       加载 file:// 时会卡 fetch fonts.googleapis.com, 永远 timeout, 白屏. */
+    .font-handwriting {
+        font-family: "STKaiti", "Kaiti SC", "KaiTi", "楷体", "BiauKai", "DFKai-SB", "Noto Serif CJK SC", "Songti SC", "SimSun", serif;
+        letter-spacing: 0.02em;
+    }
+    .font-cursive {
+        font-family: "STKaiti", "Kaiti SC", "KaiTi", "楷体", cursive;
+    }
 
 @keyframes slideDown {
     from {

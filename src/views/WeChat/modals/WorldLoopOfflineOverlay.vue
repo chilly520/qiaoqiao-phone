@@ -140,10 +140,9 @@ const cleanDialogue = computed(() => {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Serif+SC:wght@300;700&display=swap');
-
+/* Google Fonts 删了: native APP (file:// WebView) 上 fetch googleapis.com 会永远 hang. */
 .font-songti {
-    font-family: 'Noto Serif SC', serif;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Songti SC", "SimSun", serif;
 }
 
 .font-inter {

@@ -9,7 +9,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.webkit.WebView
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.ConsoleMessage
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -57,6 +61,8 @@ class MainActivity : AppCompatActivity() {
         // 处理从通知点进来的数据
         handleNotificationIntent(intent)
 
+        // 启动 5s 超时看门狗, onPageFinished 触发后取消.
+        loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
         // 加载本地 PWA (file:///android_asset/index.html).
         // 原因: 国内访问 Cloudflare Pages 慢, 远程加载会一直转圈.
         // 本地资源秒开, 只有调 LLM API (https) 时才走网络.
@@ -94,9 +100,50 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                Log.d(TAG, "WebView onPageStarted: $url")
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                Log.d(TAG, "WebView onPageFinished: $url")
+                // 加载完成, 取消超时看门狗
+                loadTimeoutHandler.removeCallbacks(loadTimeoutRunnable)
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: android.webkit.WebResourceError?
+            ) {
+                val url = request?.url?.toString() ?: "?"
+                val code = error?.errorCode
+                val desc = error?.description
+                Log.e(TAG, "WebView onReceivedError: url=$url code=$code desc=$desc")
+                // file:// 资源加载失败 → 弹 Toast 提示用户
+                if (url.startsWith("file:///android_asset/") && code != null) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "PWA 资源加载失败: ${code} $desc",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                val url = request?.url?.toString() ?: "?"
+                val code = errorResponse?.statusCode
+                Log.w(TAG, "WebView onReceivedHttpError: url=$url code=$code")
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
-                request: android.webkit.WebResourceRequest?
+                request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
                 // file:// 内部 + 任何 https 都交给 WebView 加载
@@ -109,6 +156,20 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     true
                 }
+            }
+        }
+
+        // JS console 全部转发到 logcat, 标签 ChillyWebView
+        // 用 `adb logcat -s ChillyWebView` 就能看到 PWA 内部 console.log
+        webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
+                if (msg != null) {
+                    Log.d(
+                        "ChillyWebView",
+                        "[${msg.messageLevel()}] ${msg.message()} (${msg.sourceId()}:${msg.lineNumber()})"
+                    )
+                }
+                return true
             }
         }
 
@@ -241,5 +302,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val JS_BRIDGE_NAME = "ChillyNative"
+        private const val TAG = "ChillyMainActivity"
     }
 }

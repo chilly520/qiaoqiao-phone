@@ -476,7 +476,7 @@ function handleBgUpload(e) {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+/* Google Fonts 删了: native APP (file:// WebView) 上 fetch googleapis.com 会永远 hang. */
 
 .animate-slide-in-right {
     animation: slide-in-right 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;

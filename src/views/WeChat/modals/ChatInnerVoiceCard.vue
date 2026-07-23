@@ -1030,8 +1030,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
 </style>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Noto+Serif+SC:wght@300;500;700&display=swap');
-
+/* Google Fonts 删了: 在 native APP (file:// WebView) 上 fetch googleapis.com 会永远 hang. */
 #inner-voice-modal {
     position: fixed;
     inset: 0;
@@ -1041,7 +1040,7 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Noto Serif SC', serif;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, serif;
 }
 
 .animate-fade-in {

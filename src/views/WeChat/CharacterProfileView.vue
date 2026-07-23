@@ -535,10 +535,10 @@ const handleAvatarUpload = async (event) => {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Outfit:wght@300;400;600&family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500&display=swap');
-
+/* Google Fonts 删了: 在 native APP (file:// WebView) 上 fetch googleapis.com 会永远 hang.
+   改用系统字体 + 中文字体 fallback, 效果在国产 ROM 上反而更本地化. */
 .serif-container {
-  font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
 }
 
 .serif-title {
