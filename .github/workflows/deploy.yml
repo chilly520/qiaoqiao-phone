@@ -53,4 +53,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # 重要: wrangler-action@v3 不读 `defaults.run.working-directory`,
+          # 必须在 with 里显式传 workingDirectory, 否则在仓库根目录跑
+          # `wrangler deploy` 找不到 wrangler.toml → 报 Missing entry-point.
+          workingDirectory: worker
           command: deploy
