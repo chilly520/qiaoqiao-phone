@@ -62,14 +62,12 @@ jobs:
         continue-on-error: true
 
       # Android SDK (API 34 + build-tools 34)
+      # 注意: 和 TWA workflow (build-apk.yml) 保持完全一致 — v3 不指定 cmdline-tools-version
+      #      之前用 v4 + cmdline-tools-version 在 7s 内失败, 是 v4 不接受 11076708 这个版本号
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: '11076708'
-          packages: |
-            platforms;android-34
-            build-tools;34.0.0
-            platform-tools
+          packages: 'platforms;android-34 build-tools;34.0.0 platform-tools'
 
       # 取固定的签名密钥 (第一次需要手动设置 Secrets, 见 README)
       - name: Decode keystore
