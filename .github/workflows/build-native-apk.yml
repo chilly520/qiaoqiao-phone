@@ -31,10 +31,45 @@ jobs:
           VERSION=$(node -p "require('../src/version.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Install Gradle 8.5
+        run: |
+          # 不用 gradle/actions/setup-gradle (它的内置 cache 偶尔会挂掉阻塞 build)
+          # 显式从 services.gradle.org 下载并解压
+          GRADLE_VERSION="8.5"
+          GRADLE_DIST="gradle-${GRADLE_VERSION}-bin.zip"
+          GRADLE_HOME="/opt/gradle-${GRADLE_VERSION}"
+          if [ ! -d "$GRADLE_HOME" ]; then
+            echo "Downloading Gradle $GRADLE_VERSION ..."
+            curl -sSL -o "/tmp/${GRADLE_DIST}" \
+              "https://services.gradle.org/distributions/${GRADLE_DIST}"
+            ls -la "/tmp/${GRADLE_DIST}"
+            sudo mkdir -p "$GRADLE_HOME"
+            sudo unzip -q "/tmp/${GRADLE_DIST}" -d /opt
+            sudo ln -sf "/opt/gradle-${GRADLE_VERSION}/bin/gradle" /usr/local/bin/gradle
+            gradle --version
+          fi
+
+      # Gradle 依赖缓存 (用 actions/cache, 失败不影响 build)
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
         with:
-          gradle-version: '8.5'
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android-native/**/build.gradle.kts', 'android-native/**/settings.gradle.kts', 'android-native/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+        continue-on-error: true
+
+      # Android SDK (API 34 + build-tools 34)
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '11076708'
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            platform-tools
 
       # 取固定的签名密钥 (第一次需要手动设置 Secrets, 见 README)
       - name: Decode keystore
@@ -69,7 +104,8 @@ jobs:
               -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
           fi
           ls -la android.keystore
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          # 用 system gradle (避免 wrapper 下载 services.gradle.org)
+          gradle assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
         run: |
