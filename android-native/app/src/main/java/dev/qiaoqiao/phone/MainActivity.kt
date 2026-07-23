@@ -110,6 +110,13 @@ class MainActivity : AppCompatActivity() {
             // file:// 页面允许访问本地 file 资源 (assets 内)
             allowFileAccess = true
             allowContentAccess = true
+            // 关键: 允许 file:// 页面通过相对路径加载同目录下的 JS/CSS.
+            // 某些 Android WebView 版本默认禁用 file:// 子资源加载,
+            // 即使 allowFileAccess=true 也不行, 需要这两个设置.
+            @Suppress("DEPRECATION")
+            allowFileAccessFromFileURLs = true
+            @Suppress("DEPRECATION")
+            allowUniversalAccessFromFileURLs = true
         }
 
         webView.webViewClient = object : android.webkit.WebViewClient() {
@@ -117,10 +124,34 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                // file:// 请求交给 WebView 默认处理 (从 assets 读取).
-                // PWA build 成 IIFE 格式, <script> 不走 CORS, file:// 直接能加载.
-                // 只拦截 https 请求中的外部资源 (如果有需要的话).
-                return null
+                // 手动拦截 file:///android_asset/ 请求, 从 assets 读取文件.
+                // 确保返回正确的 MIME type (Android 默认的 .js MIME 可能不对).
+                val url = request?.url ?: return null
+                val scheme = url.scheme ?: return null
+                if (scheme != "file") return null
+
+                var path = url.path ?: return null
+                // file:///android_asset/xxx → xxx
+                val assetPrefix = "/android_asset/"
+                if (!path.startsWith(assetPrefix)) return null
+                path = path.removePrefix(assetPrefix)
+
+                // 去掉 query string
+                path = path.substringBefore('?')
+                if (path.isEmpty()) return null
+
+                val mimeType = guessMimeType(path)
+                val encoding = if (mimeType.startsWith("text/") || mimeType.contains("json") || mimeType.contains("javascript")) "UTF-8" else null
+
+                return try {
+                    val input = assets.open(path)
+                    Log.d(TAG, "serve asset: $path → $mimeType")
+                    WebResourceResponse(mimeType, encoding, input)
+                } catch (e: Exception) {
+                    Log.w(TAG, "asset not found: $path (${e.message})")
+                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
+                        emptyMap(), java.io.ByteArrayInputStream("Not found: $path".toByteArray()))
+                }
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -347,6 +378,32 @@ class MainActivity : AppCompatActivity() {
             if (rv < lv) return false
         }
         return false
+    }
+
+    /**
+     * 手动 MIME type 映射, 确保 .js 返回 text/javascript.
+     * Android 某些版本 URLConnection.guessContentTypeFromName 不识别 .js.
+     */
+    private fun guessMimeType(path: String): String {
+        val ext = path.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "html", "htm" -> "text/html"
+            "js", "mjs" -> "text/javascript"
+            "css" -> "text/css"
+            "json" -> "application/json"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "webp" -> "image/webp"
+            "svg" -> "image/svg+xml"
+            "gif" -> "image/gif"
+            "woff2" -> "font/woff2"
+            "woff" -> "font/woff"
+            "ttf" -> "font/ttf"
+            "ico" -> "image/x-icon"
+            "manifest" -> "application/manifest+json"
+            "wasm" -> "application/wasm"
+            else -> "application/octet-stream"
+        }
     }
 
     companion object {
