@@ -23,6 +23,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      # Build PWA 需要 node + npm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
       - name: Read version
         id: version
         working-directory: android-native
@@ -30,6 +36,19 @@ jobs:
           # 从 src/version.json 读 (跟 TWA 共享)
           VERSION=$(node -p "require('../src/version.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build PWA
+        run: |
+          # 先 build PWA 把 dist/ 准备好, 然后把 dist 复制到 android assets/
+          # 这样 WebView 加载 file:///android_asset/index.html, 不走网络, 国内秒开.
+          npm ci
+          npm run build
+          rm -rf android-native/app/src/main/assets
+          mkdir -p android-native/app/src/main/assets
+          cp -r dist/. android-native/app/src/main/assets/
+          du -sh android-native/app/src/main/assets
+          echo "--- assets contents (top 10) ---"
+          ls android-native/app/src/main/assets/ | head -10
 
       - name: Install Gradle 8.5
         run: |
