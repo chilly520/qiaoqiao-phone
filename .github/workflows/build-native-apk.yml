@@ -39,9 +39,12 @@ jobs:
 
       - name: Build PWA
         run: |
+          # 跟 ci-build.yml 一致: 删锁文件 + npm install + 重建 esbuild (避免平台不匹配导致 native 构建挂)
+          rm -f package-lock.json || true
+          npm install --no-audit --no-fund
+          npm rebuild esbuild || true
           # 先 build PWA 把 dist/ 准备好, 然后把 dist 复制到 android assets/
           # 这样 WebView 加载 file:///android_asset/index.html, 不走网络, 国内秒开.
-          npm ci
           npm run build
           rm -rf android-native/app/src/main/assets
           mkdir -p android-native/app/src/main/assets
