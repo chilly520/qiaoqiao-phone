@@ -36,6 +36,21 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
 
+    /**
+     * 超时看门狗: WebView 加载 file:///android_asset/index.html 5 秒还没出第一帧就提示用户.
+     * 之前 vivo 上一直转圈就是因为 CSS @import googleapis.com, fetch 永远 pending.
+     */
+    private val loadTimeoutHandler = Handler(Looper.getMainLooper())
+    private val loadTimeoutRunnable = Runnable {
+        // onPageFinished 没触发 → 还在加载或卡死
+        Toast.makeText(
+            this,
+            "PWA 加载中, 请稍候…\n(首次启动需要几秒钟)",
+            Toast.LENGTH_LONG
+        ).show()
+        Log.w(TAG, "WebView load timeout (5s) — still loading or stuck")
+    }
+
     private val notifPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
