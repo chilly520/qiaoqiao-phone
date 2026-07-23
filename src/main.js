@@ -82,6 +82,13 @@ app.mount('#app')
 // Initialize Notification Service (v1.10.120: 仅注册SW用于PWA离线缓存,不再启动时请求通知权限)
 const initNotificationService = async () => {
     try {
+        // 在 native APP 里 (WebViewAssetLoader origin) 跳过 SW 注册.
+        // appassets.androidplatform.net 不是真实域名, /sw.js 请求 DNS 失败会 hang,
+        // 可能阻塞浏览器网络队列. native APP 不需要 SW 离线缓存 (资源已在 APK 内).
+        if (window.ChillyNative) {
+            console.log('Native app detected, skipping Service Worker registration')
+            return
+        }
         // Register Service Worker for PWA offline cache
         if (notificationService.isServiceWorkerSupported()) {
             await notificationService.registerServiceWorker()

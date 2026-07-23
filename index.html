@@ -39,6 +39,23 @@
   </style>
   <div id="app"></div>
   <script type="module" src="/src/main.js"></script>
+  <!-- 诊断: 5 秒后如果 Vue 没挂载, 显示错误信息而不是一直转圈 -->
+  <script>
+    window.setTimeout(function() {
+      var app = document.getElementById('app');
+      if (!app || app.children.length === 0) {
+        var splash = document.getElementById('native-splash');
+        if (splash) {
+          splash.innerHTML = '<div style="text-align:center;padding:20px;">' +
+            '<div style="font-size:48px;margin-bottom:16px;">❄️</div>' +
+            '<div style="font-size:16px;font-weight:600;margin-bottom:8px;color:#ef4444;">加载失败</div>' +
+            '<div style="font-size:11px;opacity:0.6;line-height:1.6;">请截图发给开发者<br>UA: ' +
+            navigator.userAgent.substring(0, 120) + '</div>' +
+            '</div>';
+        }
+      }
+    }, 5000);
+  </script>
 </body>
 
 </html>

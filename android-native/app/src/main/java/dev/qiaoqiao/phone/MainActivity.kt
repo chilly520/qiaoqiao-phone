@@ -138,8 +138,40 @@ class MainActivity : AppCompatActivity() {
             ): WebResourceResponse? {
                 // 关键: 把 https://appassets.androidplatform.net/... 的请求
                 // 交给 assetLoader 从本地 assets 读取, 返回 WebResourceResponse.
-                // 这样 ES module 的请求会拿到 200 响应 + 正确的 origin, 不触发 CORS.
-                return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+                val url = request?.url ?: return null
+                val response = assetLoader.shouldInterceptRequest(url) ?: return null
+
+                // 修正 MIME type: 某些 Android 版本 URLConnection.guessContentTypeFromName
+                // 不识别 .js → 返回 null → WebViewAssetLoader 用 application/octet-stream
+                // → ES module 拒绝执行 (要求 text/javascript) → JS 加载失败 → 一直转圈.
+                val path = url.path ?: ""
+                val ext = path.substringAfterLast('.', "").lowercase()
+                when (ext) {
+                    "js", "mjs" -> {
+                        response.mimeType = "text/javascript"
+                        response.setEncoding("UTF-8")
+                    }
+                    "css" -> {
+                        response.mimeType = "text/css"
+                        response.setEncoding("UTF-8")
+                    }
+                    "html", "htm" -> {
+                        response.mimeType = "text/html"
+                        response.setEncoding("UTF-8")
+                    }
+                    "json" -> {
+                        response.mimeType = "application/json"
+                        response.setEncoding("UTF-8")
+                    }
+                    "svg" -> response.mimeType = "image/svg+xml"
+                    "woff2" -> response.mimeType = "font/woff2"
+                    "woff" -> response.mimeType = "font/woff"
+                    "ttf" -> response.mimeType = "font/ttf"
+                    "png" -> response.mimeType = "image/png"
+                    "jpg", "jpeg" -> response.mimeType = "image/jpeg"
+                    "webp" -> response.mimeType = "image/webp"
+                }
+                return response
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
