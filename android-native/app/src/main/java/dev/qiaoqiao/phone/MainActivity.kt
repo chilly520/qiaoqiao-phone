@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.webkit.WebView
 import android.widget.Toast
@@ -15,6 +17,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import dev.qiaoqiao.phone.bridge.WebAppInterface
 import dev.qiaoqiao.phone.prefs.AppPrefs
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * MainActivity
@@ -59,6 +65,11 @@ class MainActivity : AppCompatActivity() {
 
         // 申请权限
         requestPermissionsIfNeeded()
+
+        // 后台检查 GitHub Releases 是否有新版本.
+        // 有新版本时通过 evaluateJavascript 给 PWA 发 CustomEvent,
+        // PWA 在设置页显示红点提醒, 用户点 "检查更新" 跳浏览器下载.
+        checkForUpdates()
     }
 
     private fun setupWebView() {
@@ -160,6 +171,72 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             super.onBackPressed()
         }
+    }
+
+    /**
+     * 后台调 GitHub Releases API 检查有没有新版本.
+     * - 本地: BuildConfig.VERSION_NAME ("1.10.202")
+     * - remote: release.tag_name ("v1.10.202-native") → 去掉 v 前缀和 -native 后缀得到 "1.10.202"
+     * - remote > local → evaluateJavascript 给 PWA 发 CustomEvent
+     * - 网络失败静默忽略 (不影响 APP 启动)
+     */
+    private fun checkForUpdates() {
+        val localVersion = BuildConfig.VERSION_NAME
+        Thread {
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .build()
+                val req = Request.Builder()
+                    .url("https://api.github.com/repos/chilly520/qiaoqiao-phone/releases/latest")
+                    .header("Accept", "application/vnd.github+json")
+                    .build()
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use
+                    val body = resp.body?.string() ?: return@use
+                    val json = JSONObject(body)
+                    val tagName = json.optString("tag_name", "")
+                    val htmlUrl = json.optString("html_url", "")
+                    // tag 形如 "v1.10.202-native" → 纯版本 "1.10.202"
+                    val remoteVer = tagName.removePrefix("v").removeSuffix("-native")
+                    if (remoteVer.isNotEmpty() && isNewerVersion(remoteVer, localVersion)) {
+                        // 通知 PWA (PWA 监听 'chilly-update-available' CustomEvent)
+                        val js = """
+                            (function(){
+                              try {
+                                window.dispatchEvent(new CustomEvent('chilly-update-available', {
+                                  detail: { version: ${jsString(remoteVer)}, url: ${jsString(htmlUrl)} }
+                                }));
+                              } catch(e) {}
+                            })();
+                        """.trimIndent()
+                        runOnUiThread { webView.evaluateJavascript(js, null) }
+                    }
+                }
+            } catch (_: Exception) {
+                // 静默, 检查更新失败不影响 APP
+            }
+        }.start()
+    }
+
+    private fun jsString(s: String): String {
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    }
+
+    /**
+     * 比较 semver "1.10.202" > "1.10.201" 这种.
+     */
+    private fun isNewerVersion(remote: String, local: String): Boolean {
+        val r = remote.split(".").mapNotNull { it.toIntOrNull() }
+        val l = local.split(".").mapNotNull { it.toIntOrNull() }
+        for (i in 0 until maxOf(r.size, l.size)) {
+            val rv = r.getOrElse(i) { 0 }
+            val lv = l.getOrElse(i) { 0 }
+            if (rv > lv) return true
+            if (rv < lv) return false
+        }
+        return false
     }
 
     companion object {

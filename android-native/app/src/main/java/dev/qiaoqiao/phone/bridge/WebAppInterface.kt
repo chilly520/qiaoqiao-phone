@@ -2,11 +2,14 @@ package dev.qiaoqiao.phone.bridge
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import dev.qiaoqiao.phone.BuildConfig
 import dev.qiaoqiao.phone.ProactiveMessageService
 import dev.qiaoqiao.phone.prefs.AppPrefs
 
@@ -117,6 +120,30 @@ class WebAppInterface(private val context: Context) {
               "sdk": ${android.os.Build.VERSION.SDK_INT}
             }
         """.trimIndent()
+    }
+
+    /**
+     * 当前 native APP 版本号 (BuildConfig.VERSION_NAME).
+     * PWA 用来判断 GitHub release 是不是新版本.
+     */
+    @JavascriptInterface
+    fun getNativeAppVersion(): String = BuildConfig.VERSION_NAME
+
+    /**
+     * 打开浏览器到指定 URL (用户点 "更新" 时调).
+     * 跳到 GitHub Releases 页面让用户点下载.
+     */
+    @JavascriptInterface
+    fun openExternalUrl(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            mainHandler.post {
+                Toast.makeText(context, "无法打开链接: $e", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun escape(s: String): String =
