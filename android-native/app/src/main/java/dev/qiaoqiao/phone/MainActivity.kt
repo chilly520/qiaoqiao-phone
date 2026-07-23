@@ -76,10 +76,11 @@ class MainActivity : AppCompatActivity() {
 
         // 启动 5s 超时看门狗, onPageFinished 触发后取消.
         loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
-        // 通过 WebViewAssetLoader 加载本地 PWA.
-        // 资源在 app/src/main/assets/ 下, 映射成 https origin 避免 ES module CORS 问题.
+        // 加载本地 PWA (file:///android_asset/index.html).
+        // PWA build 成 IIFE 格式 (classic <script>, 不是 <script type="module">),
+        // classic script 不走 CORS, file:// 直接能加载.
         // 想用最新 PWA 内容? 重装即可, 下次 build 会把新 dist/ 打进 assets.
-        webView.loadUrl(PWA_BASE_URL + "index.html")
+        webView.loadUrl("file:///android_asset/index.html")
 
         // 申请权限
         requestPermissionsIfNeeded()
@@ -116,39 +117,10 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                // 手动拦截: 从 appassets origin 拦截所有请求, 从 assets 目录读取文件.
-                // 不用 WebViewAssetLoader (某些 Android 版本可能有 bug),
-                // 完全手动控制 MIME type + CORS header + 状态码.
-                val url = request?.url ?: return null
-                val host = url.host ?: return null
-                if (host != "appassets.androidplatform.net") return null
-
-                var path = url.path ?: return null
-                // 去掉 /pwa/ 前缀, 得到 assets 内的相对路径
-                if (path.startsWith(ASSET_PATH_PREFIX)) {
-                    path = path.removePrefix(ASSET_PATH_PREFIX)
-                } else if (path.startsWith("/")) {
-                    path = path.removePrefix("/")
-                }
-                if (path.isEmpty()) path = "index.html"
-
-                // 去掉 query string
-                path = path.substringBefore('?')
-
-                return try {
-                    val input = assets.open(path)
-                    val mimeType = guessMimeType(path)
-                    val encoding = if (mimeType.startsWith("text/") || mimeType.contains("json")) "UTF-8" else null
-                    val headers = mapOf(
-                        "Access-Control-Allow-Origin" to "*"
-                    )
-                    Log.d(TAG, "serve asset: $path → $mimeType")
-                    WebResourceResponse(mimeType, encoding, 200, "OK", headers, input)
-                } catch (e: Exception) {
-                    Log.w(TAG, "asset not found: $path")
-                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
-                        emptyMap(), java.io.ByteArrayInputStream("Not found: $path".toByteArray()))
-                }
+                // file:// 请求交给 WebView 默认处理 (从 assets 读取).
+                // PWA build 成 IIFE 格式, <script> 不走 CORS, file:// 直接能加载.
+                // 只拦截 https 请求中的外部资源 (如果有需要的话).
+                return null
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -199,7 +171,7 @@ class MainActivity : AppCompatActivity() {
                 val desc = error?.description
                 Log.e(TAG, "WebView onReceivedError: url=$url code=$code desc=$desc")
                 // 本地 PWA 资源加载失败 → 弹 Toast 提示用户
-                if (url.startsWith(PWA_BASE_URL) && code != null) {
+                if (url.startsWith("file:///android_asset/") && code != null) {
                     Toast.makeText(
                         this@MainActivity,
                         "PWA 资源加载失败: ${code} $desc",
@@ -223,8 +195,8 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // appassets origin (本地 PWA) + pages.dev 都交给 WebView 加载
-                return if (url.startsWith(PWA_BASE_URL) ||
+                // file:// (本地 PWA) + pages.dev 都交给 WebView 加载
+                return if (url.startsWith("file://") ||
                     url.startsWith("https://qiaqiao-phone.pages.dev/") ||
                     url.startsWith(BuildConfig.PWA_URL)) {
                     false
@@ -377,42 +349,8 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
-    /**
-     * 手动 MIME type 映射, 不依赖 Android 的 URLConnection.guessContentTypeFromName
-     * (某些版本不识别 .js → 返回 null → ES module 拒绝执行).
-     */
-    private fun guessMimeType(path: String): String {
-        val ext = path.substringAfterLast('.', "").lowercase()
-        return when (ext) {
-            "html", "htm" -> "text/html"
-            "js", "mjs" -> "text/javascript"
-            "css" -> "text/css"
-            "json" -> "application/json"
-            "png" -> "image/png"
-            "jpg", "jpeg" -> "image/jpeg"
-            "webp" -> "image/webp"
-            "svg" -> "image/svg+xml"
-            "gif" -> "image/gif"
-            "woff2" -> "font/woff2"
-            "woff" -> "font/woff"
-            "ttf" -> "font/ttf"
-            "ico" -> "image/x-icon"
-            "manifest" -> "application/manifest+json"
-            "wasm" -> "application/wasm"
-            else -> "application/octet-stream"
-        }
-    }
-
     companion object {
         const val JS_BRIDGE_NAME = "ChillyNative"
         private const val TAG = "ChillyMainActivity"
-
-        // 用 appassets origin 让页面跑在 https 上, 避免 file:// 的 ES module CORS 问题.
-        // shouldInterceptRequest 手动拦截这个 origin 的请求, 从 assets 读取文件.
-        // 路径前缀 /pwa/ 对应 assets 根目录:
-        //   https://appassets.androidplatform.net/pwa/index.html → assets/index.html
-        //   https://appassets.androidplatform.net/pwa/assets/xxx.js → assets/assets/xxx.js
-        private const val ASSET_PATH_PREFIX = "/pwa/"
-        private const val PWA_BASE_URL = "https://appassets.androidplatform.net" + ASSET_PATH_PREFIX
     }
 }

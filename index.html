@@ -39,6 +39,9 @@
   </style>
   <div id="app"></div>
   <script type="module" src="/src/main.js"></script>
+  <!-- 诊断脚本: public/ 下的独立文件, Vite 不编译, 直接复制到 dist/.
+       5 秒后检测 Vue 是否挂载, 没挂载显示错误信息. -->
+  <script src="./native-diag.js"></script>
 </body>
 
 </html>

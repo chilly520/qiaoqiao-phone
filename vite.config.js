@@ -9,35 +9,20 @@ export default defineConfig(({ command }) => ({
   base: './',
   plugins: [
     vue(),
-    // Android WebView 用 file:// 加载时, <script crossorigin> / <link crossorigin>
-    // 会触发 CORS 检查, file:// 没有 HTTP 响应头 → 浏览器拒绝执行 → PWA 加载失败.
-    // 这个插件在 build 后把 index.html 里的 crossorigin 属性全删掉.
+    // Android WebView 用 file:// 加载时:
+    // 1. <script type="module"> 走 CORS, file:// origin 是 null → 拒绝执行
+    // 2. <script crossorigin> / <link crossorigin> 触发 CORS → 拒绝执行
+    // 这个插件在 build 后:
+    // - 删掉 type="module" (改成 classic script, 不走 CORS)
+    // - 删掉 crossorigin 属性
     {
-      name: 'remove-crossorigin',
+      name: 'fix-script-tags',
       transformIndexHtml(html) {
-        return html.replace(/\s+crossorigin(="[^"]*")?/g, '')
-      }
-    },
-    // 注入诊断脚本: build 后在 </body> 前加 classic script,
-    // 5 秒后检测 Vue 是否挂载, 没挂载就显示错误信息.
-    // 之前写在 index.html 里被 Vite build 吃掉了, 改用插件确保保留.
-    {
-      name: 'inject-diagnostics',
-      transformIndexHtml(html) {
-        const diag = `<script>(function(){
-          window.setTimeout(function(){
-            var app=document.getElementById('app');
-            if(!app||app.children.length===0){
-              var s=document.getElementById('native-splash');
-              if(s){s.innerHTML='<div style="text-align:center;padding:20px;font-family:-apple-system,sans-serif;color:#475569">'+
-              '<div style="font-size:48px;margin-bottom:16px">❄️</div>'+
-              '<div style="font-size:16px;font-weight:600;color:#ef4444;margin-bottom:8px">加载失败</div>'+
-              '<div style="font-size:11px;opacity:0.7;word-break:break-all;padding:0 16px">JS 可能加载失败，请截图发给开发者</div>'+
-              '</div>';console.error('DIAG: Vue not mounted after 5s');}
-            }
-          },5000);
-        })();</script>`
-        return html.replace('</body>', diag + '\n</body>')
+        // 删 type="module": IIFE 格式的 JS 不需要 module 模式
+        html = html.replace(/\s+type="module"/g, '')
+        // 删 crossorigin 属性
+        html = html.replace(/\s+crossorigin(="[^"]*")?/g, '')
+        return html
       }
     }
   ],
@@ -100,6 +85,17 @@ export default defineConfig(({ command }) => ({
     target: 'esnext',
     // base 在 config 顶层设置 (见文件头部).
     minify: false, // 禁用混淆，防止变量提升顺序在混淆时被破坏（解决 Cannot access before initialization 报错）
-    chunkSizeWarningLimit: 2000
+    chunkSizeWarningLimit: 5000,
+    // 关键: 用 IIFE 格式而不是 ES module.
+    // ES module (<script type="module">) 在 file:// 下走 CORS, origin 是 null,
+    // 浏览器拒绝执行 → PWA 加载失败.
+    // IIFE (<script src="...">) 不走 CORS, file:// 直接能加载.
+    // inlineDynamicImports: 把所有动态 import() 内联到主 bundle, IIFE 不支持代码分割.
+    rollupOptions: {
+      output: {
+        format: 'iife',
+        inlineDynamicImports: true
+      }
+    }
   }
 }))
