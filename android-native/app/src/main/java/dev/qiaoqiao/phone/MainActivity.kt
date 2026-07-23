@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.webkit.WebViewAssetLoader
 import dev.qiaoqiao.phone.bridge.WebAppInterface
 import dev.qiaoqiao.phone.prefs.AppPrefs
 import okhttp3.OkHttpClient
@@ -37,12 +38,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
 
     /**
-     * 超时看门狗: WebView 加载 file:///android_asset/index.html 5 秒还没出第一帧就提示用户.
-     * 之前 vivo 上一直转圈就是因为 CSS @import googleapis.com, fetch 永远 pending.
+     * WebViewAssetLoader: 把 app/src/main/assets/ 里的 PWA 资源映射成
+     * https://appassets.androidplatform.net/ origin.
+     *
+     * 为什么不用 file:///android_asset/index.html:
+     *   Vite build 产物是 ES module (<script type="module">),
+     *   ES module 默认走 CORS mode. file:// 的 origin 是 null,
+     *   浏览器认为 null !== null → CORS 检查失败 → JS/CSS 全部加载失败.
+     *   即使删 crossorigin 属性也没用, module 脚本自带 CORS.
+     *
+     * WebViewAssetLoader 让页面跑在真正的 https origin 上,
+     * 同源请求不会被 CORS 拦截, ES module 正常加载.
+     */
+    private val assetLoader by lazy {
+        WebViewAssetLoader.Builder()
+            .addPathHandler(ASSET_PATH_PREFIX, WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+    }
+
+    /**
+     * 超时看门狗: WebView 加载 5 秒还没出第一帧就提示用户.
      */
     private val loadTimeoutHandler = Handler(Looper.getMainLooper())
     private val loadTimeoutRunnable = Runnable {
-        // onPageFinished 没触发 → 还在加载或卡死
         Toast.makeText(
             this,
             "PWA 加载中, 请稍候…\n(首次启动需要几秒钟)",
@@ -78,11 +96,10 @@ class MainActivity : AppCompatActivity() {
 
         // 启动 5s 超时看门狗, onPageFinished 触发后取消.
         loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
-        // 加载本地 PWA (file:///android_asset/index.html).
-        // 原因: 国内访问 Cloudflare Pages 慢, 远程加载会一直转圈.
-        // 本地资源秒开, 只有调 LLM API (https) 时才走网络.
+        // 通过 WebViewAssetLoader 加载本地 PWA.
+        // 资源在 app/src/main/assets/ 下, 映射成 https origin 避免 ES module CORS 问题.
         // 想用最新 PWA 内容? 重装即可, 下次 build 会把新 dist/ 打进 assets.
-        webView.loadUrl("file:///android_asset/index.html")
+        webView.loadUrl(PWA_BASE_URL + "index.html")
 
         // 申请权限
         requestPermissionsIfNeeded()
@@ -115,6 +132,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : android.webkit.WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                // 关键: 把 https://appassets.androidplatform.net/... 的请求
+                // 交给 assetLoader 从本地 assets 读取, 返回 WebResourceResponse.
+                // 这样 ES module 的请求会拿到 200 响应 + 正确的 origin, 不触发 CORS.
+                return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 Log.d(TAG, "WebView onPageStarted: $url")
@@ -136,8 +163,8 @@ class MainActivity : AppCompatActivity() {
                 val code = error?.errorCode
                 val desc = error?.description
                 Log.e(TAG, "WebView onReceivedError: url=$url code=$code desc=$desc")
-                // file:// 资源加载失败 → 弹 Toast 提示用户
-                if (url.startsWith("file:///android_asset/") && code != null) {
+                // 本地 PWA 资源加载失败 → 弹 Toast 提示用户
+                if (url.startsWith(PWA_BASE_URL) && code != null) {
                     Toast.makeText(
                         this@MainActivity,
                         "PWA 资源加载失败: ${code} $desc",
@@ -161,8 +188,8 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // file:// 内部 + 任何 https 都交给 WebView 加载
-                return if (url.startsWith("file://") ||
+                // appassets origin (本地 PWA) + pages.dev 都交给 WebView 加载
+                return if (url.startsWith(PWA_BASE_URL) ||
                     url.startsWith("https://qiaqiao-phone.pages.dev/") ||
                     url.startsWith(BuildConfig.PWA_URL)) {
                     false
@@ -318,5 +345,12 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val JS_BRIDGE_NAME = "ChillyNative"
         private const val TAG = "ChillyMainActivity"
+
+        // WebViewAssetLoader 把 assets/ 映射到这个 https origin.
+        // 路径前缀 /pwa/ 对应 assets 根目录, AssetsPathHandler 会去掉前缀读 assets/.
+        // 所以 https://appassets.androidplatform.net/pwa/index.html → assets/index.html
+        //     https://appassets.androidplatform.net/pwa/assets/xxx.js → assets/assets/xxx.js
+        private const val ASSET_PATH_PREFIX = "/pwa/"
+        private const val PWA_BASE_URL = "https://appassets.androidplatform.net" + ASSET_PATH_PREFIX
     }
 }
