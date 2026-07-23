@@ -1873,9 +1873,9 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     font-size: 15px;
     color: #dcdcdc;
     line-height: 1.9;
-    font-weight: 300;
+    font-weight: 400;
     white-space: pre-line;
-    font-family: 'Noto Serif SC', serif;
+    font-family: "SimSun", "Songti SC", "STSong", "Noto Serif SC", serif;
 }
 
 .voice-row {
@@ -1904,7 +1904,8 @@ onUnmounted(() => { if (animationFrameId) cancelAnimationFrame(animationFrameId)
     color: #a0a0a0;
     line-height: 1.6;
     text-align: justify;
-    font-weight: 300;
+    font-weight: 400;
+    font-family: "SimSun", "Songti SC", "STSong", "Noto Serif SC", serif;
 }
 
 .voice-modal-footer {
