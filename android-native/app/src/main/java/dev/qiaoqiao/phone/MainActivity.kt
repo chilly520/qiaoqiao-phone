@@ -76,30 +76,13 @@ class MainActivity : AppCompatActivity() {
 
         // 启动 5s 超时看门狗, onPageFinished 触发后取消.
         loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
-        // 用 loadDataWithBaseURL 加载本地 PWA.
-        // HTML 从 assets 读入内存, base URL 设为 file:///android_asset/.
-        // 这样 ./assets/xxx.js 解析为 file:///android_asset/assets/xxx.js,
-        // WebView 用内置 asset 加载器处理, shouldInterceptRequest 拦截修正 MIME type.
-        // 关键: 不用 https:// 作为 base URL, 因为 shouldInterceptRequest 在某些
-        // Android 版本上不拦截 loadDataWithBaseURL 的子资源请求,
-        // WebView 回退到网络加载 → 404 (APK 内 JS 文件名和线上不同).
-        try {
-            val html = assets.open("index.html").bufferedReader().readText()
-            webView.loadDataWithBaseURL(
-                "file:///android_asset/",
-                html,
-                "text/html",
-                "UTF-8",
-                null
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load index.html from assets", e)
-            webView.loadData(
-                "<html><body><h1>启动失败</h1><p>${e.message}</p></body></html>",
-                "text/html",
-                "UTF-8"
-            )
-        }
+        // 直接用 file:///android_asset/index.html 加载.
+        // Vite 现在打包成 IIFE (非 ES module), 不存在 CORS 问题.
+        // loadDataWithBaseURL 在部分 Android 版本上 shouldInterceptRequest
+        // 不拦截子资源请求, 导致 JS 加载失败.
+        // loadUrl + file:///android_asset/ 是 Android WebView 原生支持的,
+        // 子资源通过内置 asset 加载器 + shouldInterceptRequest 修正 MIME type.
+        webView.loadUrl("file:///android_asset/index.html")
 
         // 申请权限
         requestPermissionsIfNeeded()
