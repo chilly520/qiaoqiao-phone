@@ -3051,7 +3051,11 @@ const handleExportCard = async () => {
             return
         }
         const chat = chatStore.chats[props.chatData.id]
-        if (!chat) return
+        if (!chat) {
+            showToast('会话数据未加载，请先进入聊天再导出')
+            console.warn('[ExportCard] chat not found for id:', props.chatData.id)
+            return
+        }
 
         const exportData = {
             version: '1.0',
@@ -3222,8 +3226,8 @@ const handleExportCard = async () => {
         showExportModal.value = false
         showToast('导出成功')
     } catch (e) {
-        console.error(e)
-        showToast('导出失败')
+        console.error('[ExportCard] export failed:', e)
+        showToast('导出失败：' + (e?.message || '未知错误'))
     }
 }
 

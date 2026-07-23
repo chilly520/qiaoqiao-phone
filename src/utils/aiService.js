@@ -2157,9 +2157,17 @@ async function _generateReplyInternal(messages, char, signal, options = {}) {
 
     } catch (error) {
         console.error('AI Generation Failed:', error)
-        // [FIX] Ensure error is logged to System Logs UI
+        // [FIX] Ensure error is logged to System Logs UI with actionable hint
         try {
-            useLoggerStore().addLog('ERROR', `API请求失败: ${error.message}`, { error: error.toString(), stack: error.stack })
+            const _msg = (error && error.message) || String(error)
+            const _isNet = error instanceof TypeError && (
+                _msg.includes('Failed to fetch') ||
+                _msg.includes('NetworkError') ||
+                _msg.includes('Network request failed') ||
+                _msg.includes('Load failed')
+            )
+            const _hint = _isNet ? ' → 请检查 设置→API 里的 Base URL 是否可访问/有效，或网络/代理是否可用' : ''
+            useLoggerStore().addLog('ERROR', `API请求失败 (${endpoint || '未知接口'}): ${_msg}${_hint}`, { error: error.toString(), stack: error.stack, endpoint })
         } catch (logErr) {
             console.error('Logger failed:', logErr)
         }
