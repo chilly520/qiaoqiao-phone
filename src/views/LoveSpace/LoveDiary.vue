@@ -263,8 +263,7 @@ async function addComment() {
 </script>
 
 <style scoped>
-/* 外部字体：优先加载，失败时有优雅降级 */
-@import url("https://fontsapi.zeoseven.com/223/main/result.css");
+
 
 /* 手写体降级：外部字体加载失败时使用系统楷体 */
 @font-face {

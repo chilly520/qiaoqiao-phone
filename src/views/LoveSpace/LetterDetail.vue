@@ -200,7 +200,7 @@ function confirmDeleteAction() {
 </script>
 
 <style scoped>
-@import url("https://fontsapi.zeoseven.com/223/main/result.css");
+
 
 .letter-detail {
   min-height: 100vh;

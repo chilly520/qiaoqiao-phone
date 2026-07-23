@@ -77,15 +77,16 @@ class MainActivity : AppCompatActivity() {
         // 启动 5s 超时看门狗, onPageFinished 触发后取消.
         loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
         // 用 loadDataWithBaseURL 加载本地 PWA.
-        // 把 HTML 内容直接读入内存, base URL 设成 https://qiaqiao-phone.pages.dev/,
-        // 这样页面跑在真正的 https origin 上, 所有资源请求 (./assets/xxx.js 等)
-        // 会解析为 https://qiaqiao-phone.pages.dev/assets/xxx.js,
-        // shouldInterceptRequest 拦截 pages.dev 请求并返回本地 assets 内容.
-        // 彻底避免 file:// 的 ES module CORS 和 file 子资源加载问题.
+        // HTML 从 assets 读入内存, base URL 设为 file:///android_asset/.
+        // 这样 ./assets/xxx.js 解析为 file:///android_asset/assets/xxx.js,
+        // WebView 用内置 asset 加载器处理, shouldInterceptRequest 拦截修正 MIME type.
+        // 关键: 不用 https:// 作为 base URL, 因为 shouldInterceptRequest 在某些
+        // Android 版本上不拦截 loadDataWithBaseURL 的子资源请求,
+        // WebView 回退到网络加载 → 404 (APK 内 JS 文件名和线上不同).
         try {
             val html = assets.open("index.html").bufferedReader().readText()
             webView.loadDataWithBaseURL(
-                "https://qiaqiao-phone.pages.dev/",
+                "file:///android_asset/",
                 html,
                 "text/html",
                 "UTF-8",
@@ -142,20 +143,19 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                // 拦截 https://qiaqiao-phone.pages.dev/ 的请求, 从本地 assets 返回.
-                // loadDataWithBaseURL 设置 base URL 为 pages.dev,
-                // 所有相对路径 (./assets/xxx.js) 会解析为 pages.dev/assets/xxx.js,
-                // 这里拦截并返回 assets 内容.
+                // 拦截 file:///android_asset/ 请求, 从 assets 读取并返回正确 MIME type.
+                // loadDataWithBaseURL 的 base URL 是 file:///android_asset/,
+                // 相对路径 ./assets/xxx.js → file:///android_asset/assets/xxx.js
                 val url = request?.url ?: return null
-                val host = url.host ?: return null
-                if (host != "qiaqiao-phone.pages.dev") return null
+                val scheme = url.scheme ?: return null
+                if (scheme != "file") return null
 
                 var path = url.path ?: return null
-                if (path.startsWith("/")) path = path.removePrefix("/")
-                if (path.isEmpty()) return null
-
-                // 去掉 query string
+                val assetPrefix = "/android_asset/"
+                if (!path.startsWith(assetPrefix)) return null
+                path = path.removePrefix(assetPrefix)
                 path = path.substringBefore('?')
+                if (path.isEmpty()) return null
 
                 val mimeType = guessMimeType(path)
                 val encoding = if (mimeType.startsWith("text/") || mimeType.contains("json") || mimeType.contains("javascript")) "UTF-8" else null
@@ -166,8 +166,7 @@ class MainActivity : AppCompatActivity() {
                     WebResourceResponse(mimeType, encoding, input)
                 } catch (e: Exception) {
                     Log.w(TAG, "asset not found: $path (${e.message})")
-                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
-                        emptyMap(), java.io.ByteArrayInputStream("404: $path".toByteArray()))
+                    null // 返回 null 让 WebView 自己处理
                 }
             }
 
@@ -216,7 +215,7 @@ class MainActivity : AppCompatActivity() {
                 val desc = error?.description
                 Log.e(TAG, "WebView onReceivedError: url=$url code=$code desc=$desc")
                 // 本地 PWA 资源加载失败 → 弹 Toast 提示用户
-                if (url.contains("qiaqiao-phone.pages.dev") && code != null) {
+                if (url.startsWith("file:///android_asset/") && code != null) {
                     Toast.makeText(
                         this@MainActivity,
                         "PWA 资源加载失败: ${code} $desc",
@@ -241,7 +240,7 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
                 // pages.dev (本地 PWA) + 其他 pages.dev 都交给 WebView 加载
-                return if (url.contains("qiaqiao-phone.pages.dev") ||
+                return if (url.startsWith("file://") ||
                     url.startsWith(BuildConfig.PWA_URL)) {
                     false
                 } else {

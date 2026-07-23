@@ -483,7 +483,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-@import url("https://fontsapi.zeoseven.com/223/main/result.css");
+
 
 .love-letter {
   min-height: 100vh;

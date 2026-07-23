@@ -195,7 +195,7 @@ const formatDate = (timestamp) => {
 </script>
 
 <style scoped>
-@import url("https://fontsapi.zeoseven.com/494/main/result.css");
+
 
 /* 容器及全局布局 */
 .love-sticky-container {
