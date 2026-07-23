@@ -3127,13 +3127,21 @@ ${userContextText}
 }
 
 async function _persistImageUrl(url) {
-    if (!url || url.startsWith('data:')) return url
+    if (!url) return url
     try {
-        const resp = await fetch(url, { signal: AbortSignal.timeout(30000) })
-        if (!resp.ok) { console.warn('[AI Image] Persist fetch failed, returning raw URL'); return url }
-        const blob = await resp.blob()
-        
-        // Compress for storage
+        let blob
+        if (url.startsWith('data:')) {
+            // 已是 base64(如火山 b64_json 直接返回): 转 blob 后走压缩, 保证存储体积小且永久
+            const res = await fetch(url)
+            blob = await res.blob()
+        } else {
+            // 仍是临时 URL(如 pollinations / 火山 url 模式兜底): 下载后压缩; 失败则保留原 URL(避免丢图)
+            const resp = await fetch(url, { signal: AbortSignal.timeout(30000) })
+            if (!resp.ok) { console.warn('[AI Image] Persist fetch failed, returning raw URL'); return url }
+            blob = await resp.blob()
+        }
+
+        // Compress for storage (统一压缩到 800x800 q0.7, 控制 IndexedDB 占用)
         try {
             const { compressImage } = await import('./imageUtils')
             const file = new File([blob], "ai_image.jpg", { type: 'image/jpeg' })
@@ -3780,7 +3788,9 @@ async function _generateImageInternal(prompt, options = {}) {
             model: chosenModel,
             prompt: finalPrompt,
             size: chosenSize,
-            response_format: 'url',
+            // v1.10.230: 改为 b64_json 让火山方舟直接返回 base64,绕开"临时 URL + fetch(CORS/超时)失败 → 存了 24h 失效链接"的坑
+            // 之前用 url 模式, _persistImageUrl 需 fetch 跨域图, 经常 CORS/超时失败而 fallback 回临时 URL, 相册第二天就失效
+            response_format: 'b64_json',
             watermark: false,
             sequential_image_generation: 'disabled'
         }
@@ -3849,9 +3859,13 @@ async function _generateImageInternal(prompt, options = {}) {
             }
 
             const data = JSON.parse(text)
-            const imageUrl = data?.data?.[0]?.url || data?.images?.[0]?.url || data?.data?.[0]?.b64_json
+            let imageUrl = data?.data?.[0]?.url || data?.images?.[0]?.url || data?.data?.[0]?.b64_json
             if (!imageUrl) {
                 throw new Error('火山引擎未返回图片 URL: ' + text.substring(0, 200))
+            }
+            // v1.10.230: 火山 b64_json 可能返回裸 base64(无 data: 前缀), 补前缀以便 <img> 直接显示 + 让 _persistImageUrl 正确压缩
+            if (imageUrl && !/^(data:|https?:|blob:)/i.test(imageUrl) && /^[A-Za-z0-9+/=\s]+$/.test(imageUrl)) {
+                imageUrl = 'data:image/png;base64,' + imageUrl.replace(/\s/g, '')
             }
             useLoggerStore().addLog('AI', '图片生成成功 (火山引擎)', {
                 model: chosenModel,
