@@ -15,6 +15,7 @@ export default defineConfig(({ command }) => ({
     // 这个插件在 build 后:
     // - 删掉 type="module" (改成 classic script, 不走 CORS)
     // - 删掉 crossorigin 属性
+    // - 把 native-diag.js 移到主 JS 之前 (确保能捕获主 JS 的加载错误)
     {
       name: 'fix-script-tags',
       transformIndexHtml(html) {
@@ -22,6 +23,19 @@ export default defineConfig(({ command }) => ({
         html = html.replace(/\s+type="module"/g, '')
         // 删 crossorigin 属性
         html = html.replace(/\s+crossorigin(="[^"]*")?/g, '')
+        // 把 native-diag.js 移到主 JS 之前
+        if (html.includes('native-diag.js') && html.includes('assets/index-')) {
+          var diagMatch = html.match(/<script src="\.\/native-diag\.js"><\/script>/)
+          if (diagMatch) {
+            var diagTag = diagMatch[0]
+            html = html.replace(diagTag, '')
+            // 插入到主 JS script 之前
+            html = html.replace(
+              /(<script src="\.\/assets\/index-[^"]+\.js"><\/script>)/,
+              diagTag + '\n  $1'
+            )
+          }
+        }
         return html
       }
     }

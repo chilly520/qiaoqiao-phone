@@ -76,11 +76,29 @@ class MainActivity : AppCompatActivity() {
 
         // 启动 5s 超时看门狗, onPageFinished 触发后取消.
         loadTimeoutHandler.postDelayed(loadTimeoutRunnable, 5000)
-        // 加载本地 PWA (file:///android_asset/index.html).
-        // PWA build 成 IIFE 格式 (classic <script>, 不是 <script type="module">),
-        // classic script 不走 CORS, file:// 直接能加载.
-        // 想用最新 PWA 内容? 重装即可, 下次 build 会把新 dist/ 打进 assets.
-        webView.loadUrl("file:///android_asset/index.html")
+        // 用 loadDataWithBaseURL 加载本地 PWA.
+        // 把 HTML 内容直接读入内存, base URL 设成 https://qiaqiao-phone.pages.dev/,
+        // 这样页面跑在真正的 https origin 上, 所有资源请求 (./assets/xxx.js 等)
+        // 会解析为 https://qiaqiao-phone.pages.dev/assets/xxx.js,
+        // shouldInterceptRequest 拦截 pages.dev 请求并返回本地 assets 内容.
+        // 彻底避免 file:// 的 ES module CORS 和 file 子资源加载问题.
+        try {
+            val html = assets.open("index.html").bufferedReader().readText()
+            webView.loadDataWithBaseURL(
+                "https://qiaqiao-phone.pages.dev/",
+                html,
+                "text/html",
+                "UTF-8",
+                null
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load index.html from assets", e)
+            webView.loadData(
+                "<html><body><h1>启动失败</h1><p>${e.message}</p></body></html>",
+                "text/html",
+                "UTF-8"
+            )
+        }
 
         // 申请权限
         requestPermissionsIfNeeded()
@@ -124,33 +142,32 @@ class MainActivity : AppCompatActivity() {
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                // 手动拦截 file:///android_asset/ 请求, 从 assets 读取文件.
-                // 确保返回正确的 MIME type (Android 默认的 .js MIME 可能不对).
+                // 拦截 https://qiaqiao-phone.pages.dev/ 的请求, 从本地 assets 返回.
+                // loadDataWithBaseURL 设置 base URL 为 pages.dev,
+                // 所有相对路径 (./assets/xxx.js) 会解析为 pages.dev/assets/xxx.js,
+                // 这里拦截并返回 assets 内容.
                 val url = request?.url ?: return null
-                val scheme = url.scheme ?: return null
-                if (scheme != "file") return null
+                val host = url.host ?: return null
+                if (host != "qiaqiao-phone.pages.dev") return null
 
                 var path = url.path ?: return null
-                // file:///android_asset/xxx → xxx
-                val assetPrefix = "/android_asset/"
-                if (!path.startsWith(assetPrefix)) return null
-                path = path.removePrefix(assetPrefix)
+                if (path.startsWith("/")) path = path.removePrefix("/")
+                if (path.isEmpty()) return null
 
                 // 去掉 query string
                 path = path.substringBefore('?')
-                if (path.isEmpty()) return null
 
                 val mimeType = guessMimeType(path)
                 val encoding = if (mimeType.startsWith("text/") || mimeType.contains("json") || mimeType.contains("javascript")) "UTF-8" else null
 
                 return try {
                     val input = assets.open(path)
-                    Log.d(TAG, "serve asset: $path → $mimeType")
+                    Log.d(TAG, "serve: $path → $mimeType (${input.available()} bytes)")
                     WebResourceResponse(mimeType, encoding, input)
                 } catch (e: Exception) {
                     Log.w(TAG, "asset not found: $path (${e.message})")
                     WebResourceResponse("text/plain", "UTF-8", 404, "Not Found",
-                        emptyMap(), java.io.ByteArrayInputStream("Not found: $path".toByteArray()))
+                        emptyMap(), java.io.ByteArrayInputStream("404: $path".toByteArray()))
                 }
             }
 
@@ -165,15 +182,12 @@ class MainActivity : AppCompatActivity() {
                 // 加载完成, 取消超时看门狗
                 loadTimeoutHandler.removeCallbacks(loadTimeoutRunnable)
 
-                // 3 秒后检查 Vue 是否挂载, 没挂载就 Toast 提示 + 注入错误信息
+                // 3 秒后检查 Vue 是否挂载, 没挂载就 Toast 提示
                 Handler(Looper.getMainLooper()).postDelayed({
                     webView.evaluateJavascript("""
                         (function(){
                             var app=document.getElementById('app');
                             if(!app||app.children.length===0){
-                                console.error('NATIVE_DIAG: Vue not mounted 3s after onPageFinished');
-                                var s=document.getElementById('native-splash');
-                                if(s){s.innerHTML='<div style="text-align:center;padding:20px;font-family:-apple-system,sans-serif;color:#475569"><div style="font-size:48px;margin-bottom:16px">❄️</div><div style="font-size:16px;font-weight:600;color:#ef4444;margin-bottom:8px">加载失败</div><div style="font-size:11px;opacity:0.7;padding:0 16px">JS 加载失败, 请截图发给开发者</div></div>';}
                                 return 'NOT_MOUNTED';
                             }
                             return 'MOUNTED';
@@ -202,7 +216,7 @@ class MainActivity : AppCompatActivity() {
                 val desc = error?.description
                 Log.e(TAG, "WebView onReceivedError: url=$url code=$code desc=$desc")
                 // 本地 PWA 资源加载失败 → 弹 Toast 提示用户
-                if (url.startsWith("file:///android_asset/") && code != null) {
+                if (url.contains("qiaqiao-phone.pages.dev") && code != null) {
                     Toast.makeText(
                         this@MainActivity,
                         "PWA 资源加载失败: ${code} $desc",
@@ -226,9 +240,8 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // file:// (本地 PWA) + pages.dev 都交给 WebView 加载
-                return if (url.startsWith("file://") ||
-                    url.startsWith("https://qiaqiao-phone.pages.dev/") ||
+                // pages.dev (本地 PWA) + 其他 pages.dev 都交给 WebView 加载
+                return if (url.contains("qiaqiao-phone.pages.dev") ||
                     url.startsWith(BuildConfig.PWA_URL)) {
                     false
                 } else {

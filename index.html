@@ -38,10 +38,9 @@
     body.native-ready #native-splash { opacity: 0; pointer-events: none; }
   </style>
   <div id="app"></div>
-  <script type="module" src="/src/main.js"></script>
-  <!-- 诊断脚本: public/ 下的独立文件, Vite 不编译, 直接复制到 dist/.
-       5 秒后检测 Vue 是否挂载, 没挂载显示错误信息. -->
+  <!-- 诊断脚本必须在主 JS 之前, 才能捕获主 JS 的加载错误 -->
   <script src="./native-diag.js"></script>
+  <script type="module" src="/src/main.js"></script>
 </body>
 
 </html>

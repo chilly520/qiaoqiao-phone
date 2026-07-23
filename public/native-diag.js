@@ -1,54 +1,55 @@
-// Native APP 诊断脚本: 在 </body> 前用 classic <script> 引用.
-// 监听 window.onerror, 捕获 JS 加载/执行失败, 显示具体错误信息.
+// Native APP 诊断脚本: 在 </body> 前、主 JS 前加载, 捕获所有错误.
 // 这个文件在 public/ 下, Vite 直接复制到 dist/, 不经过编译.
 (function () {
   var errors = [];
+  window.__diagErrors = errors;
 
-  // 捕获所有 JS 错误
+  // 方法1: 捕获全局 JS 运行时错误
+  window.onerror = function (msg, src, line, col, err) {
+    var info = (msg || '') + ' @ ' + (src || '') + ':' + (line || 0);
+    errors.push('onerror: ' + info);
+    console.error('DIAG: ' + info);
+    return false; // 不阻止默认行为
+  };
+
+  // 方法2: 捕获资源加载错误 (script 404 等)
   window.addEventListener('error', function (event) {
-    var msg = event.message || 'unknown error';
-    var src = event.filename || '';
-    var line = event.lineno || 0;
-    var col = event.colno || 0;
-    errors.push(msg + ' @ ' + src + ':' + line + ':' + col);
-    console.error('DIAG_ERROR: ' + msg + ' @ ' + src + ':' + line + ':' + col);
-  });
+    if (event.target && event.target !== window) {
+      // 资源加载错误 (script, img, link 等)
+      var tag = event.target.tagName || '?';
+      var src = event.target.src || event.target.href || '';
+      errors.push('resource: ' + tag + ' ' + src);
+      console.error('DIAG_RESOURCE: ' + tag + ' ' + src);
+    }
+  }, true); // capture phase 捕获所有
 
-  // 捕获未处理的 Promise rejection
+  // 方法3: 捕获 Promise rejection
   window.addEventListener('unhandledrejection', function (event) {
-    var reason = event.reason && event.reason.message ? event.reason.message : String(event.reason);
-    errors.push('Promise: ' + reason);
+    var reason = (event.reason && event.reason.message) ? event.reason.message : String(event.reason);
+    errors.push('reject: ' + reason);
     console.error('DIAG_REJECT: ' + reason);
   });
 
-  // 检测主 JS 是否加载成功
-  var scripts = document.querySelectorAll('script[src]');
-  var scriptSrcs = [];
-  for (var i = 0; i < scripts.length; i++) {
-    scriptSrcs.push(scripts[i].src);
-  }
-  console.log('DIAG: scripts in HTML: ' + JSON.stringify(scriptSrcs));
+  console.log('DIAG: initialized, errors=' + errors.length);
 
   // 5 秒后检查 Vue 是否挂载
   window.setTimeout(function () {
     var app = document.getElementById('app');
     var mounted = app && app.children.length > 0;
-    console.log('DIAG: 5s check, mounted=' + mounted + ', errors=' + errors.length);
+    console.log('DIAG: 5s, mounted=' + mounted + ', errors=' + errors.length);
 
     if (!mounted) {
       var s = document.getElementById('native-splash');
       if (s) {
-        var errText = errors.length > 0
-          ? errors.slice(0, 3).join('<br>')
-          : '无错误捕获 (可能是 JS 文件加载失败)';
+        var errLines = errors.length > 0 ? errors.slice(0, 4) : ['无错误捕获'];
+        var errText = errLines.join('<br>');
         s.innerHTML =
-          '<div style="text-align:center;padding:20px;font-family:-apple-system,sans-serif;color:#475569">' +
-          '<div style="font-size:48px;margin-bottom:16px">❄️</div>' +
-          '<div style="font-size:16px;font-weight:600;color:#ef4444;margin-bottom:8px">加载失败</div>' +
-          '<div style="font-size:11px;opacity:0.8;word-break:break-all;padding:0 12px;margin-bottom:12px;line-height:1.5">' +
+          '<div style="text-align:center;padding:16px;font-family:monospace,sans-serif;color:#475569;font-size:11px">' +
+          '<div style="font-size:40px;margin-bottom:12px">❄️</div>' +
+          '<div style="font-size:15px;font-weight:700;color:#ef4444;margin-bottom:10px">JS 加载失败</div>' +
+          '<div style="background:rgba(0,0,0,0.05);border-radius:8px;padding:10px;line-height:1.6;word-break:break-all;text-align:left;margin-bottom:10px">' +
           errText + '</div>' +
-          '<div style="font-size:10px;opacity:0.5;word-break:break-all;padding:0 12px">' +
-          'scripts: ' + JSON.stringify(scriptSrcs).substring(0, 200) + '</div>' +
+          '<div style="font-size:10px;opacity:0.5">v' + ('1.10.212') + '</div>' +
           '</div>';
       }
     }
