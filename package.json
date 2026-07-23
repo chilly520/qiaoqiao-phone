@@ -3,11 +3,15 @@
   "private": true,
   "version": "1.10.218",
   "type": "module",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "node scripts/build-esbuild.mjs && node scripts/copy-functions.js",
     "build:vite": "vite build && node scripts/copy-functions.js",
     "preview": "vite preview",
+    "postinstall": "npm rebuild esbuild || true",
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name=qiaqiao-phone --branch=main"
   },
   "dependencies": {
