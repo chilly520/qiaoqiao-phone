@@ -147,24 +147,19 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: android.webkit.WebResourceError?
+                view: WebView,
+                request: WebResourceRequest,
+                error: android.webkit.WebResourceError
             ) {
-                val url = request?.url?.toString() ?: "?"
-                val code = error?.errorCode
-                val desc = error?.description
-                Log.e(TAG, "WebView onReceivedError: url=$url code=$code desc=$desc")
+                Log.e(TAG, "WebView onReceivedError: url=${request.url} code=${error.errorCode} desc=${error.description}")
             }
 
             override fun onReceivedHttpError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                errorResponse: WebResourceResponse?
+                view: WebView,
+                request: WebResourceRequest,
+                errorResponse: WebResourceResponse
             ) {
-                val url = request?.url?.toString() ?: "?"
-                val code = errorResponse?.statusCode
-                Log.w(TAG, "WebView onReceivedHttpError: url=$url code=$code")
+                Log.w(TAG, "WebView onReceivedHttpError: url=${request.url} code=${errorResponse.statusCode}")
             }
 
             override fun shouldOverrideUrlLoading(
