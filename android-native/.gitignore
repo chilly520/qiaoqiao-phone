@@ -1,0 +1,16 @@
+# Build 产物
+/build/
+/app/build/
+/.gradle/
+/local.properties
+*.iml
+.idea/
+
+# 签名密钥 (绝不能 commit)
+android.keystore
+keystore-info/
+*.keystore
+*.jks
+
+# Keystore base64 临时文件
+keystore.b64.txt
