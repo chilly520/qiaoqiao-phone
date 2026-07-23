@@ -44,6 +44,12 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webview)
         setupWebView()
 
+        // 重要: WebView 默认的 HTTP 缓存会让 PWA 卡在老版本.
+        // vivo/华为/小米的 WebView 会把 `index-XXX.js` 这种带 hash 的 bundle 缓存住,
+        // 即使 PWA 后端换了 hash 也会被 HTTP 缓存命中, 旧版 `getTodayStr` 没导出
+        // → 报 `is not defined`. LOAD_NO_CACHE 强制走网络, 由 PWA 的 SW 自己管缓存.
+        webView.clearCache(true)
+
         // 处理从通知点进来的数据
         handleNotificationIntent(intent)
 
@@ -59,7 +65,11 @@ class MainActivity : AppCompatActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+            // 重要: WebView HTTP 缓存会让 PWA 卡在老版本.
+            // vivo/华为/小米的 WebView 会把 `index-XXX.js` 这种带 hash 的 bundle 缓存住,
+            // 即使 PWA 后端换了 hash 也会被 HTTP 缓存命中, 旧版 `getTodayStr` 没导出
+            // → 报 `is not defined`. LOAD_NO_CACHE 强制走网络, 由 PWA 的 SW 自己管缓存.
+            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             // PWA 模式需要 service worker
             mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
             useWideViewPort = true
@@ -67,9 +77,6 @@ class MainActivity : AppCompatActivity() {
             // IndexedDB 需要
             domStorageEnabled = true
         }
-
-        // 缓存 (重要: 让 PWA 离线能跑)
-        webView.settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
 
         webView.webViewClient = object : android.webkit.WebViewClient() {
             override fun shouldOverrideUrlLoading(

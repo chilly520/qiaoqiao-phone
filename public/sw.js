@@ -20,9 +20,10 @@
 //   - 联网时永远拿到最新 HTML
 
 const APP_ICON = '/pwa-192x192.png?v=4';
-// v1.10.159: bump v48 强制清理旧 cache (修复 AI 用图片ID换头像失效)
-const SHELL_CACHE = 'chilly-shell-v48';
-const RUNTIME_CACHE = 'chilly-runtime-v25';
+// v1.10.197: bump v49 强制清理 v48 缓存 (修复 native APP WebView 的 getTodayStr is not defined)
+// 旧版 WebView HTTP 缓存把不带 hash 的 chunk 缓存住,即使主 bundle 升级也命中旧 chunk
+const SHELL_CACHE = 'chilly-shell-v49';
+const RUNTIME_CACHE = 'chilly-runtime-v26';
 
 // 关键 shell 资源,install 时主动 precache
 const SHELL_URLS = [
