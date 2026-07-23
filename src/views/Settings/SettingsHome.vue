@@ -154,7 +154,7 @@ const settingsCards = [
                 ></span>
                 <div class="flex items-center gap-5">
                     <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-red-100 to-orange-200 flex items-center justify-center shadow-lg text-xl text-red-600">
-                        <i class="fa-solid fa-rotate" :class="{ 'animate-spin-slow': !hasUpdate }"></i>
+                        <i class="fa-solid fa-arrows-rotate"></i>
                     </div>
                     <div>
                         <div class="font-bold text-lg text-gray-900">
