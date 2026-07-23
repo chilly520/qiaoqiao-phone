@@ -13,8 +13,8 @@ android {
         applicationId = "dev.qiaoqiao.phone"
         minSdk = 24
         targetSdk = 34
-        versionCode = 200
-        versionName = "1.10.200"
+        versionCode = 201
+        versionName = "1.10.201"
 
         // Cloudflare Pages 上 PWA 的 URL
         buildConfigField("String", "PWA_URL", "\"https://qiaqiao-phone.pages.dev\"")

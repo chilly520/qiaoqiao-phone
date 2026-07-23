@@ -44,6 +44,10 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webview)
         setupWebView()
 
+        // 整体缩放 90%, 避免 PWA 在大屏手机上元素过大.
+        // PWA 设计是 375px 宽的"虚拟手机", 真实 6.5 寸屏上 1:1 渲染会显得撑满.
+        webView.setInitialScale(90)
+
         // 处理从通知点进来的数据
         handleNotificationIntent(intent)
 
