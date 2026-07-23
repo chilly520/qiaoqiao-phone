@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- adaptive-icon: API 26+ 用.
+     foreground 必须引用 @drawable/ (不是 @mipmap/ic_launcher),
+     否则系统会找到 adaptive-icon 自身 → 循环引用 → 图标不渲染. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/brand_primary" />
-    <foreground android:drawable="@mipmap/ic_launcher" />
-    <monochrome android:drawable="@mipmap/ic_launcher" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>
