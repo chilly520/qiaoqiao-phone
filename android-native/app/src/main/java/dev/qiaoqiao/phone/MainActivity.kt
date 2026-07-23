@@ -20,7 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
-import androidx.webkit.WebViewClientCompat
+import android.webkit.WebViewClient
 import dev.qiaoqiao.phone.bridge.WebAppInterface
 import dev.qiaoqiao.phone.prefs.AppPrefs
 import okhttp3.OkHttpClient
@@ -102,8 +102,8 @@ class MainActivity : AppCompatActivity() {
             allowUniversalAccessFromFileURLs = false
         }
 
-        // WebViewClientCompat 让 shouldInterceptRequest 正确处理 WebViewAssetLoader 请求.
-        webView.webViewClient = object : WebViewClientCompat() {
+        // 不用 androidx.webkit.WebViewClientCompat — 1.10+ 把 onReceivedError / onReceivedHttpError 标成 final 不能 override
+        webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
@@ -113,12 +113,12 @@ class MainActivity : AppCompatActivity() {
                 return assetLoader.shouldInterceptRequest(request.url)
             }
 
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 Log.d(TAG, "WebView onPageStarted: $url")
             }
 
-            override fun onPageFinished(view: WebView?, url: String?) {
+            override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "WebView onPageFinished: $url")
                 loadTimeoutHandler.removeCallbacks(loadTimeoutRunnable)
