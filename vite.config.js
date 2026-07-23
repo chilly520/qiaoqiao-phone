@@ -3,6 +3,10 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig(({ command }) => ({
+  // 顶层 base 优先: 让 build 产物用相对路径 (./assets/xxx.js),
+  // 这样 PWA 既能在 https://qiaqiao-phone.pages.dev 跑,
+  // 也能在 Android WebView 加载 file:///android_asset/index.html 时跑.
+  base: './',
   plugins: [
     vue()
   ],
@@ -63,6 +67,7 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     target: 'esnext',
+    // base 在 config 顶层设置 (见文件头部).
     minify: false, // 禁用混淆，防止变量提升顺序在混淆时被破坏（解决 Cannot access before initialization 报错）
     chunkSizeWarningLimit: 2000
   }

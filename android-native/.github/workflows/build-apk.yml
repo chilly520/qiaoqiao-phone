@@ -31,6 +31,20 @@ jobs:
           VERSION=$(node -p "require('../src/version.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Build PWA
+        run: |
+          npm ci
+          npm run build
+          # 把 dist/ 复制到 android assets/ 让 WebView 加载本地资源 (file:///android_asset/index.html).
+          # 原因: 国内访问 Cloudflare Pages 慢, 每次 LOAD_NO_CACHE 走网络转圈很久.
+          # 本地资源秒开, 只在调 LLM API 时走云端.
+          rm -rf android-native/app/src/main/assets
+          mkdir -p android-native/app/src/main/assets
+          cp -r dist/. android-native/app/src/main/assets/
+          du -sh android-native/app/src/main/assets
+          echo "--- assets contents (top 10) ---"
+          ls android-native/app/src/main/assets/ | head -10
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:

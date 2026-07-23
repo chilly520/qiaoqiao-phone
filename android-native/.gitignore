@@ -14,3 +14,6 @@ keystore-info/
 
 # Keystore base64 临时文件
 keystore.b64.txt
+
+# PWA 打包进 APK 的资源 (build 时由 build-apk.yml 从 dist/ 复制, 不进 git, 否则 54MB)
+/app/src/main/assets/

@@ -44,17 +44,14 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webview)
         setupWebView()
 
-        // 重要: WebView 默认的 HTTP 缓存会让 PWA 卡在老版本.
-        // vivo/华为/小米的 WebView 会把 `index-XXX.js` 这种带 hash 的 bundle 缓存住,
-        // 即使 PWA 后端换了 hash 也会被 HTTP 缓存命中, 旧版 `getTodayStr` 没导出
-        // → 报 `is not defined`. LOAD_NO_CACHE 强制走网络, 由 PWA 的 SW 自己管缓存.
-        webView.clearCache(true)
-
         // 处理从通知点进来的数据
         handleNotificationIntent(intent)
 
-        // 加载 PWA
-        webView.loadUrl(BuildConfig.PWA_URL)
+        // 加载本地 PWA (file:///android_asset/index.html).
+        // 原因: 国内访问 Cloudflare Pages 慢, 远程加载会一直转圈.
+        // 本地资源秒开, 只有调 LLM API (https) 时才走网络.
+        // 想用最新 PWA 内容? 重装即可, 下次 build 会把新 dist/ 打进 assets.
+        webView.loadUrl("file:///android_asset/index.html")
 
         // 申请权限
         requestPermissionsIfNeeded()
@@ -65,17 +62,20 @@ class MainActivity : AppCompatActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
-            // 重要: WebView HTTP 缓存会让 PWA 卡在老版本.
-            // vivo/华为/小米的 WebView 会把 `index-XXX.js` 这种带 hash 的 bundle 缓存住,
-            // 即使 PWA 后端换了 hash 也会被 HTTP 缓存命中, 旧版 `getTodayStr` 没导出
-            // → 报 `is not defined`. LOAD_NO_CACHE 强制走网络, 由 PWA 的 SW 自己管缓存.
-            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-            // PWA 模式需要 service worker
-            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            // 本地资源 (file:///android_asset/) 用默认缓存即可.
+            // 之前设 LOAD_NO_CACHE 是为了规避 vivo/华为 WebView 的 HTTP 缓存问题,
+            // 但 LOAD_NO_CACHE 强制每次重下 + 国内访问 Cloudflare 慢 → 一直转圈.
+            // 现在资源在 APK 内, 不存在 hash 缓存问题, 用 LOAD_DEFAULT 即可.
+            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+            // 允许 file:// 页面调用 https API (LLM).
+            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             useWideViewPort = true
             loadWithOverviewMode = true
             // IndexedDB 需要
             domStorageEnabled = true
+            // file:// 页面允许访问本地 file 资源 (assets 内)
+            allowFileAccess = true
+            allowContentAccess = true
         }
 
         webView.webViewClient = object : android.webkit.WebViewClient() {
@@ -84,11 +84,13 @@ class MainActivity : AppCompatActivity() {
                 request: android.webkit.WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return false
-                // 同域内交给 WebView, 外链用浏览器打开
-                return if (url.startsWith(BuildConfig.PWA_URL) ||
-                    url.startsWith("https://qiaqiao-phone.pages.dev/")) {
+                // file:// 内部 + 任何 https 都交给 WebView 加载
+                return if (url.startsWith("file://") ||
+                    url.startsWith("https://qiaqiao-phone.pages.dev/") ||
+                    url.startsWith(BuildConfig.PWA_URL)) {
                     false
                 } else {
+                    // 真正的外链 (LLM API 文档等) 用浏览器打开
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                     true
                 }
