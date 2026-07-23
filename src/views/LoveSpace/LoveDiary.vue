@@ -265,11 +265,10 @@ async function addComment() {
 <style scoped>
 
 
-/* 手写体降级：外部字体加载失败时使用系统楷体 */
-@font-face {
-  font-family: "huangkaihuaLawyerfont";
-  src: local("黄凯华律师体"), local("楷体"), local("KaiTi"), local("STKaiti");
-}
+
+
+/* v1.10.231: huangkaihuaLawyerfont 已在 src/assets/handwriting.css 本地化 (Ma Shan Zheng),
+   此处不再用 local() 系统字体 (Android WebView 无这些字体会 fallback 宋体). */
 
 .love-diary {
   height: 100vh;

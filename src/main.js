@@ -6,6 +6,7 @@ import { useLoggerStore } from './stores/loggerStore'
 import { notificationService } from './utils/notificationService'
 import './style.css'
 import '@fortawesome/fontawesome-free/css/all.css'
+import './assets/handwriting.css' // v1.10.231: 本地化手写体 (替代 v1.10.205 删除的 Google Fonts), 修复 Android WebView 字体 fallback
 import './assets/themes.css' // 主题系统
 
 const app = createApp(App)
