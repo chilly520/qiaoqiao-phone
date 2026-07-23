@@ -650,7 +650,7 @@ h2 {
   font-size: 14px;
   outline: none;
   transition: all 0.3s ease;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
 }
 
 .comment-input-area input:focus {

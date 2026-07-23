@@ -521,7 +521,7 @@ h2 {
 .delete-diary-btn:hover { color: #ff6b9d; }
 
 .diary-content {
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   font-size: 20px;
   color: #4e342e;
   line-height: 2;

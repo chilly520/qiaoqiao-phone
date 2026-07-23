@@ -1058,7 +1058,7 @@ onUnmounted(() => {
   color: #ffffff;
   font-weight: 900;
   margin: 0 0 16px 0;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   letter-spacing: 6px;
   position: relative;
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1246,7 +1246,7 @@ h2 {
   font-weight: 900;
   letter-spacing: 3px;
   text-shadow: 1px 1px 3px rgba(255, 182, 193, 0.2);
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
 }
 
 .letter-list {
@@ -1322,7 +1322,7 @@ h2 {
   color: #5d4037;
   margin-bottom: 8px;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   transition: all 0.3s ease;
   position: relative;
   z-index: 10;
@@ -1358,7 +1358,7 @@ h2 {
   font-weight: 700;
   margin-top: 6px;
   box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   position: relative;
   z-index: 10;
   border: 1px solid rgba(255, 215, 0, 0.3);
@@ -1481,7 +1481,7 @@ h2 {
   font-size: 16px;
   color: #8b7355;
   font-weight: 600;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   margin: 8px 0;
 }
 
@@ -1544,7 +1544,7 @@ h2 {
   font-weight: 700;
   outline: none;
   font-size: 18px;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   background: rgba(255, 255, 255, 0.8);
   transition: all 0.3s ease;
 }
@@ -1560,7 +1560,7 @@ h2 {
   height: 300px;
   border: 2px solid rgba(233, 224, 209, 0.6);
   outline: none;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   font-size: 17px;
   resize: none;
   line-height: 2;
@@ -1607,7 +1607,7 @@ h2 {
   font-size: 16px;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }
 
@@ -1813,7 +1813,7 @@ h2 {
   margin: 0 0 8px 0;
   width: 100%;
   text-align: center;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
   white-space: nowrap;
   overflow: hidden;
@@ -2072,7 +2072,7 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 2px;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
 }
 
 /* 调整来源标识位置 */
@@ -2469,7 +2469,7 @@ h2 {
     margin-bottom: 20px;
     background: transparent;
     color: #4e342e;
-    font-family: "huangkaihuaLawyerfont", cursive;
+    font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
     border-bottom: 1px dashed rgba(0,0,0,0.1);
   }
 
@@ -2485,7 +2485,7 @@ h2 {
     width: 100%;
     border: none;
     outline: none;
-    font-family: "huangkaihuaLawyerfont", cursive;
+    font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
     font-size: 18px;
     resize: none;
     line-height: 2.2;

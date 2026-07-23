@@ -281,7 +281,7 @@ const formatDate = (timestamp) => {
   flex-direction: column;
   background-color: #fff;
   line-height: 1.6;
-  font-family: 'Kaiti', 'STKaiti', serif;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", serif;
 }
 
 .note-card:hover {
@@ -296,7 +296,7 @@ const formatDate = (timestamp) => {
   white-space: pre-wrap; 
   z-index: 2; 
   position: relative; 
-  font-family: "PING FANG GONG ZI TI", 'Kaiti', 'STKaiti', serif;
+  font-family: "PING FANG GONG ZI TI", "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", serif;
   text-align: center;
   display: flex;
   align-items: center;

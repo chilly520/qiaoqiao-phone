@@ -232,7 +232,7 @@ h2 {
   margin: 0;
   font-weight: 900;
   letter-spacing: 2px;
-  font-family: "huangkaihuaLawyerfont", cursive;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", cursive;
   text-shadow: 1px 1px 2px rgba(255, 182, 193, 0.2);
 }
 
@@ -343,7 +343,7 @@ h2 {
 
 .note-content {
   flex: 1;
-  font-family: 'Kaiti', 'STKaiti', serif;
+  font-family: "huangkaihuaLawyerfont", "STXingkai", "华文行楷", "STKaiti", "华文楷体", "KaiTi", "楷体", "AR PL UKai CN", "Kaiti SC", "FangSong", "仿宋", serif;
   font-size: 14px;
   line-height: 1.7;
   color: #4a4a4a;

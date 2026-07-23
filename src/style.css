@@ -2,6 +2,29 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+/* v1.10.222: 情侣空间手写体降级链
+   - 优先黄凯华律师体 (本地)
+   - 失败时降级到系统中文字体: 行楷 / 楷体 / 华文楷体
+   - 覆盖 Win / Mac / Linux / Android
+   - 这样保证在没装特定手写体的系统上也能显示中文手写体 */
+@font-face {
+    font-family: "huangkaihuaLawyerfont";
+    src: local("黄凯华律师体"),
+         local("STXingkai"),
+         local("华文行楷"),
+         local("STKaiti"),
+         local("华文楷体"),
+         local("KaiTi"),
+         local("楷体"),
+         local("楷体_GB2312"),
+         local("AR PL UKai CN"),
+         local("AR PL UKai"),
+         local("Kaiti SC"),
+         local("STZhongsong"),
+         local("FangSong"),
+         local("仿宋");
+}
+
 /* CSS Variables from original HTML */
 :root {
     --app-bg-color: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 100%);
