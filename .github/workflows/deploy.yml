@@ -13,10 +13,23 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
           cache: 'npm'
 
-      - run: npm ci
+      - name: Remove package-lock.json on CI
+        run: |
+          echo "Removing package-lock.json to avoid platform-specific esbuild lock entries"
+          rm -f package-lock.json || true
+
+      - name: Install dependencies
+        run: |
+          set -e
+          npm install --no-audit --no-fund
+
+      - name: Rebuild esbuild
+        run: |
+          npm rebuild esbuild || true
+
       - run: npm run build
 
       - name: Deploy to Cloudflare Pages
