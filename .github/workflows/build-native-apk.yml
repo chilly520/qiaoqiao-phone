@@ -107,6 +107,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.CHILLY_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.CHILLY_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.CHILLY_KEY_PASSWORD }}
+          # 显式 GRADLE_OPTS: 用系统 gradle 时 gradle.properties 的 Xmx 偶尔被吞,显式保险
+          GRADLE_OPTS: "-Xmx3g -Dfile.encoding=UTF-8 -XX:+HeapDumpOnOutOfMemoryError"
         run: |
           # 默认密码 (临时签名时用)
           export KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:-android}"
@@ -124,8 +126,18 @@ jobs:
               -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
           fi
           ls -la android.keystore
-          # 用 system gradle (避免 wrapper 下载 services.gradle.org)
-          gradle assembleRelease --no-daemon --stacktrace
+          # 关键: 用项目自带的 ./gradlew (wrapper 锁了 Gradle 8.5, 跟 AGP 8.2.2 严格匹配)
+          # 不用 system gradle (ubuntu-latest 默认装的可能是别的版本, AGP 不认就 worker 早挂)
+          chmod +x gradlew
+          ./gradlew --version
+          # --info 让失败时打出真正的 cause,而不是被 Java 栈吞掉
+          ./gradlew assembleRelease --no-daemon --stacktrace --info 2>&1 | tee gradle-build.log
+          EXIT=${PIPESTATUS[0]}
+          if [ $EXIT -ne 0 ]; then
+            echo "::error::Gradle build failed with exit $EXIT. Last 80 lines:"
+            tail -80 gradle-build.log
+            exit $EXIT
+          fi
 
       - name: Rename APK
         run: |

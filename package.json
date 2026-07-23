@@ -1,7 +1,7 @@
 {
   "name": "qiaqiao-phone",
   "private": true,
-  "version": "1.10.224",
+  "version": "1.10.225",
   "type": "module",
   "engines": {
     "node": "18.x"
