@@ -1,11 +1,12 @@
 {
   "name": "qiaqiao-phone",
   "private": true,
-  "version": "1.10.193",
+  "version": "1.10.218",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/copy-functions.js",
+    "build": "node scripts/build-esbuild.mjs && node scripts/copy-functions.js",
+    "build:vite": "vite build && node scripts/copy-functions.js",
     "preview": "vite preview",
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name=qiaqiao-phone --branch=main"
   },
@@ -19,12 +20,14 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.1.4",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@vitejs/plugin-vue": "^6.0.8",
     "@vue/compiler-sfc": "^3.5.26",
     "autoprefixer": "^10.4.23",
+    "esbuild-plugin-vue3": "^0.5.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.0",
-    "vite": "^5.4.11",
-    "vite-plugin-pwa": "^0.20.5"
+    "vite": "^7.3.6",
+    "vite-plugin-pwa": "^1.3.0"
   }
 }
