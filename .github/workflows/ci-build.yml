@@ -19,11 +19,22 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies (try clean install, fallback to install)
+      - name: Prepare install (remove lockfile to avoid platform-specific esbuild entries)
+        run: |
+          echo "Removing package-lock.json to avoid platform-specific lock entries on CI"
+          rm -f package-lock.json || true
+
+      - name: Install dependencies (npm install)
         run: |
           set -e
-          echo "Trying npm ci first..."
-          npm ci || (echo "npm ci failed, falling back to npm install" && npm install --no-audit --no-fund)
+          echo "Installing dependencies with npm install"
+          npm install --no-audit --no-fund
+
+      - name: Dump installed esbuild info
+        run: |
+          echo "esbuild versions installed:";
+          npm ls esbuild --depth=0 || true
+          echo "node & npm:"; node -v; npm -v
 
       - name: Rebuild esbuild (safe-guard)
         run: |
