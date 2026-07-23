@@ -73,6 +73,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- FileProvider: 让 APP 内部下载的 APK 能调起系统安装器 (vivo 不会接管) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

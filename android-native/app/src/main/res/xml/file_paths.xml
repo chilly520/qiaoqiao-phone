@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 下载的 APK 临时存放位置 (在 getExternalFilesDir 下, 不需要存储权限) -->
+    <external-files-path
+        name="apk_downloads"
+        path="downloads/" />
+    <cache-path
+        name="apk_cache"
+        path="downloads/" />
+</paths>
