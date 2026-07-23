@@ -110,6 +110,7 @@ jobs:
           # 显式 GRADLE_OPTS: 用系统 gradle 时 gradle.properties 的 Xmx 偶尔被吞,显式保险
           GRADLE_OPTS: "-Xmx3g -Dfile.encoding=UTF-8 -XX:+HeapDumpOnOutOfMemoryError"
         run: |
+          set -x  # bash debug: 每行命令都打印
           # 默认密码 (临时签名时用)
           export KEYSTORE_PASSWORD="${KEYSTORE_PASSWORD:-android}"
           export KEY_ALIAS="${KEY_ALIAS:-android}"
@@ -126,16 +127,31 @@ jobs:
               -dname "CN=Chilly Phone, O=qiaoqiao, C=CN"
           fi
           ls -la android.keystore
-          # 关键: 用项目自带的 ./gradlew (wrapper 锁了 Gradle 8.5, 跟 AGP 8.2.2 严格匹配)
-          # 不用 system gradle (ubuntu-latest 默认装的可能是别的版本, AGP 不认就 worker 早挂)
+
+          # === 环境诊断 (失败时一眼看到版本不匹配) ===
+          echo "===== ENV DIAG ====="
+          java -version 2>&1 || true
+          echo "---"
+          ls -la /opt/ | grep -i gradle || echo "no /opt/gradle*"
+          echo "---"
+          which gradle && gradle --version 2>&1 || echo "no system gradle"
+          echo "---"
           chmod +x gradlew
-          ./gradlew --version
-          # --info 让失败时打出真正的 cause,而不是被 Java 栈吞掉
-          ./gradlew assembleRelease --no-daemon --stacktrace --info 2>&1 | tee gradle-build.log
+          ./gradlew --version 2>&1 || echo "wrapper gradlew broken"
+          echo "===== /ENV DIAG ====="
+
+          # === 关键: 用项目自带的 ./gradlew (wrapper 锁了 Gradle 8.5, 跟 AGP 8.2.2 严格匹配) ===
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee gradle-build.log
           EXIT=${PIPESTATUS[0]}
           if [ $EXIT -ne 0 ]; then
-            echo "::error::Gradle build failed with exit $EXIT. Last 80 lines:"
-            tail -80 gradle-build.log
+            echo "::error::Gradle build failed with exit $EXIT"
+            echo "===== gradle-build.log TAIL (last 200 lines) ====="
+            tail -200 gradle-build.log
+            echo "===== /gradle-build.log TAIL ====="
+            echo ""
+            echo "===== FAILURE / CAUSE grep ====="
+            grep -nE "FAILURE|What went wrong|Caused by|FAILED|> Could not|> Task .* FAILED|error:|OutOfMemoryError|NoClassDefFoundError" gradle-build.log | head -60
+            echo "===== /FAILURE grep ====="
             exit $EXIT
           fi
 

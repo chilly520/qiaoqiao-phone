@@ -1,10 +1,10 @@
 {
   "name": "qiaqiao-phone",
   "private": true,
-  "version": "1.10.225",
+  "version": "1.10.226",
   "type": "module",
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   },
   "scripts": {
     "dev": "vite",
